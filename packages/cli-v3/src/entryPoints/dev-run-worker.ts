@@ -33,6 +33,8 @@ import {
   traceContext,
   heartbeats,
   realtimeStreams,
+  inputStreams,
+  sessionStreams,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -45,6 +47,7 @@ import {
   SharedRuntimeManager,
   OtelTaskLogger,
   populateEnv,
+  NO_FILE_CONTEXT,
   StandardLifecycleHooksManager,
   StandardLocalsManager,
   StandardMetadataManager,
@@ -59,6 +62,8 @@ import {
   StandardTraceContextManager,
   StandardHeartbeatsManager,
   StandardRealtimeStreamsManager,
+  StandardInputStreamManager,
+  StandardSessionStreamManager,
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
@@ -71,37 +76,53 @@ import { promiseWithResolvers } from "@trigger.dev/core/utils";
 
 installSourceMapSupport();
 
+// If the parent CLI closes the IPC channel (process restart, crash, lost
+// handle), exit cleanly instead of being re-parented to init and busy-looping
+// on `process.send` that throws against a dead channel.
+process.on("disconnect", () => {
+  process.exit(0);
+});
+
+function safeSend(message: unknown) {
+  if (!process.connected || !process.send) {
+    return;
+  }
+  try {
+    process.send(message);
+  } catch {
+    // swallow: a throw here would re-enter this handler and busy-loop the worker
+  }
+}
+
 process.on("uncaughtException", function (error, origin) {
   logError("Uncaught exception", { error, origin });
   if (error instanceof Error) {
-    process.send &&
-      process.send({
-        type: "EVENT",
-        message: {
-          type: "UNCAUGHT_EXCEPTION",
-          payload: {
-            error: { name: error.name, message: error.message, stack: error.stack },
-            origin,
-          },
-          version: "v1",
+    safeSend({
+      type: "EVENT",
+      message: {
+        type: "UNCAUGHT_EXCEPTION",
+        payload: {
+          error: { name: error.name, message: error.message, stack: error.stack },
+          origin,
         },
-      });
+        version: "v1",
+      },
+    });
   } else {
-    process.send &&
-      process.send({
-        type: "EVENT",
-        message: {
-          type: "UNCAUGHT_EXCEPTION",
-          payload: {
-            error: {
-              name: "Error",
-              message: typeof error === "string" ? error : JSON.stringify(error),
-            },
-            origin,
+    safeSend({
+      type: "EVENT",
+      message: {
+        type: "UNCAUGHT_EXCEPTION",
+        payload: {
+          error: {
+            name: "Error",
+            message: typeof error === "string" ? error : JSON.stringify(error),
           },
-          version: "v1",
+          origin,
         },
-      });
+        version: "v1",
+      },
+    });
   }
 });
 
@@ -155,6 +176,22 @@ const standardRealtimeStreamsManager = new StandardRealtimeStreamsManager(
 );
 realtimeStreams.setGlobalManager(standardRealtimeStreamsManager);
 
+const standardInputStreamManager = new StandardInputStreamManager(
+  apiClientManager.clientOrThrow(),
+  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+  (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
+    false
+);
+inputStreams.setGlobalManager(standardInputStreamManager);
+
+const standardSessionStreamManager = new StandardSessionStreamManager(
+  apiClientManager.clientOrThrow(),
+  getEnvVar("TRIGGER_STREAM_URL", getEnvVar("TRIGGER_API_URL")) ?? "https://api.trigger.dev",
+  (getEnvVar("TRIGGER_STREAMS_DEBUG") === "1" || getEnvVar("TRIGGER_STREAMS_DEBUG") === "true") ??
+    false
+);
+sessionStreams.setGlobalManager(standardSessionStreamManager);
+
 const waitUntilTimeoutInMs = getNumberEnvVar("TRIGGER_WAIT_UNTIL_TIMEOUT_MS", 60_000);
 const waitUntilManager = new StandardWaitUntilManager(waitUntilTimeoutInMs);
 waitUntil.setGlobalManager(waitUntilManager);
@@ -199,12 +236,18 @@ async function doBootstrap() {
 
     const tracingSDK = new TracingSDK({
       url: env.TRIGGER_OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://0.0.0.0:4318",
+      metricsUrl: env.TRIGGER_OTEL_METRICS_ENDPOINT,
       instrumentations: config.telemetry?.instrumentations ?? config.instrumentations ?? [],
       exporters: config.telemetry?.exporters ?? [],
       logExporters: config.telemetry?.logExporters ?? [],
+      metricExporters: config.telemetry?.metricExporters ?? [],
+      metricReaders: config.telemetry?.metricReaders ?? [],
       diagLogLevel: (env.TRIGGER_OTEL_LOG_LEVEL as TracingDiagnosticLogLevel) ?? "none",
       forceFlushTimeoutMillis: 30_000,
       resource: config.telemetry?.resource,
+      hostMetrics: true,
+      hostMetricGroups: ["process.cpu", "process.memory"],
+      nodejsRuntimeMetrics: true,
     });
 
     const otelTracer: Tracer = tracingSDK.getTracer("trigger-dev-worker", VERSION);
@@ -322,6 +365,8 @@ function resetExecutionEnvironment() {
   usageTimeoutManager.reset();
   runMetadataManager.reset();
   standardRealtimeStreamsManager.reset();
+  standardInputStreamManager.reset();
+  standardSessionStreamManager.reset();
   waitUntilManager.reset();
   _sharedWorkerRuntime?.reset();
   durableClock.reset();
@@ -369,6 +414,7 @@ const zodIpc = new ZodIpcConnection({
       }
 
       resetExecutionEnvironment();
+      standardInputStreamManager.setRunId(execution.run.id, execution.run.realtimeStreamsVersion);
 
       standardTraceContextManager.traceContext = traceContext;
       standardRunTimelineMetricsManager.registerMetricsFromExecution(metrics, isWarmStart);
@@ -451,8 +497,8 @@ const zodIpc = new ZodIpcConnection({
               async () => {
                 const beforeImport = performance.now();
                 resourceCatalog.setCurrentFileContext(
-                  taskManifest.entryPoint,
-                  taskManifest.filePath
+                  taskManifest.filePath,
+                  taskManifest.entryPoint
                 );
 
                 // Load init file if it exists
@@ -560,6 +606,12 @@ const zodIpc = new ZodIpcConnection({
 
           const signal = AbortSignal.any([_cancelController.signal, timeoutController.signal]);
 
+          // Sentinel context so `task()` calls firing during run / lifecycle
+          // hooks (e.g. via `await import(...)` of a module containing a task
+          // definition) register normally instead of being silently dropped.
+          // Cleared in the surrounding finally below.
+          resourceCatalog.setCurrentFileContext(NO_FILE_CONTEXT, NO_FILE_CONTEXT);
+
           const { result } = await executor.execute(execution, ctx, signal);
 
           if (_isRunning && !_isCancelled) {
@@ -578,6 +630,7 @@ const zodIpc = new ZodIpcConnection({
           }
         } finally {
           standardHeartbeatsManager.stopHeartbeat();
+          resourceCatalog.clearCurrentFileContext();
 
           _execution = undefined;
           _isRunning = false;
@@ -614,8 +667,11 @@ const zodIpc = new ZodIpcConnection({
       }
       await flushAll(timeoutInMs);
     },
-    FLUSH: async ({ timeoutInMs }) => {
+    FLUSH: async ({ timeoutInMs, disableContext }) => {
       await flushAll(timeoutInMs);
+      if (disableContext) {
+        taskContext.disable();
+      }
     },
     RESOLVE_WAITPOINT: async ({ waitpoint }) => {
       _sharedWorkerRuntime?.resolveWaitpoints([waitpoint]);

@@ -2,7 +2,7 @@ import { IOPacket, packetRequiresOffloading, tryCatch } from "@trigger.dev/core/
 import { PayloadProcessor, TriggerTaskRequest } from "../types";
 import { env } from "~/env.server";
 import { startActiveSpan } from "~/v3/tracer.server";
-import { uploadPacketToObjectStore } from "~/v3/r2.server";
+import { uploadPacketToObjectStore } from "~/v3/objectStore.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 
 export class DefaultPayloadProcessor implements PayloadProcessor {
@@ -31,8 +31,8 @@ export class DefaultPayloadProcessor implements PayloadProcessor {
 
       const filename = `${request.friendlyId}/payload.json`;
 
-      const [uploadError] = await tryCatch(
-        uploadPacketToObjectStore(filename, packet.data, packet.dataType, request.environment)
+      const [uploadError, uploadedFilename] = await tryCatch(
+        uploadPacketToObjectStore(filename, packet.data, packet.dataType, request.environment, env.OBJECT_STORE_DEFAULT_PROTOCOL)
       );
 
       if (uploadError) {
@@ -40,7 +40,7 @@ export class DefaultPayloadProcessor implements PayloadProcessor {
       }
 
       return {
-        data: filename,
+        data: uploadedFilename!,
         dataType: "application/store",
       };
     });

@@ -104,6 +104,7 @@ export interface SelectProps<TValue extends string | string[], TItem>
   open?: boolean;
   setOpen?: (open: boolean) => void;
   shortcut?: ShortcutDefinition;
+  tooltipTitle?: string;
   allowItemShortcuts?: boolean;
   clearSearchOnSelection?: boolean;
   dropdownIcon?: boolean | React.ReactNode;
@@ -127,6 +128,7 @@ export function Select<TValue extends string | string[], TItem>({
   open,
   setOpen,
   shortcut,
+  tooltipTitle,
   allowItemShortcuts = true,
   disabled,
   clearSearchOnSelection = true,
@@ -206,6 +208,7 @@ export function Select<TValue extends string | string[], TItem>({
         text={text}
         placeholder={placeholder}
         shortcut={shortcut}
+        tooltipTitle={tooltipTitle}
         disabled={disabled}
         dropdownIcon={dropdownIcon}
         {...props}
@@ -338,9 +341,9 @@ export function SelectTrigger({
           />
         }
       >
-        <div className="flex grow items-center gap-0.5">
-          {icon && <div className="-ml-1 flex-none">{icon}</div>}
-          <div className="truncate">{content}</div>
+        <div className="flex min-w-0 grow items-center gap-0.5 overflow-hidden">
+          {icon && <div className="flex-none">{icon}</div>}
+          <div className="min-w-0 truncate">{content}</div>
         </div>
         {dropdownIcon === true ? (
           <ChevronDown
@@ -354,7 +357,7 @@ export function SelectTrigger({
       </Ariakit.TooltipAnchor>
       {showTooltip && (
         <Ariakit.Tooltip
-          disabled={shortcut === undefined}
+          disabled={!tooltipTitle && !shortcut}
           className="z-40 cursor-default rounded border border-charcoal-700 bg-background-bright px-2 py-1.5 text-xs"
         >
           <div className="flex items-center gap-2">
@@ -443,21 +446,41 @@ export function SelectList(props: SelectListProps) {
 export interface SelectItemProps extends Ariakit.SelectItemProps {
   icon?: React.ReactNode;
   checkIcon?: React.ReactNode;
+  checkPosition?: "left" | "right";
   shortcut?: ShortcutDefinition;
 }
 
 const selectItemClasses =
   "group cursor-pointer px-1 pt-1 text-2sm text-text-dimmed focus-custom last:pb-1";
 
+import { CheckboxIndicator } from "./CheckboxIndicator";
+
 export function SelectItem({
   icon,
   checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-text-bright" />,
+  checkPosition = "right",
   shortcut,
   ...props
 }: SelectItemProps) {
   const combobox = Ariakit.useComboboxContext();
-  const render = combobox ? <Ariakit.ComboboxItem render={props.render} /> : undefined;
+  // In a Combobox context we wrap the caller's render in ComboboxItem
+  // so combobox keyboard nav still works. Outside a Combobox we pass
+  // the render through verbatim — without this, callers like
+  // SelectLinkItem (which uses render to swap in a <Link>) get their
+  // render prop silently dropped, which is why those rows looked
+  // clickable but didn't navigate.
+  const render = combobox
+    ? <Ariakit.ComboboxItem render={props.render} />
+    : props.render;
   const ref = React.useRef<HTMLDivElement>(null);
+  const select = Ariakit.useSelectContext();
+  const selectValue = select?.useState("value");
+
+  const isChecked = React.useMemo(() => {
+    if (!props.value || selectValue == null) return false;
+    if (Array.isArray(selectValue)) return selectValue.includes(props.value);
+    return selectValue === props.value;
+  }, [selectValue, props.value]);
 
   useShortcutKeys({
     shortcut: shortcut,
@@ -484,10 +507,16 @@ export function SelectItem({
       )}
       ref={ref}
     >
-      <div className="flex h-8 w-full items-center gap-1 rounded-sm px-2 group-data-[active-item=true]:bg-tertiary">
+      <div
+        className={cn(
+          "flex h-8 w-full items-center rounded-sm px-2 group-data-[active-item=true]:bg-tertiary hover:bg-tertiary",
+          checkPosition === "left" ? "gap-2" : "gap-1"
+        )}
+      >
+        {checkPosition === "left" && <CheckboxIndicator checked={isChecked} />}
         {icon}
         <div className="grow truncate">{props.children || props.value}</div>
-        {checkIcon}
+        {checkPosition === "right" && checkIcon}
         {shortcut && (
           <ShortcutKey
             className={cn("size-4 flex-none transition duration-0 group-hover:border-charcoal-600")}

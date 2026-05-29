@@ -20,9 +20,11 @@ import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
 import { SelectedItemsProvider } from "~/components/primitives/SelectedItemsProvider";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
@@ -38,11 +40,12 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { redirectWithErrorMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import {
   setRootOnlyFilterPreference,
   uiPreferencesStorage,
@@ -57,6 +60,7 @@ import {
   v3TestPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
+import { throwNotFound } from "~/utils/httpErrors";
 import { ListPagination } from "../../components/ListPagination";
 import { CreateBulkActionInspector } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
 import { Callout } from "~/components/primitives/Callout";
@@ -75,25 +79,36 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
-    throw new Error("Project not found");
+    return redirectWithErrorMessage("/", request, "Project not found");
   }
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) {
-    throw new Error("Environment not found");
+    throwNotFound("Environment not found");
   }
 
   const filters = await getRunFiltersFromRequest(request);
 
-  const presenter = new NextRunListPresenter($replica, clickhouseClient);
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+  const presenter = new NextRunListPresenter($replica, clickhouse);
   const list = presenter.call(project.organizationId, environment.id, {
     userId,
     projectId: project.id,
     ...filters,
   });
 
-  const session = await setRootOnlyFilterPreference(filters.rootOnly, request);
-  const cookieValue = await uiPreferencesStorage.commitSession(session);
+  // Only persist rootOnly when no tasks are filtered. While a task filter is active,
+  // the toggle's URL value can be a temporary auto-flip (or a user override scoped to
+  // the current task filter), and we don't want either bleeding into the saved
+  // session preference. Clearing the task filter restores the saved preference.
+  const shouldPersistRootOnly = !filters.tasks || filters.tasks.length === 0;
+  const headers = shouldPersistRootOnly
+    ? {
+        "Set-Cookie": await uiPreferencesStorage.commitSession(
+          await setRootOnlyFilterPreference(filters.rootOnly, request)
+        ),
+      }
+    : undefined;
 
   return typeddefer(
     {
@@ -101,11 +116,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       rootOnlyDefault: filters.rootOnly,
       filters,
     },
-    {
-      headers: {
-        "Set-Cookie": cookieValue,
-      },
-    }
+    headers ? { headers } : undefined
   );
 };
 
@@ -305,18 +316,32 @@ function RunsList({
           </>
         </div>
       </ResizablePanel>
-      {isShowingBulkActionInspector && (
-        <>
-          <ResizableHandle id="runs-handle" />
-          <ResizablePanel id="bulk-action-inspector" min="300px" default="400px" max="600px">
+      <ResizableHandle
+        id="runs-handle"
+        className={collapsibleHandleClassName(isShowingBulkActionInspector)}
+      />
+      <ResizablePanel
+        id="bulk-action-inspector"
+        default="400px"
+        min="400px"
+        max="600px"
+        className="overflow-hidden"
+        collapsible
+        collapsed={!isShowingBulkActionInspector}
+        onCollapseChange={() => {}}
+        collapsedSize="0px"
+        collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+      >
+        <div className="h-full" style={{ minWidth: 400 }}>
+          {isShowingBulkActionInspector && (
             <CreateBulkActionInspector
               filters={filters}
               selectedItems={selectedItems}
               hasBulkActions={list.bulkActions.length > 0}
             />
-          </ResizablePanel>
-        </>
-      )}
+          )}
+        </div>
+      </ResizablePanel>
     </ResizablePanelGroup>
   );
 }

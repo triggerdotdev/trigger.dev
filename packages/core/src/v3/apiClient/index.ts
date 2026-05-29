@@ -6,17 +6,32 @@ import {
   ApiDeploymentListOptions,
   ApiDeploymentListResponseItem,
   ApiDeploymentListSearchParams,
+  RetrieveCurrentDeploymentResponseBody,
   AppendToStreamResponseBody,
   BatchItemNDJSON,
   BatchTaskRunExecutionResult,
   BatchTriggerTaskV3RequestBody,
   BatchTriggerTaskV3Response,
   CanceledRunResponse,
+  CloseSessionRequestBody,
   CompleteWaitpointTokenRequestBody,
   CompleteWaitpointTokenResponseBody,
+  CreatedSessionResponseBody,
+  CreateSessionRequestBody,
+  EndAndContinueSessionRequestBody,
+  EndAndContinueSessionResponseBody,
+  ListSessionsOptions,
+  ListSessionsResponseBody,
+  ListedSessionItem,
+  RetrieveSessionResponseBody,
+  UpdateSessionRequestBody,
   CreateBatchRequestBody,
   CreateBatchResponse,
   CreateEnvironmentVariableRequestBody,
+  CreateInputStreamWaitpointRequestBody,
+  CreateInputStreamWaitpointResponseBody,
+  CreateSessionStreamWaitpointRequestBody,
+  CreateSessionStreamWaitpointResponseBody,
   CreateScheduleOptions,
   CreateStreamResponseBody,
   CreateUploadPayloadUrlResponseBody,
@@ -30,16 +45,34 @@ import {
   ListScheduleOptions,
   QueueItem,
   QueueTypeName,
+  QueryExecuteRequestBody,
+  QueryExecuteResponseBody,
+  QueryExecuteCSVResponseBody,
+  QuerySchemaResponseBody,
+  ListDashboardsResponseBody,
   ReplayRunResponse,
   RescheduleRunRequestBody,
   ResetIdempotencyKeyResponse,
   RetrieveBatchV2Response,
   RetrieveQueueParam,
+  ResolvePromptRequestBody,
+  ResolvePromptResponseBody,
+  ListPromptsResponseBody,
+  ListPromptVersionsResponseBody,
+  PromotePromptVersionRequestBody,
+  CreatePromptOverrideRequestBody,
+  UpdatePromptOverrideRequestBody,
+  ReactivatePromptOverrideRequestBody,
+  PromptOkResponseBody,
+  PromptOverrideCreatedResponseBody,
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,
+  RetrieveSpanDetailResponseBody,
   ScheduleObject,
+  SendInputStreamResponseBody,
   StreamBatchItemsResponse,
   TaskRunExecutionResult,
+  ReadSessionStreamRecordsResponseBody,
   TriggerTaskRequestBody,
   TriggerTaskResponse,
   UpdateEnvironmentVariableRequestBody,
@@ -84,6 +117,10 @@ import {
   RealtimeRunSkipColumns,
   type SSEStreamPart,
 } from "./runStream.js";
+import {
+  controlSubtype,
+  type ControlEvent,
+} from "../sessionStreams/wireProtocol.js";
 import {
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,
@@ -171,6 +208,7 @@ export class ApiClient {
   public readonly accessToken: string;
   public readonly previewBranch?: string;
   public readonly futureFlags: ApiClientFutureFlags;
+  private readonly additionalHeaders?: Record<string, string>;
   private readonly defaultRequestOptions: ZodFetchOptions;
 
   constructor(
@@ -183,7 +221,9 @@ export class ApiClient {
     this.accessToken = accessToken;
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.previewBranch = previewBranch;
-    this.defaultRequestOptions = mergeRequestOptions(DEFAULT_ZOD_FETCH_OPTIONS, requestOptions);
+    const { additionalHeaders, ...restRequestOptions } = requestOptions;
+    this.additionalHeaders = additionalHeaders;
+    this.defaultRequestOptions = mergeRequestOptions(DEFAULT_ZOD_FETCH_OPTIONS, restRequestOptions);
     this.futureFlags = futureFlags;
   }
 
@@ -537,9 +577,10 @@ export class ApiClient {
   }
 
   createUploadPayloadUrl(filename: string, requestOptions?: ZodFetchOptions) {
+    const encoded = encodeURIComponent(filename);
     return zodfetch(
       CreateUploadPayloadUrlResponseBody,
-      `${this.baseUrl}/api/v1/packets/${filename}`,
+      `${this.baseUrl}/api/v2/packets/${encoded}`,
       {
         method: "PUT",
         headers: this.#getHeaders(false),
@@ -549,9 +590,36 @@ export class ApiClient {
   }
 
   getPayloadUrl(filename: string, requestOptions?: ZodFetchOptions) {
+    const encoded = encodeURIComponent(filename);
     return zodfetch(
       CreateUploadPayloadUrlResponseBody,
-      `${this.baseUrl}/api/v1/packets/${filename}`,
+      `${this.baseUrl}/api/v1/packets/${encoded}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  /** Presigned PUT URL for a `chat.agent` session snapshot. */
+  createChatSnapshotUploadUrl(sessionId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      CreateUploadPayloadUrlResponseBody,
+      `${this.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/snapshot-url`,
+      {
+        method: "PUT",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  /** Presigned GET URL for a `chat.agent` session snapshot. */
+  getChatSnapshotUrl(sessionId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      CreateUploadPayloadUrlResponseBody,
+      `${this.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/snapshot-url`,
       {
         method: "GET",
         headers: this.#getHeaders(false),
@@ -576,6 +644,18 @@ export class ApiClient {
     return zodfetch(
       RetrieveRunTraceResponseBody,
       `${this.baseUrl}/api/v1/runs/${runId}/trace`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveSpan(runId: string, spanId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      RetrieveSpanDetailResponseBody,
+      `${this.baseUrl}/api/v1/runs/${runId}/spans/${spanId}`,
       {
         method: "GET",
         headers: this.#getHeaders(false),
@@ -1058,6 +1138,266 @@ export class ApiClient {
     );
   }
 
+  // ========================================================================
+  // Sessions
+  // ========================================================================
+
+  createSession(body: CreateSessionRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      CreatedSessionResponseBody,
+      `${this.baseUrl}/api/v1/sessions`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  retrieveSession(sessionIdOrExternalId: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      RetrieveSessionResponseBody,
+      `${this.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  updateSession(
+    sessionIdOrExternalId: string,
+    body: UpdateSessionRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      RetrieveSessionResponseBody,
+      `${this.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}`,
+      {
+        method: "PATCH",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  closeSession(
+    sessionIdOrExternalId: string,
+    body?: CloseSessionRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      RetrieveSessionResponseBody,
+      `${this.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/close`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body ?? {}),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  endAndContinueSession(
+    sessionIdOrExternalId: string,
+    body: EndAndContinueSessionRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      EndAndContinueSessionResponseBody,
+      `${this.baseUrl}/api/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/end-and-continue`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listSessions(
+    options?: ListSessionsOptions,
+    requestOptions?: ZodFetchOptions
+  ): CursorPagePromise<typeof ListedSessionItem> {
+    const searchParams = createSearchQueryForListSessions(options);
+
+    return zodfetchCursorPage(
+      ListedSessionItem,
+      `${this.baseUrl}/api/v1/sessions`,
+      {
+        query: searchParams,
+        limit: options?.limit,
+        after: options?.after,
+        before: options?.before,
+      },
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  // ========================================================================
+  // Session realtime channels
+  // ========================================================================
+
+  async initializeSessionStream(
+    sessionIdOrExternalId: string,
+    io: "out" | "in",
+    requestOptions?: ZodFetchOptions
+  ) {
+    // The server returns S2 credentials in response headers alongside a tiny
+    // JSON body with the realtime version. Follow the same shape as
+    // `createStream` so downstream clients can feed them into
+    // `StreamsWriterV2`.
+    return zodfetch(
+      CreateStreamResponseBody,
+      `${this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/${io}`,
+      {
+        method: "PUT",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    )
+      .withResponse()
+      .then(({ data, response }) => ({
+        ...data,
+        headers: Object.fromEntries(response.headers.entries()),
+      }));
+  }
+
+  async appendToSessionStream<TBody extends BodyInit>(
+    sessionIdOrExternalId: string,
+    io: "out" | "in",
+    part: TBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      AppendToStreamResponseBody,
+      `${this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/${io}/append`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: part,
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  /**
+   * Non-SSE drain of a Session channel's tail. Returns whatever records
+   * exist after `afterEventId` (or from the head of the stream) and closes
+   * — `wait=0` semantics, no long-poll. Used by `replaySessionOutTail` at
+   * run boot, where the SSE long-poll's ~1s tax on empty streams is the
+   * dominant cost on every fresh chat.
+   *
+   * `afterEventId` is the same cursor format as the SSE Last-Event-ID
+   * (the S2 sequence number, stringified) — pass `lastOutEventId` from a
+   * persisted snapshot to resume.
+   */
+  async readSessionStreamRecords(
+    sessionIdOrExternalId: string,
+    io: "out" | "in",
+    options?: { afterEventId?: string; baseUrl?: string }
+  ) {
+    const qs = new URLSearchParams();
+    if (options?.afterEventId !== undefined) {
+      qs.set("afterEventId", options.afterEventId);
+    }
+    const url = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(
+      sessionIdOrExternalId
+    )}/${io}/records${qs.toString() ? `?${qs.toString()}` : ""}`;
+    return zodfetch(
+      ReadSessionStreamRecordsResponseBody,
+      url,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, undefined)
+    );
+  }
+
+  /**
+   * Subscribe to SSE records on a Session channel. Reuses the same
+   * {@link SSEStreamSubscription} plumbing as `readStream` for run-scoped
+   * realtime streams — auto-retry, Last-Event-ID resume, abort-on-cancel.
+   */
+  async subscribeToSessionStream<T = unknown>(
+    sessionIdOrExternalId: string,
+    io: "out" | "in",
+    options?: {
+      signal?: AbortSignal;
+      baseUrl?: string;
+      timeoutInSeconds?: number;
+      onComplete?: () => void;
+      onError?: (error: Error) => void;
+      lastEventId?: string;
+      onPart?: (part: SSEStreamPart<T>) => void;
+      /**
+       * Fires when a `trigger-control` record arrives on the stream (e.g.
+       * `turn-complete`, `upgrade-required`). The control record is never
+       * enqueued into the consumer stream — handle the event here.
+       */
+      onControl?: (event: ControlEvent) => void;
+    }
+  ): Promise<AsyncIterableStream<T>> {
+    const url = `${options?.baseUrl ?? this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/${io}`;
+
+    const subscription = new SSEStreamSubscription(url, {
+      headers: this.getHeaders(),
+      signal: options?.signal,
+      onComplete: options?.onComplete,
+      onError: options?.onError,
+      timeoutInSeconds: options?.timeoutInSeconds,
+      lastEventId: options?.lastEventId,
+    });
+
+    const stream = await subscription.subscribe();
+    const onPart = options?.onPart;
+    const onControl = options?.onControl;
+
+    return stream.pipeThrough(
+      new TransformStream<SSEStreamPart, T>({
+        transform(part, controller) {
+          // Always surface the raw part via onPart so cursor tracking
+          // (lastSeqNum, lastEventId) stays correct for both data and
+          // control records.
+          onPart?.(part as SSEStreamPart<T>);
+
+          // Trigger control record — route to onControl, never enqueue.
+          const subtype = controlSubtype(part.headers);
+          if (subtype) {
+            // `part.id` is the S2 seq_num in decimal string form.
+            // `parseInt` returns NaN if S2 ever surfaces a non-numeric
+            // id (shouldn't happen, but `|| 0` would mask it as a real
+            // seq 0). Drop the malformed event rather than fire
+            // `onControl` with a misleading cursor — callers like
+            // `findLatestSessionInCursor` and the dashboard rely on the
+            // seqNum being meaningful for resume.
+            const parsedSeqNum = Number.parseInt(part.id, 10);
+            if (!Number.isFinite(parsedSeqNum)) {
+              return;
+            }
+            onControl?.({
+              subtype,
+              headers: part.headers ?? [],
+              seqNum: parsedSeqNum,
+              timestamp: part.timestamp,
+            });
+            return;
+          }
+
+          controller.enqueue(part.chunk as T);
+        },
+      })
+    );
+  }
+
   async waitForDuration(
     runId: string,
     body: WaitForDurationRequestBody,
@@ -1304,6 +1644,18 @@ export class ApiClient {
     );
   }
 
+  retrieveCurrentDeployment(requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      RetrieveCurrentDeploymentResponseBody,
+      `${this.baseUrl}/api/v1/deployments/current`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   async fetchStream<T>(
     runId: string,
     streamKey: string,
@@ -1314,6 +1666,8 @@ export class ApiClient {
       onComplete?: () => void;
       onError?: (error: Error) => void;
       lastEventId?: string;
+      /** Called for each SSE event with the full event metadata (id, timestamp). */
+      onPart?: (part: SSEStreamPart<T>) => void;
     }
   ): Promise<AsyncIterableStream<T>> {
     const streamFactory = new SSEStreamSubscriptionFactory(options?.baseUrl ?? this.baseUrl, {
@@ -1330,10 +1684,14 @@ export class ApiClient {
 
     const stream = await subscription.subscribe();
 
+    const onPart = options?.onPart;
+
     return stream.pipeThrough(
       new TransformStream<SSEStreamPart, T>({
         transform(chunk, controller) {
-          controller.enqueue(chunk.chunk as T);
+          const data = chunk.chunk as T;
+          onPart?.(chunk as SSEStreamPart<T>);
+          controller.enqueue(data);
         },
       })
     );
@@ -1382,6 +1740,58 @@ export class ApiClient {
     );
   }
 
+  async sendInputStream(
+    runId: string,
+    streamId: string,
+    data: unknown,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      SendInputStreamResponseBody,
+      `${this.baseUrl}/realtime/v1/streams/${runId}/input/${streamId}`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify({ data }),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async createInputStreamWaitpoint(
+    runFriendlyId: string,
+    body: CreateInputStreamWaitpointRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      CreateInputStreamWaitpointResponseBody,
+      `${this.baseUrl}/api/v1/runs/${runFriendlyId}/input-streams/wait`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async createSessionStreamWaitpoint(
+    runFriendlyId: string,
+    body: CreateSessionStreamWaitpointRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      CreateSessionStreamWaitpointResponseBody,
+      `${this.baseUrl}/api/v1/runs/${runFriendlyId}/session-streams/wait`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   async generateJWTClaims(requestOptions?: ZodFetchOptions): Promise<Record<string, any>> {
     return zodfetch(
       z.record(z.any()),
@@ -1406,6 +1816,64 @@ export class ApiClient {
     );
   }
 
+  async executeQuery(
+    query: string,
+    options?: {
+      scope?: "environment" | "project" | "organization";
+      period?: string;
+      from?: string;
+      to?: string;
+      format?: "json" | "csv";
+    },
+    requestOptions?: ZodFetchOptions
+  ): Promise<QueryExecuteResponseBody> {
+    const body = {
+      query,
+      scope: options?.scope ?? "environment",
+      period: options?.period,
+      from: options?.from,
+      to: options?.to,
+      format: options?.format ?? "json",
+    };
+
+    return zodfetch(
+      QueryExecuteResponseBody,
+      `${this.baseUrl}/api/v1/query`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async getQuerySchema(requestOptions?: ZodFetchOptions): Promise<QuerySchemaResponseBody> {
+    return zodfetch(
+      QuerySchemaResponseBody,
+      `${this.baseUrl}/api/v1/query/schema`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  async listDashboards(
+    requestOptions?: ZodFetchOptions
+  ): Promise<ListDashboardsResponseBody> {
+    return zodfetch(
+      ListDashboardsResponseBody,
+      `${this.baseUrl}/api/v1/query/dashboards`,
+      {
+        method: "GET",
+        headers: this.#getHeaders(false),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
   #getHeaders(spanParentAsLink: boolean, additionalHeaders?: Record<string, string | undefined>) {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -1422,6 +1890,18 @@ export class ApiClient {
         {} as Record<string, string>
       ),
     };
+
+    if (this.additionalHeaders) {
+      for (const [key, value] of Object.entries(this.additionalHeaders)) {
+        if (!(key in headers)) {
+          headers[key] = value;
+        }
+      }
+    }
+
+    if (!headers["x-trigger-source"]) {
+      headers["x-trigger-source"] = "sdk";
+    }
 
     if (this.previewBranch) {
       headers["x-trigger-branch"] = this.previewBranch;
@@ -1459,6 +1939,86 @@ export class ApiClient {
     }
 
     return headers;
+  }
+
+  resolvePrompt(
+    slug: string,
+    body: ResolvePromptRequestBody,
+    requestOptions?: ZodFetchOptions
+  ) {
+    return zodfetch(
+      ResolvePromptResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}`,
+      {
+        method: "POST",
+        headers: this.#getHeaders(false),
+        body: JSON.stringify(body),
+      },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listPrompts(requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      ListPromptsResponseBody,
+      `${this.baseUrl}/api/v1/prompts`,
+      { method: "GET", headers: this.#getHeaders(false) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  listPromptVersions(slug: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      ListPromptVersionsResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/versions`,
+      { method: "GET", headers: this.#getHeaders(false) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  promotePromptVersion(slug: string, body: PromotePromptVersionRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOkResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/promote`,
+      { method: "POST", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  createPromptOverride(slug: string, body: CreatePromptOverrideRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOverrideCreatedResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/override`,
+      { method: "POST", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  updatePromptOverride(slug: string, body: UpdatePromptOverrideRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOkResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/override`,
+      { method: "PUT", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  removePromptOverride(slug: string, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOkResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/override`,
+      { method: "DELETE", headers: this.#getHeaders(false) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
+  }
+
+  reactivatePromptOverride(slug: string, body: ReactivatePromptOverrideRequestBody, requestOptions?: ZodFetchOptions) {
+    return zodfetch(
+      PromptOkResponseBody,
+      `${this.baseUrl}/api/v1/prompts/${slug}/override/reactivate`,
+      { method: "POST", headers: this.#getHeaders(false), body: JSON.stringify(body) },
+      mergeRequestOptions(this.defaultRequestOptions, requestOptions)
+    );
   }
 
   #getRealtimeHeaders() {
@@ -1583,6 +2143,13 @@ function createSearchQueryForListRuns(query?: ListRunsQueryParams): URLSearchPar
         Array.isArray(query.machine) ? query.machine.join(",") : query.machine
       );
     }
+
+    if (query.region) {
+      searchParams.append(
+        "filter[region]",
+        Array.isArray(query.region) ? query.region.join(",") : query.region
+      );
+    }
   }
 
   return searchParams;
@@ -1594,6 +2161,47 @@ function queueNameFromQueueTypeName(queue: QueueTypeName): string {
   }
 
   return queue.name;
+}
+
+function createSearchQueryForListSessions(options?: ListSessionsOptions): URLSearchParams {
+  const searchParams = new URLSearchParams();
+
+  if (!options) return searchParams;
+
+  const appendMany = (name: string, value: string | string[] | undefined) => {
+    if (value === undefined) return;
+    searchParams.append(name, Array.isArray(value) ? value.join(",") : value);
+  };
+
+  appendMany("filter[type]", options.type);
+  appendMany("filter[tags]", options.tag);
+  appendMany("filter[taskIdentifier]", options.taskIdentifier);
+
+  if (options.externalId) {
+    searchParams.append("filter[externalId]", options.externalId);
+  }
+
+  appendMany("filter[status]", options.status as string | string[] | undefined);
+
+  if (options.period) {
+    searchParams.append("filter[createdAt][period]", options.period);
+  }
+
+  if (options.from !== undefined) {
+    searchParams.append(
+      "filter[createdAt][from]",
+      options.from instanceof Date ? options.from.getTime().toString() : options.from.toString()
+    );
+  }
+
+  if (options.to !== undefined) {
+    searchParams.append(
+      "filter[createdAt][to]",
+      options.to instanceof Date ? options.to.getTime().toString() : options.to.toString()
+    );
+  }
+
+  return searchParams;
 }
 
 function createSearchQueryForListWaitpointTokens(

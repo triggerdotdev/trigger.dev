@@ -16,6 +16,7 @@ import type { LogLevel } from "~/presenters/v3/LogsListPresenter.server";
 import { cn } from "~/utils/cn";
 
 const allLogLevels: { level: LogLevel; label: string; color: string }[] = [
+  { level: "TRACE", label: "Trace", color: "text-purple-400" },
   { level: "INFO", label: "Info", color: "text-blue-400" },
   { level: "WARN", label: "Warning", color: "text-warning" },
   { level: "ERROR", label: "Error", color: "text-error" },
@@ -33,6 +34,8 @@ function getLevelBadgeColor(level: LogLevel): string {
       return "text-error bg-error/10 border-error/20";
     case "WARN":
       return "text-warning bg-warning/10 border-warning/20";
+    case "TRACE":
+      return "text-purple-400 bg-purple-500/10 border-purple-500/20";
     case "DEBUG":
       return "text-charcoal-400 bg-charcoal-700 border-charcoal-600";
     case "INFO":
@@ -50,7 +53,7 @@ export function LogsLevelFilter() {
   const hasLevels = selectedLevels.length > 0 && selectedLevels.some((v) => v !== "");
 
   if (hasLevels) {
-    return <AppliedLevelFilter/>;
+    return <AppliedLevelFilter />;
   }
 
   return (
@@ -61,19 +64,16 @@ export function LogsLevelFilter() {
           variant="secondary/small"
           shortcut={shortcut}
           tooltipTitle="Filter by level"
+          className="pl-1.5"
         >
-          Level
+          <span className="ml-1">Level</span>
         </SelectTrigger>
       }
     />
   );
 }
 
-function LevelDropdown({
-  trigger,
-}: {
-  trigger: ReactNode;
-}) {
+function LevelDropdown({ trigger }: { trigger: ReactNode }) {
   const { values, replace } = useSearchParams();
 
   const handleChange = (values: string[]) => {

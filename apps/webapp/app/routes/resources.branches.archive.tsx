@@ -120,7 +120,7 @@ export function ArchiveButton({
               }
               cancelButton={
                 <DialogClose asChild>
-                  <Button variant="tertiary/medium">Cancel</Button>
+                  <Button variant="secondary/medium">Cancel</Button>
                 </DialogClose>
               }
             />

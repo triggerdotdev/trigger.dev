@@ -11,27 +11,35 @@ export class TestTaskService extends BaseService {
 
     switch (triggerSource) {
       case "STANDARD": {
-        const result = await triggerTaskService.call(data.taskIdentifier, environment, {
-          payload: data.payload,
-          options: {
-            test: true,
-            metadata: data.metadata,
-            delay: data.delaySeconds ? new Date(Date.now() + data.delaySeconds * 1000) : undefined,
-            ttl: data.ttlSeconds,
-            idempotencyKey: data.idempotencyKey,
-            idempotencyKeyTTL: data.idempotencyKeyTTLSeconds
-              ? `${data.idempotencyKeyTTLSeconds}s`
-              : undefined,
-            queue: data.queue ? { name: data.queue } : undefined,
-            concurrencyKey: data.concurrencyKey,
-            maxAttempts: data.maxAttempts,
-            maxDuration: data.maxDurationSeconds,
-            tags: data.tags,
-            machine: data.machine,
-            lockToVersion: data.version === "latest" ? undefined : data.version,
-            priority: data.prioritySeconds,
+        const result = await triggerTaskService.call(
+          data.taskIdentifier,
+          environment,
+          {
+            payload: data.payload,
+            options: {
+              test: true,
+              metadata: data.metadata,
+              delay: data.delaySeconds
+                ? new Date(Date.now() + data.delaySeconds * 1000)
+                : undefined,
+              ttl: data.ttlSeconds,
+              idempotencyKey: data.idempotencyKey,
+              idempotencyKeyTTL: data.idempotencyKeyTTLSeconds
+                ? `${data.idempotencyKeyTTLSeconds}s`
+                : undefined,
+              queue: data.queue ? { name: data.queue } : undefined,
+              concurrencyKey: data.concurrencyKey,
+              maxAttempts: data.maxAttempts,
+              maxDuration: data.maxDurationSeconds,
+              tags: data.tags,
+              machine: data.machine,
+              region: data.region,
+              lockToVersion: data.version === "latest" ? undefined : data.version,
+              priority: data.prioritySeconds,
+            },
           },
-        });
+          { triggerSource: "dashboard", triggerAction: "test" }
+        );
 
         return result?.run;
       }
@@ -66,11 +74,12 @@ export class TestTaskService extends BaseService {
               maxDuration: data.maxDurationSeconds,
               tags: data.tags,
               machine: data.machine,
+              region: data.region,
               lockToVersion: data.version === "latest" ? undefined : data.version,
               priority: data.prioritySeconds,
             },
           },
-          { customIcon: "scheduled" }
+          { customIcon: "scheduled", triggerSource: "dashboard", triggerAction: "test" }
         );
 
         return result?.run;

@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { ApiClient } from "@trigger.dev/core/v3";
+import fs from "node:fs";
 import path from "node:path";
 import { CliApiClient } from "../apiClient.js";
 import { loadConfig } from "../config.js";
@@ -13,21 +14,52 @@ import {
 import { FileLogger } from "./logger.js";
 import { fileURLToPath } from "node:url";
 
+const MCP_CONFIG_DIR = ".trigger";
+const MCP_CONFIG_FILE = "mcp.json";
+
+type McpProjectConfig = {
+  profile?: string;
+};
+
+function readMcpProjectConfig(projectDir: string): McpProjectConfig | undefined {
+  try {
+    const filePath = path.join(projectDir, MCP_CONFIG_DIR, MCP_CONFIG_FILE);
+    const content = fs.readFileSync(filePath, "utf-8");
+    return JSON.parse(content) as McpProjectConfig;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeMcpProjectConfig(projectDir: string, config: McpProjectConfig): void {
+  const dir = path.join(projectDir, MCP_CONFIG_DIR);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.writeFileSync(path.join(dir, MCP_CONFIG_FILE), JSON.stringify(config, null, 2) + "\n");
+}
+
 export type McpContextOptions = {
   projectRef?: string;
   fileLogger?: FileLogger;
   apiUrl?: string;
   profile?: string;
   devOnly?: boolean;
+  readonly?: boolean;
 };
 
 export class McpContext {
   public readonly server: McpServer;
   public readonly options: McpContextOptions;
+  private _profileLoaded: Promise<void> | undefined;
+  private _resolveProfileLoaded: (() => void) | undefined;
 
   constructor(server: McpServer, options: McpContextOptions) {
     this.server = server;
     this.options = options;
+    this._profileLoaded = new Promise((resolve) => {
+      this._resolveProfileLoaded = resolve;
+    });
   }
 
   get logger() {
@@ -35,6 +67,8 @@ export class McpContext {
   }
 
   public async getAuth() {
+    // Wait for project profile to be loaded before authenticating
+    await this._profileLoaded;
     const auth = await mcpAuth({
       server: this.server,
       defaultApiUrl: this.options.apiUrl,
@@ -75,7 +109,9 @@ export class McpContext {
       );
     }
 
-    return new ApiClient(cliApiClient.apiURL, jwt.data.token);
+    return new ApiClient(cliApiClient.apiURL, jwt.data.token, undefined, {
+      additionalHeaders: { "x-trigger-source": "mcp" },
+    });
   }
 
   public async getCwd() {
@@ -166,6 +202,40 @@ export class McpContext {
       ok: true,
       cwd: $cwd,
     };
+  }
+
+  public switchProfile(profile: string, projectDir?: string) {
+    this.options.profile = profile;
+
+    // Persist to project-scoped config if we can resolve the project dir
+    if (projectDir) {
+      try {
+        const existing = readMcpProjectConfig(projectDir) ?? {};
+        writeMcpProjectConfig(projectDir, { ...existing, profile });
+      } catch {
+        // Non-fatal — profile still switched in memory
+      }
+    }
+  }
+
+  /**
+   * Load the persisted profile from the project-scoped .trigger/mcp.json.
+   * Overrides the default global profile with the project-scoped one.
+   * Must be called once after initialization — tools wait for this before authenticating.
+   */
+  public async loadProjectProfile() {
+    try {
+      const cwd = await this.getCwd();
+      if (!cwd) return;
+
+      const config = readMcpProjectConfig(cwd);
+      if (config?.profile) {
+        this.options.profile = config.profile;
+        this.logger?.log("Loaded project profile", { profile: config.profile, cwd });
+      }
+    } finally {
+      this._resolveProfileLoaded?.();
+    }
   }
 
   public async getDashboardUrl(path: string) {

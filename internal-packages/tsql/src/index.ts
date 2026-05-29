@@ -18,6 +18,7 @@ import type {
   Or,
   SelectQuery,
   SelectSetQuery,
+  Tuple,
 } from "./query/ast.js";
 import { CompareOperationOp } from "./query/ast.js";
 import { SyntaxError as TSQLSyntaxError } from "./query/errors.js";
@@ -28,6 +29,7 @@ import {
   type BetweenCondition,
   type QuerySettings,
   type SimpleComparisonCondition,
+  type TimeRange,
   type WhereClauseCondition,
 } from "./query/printer_context.js";
 import { createSchemaRegistry, type FieldMappings, type TableSchema } from "./query/schema.js";
@@ -107,6 +109,7 @@ export {
   type ClickHouseType,
   type ColumnSchema,
   type FieldMappings,
+  type ColumnFormatType,
   type OutputColumnMetadata,
   type RequiredFilter,
   type SchemaRegistry,
@@ -120,12 +123,22 @@ export {
   DEFAULT_QUERY_SETTINGS,
   PrinterContext,
   type BetweenCondition,
+  type InCondition,
   type PrinterContextOptions,
   type QueryNotice,
   type QuerySettings,
   type SimpleComparisonCondition,
+  type TimeRange,
   type WhereClauseCondition,
 } from "./query/printer_context.js";
+
+// Re-export time bucket utilities
+export {
+  BUCKET_THRESHOLDS,
+  calculateTimeBucketInterval,
+  type BucketThreshold,
+  type TimeBucketInterval,
+} from "./query/time_buckets.js";
 
 // Re-export printer
 export { ClickHousePrinter, printToClickHouse, type PrintResult } from "./query/printer.js";
@@ -356,6 +369,21 @@ export function createFallbackExpression(
     return betweenExpr;
   }
 
+  if (fallback.op === "in") {
+    // Create a tuple of values for the IN clause
+    const tupleExpr: Tuple = {
+      expression_type: "tuple",
+      exprs: fallback.values.map((value) => createValueExpression(value)),
+    };
+    const inExpr: CompareOperation = {
+      expression_type: "compare_operation",
+      left: fieldExpr,
+      right: tupleExpr,
+      op: CompareOperationOp.In,
+    };
+    return inExpr;
+  }
+
   // Simple comparison
   const compareExpr: CompareOperation = {
     expression_type: "compare_operation",
@@ -443,7 +471,6 @@ export function injectFallbackConditions(
   };
 }
 
-
 /**
  * Options for compiling a TSQL query to ClickHouse SQL
  */
@@ -501,6 +528,20 @@ export interface CompileTSQLOptions {
    * ```
    */
   whereClauseFallback?: Record<string, WhereClauseCondition>;
+  /**
+   * Time range for `timeBucket()` interval calculation.
+   * When provided, `timeBucket()` uses this to determine the appropriate bucket size
+   * based on the span of the time range.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   from: new Date('2024-01-01'),
+   *   to: new Date('2024-01-08'),
+   * }
+   * ```
+   */
+  timeRange?: TimeRange;
 }
 
 /**
@@ -547,7 +588,6 @@ export function compileTSQL(query: string, options: CompileTSQLOptions): PrintRe
   // 3. Create schema registry from table schemas
   const schemaRegistry = createSchemaRegistry(options.tableSchema);
 
-
   // 4. Strip undefined values from enforcedWhereClause
   const enforcedWhereClause = Object.fromEntries(
     Object.entries(options.enforcedWhereClause).filter(([_, value]) => value !== undefined)
@@ -559,6 +599,7 @@ export function compileTSQL(query: string, options: CompileTSQLOptions): PrintRe
     settings: options.settings,
     fieldMappings: options.fieldMappings,
     enforcedWhereClause,
+    timeRange: options.timeRange,
   });
 
   // 6. Print the AST to ClickHouse SQL (enforced conditions applied at printer level)

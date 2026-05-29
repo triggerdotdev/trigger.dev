@@ -23,6 +23,7 @@ import { useSelectedItems } from "~/components/primitives/SelectedItemsProvider"
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useRegions } from "~/hooks/useRegions";
 import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -31,7 +32,7 @@ import {
   type NextRunListItem,
 } from "~/presenters/v3/NextRunListPresenter.server";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
-import { docsPath, v3RunSpanPath, v3TestPath,v3TestTaskPath } from "~/utils/pathBuilder";
+import { docsPath, v3RunSpanPath, v3TestPath, v3TestTaskPath } from "~/utils/pathBuilder";
 import { DateTime } from "../../primitives/DateTime";
 import { Paragraph } from "../../primitives/Paragraph";
 import { Spinner } from "../../primitives/Spinner";
@@ -47,6 +48,7 @@ import {
   type TableVariant,
 } from "../../primitives/Table";
 import { CancelRunDialog } from "./CancelRunDialog";
+import { RegionLabel } from "./RegionLabel";
 import { LiveTimer } from "./LiveTimer";
 import { ReplayRunDialog } from "./ReplayRunDialog";
 import { RunTag } from "./RunTag";
@@ -55,8 +57,10 @@ import {
   filterableTaskRunStatuses,
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
+import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import type { TaskTriggerSource } from "@trigger.dev/database";
 
 type RunsTableProps = {
   total: number;
@@ -69,6 +73,7 @@ type RunsTableProps = {
   allowSelection?: boolean;
   variant?: TableVariant;
   disableAdjacentRows?: boolean;
+  additionalTableState?: Record<string, string>;
 };
 
 export function TaskRunsTable({
@@ -81,20 +86,33 @@ export function TaskRunsTable({
   isLoading = false,
   allowSelection = false,
   variant = "dimmed",
+  additionalTableState,
 }: RunsTableProps) {
+  const regions = useRegions();
+  const regionByMasterQueue = new Map(regions.map((r) => [r.masterQueue, r] as const));
   const organization = useOrganization();
   const project = useProject();
+  const environment = useEnvironment();
   const checkboxes = useRef<(HTMLInputElement | null)[]>([]);
   const { has, hasAll, select, deselect, toggle } = useSelectedItems(allowSelection);
   const { isManagedCloud } = useFeatures();
   const { value } = useSearchParams();
   const location = useOptimisticLocation();
-  const rootOnly = value("rootOnly") ? `` : `rootOnly=${rootOnlyDefault}`;
-  const search = rootOnly ? `${rootOnly}&${location.search}` : location.search;
+  const params = new URLSearchParams(location.search || "");
+  if (!value("rootOnly")) {
+    params.set("rootOnly", String(rootOnlyDefault));
+  }
+  if (additionalTableState) {
+    for (const [key, val] of Object.entries(additionalTableState)) {
+      params.set(key, val);
+    }
+  }
+  const search = params.toString();
   /** TableState has to be encoded as a separate URI component, so it's merged under one, 'tableState' param */
-  const tableStateParam = disableAdjacentRows ? '' : encodeURIComponent(search);
+  const tableStateParam = disableAdjacentRows ? "" : encodeURIComponent(search);
 
   const showCompute = isManagedCloud;
+  const showRegion = environment.type !== "DEVELOPMENT";
 
   const navigateCheckboxes = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>, index: number) => {
@@ -152,6 +170,7 @@ export function TaskRunsTable({
           <TableHeaderCell>Task</TableHeaderCell>
           <TableHeaderCell>Version</TableHeaderCell>
           <TableHeaderCell
+            disableTooltipHoverableContent
             tooltip={
               <div className="flex flex-col divide-y divide-grid-dimmed">
                 {filterableTaskRunStatuses.map((status) => (
@@ -175,6 +194,7 @@ export function TaskRunsTable({
           <TableHeaderCell>Started</TableHeaderCell>
           <TableHeaderCell
             colSpan={3}
+            disableTooltipHoverableContent
             tooltip={
               <div className="flex max-w-xs flex-col gap-4 p-1">
                 <div>
@@ -219,6 +239,7 @@ export function TaskRunsTable({
             Machine
           </TableHeaderCell>
           <TableHeaderCell>Queue</TableHeaderCell>
+          {showRegion && <TableHeaderCell>Region</TableHeaderCell>}
           <TableHeaderCell>Test</TableHeaderCell>
           <TableHeaderCell>Created at</TableHeaderCell>
           <TableHeaderCell
@@ -298,20 +319,27 @@ export function TaskRunsTable({
       </TableHeader>
       <TableBody>
         {total === 0 && !hasFilters ? (
-          <TableBlankRow colSpan={15}>
+          <TableBlankRow colSpan={showRegion ? 16 : 15}>
             {!isLoading && <NoRuns title="No runs found" />}
           </TableBlankRow>
         ) : runs.length === 0 ? (
-          <BlankState isLoading={isLoading} filters={filters} />
+          <BlankState isLoading={isLoading} filters={filters} showRegion={showRegion} />
         ) : (
           runs.map((run, index) => {
             const searchParams = new URLSearchParams();
             if (tableStateParam) {
               searchParams.set("tableState", tableStateParam);
             }
-            const path = v3RunSpanPath(organization, project, run.environment, run, {
-              spanId: run.spanId,
-            }, searchParams);
+            const path = v3RunSpanPath(
+              organization,
+              project,
+              run.environment,
+              run,
+              {
+                spanId: run.spanId,
+              },
+              searchParams
+            );
             return (
               <TableRow key={run.id}>
                 {allowSelection && (
@@ -333,6 +361,10 @@ export function TaskRunsTable({
                 </TableCell>
                 <TableCell to={path}>
                   <span className="flex items-center gap-x-1">
+                    <TaskTriggerSourceIcon
+                      source={run.taskKind as TaskTriggerSource}
+                      className="size-3.5 flex-none"
+                    />
                     {run.taskIdentifier}
                     {run.rootTaskRunId === null ? <Badge variant="extra-small">Root</Badge> : null}
                   </span>
@@ -416,8 +448,26 @@ export function TaskRunsTable({
                     <span>{run.queue.name}</span>
                   </span>
                 </TableCell>
+                {showRegion && (
+                  <TableCell to={path}>
+                    {run.region ? (
+                      <RegionLabel
+                        region={
+                          regionByMasterQueue.get(run.region) ?? { name: run.region }
+                        }
+                        iconClassName="size-4"
+                      />
+                    ) : (
+                      "–"
+                    )}
+                  </TableCell>
+                )}
                 <TableCell to={path}>
-                  {run.isTest ? <CheckIcon className="size-4 text-charcoal-400" /> : "–"}
+                  {run.isTest ? (
+                    <CheckIcon className="size-4 text-charcoal-400 group-hover/table-row:text-text-bright" />
+                  ) : (
+                    "–"
+                  )}
                 </TableCell>
                 <TableCell to={path}>
                   {run.createdAt ? <DateTime date={run.createdAt} /> : "–"}
@@ -438,8 +488,8 @@ export function TaskRunsTable({
         )}
         {isLoading && (
           <TableBlankRow
-            colSpan={15}
-            className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-charcoal-900/90"
+            colSpan={showRegion ? 16 : 15}
+            className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-background-dimmed"
           >
             <Spinner /> <span className="text-text-dimmed">Loading…</span>
           </TableBlankRow>
@@ -574,15 +624,22 @@ function NoRuns({ title }: { title: string }) {
   );
 }
 
-function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "filters">) {
+function BlankState({
+  isLoading,
+  filters,
+  showRegion,
+}: Pick<RunsTableProps, "isLoading" | "filters"> & { showRegion: boolean }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  if (isLoading) return <TableBlankRow colSpan={15}></TableBlankRow>;
+  const colSpan = showRegion ? 16 : 15;
+  if (isLoading) return <TableBlankRow colSpan={colSpan}></TableBlankRow>;
 
   const { tasks, from, to, ...otherFilters } = filters;
   const singleTaskFromFilters = filters.tasks.length === 1 ? filters.tasks[0] : null;
-  const testPath = singleTaskFromFilters ? v3TestTaskPath(organization, project, environment, {taskIdentifier: singleTaskFromFilters}) : v3TestPath(organization, project, environment);
+  const testPath = singleTaskFromFilters
+    ? v3TestTaskPath(organization, project, environment, { taskIdentifier: singleTaskFromFilters })
+    : v3TestPath(organization, project, environment);
 
   if (
     filters.tasks.length === 1 &&
@@ -591,7 +648,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
     Object.values(otherFilters).every((filterArray) => filterArray.length === 0)
   ) {
     return (
-      <TableBlankRow colSpan={15}>
+      <TableBlankRow colSpan={colSpan}>
         <Paragraph className="w-auto" variant="base/bright" spacing>
           There are no runs for {filters.tasks[0]}
         </Paragraph>
@@ -619,7 +676,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
   }
 
   return (
-    <TableBlankRow colSpan={15}>
+    <TableBlankRow colSpan={colSpan}>
       <div className="flex flex-col items-center justify-center gap-6">
         <Paragraph className="w-auto" variant="base/bright">
           No runs match your filters. Try refreshing, modifying your filters or run a test.
@@ -635,11 +692,7 @@ function BlankState({ isLoading, filters }: Pick<RunsTableProps, "isLoading" | "
             Refresh
           </Button>
           <Paragraph>or</Paragraph>
-          <LinkButton
-            LeadingIcon={BeakerIcon}
-            variant="tertiary/medium"
-            to={testPath}
-          >
+          <LinkButton LeadingIcon={BeakerIcon} variant="tertiary/medium" to={testPath}>
             Run a test
           </LinkButton>
         </div>

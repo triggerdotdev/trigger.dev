@@ -11,6 +11,7 @@ export * from "./runtime-api.js";
 export * from "./task-context-api.js";
 export * from "./trace-context-api.js";
 export * from "./apiClientManager-api.js";
+export * from "./sdkScope-api.js";
 export * from "./usage-api.js";
 export * from "./run-metadata-api.js";
 export * from "./wait-until-api.js";
@@ -20,6 +21,9 @@ export * from "./lifecycle-hooks-api.js";
 export * from "./locals-api.js";
 export * from "./heartbeats-api.js";
 export * from "./realtime-streams-api.js";
+export * from "./input-streams-api.js";
+export * from "./session-streams-api.js";
+export * from "./waitpoints/index.js";
 export * from "./schemas/index.js";
 export { SemanticInternalAttributes } from "./semanticInternalAttributes.js";
 export * from "./resource-catalog-api.js";
@@ -49,6 +53,7 @@ export {
   NULL_SENTINEL,
 } from "./utils/flattenAttributes.js";
 export { omit } from "./utils/omit.js";
+export { generateFriendlyId, fromFriendlyId } from "./isomorphic/friendlyId.js";
 export {
   calculateNextRetryDelay,
   calculateResetAt,
@@ -77,6 +82,7 @@ export {
   getSchemaParseFn,
   type AnySchemaParseFn,
   type SchemaParseFn,
+  type inferSchemaOut,
   isSchemaZodEsque,
   isSchemaValibotEsque,
   isSchemaArkTypeEsque,

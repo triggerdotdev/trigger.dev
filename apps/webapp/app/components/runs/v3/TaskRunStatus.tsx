@@ -12,6 +12,7 @@ import {
   XCircleIcon,
 } from "@heroicons/react/20/solid";
 import type { TaskRunStatus } from "@trigger.dev/database";
+import { runFriendlyStatus, type RunFriendlyStatus } from "@trigger.dev/core/v3";
 import assertNever from "assert-never";
 import { HourglassIcon } from "lucide-react";
 import { TimedOutIcon } from "~/assets/icons/TimedOutIcon";
@@ -248,26 +249,9 @@ export function runStatusFromFriendlyTitle(friendly: RunFriendlyStatus): TaskRun
   return result[0] as TaskRunStatus;
 }
 
-export const runFriendlyStatus = [
-  "Delayed",
-  "Queued",
-  "Pending version",
-  "Dequeued",
-  "Executing",
-  "Waiting",
-  "Reattempting",
-  "Paused",
-  "Canceled",
-  "Interrupted",
-  "Completed",
-  "Failed",
-  "System failure",
-  "Crashed",
-  "Expired",
-  "Timed out",
-] as const;
-
-export type RunFriendlyStatus = (typeof runFriendlyStatus)[number];
+// runFriendlyStatus and RunFriendlyStatus are imported from @trigger.dev/core/v3
+// and re-exported here for backward compatibility.
+export { runFriendlyStatus, type RunFriendlyStatus } from "@trigger.dev/core/v3";
 
 /**
  * Check if a value is a valid TaskRunStatus
@@ -304,3 +288,42 @@ export const runStatusTitleFromStatus: Record<TaskRunStatus, RunFriendlyStatus> 
 };
 
 const titlesStatusesArray = Object.entries(runStatusTitleFromStatus);
+
+/**
+ * Hex color for each TaskRunStatus, mirroring `runStatusClassNameColor` but as
+ * concrete hex values for non-CSS contexts (e.g. chart series colors).
+ */
+const RUN_STATUS_HEX_COLORS: Record<TaskRunStatus, string> = {
+  PENDING: "#5F6570", // charcoal-500
+  DELAYED: "#6B7580", // charcoal ~450
+  PENDING_VERSION: "#f59e0b", // amber-500
+  WAITING_FOR_DEPLOY: "#d97706", // amber-600
+  EXECUTING: "#3b82f6", // blue-500
+  RETRYING_AFTER_FAILURE: "#2f6fec", // blue ~550
+  DEQUEUED: "#4D8EF5", // blue ~475
+  WAITING_TO_RESUME: "#555D67", // charcoal ~550
+  PAUSED: "#fbbf24", // amber-400
+  CANCELED: "#78828C", // charcoal ~400
+  EXPIRED: "#848D96", // charcoal ~350
+  INTERRUPTED: "#D52C4D", // rose — evenly spaced (error)
+  COMPLETED_SUCCESSFULLY: "#28BF5C", // mint-500 (success)
+  COMPLETED_WITH_ERRORS: "#DE405C", // rose — evenly spaced (error)
+  SYSTEM_FAILURE: "#E7536C", // rose — evenly spaced (error)
+  CRASHED: "#cc193d", // rose — darkest (error)
+  TIMED_OUT: "#F0667B", // rose — lightest (error)
+};
+
+/**
+ * Get the hex color for a run status value. Accepts either a raw TaskRunStatus
+ * (e.g. "COMPLETED_SUCCESSFULLY") or a friendly name (e.g. "Completed").
+ * Returns `undefined` when the value is not a recognised status.
+ */
+export function getRunStatusHexColor(value: string): string | undefined {
+  if (isTaskRunStatus(value)) {
+    return RUN_STATUS_HEX_COLORS[value];
+  }
+  if (isRunFriendlyStatus(value)) {
+    return RUN_STATUS_HEX_COLORS[runStatusFromFriendlyTitle(value)];
+  }
+  return undefined;
+}

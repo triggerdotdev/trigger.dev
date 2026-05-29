@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { FailedPodHandler } from "./failedPodHandler.js";
-import { K8sApi, createK8sApi } from "../clients/kubernetes.js";
+import { type K8sApi, createK8sApi } from "../clients/kubernetes.js";
 import { Registry } from "prom-client";
 import { setTimeout } from "timers/promises";
 
-describe("FailedPodHandler Integration Tests", () => {
+// These tests require live K8s cluster credentials - skip by default
+describe.skipIf(!process.env.K8S_INTEGRATION_TESTS)("FailedPodHandler Integration Tests", () => {
   const k8s = createK8sApi();
   const namespace = "integration-test";
   const register = new Registry();

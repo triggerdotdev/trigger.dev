@@ -1,6 +1,6 @@
 import { useLocation } from "@remix-run/react";
 import posthog from "posthog-js";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useOrganizationChanged } from "./useOrganizations";
 import { useOptionalUser, useUserChanged } from "./useUser";
 import { useProjectChanged } from "./useProject";
@@ -68,3 +68,18 @@ export const usePostHog = (apiKey?: string, logging = false, debug = false): voi
     posthog.capture("$pageview");
   }, [location, logging]);
 };
+
+export function usePostHogTracking() {
+  const capture = useCallback(
+    (eventName: string, properties?: Record<string, unknown>) => {
+      posthog.capture(eventName, properties);
+    },
+    []
+  );
+
+  const startSessionRecording = useCallback(() => {
+    posthog.startSessionRecording();
+  }, []);
+
+  return { capture, startSessionRecording };
+}

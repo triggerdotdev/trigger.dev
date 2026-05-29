@@ -19,6 +19,10 @@ const ENABLE_CLUSTER = process.env.ENABLE_CLUSTER === "1";
 const cpuCount = os.availableParallelism();
 const WORKERS =
   Number.parseInt(process.env.WEB_CONCURRENCY || process.env.CLUSTER_WORKERS || "", 10) || cpuCount;
+// Must be greater than the upstream load balancer's idle timeout to avoid the
+// LB pipelining a request onto a connection Node has already closed (→ 502).
+const HTTP_KEEPALIVE_TIMEOUT_MS =
+  Number.parseInt(process.env.HTTP_KEEPALIVE_TIMEOUT_MS || "", 10) || 65 * 1000;
 
 function forkWorkers() {
   for (let i = 0; i < WORKERS; i++) {
@@ -122,6 +126,8 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
     const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
     const engineRateLimiter: RateLimitMiddleware = build.entry.module.engineRateLimiter;
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
+    const tenantContextMiddleware: import("express").RequestHandler =
+      build.entry.module.tenantContextMiddleware;
 
     app.use((req, res, next) => {
       // helpful headers:
@@ -145,9 +151,11 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
     app.use((req, res, next) => {
       // Generate a unique request ID for each request
       const requestId = nanoid();
+      const abortController = new AbortController();
+      res.on("close", () => abortController.abort());
 
       runWithHttpContext(
-        { requestId, path: req.url, host: req.hostname, method: req.method },
+        { requestId, path: req.url, host: req.hostname, method: req.method, abortController },
         next
       );
     });
@@ -168,6 +176,8 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
 
       app.use(apiRateLimiter);
       app.use(engineRateLimiter);
+
+      app.use(tenantContextMiddleware);
 
       app.all(
         "*",
@@ -198,7 +208,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
       }
     });
 
-    server.keepAliveTimeout = 65 * 1000;
+    server.keepAliveTimeout = HTTP_KEEPALIVE_TIMEOUT_MS;
     // Mitigate against https://github.com/triggerdotdev/trigger.dev/security/dependabot/128
     // by not allowing 2000+ headers to be sent and causing a DoS
     // headers will instead be limited by the maxHeaderSize

@@ -48,9 +48,13 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  type ResizableSnapshot,
+  collapsibleHandleClassName,
+  useFrozenValue,
 } from "~/components/primitives/Resizable";
 import { ShortcutKey, variants } from "~/components/primitives/ShortcutKey";
 import { Slider } from "~/components/primitives/Slider";
@@ -88,7 +92,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { RunEnvironmentMismatchError, RunPresenter } from "~/presenters/v3/RunPresenter.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
@@ -111,7 +115,7 @@ import { SpanView } from "../resources.orgs.$organizationSlug.projects.$projectP
 
 const resizableSettings = {
   parent: {
-    autosaveId: "panel-run-parent",
+    autosaveId: "panel-run-parent-v3",
     handleId: "parent-handle",
     main: {
       id: "run",
@@ -119,8 +123,8 @@ const resizableSettings = {
     },
     inspector: {
       id: "inspector",
-      default: "430px" as const,
-      min: "50px" as const,
+      default: "500px" as const,
+      min: "250px" as const,
     },
   },
   tree: {
@@ -178,7 +182,8 @@ async function getRunsListFromTableState({
       return null;
     }
 
-    const runsListPresenter = new NextRunListPresenter($replica, clickhouseClient);
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+    const runsListPresenter = new NextRunListPresenter($replica, clickhouse);
     const currentPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
       userId,
       projectId: project.id,
@@ -303,7 +308,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 type LoaderData = SerializeFrom<typeof loader>;
 
 export default function Page() {
-  const { run, trace, maximumLiveReloadingSetting, runsList } = useLoaderData<typeof loader>();
+  const { run, trace, maximumLiveReloadingSetting, runsList, resizable } =
+    useLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -427,9 +433,10 @@ export default function Page() {
             run={run}
             trace={trace}
             maximumLiveReloadingSetting={maximumLiveReloadingSetting}
+            resizable={resizable}
           />
         ) : (
-          <NoLogsView run={run} />
+          <NoLogsView run={run} resizable={resizable} />
         )}
       </PageBody>
     </>
@@ -458,12 +465,15 @@ function TraceView({
   run,
   trace,
   maximumLiveReloadingSetting,
-}: Pick<LoaderData, "run" | "trace" | "maximumLiveReloadingSetting">) {
+  resizable,
+}: Pick<LoaderData, "run" | "trace" | "maximumLiveReloadingSetting" | "resizable">) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
   const { searchParams, replaceSearchParam } = useReplaceSearchParams();
   const selectedSpanId = searchParams.get("span") ?? undefined;
+  const frozenSpanId = useFrozenValue(selectedSpanId);
+  const displaySpanId = selectedSpanId ?? frozenSpanId;
 
   if (!trace) {
     return <></>;
@@ -494,18 +504,22 @@ function TraceView({
   }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const spanOverrides = selectedSpanId ? overridesBySpanId?.[selectedSpanId] : undefined;
+  const frozenSpanOverrides = useFrozenValue(spanOverrides);
+  const displaySpanOverrides = selectedSpanId ? spanOverrides : frozenSpanOverrides;
 
   // Get the linked run ID for cached spans (map built during RunPresenter walk)
   const { linkedRunIdBySpanId } = trace;
   const selectedSpanLinkedRunId = selectedSpanId
     ? linkedRunIdBySpanId?.[selectedSpanId]
     : undefined;
+  const frozenLinkedRunId = useFrozenValue(selectedSpanLinkedRunId);
+  const displayLinkedRunId = (selectedSpanId ? selectedSpanLinkedRunId : frozenLinkedRunId) ?? undefined;
 
   return (
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
       <ResizablePanelGroup
         autosaveId={resizableSettings.parent.autosaveId}
-        // snapshot={resizable.parent}
+        snapshot={resizable.parent as ResizableSnapshot}
         className="h-full max-h-full"
       >
         <ResizablePanel
@@ -535,32 +549,45 @@ function TraceView({
             rootRun={run.rootTaskRun}
             parentRun={run.parentTaskRun}
             isCompleted={run.completedAt !== null}
+            treeSnapshot={resizable.tree as ResizableSnapshot}
           />
         </ResizablePanel>
-        <ResizableHandle id={resizableSettings.parent.handleId} />
-        {selectedSpanId && (
-          <ResizablePanel
-            id={resizableSettings.parent.inspector.id}
-            default={resizableSettings.parent.inspector.default}
-            min={resizableSettings.parent.inspector.min}
-            isStaticAtRest
+        <ResizableHandle
+          id={resizableSettings.parent.handleId}
+          className={collapsibleHandleClassName(!!selectedSpanId)}
+        />
+        <ResizablePanel
+          id={resizableSettings.parent.inspector.id}
+          default={resizableSettings.parent.inspector.default}
+          min={resizableSettings.parent.inspector.min}
+          className="overflow-hidden"
+          collapsible
+          collapsed={!selectedSpanId}
+          onCollapseChange={() => {}}
+          collapsedSize="0px"
+          collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+        >
+          <div
+            className="h-full"
+            style={{ minWidth: parseInt(resizableSettings.parent.inspector.min) }}
           >
-            {" "}
-            <SpanView
-              runParam={run.friendlyId}
-              spanId={selectedSpanId}
-              spanOverrides={spanOverrides as SpanOverride | undefined}
-              closePanel={() => replaceSearchParam("span")}
-              linkedRunId={selectedSpanLinkedRunId}
-            />
-          </ResizablePanel>
-        )}
+            {displaySpanId && (
+              <SpanView
+                runParam={run.friendlyId}
+                spanId={displaySpanId}
+                spanOverrides={displaySpanOverrides as SpanOverride | undefined}
+                closePanel={() => replaceSearchParam("span")}
+                linkedRunId={displayLinkedRunId}
+              />
+            )}
+          </div>
+        </ResizablePanel>
       </ResizablePanelGroup>
     </div>
   );
 }
 
-function NoLogsView({ run }: Pick<LoaderData, "run">) {
+function NoLogsView({ run, resizable }: Pick<LoaderData, "run" | "resizable">) {
   const plan = useCurrentPlan();
   const organization = useOrganization();
 
@@ -580,7 +607,7 @@ function NoLogsView({ run }: Pick<LoaderData, "run">) {
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
       <ResizablePanelGroup
         autosaveId={resizableSettings.parent.autosaveId}
-        // snapshot={resizable.parent}
+        snapshot={resizable.parent as ResizableSnapshot}
         className="h-full max-h-full"
       >
         <ResizablePanel
@@ -671,6 +698,7 @@ type TasksTreeViewProps = {
     spanId: string;
   } | null;
   isCompleted: boolean;
+  treeSnapshot?: ResizableSnapshot;
 };
 
 function TasksTreeView({
@@ -687,6 +715,7 @@ function TasksTreeView({
   rootRun,
   parentRun,
   isCompleted,
+  treeSnapshot,
 }: TasksTreeViewProps) {
   const isAdmin = useHasAdminAccess();
   const [filterText, setFilterText] = useState("");
@@ -770,7 +799,7 @@ function TasksTreeView({
           onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
         />
       </div>
-      <ResizablePanelGroup autosaveId={resizableSettings.tree.autosaveId}>
+      <ResizablePanelGroup autosaveId={resizableSettings.tree.autosaveId} snapshot={treeSnapshot}>
         {/* Tree list */}
         <ResizablePanel
           id={resizableSettings.tree.tree.id}
@@ -1822,7 +1851,7 @@ function PreviousRunButton({ to }: { to: string | null }) {
         leadingIconClassName="size-3 group-hover/button:text-text-bright transition-colors"
         className={cn("flex size-6 max-w-6 items-center", !to && "cursor-not-allowed opacity-50")}
         onClick={(e) => !to && e.preventDefault()}
-        shortcut={{ key: "[" }}
+        shortcut={{ key: "j" }}
         tooltip="Previous Run"
         disabled={!to}
         replace
@@ -1841,7 +1870,7 @@ function NextRunButton({ to }: { to: string | null }) {
         leadingIconClassName="size-3 group-hover/button:text-text-bright transition-colors"
         className={cn("flex size-6 max-w-6 items-center", !to && "cursor-not-allowed opacity-50")}
         onClick={(e) => !to && e.preventDefault()}
-        shortcut={{ key: "]" }}
+        shortcut={{ key: "k" }}
         tooltip="Next Run"
         disabled={!to}
         replace

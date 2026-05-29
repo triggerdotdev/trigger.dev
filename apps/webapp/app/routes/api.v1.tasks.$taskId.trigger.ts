@@ -19,6 +19,7 @@ import {
   handleRequestIdempotency,
   saveRequestIdempotency,
 } from "~/utils/requestIdempotency.server";
+import { sanitizeTriggerSource } from "~/utils/triggerSource";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "~/v3/services/triggerTask.server";
 
@@ -27,7 +28,10 @@ const ParamsSchema = z.object({
 });
 
 export const HeadersSchema = z.object({
-  "idempotency-key": z.string().nullish(),
+  "idempotency-key": z
+    .string()
+    .max(2048, "idempotency-key must be 2048 characters or less")
+    .nullish(),
   "idempotency-key-ttl": z.string().nullish(),
   "trigger-version": z.string().nullish(),
   "x-trigger-span-parent-as-link": z.coerce.number().nullish(),
@@ -36,6 +40,7 @@ export const HeadersSchema = z.object({
   "x-trigger-engine-version": RunEngineVersionSchema.nullish(),
   "x-trigger-request-idempotency-key": z.string().nullish(),
   "x-trigger-realtime-streams-version": z.string().nullish(),
+  "x-trigger-source": z.string().nullish(),
   traceparent: z.string().optional(),
   tracestate: z.string().optional(),
 });
@@ -49,8 +54,7 @@ const { action, loader } = createActionApiRoute(
     maxContentLength: env.TASK_PAYLOAD_MAXIMUM_SIZE,
     authorization: {
       action: "trigger",
-      resource: (params) => ({ tasks: params.taskId }),
-      superScopes: ["write:tasks", "admin"],
+      resource: (params) => ({ type: "tasks", id: params.taskId }),
     },
     corsStrategy: "all",
   },
@@ -67,6 +71,7 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-engine-version": engineVersion,
       "x-trigger-request-idempotency-key": requestIdempotencyKey,
       "x-trigger-realtime-streams-version": realtimeStreamsVersion,
+      "x-trigger-source": triggerSourceHeader,
     } = headers;
 
     const cachedResponse = await handleRequestIdempotency(requestIdempotencyKey, {
@@ -119,6 +124,8 @@ const { action, loader } = createActionApiRoute(
           realtimeStreamsVersion: determineRealtimeStreamsVersion(
             realtimeStreamsVersion ?? undefined
           ),
+          triggerSource: isFromWorker ? "sdk" : sanitizeTriggerSource(triggerSourceHeader) ?? "api",
+          triggerAction: "trigger",
         },
         engineVersion ?? undefined
       );
@@ -148,10 +155,9 @@ const { action, loader } = createActionApiRoute(
         return json({ error: error.message }, { status: error.status ?? 422 });
       } else if (error instanceof OutOfEntitlementError) {
         return json({ error: error.message }, { status: 422 });
-      } else if (error instanceof Error) {
-        return json({ error: error.message }, { status: 500 });
       }
 
+      logger.error("Trigger task failed", { error });
       return json({ error: "Something went wrong" }, { status: 500 });
     }
   }
@@ -166,7 +172,7 @@ async function responseHeaders(
   const claims = {
     sub: environment.id,
     pub: true,
-    scopes: [`read:runs:${run.friendlyId}`],
+    scopes: [`read:runs:${run.friendlyId}`, `write:inputStreams:${run.friendlyId}`],
     realtime,
   };
 

@@ -1,13 +1,15 @@
 import { AnimatePresence, useAnimate, usePresence } from "framer-motion";
 import { useEffect } from "react";
+import { cn } from "~/utils/cn";
 
 type LoadingBarDividerProps = {
   isLoading: boolean;
+  className?: string;
 };
 
-export function LoadingBarDivider({ isLoading }: LoadingBarDividerProps) {
+export function LoadingBarDivider({ isLoading, className }: LoadingBarDividerProps) {
   return (
-    <div className="relative h-px w-full overflow-hidden bg-grid-bright">
+    <div className={cn("relative h-px w-full overflow-hidden bg-grid-bright", className)}>
       <AnimationDivider isLoading={isLoading} />
     </div>
   );

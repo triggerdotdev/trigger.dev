@@ -1,4 +1,4 @@
-import { BoltSlashIcon, CheckCircleIcon } from "@heroicons/react/20/solid";
+import { NoSymbolIcon, CheckIcon } from "@heroicons/react/20/solid";
 
 type EnabledStatusProps = {
   enabled: boolean;
@@ -8,8 +8,8 @@ type EnabledStatusProps = {
 
 export function EnabledStatus({
   enabled,
-  enabledIcon = CheckCircleIcon,
-  disabledIcon = BoltSlashIcon,
+  enabledIcon = CheckIcon,
+  disabledIcon = NoSymbolIcon,
 }: EnabledStatusProps) {
   const EnabledIcon = enabledIcon;
   const DisabledIcon = disabledIcon;

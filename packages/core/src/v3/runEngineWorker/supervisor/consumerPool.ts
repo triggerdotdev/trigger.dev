@@ -351,12 +351,12 @@ export class RunQueueConsumerPool {
 
       const consumer = this.consumerFactory({
         ...this.consumerOptions,
-        onDequeue: async (messages) => {
+        onDequeue: async (messages, timing) => {
           // Always update queue length, default to 0 for empty dequeues or missing value
           this.updateQueueLength(messages[0]?.workerQueueLength ?? 0);
 
           // Forward to the original handler
-          await this.consumerOptions.onDequeue(messages);
+          await this.consumerOptions.onDequeue(messages, timing);
         },
       });
 

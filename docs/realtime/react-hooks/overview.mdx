@@ -1,12 +1,12 @@
 ---
-title: React hooks overview
+title: "React hooks for real-time task updates"
 sidebarTitle: Overview
-description: Using the Trigger.dev Realtime API from your React applications.
+description: "Subscribe to background task progress, stream AI responses, and trigger tasks from React components using @trigger.dev/react-hooks."
 ---
 
 import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
 
-Our React hooks package provides a set of hooks that make it easy to interact with the Trigger.dev Realtime API from your React applications. You can use these hooks to subscribe to real-time updates, and trigger tasks from your frontend.
+**`@trigger.dev/react-hooks` gives your React components live access to background tasks.** Subscribe to run progress, stream AI output as it generates, or trigger tasks directly from the browser.
 
 ## Installation
 
@@ -55,19 +55,19 @@ Learn more about [generating and managing tokens in our authentication guide](/r
 
 ## Available hooks
 
-We provide several categories of hooks:
-
-- **[Triggering hooks](/realtime/react-hooks/triggering)** - Trigger tasks from your frontend application
-- **[Subscribe hooks](/realtime/react-hooks/subscribe)** - Subscribe to runs, batches, metadata, and more
-- **[Streams hooks](/realtime/react-hooks/streams)** - Subscribe to real-time streams from your tasks
-- **[SWR hooks](/realtime/react-hooks/swr)** - Fetch data once and cache it using SWR
+| Hook category | What it does | Guide |
+|---|---|---|
+| **Trigger hooks** | Trigger tasks from the browser | [Triggering](/realtime/react-hooks/triggering) |
+| **Run updates** | Subscribe to run status, metadata, and tags | [Run updates](/realtime/react-hooks/subscribe) |
+| **Streaming** | Consume AI output, file chunks, or any continuous data | [Streaming](/realtime/react-hooks/streams) |
+| **SWR hooks** | One-time fetch with caching (not recommended for most cases) | [SWR](/realtime/react-hooks/swr) |
 
 ## SWR vs Realtime hooks
 
-We offer two "styles" of hooks: SWR and Realtime. The SWR hooks use the [swr](https://swr.vercel.app/) library to fetch data once and cache it. The Realtime hooks use [Trigger.dev Realtime](/realtime) to subscribe to updates in real-time.
+We offer two "styles" of hooks: SWR and Realtime. SWR hooks use the [swr](https://swr.vercel.app/) library to fetch data once and cache it. Realtime hooks use [Trigger.dev Realtime](/realtime) to subscribe to updates as they happen.
 
 <Note>
   It can be a little confusing which one to use because [swr](https://swr.vercel.app/) can also be
   configured to poll for updates. But because of rate-limits and the way the Trigger.dev API works,
-  we recommend using the Realtime hooks for most use-cases.
+  we recommend using the Realtime hooks for most use cases.
 </Note>

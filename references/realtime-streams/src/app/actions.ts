@@ -3,6 +3,8 @@
 import { tasks, auth } from "@trigger.dev/sdk";
 import type { streamsTask } from "@/trigger/streams";
 import type { aiChatTask } from "@/trigger/ai-chat";
+import type { approvalTask } from "@/trigger/approval";
+import type { messagesTask } from "@/trigger/messages";
 import { redirect } from "next/navigation";
 import type { UIMessage } from "ai";
 
@@ -41,6 +43,16 @@ export async function triggerStreamTask(
       }`;
 
   redirect(path);
+}
+
+export async function triggerApprovalTask() {
+  const handle = await tasks.trigger<typeof approvalTask>("approval-flow", {});
+  redirect(`/approval/${handle.id}?accessToken=${handle.publicAccessToken}`);
+}
+
+export async function triggerMessagesTask() {
+  const handle = await tasks.trigger<typeof messagesTask>("messages-flow", { messageCount: 5 });
+  redirect(`/messages/${handle.id}?accessToken=${handle.publicAccessToken}`);
 }
 
 export async function triggerAIChatTask(messages: UIMessage[]) {

@@ -1,6 +1,7 @@
 import type {
   Organization,
   OrgMember,
+  Prisma,
   Project,
   RuntimeEnvironment,
   User,
@@ -22,8 +23,12 @@ export async function createOrganization(
     title,
     userId,
     companySize,
+    onboardingData,
+    avatar,
   }: Pick<Organization, "title" | "companySize"> & {
     userId: User["id"];
+    onboardingData?: Prisma.InputJsonValue;
+    avatar?: Prisma.InputJsonValue;
   },
   attemptCount = 0
 ): Promise<Organization> {
@@ -47,6 +52,8 @@ export async function createOrganization(
         title,
         userId,
         companySize,
+        onboardingData,
+        avatar,
       },
       attemptCount + 1
     );
@@ -59,6 +66,8 @@ export async function createOrganization(
       title,
       slug: uniqueOrgSlug,
       companySize,
+      onboardingData: onboardingData ?? undefined,
+      avatar: avatar ?? undefined,
       maximumConcurrencyLimit: env.DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT,
       members: {
         create: {

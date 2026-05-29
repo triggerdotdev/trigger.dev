@@ -2,8 +2,7 @@ import { type DataFunctionArgs } from "@remix-run/node";
 import { PerformanceObserver } from "node:perf_hooks";
 import { runInNewContext } from "node:vm";
 import v8 from "v8";
-import { prisma } from "~/db.server";
-import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 
 async function waitTillGcFinishes() {
   let resolver: (value: PerformanceEntry) => void;
@@ -36,21 +35,7 @@ async function waitTillGcFinishes() {
 }
 
 export async function loader({ request }: DataFunctionArgs) {
-  const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
-
-  if (!authenticationResult) {
-    throw new Response("You must be an admin to perform this action", { status: 403 });
-  }
-
-  const user = await prisma.user.findFirst({
-    where: {
-      id: authenticationResult.userId,
-    },
-  });
-
-  if (!user?.admin) {
-    throw new Response("You must be an admin to perform this action", { status: 403 });
-  }
+  await requireAdminApiRequest(request);
 
   const entry = await waitTillGcFinishes();
 

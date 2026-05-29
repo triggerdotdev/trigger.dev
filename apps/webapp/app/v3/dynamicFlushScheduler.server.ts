@@ -52,7 +52,7 @@ export class DynamicFlushScheduler<T> {
   private readonly isDroppableEvent?: (item: T) => boolean;
   private isLoadShedding: boolean = false;
 
-  private readonly logger: Logger = new Logger("EventRepo.DynamicFlushScheduler", "debug");
+  private readonly logger: Logger = new Logger("EventRepo.DynamicFlushScheduler", "info");
 
   constructor(config: DynamicFlushSchedulerConfig<T>) {
     this.batchQueue = [];
@@ -329,7 +329,7 @@ export class DynamicFlushScheduler<T> {
         droppedByKind[kind] = count;
       });
 
-      this.logger.info("DynamicFlushScheduler metrics", {
+      this.logger.debug("DynamicFlushScheduler metrics", {
         totalQueuedItems: this.totalQueuedItems,
         batchQueueLength: this.batchQueue.length,
         currentBatchLength: this.currentBatch.length,

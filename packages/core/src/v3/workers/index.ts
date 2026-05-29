@@ -10,10 +10,14 @@ export {
   recordSpanException,
   carrierFromContext,
 } from "../otel/index.js";
-export { StandardResourceCatalog } from "../resource-catalog/standardResourceCatalog.js";
+export {
+  StandardResourceCatalog,
+  NO_FILE_CONTEXT,
+} from "../resource-catalog/standardResourceCatalog.js";
 export {
   TaskContextSpanProcessor,
   TaskContextLogProcessor,
+  TaskContextMetricExporter,
 } from "../taskContext/otelProcessors.js";
 export * from "../usage-api.js";
 export { DevUsageManager } from "../usage/devUsageManager.js";
@@ -31,3 +35,5 @@ export { populateEnv } from "./populateEnv.js";
 export { StandardTraceContextManager } from "../traceContext/manager.js";
 export { StandardHeartbeatsManager } from "../heartbeats/manager.js";
 export { StandardRealtimeStreamsManager } from "../realtimeStreams/manager.js";
+export { StandardInputStreamManager } from "../inputStreams/manager.js";
+export { StandardSessionStreamManager } from "../sessionStreams/manager.js";

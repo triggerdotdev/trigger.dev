@@ -24,6 +24,13 @@ import { HttpServer, type CheckpointClient } from "@trigger.dev/core/v3/serverOn
 import { type IncomingMessage } from "node:http";
 import { register } from "../metrics.js";
 import { env } from "../env.js";
+import { SnapshotCallbackPayloadSchema } from "@internal/compute";
+import {
+  ComputeSnapshotService,
+  type RunTraceContext,
+} from "../services/computeSnapshotService.js";
+import type { ComputeWorkloadManager } from "../workloadManager/compute.js";
+import type { OtlpTraceService } from "../services/otlpTraceService.js";
 
 // Use the official export when upgrading to socket.io@4.8.0
 interface DefaultEventsMap {
@@ -35,6 +42,18 @@ const WorkloadActionParams = z.object({
   runFriendlyId: z.string(),
   snapshotFriendlyId: z.string(),
 });
+
+// Workloads bundled into customer task images before CLI v4.4.4 use a strict
+// zod enum for checkpoint type that only allows DOCKER and KUBERNETES. The
+// workload never reads this field - it only validates the response shape - so
+// rewriting it to a known value keeps older runners working without affecting
+// the value stored in the database or seen by internal services.
+function legacifyCheckpointType<T extends { checkpoint?: { type: string } | null }>(item: T): T {
+  if (item.checkpoint?.type === "COMPUTE") {
+    return { ...item, checkpoint: { ...item.checkpoint, type: "KUBERNETES" } } as T;
+  }
+  return item;
+}
 
 type WorkloadServerEvents = {
   runConnected: [
@@ -58,10 +77,13 @@ type WorkloadServerOptions = {
   host?: string;
   workerClient: SupervisorHttpClient;
   checkpointClient?: CheckpointClient;
+  computeManager?: ComputeWorkloadManager;
+  tracing?: OtlpTraceService;
 };
 
 export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
   private checkpointClient?: CheckpointClient;
+  private readonly snapshotService?: ComputeSnapshotService;
 
   private readonly logger = new SimpleStructuredLogger("workload-server");
 
@@ -93,6 +115,14 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
     this.workerClient = opts.workerClient;
     this.checkpointClient = opts.checkpointClient;
+
+    if (opts.computeManager?.snapshotsEnabled) {
+      this.snapshotService = new ComputeSnapshotService({
+        computeManager: opts.computeManager,
+        workerClient: opts.workerClient,
+        tracing: opts.tracing,
+      });
+    }
 
     this.httpServer = this.createHttpServer({ host, port });
     this.websocketServer = this.createWebsocketServer();
@@ -229,13 +259,28 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         {
           paramsSchema: WorkloadActionParams,
           handler: async ({ reply, params, req }) => {
-            this.logger.debug("Suspend request", { params, headers: req.headers });
+            const runnerId = this.runnerIdFromRequest(req);
+            const deploymentVersion = this.deploymentVersionFromRequest(req);
+            const projectRef = this.projectRefFromRequest(req);
 
-            if (!this.checkpointClient) {
+            this.logger.debug("Suspend request", {
+              params,
+              runnerId,
+              deploymentVersion,
+              projectRef,
+            });
+
+            if (!runnerId || !deploymentVersion || !projectRef) {
+              this.logger.error("Invalid headers for suspend request", {
+                ...params,
+                runnerId,
+                deploymentVersion,
+                projectRef,
+              });
               reply.json(
                 {
                   ok: false,
-                  error: "Checkpoints disabled",
+                  error: "Invalid headers",
                 } satisfies WorkloadSuspendRunResponseBody,
                 false,
                 400
@@ -243,19 +288,25 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               return;
             }
 
-            const runnerId = this.runnerIdFromRequest(req);
-            const deploymentVersion = this.deploymentVersionFromRequest(req);
-            const projectRef = this.projectRefFromRequest(req);
+            if (this.snapshotService) {
+              // Compute mode: delay snapshot to avoid wasted work on short-lived waitpoints.
+              // If the run continues before the delay expires, the snapshot is cancelled.
+              reply.json({ ok: true } satisfies WorkloadSuspendRunResponseBody, false, 202);
 
-            if (!runnerId || !deploymentVersion || !projectRef) {
-              this.logger.error("Invalid headers for suspend request", {
-                ...params,
-                headers: req.headers,
+              this.snapshotService.schedule(params.runFriendlyId, {
+                runnerId,
+                runFriendlyId: params.runFriendlyId,
+                snapshotFriendlyId: params.snapshotFriendlyId,
               });
+
+              return;
+            }
+
+            if (!this.checkpointClient) {
               reply.json(
                 {
                   ok: false,
-                  error: "Invalid headers",
+                  error: "Checkpoints disabled",
                 } satisfies WorkloadSuspendRunResponseBody,
                 false,
                 400
@@ -297,6 +348,9 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           paramsSchema: WorkloadActionParams,
           handler: async ({ req, reply, params }) => {
             this.logger.debug("Run continuation request", { params });
+
+            // Cancel any pending delayed snapshot for this run
+            this.snapshotService?.cancel(params.runFriendlyId);
 
             const continuationResult = await this.workerClient.continueRunExecution(
               params.runFriendlyId,
@@ -342,7 +396,9 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               return;
             }
 
-            reply.json(sinceSnapshotResponse.data satisfies WorkloadRunSnapshotsSinceResponseBody);
+            reply.json({
+              snapshots: sinceSnapshotResponse.data.snapshots.map(legacifyCheckpointType),
+            } satisfies WorkloadRunSnapshotsSinceResponseBody);
           },
         }
       )
@@ -367,7 +423,9 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
             return;
           }
 
-          reply.json(dequeueResponse.data satisfies WorkloadDequeueFromVersionResponseBody);
+          reply.json(
+            dequeueResponse.data.map(legacifyCheckpointType) satisfies WorkloadDequeueFromVersionResponseBody
+          );
         },
       });
 
@@ -394,6 +452,20 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       });
     }
 
+    // Compute snapshot callback endpoint
+    httpServer.route("/api/v1/compute/snapshot-complete", "POST", {
+      bodySchema: SnapshotCallbackPayloadSchema,
+      handler: async ({ reply, body }) => {
+        if (!this.snapshotService) {
+          reply.empty(404);
+          return;
+        }
+
+        const result = await this.snapshotService.handleCallback(body);
+        reply.empty(result.status);
+      },
+    });
+
     return httpServer;
   }
 
@@ -408,7 +480,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     > = io.of("/workload");
 
     websocketServer.on("disconnect", (socket) => {
-      this.logger.log("[WS] disconnect", socket.id);
+      this.logger.verbose("[WS] disconnect", socket.id);
     });
     websocketServer.use(async (socket, next) => {
       const setSocketDataFromHeader = (
@@ -490,7 +562,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
         socket.data.runFriendlyId = undefined;
       };
 
-      socketLogger.log("wsServer socket connected", { ...getSocketMetadata() });
+      socketLogger.debug("wsServer socket connected", { ...getSocketMetadata() });
 
       // FIXME: where does this get set?
       if (socket.data.runFriendlyId) {
@@ -498,7 +570,11 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       }
 
       socket.on("disconnecting", (reason, description) => {
-        socketLogger.log("Socket disconnecting", { ...getSocketMetadata(), reason, description });
+        socketLogger.verbose("Socket disconnecting", {
+          ...getSocketMetadata(),
+          reason,
+          description,
+        });
 
         if (socket.data.runFriendlyId) {
           runDisconnected(socket.data.runFriendlyId);
@@ -506,7 +582,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
       });
 
       socket.on("disconnect", (reason, description) => {
-        socketLogger.log("Socket disconnected", { ...getSocketMetadata(), reason, description });
+        socketLogger.debug("Socket disconnected", { ...getSocketMetadata(), reason, description });
       });
 
       socket.on("error", (error) => {
@@ -527,7 +603,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           ...message,
         });
 
-        log.log("Handling run:start");
+        log.debug("Handling run:start");
 
         try {
           runConnected(message.run.friendlyId);
@@ -543,10 +619,13 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           ...message,
         });
 
-        log.log("Handling run:stop");
+        log.debug("Handling run:stop");
 
         try {
           runDisconnected(message.run.friendlyId);
+          // Don't delete trace context here - run:stop fires after each snapshot/shutdown
+          // but the run may be restored on a new VM and snapshot again. Trace context is
+          // re-populated on dequeue, and entries are small (4 strings per run).
         } catch (error) {
           log.error("run:stop error", { error });
         }
@@ -588,11 +667,16 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     }
   }
 
+  registerRunTraceContext(runFriendlyId: string, ctx: RunTraceContext) {
+    this.snapshotService?.registerTraceContext(runFriendlyId, ctx);
+  }
+
   async start() {
     await this.httpServer.start();
   }
 
   async stop() {
+    this.snapshotService?.stop();
     await this.httpServer.stop();
   }
 }

@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import { z } from "zod";
 import { generateJWT as internal_generateJWT } from "@trigger.dev/core/v3";
 
@@ -14,33 +15,42 @@ const RequestBodySchema = z.object({
 });
 
 export async function action({ request }: LoaderFunctionArgs) {
-  // Next authenticate the request
-  const authenticationResult = await authenticateApiRequest(request);
+  try {
+    // Next authenticate the request
+    const authenticationResult = await authenticateApiRequest(request);
 
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
+    if (!authenticationResult) {
+      return json({ error: "Invalid or Missing API key" }, { status: 401 });
+    }
+
+    const parsedBody = RequestBodySchema.safeParse(await request.json());
+
+    if (!parsedBody.success) {
+      return json(
+        { error: "Invalid request body", issues: parsedBody.error.issues },
+        { status: 400 }
+      );
+    }
+
+    const claims = {
+      sub: authenticationResult.environment.id,
+      pub: true,
+      ...parsedBody.data.claims,
+    };
+
+    // Sign with the environment's current canonical key, not the raw header key,
+    // so JWTs minted with a revoked (grace-window) key still validate — validation
+    // in jwtAuth.server.ts uses environment.apiKey.
+    const jwt = await internal_generateJWT({
+      secretKey: authenticationResult.environment.apiKey,
+      payload: claims,
+      expirationTime: parsedBody.data.expirationTime ?? "1h",
+    });
+
+    return json({ token: jwt });
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to mint auth jwt", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
   }
-
-  const parsedBody = RequestBodySchema.safeParse(await request.json());
-
-  if (!parsedBody.success) {
-    return json(
-      { error: "Invalid request body", issues: parsedBody.error.issues },
-      { status: 400 }
-    );
-  }
-
-  const claims = {
-    sub: authenticationResult.environment.id,
-    pub: true,
-    ...parsedBody.data.claims,
-  };
-
-  const jwt = await internal_generateJWT({
-    secretKey: authenticationResult.apiKey,
-    payload: claims,
-    expirationTime: parsedBody.data.expirationTime ?? "1h",
-  });
-
-  return json({ token: jwt });
 }

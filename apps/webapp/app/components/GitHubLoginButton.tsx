@@ -32,8 +32,6 @@ export function OctoKitty({ className }: { className?: string }) {
       baseProfile="tiny"
       id="Layer_1"
       xmlns="http://www.w3.org/2000/svg"
-      x="0px"
-      y="0px"
       viewBox="0 0 2350 2314.8"
       xmlSpace="preserve"
       fill="currentColor"

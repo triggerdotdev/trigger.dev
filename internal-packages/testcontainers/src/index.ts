@@ -9,15 +9,18 @@ import {
   createElectricContainer,
   createPostgresContainer,
   createRedisContainer,
+  createMinIOContainer,
   useContainer,
   withContainerSetup,
 } from "./utils";
 import { getTaskMetadata, logCleanup, logSetup } from "./logs";
 import { StartedClickHouseContainer } from "./clickhouse";
+import { StartedMinIOContainer, type MinIOConnectionConfig } from "./minio";
 import { ClickHouseClient, createClient } from "@clickhouse/client";
 
-export { assertNonNullable } from "./utils";
+export { assertNonNullable, createPostgresContainer } from "./utils";
 export { logCleanup };
+export type { MinIOConnectionConfig };
 
 type NetworkContext = { network: StartedNetwork };
 
@@ -40,11 +43,17 @@ export type PostgresAndRedisContext = NetworkContext & PostgresContext & RedisCo
 export type ContainerWithElectricAndRedisContext = ContainerContext & ElectricContext;
 export type ContainerWithElectricContext = NetworkContext & PostgresContext & ElectricContext;
 
+type MinIOContext = NetworkContext & {
+  minioContainer: StartedMinIOContainer;
+  minioConfig: MinIOConnectionConfig;
+};
+
 export type {
   StartedNetwork,
   StartedPostgreSqlContainer,
   StartedRedisContainer,
   StartedClickHouseContainer,
+  StartedMinIOContainer,
 };
 
 type Use<T> = (value: T) => Promise<void>;
@@ -256,4 +265,40 @@ export const containerWithElectricAndRedisTest = test.extend<ContainerWithElectr
   electricOrigin,
   clickhouseContainer,
   clickhouseClient,
+});
+
+const minioContainer = async (
+  { network, task }: { network: StartedNetwork } & TaskContext,
+  use: Use<StartedMinIOContainer>
+) => {
+  const { container, metadata } = await withContainerSetup({
+    name: "minioContainer",
+    task,
+    setup: createMinIOContainer(network),
+  });
+
+  await useContainer("minioContainer", { container, task, use: () => use(container) });
+};
+
+const minioConfig = async (
+  { minioContainer }: { minioContainer: StartedMinIOContainer },
+  use: Use<MinIOConnectionConfig>
+) => {
+  await use(minioContainer.getConnectionConfig());
+};
+
+export const minioTest = test.extend<MinIOContext>({
+  network,
+  minioContainer,
+  minioConfig,
+});
+
+type PostgresAndMinIOContext = NetworkContext & PostgresContext & MinIOContext;
+
+export const postgresAndMinioTest = test.extend<PostgresAndMinIOContext>({
+  network,
+  postgresContainer,
+  prisma,
+  minioContainer,
+  minioConfig,
 });

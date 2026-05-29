@@ -87,7 +87,7 @@ function SimpleTooltip({
         <TooltipTrigger
           type="button"
           tabIndex={-1}
-          className={cn("h-fit", buttonClassName)}
+          className={cn(!asChild && "h-fit", buttonClassName)}
           style={buttonStyle}
           asChild={asChild}
         >

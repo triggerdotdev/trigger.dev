@@ -45,9 +45,9 @@ export class BatchCompletionTracker {
   }) {
     this.redis = createRedisClient(options.redis);
     this.logger = options.logger ?? {
-      debug: () => {},
-      info: () => {},
-      error: () => {},
+      debug: () => { },
+      info: () => { },
+      error: () => { },
     };
 
     this.#registerCommands();

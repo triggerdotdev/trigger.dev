@@ -22,46 +22,55 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
-  // Next authenticate the request
-  const authenticationResult = await authenticateApiRequest(request);
-
-  if (!authenticationResult) {
-    logger.info("Invalid or missing api key", { url: request.url });
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
-  }
-
-  const authenticatedEnv = authenticationResult.environment;
-
-  const { deploymentVersion } = parsedParams.data;
-
-  const deployment = await prisma.workerDeployment.findFirst({
-    where: {
-      version: deploymentVersion,
-      environmentId: authenticatedEnv.id,
-    },
-  });
-
-  if (!deployment) {
-    return json({ error: "Deployment not found" }, { status: 404 });
-  }
-
   try {
-    const service = new ChangeCurrentDeploymentService();
-    await service.call(deployment, "promote");
+    // Next authenticate the request
+    const authenticationResult = await authenticateApiRequest(request);
 
-    return json(
-      {
-        id: deployment.friendlyId,
-        version: deployment.version,
-        shortCode: deployment.shortCode,
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    if (error instanceof ServiceValidationError) {
-      return json({ error: error.message }, { status: 400 });
-    } else {
-      return json({ error: "Failed to promote deployment" }, { status: 500 });
+    if (!authenticationResult) {
+      logger.info("Invalid or missing api key", { url: request.url });
+      return json({ error: "Invalid or Missing API key" }, { status: 401 });
     }
+
+    const authenticatedEnv = authenticationResult.environment;
+
+    const url = new URL(request.url);
+    const allowRollbacks = url.searchParams.get("allowRollbacks") === "true";
+
+    const { deploymentVersion } = parsedParams.data;
+
+    const deployment = await prisma.workerDeployment.findFirst({
+      where: {
+        version: deploymentVersion,
+        environmentId: authenticatedEnv.id,
+      },
+    });
+
+    if (!deployment) {
+      return json({ error: "Deployment not found" }, { status: 404 });
+    }
+
+    try {
+      const service = new ChangeCurrentDeploymentService();
+      await service.call(deployment, "promote", allowRollbacks);
+
+      return json(
+        {
+          id: deployment.friendlyId,
+          version: deployment.version,
+          shortCode: deployment.shortCode,
+        },
+        { status: 200 }
+      );
+    } catch (error) {
+      if (error instanceof ServiceValidationError) {
+        return json({ error: error.message }, { status: 400 });
+      } else {
+        return json({ error: "Failed to promote deployment" }, { status: 500 });
+      }
+    }
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to promote deployment", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

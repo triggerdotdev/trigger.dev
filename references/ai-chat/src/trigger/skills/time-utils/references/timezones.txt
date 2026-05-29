@@ -1,0 +1,30 @@
+Common IANA timezones:
+
+North America:
+  America/New_York       (US Eastern)
+  America/Chicago        (US Central)
+  America/Denver         (US Mountain)
+  America/Los_Angeles    (US Pacific)
+  America/Toronto
+  America/Mexico_City
+
+Europe:
+  Europe/London
+  Europe/Paris
+  Europe/Berlin
+  Europe/Amsterdam
+  Europe/Madrid
+  Europe/Dublin
+
+Asia & Pacific:
+  Asia/Tokyo
+  Asia/Shanghai
+  Asia/Singapore
+  Asia/Kolkata           (India, UTC+5:30)
+  Australia/Sydney
+  Pacific/Auckland
+
+Others:
+  UTC
+  America/Sao_Paulo
+  Africa/Johannesburg

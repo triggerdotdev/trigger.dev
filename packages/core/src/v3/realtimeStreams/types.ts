@@ -1,6 +1,10 @@
 import { AnyZodFetchOptions, ApiRequestOptions } from "../apiClient/core.js";
+import type { InputStreamOncePromise } from "../inputStreams/types.js";
+export { InputStreamOncePromise, InputStreamTimeoutError } from "../inputStreams/types.js";
+export type { InputStreamOnceResult } from "../inputStreams/types.js";
 import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { Prettify } from "../types/utils.js";
+import type { ManualWaitpointPromise } from "../waitpoints/index.js";
 
 export type RealtimeStreamOperationOptions = {
   signal?: AbortSignal;
@@ -22,13 +26,17 @@ export interface RealtimeStreamsManager {
   ): Promise<void>;
 }
 
+export type StreamWriteResult = {
+  lastEventId?: string;
+};
+
 export interface RealtimeStreamInstance<T> {
-  wait(): Promise<void>;
+  wait(): Promise<StreamWriteResult>;
   get stream(): AsyncIterableStream<T>;
 }
 
 export interface StreamsWriter {
-  wait(): Promise<void>;
+  wait(): Promise<StreamWriteResult>;
 }
 
 export type RealtimeDefinedStream<TPart> = {
@@ -67,6 +75,10 @@ export type PipeStreamOptions = {
    * Additional request options for the API call.
    */
   requestOptions?: ApiRequestOptions;
+  /** Override the default span name for this operation. */
+  spanName?: string;
+  /** When true, the span will be collapsed in the dashboard. */
+  collapsed?: boolean;
 };
 
 /**
@@ -85,7 +97,7 @@ export type PipeStreamResult<T> = {
    * to the realtime stream. Use this to wait for the stream to complete before
    * finishing your task.
    */
-  waitUntilComplete: () => Promise<void>;
+  waitUntilComplete: () => Promise<StreamWriteResult>;
 };
 
 /**
@@ -143,3 +155,134 @@ export type WriterStreamOptions<TPart> = Prettify<
     }) => Promise<void> | void;
   }
 >;
+
+// --- Input streams (inbound data to running tasks) ---
+
+/**
+ * A defined input stream that can receive typed data from external callers.
+ *
+ * Inside a task, use `.on()`, `.once()`, or `.peek()` to receive data.
+ * Outside a task, use `.send()` to send data to a running task.
+ */
+export type RealtimeDefinedInputStream<TData> = {
+  id: string;
+  /**
+   * Register a handler that fires every time data arrives on this input stream.
+   * Handlers are automatically cleaned up when the task run completes, so calling
+   * `.off()` is optional. Returns a subscription with `.off()` for early unsubscription.
+   */
+  on: (handler: (data: TData) => void | Promise<void>) => InputStreamSubscription;
+  /**
+   * Wait for the next piece of data on this input stream.
+   * Returns a result object `{ ok, output }` or `{ ok, error }`.
+   * Chain `.unwrap()` to get the data directly or throw on timeout.
+   */
+  once: (options?: InputStreamOnceOptions) => InputStreamOncePromise<TData>;
+  /**
+   * Non-blocking peek at the most recent data received on this input stream.
+   * Returns `undefined` if no data has been received yet.
+   */
+  peek: () => TData | undefined;
+  /**
+   * Suspend the task until data arrives on this input stream.
+   *
+   * Unlike `.once()` which keeps the task process alive while waiting,
+   * `.wait()` suspends the task entirely — freeing compute resources.
+   * The task resumes when data is sent via `.send()`.
+   *
+   * Uses a waitpoint token internally. Can only be called inside a task.run().
+   */
+  wait: (options?: InputStreamWaitOptions) => ManualWaitpointPromise<TData>;
+  /**
+   * Wait for data with an idle phase before suspending.
+   *
+   * Keeps the task active (using compute) for `idleTimeoutInSeconds`,
+   * then suspends via `.wait()` if no data arrives. If data arrives during
+   * the idle phase the task responds instantly without suspending.
+   */
+  waitWithIdleTimeout: (options: InputStreamWaitWithIdleTimeoutOptions) => Promise<{ ok: true; output: TData } | { ok: false; error?: any }>;
+  /**
+   * Send data to this input stream on a specific run.
+   * This is used from outside the task (e.g., from your backend or another task).
+   */
+  send: (runId: string, data: TData, options?: SendInputStreamOptions) => Promise<void>;
+};
+
+export type InputStreamSubscription = {
+  off: () => void;
+};
+
+export type InputStreamOnceOptions = {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  /** Override the default span name for this operation. */
+  spanName?: string;
+};
+
+export type SendInputStreamOptions = {
+  requestOptions?: ApiRequestOptions;
+};
+
+export type InputStreamWaitOptions = {
+  /**
+   * Maximum time to wait before the waitpoint times out.
+   * Uses the same period format as `wait.createToken()`.
+   * If the timeout is reached, the result will be `{ ok: false, error }`.
+   *
+   * @example "30s", "5m", "1h", "24h", "7d"
+   */
+  timeout?: string;
+
+  /**
+   * Idempotency key for the underlying waitpoint token.
+   * If the same key is used again (and hasn't expired), the existing
+   * waitpoint is reused. This means if the task retries, it will
+   * resume waiting on the same waitpoint rather than creating a new one.
+   */
+  idempotencyKey?: string;
+
+  /**
+   * TTL for the idempotency key. After this period, the same key
+   * will create a new waitpoint.
+   */
+  idempotencyKeyTTL?: string;
+
+  /**
+   * Tags for the underlying waitpoint token, useful for querying
+   * and filtering waitpoints via `wait.listTokens()`.
+   */
+  tags?: string[];
+
+  /** Override the default span name for this operation. */
+  spanName?: string;
+};
+
+export type InputStreamWaitWithIdleTimeoutOptions = {
+  /** Seconds to keep the task idle (active, using compute) before suspending. */
+  idleTimeoutInSeconds: number;
+  /** Maximum time to wait after suspending (duration string, e.g. "1h"). */
+  timeout?: string;
+  /** Override the default span name for the outer operation. */
+  spanName?: string;
+  /** Called right before suspending (after idle phase times out). Not called if data arrives during idle. */
+  onSuspend?: () => void | Promise<void>;
+  /** Called right after resuming from suspension with data. Not called if data arrived during idle or on timeout. */
+  onResume?: () => void | Promise<void>;
+  /** When true, skip the suspend phase entirely. If idle times out, return `{ ok: false }` immediately. */
+  skipSuspend?: boolean;
+};
+
+export type InferInputStreamType<T> = T extends RealtimeDefinedInputStream<infer TData>
+  ? TData
+  : unknown;
+
+/**
+ * Internal record format for multiplexed input stream data on S2.
+ * All input streams for a run share a single S2 stream, demuxed by `stream` field.
+ */
+export type InputStreamRecord = {
+  stream: string;
+  data: unknown;
+  ts: number;
+  id: string;
+};

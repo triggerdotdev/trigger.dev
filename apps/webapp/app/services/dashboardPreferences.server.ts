@@ -5,10 +5,23 @@ import { type UserFromSession } from "./session.server";
 
 const SideMenuPreferences = z.object({
   isCollapsed: z.boolean().default(false),
-  manageSectionCollapsed: z.boolean().default(false),
+  // Map for section collapsed states - keys are section identifiers
+  collapsedSections: z.record(z.string(), z.boolean()).optional(),
+  /** Organization-specific settings */
+  organizations: z
+    .record(
+      z.string(),
+      z.object({
+        orderedItems: z.record(z.string(), z.array(z.string())),
+      })
+    )
+    .optional(),
 });
 
 export type SideMenuPreferences = z.infer<typeof SideMenuPreferences>;
+
+import { type SideMenuSectionId } from "~/components/navigation/sideMenuTypes";
+export type { SideMenuSectionId };
 
 const DashboardPreferences = z.object({
   version: z.literal("1"),
@@ -111,11 +124,12 @@ export async function clearCurrentProject({ user }: { user: UserFromSession }) {
 export async function updateSideMenuPreferences({
   user,
   isCollapsed,
-  manageSectionCollapsed,
+  sectionCollapsed,
 }: {
   user: UserFromSession;
   isCollapsed?: boolean;
-  manageSectionCollapsed?: boolean;
+  /** Update a specific section's collapsed state */
+  sectionCollapsed?: { sectionId: SideMenuSectionId; collapsed: boolean };
 }) {
   if (user.isImpersonating) {
     return;
@@ -123,19 +137,84 @@ export async function updateSideMenuPreferences({
 
   // Parse with schema to apply defaults, then overlay any new values
   const currentSideMenu = SideMenuPreferences.parse(user.dashboardPreferences.sideMenu ?? {});
+
+  // Build the updated collapsedSections map
+  let updatedCollapsedSections = { ...currentSideMenu.collapsedSections };
+
+  if (sectionCollapsed) {
+    updatedCollapsedSections[sectionCollapsed.sectionId] = sectionCollapsed.collapsed;
+  }
+
   const updatedSideMenu = SideMenuPreferences.parse({
     ...currentSideMenu,
     ...(isCollapsed !== undefined && { isCollapsed }),
-    ...(manageSectionCollapsed !== undefined && { manageSectionCollapsed }),
+    collapsedSections: updatedCollapsedSections,
   });
 
   // Only update if something changed
-  if (
-    updatedSideMenu.isCollapsed === currentSideMenu.isCollapsed &&
-    updatedSideMenu.manageSectionCollapsed === currentSideMenu.manageSectionCollapsed
-  ) {
+  const hasCollapsedSectionsChanged =
+    JSON.stringify(updatedSideMenu.collapsedSections) !==
+    JSON.stringify(currentSideMenu.collapsedSections);
+
+  if (updatedSideMenu.isCollapsed === currentSideMenu.isCollapsed && !hasCollapsedSectionsChanged) {
     return;
   }
+
+  const updatedPreferences: DashboardPreferences = {
+    ...user.dashboardPreferences,
+    sideMenu: updatedSideMenu,
+  };
+
+  return prisma.user.update({
+    where: {
+      id: user.id,
+    },
+    data: {
+      dashboardPreferences: updatedPreferences,
+    },
+  });
+}
+
+/** Get the stored item order for a specific list within an organization */
+export function getItemOrder(
+  sideMenu: SideMenuPreferences | undefined,
+  organizationId: string,
+  listId: string
+): string[] | undefined {
+  return sideMenu?.organizations?.[organizationId]?.orderedItems?.[listId];
+}
+
+export async function updateItemOrder({
+  user,
+  organizationId,
+  listId,
+  order,
+}: {
+  user: UserFromSession;
+  organizationId: string;
+  listId: string;
+  order: string[];
+}) {
+  if (user.isImpersonating) {
+    return;
+  }
+
+  const currentSideMenu = SideMenuPreferences.parse(user.dashboardPreferences.sideMenu ?? {});
+  const currentOrg = currentSideMenu.organizations?.[organizationId];
+
+  const updatedSideMenu = SideMenuPreferences.parse({
+    ...currentSideMenu,
+    organizations: {
+      ...currentSideMenu.organizations,
+      [organizationId]: {
+        ...currentOrg,
+        orderedItems: {
+          ...currentOrg?.orderedItems,
+          [listId]: order,
+        },
+      },
+    },
+  });
 
   const updatedPreferences: DashboardPreferences = {
     ...user.dashboardPreferences,

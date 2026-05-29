@@ -13,9 +13,11 @@ import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/Page
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
+  collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
 import {
   Table,
@@ -170,14 +172,26 @@ export default function Page() {
                 )}
               </div>
             </ResizablePanel>
-            {isShowingInspector && (
-              <>
-                <ResizableHandle id="bulk-actions-handle" />
-                <ResizablePanel id="bulk-actions-inspector" min="100px" default="500px">
-                  <Outlet />
-                </ResizablePanel>
-              </>
-            )}
+            <ResizableHandle
+              id="bulk-actions-handle"
+              className={collapsibleHandleClassName(isShowingInspector)}
+            />
+            <ResizablePanel
+              id="bulk-actions-inspector"
+              default="500px"
+              min="500px"
+              max="800px"
+              className="overflow-hidden"
+              collapsible
+              collapsed={!isShowingInspector}
+              onCollapseChange={() => {}}
+              collapsedSize="0px"
+              collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+            >
+              <div className="h-full" style={{ minWidth: 500 }}>
+                <Outlet />
+              </div>
+            </ResizablePanel>
           </ResizablePanelGroup>
         )}
       </PageBody>

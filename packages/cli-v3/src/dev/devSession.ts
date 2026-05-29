@@ -118,6 +118,13 @@ export async function startDevSession({
       bundle.metafile
     );
 
+    // Skill folder copying happens after the main worker indexer runs in
+    // `BackgroundWorker.initialize` — that pass already discovers skills
+    // via the resource catalog and reports them on `workerManifest.skills`,
+    // so we don't need a duplicate indexer here (which historically ran
+    // with a bare `process.env` and silently dropped skills on projects
+    // whose task files read CLI-injected vars at module top level).
+
     buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
 
     try {

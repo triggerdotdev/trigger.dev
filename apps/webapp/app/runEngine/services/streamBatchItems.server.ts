@@ -1,18 +1,68 @@
 import {
-  type BatchItemNDJSON,
   type StreamBatchItemsResponse,
   BatchItemNDJSON as BatchItemNDJSONSchema,
 } from "@trigger.dev/core/v3";
 import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import type { BatchItem, RunEngine } from "@internal/run-engine";
+import type { BatchTaskRunStatus } from "@trigger.dev/database";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 import { BatchPayloadProcessor } from "../concerns/batchPayloads.server";
 
+/**
+ * Phase 2 retry idempotency check (TRI-9944).
+ *
+ * Returns true when the batch is in a state that means the Phase 2 stream's
+ * job has already been done — every item has a TaskRun record (real or
+ * pre-failed) for the customer to monitor. A retry, or the original call
+ * racing against a fast-completing BatchQueue, should return sealed:true
+ * in these states so the SDK stops retrying.
+ *
+ * Three "work is done" shapes:
+ *  - status moved out of PENDING into PROCESSING/COMPLETED/PARTIAL_FAILED
+ *    (PROCESSING via our seal, COMPLETED via tryCompleteBatch, PARTIAL_FAILED
+ *    via the V2 batchCompletionCallback).
+ *  - status stuck at PENDING but `sealed=true`: another concurrent
+ *    streamBatchItems call sealed the batch and then the callback's
+ *    happy-path branch reset status to PENDING ("all runs created").
+ *  - status stuck at PENDING with `sealed=false` but `processingCompletedAt`
+ *    set: the cleanup-race. BatchQueue rushed through all items, callback
+ *    fired (setting processingCompletedAt), cleanup deleted the Redis
+ *    metadata — all before our service got the chance to seal. The work
+ *    is done; the discriminator is processingCompletedAt which is set
+ *    exclusively by the V2 completion callback.
+ *
+ * ABORTED is excluded — it means ZERO TaskRun records were created (every
+ * per-item attempt failed AND the pre-failed-TaskRun fallback also failed,
+ * or queue-overload on every item). The customer has nothing to monitor
+ * at the run level, so the trigger call must throw to give their retry/
+ * error handling a chance to create a fresh batch.
+ */
+export function isIdempotentRetrySuccess(
+  status: BatchTaskRunStatus | null | undefined,
+  sealed: boolean | null | undefined,
+  processingCompletedAt: Date | null | undefined
+): boolean {
+  return (
+    status === "PROCESSING" ||
+    status === "COMPLETED" ||
+    status === "PARTIAL_FAILED" ||
+    (status === "PENDING" && (sealed === true || processingCompletedAt != null))
+  );
+}
+
 export type StreamBatchItemsServiceOptions = {
   maxItemBytes: number;
+};
+
+export type OversizedItemMarker = {
+  __batchItemError: "OVERSIZED";
+  index: number;
+  task: string;
+  actualSize: number;
+  maxSize: number;
 };
 
 export type StreamBatchItemsServiceConstructorOptions = {
@@ -86,6 +136,7 @@ export class StreamBatchItemsService extends WithRunEngine {
             runCount: true,
             sealed: true,
             batchVersion: true,
+            processingCompletedAt: true,
           },
         });
 
@@ -93,13 +144,27 @@ export class StreamBatchItemsService extends WithRunEngine {
           throw new ServiceValidationError(`Batch ${batchFriendlyId} not found`);
         }
 
-        if (batch.sealed) {
-          throw new ServiceValidationError(
-            `Batch ${batchFriendlyId} is already sealed and cannot accept more items`
-          );
+        if (isIdempotentRetrySuccess(batch.status, batch.sealed, batch.processingCompletedAt)) {
+          logger.info("Batch already sealed/completed - treating Phase 2 retry as success", {
+            batchId: batchFriendlyId,
+            batchSealed: batch.sealed,
+            batchStatus: batch.status,
+            processingCompletedAt: batch.processingCompletedAt,
+          });
+
+          return {
+            id: batchFriendlyId,
+            itemsAccepted: 0,
+            itemsDeduplicated: 0,
+            sealed: true,
+            runCount: batch.runCount,
+          };
         }
 
         if (batch.status !== "PENDING") {
+          // ABORTED or any other unexpected non-PENDING state — surface as an error.
+          // For ABORTED specifically, throwing is required so the customer's
+          // batchTrigger() retries (a new batch) can recreate the runs.
           throw new ServiceValidationError(
             `Batch ${batchFriendlyId} is not in PENDING status (current: ${batch.status})`
           );
@@ -111,6 +176,41 @@ export class StreamBatchItemsService extends WithRunEngine {
 
         // Process items from the stream
         for await (const rawItem of itemsIterator) {
+          // Check for oversized item markers from the NDJSON parser
+          if (rawItem && typeof rawItem === "object" && "__batchItemError" in rawItem) {
+            const marker = rawItem as OversizedItemMarker;
+            const itemIndex = marker.index >= 0 ? marker.index : lastIndex + 1;
+
+            const errorMessage = `Batch item payload is too large (${(marker.actualSize / 1024).toFixed(1)} KB). Maximum allowed size is ${(marker.maxSize / 1024).toFixed(1)} KB. Reduce the payload size or offload large data to external storage.`;
+
+            // Enqueue with __error metadata - processItemCallback will detect this
+            // and use TriggerFailedTaskService to create a pre-failed run
+            const batchItem: BatchItem = {
+              task: marker.task,
+              payload: "{}",
+              payloadType: "application/json",
+              options: {
+                __error: errorMessage,
+                __errorCode: "PAYLOAD_TOO_LARGE",
+              },
+            };
+
+            const result = await this._engine.enqueueBatchItem(
+              batchId,
+              environment.id,
+              itemIndex,
+              batchItem
+            );
+
+            if (result.enqueued) {
+              itemsAccepted++;
+            } else {
+              itemsDeduplicated++;
+            }
+            lastIndex = itemIndex;
+            continue;
+          }
+
           // Parse and validate the item
           const parseResult = BatchItemNDJSONSchema.safeParse(rawItem);
           if (!parseResult.success) {
@@ -169,6 +269,53 @@ export class StreamBatchItemsService extends WithRunEngine {
 
         // Validate we received the expected number of items
         if (enqueuedCount !== batch.runCount) {
+          // The batch queue consumers may have already processed all items and
+          // cleaned up the Redis keys before we got here. This happens when all
+          // runs complete fast enough that cleanup() deletes the enqueuedItemsKey
+          // before we read it — typically when the last item executes in the
+          // milliseconds between the loop ending and getBatchEnqueuedCount() being called.
+          // Check both sealed (sealed by this endpoint on a concurrent request) and
+          // COMPLETED (sealed by the BatchQueue completion path before we got here).
+          const currentBatch = await this._prisma.batchTaskRun.findFirst({
+            where: { id: batchId },
+            select: { sealed: true, status: true, processingCompletedAt: true },
+          });
+
+          if (
+            isIdempotentRetrySuccess(
+              currentBatch?.status,
+              currentBatch?.sealed,
+              currentBatch?.processingCompletedAt
+            )
+          ) {
+            logger.info("Batch already sealed before count check (fast completion)", {
+              batchId: batchFriendlyId,
+              itemsAccepted,
+              itemsDeduplicated,
+              enqueuedCount,
+              expectedCount: batch.runCount,
+              batchStatus: currentBatch?.status,
+              processingCompletedAt: currentBatch?.processingCompletedAt,
+            });
+
+            return {
+              id: batchFriendlyId,
+              itemsAccepted,
+              itemsDeduplicated,
+              sealed: true,
+              runCount: batch.runCount,
+            };
+          }
+
+          if (currentBatch?.status === "ABORTED") {
+            // Zero TaskRuns exist — the count-mismatch sealed:false semantics
+            // ("retry with missing items") would mislead the SDK. Throw so the
+            // customer's batchTrigger() retry creates a fresh batch.
+            throw new ServiceValidationError(
+              `Batch ${batchFriendlyId} is not in PENDING status (current: ABORTED)`
+            );
+          }
+
           logger.warn("Batch item count mismatch", {
             batchId: batchFriendlyId,
             expected: batch.runCount,
@@ -186,6 +333,7 @@ export class StreamBatchItemsService extends WithRunEngine {
             sealed: false,
             enqueuedCount,
             expectedCount: batch.runCount,
+            runCount: batch.runCount,
           };
         }
 
@@ -208,24 +356,43 @@ export class StreamBatchItemsService extends WithRunEngine {
 
         // Check if we won the race to seal the batch
         if (sealResult.count === 0) {
-          // Another request sealed the batch first - re-query to check current state
-          const currentBatch = await this._prisma.batchTaskRun.findUnique({
+          // The conditional update failed because the batch was no longer in
+          // PENDING status. Re-query to determine which path got there first:
+          //   - A concurrent streaming request already sealed and moved it to
+          //     PROCESSING.
+          //   - The BatchQueue completion path finished all runs and set it to
+          //     COMPLETED (without setting sealed=true — that's this endpoint's
+          //     job). This window exists between completionCallback (which calls
+          //     tryCompleteBatch) and cleanup() in BatchQueue — see
+          //     batch-queue/index.ts.
+          // Either way the goal — a durable batch that the SDK stops retrying —
+          // has been achieved, so we return sealed: true.
+          const currentBatch = await this._prisma.batchTaskRun.findFirst({
             where: { id: batchId },
             select: {
               id: true,
               friendlyId: true,
               status: true,
               sealed: true,
+              processingCompletedAt: true,
             },
           });
 
-          if (currentBatch?.sealed && currentBatch.status === "PROCESSING") {
-            // The batch was sealed by another request - this is fine, the goal was achieved
-            logger.info("Batch already sealed by concurrent request", {
+          if (
+            isIdempotentRetrySuccess(
+              currentBatch?.status,
+              currentBatch?.sealed,
+              currentBatch?.processingCompletedAt
+            )
+          ) {
+            logger.info("Batch already sealed/completed by concurrent path", {
               batchId: batchFriendlyId,
               itemsAccepted,
               itemsDeduplicated,
               envId: environment.id,
+              batchStatus: currentBatch?.status,
+              batchSealed: currentBatch?.sealed,
+              processingCompletedAt: currentBatch?.processingCompletedAt,
             });
 
             span.setAttribute("itemsAccepted", itemsAccepted);
@@ -237,6 +404,7 @@ export class StreamBatchItemsService extends WithRunEngine {
               itemsAccepted,
               itemsDeduplicated,
               sealed: true,
+              runCount: batch.runCount,
             };
           }
 
@@ -273,10 +441,126 @@ export class StreamBatchItemsService extends WithRunEngine {
           itemsAccepted,
           itemsDeduplicated,
           sealed: true,
+          runCount: batch.runCount,
         };
       }
     );
   }
+}
+
+/**
+ * Extract `index` and `task` from raw JSON bytes without decoding the full line.
+ * Scans at most 512 bytes, tracking JSON nesting depth to only match top-level keys.
+ */
+export function extractIndexAndTask(bytes: Uint8Array): { index: number; task: string } {
+  let index = -1;
+  let task = "unknown";
+  let depth = 0;
+  let foundIndex = false;
+  let foundTask = false;
+  const limit = Math.min(bytes.byteLength, 512);
+
+  const QUOTE = 0x22; // "
+  const COLON = 0x3a; // :
+  const LBRACE = 0x7b; // {
+  const RBRACE = 0x7d; // }
+  const LBRACKET = 0x5b; // [
+  const RBRACKET = 0x5d; // ]
+  const BACKSLASH = 0x5c; // \
+
+  // Byte patterns for "index" and "task" (without quotes)
+  const INDEX_BYTES = [0x69, 0x6e, 0x64, 0x65, 0x78]; // index
+  const TASK_BYTES = [0x74, 0x61, 0x73, 0x6b]; // task
+
+  let i = 0;
+  while (i < limit && !(foundIndex && foundTask)) {
+    const b = bytes[i];
+
+    if (b === LBRACE || b === LBRACKET) {
+      depth++;
+      i++;
+      continue;
+    }
+    if (b === RBRACE || b === RBRACKET) {
+      depth--;
+      i++;
+      continue;
+    }
+
+    // Only match keys at depth 1 (top-level object)
+    if (b === QUOTE && depth === 1) {
+      // Read the key inside quotes
+      const keyStart = i + 1;
+      let keyEnd = keyStart;
+      while (keyEnd < limit && bytes[keyEnd] !== QUOTE) {
+        if (bytes[keyEnd] === BACKSLASH) keyEnd++; // skip escaped char
+        keyEnd++;
+      }
+
+      const keyLen = keyEnd - keyStart;
+
+      // Check if this key matches "index" or "task"
+      const isIndex =
+        !foundIndex &&
+        keyLen === INDEX_BYTES.length &&
+        INDEX_BYTES.every((b, j) => bytes[keyStart + j] === b);
+      const isTask =
+        !foundTask &&
+        keyLen === TASK_BYTES.length &&
+        TASK_BYTES.every((b, j) => bytes[keyStart + j] === b);
+
+      if (isIndex || isTask) {
+        // Skip past closing quote and find colon
+        let pos = keyEnd + 1;
+        while (pos < limit && bytes[pos] !== COLON) pos++;
+        pos++; // skip colon
+        // Skip whitespace
+        while (pos < limit && (bytes[pos] === 0x20 || bytes[pos] === 0x09)) pos++;
+
+        if (isIndex) {
+          // Parse digits
+          let num = 0;
+          let hasDigit = false;
+          while (pos < limit && bytes[pos] >= 0x30 && bytes[pos] <= 0x39) {
+            num = num * 10 + (bytes[pos] - 0x30);
+            hasDigit = true;
+            pos++;
+          }
+          if (hasDigit) {
+            index = num;
+            foundIndex = true;
+          }
+        } else {
+          // Parse quoted string value
+          if (pos < limit && bytes[pos] === QUOTE) {
+            const valStart = pos + 1;
+            let valEnd = valStart;
+            while (valEnd < limit && bytes[valEnd] !== QUOTE) {
+              if (bytes[valEnd] === BACKSLASH) valEnd++;
+              valEnd++;
+            }
+            // Decode just this slice
+            try {
+              task = new TextDecoder("utf-8", { fatal: true }).decode(
+                bytes.slice(valStart, valEnd)
+              );
+              foundTask = true;
+            } catch {
+              // Leave as "unknown"
+            }
+          }
+        }
+      }
+
+      // Skip past the key's closing quote
+      i = keyEnd + 1;
+      continue;
+    }
+
+    i++;
+  }
+
+  return { index, task };
 }
 
 /**
@@ -303,6 +587,9 @@ export function createNdjsonParserStream(
   let chunks: Uint8Array[] = [];
   let totalBytes = 0;
   let lineNumber = 0;
+  // When an oversized incomplete line is detected (Case 2), we must discard
+  // all remaining bytes of that line until the next newline delimiter.
+  let skipUntilNewline = false;
 
   const NEWLINE_BYTE = 0x0a; // '\n'
 
@@ -396,6 +683,24 @@ export function createNdjsonParserStream(
 
   return new TransformStream<Uint8Array, unknown>({
     transform(chunk, controller) {
+      // If we're skipping the remainder of an oversized line, scan for the
+      // next newline in this chunk and discard everything before it.
+      if (skipUntilNewline) {
+        const nlPos = chunk.indexOf(NEWLINE_BYTE);
+        if (nlPos === -1) {
+          // Entire chunk is still part of the oversized line — discard it
+          return;
+        }
+        // Found the newline — keep everything after it
+        skipUntilNewline = false;
+        const remaining = chunk.slice(nlPos + 1);
+        if (remaining.byteLength === 0) {
+          return;
+        }
+        // Replace chunk with the remainder and fall through to normal processing
+        chunk = remaining;
+      }
+
       // Append chunk to buffer
       chunks.push(chunk);
       totalBytes += chunk.byteLength;
@@ -405,11 +710,19 @@ export function createNdjsonParserStream(
       while ((newlineIndex = findNewlineIndex()) !== -1) {
         // Check size limit BEFORE extracting/decoding (bytes up to newline)
         if (newlineIndex > maxItemBytes) {
-          throw new Error(
-            `Item at line ${
-              lineNumber + 1
-            } exceeds maximum size of ${maxItemBytes} bytes (actual: ${newlineIndex})`
-          );
+          // Case 1: Complete line exceeds limit - emit marker instead of throwing
+          const lineBytes = extractLine(newlineIndex);
+          const extracted = extractIndexAndTask(lineBytes);
+          const marker: OversizedItemMarker = {
+            __batchItemError: "OVERSIZED",
+            index: extracted.index,
+            task: extracted.task,
+            actualSize: newlineIndex,
+            maxSize: maxItemBytes,
+          };
+          controller.enqueue(marker);
+          lineNumber++;
+          continue;
         }
 
         const lineBytes = extractLine(newlineIndex);
@@ -419,11 +732,23 @@ export function createNdjsonParserStream(
       // Check if the remaining buffer (incomplete line) exceeds the limit
       // This prevents OOM from a single huge line without newlines
       if (totalBytes > maxItemBytes) {
-        throw new Error(
-          `Item at line ${
-            lineNumber + 1
-          } exceeds maximum size of ${maxItemBytes} bytes (buffered: ${totalBytes}, no newline found)`
-        );
+        // Case 2: Incomplete line exceeds limit - emit marker instead of throwing
+        const extracted = extractIndexAndTask(concatenateChunks());
+        const marker: OversizedItemMarker = {
+          __batchItemError: "OVERSIZED",
+          index: extracted.index,
+          task: extracted.task,
+          actualSize: totalBytes,
+          maxSize: maxItemBytes,
+        };
+        controller.enqueue(marker);
+        lineNumber++;
+        // Clear buffer and skip remaining bytes of this oversized line
+        // until the next newline delimiter is found in a subsequent chunk
+        chunks = [];
+        totalBytes = 0;
+        skipUntilNewline = true;
+        return;
       }
     },
 
@@ -439,11 +764,17 @@ export function createNdjsonParserStream(
 
       // Check size limit before processing final line
       if (totalBytes > maxItemBytes) {
-        throw new Error(
-          `Item at line ${
-            lineNumber + 1
-          } exceeds maximum size of ${maxItemBytes} bytes (actual: ${totalBytes})`
-        );
+        // Case 3: Flush with oversized remaining - emit marker instead of throwing
+        const extracted = extractIndexAndTask(concatenateChunks());
+        const marker: OversizedItemMarker = {
+          __batchItemError: "OVERSIZED",
+          index: extracted.index,
+          task: extracted.task,
+          actualSize: totalBytes,
+          maxSize: maxItemBytes,
+        };
+        controller.enqueue(marker);
+        return;
       }
 
       const finalBytes = concatenateChunks();

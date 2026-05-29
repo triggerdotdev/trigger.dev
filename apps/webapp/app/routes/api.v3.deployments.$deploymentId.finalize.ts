@@ -75,11 +75,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
         if (error instanceof ServiceValidationError) {
           errorMessage = { error: error.message };
-        } else if (error instanceof Error) {
-          logger.error("Error finalizing deployment", { error: error.message });
-          errorMessage = { error: `Internal server error: ${error.message}` };
         } else {
-          logger.error("Error finalizing deployment", { error: String(error) });
+          logger.error("Error finalizing deployment", { error });
           errorMessage = { error: "Internal server error" };
         }
 
@@ -93,12 +90,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
   } catch (error) {
     if (error instanceof ServiceValidationError) {
       return json({ error: error.message }, { status: 400 });
-    } else if (error instanceof Error) {
-      logger.error("Error finalizing deployment", { error: error.message });
-      return json({ error: `Internal server error: ${error.message}` }, { status: 500 });
-    } else {
-      logger.error("Error finalizing deployment", { error: String(error) });
-      return json({ error: "Internal server error" }, { status: 500 });
     }
+
+    logger.error("Error finalizing deployment", { error });
+    return json({ error: "Internal server error" }, { status: 500 });
   }
 }

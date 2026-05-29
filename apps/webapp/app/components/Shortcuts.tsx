@@ -76,7 +76,8 @@ function ShortcutContent() {
               <ShortcutKey shortcut={{ key: "enter" }} variant="medium/bright" />
             </Shortcut>
             <Shortcut name="Ask AI">
-              <ShortcutKey shortcut={{ modifiers: ["mod"], key: "/" }} variant="medium/bright" />
+              <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
+              <ShortcutKey shortcut={{ key: "i" }} variant="medium/bright" />
             </Shortcut>
             <Shortcut name="Filter">
               <ShortcutKey shortcut={{ key: "f" }} variant="medium/bright" />
@@ -138,8 +139,8 @@ function ShortcutContent() {
               <ShortcutKey shortcut={{ key: "arrowright" }} variant="medium/bright" />
             </Shortcut>
             <Shortcut name="Jump to next/previous run">
-              <ShortcutKey shortcut={{ key: "[" }} variant="medium/bright" />
-              <ShortcutKey shortcut={{ key: "]" }} variant="medium/bright" />
+              <ShortcutKey shortcut={{ key: "j" }} variant="medium/bright" />
+              <ShortcutKey shortcut={{ key: "k" }} variant="medium/bright" />
             </Shortcut>
             <Shortcut name="Expand all">
               <ShortcutKey shortcut={{ key: "e" }} variant="medium/bright" />
@@ -189,6 +190,12 @@ function ShortcutContent() {
               <ShortcutKey shortcut={{ key: "r" }} variant="medium/bright" />
             </Shortcut>
             <Shortcut name="View full run">
+              <ShortcutKey shortcut={{ key: "v" }} variant="medium/bright" />
+            </Shortcut>
+          </div>
+          <div className="space-y-3">
+            <Header3>Metrics page</Header3>
+            <Shortcut name="Toggle fullscreen chart">
               <ShortcutKey shortcut={{ key: "v" }} variant="medium/bright" />
             </Shortcut>
           </div>

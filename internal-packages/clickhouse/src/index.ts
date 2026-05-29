@@ -13,6 +13,7 @@ import {
   getTaskUsageByOrganization,
   getTaskRunsCountQueryBuilder,
   getTaskRunTagsQueryBuilder,
+  getPendingVersionIdsQueryBuilder,
 } from "./taskRuns.js";
 import {
   getSpanDetailsQueryBuilder,
@@ -23,15 +24,47 @@ import {
   getTraceSummaryQueryBuilderV2,
   insertTaskEvents,
   insertTaskEventsV2,
-  getLogsListQueryBuilderV2,
   getLogDetailQueryBuilderV2,
+  getLogsSearchListQueryBuilder,
 } from "./taskEvents.js";
+import { insertMetrics } from "./metrics.js";
+import { insertLlmMetrics } from "./llmMetrics.js";
+import {
+  getSessionTagsQueryBuilder,
+  getSessionsCountQueryBuilder,
+  getSessionsQueryBuilder,
+  insertSessionsCompactArrays,
+} from "./sessions.js";
+import {
+  getGlobalModelMetrics,
+  getGlobalModelComparison,
+  getPopularModels,
+} from "./llmModelAggregates.js";
+import {
+  getErrorGroups,
+  getErrorInstances,
+  getErrorGroupsListQueryBuilder,
+  getErrorHourlyOccurrences,
+  getErrorOccurrencesListQueryBuilder,
+  createErrorOccurrencesQueryBuilder,
+  createErrorOccurrencesByVersionQueryBuilder,
+  getErrorAffectedVersionsQueryBuilder,
+  getOccurrenceCountSinceQueryBuilder,
+  getActiveErrorsSinceQueryBuilder,
+  getOccurrenceCountsSinceQueryBuilder,
+} from "./errors.js";
+export { msToClickHouseInterval } from "./intervals.js";
 import { Logger, type LogLevel } from "@trigger.dev/core/logger";
 import type { Agent as HttpAgent } from "http";
 import type { Agent as HttpsAgent } from "https";
 
 export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
+export type * from "./metrics.js";
+export type * from "./llmMetrics.js";
+export type * from "./llmModelAggregates.js";
+export type * from "./errors.js";
+export type * from "./sessions.js";
 export type * from "./client/queryBuilder.js";
 
 // Re-export column constants, indices, and type-safe accessors
@@ -43,6 +76,8 @@ export {
   getTaskRunField,
   getPayloadField,
 } from "./taskRuns.js";
+
+export { SESSION_COLUMNS, SESSION_INDEX, getSessionField } from "./sessions.js";
 
 // TSQL query execution
 export {
@@ -56,15 +91,10 @@ export {
   type FieldMappings,
   type WhereClauseCondition,
 } from "./client/tsql.js";
-export type { OutputColumnMetadata } from "@internal/tsql";
+export type { ColumnFormatType, OutputColumnMetadata } from "@internal/tsql";
 
 // Errors
 export { QueryError } from "./client/errors.js";
-
-export type LogsQuerySettings = {
-  list?: ClickHouseSettings;
-  detail?: ClickHouseSettings;
-};
 
 export type ClickhouseCommonConfig = {
   keepAlive?: {
@@ -80,7 +110,6 @@ export type ClickhouseCommonConfig = {
     response?: boolean;
   };
   maxOpenConnections?: number;
-  logsQuerySettings?: LogsQuerySettings;
 };
 
 export type ClickHouseConfig =
@@ -104,11 +133,9 @@ export class ClickHouse {
   public readonly writer: ClickhouseWriter;
   private readonly logger: Logger;
   private _splitClients: boolean;
-  private readonly logsQuerySettings?: LogsQuerySettings;
 
   constructor(config: ClickHouseConfig) {
     this.logger = config.logger ?? new Logger("ClickHouse", config.logLevel ?? "debug");
-    this.logsQuerySettings = config.logsQuerySettings;
 
     if (config.url) {
       const url = new URL(config.url);
@@ -198,6 +225,7 @@ export class ClickHouse {
       queryBuilder: getTaskRunsQueryBuilder(this.reader),
       countQueryBuilder: getTaskRunsCountQueryBuilder(this.reader),
       tagQueryBuilder: getTaskRunTagsQueryBuilder(this.reader),
+      pendingVersionIdsQueryBuilder: getPendingVersionIdsQueryBuilder(this.reader),
       getTaskActivity: getTaskActivityQueryBuilder(this.reader),
       getCurrentRunningStats: getCurrentRunningStats(this.reader),
       getAverageDurations: getAverageDurations(this.reader),
@@ -214,14 +242,66 @@ export class ClickHouse {
     };
   }
 
+  get metrics() {
+    return {
+      insert: insertMetrics(this.writer),
+    };
+  }
+
+  get llmMetrics() {
+    return {
+      insert: insertLlmMetrics(this.writer),
+    };
+  }
+
+  get llmModelAggregates() {
+    return {
+      globalMetrics: getGlobalModelMetrics(this.reader),
+      comparison: getGlobalModelComparison(this.reader),
+      popular: getPopularModels(this.reader),
+    };
+  }
+
+  get sessions() {
+    return {
+      insertCompactArrays: insertSessionsCompactArrays(this.writer),
+      queryBuilder: getSessionsQueryBuilder(this.reader),
+      countQueryBuilder: getSessionsCountQueryBuilder(this.reader),
+      tagQueryBuilder: getSessionTagsQueryBuilder(this.reader),
+    };
+  }
+
   get taskEventsV2() {
     return {
       insert: insertTaskEventsV2(this.writer),
       traceSummaryQueryBuilder: getTraceSummaryQueryBuilderV2(this.reader),
       traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilderV2(this.reader),
       spanDetailsQueryBuilder: getSpanDetailsQueryBuilderV2(this.reader),
-      logsListQueryBuilder: getLogsListQueryBuilderV2(this.reader, this.logsQuerySettings?.list),
-      logDetailQueryBuilder: getLogDetailQueryBuilderV2(this.reader, this.logsQuerySettings?.detail),
+      logDetailQueryBuilder: getLogDetailQueryBuilderV2(this.reader),
+    };
+  }
+
+  get taskEventsSearch() {
+    return {
+      logsListQueryBuilder: getLogsSearchListQueryBuilder(this.reader),
+    };
+  }
+
+  get errors() {
+    return {
+      getGroups: getErrorGroups(this.reader),
+      getInstances: getErrorInstances(this.reader),
+      getHourlyOccurrences: getErrorHourlyOccurrences(this.reader),
+      affectedVersionsQueryBuilder: getErrorAffectedVersionsQueryBuilder(this.reader),
+      listQueryBuilder: getErrorGroupsListQueryBuilder(this.reader),
+      occurrencesListQueryBuilder: getErrorOccurrencesListQueryBuilder(this.reader),
+      createOccurrencesQueryBuilder: (intervalExpr: string) =>
+        createErrorOccurrencesQueryBuilder(this.reader, intervalExpr),
+      createOccurrencesByVersionQueryBuilder: (intervalExpr: string) =>
+        createErrorOccurrencesByVersionQueryBuilder(this.reader, intervalExpr),
+      occurrenceCountSinceQueryBuilder: getOccurrenceCountSinceQueryBuilder(this.reader),
+      activeErrorsSinceQueryBuilder: getActiveErrorsSinceQueryBuilder(this.reader),
+      occurrenceCountsSinceQueryBuilder: getOccurrenceCountsSinceQueryBuilder(this.reader),
     };
   }
 }

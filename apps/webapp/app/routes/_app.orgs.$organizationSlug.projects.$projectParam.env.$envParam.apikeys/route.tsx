@@ -51,7 +51,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   try {
     const presenter = new ApiKeysPresenter();
-    const { environment } = await presenter.call({
+    const { environment, hasVercelIntegration } = await presenter.call({
       userId,
       projectSlug: projectParam,
       environmentSlug: envParam,
@@ -59,6 +59,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     return typedjson({
       environment,
+      hasVercelIntegration,
     });
   } catch (error) {
     console.error(error);
@@ -70,7 +71,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { environment } = useTypedLoaderData<typeof loader>();
+  const { environment, hasVercelIntegration } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
 
   if (!environment) {
@@ -132,6 +133,8 @@ export default function Page() {
                 <RegenerateApiKeyModal
                   id={environment.parentEnvironment?.id ?? environment.id}
                   title={environmentFullTitle(environment)}
+                  hasVercelIntegration={hasVercelIntegration}
+                  isDevelopment={environment.type === "DEVELOPMENT"}
                 />
               </div>
               <ClipboardField

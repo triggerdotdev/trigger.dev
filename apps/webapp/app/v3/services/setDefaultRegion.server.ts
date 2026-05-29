@@ -1,3 +1,4 @@
+import { isComputeRegionAccessible, resolveComputeAccess } from "~/v3/regionAccess.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 
 export class SetDefaultRegionService extends BaseService {
@@ -24,6 +25,9 @@ export class SetDefaultRegionService extends BaseService {
       where: {
         id: projectId,
       },
+      include: {
+        organization: { select: { featureFlags: true } },
+      },
     });
 
     if (!project) {
@@ -36,8 +40,21 @@ export class SetDefaultRegionService extends BaseService {
         if (!project.allowedWorkerQueues.includes(workerGroup.masterQueue)) {
           throw new ServiceValidationError("You're not allowed to set this region as default");
         }
-      } else if (workerGroup.hidden) {
-        throw new ServiceValidationError("This region is not available to you");
+      } else {
+        if (workerGroup.hidden) {
+          throw new ServiceValidationError("This region is not available to you");
+        }
+
+        if (workerGroup.workloadType === "MICROVM") {
+          const hasComputeAccess = await resolveComputeAccess(
+            this._prisma,
+            project.organization.featureFlags
+          );
+
+          if (!isComputeRegionAccessible(workerGroup, hasComputeAccess)) {
+            throw new ServiceValidationError("This region requires compute access");
+          }
+        }
       }
     }
 

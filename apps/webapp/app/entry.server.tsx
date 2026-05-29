@@ -1,11 +1,14 @@
 import { createReadableStreamFromReadable, type EntryContext } from "@remix-run/node"; // or cloudflare/deno
 import { RemixServer } from "@remix-run/react";
+import * as Sentry from "@sentry/remix";
 import { wrapHandleErrorWithSentry } from "@sentry/remix";
+import { addTenantContextToEvent } from "~/utils/sentryTenantContext.server";
 import { parseAcceptLanguage } from "intl-parse-accept-language";
 import isbot from "isbot";
 import { renderToPipeableStream } from "react-dom/server";
 import { PassThrough } from "stream";
 import * as Worker from "~/services/worker.server";
+import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
 import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 import {
@@ -23,6 +26,21 @@ import {
   registerRunEngineEventBusHandlers,
   setupBatchQueueCallbacks,
 } from "./v3/runEngineHandlers.server";
+// Touch the sessions replication singleton at entry so it boots deterministically
+// on webapp startup. The singleton's initializer wires start (gated on
+// `clickhouseFactory.isReady()`) and SIGTERM/SIGINT shutdown — mirrors
+// runsReplicationInstance.
+//
+// IMPORTANT: do NOT replace this with `void sessionsReplicationInstance;`.
+// `apps/webapp/package.json` declares `"sideEffects": false`, so esbuild
+// treats `void <identifier>;` as a pure expression statement and tree-shakes
+// the entire import — the singleton's initializer never fires and the
+// sessions→ClickHouse logical replication slot stops being consumed. Assigning
+// to globalThis is an unambiguous side effect the bundler must preserve. See
+// TRI-9864 for the incident write-up.
+import { sessionsReplicationInstance } from "./services/sessionsReplicationInstance.server";
+(globalThis as Record<string, unknown>).__sessionsReplicationInstance =
+  sessionsReplicationInstance;
 
 const ABORT_DELAY = 30000;
 
@@ -83,6 +101,10 @@ function handleBotRequest(
 ) {
   return new Promise((resolve, reject) => {
     let shellRendered = false;
+    // Timer handle is cleared in every terminal callback so the abort closure
+    // (which captures the full React render tree + remixContext) doesn't pin
+    // memory for 30s per successful request. See react-router PR #14200.
+    let abortTimer: NodeJS.Timeout | undefined;
     const { pipe, abort } = renderToPipeableStream(
       <OperatingSystemContextProvider platform={platform}>
         <LocaleContextProvider locales={locales}>
@@ -105,8 +127,10 @@ function handleBotRequest(
           );
 
           pipe(body);
+          clearTimeout(abortTimer);
         },
         onShellError(error: unknown) {
+          clearTimeout(abortTimer);
           reject(error);
         },
         onError(error: unknown) {
@@ -121,7 +145,7 @@ function handleBotRequest(
       }
     );
 
-    setTimeout(abort, ABORT_DELAY);
+    abortTimer = setTimeout(abort, ABORT_DELAY);
   });
 }
 
@@ -135,6 +159,10 @@ function handleBrowserRequest(
 ) {
   return new Promise((resolve, reject) => {
     let shellRendered = false;
+    // Timer handle is cleared in every terminal callback so the abort closure
+    // (which captures the full React render tree + remixContext) doesn't pin
+    // memory for 30s per successful request. See react-router PR #14200.
+    let abortTimer: NodeJS.Timeout | undefined;
     const { pipe, abort } = renderToPipeableStream(
       <OperatingSystemContextProvider platform={platform}>
         <LocaleContextProvider locales={locales}>
@@ -157,8 +185,10 @@ function handleBrowserRequest(
           );
 
           pipe(body);
+          clearTimeout(abortTimer);
         },
         onShellError(error: unknown) {
+          clearTimeout(abortTimer);
           reject(error);
         },
         onError(error: unknown) {
@@ -173,7 +203,7 @@ function handleBrowserRequest(
       }
     );
 
-    setTimeout(abort, ABORT_DELAY);
+    abortTimer = setTimeout(abort, ABORT_DELAY);
   });
 }
 
@@ -196,6 +226,8 @@ export const handleError = wrapHandleErrorWithSentry((error, { request }) => {
 Worker.init().catch((error) => {
   logError(error);
 });
+
+initMollifierDrainerWorker();
 
 bootstrap().catch((error) => {
   logError(error);
@@ -236,9 +268,24 @@ process.on("uncaughtException", (error, origin) => {
 singleton("RunEngineEventBusHandlers", registerRunEngineEventBusHandlers);
 singleton("SetupBatchQueueCallbacks", setupBatchQueueCallbacks);
 
+// Wrapped in singleton() so Remix's dev-mode CJS reloads don't append
+// duplicate copies of the processor — Sentry's processor list lives in
+// node_modules and persists across module reloads. Idempotent at runtime
+// (the processor is a pure read+stamp), but the pattern matches the rest
+// of this file.
+singleton("SentryTenantContextProcessor", () => {
+  if (env.SENTRY_DSN) {
+    Sentry.addEventProcessor(addTenantContextToEvent);
+  }
+  // Return a truthy value — `singleton()` uses `??=` so a `void`
+  // callback would re-execute (and re-register) on every dev reload.
+  return true;
+});
+
 export { apiRateLimiter } from "./services/apiRateLimit.server";
 export { engineRateLimiter } from "./services/engineRateLimit.server";
 export { runWithHttpContext } from "./services/httpAsyncStorage.server";
+export { tenantContextMiddleware } from "./services/tenantContextResolver.server";
 export { socketIo } from "./v3/handleSocketIo.server";
 export { wss } from "./v3/handleWebsockets.server";
 

@@ -34,7 +34,10 @@ export async function getRunFiltersFromRequest(request: Request): Promise<Filter
     batchId,
     scheduleId,
     queues,
+    regions,
     machines,
+    errorId,
+    sources,
   } = TaskRunListSearchFilters.parse(s);
 
   return {
@@ -53,6 +56,9 @@ export async function getRunFiltersFromRequest(request: Request): Promise<Filter
     direction: direction,
     cursor: cursor,
     queues,
+    regions,
     machines,
+    errorId,
+    sources,
   };
 }

@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
-import { generatePresignedRequest } from "~/v3/r2.server";
+import { generatePresignedRequest } from "~/v3/objectStore.server";
 
 const ParamSchema = z.object({
   environmentId: z.string(),

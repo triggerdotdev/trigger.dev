@@ -1,4 +1,6 @@
 import { type MetaFunction } from "@remix-run/react";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
   MainHorizontallyCenteredContainer,
   PageBody,
@@ -6,10 +8,14 @@ import {
 } from "~/components/layout/AppLayout";
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
-import { MfaSetup } from "../resources.account.mfa.setup/route";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { $replica } from "~/db.server";
 import { requireUser } from "~/services/session.server";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import {
+  getAllowedSessionOptions,
+  getEffectiveSessionDuration,
+} from "~/services/sessionDuration.server";
+import { MfaSetup } from "../resources.account.mfa.setup/route";
+import { SessionDurationSetting } from "../resources.account.session-duration/SessionDurationSetting";
 
 export const meta: MetaFunction = () => {
   return [
@@ -22,13 +28,20 @@ export const meta: MetaFunction = () => {
 export async function loader({ request }: LoaderFunctionArgs) {
   const user = await requireUser(request);
 
+  const { durationSeconds, orgCapSeconds } = await getEffectiveSessionDuration(user.id, $replica);
+  const sessionDurationOptions = getAllowedSessionOptions(orgCapSeconds, durationSeconds);
+
   return typedjson({
     user,
+    sessionDuration: durationSeconds,
+    sessionDurationOptions,
+    orgCapSeconds,
   });
 }
 
 export default function Page() {
-  const { user } = useTypedLoaderData<typeof loader>();
+  const { user, sessionDuration, sessionDurationOptions, orgCapSeconds } =
+    useTypedLoaderData<typeof loader>();
 
   return (
     <PageContainer>
@@ -37,11 +50,20 @@ export default function Page() {
       </NavBar>
 
       <PageBody>
-        <MainHorizontallyCenteredContainer className="grid place-items-center overflow-visible">
-          <div className="mb-3 w-full border-b border-grid-dimmed pb-3">
+        <MainHorizontallyCenteredContainer className="max-w-[37.5rem] overflow-visible">
+          <div className="w-full border-b border-grid-dimmed pb-3">
             <Header2>Security</Header2>
           </div>
-          <MfaSetup isEnabled={!!user.mfaEnabledAt} />
+          <div className="w-full border-b border-grid-dimmed py-4">
+            <MfaSetup isEnabled={!!user.mfaEnabledAt} />
+          </div>
+          <div className="w-full border-b border-grid-dimmed py-4">
+            <SessionDurationSetting
+              currentValue={sessionDuration}
+              options={sessionDurationOptions}
+              orgCapSeconds={orgCapSeconds}
+            />
+          </div>
         </MainHorizontallyCenteredContainer>
       </PageBody>
     </PageContainer>

@@ -174,6 +174,7 @@ export const TaskRunInternalError = z.object({
     "GRACEFUL_EXIT_TIMEOUT",
     "TASK_RUN_HEARTBEAT_TIMEOUT",
     "TASK_RUN_CRASHED",
+    "TASK_RUN_UNCAUGHT_EXCEPTION",
     "MAX_DURATION_EXCEEDED",
     "DISK_SPACE_EXCEEDED",
     "POD_EVICTED",
@@ -187,6 +188,9 @@ export const TaskRunInternalError = z.object({
     "OUTDATED_SDK_VERSION",
     "TASK_DID_CONCURRENT_WAIT",
     "RECURSIVE_WAIT_DEADLOCK",
+    "BATCH_ITEM_COULD_NOT_TRIGGER",
+    "PAYLOAD_TOO_LARGE",
+    "UNSPECIFIED_ERROR",
   ]),
   message: z.string().optional(),
   stackTrace: z.string().optional(),
@@ -212,6 +216,7 @@ export const TaskRun = z.object({
   payloadType: z.string(),
   tags: z.array(z.string()),
   isTest: z.boolean().default(false),
+  isReplay: z.boolean().default(false),
   createdAt: z.coerce.date(),
   startedAt: z.coerce.date().default(() => new Date()),
   /** The user-provided idempotency key (not the hash) */
@@ -375,6 +380,7 @@ export const V3TaskRun = z.object({
   payloadType: z.string(),
   tags: z.array(z.string()),
   isTest: z.boolean().default(false),
+  isReplay: z.boolean().default(false),
   createdAt: z.coerce.date(),
   startedAt: z.coerce.date().default(() => new Date()),
   /** The user-provided idempotency key (not the hash) */

@@ -29,6 +29,7 @@ export const TaskRunV2 = z.object({
   base_cost_in_cents: z.number().default(0),
   output: z.unknown(),
   error: z.unknown(),
+  error_fingerprint: z.string().default(""),
   tags: z.array(z.string()).default([]),
   task_version: z.string(),
   sdk_version: z.string(),
@@ -48,6 +49,10 @@ export const TaskRunV2 = z.object({
   bulk_action_group_ids: z.array(z.string()).default([]),
   worker_queue: z.string().default(""),
   max_duration_in_seconds: z.number().int().nullish(),
+  trigger_source: z.string().default(""),
+  root_trigger_source: z.string().default(""),
+  task_kind: z.string().default(""),
+  is_warm_start: z.boolean().nullish(),
   _version: z.string(),
   _is_deleted: z.number().int().default(0),
 });
@@ -82,6 +87,7 @@ export const TASK_RUN_COLUMNS = [
   "base_cost_in_cents",
   "output",
   "error",
+  "error_fingerprint",
   "tags",
   "task_version",
   "sdk_version",
@@ -103,6 +109,10 @@ export const TASK_RUN_COLUMNS = [
   "bulk_action_group_ids",
   "worker_queue",
   "max_duration_in_seconds",
+  "trigger_source",
+  "root_trigger_source",
+  "task_kind",
+  "is_warm_start",
 ] as const;
 
 export type TaskRunColumnName = (typeof TASK_RUN_COLUMNS)[number];
@@ -144,6 +154,7 @@ export type TaskRunFieldTypes = {
   base_cost_in_cents: number;
   output: { data: unknown };
   error: { data: unknown };
+  error_fingerprint: string;
   tags: string[];
   task_version: string;
   sdk_version: string;
@@ -165,6 +176,10 @@ export type TaskRunFieldTypes = {
   bulk_action_group_ids: string[];
   worker_queue: string;
   max_duration_in_seconds: number | null;
+  trigger_source: string;
+  root_trigger_source: string;
+  task_kind: string;
+  is_warm_start: boolean | null;
 };
 
 /**
@@ -277,6 +292,7 @@ export type TaskRunInsertArray = [
   base_cost_in_cents: number,
   output: { data: unknown },
   error: { data: unknown },
+  error_fingerprint: string,
   tags: string[],
   task_version: string,
   sdk_version: string,
@@ -298,6 +314,10 @@ export type TaskRunInsertArray = [
   bulk_action_group_ids: string[],
   worker_queue: string,
   max_duration_in_seconds: number | null,
+  trigger_source: string,
+  root_trigger_source: string,
+  task_kind: string,
+  is_warm_start: boolean | null,
 ];
 
 /**
@@ -354,6 +374,25 @@ export function getTaskRunsQueryBuilder(ch: ClickhouseReader, settings?: ClickHo
   return ch.queryBuilder({
     name: "getTaskRuns",
     baseQuery: "SELECT run_id FROM trigger_dev.task_runs_v2 FINAL",
+    schema: TaskRunV2QueryResult,
+    settings,
+  });
+}
+
+/**
+ * Lookup builder for the run-engine `PendingVersionSystem`. Returns just
+ * `run_id` from `task_runs_v2`. No `FINAL` — the run-engine re-validates
+ * each candidate against Postgres by primary key, so a stale
+ * `PENDING_VERSION` row from a not-yet-merged part is harmless and
+ * `FINAL` would be too expensive for this hot path.
+ */
+export function getPendingVersionIdsQueryBuilder(
+  ch: ClickhouseReader,
+  settings?: ClickHouseSettings
+) {
+  return ch.queryBuilder({
+    name: "getPendingVersionIds",
+    baseQuery: "SELECT run_id FROM trigger_dev.task_runs_v2",
     schema: TaskRunV2QueryResult,
     settings,
   });

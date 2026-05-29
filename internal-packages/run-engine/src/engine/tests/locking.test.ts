@@ -6,7 +6,7 @@ import { trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 
 describe("RunLocker", () => {
-  redisTest("Test acquiring a lock works", { timeout: 15_000 }, async ({ redisOptions }) => {
+  redisTest("Test acquiring a lock works", { timeout: 60_000 }, async ({ redisOptions }) => {
     const redis = createRedisClient(redisOptions);
     const logger = new Logger("RunLockTest", "debug");
     const runLock = new RunLocker({

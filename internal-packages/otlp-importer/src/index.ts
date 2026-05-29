@@ -10,6 +10,12 @@ import {
   ExportLogsServiceResponse,
 } from "./generated/opentelemetry/proto/collector/logs/v1/logs_service";
 
+import {
+  ExportMetricsPartialSuccess,
+  ExportMetricsServiceRequest,
+  ExportMetricsServiceResponse,
+} from "./generated/opentelemetry/proto/collector/metrics/v1/metrics_service";
+
 import type {
   AnyValue,
   KeyValue,
@@ -33,6 +39,21 @@ import {
   Status,
   Status_StatusCode,
 } from "./generated/opentelemetry/proto/trace/v1/trace";
+import {
+  ResourceMetrics,
+  ScopeMetrics,
+  Metric,
+  Gauge,
+  Sum,
+  Histogram,
+  ExponentialHistogram,
+  Summary,
+  NumberDataPoint,
+  HistogramDataPoint,
+  ExponentialHistogramDataPoint,
+  SummaryDataPoint,
+  AggregationTemporality,
+} from "./generated/opentelemetry/proto/metrics/v1/metrics";
 
 export {
   LogRecord,
@@ -57,3 +78,21 @@ export {
 export { ExportTracePartialSuccess, ExportTraceServiceRequest, ExportTraceServiceResponse };
 
 export { ExportLogsPartialSuccess, ExportLogsServiceRequest, ExportLogsServiceResponse };
+
+export { ExportMetricsPartialSuccess, ExportMetricsServiceRequest, ExportMetricsServiceResponse };
+
+export {
+  ResourceMetrics,
+  ScopeMetrics,
+  Metric,
+  Gauge,
+  Sum,
+  Histogram,
+  ExponentialHistogram,
+  Summary,
+  NumberDataPoint,
+  HistogramDataPoint,
+  ExponentialHistogramDataPoint,
+  SummaryDataPoint,
+  AggregationTemporality,
+};

@@ -2,6 +2,7 @@
 // Defines allowed tables, columns, and tenant isolation configuration
 
 import { QueryError } from "./errors";
+import type { BucketThreshold } from "./time_buckets";
 
 /**
  * ClickHouse data types supported by TSQL
@@ -22,6 +23,9 @@ export type ClickHouseType =
   | "Date32"
   | "DateTime"
   | "DateTime64"
+  | "DateTime64(3)"
+  | "DateTime64(9)"
+  | "Decimal64(12)"
   | "UUID"
   | "Bool"
   | "JSON"
@@ -270,6 +274,34 @@ export interface ColumnSchema {
 export type FieldMappings = Record<string, Record<string, string>>;
 
 /**
+ * Display format types for column values.
+ *
+ * These tell the UI how to render values without changing the underlying data type.
+ * Includes both existing custom render types and new format hint types.
+ */
+export type ColumnFormatType =
+  // Existing custom render types
+  | "runId"
+  | "runStatus"
+  | "duration"
+  | "durationNs"
+  | "durationSeconds"
+  | "costInDollars"
+  | "cost"
+  | "machine"
+  | "environment"
+  | "environmentType"
+  | "project"
+  | "queue"
+  | "tags"
+  | "number"
+  // Format hint types (used by prettyFormat())
+  | "bytes"
+  | "decimalBytes"
+  | "quantity"
+  | "percent";
+
+/**
  * Metadata for a column in query results.
  *
  * This is returned by the TSQL compiler to describe each column in the SELECT clause,
@@ -290,6 +322,16 @@ export interface OutputColumnMetadata {
    * Only present for columns or virtual columns defined in the table schema.
    */
   description?: string;
+  /**
+   * Display format hint — tells the UI how to render numeric values.
+   *
+   * Set by `prettyFormat(expr, 'formatType')` in TSQL queries.
+   * The underlying value remains numeric (for charts), but the UI uses this
+   * hint for axis labels, table cells, and tooltips.
+   *
+   * Also auto-populated from `customRenderType` when not explicitly set.
+   */
+  format?: ColumnFormatType;
 }
 
 /**
@@ -325,8 +367,8 @@ export interface TableSchema {
   clickhouseName: string;
   /** Column definitions for this table */
   columns: Record<string, ColumnSchema>;
-  /** Tenant isolation column configuration */
-  tenantColumns: TenantColumnConfig;
+  /** Tenant isolation column configuration. Omit for global tables with no tenant scoping. */
+  tenantColumns?: TenantColumnConfig;
   /** Description of the table for documentation/autocomplete */
   description?: string;
   /** Whether this table can be joined to other tables */
@@ -336,6 +378,37 @@ export interface TableSchema {
    * These are injected into the WHERE clause automatically, similar to tenant isolation.
    */
   requiredFilters?: RequiredFilter[];
+  /**
+   * The TSQL column name used as the time constraint for `timeBucket()`.
+   *
+   * When set, `timeBucket()` resolves to `toStartOfInterval(clickhouse_column, INTERVAL ...)`,
+   * using the ClickHouse column name mapped from this TSQL column.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   name: "runs",
+   *   timeConstraint: "triggered_at", // TSQL column name; maps to CH column "created_at"
+   *   columns: {
+   *     triggered_at: { name: "triggered_at", clickhouseName: "created_at", ...column("DateTime64") },
+   *   },
+   * }
+   * ```
+   */
+  timeConstraint?: string;
+  /**
+   * Custom time bucket thresholds for this table.
+   * When set, timeBucket() uses these instead of the global defaults.
+   * Useful when the table's time granularity differs from the standard (e.g., metrics
+   * pre-aggregated into 10-second buckets shouldn't go below 10-second intervals).
+   */
+  timeBucketThresholds?: BucketThreshold[];
+  /**
+   * Whether to add the FINAL keyword when querying this table.
+   * This should be set to `true` for ReplacingMergeTree tables where deduplication
+   * is needed to get correct results. Not needed for plain MergeTree tables.
+   */
+  useFinal?: boolean;
 }
 
 /**
@@ -793,9 +866,11 @@ export function sanitizeErrorMessage(message: string, schemas: TableSchema[]): s
     // Map table names
     tableNameMap.set(table.clickhouseName, table.name);
 
-    // Collect tenant column names to strip
+    // Collect tenant column names to strip (global tables have no tenant columns)
     const tenantCols = table.tenantColumns;
-    columnsToStrip.push(tenantCols.organizationId, tenantCols.projectId, tenantCols.environmentId);
+    if (tenantCols) {
+      columnsToStrip.push(tenantCols.organizationId, tenantCols.projectId, tenantCols.environmentId);
+    }
 
     // Collect required filter columns to strip
     if (table.requiredFilters) {

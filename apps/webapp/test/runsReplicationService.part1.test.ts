@@ -5,6 +5,7 @@ import { z } from "zod";
 import { TaskRunStatus } from "~/database-types";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
 import { createInMemoryTracing, createInMemoryMetrics } from "./utils/tracing";
+import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
 import superjson from "superjson";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -27,7 +28,7 @@ describe("RunsReplicationService (part 1/2)", () => {
       const { tracer, exporter } = createInMemoryTracing();
 
       const runsReplicationService = new RunsReplicationService({
-        clickhouse,
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
         pgConnectionUrl: postgresContainer.getConnectionUri(),
         serviceName: "runs-replication",
         slotName: "task_runs_to_clickhouse_v1",
@@ -86,6 +87,12 @@ describe("RunsReplicationService (part 1/2)", () => {
           organizationId: organization.id,
           environmentType: "DEVELOPMENT",
           engine: "V2",
+          annotations: {
+            triggerSource: "api",
+            triggerAction: "trigger",
+            rootTriggerSource: "dashboard",
+          },
+          isWarmStart: true,
         },
       });
 
@@ -111,6 +118,9 @@ describe("RunsReplicationService (part 1/2)", () => {
           organization_id: organization.id,
           environment_type: "DEVELOPMENT",
           engine: "V2",
+          trigger_source: "api",
+          root_trigger_source: "dashboard",
+          is_warm_start: 1,
         })
       );
 
@@ -142,7 +152,7 @@ describe("RunsReplicationService (part 1/2)", () => {
       const { tracer, exporter } = createInMemoryTracing();
 
       const runsReplicationService = new RunsReplicationService({
-        clickhouse,
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
         pgConnectionUrl: postgresContainer.getConnectionUri(),
         serviceName: "runs-replication",
         slotName: "task_runs_to_clickhouse_v1",
@@ -280,7 +290,7 @@ describe("RunsReplicationService (part 1/2)", () => {
       const { tracer, exporter } = createInMemoryTracing();
 
       const runsReplicationService = new RunsReplicationService({
-        clickhouse,
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
         pgConnectionUrl: postgresContainer.getConnectionUri(),
         serviceName: "runs-replication",
         slotName: "task_runs_to_clickhouse_v1",
@@ -350,7 +360,7 @@ describe("RunsReplicationService (part 1/2)", () => {
       });
 
       const runsReplicationService = new RunsReplicationService({
-        clickhouse,
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
         pgConnectionUrl: postgresContainer.getConnectionUri(),
         serviceName: "runs-replication-batching",
         slotName: "task_runs_to_clickhouse_v1",
@@ -454,7 +464,7 @@ describe("RunsReplicationService (part 1/2)", () => {
       });
 
       const runsReplicationService = new RunsReplicationService({
-        clickhouse,
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
         pgConnectionUrl: postgresContainer.getConnectionUri(),
         serviceName: "runs-replication-payload",
         slotName: "task_runs_to_clickhouse_v1",
@@ -555,7 +565,7 @@ describe("RunsReplicationService (part 1/2)", () => {
       });
 
       const runsReplicationService = new RunsReplicationService({
-        clickhouse,
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
         pgConnectionUrl: postgresContainer.getConnectionUri(),
         serviceName: "runs-replication-payload",
         slotName: "task_runs_to_clickhouse_v1",
@@ -661,7 +671,7 @@ describe("RunsReplicationService (part 1/2)", () => {
       });
 
       const runsReplicationService = new RunsReplicationService({
-        clickhouse,
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
         pgConnectionUrl: postgresContainer.getConnectionUri(),
         serviceName: "runs-replication-update",
         slotName: "task_runs_to_clickhouse_v1",
@@ -768,7 +778,7 @@ describe("RunsReplicationService (part 1/2)", () => {
       });
 
       const runsReplicationService = new RunsReplicationService({
-        clickhouse,
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
         pgConnectionUrl: postgresContainer.getConnectionUri(),
         serviceName: "runs-replication-delete",
         slotName: "task_runs_to_clickhouse_v1",
@@ -869,7 +879,7 @@ describe("RunsReplicationService (part 1/2)", () => {
 
       // Service A
       const runsReplicationServiceA = new RunsReplicationService({
-        clickhouse,
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
         pgConnectionUrl: postgresContainer.getConnectionUri(),
         serviceName: "runs-replication-shutdown-handover",
         slotName: "task_runs_to_clickhouse_v1",
@@ -973,7 +983,7 @@ describe("RunsReplicationService (part 1/2)", () => {
 
       // Service B
       const runsReplicationServiceB = new RunsReplicationService({
-        clickhouse,
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
         pgConnectionUrl: postgresContainer.getConnectionUri(),
         serviceName: "runs-replication-shutdown-handover",
         slotName: "task_runs_to_clickhouse_v1",
@@ -1020,7 +1030,7 @@ describe("RunsReplicationService (part 1/2)", () => {
 
       // Service A
       const runsReplicationServiceA = new RunsReplicationService({
-        clickhouse,
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
         pgConnectionUrl: postgresContainer.getConnectionUri(),
         serviceName: "runs-replication-shutdown-after-processed",
         slotName: "task_runs_to_clickhouse_v1",
@@ -1122,7 +1132,7 @@ describe("RunsReplicationService (part 1/2)", () => {
 
       // Service B
       const runsReplicationServiceB = new RunsReplicationService({
-        clickhouse,
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
         pgConnectionUrl: postgresContainer.getConnectionUri(),
         serviceName: "runs-replication-shutdown-after-processed",
         slotName: "task_runs_to_clickhouse_v1",
@@ -1165,7 +1175,7 @@ describe("RunsReplicationService (part 1/2)", () => {
       const metricsHelper = createInMemoryMetrics();
 
       const runsReplicationService = new RunsReplicationService({
-        clickhouse,
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
         pgConnectionUrl: postgresContainer.getConnectionUri(),
         serviceName: "runs-replication-metrics",
         slotName: "task_runs_to_clickhouse_v1",

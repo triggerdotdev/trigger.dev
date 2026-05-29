@@ -21,6 +21,7 @@ import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
@@ -86,10 +87,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const realtimeStream = getRealtimeStreamInstance(
     run.runtimeEnvironment,
-    run.realtimeStreamsVersion
+    run.realtimeStreamsVersion,
+    { run }
   );
 
-  return realtimeStream.streamResponse(request, run.friendlyId, streamKey, request.signal, {
+  return realtimeStream.streamResponse(request, run.friendlyId, streamKey, getRequestAbortSignal(), {
     lastEventId,
   });
 };
@@ -98,16 +100,33 @@ export function RealtimeStreamViewer({
   runId,
   streamKey,
   metadata,
+  displayName,
+  resourcePath: resourcePathOverride,
+  headerLabel,
+  headerLeft,
 }: {
-  runId: string;
-  streamKey: string;
-  metadata: Record<string, unknown> | undefined;
+  runId?: string;
+  streamKey?: string;
+  metadata?: Record<string, unknown> | undefined;
+  displayName?: string;
+  /** Pre-built resource path. When provided, `runId`/`streamKey` are unused. */
+  resourcePath?: string;
+  /** Override the "Stream:" / "Input stream:" prefix in the header. */
+  headerLabel?: string;
+  /**
+   * Replaces the default "Stream: <name>" content next to the connection
+   * icon. Use to inline tabs or other navigation in place of a static
+   * label.
+   */
+  headerLeft?: React.ReactNode;
 }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
 
-  const resourcePath = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/${runId}/streams/${streamKey}`;
+  const resourcePath =
+    resourcePathOverride ??
+    `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/runs/${runId}/streams/${streamKey}`;
 
   const startIndex = typeof metadata?.startIndex === "number" ? metadata.startIndex : undefined;
   const { chunks, error, isConnected } = useRealtimeStream(resourcePath, startIndex);
@@ -225,7 +244,7 @@ export function RealtimeStreamViewer({
       {/* Header */}
       <div className="border-b border-grid-bright bg-background-bright @container">
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 @[300px]:flex-nowrap">
-          <div className="flex min-w-0 items-center gap-1.5">
+          <div className="flex min-w-0 items-center gap-3">
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger>
@@ -240,13 +259,17 @@ export function RealtimeStreamViewer({
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <Paragraph
-              variant="small/bright"
-              className="mb-0 flex min-w-0 items-center gap-1 truncate whitespace-nowrap"
-            >
-              <span>Stream:</span>
-              <span className="truncate font-mono text-text-dimmed">{streamKey}</span>
-            </Paragraph>
+            {headerLeft ?? (
+              <Paragraph
+                variant="small/bright"
+                className="mb-0 flex min-w-0 items-center gap-1 truncate whitespace-nowrap"
+              >
+                <span>{headerLabel ?? (displayName ? "Input stream:" : "Stream:")}</span>
+                <span className="truncate font-mono text-text-dimmed">
+                  {displayName ?? streamKey ?? ""}
+                </span>
+              </Paragraph>
+            )}
           </div>
           <div className="flex w-full flex-wrap items-center justify-between gap-3 @[300px]:w-auto @[300px]:flex-nowrap">
             <Paragraph variant="small" className="mb-0 whitespace-nowrap">
@@ -487,6 +510,9 @@ function useRealtimeStream(resourcePath: string, startIndex?: number) {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
+    setChunks([]);
+    setError(null);
+
     const abortController = new AbortController();
     let reader: ReadableStreamDefaultReader<SSEStreamPart<unknown>> | null = null;
 

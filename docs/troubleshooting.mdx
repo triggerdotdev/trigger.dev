@@ -45,6 +45,14 @@ The Yarn Plug'n'Play manifest forbids importing "@trigger.dev/core" here because
 
 And you're using Yarn v1.22 or another package manager, check if you have a `.pnp.cjs` file in your home directory. This can happen if you previously had Yarn Plug'n'Play enabled globally. Remove the `.pnp.cjs` file to resolve the issue.
 
+### `Connection error` when logging in
+
+If you see "Connection error" when running `trigger login` (or "Failed to create authorization code"), try these in order:
+
+1. **Clear saved auth and retry:** `npx trigger.dev@latest logout`, then `npx trigger.dev@latest login` again. Sometimes an invalid config is cached.
+2. **VPN or firewall:** Disconnect from VPN or check firewall/proxy; try `npx trigger.dev@latest login --log-level debug` for more detail.
+3. **TLS / certificate store:** Node may use a different CA store than your OS (e.g. `curl` works but the CLI fails). Try `export NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem` (macOS/Linux) then login again, or reinstall Node so it gets updated certs. Behind a corporate proxy or custom CA? Set `NODE_EXTRA_CA_CERTS` to that CA file.
+
 ## Deployment
 
 Running the [trigger.dev deploy] command builds and deploys your code. Sometimes there can be issues building your code.
@@ -73,6 +81,10 @@ This happens because Docker Desktop left behind a config file that's still tryin
 
 Usually there will be some useful guidance below this message. If you can't figure out what's going wrong then join [our Discord](https://trigger.dev/discord) and create a Help forum post with a link to your deployment.
 
+### `resource_exhausted`
+
+If you see a `resource_exhausted` error during deploy, the build may have hit resource limits on our build infrastructure. Try our [native builder](https://trigger.dev/changelog/deployments-with-native-builds).
+
 ### `No loader is configured for ".node" files`
 
 This happens because `.node` files are native code and can't be bundled like other packages. To fix this, add your package to [`build.external`](/config/config-file#external) in the `trigger.config.ts` file like this:
@@ -92,6 +104,10 @@ export default defineConfig({
 ### `Cannot find module '/app/lib/worker.js"` when using pino
 
 If you see this error, add pino (and any other associated packages) to your `external` build settings in your `trigger.config.ts` file. Learn more about the `external` setting in the [config docs](/config/config-file#external).
+
+### `Failed to index deployment` with `Column must be greater than or equal to 0, got -1`
+
+This can occur when using `runtime: "bun"` during the indexing phase (we load and execute your task files to discover exports). A short-term workaround is to [pnpm patch](https://pnpm.io/cli/patch) the `source-map` package. See [this GitHub issue](https://github.com/triggerdotdev/trigger.dev/issues/3045) for the patch details.
 
 ### `reactDOMServer.renderToPipeableStream is not a function` when using react-email
 
@@ -151,6 +167,10 @@ Your code is deployed separately from the rest of your app(s) so you need to mak
 
 Prisma uses code generation to create the client from your schema file. This means you need to add a bit of config so we can generate this file before your tasks run: [Read the guide](/config/extensions/prismaExtension).
 
+### Database connection requires IPv4
+
+Trigger.dev currently only supports IPv4 database connections. If your database provider only provides an IPv6 connection string, you'll need to use an IPv4 address instead. [Upvote IPv6 support](https://triggerdev.featurebase.app/p/support-ipv6-database-connections).
+
 ### `Parallel waits are not supported`
 
 In the current version, you can't perform more that one "wait" in parallel.
@@ -161,6 +181,7 @@ Waits include:
 - `wait.until()`
 - `task.triggerAndWait()`
 - `task.batchTriggerAndWait()`
+- `retry.onThrow()`
 - And any of our functions with `wait` in the name.
 
 This restriction exists because we suspend the task server after a wait, and resume it when the wait is done. At the moment, if you do more than one wait, the run will never continue when deployed, so we throw this error instead.
@@ -171,11 +192,51 @@ The most common situation this happens is if you're using `Promise.all` around s
 
 Make sure that you always use `await` when you call `trigger`, `triggerAndWait`, `batchTrigger`, and `batchTriggerAndWait`. If you don't then it's likely the task(s) won't be triggered because the calling function process can be terminated before the networks calls are sent.
 
+### `COULD_NOT_FIND_EXECUTOR`
+
+If you see a `COULD_NOT_FIND_EXECUTOR` error when triggering a task, it may be caused by dynamically importing the child task. When tasks are dynamically imported, the executor may not be properly registered.
+
+Use a top-level import instead:
+
+```ts
+import { myChildTask } from "~/trigger/my-child-task";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: string) => {
+    await myChildTask.trigger({ payload: "data" });
+  },
+});
+```
+
+Alternatively, use `tasks.trigger()` or `batch.triggerAndWait()` without importing the task:
+
+```ts
+import { batch } from "@trigger.dev/sdk";
+
+export const myTask = task({
+  id: "my-task",
+  run: async (payload: string) => {
+    await batch.triggerAndWait([{ id: "my-child-task", payload: "data" }]);
+  },
+});
+```
+
 ### Rate limit exceeded
 
 <RateLimitHitUseBatchTrigger />
 
 View the [rate limits](/limits) page for more information.
+
+### Runs waiting in queue due to concurrency limits
+
+If runs are staying in the `QUEUED` state for extended periods, check your concurrency usage in the dashboard. Review how many runs are `EXECUTING` or `DEQUEUED` (these count against limits) and check if any runs are stuck in `EXECUTING` state, as they may be blocking new runs.
+
+**Solutions:**
+
+- **Increase concurrency limits** - If you're on a paid plan, increase your environment concurrency limit via the dashboard
+- **Review queue concurrency limits** - Check if individual queues have restrictive `concurrencyLimit` settings
+- **Check for stuck runs** - See if stalled runs are blocking new executions
 
 ### `Crypto is not defined`
 
@@ -191,7 +252,11 @@ If this was a dev run, then most likely the `trigger.dev dev` CLI was stopped, a
 
 </Note>
 
-These errors can happen when code inside your task is blocking the event loop for too long. The most likely cause would be an accidental infinite loop. It could also be a CPU-heavy operation that's blocking the event loop, like nested loops with very large arrays. We recommend reading the [Don't Block the Event Loop](https://nodejs.org/en/learn/asynchronous-work/dont-block-the-event-loop) guide from Node.js for common patterns that can cause this.
+These errors can happen when code inside your task is blocking the event loop for too long. The most likely cause would be an accidental infinite loop. It could also be a CPU-heavy operation that's blocking the event loop, like nested loops with very large arrays.
+
+If you use **Prisma 7.x**, query compilation and caching run on the main thread and can block the event loop during heavy or repeated database work. In tasks that do a lot of Prisma calls (e.g. in loops or many sequential queries), add `await heartbeats.yield()` periodically so the event loop can run and send heartbeats.
+
+We recommend reading the [Don't Block the Event Loop](https://nodejs.org/en/learn/asynchronous-work/dont-block-the-event-loop) guide from Node.js for common patterns that can cause this.
 
 If you are doing a continuous CPU-heavy task, then we recommend you try using our `heartbeats.yield` function to automatically yield to the event loop periodically:
 
@@ -212,6 +277,72 @@ You could also offload the CPU-heavy work to a Node.js worker thread, but this i
 </Note>
 
 If the above doesn't work, then we recommend you try increasing the machine size of your task. See our [machines guide](/machines) for more information.
+
+### Uncaught exceptions
+
+If you see a `TASK_RUN_UNCAUGHT_EXCEPTION` error, an exception escaped your task's `run()` function without being thrown through your `await` chain — the runtime caught it via Node's `process.on("uncaughtException")` handler. The dashboard surfaces this as a regular task failure (status `Failed`) and the run will retry according to your task's retry policy, but the exception still indicates a bug worth fixing.
+
+The most common cause is a Node `EventEmitter` emitting an `"error"` event with no listener attached. When this happens, Node escalates the event into an `uncaughtException`. Long-lived clients like `node-redis`, `pg`, `kafkajs`, and `mongodb` all surface socket-level errors this way.
+
+For example, a `node-redis` client with no error listener will fail your run with an `Error: read ECONNRESET` (or similar TCP error) the next time the socket is reset:
+
+```ts
+import { task } from "@trigger.dev/sdk";
+import { createClient } from "redis";
+
+export const myTask = task({
+  id: "my-task",
+  run: async () => {
+    const client = createClient({ url: process.env.REDIS_URL });
+
+    // BAD: no .on("error", ...) listener — a socket reset will crash the run
+    // with an uncaught exception, even if the next .get() would have worked.
+    await client.connect();
+    return await client.get("foo");
+  },
+});
+```
+
+Fix it by attaching an `error` listener so the event has somewhere to go:
+
+```ts
+const client = createClient({ url: process.env.REDIS_URL });
+
+// GOOD: the listener catches socket-level errors. The awaited command
+// (e.g. .get) will still reject if the connection is broken, and that
+// rejection propagates through your run() and fails the attempt cleanly.
+client.on("error", (err) => {
+  logger.warn("Redis client error", { err });
+});
+
+await client.connect();
+return await client.get("foo");
+```
+
+The same fix applies to any library that emits `"error"` events. As a rule, attach an `.on("error", ...)` listener to every long-lived client you create inside a task.
+
+<Note>
+
+Unhandled promise rejections (e.g. `Promise.reject(...)` with no `.catch`) take the same path — Node routes them through `uncaughtException` by default, and the runtime treats them as `TASK_RUN_UNCAUGHT_EXCEPTION` for the same reasons. Make sure every promise either gets `await`ed or has a `.catch(...)` handler.
+
+</Note>
+
+### Realtime stream error (`sendBatchNonBlocking` / `S2AppendSession`)
+
+Errors mentioning `sendBatchNonBlocking`, `@s2-dev/streamstore`, or `S2AppendSession` (often with `code: undefined`) can occur when you close a stream and then await `waitUntilComplete()`, or when a stream runs for a long time (e.g. 20+ minutes). Wrap `waitUntilComplete()` in try/catch so Transport/closed-stream errors don't fail your task:
+
+```ts
+import { streams } from "@trigger.dev/sdk";
+
+const { waitUntilComplete } = streams.pipe("my-stream", dataStream); // or streams.writer(...)
+try {
+  await waitUntilComplete();
+} catch (err) {
+  // Transport/closed-stream; log if needed or ignore
+}
+```
+
+Alternatively, await `waitUntilComplete()` before closing the stream. See [Realtime Streams](/tasks/streams) for more.
 
 ## Framework specific issues
 

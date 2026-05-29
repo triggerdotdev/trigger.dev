@@ -1,9 +1,10 @@
-import { ArrowRightIcon, ExclamationCircleIcon } from "@heroicons/react/20/solid";
+import { ExclamationCircleIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction, Outlet, useNavigation, useParams, useLocation } from "@remix-run/react";
+import { type MetaFunction, Outlet, useLocation, useNavigation, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { BatchesNone } from "~/components/BlankStatePanels";
 import { ListPagination } from "~/components/ListPagination";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -13,6 +14,8 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
+  collapsibleHandleClassName,
+  RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
@@ -27,6 +30,7 @@ import {
   TableHeader,
   TableHeaderCell,
   TableRow,
+  CopyableTableCell,
 } from "~/components/primitives/Table";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { BatchFilters, BatchListFilters } from "~/components/runs/v3/BatchFilters";
@@ -50,6 +54,7 @@ import {
   v3BatchPath,
   v3BatchRunsPath,
 } from "~/utils/pathBuilder";
+import { throwNotFound } from "~/utils/httpErrors";
 
 export const meta: MetaFunction = () => {
   return [
@@ -70,7 +75,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) {
-    throw new Error("Environment not found");
+    throwNotFound("Environment not found");
   }
 
   const url = new URL(request.url);
@@ -143,14 +148,25 @@ export default function Page() {
                 />
               </div>
             </ResizablePanel>
-            {isShowingInspector && (
-              <>
-                <ResizableHandle id="batches-handle" />
-                <ResizablePanel id="batches-inspector" min="100px" default="500px">
-                  <Outlet />
-                </ResizablePanel>
-              </>
-            )}
+            <ResizableHandle
+              id="batches-handle"
+              className={collapsibleHandleClassName(isShowingInspector)}
+            />
+            <ResizablePanel
+              id="batches-inspector"
+              min="370px"
+              default="370px"
+              className="overflow-hidden"
+              collapsible
+              collapsed={!isShowingInspector}
+              onCollapseChange={() => {}}
+              collapsedSize="0px"
+              collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+            >
+              <div className="h-full" style={{ minWidth: 370 }}>
+                <Outlet />
+              </div>
+            </ResizablePanel>
           </ResizablePanelGroup>
         )}
       </PageBody>
@@ -220,9 +236,9 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
 
             return (
               <TableRow key={batch.id} className={isSelected ? "bg-grid-dimmed" : undefined}>
-                <TableCell to={inspectorPath} isTabbableCell>
+                <CopyableTableCell value={batch.friendlyId} to={inspectorPath} isTabbableCell>
                   {batch.friendlyId}
-                </TableCell>
+                </CopyableTableCell>
 
                 <TableCell to={inspectorPath}>
                   {batch.batchVersion === "v1" ? (
@@ -272,7 +288,7 @@ function BatchesTable({ batches, hasFilters, filters }: BatchList) {
         {isLoading && (
           <TableBlankRow
             colSpan={8}
-            className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-charcoal-900/90"
+            className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-background-dimmed/90"
           >
             <Spinner /> <span className="text-text-dimmed">Loading…</span>
           </TableBlankRow>
@@ -287,8 +303,14 @@ function BatchActionsCell({ runsPath }: { runsPath: string }) {
     <TableCellMenu
       isSticky
       hiddenButtons={
-        <LinkButton to={runsPath} variant="minimal/small" LeadingIcon={ArrowRightIcon}>
-          View runs
+        <LinkButton
+          to={runsPath}
+          variant="minimal/small"
+          TrailingIcon={RunsIcon}
+          trailingIconClassName="text-runs"
+          className="text-text-bright"
+        >
+          <span>View runs</span>
         </LinkButton>
       }
     />

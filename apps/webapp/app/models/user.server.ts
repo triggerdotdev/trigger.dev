@@ -233,7 +233,7 @@ export async function findOrCreateGoogleUser({
     // Check if email user and auth user are the same
     if (existingEmailUser.id !== existingUser.id) {
       // Different users: email is taken by one user, Google auth belongs to another
-      logger.error(
+      logger.warn(
         `Google auth conflict: Google ID ${authenticationProfile.id} belongs to user ${existingUser.id} but email ${email} is taken by user ${existingEmailUser.id}`,
         {
           email,
@@ -332,13 +332,15 @@ export function updateUser({
   email,
   marketingEmails,
   referralSource,
+  onboardingData,
 }: Pick<User, "id" | "name" | "email"> & {
   marketingEmails?: boolean;
   referralSource?: string;
+  onboardingData?: Prisma.InputJsonValue;
 }) {
   return prisma.user.update({
     where: { id },
-    data: { name, email, marketingEmails, referralSource, confirmedBasicDetails: true },
+    data: { name, email, marketingEmails, referralSource, onboardingData, confirmedBasicDetails: true },
   });
 }
 

@@ -19,15 +19,13 @@ export class TestPresenter extends BasePresenter {
     const tasks = await this.#getTasks(environmentId, isDev);
 
     return {
-      tasks: tasks.map((task) => {
-        return {
-          id: task.id,
-          taskIdentifier: task.slug,
-          filePath: task.filePath,
-          friendlyId: task.friendlyId,
-          triggerSource: task.triggerSource,
-        };
-      }),
+      tasks: tasks.map((task) => ({
+        id: task.id,
+        taskIdentifier: task.slug,
+        filePath: task.filePath,
+        friendlyId: task.friendlyId,
+        triggerSource: task.triggerSource,
+      })),
     };
   }
 
@@ -54,10 +52,13 @@ export class TestPresenter extends BasePresenter {
         SELECT bwt.id, version, slug, "filePath", bwt."friendlyId", bwt."triggerSource"
         FROM latest_workers
         JOIN ${sqlDatabaseSchema}."BackgroundWorkerTask" bwt ON bwt."workerId" = latest_workers.id
+        WHERE bwt."triggerSource" != 'AGENT'
         ORDER BY slug ASC;`;
     } else {
       const currentDeployment = await findCurrentWorkerDeployment({ environmentId: envId });
-      return currentDeployment?.worker?.tasks ?? [];
+      return (currentDeployment?.worker?.tasks ?? []).filter(
+        (t) => t.triggerSource !== "AGENT"
+      );
     }
   }
 }

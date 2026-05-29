@@ -55,13 +55,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   } catch (error) {
     if (error instanceof ServiceValidationError) {
       return json({ error: error.message }, { status: 400 });
-    } else if (error instanceof Error) {
-      logger.error("Error initializing deployment", { error: error.message });
-      return json({ error: `Internal server error: ${error.message}` }, { status: 500 });
-    } else {
-      logger.error("Error initializing deployment", { error: String(error) });
-      return json({ error: "Internal server error" }, { status: 500 });
     }
+
+    logger.error("Error initializing deployment", { error });
+    return json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -72,8 +69,7 @@ export const loader = createLoaderApiRoute(
     corsStrategy: "none",
     authorization: {
       action: "read",
-      resource: () => ({ deployments: "list" }),
-      superScopes: ["read:deployments", "read:all", "admin"],
+      resource: () => ({ type: "deployments", id: "list" }),
     },
     findResource: async () => 1, // This is a dummy function, we don't need to find a resource
   },

@@ -1,12 +1,14 @@
 ---
-title: How it works
-sidebarTitle: How it works
-description: Technical details about how the Trigger.dev Realtime API works
+title: "How Realtime works"
+sidebarTitle: "How it works"
+description: "Technical architecture behind Trigger.dev's real-time run updates, built on Electric SQL and PostgreSQL syncing."
 ---
+
+This page covers the infrastructure behind **run updates** (status, metadata, tags). [Streaming](/tasks/streams) uses a separate transport.
 
 ## Architecture
 
-The Realtime API is built on top of [Electric SQL](https://electric-sql.com/), an open-source PostgreSQL syncing engine. The Trigger.dev API wraps Electric SQL and provides a simple API to subscribe to [runs](/runs) and get real-time updates.
+The run updates system is built on top of [Electric SQL](https://electric-sql.com/), an open-source PostgreSQL syncing engine. The Trigger.dev API wraps Electric SQL and provides a simple API to subscribe to [runs](/runs) and get updates as they happen.
 
 ## Run changes
 

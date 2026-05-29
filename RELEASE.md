@@ -1,5 +1,28 @@
 ## Guide on releasing a new version
 
+### Automated release (v4+)
+
+Releases are fully automated via CI:
+
+1. PRs merge to `main` with changesets (for package changes) and/or `.server-changes/` files (for server-only changes).
+2. The [changesets-pr.yml](./.github/workflows/changesets-pr.yml) workflow automatically creates/updates the `changeset-release/main` PR with version bumps and an enhanced summary of all changes. Consumed `.server-changes/` files are removed on the release branch (same approach changesets uses for `.changeset/` files — they're deleted on the branch, so merging the PR cleans them up).
+3. When ready to release, merge the changeset release PR into `main`.
+4. The [release.yml](./.github/workflows/release.yml) workflow automatically:
+   - Publishes all packages to npm
+   - Creates a single unified GitHub release (e.g., "trigger.dev v4.3.4")
+   - Tags and triggers Docker image builds
+   - After Docker images are pushed, updates the GitHub release with the exact GHCR tag link
+
+### What engineers need to do
+
+- **Package changes**: Add a changeset with `pnpm run changeset:add`
+- **Server-only changes**: Add a `.server-changes/` file (see `.server-changes/README.md`)
+- **Mixed PRs**: Just the changeset is enough
+
+See `CHANGESETS.md` for full details on changesets and server changes.
+
+### Legacy release (v3)
+
 1. Merge in the changeset PR into main, making sure to cancel both the release and publish github actions from that merge.
 2. Pull the changes locally into main
 3. Run `pnpm i` which will update the pnpm lock file with the new versions

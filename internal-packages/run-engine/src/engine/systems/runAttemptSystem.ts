@@ -63,6 +63,7 @@ import {
 import { SystemResources } from "./systems.js";
 import { WaitpointSystem } from "./waitpointSystem.js";
 import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
+import type { AuthenticatedEnvironment } from "../../shared/index.js";
 
 export type RunAttemptSystemOptions = {
   resources: SystemResources;
@@ -196,6 +197,7 @@ export class RunAttemptSystem {
         machinePreset: true,
         runTags: true,
         isTest: true,
+        replayedFromTaskRunFriendlyId: true,
         idempotencyKey: true,
         idempotencyKeyOptions: true,
         startedAt: true,
@@ -232,9 +234,9 @@ export class RunAttemptSystem {
       run.lockedById
         ? this.#resolveTaskRunExecutionTask(run.lockedById)
         : Promise.resolve({
-          id: run.taskIdentifier,
-          filePath: "unknown",
-        }),
+            id: run.taskIdentifier,
+            filePath: "unknown",
+          }),
       this.#resolveTaskRunExecutionQueue({
         lockedQueueId: run.lockedQueueId ?? undefined,
         queueName: run.queue,
@@ -245,13 +247,13 @@ export class RunAttemptSystem {
       run.lockedById
         ? this.#resolveTaskRunExecutionMachinePreset(run.lockedById, run.machinePreset)
         : Promise.resolve(
-          getMachinePreset({
-            defaultMachine: this.options.machines.defaultMachine,
-            machines: this.options.machines.machines,
-            config: undefined,
-            run,
-          })
-        ),
+            getMachinePreset({
+              defaultMachine: this.options.machines.defaultMachine,
+              machines: this.options.machines.machines,
+              config: undefined,
+              run,
+            })
+          ),
       run.lockedById
         ? this.#resolveTaskRunExecutionDeployment(run.lockedById)
         : Promise.resolve(undefined),
@@ -262,6 +264,7 @@ export class RunAttemptSystem {
         id: run.friendlyId,
         tags: run.runTags,
         isTest: run.isTest,
+        isReplay: !!run.replayedFromTaskRunFriendlyId,
         createdAt: run.createdAt,
         startedAt: run.startedAt ?? run.createdAt,
         idempotencyKey: getUserProvidedIdempotencyKey(run) ?? undefined,
@@ -402,6 +405,7 @@ export class RunAttemptSystem {
                   status: "EXECUTING",
                   attemptNumber: nextAttemptNumber,
                   executedAt: taskRun.attemptNumber === null ? new Date() : undefined,
+                  isWarmStart: isWarmStart ?? false,
                 },
                 select: {
                   id: true,
@@ -425,6 +429,7 @@ export class RunAttemptSystem {
                   payloadType: true,
                   runTags: true,
                   isTest: true,
+                  replayedFromTaskRunFriendlyId: true,
                   idempotencyKey: true,
                   idempotencyKeyOptions: true,
                   startedAt: true,
@@ -458,8 +463,9 @@ export class RunAttemptSystem {
                 run,
                 snapshot: {
                   executionStatus: "EXECUTING",
-                  description: `Attempt created, starting execution${isWarmStart ? " (warm start)" : ""
-                    }`,
+                  description: `Attempt created, starting execution${
+                    isWarmStart ? " (warm start)" : ""
+                  }`,
                 },
                 previousSnapshotId: latestSnapshot.id,
                 environmentId: latestSnapshot.environmentId,
@@ -573,6 +579,7 @@ export class RunAttemptSystem {
               createdAt: updatedRun.createdAt,
               tags: updatedRun.runTags,
               isTest: updatedRun.isTest,
+              isReplay: !!updatedRun.replayedFromTaskRunFriendlyId,
               idempotencyKey: getUserProvidedIdempotencyKey(updatedRun) ?? undefined,
               idempotencyKeyScope: extractIdempotencyKeyScope(updatedRun),
               startedAt: updatedRun.startedAt ?? updatedRun.createdAt,
@@ -617,8 +624,8 @@ export class RunAttemptSystem {
             deployment,
             batch: updatedRun.batchId
               ? {
-                id: BatchId.toFriendlyId(updatedRun.batchId),
-              }
+                  id: BatchId.toFriendlyId(updatedRun.batchId),
+                }
               : undefined,
           };
 
@@ -799,16 +806,15 @@ export class RunAttemptSystem {
             },
           });
 
-          if (!run.associatedWaitpoint) {
-            throw new ServiceValidationError("No associated waitpoint found", 400);
+          // Complete the waitpoint if it exists (runs without waiting parents have no waitpoint)
+          if (run.associatedWaitpoint) {
+            await this.waitpointSystem.completeWaitpoint({
+              id: run.associatedWaitpoint.id,
+              output: completion.output
+                ? { value: completion.output, type: completion.outputType, isError: false }
+                : undefined,
+            });
           }
-
-          await this.waitpointSystem.completeWaitpoint({
-            id: run.associatedWaitpoint.id,
-            output: completion.output
-              ? { value: completion.output, type: completion.outputType, isError: false }
-              : undefined,
-          });
 
           this.$.eventBus.emit("runSucceeded", {
             time: completedAt,
@@ -1050,7 +1056,16 @@ export class RunAttemptSystem {
                 organization: {
                   id: run.runtimeEnvironment.organizationId,
                 },
-                environment: run.runtimeEnvironment,
+                // The Prisma payload structurally satisfies the slim
+                // AuthenticatedEnvironment except for `concurrencyLimitBurstFactor`
+                // (Decimal vs number). Coerce that one field; cast away
+                // the excess-property mismatch (the rest of Prisma's
+                // RuntimeEnvironment columns are extra, not missing).
+                environment: {
+                  ...run.runtimeEnvironment,
+                  concurrencyLimitBurstFactor:
+                    run.runtimeEnvironment.concurrencyLimitBurstFactor.toNumber(),
+                } as unknown as AuthenticatedEnvironment,
                 retryAt,
               });
 
@@ -1387,8 +1402,8 @@ export class RunAttemptSystem {
             error,
             bulkActionGroupIds: bulkActionId
               ? {
-                push: bulkActionId,
-              }
+                  push: bulkActionId,
+                }
               : undefined,
             ...(usageUpdate && {
               usageDurationMs: usageUpdate.usageDurationMs,
@@ -1437,35 +1452,39 @@ export class RunAttemptSystem {
         });
 
         //if executing, we need to message the worker to cancel the run and put it into `PENDING_CANCEL` status
+        //unless finalizeRun is true (worker is known to be dead), in which case skip straight to FINISHED
         if (
           isExecuting(latestSnapshot.executionStatus) ||
           isPendingExecuting(latestSnapshot.executionStatus)
         ) {
-          const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
-            run,
-            snapshot: {
-              executionStatus: "PENDING_CANCEL",
-              description: "Run was cancelled",
-            },
-            previousSnapshotId: latestSnapshot.id,
-            environmentId: latestSnapshot.environmentId,
-            environmentType: latestSnapshot.environmentType,
-            projectId: latestSnapshot.projectId,
-            organizationId: latestSnapshot.organizationId,
-            workerId,
-            runnerId,
-          });
+          if (!finalizeRun) {
+            const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
+              run,
+              snapshot: {
+                executionStatus: "PENDING_CANCEL",
+                description: "Run was cancelled",
+              },
+              previousSnapshotId: latestSnapshot.id,
+              environmentId: latestSnapshot.environmentId,
+              environmentType: latestSnapshot.environmentType,
+              projectId: latestSnapshot.projectId,
+              organizationId: latestSnapshot.organizationId,
+              workerId,
+              runnerId,
+            });
 
-          //the worker needs to be notified so it can kill the run and complete the attempt
-          await sendNotificationToWorker({
-            runId,
-            snapshot: newSnapshot,
-            eventBus: this.$.eventBus,
-          });
-          return {
-            alreadyFinished: false,
-            ...executionResultFromSnapshot(newSnapshot),
-          };
+            //the worker needs to be notified so it can kill the run and complete the attempt
+            await sendNotificationToWorker({
+              runId,
+              snapshot: newSnapshot,
+              eventBus: this.$.eventBus,
+            });
+            return {
+              alreadyFinished: false,
+              ...executionResultFromSnapshot(newSnapshot),
+            };
+          }
+          // finalizeRun is true — fall through to finish the run immediately
         }
 
         //not executing, so we will actually finish the run
@@ -1484,15 +1503,13 @@ export class RunAttemptSystem {
           runnerId,
         });
 
-        if (!run.associatedWaitpoint) {
-          throw new ServiceValidationError("No associated waitpoint found", 400);
+        // Complete the waitpoint if it exists (runs without waiting parents have no waitpoint)
+        if (run.associatedWaitpoint) {
+          await this.waitpointSystem.completeWaitpoint({
+            id: run.associatedWaitpoint.id,
+            output: { value: JSON.stringify(error), isError: true },
+          });
         }
-
-        //complete the waitpoint so the parent run can continue
-        await this.waitpointSystem.completeWaitpoint({
-          id: run.associatedWaitpoint.id,
-          output: { value: JSON.stringify(error), isError: true },
-        });
 
         await this.#finalizeRun(run);
 
@@ -1652,18 +1669,17 @@ export class RunAttemptSystem {
         runnerId,
       });
 
-      if (!run.associatedWaitpoint) {
-        throw new ServiceValidationError("No associated waitpoint found", 400);
-      }
-
       await this.$.runQueue.acknowledgeMessage(run.runtimeEnvironment.organizationId, runId, {
         removeFromWorkerQueue: true,
       });
 
-      await this.waitpointSystem.completeWaitpoint({
-        id: run.associatedWaitpoint.id,
-        output: { value: JSON.stringify(truncatedError), isError: true },
-      });
+      // Complete the waitpoint if it exists (runs without waiting parents have no waitpoint)
+      if (run.associatedWaitpoint) {
+        await this.waitpointSystem.completeWaitpoint({
+          id: run.associatedWaitpoint.id,
+          output: { value: JSON.stringify(truncatedError), isError: true },
+        });
+      }
 
       this.$.eventBus.emit("runFailed", {
         time: failedAt,
@@ -1875,32 +1891,33 @@ export class RunAttemptSystem {
     const result = await this.cache.queues.swr(cacheKey, async () => {
       const queue = params.lockedQueueId
         ? await this.$.readOnlyPrisma.taskQueue.findFirst({
-          where: {
-            id: params.lockedQueueId,
-          },
-          select: {
-            id: true,
-            friendlyId: true,
-            name: true,
-          },
-        })
+            where: {
+              id: params.lockedQueueId,
+            },
+            select: {
+              id: true,
+              friendlyId: true,
+              name: true,
+            },
+          })
         : await this.$.readOnlyPrisma.taskQueue.findFirst({
-          where: {
-            runtimeEnvironmentId: params.runtimeEnvironmentId,
-            name: params.queueName,
-          },
-          select: {
-            id: true,
-            friendlyId: true,
-            name: true,
-          },
-        });
+            where: {
+              runtimeEnvironmentId: params.runtimeEnvironmentId,
+              name: params.queueName,
+            },
+            select: {
+              id: true,
+              friendlyId: true,
+              name: true,
+            },
+          });
 
       if (!queue) {
-        throw new ServiceValidationError(
-          `Could not resolve queue data for queue ${params.queueName}`,
-          404
-        );
+        // Return synthetic queue so run/span view still loads (e.g. createFailedTaskRun with fallback queue)
+        return {
+          id: params.queueName,
+          name: params.queueName,
+        };
       }
 
       return {
@@ -1973,30 +1990,25 @@ export class RunAttemptSystem {
     }
 
     if (completion.flushedMetadata) {
-      const [packetError, packet] = await tryCatch(parsePacket(completion.flushedMetadata));
+      const [, packet] = await tryCatch(parsePacket(completion.flushedMetadata));
 
       if (!packet) {
-        return;
-      }
-
-      if (packetError) {
-        this.$.logger.error("RunEngine.completeRunAttempt(): failed to parse flushed metadata", {
-          runId,
-          flushedMetadata: completion.flushedMetadata,
-          error: packetError,
-        });
-
         return;
       }
 
       const metadata = FlushedRunMetadata.safeParse(packet);
 
       if (!metadata.success) {
-        this.$.logger.error("RunEngine.completeRunAttempt(): failed to parse flushed metadata", {
-          runId,
-          flushedMetadata: completion.flushedMetadata,
-          error: metadata.error,
-        });
+        // Customer's metadata operations don't match the schema (typically
+        // non-JSON values in `operations[].value`). System ignores it.
+        this.$.logger.warn(
+          "RunEngine.completeRunAttempt(): failed to validate flushed metadata",
+          {
+            runId,
+            flushedMetadata: completion.flushedMetadata,
+            error: metadata.error,
+          }
+        );
 
         return;
       }
@@ -2066,13 +2078,13 @@ export class RunAttemptSystem {
     if (environmentType !== "DEVELOPMENT") {
       const machinePreset = machinePresetName
         ? machinePresetFromName(
-          this.options.machines.machines,
-          machinePresetName as MachinePresetName
-        )
+            this.options.machines.machines,
+            machinePresetName as MachinePresetName
+          )
         : machinePresetFromName(
-          this.options.machines.machines,
-          this.options.machines.defaultMachine
-        );
+            this.options.machines.machines,
+            this.options.machines.defaultMachine
+          );
 
       costInCents = currentCostInCents + attemptDurationMs * machinePreset.centsPerMs;
     }
@@ -2082,7 +2094,6 @@ export class RunAttemptSystem {
       costInCents,
     };
   }
-
 }
 
 export function safeParseGitMeta(git: unknown): GitMeta | undefined {

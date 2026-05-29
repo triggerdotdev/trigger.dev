@@ -1,3 +1,24 @@
+/**
+ * ⚠️ LEGACY — Graphile-worker / ZodWorker setup. Do not touch.
+ *
+ * This file wires the original background-job system the webapp was
+ * built on (`@internal/zod-worker` → graphile-worker → Postgres). It is
+ * now in deprecation mode: every task in `workerCatalog` below is
+ * annotated with `@deprecated, moved to <new home>` and the live jobs
+ * for new features all run on `@trigger.dev/redis-worker` instead.
+ *
+ * Where to put new things:
+ *   - Background jobs / queues → use redis-worker, alongside
+ *     `~/v3/commonWorker.server.ts`, `~/v3/alertsWorker.server.ts`, or
+ *     `~/v3/batchTriggerWorker.server.ts`.
+ *   - Run lifecycle → `@internal/run-engine` via `~/v3/runEngine.server`.
+ *   - Custom polling loops with their own Redis connection → keep them
+ *     in their own lifecycle module (e.g. `~/v3/mollifierDrainerWorker.server.ts`)
+ *     and wire the bootstrap from `entry.server.tsx`. Don't reach into
+ *     `init()` below.
+ *
+ * Edit only when removing legacy paths.
+ */
 import { ZodWorker } from "@internal/zod-worker";
 import { DeliverEmailSchema } from "emails";
 import { z } from "zod";

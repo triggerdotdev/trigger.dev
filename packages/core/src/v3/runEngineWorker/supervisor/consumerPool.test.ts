@@ -498,7 +498,7 @@ describe("RunQueueConsumerPool", () => {
         await testConsumers[0].onDequeue(messages);
       }
 
-      expect(mockOnDequeue).toHaveBeenCalledWith(messages);
+      expect(mockOnDequeue).toHaveBeenCalledWith(messages, undefined);
 
       advanceTimeAndProcessMetrics(1100);
       const metrics = pool.getMetrics();

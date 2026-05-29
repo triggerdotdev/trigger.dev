@@ -1,5 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { enrichCreatableEvents } from "../app/v3/utils/enrichCreatableEvents.server.js";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import {
+  enrichCreatableEvents,
+  setLlmPricingRegistry,
+} from "../app/v3/utils/enrichCreatableEvents.server.js";
 import {
   RuntimeEnvironmentType,
   TaskEventKind,
@@ -83,8 +86,8 @@ describe("OTLPExporter", () => {
 
       const event = $events[0];
       expect(event.message).toBe("Responses API with 'gpt-4o'");
-      expect(event.style).toEqual({
-        icon: "tabler-brand-openai",
+      expect(event.style).toMatchObject({
+        icon: "ai-provider-openai",
       });
     });
 
@@ -161,8 +164,17 @@ describe("OTLPExporter", () => {
 
       const event = $events[0];
       expect(event.message).toBe("Responses API with gpt-4o");
-      expect(event.style).toEqual({
-        icon: "tabler-brand-openai",
+      expect(event.style).toMatchObject({
+        icon: "ai-provider-openai",
+      });
+      // Enrichment also adds model/token pills as accessories
+      const style = event.style as Record<string, unknown>;
+      expect(style.accessory).toMatchObject({
+        style: "pills",
+        items: expect.arrayContaining([
+          expect.objectContaining({ text: "gpt-4o-2024-08-06" }),
+          expect.objectContaining({ text: "724" }),
+        ]),
       });
     });
 
@@ -218,7 +230,7 @@ describe("OTLPExporter", () => {
       const $events = enrichCreatableEvents(events);
       expect($events[0].message).toBe("Using 'gpt-4' with temperature 0.7");
       expect($events[0].style).toEqual({
-        icon: "tabler-brand-openai",
+        icon: "ai-provider-openai",
       });
     });
 
@@ -249,7 +261,7 @@ describe("OTLPExporter", () => {
       const $events = enrichCreatableEvents(events);
       expect($events[0].message).toBe("Count is 42 and enabled is true");
       expect($events[0].style).toEqual({
-        icon: "tabler-brand-anthropic",
+        icon: "ai-provider-anthropic",
       });
     });
 
@@ -278,7 +290,7 @@ describe("OTLPExporter", () => {
       const $events = enrichCreatableEvents(events);
       expect($events[0].message).toBe("Plain message without variables");
       expect($events[0].style).toEqual({
-        icon: "tabler-brand-openai",
+        icon: "ai-provider-openai",
       });
     });
 
@@ -334,7 +346,7 @@ describe("OTLPExporter", () => {
       const $events = enrichCreatableEvents(events);
       expect($events[0].style).toEqual({
         existingStyle: "value",
-        icon: "tabler-brand-openai", // GenAI enricher wins because it's first
+        icon: "ai-provider-openai", // GenAI enricher wins because it's first
       });
     });
 
@@ -391,6 +403,303 @@ describe("OTLPExporter", () => {
       const $events = enrichCreatableEvents(events);
       expect($events[0].style).toEqual({
         existingStyle: "value",
+      });
+    });
+  });
+
+  describe("LLM cost enrichment", () => {
+    const mockRegistry = {
+      isLoaded: true,
+      calculateCost: (responseModel: string, usageDetails: Record<string, number>) => {
+        if (responseModel.startsWith("gpt-4o")) {
+          const inputCost = (usageDetails["input"] ?? 0) * 0.0000025;
+          const outputCost = (usageDetails["output"] ?? 0) * 0.00001;
+          return {
+            matchedModelId: "llm_model_gpt4o",
+            matchedModelName: "gpt-4o",
+            pricingTierId: "tier-standard",
+            pricingTierName: "Standard",
+            inputCost,
+            outputCost,
+            totalCost: inputCost + outputCost,
+            costDetails: { input: inputCost, output: outputCost },
+          };
+        }
+        return null;
+      },
+    };
+
+    beforeEach(() => {
+      setLlmPricingRegistry(mockRegistry);
+    });
+
+    afterEach(() => {
+      setLlmPricingRegistry(undefined as any);
+    });
+
+    function makeGenAiEvent(overrides: Record<string, unknown> = {}) {
+      return {
+        message: "ai.streamText.doStream",
+        traceId: "test-trace",
+        spanId: "test-span",
+        parentId: "test-parent",
+        isPartial: false,
+        isError: false,
+        kind: TaskEventKind.INTERNAL,
+        level: TaskEventLevel.TRACE,
+        status: TaskEventStatus.UNSET,
+        startTime: BigInt(1),
+        duration: 5000000000,
+        style: {},
+        serviceName: "test",
+        environmentId: "env-1",
+        environmentType: RuntimeEnvironmentType.DEVELOPMENT,
+        organizationId: "org-1",
+        projectId: "proj-1",
+        projectRef: "proj_test",
+        runId: "run_test",
+        runIsTest: false,
+        taskSlug: "my-task",
+        metadata: undefined,
+        properties: {
+          "gen_ai.system": "openai",
+          "gen_ai.request.model": "gpt-4o",
+          "gen_ai.response.model": "gpt-4o-2024-08-06",
+          "gen_ai.usage.input_tokens": 702,
+          "gen_ai.usage.output_tokens": 22,
+          "operation.name": "ai.streamText.doStream",
+          ...overrides,
+        },
+      };
+    }
+
+    it("should enrich spans with cost attributes and accessories", () => {
+      const events = [makeGenAiEvent()];
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      const event = $events[0];
+
+      // Cost attributes
+      expect(event.properties["trigger.llm.total_cost"]).toBeCloseTo(0.001975);
+      expect(event.properties["trigger.llm.input_cost"]).toBeCloseTo(0.001755);
+      expect(event.properties["trigger.llm.output_cost"]).toBeCloseTo(0.00022);
+      expect(event.properties["trigger.llm.matched_model"]).toBe("gpt-4o");
+      expect(event.properties["trigger.llm.pricing_tier"]).toBe("Standard");
+
+      // Accessories (pills style)
+      expect(event.style.accessory).toBeDefined();
+      expect(event.style.accessory.style).toBe("pills");
+      expect(event.style.accessory.items).toHaveLength(3);
+      expect(event.style.accessory.items[0]).toEqual({
+        text: "gpt-4o-2024-08-06",
+        icon: "tabler-cube",
+      });
+      expect(event.style.accessory.items[1]).toEqual({
+        text: "724",
+        icon: "tabler-hash",
+      });
+      expect(event.style.accessory.items[2]).toEqual({
+        text: "$0.001975",
+        icon: "tabler-currency-dollar",
+      });
+    });
+
+    it("should set _llmMetrics side-channel for dual-write", () => {
+      const events = [makeGenAiEvent()];
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      const event = $events[0];
+
+      expect(event._llmMetrics).toBeDefined();
+      expect(event._llmMetrics.genAiSystem).toBe("openai");
+      expect(event._llmMetrics.responseModel).toBe("gpt-4o-2024-08-06");
+      expect(event._llmMetrics.inputTokens).toBe(702);
+      expect(event._llmMetrics.outputTokens).toBe(22);
+      expect(event._llmMetrics.totalCost).toBeCloseTo(0.001975);
+      expect(event._llmMetrics.operationId).toBe("ai.streamText.doStream");
+    });
+
+    it("should skip partial spans", () => {
+      const events = [makeGenAiEvent()];
+      events[0].isPartial = true;
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      expect($events[0].properties["trigger.llm.total_cost"]).toBeUndefined();
+      expect($events[0]._llmMetrics).toBeUndefined();
+    });
+
+    it("should skip spans without gen_ai.response.model or gen_ai.request.model", () => {
+      const events = [
+        makeGenAiEvent({
+          "gen_ai.response.model": undefined,
+          "gen_ai.request.model": undefined,
+        }),
+      ];
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      expect($events[0].properties["trigger.llm.total_cost"]).toBeUndefined();
+    });
+
+    it("should fall back to gen_ai.request.model when response.model is missing", () => {
+      const events = [
+        makeGenAiEvent({
+          "gen_ai.response.model": undefined,
+          "gen_ai.request.model": "gpt-4o",
+        }),
+      ];
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      expect($events[0].properties["trigger.llm.matched_model"]).toBe("gpt-4o");
+    });
+
+    it("should skip spans with no token usage", () => {
+      const events = [
+        makeGenAiEvent({
+          "gen_ai.usage.input_tokens": 0,
+          "gen_ai.usage.output_tokens": 0,
+        }),
+      ];
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      expect($events[0].properties["trigger.llm.total_cost"]).toBeUndefined();
+    });
+
+    it("should skip spans with unknown models", () => {
+      const events = [
+        makeGenAiEvent({
+          "gen_ai.response.model": "unknown-model-xyz",
+          "gen_ai.request.model": "unknown-model-xyz",
+        }),
+      ];
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      expect($events[0].properties["trigger.llm.total_cost"]).toBeUndefined();
+    });
+
+    it("should not enrich non-span kinds like SPAN_EVENT or LOG", () => {
+      const events = [makeGenAiEvent()];
+      events[0].kind = "SPAN_EVENT" as any;
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      expect($events[0].properties["trigger.llm.total_cost"]).toBeUndefined();
+    });
+
+    it("should enrich SERVER kind events", () => {
+      const events = [makeGenAiEvent()];
+      events[0].kind = TaskEventKind.SERVER;
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      expect($events[0].properties["trigger.llm.total_cost"]).toBeCloseTo(0.001975);
+    });
+
+    it("should not enrich when registry is not loaded", () => {
+      setLlmPricingRegistry({ isLoaded: false, calculateCost: () => null });
+      const events = [makeGenAiEvent()];
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      expect($events[0].properties["trigger.llm.total_cost"]).toBeUndefined();
+    });
+
+    it("should format token counts with k/M suffixes in accessories", () => {
+      const events = [
+        makeGenAiEvent({
+          "gen_ai.usage.input_tokens": 150000,
+          "gen_ai.usage.output_tokens": 2000,
+        }),
+      ];
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      expect($events[0].style.accessory.items[1].text).toBe("152.0k");
+    });
+
+    it("should normalize alternate token attribute names", () => {
+      const events = [
+        makeGenAiEvent({
+          "gen_ai.usage.input_tokens": undefined,
+          "gen_ai.usage.output_tokens": undefined,
+          "gen_ai.usage.prompt_tokens": 500,
+          "gen_ai.usage.completion_tokens": 100,
+        }),
+      ];
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      expect($events[0]._llmMetrics.inputTokens).toBe(500);
+      expect($events[0]._llmMetrics.outputTokens).toBe(100);
+    });
+
+    it("should prefer gen_ai.usage.total_tokens over input+output sum", () => {
+      const events = [
+        makeGenAiEvent({
+          "gen_ai.usage.input_tokens": 100,
+          "gen_ai.usage.output_tokens": 50,
+          "gen_ai.usage.total_tokens": 200, // higher than 100+50 (e.g. includes cached/reasoning)
+        }),
+      ];
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      const event = $events[0];
+
+      // Pills should show the explicit total, not input+output
+      expect(event.style.accessory.items[1]).toEqual({
+        text: "200",
+        icon: "tabler-hash",
+      });
+
+      // LLM usage should also use the explicit total
+      expect(event._llmMetrics.totalTokens).toBe(200);
+      expect(event._llmMetrics.inputTokens).toBe(100);
+      expect(event._llmMetrics.outputTokens).toBe(50);
+    });
+
+    it("should fall back to input+output when total_tokens is absent", () => {
+      const events = [
+        makeGenAiEvent({
+          "gen_ai.usage.input_tokens": 300,
+          "gen_ai.usage.output_tokens": 75,
+        }),
+      ];
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      const event = $events[0];
+
+      expect(event.style.accessory.items[1]).toEqual({
+        text: "375",
+        icon: "tabler-hash",
+      });
+      expect(event._llmMetrics.totalTokens).toBe(375);
+    });
+
+    it("should use total_tokens when only total is present without input/output breakdown", () => {
+      const events = [
+        makeGenAiEvent({
+          "gen_ai.usage.input_tokens": undefined,
+          "gen_ai.usage.output_tokens": undefined,
+          "gen_ai.usage.total_tokens": 500,
+        }),
+      ];
+
+      // @ts-expect-error
+      const $events = enrichCreatableEvents(events);
+      const event = $events[0];
+
+      // Pills should show 500, not 0
+      expect(event.style.accessory.items[1]).toEqual({
+        text: "500",
+        icon: "tabler-hash",
       });
     });
   });

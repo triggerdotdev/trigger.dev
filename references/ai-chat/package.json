@@ -1,0 +1,48 @@
+{
+  "name": "references-ai-chat",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "dev:trigger": "trigger dev",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "db:generate": "prisma generate",
+    "db:reset:chats": "prisma db execute --file prisma/reset-chats.sql",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.0",
+    "@ai-sdk/openai": "^3.0.0",
+    "@ai-sdk/react": "^3.0.0",
+    "@prisma/adapter-pg": "^7.4.2",
+    "@prisma/client": "^7.4.2",
+    "@e2b/code-interpreter": "^2.4.0",
+    "@trigger.dev/sdk": "workspace:*",
+    "serialize-error": "^11.0.3",
+    "ai": "^6.0.0",
+    "next": "15.3.3",
+    "pg": "^8.16.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "streamdown": "^2.3.0",
+    "turndown": "^7.2.2",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@ai-sdk/provider": "3.0.8",
+    "@tailwindcss/postcss": "^4",
+    "@trigger.dev/build": "workspace:*",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/turndown": "^5.0.6",
+    "prisma": "^7.4.2",
+    "tailwindcss": "^4",
+    "trigger.dev": "workspace:*",
+    "typescript": "^5",
+    "vitest": "^3.1.4"
+  }
+}

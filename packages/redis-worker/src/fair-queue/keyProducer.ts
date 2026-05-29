@@ -5,7 +5,9 @@ import type { FairQueueKeyProducer } from "./types.js";
  * Uses a configurable prefix and standard key structure.
  *
  * Key structure:
- * - Master queue: {prefix}:master:{shardId}
+ * - Master queue: {prefix}:master:{shardId} (legacy, drain-only)
+ * - Dispatch index: {prefix}:dispatch:{shardId} (Level 1: tenantIds)
+ * - Tenant queue index: {prefix}:tenantq:{tenantId} (Level 2: queueIds)
  * - Queue: {prefix}:queue:{queueId}
  * - Queue items: {prefix}:queue:{queueId}:items
  * - Concurrency: {prefix}:concurrency:{groupName}:{groupId}
@@ -68,6 +70,18 @@ export class DefaultFairQueueKeyProducer implements FairQueueKeyProducer {
 
   workerQueueKey(consumerId: string): string {
     return this.#buildKey("worker", consumerId);
+  }
+
+  // ============================================================================
+  // Tenant Dispatch Keys (Two-Level Index)
+  // ============================================================================
+
+  dispatchKey(shardId: number): string {
+    return this.#buildKey("dispatch", shardId.toString());
+  }
+
+  tenantQueueIndexKey(tenantId: string): string {
+    return this.#buildKey("tenantq", tenantId);
   }
 
   // ============================================================================

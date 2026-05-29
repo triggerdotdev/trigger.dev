@@ -5,6 +5,7 @@ import {
   authenticatedEnvironmentForAuthentication,
   authenticateRequest,
 } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -21,52 +22,58 @@ const RequestBodySchema = z.object({
 });
 
 export async function action({ request, params }: ActionFunctionArgs) {
-  const authenticationResult = await authenticateRequest(request, {
-    personalAccessToken: true,
-    organizationAccessToken: true,
-    apiKey: false,
-  });
+  try {
+    const authenticationResult = await authenticateRequest(request, {
+      personalAccessToken: true,
+      organizationAccessToken: true,
+      apiKey: false,
+    });
 
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-  }
+    if (!authenticationResult) {
+      return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+    }
 
-  const parsedParams = ParamsSchema.safeParse(params);
+    const parsedParams = ParamsSchema.safeParse(params);
 
-  if (!parsedParams.success) {
-    return json({ error: "Invalid Params" }, { status: 400 });
-  }
+    if (!parsedParams.success) {
+      return json({ error: "Invalid Params" }, { status: 400 });
+    }
 
-  const { projectRef, env } = parsedParams.data;
-  const triggerBranch = request.headers.get("x-trigger-branch") ?? undefined;
+    const { projectRef, env } = parsedParams.data;
+    const triggerBranch = request.headers.get("x-trigger-branch") ?? undefined;
 
-  const runtimeEnv = await authenticatedEnvironmentForAuthentication(
-    authenticationResult,
-    projectRef,
-    env,
-    triggerBranch
-  );
-
-  const parsedBody = RequestBodySchema.safeParse(await request.json());
-
-  if (!parsedBody.success) {
-    return json(
-      { error: "Invalid request body", issues: parsedBody.error.issues },
-      { status: 400 }
+    const runtimeEnv = await authenticatedEnvironmentForAuthentication(
+      authenticationResult,
+      projectRef,
+      env,
+      triggerBranch
     );
+
+    const parsedBody = RequestBodySchema.safeParse(await request.json());
+
+    if (!parsedBody.success) {
+      return json(
+        { error: "Invalid request body", issues: parsedBody.error.issues },
+        { status: 400 }
+      );
+    }
+
+    const claims = {
+      sub: runtimeEnv.id,
+      pub: true,
+      ...parsedBody.data.claims,
+    };
+
+    const jwt = await internal_generateJWT({
+      secretKey: runtimeEnv.apiKey,
+      payload: claims,
+      expirationTime: parsedBody.data.expirationTime ?? "1h",
+    });
+
+    return json({ token: jwt });
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to generate env JWT", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
   }
-
-  const claims = {
-    sub: runtimeEnv.id,
-    pub: true,
-    ...parsedBody.data.claims,
-  };
-
-  const jwt = await internal_generateJWT({
-    secretKey: runtimeEnv.apiKey,
-    payload: claims,
-    expirationTime: parsedBody.data.expirationTime ?? "1h",
-  });
-
-  return json({ token: jwt });
 }

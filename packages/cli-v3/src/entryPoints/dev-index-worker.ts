@@ -3,6 +3,7 @@ import {
   type HandleErrorFunction,
   indexerToWorkerMessages,
   resourceCatalog,
+  type PromptManifest,
   type TaskManifest,
   TriggerConfig,
 } from "@trigger.dev/core/v3";
@@ -22,30 +23,45 @@ import { schemaToJsonSchema } from "@trigger.dev/schema-to-json";
 
 installSourceMapSupport();
 
+// If the parent CLI closes the IPC channel, exit cleanly instead of being
+// re-parented to init and busy-looping on `process.send` against a dead channel.
+process.on("disconnect", () => {
+  process.exit(0);
+});
+
+function safeSend(message: unknown) {
+  if (!process.connected || !process.send) {
+    return;
+  }
+  try {
+    process.send(message);
+  } catch {
+    // swallow: a throw here would re-enter this handler and busy-loop the worker
+  }
+}
+
 process.on("uncaughtException", function (error, origin) {
   if (error instanceof Error) {
-    process.send &&
-      process.send({
-        type: "UNCAUGHT_EXCEPTION",
-        payload: {
-          error: { name: error.name, message: error.message, stack: error.stack },
-          origin,
-        },
-        version: "v1",
-      });
+    safeSend({
+      type: "UNCAUGHT_EXCEPTION",
+      payload: {
+        error: { name: error.name, message: error.message, stack: error.stack },
+        origin,
+      },
+      version: "v1",
+    });
   } else {
-    process.send &&
-      process.send({
-        type: "UNCAUGHT_EXCEPTION",
-        payload: {
-          error: {
-            name: "Error",
-            message: typeof error === "string" ? error : JSON.stringify(error),
-          },
-          origin,
+    safeSend({
+      type: "UNCAUGHT_EXCEPTION",
+      payload: {
+        error: {
+          name: "Error",
+          message: typeof error === "string" ? error : JSON.stringify(error),
         },
-        version: "v1",
-      });
+        origin,
+      },
+      version: "v1",
+    });
   }
 });
 
@@ -127,6 +143,20 @@ if (typeof config.maxDuration === "number") {
   });
 }
 
+// If the config has a TTL, we need to apply it to all tasks that don't have a TTL
+if (config.ttl !== undefined) {
+  tasks = tasks.map((task) => {
+    if (task.ttl === undefined) {
+      return {
+        ...task,
+        ttl: config.ttl,
+      } satisfies TaskManifest;
+    }
+
+    return task;
+  });
+}
+
 // If the config has a machine preset, we need to apply it to all tasks that don't have a machine preset
 if (typeof config.machine === "string") {
   tasks = tasks.map((task) => {
@@ -149,6 +179,8 @@ await sendMessageInCatalog(
   {
     manifest: {
       tasks,
+      prompts: convertPromptSchemasToJsonSchemas(resourceCatalog.listPromptManifests()),
+      skills: resourceCatalog.listSkillManifests(),
       queues: resourceCatalog.listQueueManifests(),
       configPath: buildManifest.configPath,
       runtime: buildManifest.runtime,
@@ -163,7 +195,7 @@ await sendMessageInCatalog(
     importErrors,
   },
   async (msg) => {
-    process.send?.(msg);
+    safeSend(msg);
   }
 ).catch((err) => {
   if (err instanceof ZodSchemaParsedError) {
@@ -187,6 +219,23 @@ await new Promise<void>((resolve) => {
     resolve();
   }, 10);
 });
+
+function convertPromptSchemasToJsonSchemas(prompts: PromptManifest[]): PromptManifest[] {
+  return prompts.map((prompt) => {
+    const schema = resourceCatalog.getPromptSchema(prompt.id);
+
+    if (schema) {
+      try {
+        const result = schemaToJsonSchema(schema);
+        return { ...prompt, variableSchema: result?.jsonSchema };
+      } catch {
+        return prompt;
+      }
+    }
+
+    return prompt;
+  });
+}
 
 async function convertSchemasToJsonSchemas(tasks: TaskManifest[]): Promise<TaskManifest[]> {
   const convertedTasks = tasks.map((task) => {

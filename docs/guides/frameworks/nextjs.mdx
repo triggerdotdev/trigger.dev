@@ -45,7 +45,7 @@ For more information on authenticating with Trigger.dev, see the [API keys page]
 
 ## Triggering your task in Next.js
 
-Here are the steps to trigger your task in the Next.js App and Pages router and Server Actions. Alternatively, check out this repo for a [full working example](https://github.com/triggerdotdev/example-projects/tree/main/nextjs/server-actions/my-app) of a Next.js app with a Trigger.dev task triggered using a Server Action.
+Here are the steps to trigger your task in the Next.js App and Pages router and Server Actions.
 
 <Tabs>
 
@@ -431,6 +431,19 @@ You can test your revalidation task in the Trigger.dev dashboard on the testing 
 
     <NextjsTroubleshootingMissingApiKey/>
     <NextjsTroubleshootingButtonSyntax/>
+
+## Realtime updates with React hooks
+
+The `@trigger.dev/react-hooks` package lets you subscribe to task runs from your React components. Show progress bars, stream AI responses, or display run status in real time.
+
+<CardGroup cols={2}>
+  <Card title="React hooks" icon="react" href="/realtime/react-hooks/overview">
+    Hooks for subscribing to runs, streaming data, and triggering tasks from the frontend.
+  </Card>
+  <Card title="Streams" icon="wave-pulse" href="/tasks/streams">
+    Pipe continuous data (like AI completions) from your tasks to the client while they run.
+  </Card>
+</CardGroup>
 
 <VercelDocsCards />
 <UsefulNextSteps />

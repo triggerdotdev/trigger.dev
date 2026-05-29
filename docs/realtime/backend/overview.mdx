@@ -1,23 +1,22 @@
 ---
-title: Backend overview
+title: "Subscribe to tasks from your backend"
 sidebarTitle: Overview
-description: Using the Trigger.dev realtime API from your backend code
+description: "Subscribe to run progress, stream AI output, and react to task status changes from your backend code or other tasks."
 ---
 
 import RealtimeExamplesCards from "/snippets/realtime-examples-cards.mdx";
 
-Use these backend functions to subscribe to runs and streams from your server-side code or other tasks.
+**Subscribe to runs from your server-side code or other tasks using async iterators.** Get status updates, metadata changes, and streamed data without polling.
 
-## Overview
+## What's available
 
-There are three main categories of functionality:
-
-- **[Subscribe functions](/realtime/backend/subscribe)** - Subscribe to run updates using async iterators
-- **[Metadata](/realtime/backend/subscribe#subscribe-to-metadata-updates-from-your-tasks)** - Update and subscribe to run metadata in real-time
-- **[Streams](/realtime/backend/streams)** - Read and consume real-time streaming data from your tasks
+| Category | What it does | Guide |
+|---|---|---|
+| **Run updates** | Subscribe to run status, metadata, and tag changes | [Run updates](/realtime/backend/subscribe) |
+| **Streaming** | Read AI output, file chunks, or any continuous data from tasks | [Streaming](/realtime/backend/streams) |
 
 <Note>
-  To learn how to emit streams from your tasks, see our [Realtime Streams](/tasks/streams) documentation.
+  To learn how to emit streams from your tasks, see [Streaming data from tasks](/tasks/streams).
 </Note>
 
 ## Authentication

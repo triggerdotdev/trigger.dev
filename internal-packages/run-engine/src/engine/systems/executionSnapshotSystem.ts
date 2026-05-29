@@ -518,6 +518,27 @@ export class ExecutionSnapshotSystem {
     return executionResultFromSnapshot(latestSnapshot);
   }
 
+  /**
+   * Enqueues a heartbeat job for a snapshot if the execution status requires one.
+   * Use this after nesting a snapshot create inside a taskRun.update() to replicate
+   * the heartbeat side effect that createExecutionSnapshot normally handles.
+   */
+  public async enqueueHeartbeatIfNeeded(snapshot: {
+    id: string;
+    runId: string;
+    executionStatus: TaskRunExecutionStatus;
+  }) {
+    const intervalMs = this.#getHeartbeatIntervalMs(snapshot.executionStatus);
+    if (intervalMs !== null) {
+      await this.$.worker.enqueue({
+        id: `heartbeatSnapshot.${snapshot.runId}`,
+        job: "heartbeatSnapshot",
+        payload: { snapshotId: snapshot.id, runId: snapshot.runId },
+        availableAt: new Date(Date.now() + intervalMs),
+      });
+    }
+  }
+
   #getHeartbeatIntervalMs(status: TaskRunExecutionStatus): number | null {
     switch (status) {
       case "PENDING_EXECUTING": {

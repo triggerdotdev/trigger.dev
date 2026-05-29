@@ -15,8 +15,7 @@ const { action } = createActionApiRoute(
     corsStrategy: "none",
     authorization: {
       action: "write",
-      resource: (params) => ({ runs: params.runParam }),
-      superScopes: ["write:runs", "admin"],
+      resource: (params) => ({ type: "runs", id: params.runParam }),
     },
     findResource: async (params, auth) => {
       return $replica.taskRun.findFirst({

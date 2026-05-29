@@ -1,8 +1,9 @@
-import { type PersonalAccessToken } from "@trigger.dev/database";
+import { type PersonalAccessToken, type User } from "@trigger.dev/database";
 import { customAlphabet, nanoid } from "nanoid";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "./logger.server";
+import { rbac } from "./rbac.server";
 import { decryptToken, encryptToken, hashToken } from "~/utils/tokens.server";
 import { env } from "~/env.server";
 
@@ -10,9 +11,21 @@ const tokenValueLength = 40;
 //lowercase only, removed 0 and l to avoid confusion
 const tokenGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", tokenValueLength);
 
+// Skip the lastAccessedAt write if the existing value is already within this
+// window. Eliminates per-auth UPDATE churn on a small narrow hot table; the
+// /account/tokens UI reads this field at human granularity so a few-minute
+// staleness is fine.
+export const PAT_LAST_ACCESSED_THROTTLE_MS = 5 * 60 * 1000;
+
 type CreatePersonalAccessTokenOptions = {
   name: string;
   userId: string;
+  // Optional: when provided, persist a TokenRole row alongside the PAT
+  // so PAT-authenticated requests pick up that role's permissions
+  // (TRI-8749). The dashboard tokens page passes a chosen system role;
+  // the CLI auth-code path doesn't pass one (legacy behaviour
+  // preserved — those PATs run with no explicit role).
+  roleId?: string;
 };
 
 /** Returns obfuscated access tokens that aren't revoked */
@@ -99,6 +112,43 @@ export type PersonalAccessTokenAuthenticationResult = {
   userId: string;
 };
 
+/**
+ * Smart-skip the `lastAccessedAt` write when the cached value is already
+ * within the throttle window. Saves one DB roundtrip per "fresh" auth.
+ *
+ * Two layers of throttling: JS-side (`Date.now() - lastAccessedAt.getTime()`)
+ * elides the SQL entirely when the caller already has a recent timestamp;
+ * SQL-side `WHERE` clause inside the `updateMany` guards against concurrent
+ * auths racing to a double-write when the JS check decides to fire.
+ *
+ * Called from both the legacy PAT flow (`authenticatePersonalAccessToken`)
+ * and the apiBuilder's RBAC-routed PAT flow (which gets `lastAccessedAt`
+ * from `rbac.authenticatePat`'s result). Keeps the throttle policy in one
+ * place rather than expecting every plugin implementer to re-implement it.
+ */
+export async function updateLastAccessedAtIfStale(
+  tokenId: string,
+  lastAccessedAt: Date | null
+): Promise<void> {
+  if (
+    lastAccessedAt &&
+    Date.now() - lastAccessedAt.getTime() <= PAT_LAST_ACCESSED_THROTTLE_MS
+  ) {
+    return; // fresh — no roundtrip
+  }
+  await prisma.personalAccessToken.updateMany({
+    where: {
+      id: tokenId,
+      revokedAt: null,
+      OR: [
+        { lastAccessedAt: null },
+        { lastAccessedAt: { lt: new Date(Date.now() - PAT_LAST_ACCESSED_THROTTLE_MS) } },
+      ],
+    },
+    data: { lastAccessedAt: new Date() },
+  });
+}
+
 const EncryptedSecretValueSchema = z.object({
   nonce: z.string(),
   ciphertext: z.string(),
@@ -116,6 +166,59 @@ export async function authenticateApiRequestWithPersonalAccessToken(
   }
 
   return authenticatePersonalAccessToken(token);
+}
+
+export type AdminAuthenticationResult =
+  | { ok: true; user: User }
+  | { ok: false; status: 401 | 403; message: string };
+
+/**
+ * Authenticates a request via personal access token and checks the user is
+ * an admin. Returns a discriminated result so callers can shape the failure
+ * (throw a Response, wrap in neverthrow, return JSON, etc.) to fit their
+ * context. See `requireAdminApiRequest` for the Remix loader/action wrapper.
+ */
+export async function authenticateAdminRequest(
+  request: Request
+): Promise<AdminAuthenticationResult> {
+  const authResult = await authenticateApiRequestWithPersonalAccessToken(request);
+
+  if (!authResult) {
+    return { ok: false, status: 401, message: "Invalid or Missing API key" };
+  }
+
+  const user = await prisma.user.findFirst({
+    where: { id: authResult.userId },
+  });
+
+  if (!user) {
+    return { ok: false, status: 401, message: "Invalid or Missing API key" };
+  }
+
+  if (!user.admin) {
+    return { ok: false, status: 403, message: "You must be an admin to perform this action" };
+  }
+
+  return { ok: true, user };
+}
+
+/**
+ * Remix loader/action wrapper around `authenticateAdminRequest` that throws
+ * a Response on failure so routes can `await` without handling the error
+ * branch. Uses `new Response` directly to avoid coupling this module to
+ * `@remix-run/server-runtime`.
+ */
+export async function requireAdminApiRequest(request: Request): Promise<User> {
+  const result = await authenticateAdminRequest(request);
+
+  if (!result.ok) {
+    throw new Response(JSON.stringify({ error: result.message }), {
+      status: result.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  return result.user;
 }
 
 function getPersonalAccessTokenFromRequest(request: Request) {
@@ -152,14 +255,7 @@ export async function authenticatePersonalAccessToken(
     return;
   }
 
-  await prisma.personalAccessToken.update({
-    where: {
-      id: personalAccessToken.id,
-    },
-    data: {
-      lastAccessedAt: new Date(),
-    },
-  });
+  await updateLastAccessedAtIfStale(personalAccessToken.id, personalAccessToken.lastAccessedAt);
 
   const decryptedToken = decryptPersonalAccessToken(personalAccessToken);
 
@@ -269,6 +365,7 @@ export async function createPersonalAccessTokenFromAuthorizationCode(
 export async function createPersonalAccessToken({
   name,
   userId,
+  roleId,
 }: CreatePersonalAccessTokenOptions) {
   const token = createToken();
   const encryptedToken = encryptToken(token, env.ENCRYPTION_KEY);
@@ -282,6 +379,45 @@ export async function createPersonalAccessToken({
       hashedToken: hashToken(token),
     },
   });
+
+  // Persist the role choice via the RBAC plugin's setTokenRole. The
+  // plugin may store this in a separate datastore from Prisma (e.g.
+  // Drizzle on a different schema), so co-transactional inserts are
+  // awkward — we use a compensating-delete pattern instead: if
+  // setTokenRole fails, roll back the PAT row by deleting it. The auth
+  // path treats "no role" as permissive (matches the default fallback)
+  // so a brief orphan window between the two writes is harmless. The
+  // compensating delete narrows that window from "until manual cleanup"
+  // to "until the request returns".
+  //
+  // Skip the call entirely when no RBAC plugin is loaded — the OSS
+  // fallback has no TokenRole table to write to. Gating on
+  // `rbac.isUsingPlugin()` (rather than parsing the fallback's error
+  // string) keeps the OSS-vs-cloud branch explicit and decoupled from
+  // any specific error message.
+  if (roleId && (await rbac.isUsingPlugin())) {
+    const roleResult = await rbac.setTokenRole({
+      tokenId: personalAccessToken.id,
+      roleId,
+    });
+    if (!roleResult.ok) {
+      await prisma.personalAccessToken
+        .delete({ where: { id: personalAccessToken.id } })
+        .catch((err) => {
+          logger.error("Failed to compensating-delete PAT after TokenRole insert failed", {
+            patId: personalAccessToken.id,
+            roleResultError: roleResult.error,
+            deleteError: err instanceof Error ? err.message : String(err),
+          });
+        });
+      throw new Error(`Failed to assign role to access token: ${roleResult.error}`);
+    }
+  } else if (roleId) {
+    logger.debug("createPersonalAccessToken: no RBAC plugin, skipping role assignment", {
+      patId: personalAccessToken.id,
+      userId,
+    });
+  }
 
   return {
     id: personalAccessToken.id,

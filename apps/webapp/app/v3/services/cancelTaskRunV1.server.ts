@@ -10,7 +10,7 @@ import { CancelTaskAttemptDependenciesService } from "./cancelTaskAttemptDepende
 import { CancelableTaskRun } from "./cancelTaskRun.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { resolveEventRepositoryForStore } from "../eventRepository/index.server";
+import { getEventRepositoryForStore } from "../eventRepository/index.server";
 
 type ExtendedTaskRun = Prisma.TaskRunGetPayload<{
   include: {
@@ -101,7 +101,10 @@ export class CancelTaskRunServiceV1 extends BaseService {
       },
     });
 
-    const eventRepository = resolveEventRepositoryForStore(cancelledTaskRun.taskEventStore);
+    const eventRepository = await getEventRepositoryForStore(
+      cancelledTaskRun.taskEventStore,
+      cancelledTaskRun.runtimeEnvironment.organizationId
+    );
 
     const [cancelRunEventError] = await tryCatch(
       eventRepository.cancelRunEvent({

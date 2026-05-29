@@ -11,9 +11,9 @@ description: "Learn about how to use the tools available in the Trigger.dev MCP 
 Search the Trigger.dev documentation for guides, examples, and API references.
 
 **Example usage:**
-- _"How do I create a scheduled task?"_
-- _"Show me webhook examples"_
-- _"What are the deployment options?"_
+- `"How do I create a scheduled task?"`
+- `"Show me webhook examples"`
+- `"What are the deployment options?"`
 
 ## Project Management Tools
 
@@ -22,32 +22,32 @@ Search the Trigger.dev documentation for guides, examples, and API references.
 List all organizations you have access to.
 
 **Example usage:**
-- _"What organizations do I have?"_
-- _"Show me my orgs"_
+- `"What organizations do I have?"`
+- `"Show me my orgs"`
 
 ### list_projects
 
 List all projects in your Trigger.dev account.
 
 **Example usage:**
-- _"What projects do I have?"_
-- _"List my Trigger.dev projects"_
+- `"What projects do I have?"`
+- `"List my Trigger.dev projects"`
 
 ### create_project_in_org
 
 Create a new project in an organization.
 
 **Example usage:**
-- _"Create a new project called 'my-app'"_
-- _"Set up a new Trigger.dev project"_
+- `"Create a new project called 'my-app'"`
+- `"Set up a new Trigger.dev project"`
 
 ### initialize_project
 
 Initialize Trigger.dev in your project with automatic setup and configuration.
 
 **Example usage:**
-- _"Set up Trigger.dev in this project"_
-- _"Add Trigger.dev to my app"_
+- `"Set up Trigger.dev in this project"`
+- `"Add Trigger.dev to my app"`
 
 ## Task Management Tools
 
@@ -56,17 +56,17 @@ Initialize Trigger.dev in your project with automatic setup and configuration.
 Get the current worker for a project, including the worker version, SDK version, and registered tasks with their payload schemas.
 
 **Example usage:**
-- _"What tasks are available?"_
-- _"Show me the tasks in dev"_
+- `"What tasks are available?"`
+- `"Show me the tasks in dev"`
 
 ### trigger_task
 
 Trigger a task to run with a specific payload. You can add a delay, set tags, configure retries, choose a machine size, set a TTL, or use an idempotency key.
 
 **Example usage:**
-- _"Run the email-notification task"_
-- _"Trigger my-task with userId 123"_
-- _"Execute the sync task in production"_
+- `"Run the email-notification task"`
+- `"Trigger my-task with userId 123"`
+- `"Execute the sync task in production"`
 
 ## Run Monitoring Tools
 
@@ -75,32 +75,32 @@ Trigger a task to run with a specific payload. You can add a delay, set tags, co
 Get detailed information about a specific task run, including logs and status. Enable debug mode to get the full trace with all logs and spans.
 
 **Example usage:**
-- _"Show me details for run run_abc123"_
-- _"Why did this run fail?"_
+- `"Show me details for run run_abc123"`
+- `"Why did this run fail?"`
 
 ### list_runs
 
 List runs for a project. Filter by status, task, tags, version, machine size, or time period.
 
 **Example usage:**
-- _"Show me recent runs"_
-- _"List failed runs from the last 7 days"_
-- _"What runs are currently executing?"_
+- `"Show me recent runs"`
+- `"List failed runs from the last 7 days"`
+- `"What runs are currently executing?"`
 
 ### wait_for_run_to_complete
 
 Wait for a specific run to finish and return the result.
 
 **Example usage:**
-- _"Wait for run run_abc123 to complete"_
+- `"Wait for run run_abc123 to complete"`
 
 ### cancel_run
 
 Cancel a running or queued run.
 
 **Example usage:**
-- _"Cancel run run_abc123"_
-- _"Stop that task"_
+- `"Cancel run run_abc123"`
+- `"Stop that task"`
 
 ## Deployment Tools
 
@@ -109,25 +109,165 @@ Cancel a running or queued run.
 Deploy your project to staging or production.
 
 **Example usage:**
-- _"Deploy to production"_
-- _"Deploy to staging"_
+- `"Deploy to production"`
+- `"Deploy to staging"`
 
 ### list_deploys
 
 List deployments for a project. Filter by status or time period.
 
 **Example usage:**
-- _"Show me recent deployments"_
-- _"What's deployed to production?"_
+- `"Show me recent deployments"`
+- `"What's deployed to production?"`
 
 ### list_preview_branches
 
 List all preview branches in the project.
 
 **Example usage:**
-- _"What preview branches exist?"_
-- _"Show me preview deployments"_
+- `"What preview branches exist?"`
+- `"Show me preview deployments"`
+
+## Profile Tools
+
+### whoami
+
+Show the current authenticated user, active CLI profile, email, and API URL.
+
+**Example usage:**
+- `"Who am I logged in as?"`
+- `"What profile am I using?"`
+
+### list_profiles
+
+List all configured CLI profiles and which one is currently active.
+
+**Example usage:**
+- `"What profiles do I have?"`
+- `"Show me my Trigger.dev profiles"`
+
+### switch_profile
+
+Switch the active CLI profile for this MCP session. This changes which Trigger.dev account and API URL are used for all subsequent tool calls.
+
+**Example usage:**
+- `"Switch to my production profile"`
+- `"Use the staging profile"`
+
+## Query and Analytics Tools
+
+### get_query_schema
+
+Get the schema for TRQL queries, including all available tables, their columns, data types, descriptions, and allowed values. Call this before using the query tool to understand what data is available.
+
+**Example usage:**
+- `"What tables and columns can I query?"`
+- `"Show me the query schema"`
+
+### query
+
+Execute a TRQL query against your Trigger.dev data. TRQL is a SQL-style query language for analyzing runs, metrics, and LLM usage.
+
+**Example usage:**
+- `"How many runs failed in the last 7 days?"`
+- `"Show me the top 10 most expensive tasks"`
+- `"Query the average execution duration by task"`
+
+### list_dashboards
+
+List available built-in dashboards with their widgets. Each dashboard contains pre-built queries for common metrics.
+
+**Example usage:**
+- `"What dashboards are available?"`
+- `"Show me the dashboard widgets"`
+
+### run_dashboard_query
+
+Execute a single widget query from a built-in dashboard. Use `list_dashboards` first to see available dashboards and widget IDs.
+
+**Example usage:**
+- `"Run the total runs widget from the overview dashboard"`
+- `"Show me the LLM cost over time from the AI dashboard"`
+
+## Dev Server Tools
+
+### start_dev_server
+
+Start the Trigger.dev dev server (`trigger dev`) in the background. Waits up to 30 seconds for the worker to be ready.
+
+**Example usage:**
+- `"Start the dev server"`
+- `"Run trigger dev"`
+
+### stop_dev_server
+
+Stop the running Trigger.dev dev server.
+
+**Example usage:**
+- `"Stop the dev server"`
+
+### dev_server_status
+
+Check the status of the dev server and view recent output. Shows whether it is stopped, starting, ready, or has errors.
+
+**Example usage:**
+- `"Is the dev server running?"`
+- `"Show me the dev server logs"`
+- `"Are there any build errors?"`
 
 <Callout type="warning">
-  The deploy and list_preview_branches tools are not available when the MCP server is running with the `--dev-only` flag.
+  The deploy and list_preview_branches tools are not available when the MCP server is running with the `--dev-only` flag. The `--readonly` flag hides deploy, trigger_task, and cancel_run.
+</Callout>
+
+## Agent Chat Tools
+
+These tools let you have conversations with [chat agents](/ai-chat/overview) directly from your AI coding tool. See the [Agent MCP guide](/ai-chat/mcp) for a walkthrough.
+
+### list_agents
+
+List all chat agents registered in the current worker. Agents are tasks created with `chat.agent()` or `chat.customAgent()`.
+
+**Example usage:**
+- `"What agents are available?"`
+- `"List my chat agents"`
+
+### start_agent_chat
+
+Start a conversation with a chat agent. Returns a chat ID for use with `send_agent_message`. Optionally preloads the agent so it initializes before the first message.
+
+**Parameters:**
+- `agentId` (required) — The agent task slug (e.g., `"support-agent"`)
+- `chatId` (optional) — A custom conversation ID. Auto-generated if omitted
+- `clientData` (optional) — Client data to include with every message (e.g., `{ userId: "user_123" }`). Must match the agent's `clientDataSchema` if one is defined
+- `preload` (optional, default: `true`) — Whether to preload the agent before the first message
+
+**Example usage:**
+- `"Start a chat with the support agent"`
+- `"Talk to the pr-review agent with userId abc"`
+
+### send_agent_message
+
+Send a message to an active agent chat and get the full response back. The agent remembers full context from previous messages in the same chat.
+
+**Parameters:**
+- `chatId` (required) — The chat ID from `start_agent_chat`
+- `message` (required) — The message text to send
+
+**Example usage:**
+- `"Tell the agent to review the latest PR"`
+- `"Ask it what tools it has available"`
+
+### close_agent_chat
+
+Close an agent chat conversation. The agent exits its loop gracefully. Without this, the agent will close on its own when its idle timeout expires.
+
+**Parameters:**
+- `chatId` (required) — The chat ID to close
+
+**Example usage:**
+- `"Close the chat"`
+- `"End the conversation"`
+
+<Callout type="warning">
+  The `start_agent_chat`, `send_agent_message`, and `close_agent_chat` tools are write operations and are not available in readonly mode.
 </Callout>

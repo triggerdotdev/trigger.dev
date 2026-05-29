@@ -1,5 +1,4 @@
 import { json } from "@remix-run/server-runtime";
-import { type Prettify } from "@trigger.dev/core";
 import { SignJWT, errors, jwtVerify } from "jose";
 import { z } from "zod";
 
@@ -7,8 +6,11 @@ import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { findProjectByRef } from "~/models/project.server";
 import {
+  authIncludeBase,
+  authIncludeWithParent,
   findEnvironmentByApiKey,
   findEnvironmentByPublicApiKey,
+  toAuthenticated,
 } from "~/models/runtimeEnvironment.server";
 import { type RuntimeEnvironmentForEnvRepo } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { logger } from "./logger.server";
@@ -23,7 +25,7 @@ import {
   isOrganizationAccessToken,
 } from "./organizationAccessToken.server";
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
-import { sanitizeBranchName } from "~/v3/gitBranch";
+import { sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 
 const ClaimsSchema = z.object({
   scopes: z.array(z.string()).optional(),
@@ -36,12 +38,10 @@ const ClaimsSchema = z.object({
     .optional(),
 });
 
-type Optional<T, K extends keyof T> = Prettify<Omit<T, K> & Partial<Pick<T, K>>>;
-
-export type AuthenticatedEnvironment = Optional<
-  NonNullable<Awaited<ReturnType<typeof findEnvironmentByApiKey>>>,
-  "orgMember"
->;
+// Re-export the slim shape defined in @trigger.dev/core. Single source of
+// truth across the auth boundary (RBAC plugin contract → webapp handlers).
+export type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
+import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
 
 export type ApiAuthenticationResult =
   | ApiAuthenticationResultSuccess
@@ -52,7 +52,6 @@ export type ApiAuthenticationResultSuccess = {
   apiKey: string;
   type: "PUBLIC" | "PRIVATE" | "PUBLIC_JWT";
   environment: AuthenticatedEnvironment;
-  scopes?: string[];
   oneTimeUse?: boolean;
   realtime?: {
     skipColumns?: string[];
@@ -163,7 +162,6 @@ export async function authenticateApiKey(
         ok: true,
         ...result,
         environment: validationResults.environment,
-        scopes: parsedClaims.success ? parsedClaims.data.scopes : [],
         oneTimeUse: parsedClaims.success ? parsedClaims.data.otu : false,
         realtime: parsedClaims.success ? parsedClaims.data.realtime : undefined,
       };
@@ -246,7 +244,6 @@ async function authenticateApiKeyWithFailure(
         ok: true,
         ...result,
         environment: validationResults.environment,
-        scopes: parsedClaims.success ? parsedClaims.data.scopes : [],
         oneTimeUse: parsedClaims.success ? parsedClaims.data.otu : false,
         realtime: parsedClaims.success ? parsedClaims.data.realtime : undefined,
       };
@@ -510,17 +507,14 @@ export async function authenticatedEnvironmentForAuthentication(
                 }
               : {}),
           },
-          include: {
-            project: true,
-            organization: true,
-          },
+          include: authIncludeBase,
         });
 
         if (!environment) {
           throw json({ error: "Environment not found" }, { status: 404 });
         }
 
-        return environment;
+        return toAuthenticated(environment);
       }
 
       const environment = await $replica.runtimeEnvironment.findFirst({
@@ -530,11 +524,7 @@ export async function authenticatedEnvironmentForAuthentication(
           branchName: sanitizedBranch,
           archivedAt: null,
         },
-        include: {
-          project: true,
-          organization: true,
-          parentEnvironment: true,
-        },
+        include: authIncludeWithParent,
       });
 
       if (!environment) {
@@ -545,12 +535,13 @@ export async function authenticatedEnvironmentForAuthentication(
         throw json({ error: "Branch not associated with a preview environment" }, { status: 400 });
       }
 
-      return {
+      // PREVIEW envs reuse the parent's apiKey for downstream auth flows
+      // (signed JWTs, internal-fetch helpers). Override before mapping so
+      // the slim shape carries the parent's key.
+      return toAuthenticated({
         ...environment,
         apiKey: environment.parentEnvironment.apiKey,
-        organization: environment.organization,
-        project: environment.project,
-      };
+      });
     }
     case "organizationAccessToken": {
       const organization = await $replica.organization.findUnique({
@@ -582,17 +573,14 @@ export async function authenticatedEnvironmentForAuthentication(
             projectId: project.id,
             slug: slug,
           },
-          include: {
-            project: true,
-            organization: true,
-          },
+          include: authIncludeBase,
         });
 
         if (!environment) {
           throw json({ error: "Environment not found" }, { status: 404 });
         }
 
-        return environment;
+        return toAuthenticated(environment);
       }
 
       const environment = await $replica.runtimeEnvironment.findFirst({
@@ -602,11 +590,7 @@ export async function authenticatedEnvironmentForAuthentication(
           branchName: sanitizedBranch,
           archivedAt: null,
         },
-        include: {
-          project: true,
-          organization: true,
-          parentEnvironment: true,
-        },
+        include: authIncludeWithParent,
       });
 
       if (!environment) {
@@ -617,12 +601,10 @@ export async function authenticatedEnvironmentForAuthentication(
         throw json({ error: "Branch not associated with a preview environment" }, { status: 400 });
       }
 
-      return {
+      return toAuthenticated({
         ...environment,
         apiKey: environment.parentEnvironment.apiKey,
-        organization: environment.organization,
-        project: environment.project,
-      };
+      });
     }
     default: {
       auth satisfies never;

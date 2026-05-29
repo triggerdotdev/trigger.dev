@@ -92,6 +92,11 @@ export function writeAuthConfigProfile(
   writeAuthConfigFile(config);
 }
 
+export function listAuthConfigProfiles(): string[] {
+  const config = getConfig();
+  return Object.keys(config.profiles);
+}
+
 export function readAuthConfigProfile(
   profile: string = DEFFAULT_PROFILE
 ): CliConfigProfileSettings | undefined {

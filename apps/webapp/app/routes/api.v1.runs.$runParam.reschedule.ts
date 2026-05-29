@@ -6,6 +6,7 @@ import { getApiVersion } from "~/api/versions";
 import { prisma } from "~/db.server";
 import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
+import { logger } from "~/services/logger.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { RescheduleTaskRunService } from "~/v3/services/rescheduleTaskRun.server";
 
@@ -84,10 +85,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
   } catch (error) {
     if (error instanceof ServiceValidationError) {
       return json({ error: error.message }, { status: 400 });
-    } else if (error instanceof Error) {
-      return json({ error: error.message }, { status: 500 });
-    } else {
-      return json({ error: "An unknown error occurred" }, { status: 500 });
     }
+
+    logger.error("Failed to reschedule run", { error });
+    return json({ error: "Something went wrong, please try again." }, { status: 500 });
   }
 }

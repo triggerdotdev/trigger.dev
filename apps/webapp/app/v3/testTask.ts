@@ -22,6 +22,7 @@ export const RunOptionsData = z.object({
   concurrencyKey: z.string().optional(),
   maxAttempts: z.number().min(1).optional(),
   machine: MachinePresetName.optional(),
+  region: z.string().optional(),
   maxDurationSeconds: z
     .number()
     .min(0)

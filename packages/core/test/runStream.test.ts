@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   RunSubscription,
   SSEStreamPart,
+  SSEStreamSubscription,
   StreamSubscription,
   StreamSubscriptionFactory,
 } from "../src/v3/apiClient/runStream.js";
@@ -467,6 +468,47 @@ describe("RunSubscription", () => {
       chunk: { id: "claude2", message: "There" },
       run: { id: "run_123" },
     });
+  });
+});
+
+describe("SSEStreamSubscription", () => {
+  let originalFetch: typeof global.fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it("does not retry the initial fetch on 401", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
+    global.fetch = fetchMock;
+
+    const sub = new SSEStreamSubscription("https://api.test/realtime/v1/streams/run_x/chat", {
+      headers: { Authorization: "Bearer expired" },
+    });
+
+    const stream = await sub.subscribe();
+    const reader = stream.getReader();
+    await expect(reader.read()).rejects.toMatchObject({ status: 401 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry the initial fetch on 403", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 403 }));
+    global.fetch = fetchMock;
+
+    const sub = new SSEStreamSubscription("https://api.test/realtime/v1/streams/run_x/chat", {
+      headers: { Authorization: "Bearer denied" },
+    });
+
+    const stream = await sub.subscribe();
+    const reader = stream.getReader();
+    await expect(reader.read()).rejects.toMatchObject({ status: 403 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

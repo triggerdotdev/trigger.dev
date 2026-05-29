@@ -1,0 +1,78 @@
+---
+title: "Troubleshooting private networking"
+sidebarTitle: "Troubleshooting"
+description: "Common problems when setting up an AWS PrivateLink connection to Trigger.dev, and how to resolve them."
+---
+
+This page collects common issues when adding a private connection. If your problem isn't listed here, [get in touch](/community).
+
+## "Private link not found" in the setup wizard
+
+If the setup wizard errors out with **Private link not found** when you submit the VPC Endpoint Service name, it almost always means your endpoint service has not been shared with Trigger.dev's AWS account.
+
+Trigger.dev cannot provision a VPC Endpoint until your endpoint service explicitly authorizes our AWS account as a consumer. Until that happens, the service name is invisible to us — even though the name itself is correct.
+
+### How to fix it
+
+<Steps>
+  <Step title="Open your endpoint service in the AWS console">
+    Go to **VPC → Endpoint services** in the AWS region where you created the service, and select
+    your service.
+  </Step>
+  <Step title="Open the Allow principals tab">
+    Click the **Allow principals** tab and check whether Trigger.dev's AWS account is listed.
+  </Step>
+  <Step title="Add Trigger.dev's account if it's missing">
+    Click **Allow principals** and add an entry in this format, replacing `<account-id>` with the
+    Trigger.dev AWS account ID shown on the **Add connection** page in your dashboard:
+
+    ```text
+    arn:aws:iam::<account-id>:root
+    ```
+
+    <Warning>
+      Always copy the account ID from your Trigger.dev dashboard. The correct value differs between
+      environments — don't reuse an ID from another source.
+    </Warning>
+
+  </Step>
+  <Step title="Retry in the Trigger.dev dashboard">
+    Once the principal is allow-listed, return to the **Add connection** page in Trigger.dev and
+    submit the form again. The wizard should now find your endpoint service and start provisioning.
+  </Step>
+</Steps>
+
+For full setup instructions including this step, see [Setting up PrivateLink in the AWS Console](/private-networking/aws-console-setup).
+
+## Connection is Active but the assigned IP is not reachable from tasks
+
+If your private connection shows **Active** in the Trigger.dev dashboard and the NLB target group reports healthy targets, but tasks still cannot reach the assigned IP, the most common cause is that your Network Load Balancer is enforcing security group rules on PrivateLink traffic.
+
+When a security group is attached to an NLB, AWS exposes a separate setting called **Enforce inbound rules on PrivateLink traffic**. When this is **on**, the NLB applies its security group's inbound rules to traffic arriving from VPC endpoints — and the source IP it evaluates is the **private IP of the consumer's VPC endpoint network interface**, not an IP in your own VPC. Because that IP belongs to Trigger.dev's VPC and isn't known ahead of time, the SG rule almost never matches, and traffic is silently dropped at the NLB.
+
+### How to fix it
+
+<Steps>
+  <Step title="Open your Network Load Balancer in the AWS console">
+    Go to **EC2 → Load balancers** in the region where your NLB lives and select the load balancer
+    backing your endpoint service.
+  </Step>
+  <Step title="Edit the security group settings">
+    On the **Security** tab, click **Edit**.
+  </Step>
+  <Step title="Turn off PrivateLink enforcement">
+    Uncheck **Enforce inbound rules on PrivateLink traffic** and save.
+
+    <Note>
+      This only changes how the NLB itself filters traffic. Authorization is still enforced by the
+      endpoint service's **Allow principals** list, so only AWS accounts you've explicitly
+      allow-listed can connect.
+    </Note>
+
+  </Step>
+  <Step title="Retry from your task">
+    Re-run a task that dials the assigned private IP. The connection should now succeed.
+  </Step>
+</Steps>
+
+If you need to keep the enforcement on for compliance reasons, the alternative is to widen your NLB's security group inbound rule to `0.0.0.0/0` on the listener port. Allow-listing the consumer endpoint's CIDR is not practical because it lives in Trigger.dev's VPC and may change.

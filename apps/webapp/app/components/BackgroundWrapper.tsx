@@ -5,10 +5,9 @@ import blurredDashboardBackgroundTable from "~/assets/images/blurred-dashboard-b
 
 export function BackgroundWrapper({ children }: { children: ReactNode }) {
   return (
-    <div className="relative h-full w-full overflow-hidden">
-      {/* Left menu top background - fixed width 260px, maintains aspect ratio */}
+    <div className="relative h-full w-full overflow-hidden bg-background-dimmed lg:bg-transparent">
       <div
-        className="absolute left-0 top-0 w-[260px] bg-contain bg-left-top bg-no-repeat"
+        className="absolute left-0 top-0 hidden w-[260px] bg-contain bg-left-top bg-no-repeat lg:block"
         style={{
           backgroundImage: `url(${blurredDashboardBackgroundMenuTop})`,
           aspectRatio: "auto",
@@ -17,9 +16,8 @@ export function BackgroundWrapper({ children }: { children: ReactNode }) {
         }}
       />
 
-      {/* Left menu bottom background - fixed width 260px, maintains aspect ratio */}
       <div
-        className="absolute bottom-0 left-0 w-[260px] bg-contain bg-left-bottom bg-no-repeat"
+        className="absolute bottom-0 left-0 hidden w-[260px] bg-contain bg-left-bottom bg-no-repeat lg:block"
         style={{
           backgroundImage: `url(${blurredDashboardBackgroundMenuBottom})`,
           aspectRatio: "auto",
@@ -28,9 +26,8 @@ export function BackgroundWrapper({ children }: { children: ReactNode }) {
         }}
       />
 
-      {/* Right table background - fixed width 2000px, positioned next to menu */}
       <div
-        className="absolute top-0 bg-left-top bg-no-repeat"
+        className="absolute top-0 hidden bg-left-top bg-no-repeat lg:block"
         style={{
           left: "260px",
           backgroundImage: `url(${blurredDashboardBackgroundTable})`,
@@ -41,7 +38,6 @@ export function BackgroundWrapper({ children }: { children: ReactNode }) {
         }}
       />
 
-      {/* Content layer */}
       <div className="relative z-10 h-full w-full">{children}</div>
     </div>
   );

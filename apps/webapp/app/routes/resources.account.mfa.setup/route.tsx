@@ -1,7 +1,11 @@
-import { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
-import { redirectWithSuccessMessage, redirectWithErrorMessage, typedJsonWithSuccessMessage } from "~/models/message.server";
+import {
+  redirectWithSuccessMessage,
+  redirectWithErrorMessage,
+  typedJsonWithSuccessMessage,
+} from "~/models/message.server";
 import { MultiFactorAuthenticationService } from "~/services/mfa/multiFactorAuthentication.server";
 import { requireUserId } from "~/services/session.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -132,14 +136,15 @@ export async function action({ request }: ActionFunctionArgs) {
     if (error instanceof ServiceValidationError) {
       return redirectWithErrorMessage("/account/security", request, error.message);
     }
-    
+
     // Re-throw unexpected errors
     throw error;
   }
 }
 
 export function MfaSetup({ isEnabled }: { isEnabled: boolean }) {
-  const { state, actions, isQrDialogOpen, isRecoveryDialogOpen, isDisableDialogOpen } = useMfaSetup(isEnabled);
+  const { state, actions, isQrDialogOpen, isRecoveryDialogOpen, isDisableDialogOpen } =
+    useMfaSetup(isEnabled);
 
   const handleToggle = (enabled: boolean) => {
     if (enabled && !state.isEnabled) {
@@ -151,10 +156,7 @@ export function MfaSetup({ isEnabled }: { isEnabled: boolean }) {
 
   return (
     <>
-      <MfaToggle
-        isEnabled={state.isEnabled}
-        onToggle={handleToggle}
-      />
+      <MfaToggle isEnabled={state.isEnabled} onToggle={handleToggle} />
 
       <MfaSetupDialog
         isOpen={isQrDialogOpen}

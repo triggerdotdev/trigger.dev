@@ -1,5 +1,83 @@
 # @trigger.dev/redis-worker
 
+## 4.5.0-rc.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.2`
+
+## 4.5.0-rc.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.1`
+
+## 4.5.0-rc.0
+
+### Patch Changes
+
+- Add MollifierBuffer and MollifierDrainer primitives for trigger burst smoothing. ([#3614](https://github.com/triggerdotdev/trigger.dev/pull/3614))
+
+  MollifierBuffer (`accept`, `pop`, `ack`, `requeue`, `fail`, `evaluateTrip`) is a per-env FIFO over Redis with atomic Lua transitions for status tracking. `evaluateTrip` is a sliding-window trip evaluator the webapp gate uses to detect per-env trigger bursts.
+
+  MollifierDrainer pops entries through a polling loop with a user-supplied handler. The loop survives transient Redis errors via capped exponential backoff (up to 5s), and per-env pop failures don't poison the rest of the batch — one env's blip is logged and counted as failed for that tick. Rotation is two-level: orgs at the top, envs within each org. The buffer maintains `mollifier:orgs` and `mollifier:org-envs:${orgId}` atomically with per-env queues, so the drainer walks orgs → envs directly without an in-memory cache. The `maxOrgsPerTick` option (default 500) caps how many orgs are scheduled per tick; for each picked org, one env is popped (rotating round-robin within the org). An org with N envs gets the same per-tick scheduling slot as an org with 1 env, so tenant-level drainage throughput is determined by org count rather than env count.
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.0`
+
+## 4.4.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.6`
+
+## 4.4.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.5`
+
+## 4.4.4
+
+### Patch Changes
+
+- Adapted the CLI API client to propagate the trigger source via http headers. ([#3241](https://github.com/triggerdotdev/trigger.dev/pull/3241))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.4`
+
+## 4.4.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.3`
+
+## 4.4.2
+
+### Patch Changes
+
+- Fix slow batch queue processing by removing spurious cooloff on concurrency blocks and fixing a race condition where retry attempt counts were not atomically updated during message re-queue. ([#3079](https://github.com/triggerdotdev/trigger.dev/pull/3079))
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.2`
+
+## 4.4.1
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.1`
+
+## 4.4.0
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.4.0`
+
 ## 4.3.3
 
 ### Patch Changes

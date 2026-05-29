@@ -28,6 +28,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       },
     },
     select: {
+      spanId: true,
       runtimeEnvironment: {
         select: {
           slug: true,
@@ -57,12 +58,21 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     );
   }
 
-  return redirect(
-    v3RunPath(
-      { slug: run.project.organization.slug },
-      { slug: run.project.slug },
-      { slug: run.runtimeEnvironment.slug },
-      { friendlyId: runParam }
-    )
+  // Preserve existing search params from the request, add span if not already set
+  const url = new URL(request.url);
+  const searchParams = url.searchParams;
+
+  if (!searchParams.has("span") && run.spanId) {
+    searchParams.set("span", run.spanId);
+  }
+
+  const path = v3RunPath(
+    { slug: run.project.organization.slug },
+    { slug: run.project.slug },
+    { slug: run.runtimeEnvironment.slug },
+    { friendlyId: runParam },
+    searchParams
   );
+
+  return redirect(path);
 }

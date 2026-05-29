@@ -7,7 +7,7 @@ import {
 } from "@trigger.dev/database";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { type CreateBulkActionPayload } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import {
   parseRunListInputOptions,
   type RunListInputFilters,
@@ -38,8 +38,9 @@ export class BulkActionService extends BaseService {
     const filters = await getFilters(payload, request);
 
     // Count the runs that will be affected by the bulk action
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
     const runsRepository = new RunsRepository({
-      clickhouse: clickhouseClient,
+      clickhouse,
       prisma: this._replica as PrismaClient,
     });
     const count = await runsRepository.countRuns({
@@ -138,15 +139,18 @@ export class BulkActionService extends BaseService {
     }
 
     // 2. Parse the params
+    const rawParams = group.params && typeof group.params === "object" ? group.params : {};
+    const finalizeRun = "finalizeRun" in rawParams && (rawParams as any).finalizeRun === true;
     const filters = parseRunListInputOptions({
       organizationId: group.project.organizationId,
       projectId: group.projectId,
       environmentId: group.environmentId,
-      ...(group.params && typeof group.params === "object" ? group.params : {}),
+      ...rawParams,
     });
 
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(group.project.organizationId, "standard");
     const runsRepository = new RunsRepository({
-      clickhouse: clickhouseClient,
+      clickhouse,
       prisma: this._replica as PrismaClient,
     });
 
@@ -199,6 +203,7 @@ export class BulkActionService extends BaseService {
               cancelService.call(run, {
                 reason: `Bulk action ${group.friendlyId} cancelled run`,
                 bulkActionId: bulkActionId,
+                finalizeRun,
               })
             );
             if (error) {
@@ -239,6 +244,7 @@ export class BulkActionService extends BaseService {
             const [error, result] = await tryCatch(
               replayService.call(run, {
                 bulkActionId: bulkActionId,
+                triggerSource: "dashboard",
               })
             );
             if (error) {
