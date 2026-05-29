@@ -21,6 +21,7 @@ export function emit(state: State): void {
   };
 
   if (state.traceId) out.trace_id = state.traceId;
+  appendIfSet(out, "start_time", state.startTime);
   appendIfSet(out, "service", state.service);
   appendIfSet(out, "version", state.version);
   appendIfSet(out, "commit_sha", state.commitSha);

@@ -58,6 +58,7 @@ export function newState(opts: NewStateOptions): State {
   const requestId = isValidRequestId(inbound) ? inbound : newRequestId();
 
   return {
+    startTime: nowRfc3339(),
     requestId,
     traceId: parseTraceId(traceparent),
     traceparent,
@@ -79,4 +80,17 @@ export function newState(opts: NewStateOptions): State {
 
 function newRequestId(): string {
   return "req-" + randomBytes(16).toString("hex");
+}
+
+/**
+ * Current wall-clock time as an RFC3339 string with microsecond precision.
+ * `Date.toISOString()` only has millisecond resolution, which is too coarse to
+ * order multiple wide events emitted within the same millisecond.
+ * `performance.timeOrigin + performance.now()` gives a sub-millisecond wall-clock
+ * reading; we append the microsecond digits to the millisecond ISO string.
+ */
+function nowRfc3339(): string {
+  const ms = performance.timeOrigin + performance.now();
+  const micros = Math.floor((ms % 1) * 1000); // microseconds within the millisecond (0..999)
+  return new Date(ms).toISOString().slice(0, -1) + String(micros).padStart(3, "0") + "Z";
 }
