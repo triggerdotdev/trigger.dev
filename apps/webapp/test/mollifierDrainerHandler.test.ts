@@ -19,6 +19,22 @@ vi.mock("~/v3/services/alerts/performTaskRunAlerts.server", () => ({
   },
 }));
 
+// The drainer calls `recordRunDebugLog` after a successful engine.trigger
+// to emit an admin-only LOG-kind event encoding the buffered window.
+// The real implementation imports the configured event repository (prisma
+// + clickhouse + env), which has heavy side-effects on first import.
+// Stub it to a vi.fn so the unit tests can assert call shape without
+// dragging the whole eventRepository graph into webapp test setup.
+// `vi.hoisted` is required because `vi.mock` factories are hoisted above
+// regular `const`s — referencing a top-level variable from inside the
+// factory otherwise fires `Cannot access 'X' before initialization`.
+const { recordRunDebugLogMock } = vi.hoisted(() => ({
+  recordRunDebugLogMock: vi.fn(async () => ({ success: true as const })),
+}));
+vi.mock("~/v3/eventRepository/index.server", () => ({
+  recordRunDebugLog: recordRunDebugLogMock,
+}));
+
 import {
   createDrainerHandler,
   isRetryablePgError,
@@ -449,5 +465,106 @@ describe("createDrainerHandler", () => {
       } as any),
     ).rejects.toThrow("engine rejected the snapshot");
     expect(createFailedTaskRun).not.toHaveBeenCalled();
+  });
+
+  it("emits an admin-only LOG-kind event with the buffered window after engine.trigger succeeds", async () => {
+    // The drainer's audit trail rides the existing TaskEventKind.LOG
+    // filter pattern (`eventRepository.server.ts:108` + `logs.download.ts:118`)
+    // — admins see the buffered window in the trace; non-admins don't.
+    recordRunDebugLogMock.mockClear();
+    const trigger = vi.fn(async () => ({ friendlyId: "run_z" }));
+    const handler = createDrainerHandler({
+      engine: { trigger } as any,
+      prisma: {} as any,
+    });
+
+    const bufferedAt = new Date(Date.now() - 4_000);
+    await handler({
+      runId: "run_z",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: { taskIdentifier: "t", spanId: "snapspan", traceId: "snaptrace" },
+      attempts: 2,
+      createdAt: bufferedAt,
+    } as any);
+
+    expect(recordRunDebugLogMock).toHaveBeenCalledOnce();
+    const [callRunId, message, options] = recordRunDebugLogMock.mock.calls[0] as [
+      string,
+      string,
+      any,
+    ];
+    // Internal cuid derived from the friendlyId, mirroring what
+    // `findRunForEventCreation` queries on.
+    expect(callRunId).toBe("z");
+    expect(message).toMatch(/Mollifier buffered for \d+ms/);
+    // Encodes the historical buffered window so the trace view places
+    // the LOG event between trigger and dequeue (not at "now").
+    expect(options.startTime).toBe(bufferedAt);
+    expect(options.duration).toBeGreaterThan(0);
+    expect(options.parentId).toBe("snapspan");
+    expect(options.attributes.metadata["mollifier.bufferedAt"]).toBe(bufferedAt.toISOString());
+    expect(options.attributes.metadata["mollifier.attempts"]).toBe(2);
+  });
+
+  it("does NOT emit the admin LOG event when engine.trigger fails non-retryably", async () => {
+    // The audit trail is for runs that actually materialised. On a
+    // terminal SYSTEM_FAILURE path the customer-visible outcome is the
+    // failure row; emitting a "buffered for Xms" event next to it would
+    // imply the buffered window completed normally.
+    recordRunDebugLogMock.mockClear();
+    const trigger = vi.fn(async () => {
+      throw new Error("engine rejected the snapshot");
+    });
+    const createFailedTaskRun = vi.fn(async () => ({ id: "internal" }));
+    const handler = createDrainerHandler({
+      engine: { trigger, createFailedTaskRun } as any,
+      prisma: {} as any,
+    });
+
+    await handler({
+      runId: "run_z",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: { taskIdentifier: "t", environment: envFixture },
+      attempts: 0,
+      createdAt: new Date(),
+    } as any);
+
+    expect(recordRunDebugLogMock).not.toHaveBeenCalled();
+  });
+
+  it("does NOT emit the admin LOG event on the cancel-bifurcation path", async () => {
+    // Cancel-bifurcation writes a CANCELED row directly without calling
+    // engine.trigger. There's no buffered-then-materialised window to
+    // describe — the run never ran.
+    recordRunDebugLogMock.mockClear();
+    const friendlyId = RunId.generate().friendlyId;
+    const createCancelledRun = vi.fn(async () => ({
+      id: "internal",
+      friendlyId,
+      status: "CANCELED",
+    }));
+    const handler = createDrainerHandler({
+      engine: { createCancelledRun } as any,
+      prisma: {} as any,
+    });
+
+    await handler({
+      runId: friendlyId,
+      envId: "env_a",
+      orgId: "org_1",
+      payload: {
+        friendlyId,
+        taskIdentifier: "t",
+        environment: envFixture,
+        cancelledAt: new Date().toISOString(),
+        cancelReason: "Canceled by user",
+      },
+      attempts: 0,
+      createdAt: new Date(),
+    } as any);
+
+    expect(recordRunDebugLogMock).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,7 @@ import type {
   MollifierDrainerTerminalFailureHandler,
 } from "@trigger.dev/redis-worker";
 import { logger } from "~/services/logger.server";
+import { recordRunDebugLog } from "~/v3/eventRepository/index.server";
 import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRunAlerts.server";
 import { startSpan } from "~/v3/tracing.server";
 import type { MollifierSnapshot } from "./mollifierSnapshot.server";
@@ -162,8 +163,10 @@ export function createDrainerHandler(deps: {
         span.setAttribute("mollifier.run_friendly_id", input.runId);
         span.setAttribute("taskRunId", input.runId);
 
+        let triggerSucceeded = false;
         try {
           await deps.engine.trigger(input.payload as any, deps.prisma);
+          triggerSucceeded = true;
         } catch (err) {
           // The retryable-PG class re-throws so the drainer's outer
           // worker loop can `buffer.requeue` (handled in
@@ -210,6 +213,47 @@ export function createDrainerHandler(deps: {
               writeErr instanceof Error ? writeErr.message : String(writeErr)
             );
             throw err;
+          }
+        }
+
+        // Admin-only audit trail emitted once engine.trigger has
+        // landed a PG row. `recordRunDebugLog` flips this to
+        // `TaskEventKind.LOG`, which the trace view + logs download
+        // already gate behind admin
+        // (`eventRepository.server.ts:108`,
+        // `resources.runs.$runParam.logs.download.ts:118`). Encoding
+        // the buffered window as `startTime` + `duration` makes the
+        // event render at the historical instant inside the run's
+        // existing trace — admins see "Mollifier buffered for Xms"
+        // sitting between trigger and dequeue. Best-effort: the
+        // helper has its own try/catch and returns a result, so it
+        // never throws into the materialisation path. Failures are
+        // logged but not surfaced because the customer-visible run
+        // has already landed.
+        if (triggerSucceeded) {
+          const debugResult = await recordRunDebugLog(
+            RunId.fromFriendlyId(input.runId),
+            `Mollifier buffered for ${dwellMs}ms before materialising`,
+            {
+              attributes: {
+                runId: input.runId,
+                metadata: {
+                  "mollifier.bufferedAt": input.createdAt.toISOString(),
+                  "mollifier.materialisedAt": new Date().toISOString(),
+                  "mollifier.dwellMs": dwellMs,
+                  "mollifier.attempts": input.attempts,
+                },
+              },
+              startTime: input.createdAt,
+              duration: dwellMs * 1_000_000,
+              parentId: snapshotSpanId,
+            }
+          );
+          if (!debugResult.success && debugResult.code !== "RUN_NOT_FOUND") {
+            logger.warn("mollifier drainer: failed to record admin debug log", {
+              runId: input.runId,
+              code: debugResult.code,
+            });
           }
         }
       });
