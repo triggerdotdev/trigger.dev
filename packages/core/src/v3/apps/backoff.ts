@@ -340,6 +340,10 @@ export class ExponentialBackoff {
         elapsedMs += Date.now() - start;
         clearTimeout(attemptTimeout);
       }
+
+      if (elapsedMs >= this.#maxElapsed * 1000) {
+        break;
+      }
     }
 
     if (finalError instanceof AttemptTimeout) {
