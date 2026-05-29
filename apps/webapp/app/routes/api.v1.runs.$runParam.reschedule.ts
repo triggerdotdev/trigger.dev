@@ -10,7 +10,7 @@ import { logger } from "~/services/logger.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { RescheduleTaskRunService } from "~/v3/services/rescheduleTaskRun.server";
 import { mutateWithFallback } from "~/v3/mollifier/mutateWithFallback.server";
-import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
+import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
 import { parseDelay } from "~/utils/delays";
 
 const ParamsSchema = z.object({
@@ -58,19 +58,34 @@ export async function action({ request, params }: ActionFunctionArgs) {
     // SyntheticRun type doesn't carry a "DELAYED" enum value because
     // it's not a terminal status the trace API needs to express; the
     // buffered analogue is `delayUntil` set in the snapshot. Gate on
-    // that. Race window between read and write is bounded: if the
-    // drainer materialises mid-call, mutateWithFallback falls through
-    // to the PG mutation which has its own DELAYED check.
-    const buffered = await findRunByIdWithMollifierFallback({
-      runId: parsed.data.runParam,
-      environmentId: env.id,
-      organizationId: env.organizationId,
-    });
-    if (buffered && !buffered.delayUntil) {
-      return json(
-        { error: "Cannot reschedule a run that is not delayed" },
-        { status: 422 },
-      );
+    // that.
+    //
+    // Only apply the guard when the buffer entry is NOT yet
+    // materialised. Post-materialise the entry sticks around for a
+    // 30s grace TTL with `materialised: true`, but the PG row is now
+    // canonical — its DELAYED state may differ from what the snapshot
+    // recorded at trigger time (e.g. a prior reschedule via the PG
+    // path, or a delay set by the engine through another mechanism).
+    // Reading from the stale snapshot would 422 a legitimately-DELAYED
+    // PG row. When `materialised` we let `mutateWithFallback` route to
+    // PG, which runs its own canonical DELAYED check.
+    const buffer = getMollifierBuffer();
+    const entry = buffer ? await buffer.getEntry(parsed.data.runParam) : null;
+    const isLiveBuffered =
+      entry !== null &&
+      entry.materialised !== true &&
+      entry.envId === env.id &&
+      entry.orgId === env.organizationId;
+    if (isLiveBuffered) {
+      const snapshot = JSON.parse(entry.payload) as Record<string, unknown>;
+      const snapshotDelayUntil =
+        typeof snapshot.delayUntil === "string" ? snapshot.delayUntil : undefined;
+      if (!snapshotDelayUntil) {
+        return json(
+          { error: "Cannot reschedule a run that is not delayed" },
+          { status: 422 },
+        );
+      }
     }
 
     const outcome = await mutateWithFallback<Response>({
