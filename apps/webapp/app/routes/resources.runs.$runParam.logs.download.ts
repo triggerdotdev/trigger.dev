@@ -10,6 +10,7 @@ import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { TaskEventKind } from "@trigger.dev/database";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
+import { deserialiseMollifierSnapshot } from "~/v3/mollifier/mollifierSnapshot.server";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const user = await requireUser(request);
@@ -52,7 +53,14 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
         if (member) {
           let taskIdentifier: string | undefined;
           try {
-            const snapshot = JSON.parse(entry.payload) as { taskIdentifier?: unknown };
+            // Use the shared webapp wrapper rather than raw JSON.parse so
+            // every read-side module shares a single deserialisation path
+            // (see contract comment in `mollifierSnapshot.server.ts` and
+            // `syntheticRedirectInfo.server.ts`). Keeps behaviour
+            // consistent if the snapshot encoding ever changes.
+            const snapshot = deserialiseMollifierSnapshot(entry.payload) as {
+              taskIdentifier?: unknown;
+            };
             if (typeof snapshot.taskIdentifier === "string") {
               taskIdentifier = snapshot.taskIdentifier;
             }
