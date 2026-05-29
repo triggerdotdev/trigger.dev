@@ -189,6 +189,7 @@ export async function buildSyntheticSpanRun(args: {
     traceId: run.traceId ?? "",
     spanId: run.spanId ?? "",
     isCached: false,
+    isBuffered: true,
     machinePreset: narrowMachinePreset(run.machinePreset),
     taskEventStore: "taskEvent",
     externalTraceId: undefined,

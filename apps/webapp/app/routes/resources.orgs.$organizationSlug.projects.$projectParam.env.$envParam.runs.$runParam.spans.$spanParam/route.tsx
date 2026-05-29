@@ -1097,7 +1097,7 @@ function RunBody({
               {run.isCached ? "Jump to original run" : "Focus on run"}
             </LinkButton>
           )}
-          <AdminDebugRun friendlyId={run.friendlyId} />
+          {!run.isBuffered && <AdminDebugRun friendlyId={run.friendlyId} />}
         </div>
         <div className="flex items-center">
           {run.logsDeletedAt === null ? (

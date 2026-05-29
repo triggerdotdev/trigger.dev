@@ -74,9 +74,21 @@ function extractPromptSpanData(properties: Record<string, unknown>): PromptSpanD
   };
 }
 
+// SpanRun is grounded in the PG-path `getRun` method rather than
+// inferred from `call`'s return type. The buffered branch of `call`
+// routes through `buildSyntheticSpanRun`, and that helper is annotated
+// `Promise<SpanRun>` — if SpanRun were derived from `call` it would
+// close a loop TS no longer tolerates ("Type alias 'Result' circularly
+// references itself"). `getRun` is the canonical source for the shape
+// (the synthetic helper just rebuilds the same shape from a buffer
+// snapshot), and it doesn't recurse, so grounding here breaks the
+// cycle while keeping Span available off `call` (Span's path through
+// `#getSpan` has no synthetic indirection).
+export type SpanRun = NonNullable<
+  Awaited<ReturnType<InstanceType<typeof SpanPresenter>["getRun"]>>
+>;
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;
-export type SpanRun = NonNullable<NonNullable<Result>["run"]>;
 type FindRunResult = NonNullable<
   Awaited<ReturnType<InstanceType<typeof SpanPresenter>["findRun"]>>
 >;
@@ -406,6 +418,7 @@ export class SpanPresenter extends BasePresenter {
       traceId: run.traceId,
       spanId: run.spanId,
       isCached: !!linkedRunId,
+      isBuffered: false,
       machinePreset: machine?.name,
       taskEventStore: run.taskEventStore,
       externalTraceId,
