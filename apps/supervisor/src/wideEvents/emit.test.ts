@@ -35,6 +35,26 @@ describe("emit", () => {
     expect(out.duration_ms).toBe(5);
   });
 
+  it("emits start_time as an ISO timestamp set by newState", () => {
+    const s = newState({ service: "supervisor", env: {} });
+    s.statusCode = 200;
+    s.ok = true;
+    const out = captureEmit(s);
+    expect(typeof out.start_time).toBe("string");
+    // Microsecond-precision RFC3339 (6 fractional digits), parseable as a date.
+    expect(out.start_time).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/);
+    expect(Number.isNaN(new Date(out.start_time as string).getTime())).toBe(false);
+  });
+
+  it("omits start_time when unset", () => {
+    const s = newState({ service: "supervisor", env: {} });
+    delete s.startTime;
+    s.statusCode = 200;
+    s.ok = true;
+    const out = captureEmit(s);
+    expect(out).not.toHaveProperty("start_time");
+  });
+
   it("omits empty optional fields", () => {
     const s = newState({ service: "supervisor", env: {} });
     s.statusCode = 200;

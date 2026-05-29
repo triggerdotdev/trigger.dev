@@ -5,6 +5,13 @@
  * events stay compact.
  */
 export type State = {
+  /**
+   * Wall-clock time the event began, as an ISO-8601 string. Emitted as
+   * `start_time` so log collection orders events by when work started rather
+   * than by the collector's ingestion time.
+   */
+  startTime?: string;
+
   // Cross-stack correlation.
   requestId: string;
   traceId: string;
