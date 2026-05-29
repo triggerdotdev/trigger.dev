@@ -980,13 +980,17 @@ export class MollifierBuffer {
 
         redis.call('HSET', entryKey, 'status', 'FAILED', 'lastError', errorPayload)
 
-        -- The drainer has already written a SYSTEM_FAILURE PG row for
-        -- terminal failures (see mollifierDrainerHandler.server.ts), so
-        -- the buffer entry is no longer load-bearing. Clear the
-        -- idempotency lookup — PG's unique constraint is the canonical
-        -- dedup mechanism post-materialise — and drop the entry hash so
-        -- failed runs don't accrete forever now that there's no
-        -- accept-time TTL.
+        -- Terminal-failure contract: the drainer's onTerminalFailure
+        -- callback (see MollifierDrainer.processEntry) has been
+        -- invoked before this fail() and has either written a
+        -- SYSTEM_FAILURE PG row (for both non-retryable AND
+        -- max-attempts-exhausted retryable errors) or chosen to fall
+        -- through (genuinely bad snapshot the engine can't materialise
+        -- a row from). Either way the buffer entry is no longer
+        -- load-bearing here. Clear the idempotency lookup -- PG's
+        -- unique constraint is the canonical dedup mechanism
+        -- post-materialise -- and drop the entry hash so failed runs
+        -- don't accrete forever now that there's no accept-time TTL.
         local lookupKey = redis.call('HGET', entryKey, 'idempotencyLookupKey')
         if lookupKey and lookupKey ~= '' then
           redis.call('DEL', lookupKey)

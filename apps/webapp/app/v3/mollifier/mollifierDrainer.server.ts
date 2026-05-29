@@ -7,6 +7,7 @@ import { singleton } from "~/utils/singleton";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
 import {
   createDrainerHandler,
+  createDrainerTerminalFailureHandler,
   isRetryablePgError,
 } from "./mollifierDrainerHandler.server";
 import type { MollifierSnapshot } from "./mollifierSnapshot.server";
@@ -76,6 +77,7 @@ function initializeMollifierDrainer(): MollifierDrainer<MollifierSnapshot> {
   const drainer = new MollifierDrainer<MollifierSnapshot>({
     buffer,
     handler: createDrainerHandler({ engine: runEngine, prisma }),
+    onTerminalFailure: createDrainerTerminalFailureHandler({ engine: runEngine, prisma }),
     concurrency: env.TRIGGER_MOLLIFIER_DRAIN_CONCURRENCY,
     maxAttempts: env.TRIGGER_MOLLIFIER_DRAIN_MAX_ATTEMPTS,
     maxOrgsPerTick: env.TRIGGER_MOLLIFIER_DRAIN_MAX_ORGS_PER_TICK,

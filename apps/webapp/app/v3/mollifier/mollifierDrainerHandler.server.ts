@@ -2,7 +2,10 @@ import { context, trace, TraceFlags } from "@opentelemetry/api";
 import type { RunEngine } from "@internal/run-engine";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
-import type { MollifierDrainerHandler } from "@trigger.dev/redis-worker";
+import type {
+  MollifierDrainerHandler,
+  MollifierDrainerTerminalFailureHandler,
+} from "@trigger.dev/redis-worker";
 import { startSpan } from "~/v3/tracing.server";
 import type { MollifierSnapshot } from "./mollifierSnapshot.server";
 
@@ -142,68 +145,17 @@ export function createDrainerHandler(deps: {
           }
           const reason = err instanceof Error ? err.message : String(err);
           span.setAttribute("mollifier.terminal_failure_reason", reason);
-          const snapshot = input.payload as Record<string, unknown>;
-          const env = snapshot.environment as
-            | {
-                id: string;
-                type: any;
-                project: { id: string };
-                organization: { id: string };
-              }
-            | undefined;
-          if (!env) {
-            // Snapshot too malformed to even construct a TaskRun row.
-            // Drainer's outer catch will buffer.fail this entry.
-            throw err;
-          }
-          // Extract batch association from the snapshot if present.
-          // Without this, a SYSTEM_FAILURE row for a buffered batch
-          // child won't be linked to its batch, and the batch parent's
-          // completion tracking can hang indefinitely waiting on a
-          // child that landed but isn't visible to the batch.
-          const rawBatch = snapshot.batch;
-          const batch =
-            rawBatch &&
-            typeof rawBatch === "object" &&
-            "id" in rawBatch &&
-            typeof (rawBatch as { id: unknown }).id === "string" &&
-            "index" in rawBatch &&
-            typeof (rawBatch as { index: unknown }).index === "number"
-              ? (rawBatch as { id: string; index: number })
-              : undefined;
           try {
-            await deps.engine.createFailedTaskRun({
+            const wrote = await writeMollifierTerminalFailureRow(deps, {
               friendlyId: input.runId,
-              environment: env,
-              taskIdentifier: String(snapshot.taskIdentifier ?? ""),
-              payload: typeof snapshot.payload === "string" ? snapshot.payload : undefined,
-              payloadType:
-                typeof snapshot.payloadType === "string" ? snapshot.payloadType : undefined,
-              error: {
-                type: "STRING_ERROR",
-                raw: `Mollifier drainer terminal failure: ${reason}`,
-              },
-              parentTaskRunId:
-                typeof snapshot.parentTaskRunId === "string"
-                  ? snapshot.parentTaskRunId
-                  : undefined,
-              rootTaskRunId:
-                typeof snapshot.rootTaskRunId === "string"
-                  ? snapshot.rootTaskRunId
-                  : undefined,
-              depth: typeof snapshot.depth === "number" ? snapshot.depth : 0,
-              resumeParentOnCompletion: snapshot.resumeParentOnCompletion === true,
-              batch,
-              traceId: typeof snapshot.traceId === "string" ? snapshot.traceId : undefined,
-              spanId: typeof snapshot.spanId === "string" ? snapshot.spanId : undefined,
-              taskEventStore:
-                typeof snapshot.taskEventStore === "string"
-                  ? snapshot.taskEventStore
-                  : undefined,
-              queue: typeof snapshot.queue === "string" ? snapshot.queue : undefined,
-              lockedQueueId:
-                typeof snapshot.lockedQueueId === "string" ? snapshot.lockedQueueId : undefined,
+              snapshot: input.payload as Record<string, unknown>,
+              reason,
             });
+            if (!wrote) {
+              // Snapshot too malformed to even construct a TaskRun row.
+              // Drainer's outer catch will buffer.fail this entry.
+              throw err;
+            }
           } catch (writeErr) {
             // The terminal SYSTEM_FAILURE write itself failed. If it
             // failed because PG is transiently unreachable, rethrow the
@@ -225,6 +177,111 @@ export function createDrainerHandler(deps: {
             throw err;
           }
         }
+      });
+    });
+  };
+}
+
+// Shared SYSTEM_FAILURE construction used by both terminal paths:
+//   - non-retryable failure inside the handler (above)
+//   - retryable failure after maxAttempts inside the drainer's
+//     `processEntry` (via `createDrainerTerminalFailureHandler`)
+// Returns `true` if a row was written, `false` when the snapshot was so
+// malformed it couldn't even produce an environment — caller decides
+// whether to escalate that to `buffer.fail` directly. Throws on any other
+// failure so the drainer's retryable/non-retryable disposition logic can
+// own the decision.
+async function writeMollifierTerminalFailureRow(
+  deps: { engine: RunEngine; prisma: PrismaClientOrTransaction },
+  args: { friendlyId: string; snapshot: Record<string, unknown>; reason: string },
+): Promise<boolean> {
+  const { snapshot } = args;
+  const env = snapshot.environment as
+    | {
+        id: string;
+        type: any;
+        project: { id: string };
+        organization: { id: string };
+      }
+    | undefined;
+  if (!env) return false;
+  // Extract batch association from the snapshot if present. Without this
+  // a SYSTEM_FAILURE row for a buffered batch child won't be linked to
+  // its batch, and the batch parent's completion tracking can hang
+  // indefinitely waiting on a child that landed but isn't visible to
+  // the batch.
+  const rawBatch = snapshot.batch;
+  const batch =
+    rawBatch &&
+    typeof rawBatch === "object" &&
+    "id" in rawBatch &&
+    typeof (rawBatch as { id: unknown }).id === "string" &&
+    "index" in rawBatch &&
+    typeof (rawBatch as { index: unknown }).index === "number"
+      ? (rawBatch as { id: string; index: number })
+      : undefined;
+  await deps.engine.createFailedTaskRun({
+    friendlyId: args.friendlyId,
+    environment: env,
+    taskIdentifier: String(snapshot.taskIdentifier ?? ""),
+    payload: typeof snapshot.payload === "string" ? snapshot.payload : undefined,
+    payloadType: typeof snapshot.payloadType === "string" ? snapshot.payloadType : undefined,
+    error: {
+      type: "STRING_ERROR",
+      raw: `Mollifier drainer terminal failure: ${args.reason}`,
+    },
+    parentTaskRunId:
+      typeof snapshot.parentTaskRunId === "string" ? snapshot.parentTaskRunId : undefined,
+    rootTaskRunId:
+      typeof snapshot.rootTaskRunId === "string" ? snapshot.rootTaskRunId : undefined,
+    depth: typeof snapshot.depth === "number" ? snapshot.depth : 0,
+    resumeParentOnCompletion: snapshot.resumeParentOnCompletion === true,
+    batch,
+    traceId: typeof snapshot.traceId === "string" ? snapshot.traceId : undefined,
+    spanId: typeof snapshot.spanId === "string" ? snapshot.spanId : undefined,
+    taskEventStore:
+      typeof snapshot.taskEventStore === "string" ? snapshot.taskEventStore : undefined,
+    queue: typeof snapshot.queue === "string" ? snapshot.queue : undefined,
+    lockedQueueId:
+      typeof snapshot.lockedQueueId === "string" ? snapshot.lockedQueueId : undefined,
+  });
+  return true;
+}
+
+// Drainer-side terminal-failure callback. Fires from
+// `MollifierDrainer.processEntry` BEFORE `buffer.fail()` on any path
+// where the in-handler write didn't already land — currently the
+// `cause: "max-attempts-exhausted"` case for retryable PG errors. Writes
+// the same SYSTEM_FAILURE row the non-retryable handler path writes
+// inline (via the shared `writeMollifierTerminalFailureRow` helper) so
+// the customer-visible behaviour is identical regardless of how the
+// failure was classified.
+//
+// Re-throws retryable PG errors so the drainer requeues — buffer.fail()ing
+// here would still lose the run if PG is genuinely unreachable. Throwing
+// anything else falls through to buffer.fail to avoid an infinite loop on
+// a genuinely bad snapshot (the drainer logs it).
+export function createDrainerTerminalFailureHandler(deps: {
+  engine: RunEngine;
+  prisma: PrismaClientOrTransaction;
+}): MollifierDrainerTerminalFailureHandler<MollifierSnapshot> {
+  return async (input) => {
+    // The handler's own non-retryable terminal path has already written
+    // the SYSTEM_FAILURE row before it throws non-retryable. Only the
+    // retryable-exhausted path reaches us with no row written yet — gate
+    // on `cause` to avoid double-writing for non-retryable failures.
+    if (input.cause !== "max-attempts-exhausted") return;
+    await startSpan(tracer, "mollifier.drained.terminal_failure", async (span) => {
+      span.setAttribute("mollifier.drained", false);
+      span.setAttribute("mollifier.attempts", input.attempts);
+      span.setAttribute("mollifier.run_friendly_id", input.runId);
+      span.setAttribute("mollifier.terminal_failure_cause", input.cause);
+      span.setAttribute("mollifier.terminal_failure_reason", input.error.message);
+      span.setAttribute("taskRunId", input.runId);
+      await writeMollifierTerminalFailureRow(deps, {
+        friendlyId: input.runId,
+        snapshot: input.payload as Record<string, unknown>,
+        reason: input.error.message,
       });
     });
   };
