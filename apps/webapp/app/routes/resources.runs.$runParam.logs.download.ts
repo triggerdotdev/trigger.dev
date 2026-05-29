@@ -9,6 +9,7 @@ import { formatDurationMilliseconds } from "@trigger.dev/core/v3/utils/durations
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { TaskEventKind } from "@trigger.dev/database";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
+import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
 
 export async function loader({ params, request }: LoaderFunctionArgs) {
   const user = await requireUser(request);
@@ -30,6 +31,60 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   });
 
   if (!run || !run.organizationId) {
+    // Buffered run? It hasn't executed, so there are no events to
+    // stream — but a 404 is wrong: the run does exist, the customer's
+    // "Download logs" button on the run-detail page generates this
+    // exact URL, and a 404 reads as "your run vanished" rather than
+    // "no logs yet". Verify the entry exists in the buffer (with the
+    // user as a member of the entry's org), and if so stream a single
+    // informational line in the same `<timestamp> <task> <level>
+    // <message>` shape `formatRunEvent` uses below — so a downstream
+    // log viewer / grep over the downloaded file produces a
+    // meaningful explanation, not a 0-byte mystery.
+    const buffer = getMollifierBuffer();
+    if (buffer) {
+      const entry = await buffer.getEntry(parsedParams.runParam);
+      if (entry) {
+        const member = await prisma.orgMember.findFirst({
+          where: { userId: user.id, organizationId: entry.orgId },
+          select: { id: true },
+        });
+        if (member) {
+          let taskIdentifier: string | undefined;
+          try {
+            const snapshot = JSON.parse(entry.payload) as { taskIdentifier?: unknown };
+            if (typeof snapshot.taskIdentifier === "string") {
+              taskIdentifier = snapshot.taskIdentifier;
+            }
+          } catch {
+            // Fall through — taskIdentifier stays undefined.
+          }
+          const placeholderParts = [
+            entry.createdAt.toISOString(),
+            ...(taskIdentifier ? [taskIdentifier] : []),
+            "INFO",
+            "Run is queued, has not started executing yet — no logs to download.",
+          ];
+          const placeholder = placeholderParts.join(" ") + "\n";
+          const placeholderReadable = new Readable({
+            read() {
+              this.push(placeholder);
+              this.push(null);
+            },
+          });
+          const gzipStream = createGzip();
+          const compressed = placeholderReadable.pipe(gzipStream);
+          return new Response(compressed as any, {
+            status: 200,
+            headers: {
+              "Content-Type": "application/octet-stream",
+              "Content-Disposition": `attachment; filename="${parsedParams.runParam}.log"`,
+              "Content-Encoding": "gzip",
+            },
+          });
+        }
+      }
+    }
     return new Response("Not found", { status: 404 });
   }
 
