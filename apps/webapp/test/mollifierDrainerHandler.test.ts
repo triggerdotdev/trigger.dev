@@ -7,6 +7,18 @@ vi.mock("~/db.server", () => ({
   $replica: {},
 }));
 
+// `writeMollifierTerminalFailureRow` enqueues a PerformTaskRunAlertsService
+// after writing the SYSTEM_FAILURE row (mirrors TriggerFailedTaskService).
+// In production that enqueues into the alerts redis-worker; the test
+// environment has no redis-worker, so the real call hangs the tick out
+// to its 5s vitest timeout. Stub `enqueue` to a resolved no-op so the
+// handler's best-effort try/catch sees a clean success path.
+vi.mock("~/v3/services/alerts/performTaskRunAlerts.server", () => ({
+  PerformTaskRunAlertsService: {
+    enqueue: vi.fn(async () => undefined),
+  },
+}));
+
 import {
   createDrainerHandler,
   isRetryablePgError,

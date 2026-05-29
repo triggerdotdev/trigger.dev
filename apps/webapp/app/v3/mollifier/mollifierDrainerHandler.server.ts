@@ -6,6 +6,8 @@ import type {
   MollifierDrainerHandler,
   MollifierDrainerTerminalFailureHandler,
 } from "@trigger.dev/redis-worker";
+import { logger } from "~/services/logger.server";
+import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRunAlerts.server";
 import { startSpan } from "~/v3/tracing.server";
 import type { MollifierSnapshot } from "./mollifierSnapshot.server";
 
@@ -186,15 +188,31 @@ export function createDrainerHandler(deps: {
 //   - non-retryable failure inside the handler (above)
 //   - retryable failure after maxAttempts inside the drainer's
 //     `processEntry` (via `createDrainerTerminalFailureHandler`)
-// Returns `true` if a row was written, `false` when the snapshot was so
-// malformed it couldn't even produce an environment — caller decides
-// whether to escalate that to `buffer.fail` directly. Throws on any other
-// failure so the drainer's retryable/non-retryable disposition logic can
-// own the decision.
+//
+// Suppresses `runFailed` and enqueues the alert manually — the engine's
+// `runFailed` handler calls `completeFailedRunEvent`, which looks up
+// the run's primary span. Buffered-only runs never had a primary trace
+// event written (the mollifier gate intercepts BEFORE
+// `repository.traceEvent` runs), so the lookup always fails and the
+// handler logs a systematic `[runFailed] Failed to complete failed
+// run event` error per terminal failure. `TriggerFailedTaskService`
+// handles the identical situation the same way (see triggerFailedTask
+// .server.ts:212 and 324) — pass `emitRunFailedEvent: false` to the
+// engine and call `PerformTaskRunAlertsService.enqueue(...)` directly
+// so customers' ERROR channels still fire. Alert enqueue is
+// best-effort; an alert-side failure is logged but does not bubble up
+// (the SYSTEM_FAILURE row landing is the load-bearing customer-visible
+// outcome).
+//
+// Returns the new `TaskRun` on success or `null` when the snapshot was
+// so malformed it couldn't even produce an environment — caller decides
+// whether to escalate that to `buffer.fail` directly. Throws on any
+// other failure so the drainer's retryable/non-retryable disposition
+// logic can own the decision.
 async function writeMollifierTerminalFailureRow(
   deps: { engine: RunEngine; prisma: PrismaClientOrTransaction },
   args: { friendlyId: string; snapshot: Record<string, unknown>; reason: string },
-): Promise<boolean> {
+) {
   const { snapshot } = args;
   const env = snapshot.environment as
     | {
@@ -204,7 +222,7 @@ async function writeMollifierTerminalFailureRow(
         organization: { id: string };
       }
     | undefined;
-  if (!env) return false;
+  if (!env) return null;
   // Extract batch association from the snapshot if present. Without this
   // a SYSTEM_FAILURE row for a buffered batch child won't be linked to
   // its batch, and the batch parent's completion tracking can hang
@@ -220,7 +238,7 @@ async function writeMollifierTerminalFailureRow(
     typeof (rawBatch as { index: unknown }).index === "number"
       ? (rawBatch as { id: string; index: number })
       : undefined;
-  await deps.engine.createFailedTaskRun({
+  const failedRun = await deps.engine.createFailedTaskRun({
     friendlyId: args.friendlyId,
     environment: env,
     taskIdentifier: String(snapshot.taskIdentifier ?? ""),
@@ -244,8 +262,21 @@ async function writeMollifierTerminalFailureRow(
     queue: typeof snapshot.queue === "string" ? snapshot.queue : undefined,
     lockedQueueId:
       typeof snapshot.lockedQueueId === "string" ? snapshot.lockedQueueId : undefined,
+    emitRunFailedEvent: false,
   });
-  return true;
+  // Alerts side of `runFailed` — the engine emit was suppressed above
+  // so we don't create an orphan trace event; enqueue the alert
+  // directly so customers' ERROR channels still see the failure.
+  // Best-effort, mirroring TriggerFailedTaskService.
+  try {
+    await PerformTaskRunAlertsService.enqueue(failedRun.id);
+  } catch (alertsError) {
+    logger.warn("writeMollifierTerminalFailureRow: alert enqueue failed", {
+      friendlyId: args.friendlyId,
+      error: alertsError instanceof Error ? alertsError.message : String(alertsError),
+    });
+  }
+  return failedRun;
 }
 
 // Drainer-side terminal-failure callback. Fires from
