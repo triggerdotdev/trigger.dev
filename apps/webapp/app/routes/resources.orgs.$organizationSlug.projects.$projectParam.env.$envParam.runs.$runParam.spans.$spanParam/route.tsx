@@ -1023,6 +1023,10 @@ function RunBody({
                       Admin only
                     </Paragraph>
                     <Property.Item>
+                      <Property.Label>Buffered</Property.Label>
+                      <Property.Value>{run.isBuffered ? "Yes" : "No"}</Property.Value>
+                    </Property.Item>
+                    <Property.Item>
                       <Property.Label>Worker queue</Property.Label>
                       <Property.Value>{run.workerQueue}</Property.Value>
                     </Property.Item>
