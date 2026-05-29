@@ -32,6 +32,11 @@ import {
   type OversizedItemMarker,
 } from "../../app/runEngine/services/streamBatchItems.server";
 import { ServiceValidationError } from "../../app/v3/services/baseService.server";
+import {
+  BatchPayloadProcessor,
+  type BatchPayloadProcessResult,
+} from "../../app/runEngine/concerns/batchPayloads.server";
+import { setTimeout as sleep } from "node:timers/promises";
 
 vi.setConfig({ testTimeout: 30_000 }); // 30 seconds timeout
 
@@ -78,6 +83,51 @@ describe("StreamBatchItemsService", () => {
     for (const item of items) {
       yield item;
     }
+  }
+
+  /**
+   * Build N valid batch items.
+   */
+  function makeItems(count: number, taskId = "test-task") {
+    return Array.from({ length: count }, (_, index) => ({
+      task: taskId,
+      payload: JSON.stringify({ i: index }),
+      index,
+    }));
+  }
+
+  /**
+   * Build a RunEngine for tests. The worker is disabled and no item-processing
+   * callback is wired, so streamed items stay enqueued (the BatchQueue consumer
+   * doesn't drain them) — keeping the enqueued-count assertions deterministic.
+   */
+  function buildEngine(prisma: PrismaClient, redisOptions: any) {
+    return new RunEngine({
+      prisma,
+      worker: {
+        redis: redisOptions,
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+        disabled: true,
+      },
+      queue: { redis: redisOptions },
+      runLock: { redis: redisOptions },
+      machines: {
+        defaultMachine: "small-1x",
+        machines: {
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
+          },
+        },
+        baseCostInCents: 0.0005,
+      },
+      batchQueue: { redis: redisOptions },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
   }
 
   containerTest(
@@ -160,6 +210,7 @@ describe("StreamBatchItemsService", () => {
 
       const result = await service.call(authenticatedEnvironment, batch.friendlyId, items, {
         maxItemBytes: 1024 * 1024,
+        concurrency: 1,
       });
 
       expect(result.sealed).toBe(true);
@@ -236,6 +287,7 @@ describe("StreamBatchItemsService", () => {
         itemsToAsyncIterable([]),
         {
           maxItemBytes: 1024 * 1024,
+          concurrency: 1,
         }
       );
 
@@ -310,6 +362,7 @@ describe("StreamBatchItemsService", () => {
         itemsToAsyncIterable([]),
         {
           maxItemBytes: 1024 * 1024,
+          concurrency: 1,
         }
       );
 
@@ -374,6 +427,7 @@ describe("StreamBatchItemsService", () => {
       await expect(
         service.call(authenticatedEnvironment, batch.friendlyId, itemsToAsyncIterable([]), {
           maxItemBytes: 1024 * 1024,
+          concurrency: 1,
         })
       ).rejects.toThrow(ServiceValidationError);
 
@@ -437,6 +491,7 @@ describe("StreamBatchItemsService", () => {
       await expect(
         service.call(authenticatedEnvironment, batch.friendlyId, itemsToAsyncIterable([]), {
           maxItemBytes: 1024 * 1024,
+          concurrency: 1,
         })
       ).rejects.toThrow(ServiceValidationError);
 
@@ -504,6 +559,7 @@ describe("StreamBatchItemsService", () => {
         itemsToAsyncIterable([]),
         {
           maxItemBytes: 1024 * 1024,
+          concurrency: 1,
         }
       );
 
@@ -615,6 +671,7 @@ describe("StreamBatchItemsService", () => {
         itemsToAsyncIterable([]),
         {
           maxItemBytes: 1024 * 1024,
+          concurrency: 1,
         }
       );
 
@@ -739,6 +796,7 @@ describe("StreamBatchItemsService", () => {
         itemsToAsyncIterable([]),
         {
           maxItemBytes: 1024 * 1024,
+          concurrency: 1,
         }
       );
 
@@ -861,6 +919,7 @@ describe("StreamBatchItemsService", () => {
         itemsToAsyncIterable([]),
         {
           maxItemBytes: 1024 * 1024,
+          concurrency: 1,
         }
       );
 
@@ -983,6 +1042,7 @@ describe("StreamBatchItemsService", () => {
       await expect(
         service.call(authenticatedEnvironment, batch.friendlyId, itemsToAsyncIterable([]), {
           maxItemBytes: 1024 * 1024,
+          concurrency: 1,
         })
       ).rejects.toThrow(/unexpected state/);
 
@@ -1070,6 +1130,7 @@ describe("StreamBatchItemsService", () => {
         itemsToAsyncIterable([]),
         {
           maxItemBytes: 1024 * 1024,
+          concurrency: 1,
         }
       );
 
@@ -1195,6 +1256,7 @@ describe("StreamBatchItemsService", () => {
         itemsToAsyncIterable([]),
         {
           maxItemBytes: 1024 * 1024,
+          concurrency: 1,
         }
       );
 
@@ -1322,6 +1384,7 @@ describe("StreamBatchItemsService", () => {
       await expect(
         service.call(authenticatedEnvironment, batch.friendlyId, itemsToAsyncIterable([]), {
           maxItemBytes: 1024 * 1024,
+          concurrency: 1,
         })
       ).rejects.toThrow(ServiceValidationError);
 
@@ -1391,6 +1454,7 @@ describe("StreamBatchItemsService", () => {
         itemsToAsyncIterable([]),
         {
           maxItemBytes: 1024 * 1024,
+          concurrency: 1,
         }
       );
 
@@ -1509,6 +1573,7 @@ describe("StreamBatchItemsService", () => {
         itemsToAsyncIterable([]),
         {
           maxItemBytes: 1024 * 1024,
+          concurrency: 1,
         }
       );
 
@@ -1519,6 +1584,175 @@ describe("StreamBatchItemsService", () => {
       // surfaced as BatchTriggerError despite all runs succeeding.
       expect(result.sealed).toBe(true);
       expect(result.id).toBe(batch.friendlyId);
+
+      await engine.quit();
+    }
+  );
+
+  containerTest(
+    "ingests a large batch with bounded concurrency and seals it",
+    async ({ prisma, redisOptions }) => {
+      const engine = buildEngine(prisma, redisOptions);
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const runCount = 100;
+      const batch = await createBatch(prisma, environment.id, {
+        runCount,
+        status: "PENDING",
+        sealed: false,
+      });
+
+      await engine.initializeBatch({
+        batchId: batch.id,
+        friendlyId: batch.friendlyId,
+        environmentId: environment.id,
+        environmentType: environment.type,
+        organizationId: environment.organizationId,
+        projectId: environment.projectId,
+        runCount,
+        processingConcurrency: 10,
+      });
+
+      const service = new StreamBatchItemsService({ prisma, engine });
+
+      const result = await service.call(
+        environment,
+        batch.friendlyId,
+        itemsToAsyncIterable(makeItems(runCount)),
+        { maxItemBytes: 1024 * 1024, concurrency: 10 }
+      );
+
+      expect(result.sealed).toBe(true);
+      expect(result.itemsAccepted).toBe(runCount);
+      expect(result.itemsDeduplicated).toBe(0);
+
+      // Every item was enqueued exactly once despite concurrent ingestion.
+      const enqueuedCount = await engine.getBatchEnqueuedCount(batch.id);
+      expect(enqueuedCount).toBe(runCount);
+
+      const updatedBatch = await prisma.batchTaskRun.findUnique({ where: { id: batch.id } });
+      expect(updatedBatch?.sealed).toBe(true);
+      expect(updatedBatch?.status).toBe("PROCESSING");
+
+      await engine.quit();
+    }
+  );
+
+  containerTest(
+    "bounds in-flight item processing to the configured concurrency",
+    async ({ prisma, redisOptions }) => {
+      const engine = buildEngine(prisma, redisOptions);
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const runCount = 40;
+      const concurrency = 5;
+      const batch = await createBatch(prisma, environment.id, {
+        runCount,
+        status: "PENDING",
+        sealed: false,
+      });
+
+      await engine.initializeBatch({
+        batchId: batch.id,
+        friendlyId: batch.friendlyId,
+        environmentId: environment.id,
+        environmentType: environment.type,
+        organizationId: environment.organizationId,
+        projectId: environment.projectId,
+        runCount,
+        processingConcurrency: 10,
+      });
+
+      // A real payload processor that holds each slot briefly so we can observe
+      // how many items are processed simultaneously. This guards against an
+      // accidental regression that buffers the whole stream / ignores the cap.
+      let inFlight = 0;
+      let maxInFlight = 0;
+      class TrackingPayloadProcessor extends BatchPayloadProcessor {
+        async process(payload: unknown, payloadType: string): Promise<BatchPayloadProcessResult> {
+          inFlight++;
+          maxInFlight = Math.max(maxInFlight, inFlight);
+          try {
+            await sleep(20);
+            return { payload, payloadType, wasOffloaded: false, size: 0 };
+          } finally {
+            inFlight--;
+          }
+        }
+      }
+
+      const service = new StreamBatchItemsService({
+        prisma,
+        engine,
+        payloadProcessor: new TrackingPayloadProcessor(),
+      });
+
+      const result = await service.call(
+        environment,
+        batch.friendlyId,
+        itemsToAsyncIterable(makeItems(runCount)),
+        { maxItemBytes: 1024 * 1024, concurrency }
+      );
+
+      expect(result.sealed).toBe(true);
+      expect(result.itemsAccepted).toBe(runCount);
+      // Actually ran concurrently, but never exceeded the configured cap.
+      expect(maxInFlight).toBeGreaterThan(1);
+      expect(maxInFlight).toBeLessThanOrEqual(concurrency);
+
+      await engine.quit();
+    }
+  );
+
+  containerTest(
+    "deduplicates already-enqueued items during concurrent ingest (Phase 2 retry)",
+    async ({ prisma, redisOptions }) => {
+      const engine = buildEngine(prisma, redisOptions);
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const runCount = 20;
+      const batch = await createBatch(prisma, environment.id, {
+        runCount,
+        status: "PENDING",
+        sealed: false,
+      });
+
+      await engine.initializeBatch({
+        batchId: batch.id,
+        friendlyId: batch.friendlyId,
+        environmentId: environment.id,
+        environmentType: environment.type,
+        organizationId: environment.organizationId,
+        projectId: environment.projectId,
+        runCount,
+        processingConcurrency: 10,
+      });
+
+      // Pre-enqueue the first half (simulating a partially-completed prior stream
+      // that failed before sealing). The retry re-streams everything.
+      for (let index = 0; index < 10; index++) {
+        await engine.enqueueBatchItem(batch.id, environment.id, index, {
+          task: "test-task",
+          payload: JSON.stringify({ i: index }),
+          payloadType: "application/json",
+        });
+      }
+
+      const service = new StreamBatchItemsService({ prisma, engine });
+
+      const result = await service.call(
+        environment,
+        batch.friendlyId,
+        itemsToAsyncIterable(makeItems(runCount)),
+        { maxItemBytes: 1024 * 1024, concurrency: 8 }
+      );
+
+      expect(result.sealed).toBe(true);
+      expect(result.itemsDeduplicated).toBe(10);
+      expect(result.itemsAccepted).toBe(10);
+
+      const enqueuedCount = await engine.getBatchEnqueuedCount(batch.id);
+      expect(enqueuedCount).toBe(runCount);
 
       await engine.quit();
     }
@@ -1724,6 +1958,32 @@ describe("createNdjsonParserStream", () => {
     expect(results[0]).toEqual({ index: 0, task: "t", x: 1 });
     expect((results[1] as OversizedItemMarker).__batchItemError).toBe("OVERSIZED");
     expect((results[1] as OversizedItemMarker).index).toBe(1);
+    expect(results[2]).toEqual({ index: 2, task: "t", x: 2 });
+  });
+
+  it("stamps an oversized marker's index by emit position when it can't be extracted", async () => {
+    // Concurrency-safety: when the `index` field can't be recovered from the
+    // (truncated) raw bytes, the parser must back-fill it from the emit
+    // position rather than leaving it for the consumer to infer sequentially.
+    const maxBytes = 50;
+    const encoder = new TextEncoder();
+    // item 0: small + valid
+    const item0 = '{"index":0,"task":"t","x":1}\n';
+    // item 1: oversized AND missing an `index` field → extractIndexAndTask returns -1
+    const item1 = `{"task":"big","data":"${"x".repeat(100)}"}\n`;
+    // item 2: small + valid, must keep its own index
+    const item2 = '{"index":2,"task":"t","x":2}\n';
+    const stream = chunksToStream([encoder.encode(item0 + item1 + item2)]);
+
+    const parser = createNdjsonParserStream(maxBytes);
+    const results = await collectStream(stream.pipeThrough(parser));
+
+    expect(results).toHaveLength(3);
+    expect(results[0]).toEqual({ index: 0, task: "t", x: 1 });
+    const marker = results[1] as OversizedItemMarker;
+    expect(marker.__batchItemError).toBe("OVERSIZED");
+    expect(marker.index).toBe(1); // emit-position fallback, not -1
+    expect(marker.task).toBe("big");
     expect(results[2]).toEqual({ index: 2, task: "t", x: 2 });
   });
 
