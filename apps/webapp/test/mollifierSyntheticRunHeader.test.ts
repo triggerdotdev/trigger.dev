@@ -89,7 +89,10 @@ describe("buildSyntheticRunHeader", () => {
   it("forwards identity and environment fields from the snapshot", () => {
     const header = buildSyntheticRunHeader({ run: makeSyntheticRun(), environment: ENV });
     expect(header.friendlyId).toBe("run_friendly_1");
-    expect(header.id).toBe("run_friendly_1");
+    // `id` mirrors RunPresenter.getRun (the PG path) which puts the
+    // internal cuid in this field. SyntheticRun.id is the cuid; the
+    // header must surface it (not the friendlyId).
+    expect(header.id).toBe("run_internal_1");
     expect(header.traceId).toBe("trace_1");
     expect(header.spanId).toBe("span_1");
     expect(header.environment).toMatchObject({

@@ -32,7 +32,13 @@ export function buildSyntheticRunHeader(args: {
   const isFailed = run.status === "FAILED";
 
   return {
-    id: run.friendlyId,
+    // `id` mirrors RunPresenter.getRun's runData (the PG path), which
+    // is the internal cuid — not the friendlyId. SyntheticRun.id is
+    // already the cuid (RunId.fromFriendlyId(entry.runId) in
+    // readFallback.server.ts) so the admin debug tooltip on the run
+    // detail page shows the same format for buffered + materialised
+    // runs.
+    id: run.id,
     number: 1,
     friendlyId: run.friendlyId,
     traceId: run.traceId ?? "",
