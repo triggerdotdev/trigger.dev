@@ -1,11 +1,33 @@
 import { applyMetadataOperations } from "@trigger.dev/core/v3";
 import type { FlushedRunMetadata } from "@trigger.dev/core/v3/schemas";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import type { MollifierBuffer } from "@trigger.dev/redis-worker";
 import { logger } from "~/services/logger.server";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
 
+// On `applied` we surface the parent/root friendlyIds captured during
+// the snapshot read. Callers that fan parent/root metadata operations
+// out to their respective runs can use these without a second
+// `findRunByIdWithMollifierFallback` round trip — and, more importantly,
+// without racing the drainer's terminal-failure path (which atomically
+// DELetes the entry hash). Without these on the outcome the second
+// read can come back null mid-route, silently dropping the caller's
+// parentOperations / rootOperations after the primary mutation already
+// landed on the snapshot.
+//
+// FriendlyIds (not internal cuids) because the consuming
+// `routeOperationsToRun` helper gates on the `run_…` prefix to decide
+// whether to attempt the buffer fallback; cuids would skip that path.
+// The snapshot's `parentTaskRunId` / `rootTaskRunId` are engine-side
+// cuids, so we convert via `RunId.toFriendlyId` here — identical to
+// what `readFallback.server.ts` does when assembling its SyntheticRun.
 export type ApplyMetadataMutationOutcome =
-  | { kind: "applied"; newMetadata: Record<string, unknown> }
+  | {
+      kind: "applied";
+      newMetadata: Record<string, unknown>;
+      parentTaskRunFriendlyId: string | undefined;
+      rootTaskRunFriendlyId: string | undefined;
+    }
   | { kind: "not_found" }
   | { kind: "busy" }
   | { kind: "version_exhausted" }
@@ -68,6 +90,25 @@ export async function applyMetadataMutationToBufferedRun(input: {
     const currentMetadataType =
       typeof snapshot.metadataType === "string" ? snapshot.metadataType : "application/json";
 
+    // Capture parent/root ids during this read so the caller can fan
+    // parent/root operations out without a second buffer.getEntry. If
+    // the drainer's terminal-failure path runs between our CAS-write
+    // below and the route's follow-up, the entry hash would be DELd
+    // and a second read would return null — silently dropping the
+    // caller's `body.parentOperations` / `body.rootOperations`. The ids
+    // themselves are immutable for a run, so capturing them on any
+    // loop iteration is fine.
+    const snapshotParentTaskRunInternalId =
+      typeof snapshot.parentTaskRunId === "string" ? snapshot.parentTaskRunId : undefined;
+    const snapshotParentTaskRunFriendlyId = snapshotParentTaskRunInternalId
+      ? RunId.toFriendlyId(snapshotParentTaskRunInternalId)
+      : undefined;
+    const snapshotRootTaskRunInternalId =
+      typeof snapshot.rootTaskRunId === "string" ? snapshot.rootTaskRunId : undefined;
+    const snapshotRootTaskRunFriendlyId = snapshotRootTaskRunInternalId
+      ? RunId.toFriendlyId(snapshotRootTaskRunInternalId)
+      : undefined;
+
     // Match PG semantics: `body.operations` and `body.metadata` are
     // mutually exclusive on a single request. The PG service
     // (`UpdateMetadataService.#updateRunMetadata`) branches on
@@ -126,7 +167,12 @@ export async function applyMetadataMutationToBufferedRun(input: {
     });
 
     if (cas.kind === "applied") {
-      return { kind: "applied", newMetadata: metadataObject };
+      return {
+        kind: "applied",
+        newMetadata: metadataObject,
+        parentTaskRunFriendlyId: snapshotParentTaskRunFriendlyId,
+        rootTaskRunFriendlyId: snapshotRootTaskRunFriendlyId,
+      };
     }
     if (cas.kind === "not_found") return { kind: "not_found" };
     if (cas.kind === "busy") return { kind: "busy" };

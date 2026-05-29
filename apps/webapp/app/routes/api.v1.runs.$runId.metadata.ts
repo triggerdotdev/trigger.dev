@@ -204,35 +204,34 @@ const { action } = createActionApiRoute(
     // materialised by the time the child is buffered, so the existing
     // service handles them; if they're also buffered, the helper
     // recurses through the buffered mutation path).
-    const bufferedEntry = await findRunByIdWithMollifierFallback({
-      runId,
-      environmentId: env.id,
-      organizationId: env.organizationId,
-    });
-    if (bufferedEntry) {
-      // Both parent and root use the friendlyIds derived in
-      // `readFallback.server.ts` via `internalRunIdToFriendlyId` from the
-      // internal IDs the engine snapshot carries (`parentTaskRunId` /
-      // `rootTaskRunId`). The PG-side `UpdateMetadataService` would
-      // route to `taskRun.parentTaskRun?.id ?? taskRun.id` and
-      // `taskRun.rootTaskRun?.id ?? taskRun.id` respectively — i.e. fall
-      // back to the run itself when there's no parent / root. Mirror
-      // that self-fallback with `?? runId` so a top-level run's
-      // parent/root ops land on itself (matching PG semantics) instead
-      // of being silently dropped.
-      await Promise.all([
-        routeOperationsToRun(
-          bufferedEntry.parentTaskRunFriendlyId ?? runId,
-          body.parentOperations,
-          env,
-        ),
-        routeOperationsToRun(
-          bufferedEntry.rootTaskRunFriendlyId ?? runId,
-          body.rootOperations,
-          env,
-        ),
-      ]);
-    }
+    //
+    // Use the parent/root friendlyIds the buffered mutation captured
+    // during its internal read — NOT a second `findRunByIdWithMollifierFallback`
+    // call here. The drainer's terminal-failure path DELetes the entry
+    // hash atomically, so if it fires between the primary mutation
+    // landing and our route's second read, `bufferedEntry` would come
+    // back null and the route would silently drop `parentOperations` /
+    // `rootOperations` after the customer's primary mutation already
+    // landed on the snapshot. Capturing the ids in the helper's first
+    // CAS read closes that race.
+    //
+    // Self-fallback to `runId` matches PG semantics: the PG service
+    // routes to `taskRun.parentTaskRun?.id ?? taskRun.id` and
+    // `taskRun.rootTaskRun?.id ?? taskRun.id`, so a top-level run's
+    // parent/root ops land on itself rather than being silently
+    // dropped.
+    await Promise.all([
+      routeOperationsToRun(
+        bufferOutcome.parentTaskRunFriendlyId ?? runId,
+        body.parentOperations,
+        env,
+      ),
+      routeOperationsToRun(
+        bufferOutcome.rootTaskRunFriendlyId ?? runId,
+        body.rootOperations,
+        env,
+      ),
+    ]);
 
     return json({ metadata: bufferOutcome.newMetadata }, { status: 200 });
   }

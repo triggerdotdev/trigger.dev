@@ -4,6 +4,7 @@ vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
 
 import { applyMetadataMutationToBufferedRun } from "~/v3/mollifier/applyMetadataMutation.server";
 import type { BufferEntry, MollifierBuffer, CasSetMetadataResult } from "@trigger.dev/redis-worker";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
 
 // Regression for a CAS retry-exhaustion bug: the default `maxRetries`
 // was 3, matching the PG-side service, but that exhausts fast when N
@@ -259,6 +260,67 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
     });
     expect(result.kind).toBe("not_found");
     expect(stub.buffer.casSetMetadata).not.toHaveBeenCalled();
+  });
+
+  it("surfaces parent/root friendlyIds on `applied` so the route can fan parent/root ops without a second buffer read", async () => {
+    // Regression: the metadata route used to do a SECOND
+    // `findRunByIdWithMollifierFallback` after the primary CAS to
+    // obtain parent/root friendlyIds for `routeOperationsToRun`.
+    // If the drainer's terminal-failure path ran between the CAS and
+    // the second read, the entry hash was DELd and the second read
+    // came back null — the route silently skipped the entire
+    // parent/root fan-out, dropping `body.parentOperations` /
+    // `body.rootOperations` after the primary mutation already
+    // landed. The helper now captures the ids inside its own read
+    // loop and surfaces them on the `applied` outcome so the route
+    // never needs a second round trip.
+    //
+    // Engine-side snapshot stores internal cuids; we expect the
+    // helper to convert via `RunId.toFriendlyId` so the outcome
+    // matches what `readFallback.server.ts` would have produced.
+    const parentFriendly = RunId.generate().friendlyId;
+    const rootFriendly = RunId.generate().friendlyId;
+    const parentInternal = RunId.fromFriendlyId(parentFriendly);
+    const rootInternal = RunId.fromFriendlyId(rootFriendly);
+    const stub = makeBufferStub({
+      parentTaskRunId: parentInternal,
+      rootTaskRunId: rootInternal,
+    });
+    const result = await applyMetadataMutationToBufferedRun({
+      runId: "run_1",
+      environmentId: "env_a",
+      organizationId: "org_1",
+      maximumSize: 1024 * 1024,
+      body: { metadata: { counter: 1 } },
+      buffer: stub.buffer,
+    });
+    expect(result.kind).toBe("applied");
+    if (result.kind === "applied") {
+      expect(result.parentTaskRunFriendlyId).toBe(parentFriendly);
+      expect(result.rootTaskRunFriendlyId).toBe(rootFriendly);
+    }
+  });
+
+  it("`applied` parent/root ids are undefined when the snapshot carries neither (top-level run)", async () => {
+    // Top-level runs (parentTaskRunId/rootTaskRunId both undefined in
+    // the engine-trigger snapshot) must surface as undefined on the
+    // outcome so the route's `?? runId` self-fallback fires —
+    // matching the PG service's `taskRun.parentTaskRun?.id ??
+    // taskRun.id` semantics.
+    const stub = makeBufferStub({});
+    const result = await applyMetadataMutationToBufferedRun({
+      runId: "run_1",
+      environmentId: "env_a",
+      organizationId: "org_1",
+      maximumSize: 1024 * 1024,
+      body: { metadata: { counter: 1 } },
+      buffer: stub.buffer,
+    });
+    expect(result.kind).toBe("applied");
+    if (result.kind === "applied") {
+      expect(result.parentTaskRunFriendlyId).toBeUndefined();
+      expect(result.rootTaskRunFriendlyId).toBeUndefined();
+    }
   });
 
   it("N-way concurrent applies all converge under default budget", async () => {
