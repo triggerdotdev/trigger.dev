@@ -247,6 +247,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 }
 
 export const action: ActionFunction = async ({ request, params }) => {
+  // Dashboard auth: identical pattern to resources.taskruns.$runParam.cancel.ts.
+  // The loader above this action already gates with `requireUser`, but
+  // Remix's action runs independently — without this call any request
+  // with a valid runParam could submit a replay. The PG findFirst below
+  // also adds the org-membership filter so a PAT can't replay another
+  // org's run, and the buffered fallback verifies org membership via
+  // orgMember.findFirst against the snapshot's orgId.
+  const user = await requireUser(request);
+  const userId = user.id;
   const { runParam } = ParamSchema.parse(params);
 
   const formData = await request.formData();
@@ -260,6 +269,15 @@ export const action: ActionFunction = async ({ request, params }) => {
     const pgRun = await prisma.taskRun.findFirst({
       where: {
         friendlyId: runParam,
+        project: {
+          organization: {
+            members: {
+              some: {
+                userId,
+              },
+            },
+          },
+        },
       },
       include: {
         runtimeEnvironment: {
@@ -285,6 +303,20 @@ export const action: ActionFunction = async ({ request, params }) => {
       const buffer = getMollifierBuffer();
       const entry = buffer ? await buffer.getEntry(runParam) : null;
       if (entry) {
+        // Same org-membership gate as the PG path above. Without this
+        // any authenticated user who knows a runId could replay the
+        // buffered run across orgs.
+        const member = await prisma.orgMember.findFirst({
+          where: { userId, organizationId: entry.orgId },
+          select: { id: true },
+        });
+        if (!member) {
+          return redirectWithErrorMessage(
+            submission.value.failedRedirect,
+            request,
+            "Run not found"
+          );
+        }
         const synthetic = await findRunByIdWithMollifierFallback({
           runId: runParam,
           environmentId: entry.envId,
