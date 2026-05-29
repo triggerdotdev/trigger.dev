@@ -44,9 +44,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // its PG-side flow; for the buffer-side patch we encode the same
   // wall-clock value so the drainer's engine.trigger sees the intended
   // delayUntil after materialisation.
+  //
+  // Wire-compat: pre-PR the validation happened inside
+  // `RescheduleTaskRunService.call` (rescheduleTaskRun.server.ts:14-18),
+  // which throws `ServiceValidationError("Invalid delay: …")` on
+  // undefined and surfaces as 422. Mirror that status + message shape
+  // here so existing SDK consumers keying retry/classification logic
+  // on 422 don't see a behavioural drift now that the parse is hoisted
+  // to the route layer.
   const delayUntil = await parseDelay(body.data.delay);
   if (!delayUntil) {
-    return json({ error: "Invalid delay value" }, { status: 400 });
+    return json({ error: `Invalid delay: ${body.data.delay}` }, { status: 422 });
   }
 
   try {
