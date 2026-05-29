@@ -432,3 +432,82 @@ describe("evaluateGate — per-org isolation via Organization.featureFlags", () 
     expect(unrelatedDeps.spies.evaluatorCalls).toBe(0);
   });
 });
+
+// Bypasses: the three categories of trigger that the mollifier never
+// intercepts, regardless of the per-org flag or the trip-evaluator decision.
+describe("evaluateGate â€” debounce / OTU / triggerAndWait bypasses", () => {
+  it("debounce triggers pass through without invoking the evaluator", async () => {
+    const { deps, spies } = makeDeps({
+      enabled: true,
+      shadow: false,
+      flag: true,
+      decision: trippedDecision,
+    });
+    const outcome = await evaluateGate(
+      { ...inputs, options: { debounce: { key: "k" } } },
+      deps,
+    );
+    expect(outcome).toEqual({ action: "pass_through" });
+    expect(spies.evaluatorCalls).toBe(0);
+  });
+
+  it("oneTimeUseToken triggers pass through without invoking the evaluator", async () => {
+    const { deps, spies } = makeDeps({
+      enabled: true,
+      shadow: false,
+      flag: true,
+      decision: trippedDecision,
+    });
+    const outcome = await evaluateGate(
+      { ...inputs, options: { oneTimeUseToken: "jwt-otu" } },
+      deps,
+    );
+    expect(outcome).toEqual({ action: "pass_through" });
+    expect(spies.evaluatorCalls).toBe(0);
+  });
+
+  it("single triggerAndWait (parentTaskRunId + resumeParentOnCompletion) passes through", async () => {
+    const { deps, spies } = makeDeps({
+      enabled: true,
+      shadow: false,
+      flag: true,
+      decision: trippedDecision,
+    });
+    const outcome = await evaluateGate(
+      {
+        ...inputs,
+        options: { parentTaskRunId: "run_parent", resumeParentOnCompletion: true },
+      },
+      deps,
+    );
+    expect(outcome).toEqual({ action: "pass_through" });
+    expect(spies.evaluatorCalls).toBe(0);
+  });
+
+  it("parentTaskRunId alone (no resumeParentOnCompletion) does NOT bypass â€” must be both", async () => {
+    const { deps, spies } = makeDeps({
+      enabled: true,
+      shadow: false,
+      flag: true,
+      decision: trippedDecision,
+    });
+    const outcome = await evaluateGate(
+      { ...inputs, options: { parentTaskRunId: "run_parent" } },
+      deps,
+    );
+    expect(outcome.action).toBe("mollify");
+    expect(spies.evaluatorCalls).toBe(1);
+  });
+
+  it("bypass records pass_through decision (so observability counters stay accurate)", async () => {
+    const { deps, spies } = makeDeps({
+      enabled: true,
+      shadow: false,
+      flag: true,
+      decision: trippedDecision,
+    });
+    await evaluateGate({ ...inputs, options: { debounce: { key: "k" } } }, deps);
+    expect(spies.recordDecisionCalls).toHaveLength(1);
+    expect(spies.recordDecisionCalls[0].outcome).toBe("pass_through");
+  });
+});
