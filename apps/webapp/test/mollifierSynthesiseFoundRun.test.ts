@@ -66,6 +66,17 @@ describe("synthesiseFoundRunFromBuffer", () => {
     expect(found.friendlyId).toBe("run_friendly_1");
   });
 
+  it("marks the synth as isBuffered=true so callers like the events route can short-circuit ClickHouse lookups", () => {
+    // The PG path of `findRun` sets `isBuffered: false`; the buffered
+    // path goes through `synthesiseFoundRunFromBuffer` and must set
+    // `isBuffered: true` so consumers (e.g. the events endpoint) can
+    // skip queries that are guaranteed to return empty for buffered
+    // runs without rewriting them around surrogate signals like
+    // `traceId === ""`.
+    const found: FoundRun = synthesiseFoundRunFromBuffer(makeSyntheticRun());
+    expect(found.isBuffered).toBe(true);
+  });
+
   it("forwards scheduleId from the snapshot so resolveSchedule can hydrate the schedule field", () => {
     // Regression: scheduleId was previously hardcoded to null, dropping the
     // schedule metadata for buffered scheduled runs even though the snapshot

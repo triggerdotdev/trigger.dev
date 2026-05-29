@@ -90,6 +90,15 @@ export type FoundRun = CommonRelatedRun & {
   parentTaskRun: CommonRelatedRun | null;
   rootTaskRun: CommonRelatedRun | null;
   childRuns: CommonRelatedRun[];
+  // True when this run was synthesised from the mollifier buffer rather
+  // than read from Postgres. Callers that would otherwise query backing
+  // stores keyed on PG identifiers (e.g. ClickHouse event lookups by
+  // traceId) can short-circuit to an empty response — buffered runs
+  // haven't executed and have no events to fetch. Devin's analysis on
+  // PR #3755 (events endpoint) flagged the pre-fix code as making a
+  // wasted ClickHouse round-trip when this is set; gate on this flag
+  // instead.
+  isBuffered: boolean;
 };
 
 export class ApiRetrieveRunPresenter {
@@ -132,7 +141,7 @@ export class ApiRetrieveRunPresenter {
       },
     });
 
-    if (pgRow) return pgRow;
+    if (pgRow) return { ...pgRow, isBuffered: false };
 
     // Postgres miss → fall back to the mollifier buffer. When the gate
     // diverted a trigger, the run lives in Redis until the drainer replays
@@ -668,5 +677,6 @@ export function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
     parentTaskRun: null,
     rootTaskRun: null,
     childRuns: [],
+    isBuffered: true,
   };
 }
