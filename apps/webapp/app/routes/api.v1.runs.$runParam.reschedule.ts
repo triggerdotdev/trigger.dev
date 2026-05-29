@@ -45,16 +45,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // wall-clock value so the drainer's engine.trigger sees the intended
   // delayUntil after materialisation.
   //
-  // Wire-compat: pre-PR the validation happened inside
+  // Wire-compat: pre-PR the validation lived inside
   // `RescheduleTaskRunService.call` (rescheduleTaskRun.server.ts:14-18),
-  // which throws `ServiceValidationError("Invalid delay: …")` on
-  // undefined and surfaces as 422. Mirror that status + message shape
-  // here so existing SDK consumers keying retry/classification logic
-  // on 422 don't see a behavioural drift now that the parse is hoisted
-  // to the route layer.
+  // which throws `ServiceValidationError("Invalid delay: …")`. The
+  // route's catch block below converts that to status **400** (not
+  // 422 — `ServiceValidationError` defaults to 422 but this route's
+  // catch block has always returned 400). Mirror that 400 + message
+  // shape here so SDK consumers keying retry/classification logic on
+  // 400 see no behavioural drift now that the parse is hoisted to the
+  // route layer.
   const delayUntil = await parseDelay(body.data.delay);
   if (!delayUntil) {
-    return json({ error: `Invalid delay: ${body.data.delay}` }, { status: 422 });
+    return json({ error: `Invalid delay: ${body.data.delay}` }, { status: 400 });
   }
 
   try {
