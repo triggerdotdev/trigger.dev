@@ -406,6 +406,14 @@ export class StreamBatchItemsService extends WithRunEngine {
     if (rawItem && typeof rawItem === "object" && "__batchItemError" in rawItem) {
       const marker = rawItem as OversizedItemMarker;
 
+      // Same out-of-range guard as normal items: an oversized item with an
+      // out-of-range index must 4xx rather than create a stray pre-failed run.
+      if (marker.index >= runCount) {
+        throw new ServiceValidationError(
+          `Item index ${marker.index} exceeds batch runCount ${runCount}`
+        );
+      }
+
       const errorMessage = `Batch item payload is too large (${(marker.actualSize / 1024).toFixed(
         1
       )} KB). Maximum allowed size is ${(marker.maxSize / 1024).toFixed(

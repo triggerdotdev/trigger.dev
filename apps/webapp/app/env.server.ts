@@ -677,7 +677,7 @@ const EnvironmentSchema = z
     // Number of streamed batch items ingested concurrently in Phase 2. Peak
     // in-flight memory per request ≈ this × STREAMING_BATCH_ITEM_MAXIMUM_SIZE,
     // so raise with care. Set to 1 for fully sequential ingestion.
-    STREAMING_BATCH_INGEST_CONCURRENCY: z.coerce.number().int().default(10),
+    STREAMING_BATCH_INGEST_CONCURRENCY: z.coerce.number().int().positive().default(10),
     BATCH_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(100),
     BATCH_RATE_LIMIT_MAX: z.coerce.number().int().default(1200),
     BATCH_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),

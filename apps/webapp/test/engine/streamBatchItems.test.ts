@@ -1757,6 +1757,54 @@ describe("StreamBatchItemsService", () => {
       await engine.quit();
     }
   );
+
+  containerTest(
+    "rejects an oversized item whose index exceeds runCount",
+    async ({ prisma, redisOptions }) => {
+      const engine = buildEngine(prisma, redisOptions);
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const batch = await createBatch(prisma, environment.id, {
+        runCount: 2,
+        status: "PENDING",
+        sealed: false,
+      });
+
+      await engine.initializeBatch({
+        batchId: batch.id,
+        friendlyId: batch.friendlyId,
+        environmentId: environment.id,
+        environmentType: environment.type,
+        organizationId: environment.organizationId,
+        projectId: environment.projectId,
+        runCount: 2,
+        processingConcurrency: 10,
+      });
+
+      const service = new StreamBatchItemsService({ prisma, engine });
+
+      // An oversized marker must hit the same out-of-range guard as a normal
+      // item rather than slipping through to create a stray pre-failed run.
+      async function* oversizedOutOfRange() {
+        yield {
+          __batchItemError: "OVERSIZED",
+          index: 5,
+          task: "test-task",
+          actualSize: 9999,
+          maxSize: 1000,
+        };
+      }
+
+      await expect(
+        service.call(environment, batch.friendlyId, oversizedOutOfRange(), {
+          maxItemBytes: 1024,
+          concurrency: 4,
+        })
+      ).rejects.toThrow(ServiceValidationError);
+
+      await engine.quit();
+    }
+  );
 });
 
 describe("createNdjsonParserStream", () => {
