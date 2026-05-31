@@ -449,24 +449,6 @@ export function SideMenu({
                 data-action="sessions"
                 isCollapsed={isCollapsed}
               />
-              <SideMenuItem
-                name="Batches"
-                icon={BatchesIcon}
-                activeIconColor="text-batches"
-                inactiveIconColor="text-text-dimmed"
-                to={v3BatchesPath(organization, project, environment)}
-                data-action="batches"
-                isCollapsed={isCollapsed}
-              />
-              <SideMenuItem
-                name="Waitpoint tokens"
-                icon={WaitpointTokenIcon}
-                activeIconColor="text-sky-500"
-                inactiveIconColor="text-text-dimmed"
-                to={v3WaitpointTokensPath(organization, project, environment)}
-                data-action="waitpoint-tokens"
-                isCollapsed={isCollapsed}
-              />
             </div>
 
             {(user.admin || user.isImpersonating || featureFlags.hasAiAccess) && (
@@ -633,6 +615,24 @@ export function SideMenu({
               initialCollapsed={getSectionCollapsed(user.dashboardPreferences.sideMenu, "manage")}
               onCollapseToggle={handleSectionToggle("manage")}
             >
+              <SideMenuItem
+                name="Waitpoint tokens"
+                icon={WaitpointTokenIcon}
+                activeIconColor="text-sky-500"
+                inactiveIconColor="text-text-dimmed"
+                to={v3WaitpointTokensPath(organization, project, environment)}
+                data-action="waitpoint-tokens"
+                isCollapsed={isCollapsed}
+              />
+              <SideMenuItem
+                name="Batches"
+                icon={BatchesIcon}
+                activeIconColor="text-batches"
+                inactiveIconColor="text-text-dimmed"
+                to={v3BatchesPath(organization, project, environment)}
+                data-action="batches"
+                isCollapsed={isCollapsed}
+              />
               <SideMenuItem
                 name="Bulk actions"
                 icon={ListCheckedIcon}
