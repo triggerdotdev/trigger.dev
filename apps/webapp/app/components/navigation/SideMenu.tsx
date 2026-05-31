@@ -91,7 +91,6 @@ import {
   v3RunsPath,
   v3SchedulesPath,
   v3SessionsPath,
-  v3TasksDashboardPath,
   v3UsagePath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
@@ -390,46 +389,31 @@ export function SideMenu({
 
             <div className="w-full">
               <SideMenuItem
-                name="Tasks"
-                icon={TaskIcon}
-                activeIconColor="text-tasks"
-                inactiveIconColor="text-text-dimmed"
-                to={v3TasksDashboardPath(organization, project, environment)}
-                data-action="tasks"
-                isCollapsed={isCollapsed}
-              />
-              {/* Indented task sub-views (not reorderable). When collapsed,
-                  show the regular icon; when expanded show the tree connector
-                  so the hierarchy reads visually. */}
-              <SideMenuItem
-                name="Agents"
+                name="Agent tasks"
                 icon={CubeSparkleIcon}
                 activeIconColor="text-agents"
                 inactiveIconColor="text-text-dimmed"
                 to={v3AgentsPath(organization, project, environment)}
                 data-action="agents"
                 isCollapsed={isCollapsed}
-                indented
               />
               <SideMenuItem
-                name="Standard"
+                name="Standard tasks"
                 icon={TaskIcon}
                 activeIconColor="text-tasks"
                 inactiveIconColor="text-text-dimmed"
                 to={v3EnvironmentPath(organization, project, environment)}
                 data-action="tasks-standard"
                 isCollapsed={isCollapsed}
-                indented
               />
               <SideMenuItem
-                name="Scheduled"
+                name="Scheduled tasks"
                 icon={ClockIcon}
                 activeIconColor="text-schedules"
                 inactiveIconColor="text-text-dimmed"
                 to={v3SchedulesPath(organization, project, environment)}
                 data-action="schedules"
                 isCollapsed={isCollapsed}
-                indented
               />
               <SideMenuItem
                 name="Runs"
