@@ -407,6 +407,7 @@ export function SideMenu({
                 activeIconColor="text-agents"
                 inactiveIconColor="text-text-dimmed"
                 to={v3AgentsPath(organization, project, environment)}
+                data-action="agents"
                 isCollapsed={isCollapsed}
                 indented
               />
@@ -436,6 +437,7 @@ export function SideMenu({
                 activeIconColor="text-runs"
                 inactiveIconColor="text-text-dimmed"
                 to={v3RunsPath(organization, project, environment)}
+                data-action="runs"
                 isCollapsed={isCollapsed}
               />
               <SideMenuItem
@@ -462,6 +464,7 @@ export function SideMenu({
                 activeIconColor="text-sky-500"
                 inactiveIconColor="text-text-dimmed"
                 to={v3WaitpointTokensPath(organization, project, environment)}
+                data-action="waitpoint-tokens"
                 isCollapsed={isCollapsed}
               />
             </div>

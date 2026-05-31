@@ -21,6 +21,7 @@ export function SideMenuItem({
   action,
   disableIconHover = false,
   indented = false,
+  "data-action": dataAction,
 }: {
   icon?: RenderIcon;
   activeIconColor?: string;
@@ -42,6 +43,7 @@ export function SideMenuItem({
    * cluster. The indent is only applied when the side menu is expanded.
    */
   indented?: boolean;
+  "data-action"?: string;
 }) {
   const pathName = usePathName();
   const isActive = pathName === to;
@@ -52,6 +54,7 @@ export function SideMenuItem({
     <Link
       to={to}
       target={target}
+      data-action={dataAction}
       className={cn(
         "group/menulink flex h-8 items-center gap-2 overflow-hidden rounded pl-[0.4375rem] pr-2 group-hover/menuitem:bg-charcoal-750 group-hover/menuitem:text-text-bright hover:bg-charcoal-750 hover:text-text-bright",
         isIndented ? "min-w-0 flex-1" : "w-full",
