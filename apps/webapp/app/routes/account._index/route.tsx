@@ -1,12 +1,12 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { EnvelopeIcon, UserCircleIcon } from "@heroicons/react/20/solid";
 import { Form, type MetaFunction, useActionData } from "@remix-run/react";
 import { type ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { AvatarCircleIcon } from "~/assets/icons/AvatarCircleIcon";
+import { EnvelopeIcon } from "~/assets/icons/EnvelopeIcon";
 import { UserProfilePhoto } from "~/components/UserProfilePhoto";
 import {
-  MainCenteredContainer,
   MainHorizontallyCenteredContainer,
   PageBody,
   PageContainer,
@@ -160,7 +160,7 @@ export default function Page() {
                   {...conform.input(name, { type: "text" })}
                   placeholder="Your full name"
                   defaultValue={user?.name ?? ""}
-                  icon={UserCircleIcon}
+                  icon={AvatarCircleIcon}
                 />
                 <Hint>Your teammates will see this</Hint>
                 <FormError id={name.errorId}>{name.error}</FormError>
