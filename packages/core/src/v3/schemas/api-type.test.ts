@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { InitializeDeploymentRequestBody } from "./api.js";
+import { InitializeDeploymentRequestBody, TriggerTaskRequestBody } from "./api.js";
 import type { InitializeDeploymentRequestBody as InitializeDeploymentRequestBodyType } from "./api.js";
 
 describe("InitializeDeploymentRequestBody", () => {
@@ -137,5 +137,43 @@ describe("InitializeDeploymentRequestBody", () => {
         expect(narrowed.contentHash).toBe("abc123");
       }
     });
+  });
+});
+
+describe("TriggerTaskRequestBody", () => {
+  it("accepts application/store payload as a non-empty string", () => {
+    const result = TriggerTaskRequestBody.safeParse({
+      payload: "packets/payloads/file.json",
+      context: {},
+      options: {
+        payloadType: "application/store",
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects application/store payload when payload is not a string", () => {
+    const result = TriggerTaskRequestBody.safeParse({
+      payload: { foo: "bar" },
+      context: {},
+      options: {
+        payloadType: "application/store",
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects application/store payload when payload is an empty string", () => {
+    const result = TriggerTaskRequestBody.safeParse({
+      payload: "",
+      context: {},
+      options: {
+        payloadType: "application/store",
+      },
+    });
+
+    expect(result.success).toBe(false);
   });
 });

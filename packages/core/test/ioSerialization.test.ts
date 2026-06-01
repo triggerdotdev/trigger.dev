@@ -1,4 +1,12 @@
-import { replaceSuperJsonPayload, prettyPrintPacket } from "../src/v3/utils/ioSerialization.js";
+import { createTestHttpServer } from "@epic-web/test-server/http";
+import {
+  replaceSuperJsonPayload,
+  prettyPrintPacket,
+  conditionallyExportPacket,
+  type IOPacket,
+} from "../src/v3/utils/ioSerialization.js";
+import { ApiClient } from "../src/v3/apiClient/index.js";
+import { apiClientManager } from "../src/v3/apiClientManager-api.js";
 
 describe("ioSerialization", () => {
   describe("replaceSuperJsonPayload", () => {
@@ -342,6 +350,144 @@ describe("ioSerialization", () => {
       const result = await prettyPrintPacket(data);
 
       expect(result).toBe(JSON.stringify(data, null, 2));
+    });
+  });
+
+  describe("conditionallyExportPacket", () => {
+    // A payload large enough to exceed OFFLOAD_IO_PACKET_LENGTH_LIMIT (128KB) so it offloads.
+    const largePayload = "x".repeat(200_000);
+    const largePacket: IOPacket = { data: largePayload, dataType: "text/plain" };
+
+    afterEach(() => {
+      // Clear any global client config set during a test.
+      apiClientManager.disable();
+    });
+
+    it("uses the provided client for the upload presign instead of the global client", async () => {
+      const globalPresignRequests: string[] = [];
+      const passedPresignRequests: string[] = [];
+      let uploadedBytes = 0;
+
+      // The global client points here — it must NOT be hit when a client is passed.
+      const globalServer = await createTestHttpServer({
+        defineRoutes(router) {
+          router.put("/api/v2/packets/:filename", async ({ req }) => {
+            globalPresignRequests.push(req.url);
+            return Response.json({ presignedUrl: "http://unused.local/upload" });
+          });
+        },
+      });
+
+      // The explicitly passed client points here — it MUST receive the presign + upload.
+      const passedServer = await createTestHttpServer({
+        defineRoutes(router) {
+          router.put("/api/v2/packets/:filename", async ({ req }) => {
+            passedPresignRequests.push(req.url);
+            return Response.json({
+              presignedUrl: `${passedServer.http.url().origin}/upload/payload`,
+              storagePath: "trigger/task/payload.txt",
+            });
+          });
+          router.put("/upload/payload", async ({ req }) => {
+            uploadedBytes = (await req.text()).length;
+            return new Response(null, { status: 200 });
+          });
+        },
+      });
+
+      try {
+        // Configure the global client to point at the global server.
+        apiClientManager.setGlobalAPIClientConfiguration({
+          baseURL: globalServer.http.url().origin,
+          accessToken: "tr-global",
+        });
+
+        const passedClient = new ApiClient(passedServer.http.url().origin, "tr-passed");
+
+        const result = await conditionallyExportPacket(
+          largePacket,
+          "trigger/task/payload",
+          undefined,
+          passedClient
+        );
+
+        expect(result.dataType).toBe("application/store");
+        expect(result.data).toBe("trigger/task/payload.txt");
+
+        // Upload went through the passed client only.
+        expect(passedPresignRequests).toHaveLength(1);
+        expect(globalPresignRequests).toHaveLength(0);
+        expect(uploadedBytes).toBe(largePayload.length);
+      } finally {
+        await globalServer.close();
+        await passedServer.close();
+      }
+    });
+
+    it("falls back to the global client when no client is provided", async () => {
+      const presignRequests: string[] = [];
+
+      const globalServer = await createTestHttpServer({
+        defineRoutes(router) {
+          router.put("/api/v2/packets/:filename", async ({ req }) => {
+            presignRequests.push(req.url);
+            return Response.json({
+              presignedUrl: `${globalServer.http.url().origin}/upload/payload`,
+              storagePath: "trigger/task/payload.txt",
+            });
+          });
+          router.put("/upload/payload", async () => new Response(null, { status: 200 }));
+        },
+      });
+
+      try {
+        apiClientManager.setGlobalAPIClientConfiguration({
+          baseURL: globalServer.http.url().origin,
+          accessToken: "tr-global",
+        });
+
+        const result = await conditionallyExportPacket(largePacket, "trigger/task/payload");
+
+        expect(result.dataType).toBe("application/store");
+        expect(result.data).toBe("trigger/task/payload.txt");
+        expect(presignRequests).toHaveLength(1);
+      } finally {
+        await globalServer.close();
+      }
+    });
+
+    it("returns the packet unchanged when no client is available", async () => {
+      apiClientManager.disable();
+
+      const result = await conditionallyExportPacket(largePacket, "trigger/task/payload");
+
+      expect(result).toEqual(largePacket);
+    });
+
+    it("does not offload small payloads even with a client", async () => {
+      const passedServer = await createTestHttpServer({
+        defineRoutes(router) {
+          router.put("/api/v2/packets/:filename", async () => {
+            throw new Error("presign should not be called for small payloads");
+          });
+        },
+      });
+
+      try {
+        const smallPacket: IOPacket = { data: "hello", dataType: "text/plain" };
+        const passedClient = new ApiClient(passedServer.http.url().origin, "tr-passed");
+
+        const result = await conditionallyExportPacket(
+          smallPacket,
+          "trigger/task/payload",
+          undefined,
+          passedClient
+        );
+
+        expect(result).toEqual(smallPacket);
+      } finally {
+        await passedServer.close();
+      }
     });
   });
 });
