@@ -101,7 +101,16 @@ export class MollifierStaleSweepState implements StaleSweepStateStore {
     pipeline.lrange(ORG_LIST_KEY, start, start + count - 1);
     pipeline.llen(ORG_LIST_KEY);
     const results = await pipeline.exec();
-    if (!results) return { orgs: [], total: 0 };
+    // `pipeline.exec()` returning null is the abort-on-broken-pipe path.
+    // Surface it as a thrown error — the previous `return { orgs: [], total: 0 }`
+    // looked indistinguishable from a genuinely empty org list to the
+    // caller (`runStaleSweepOnce`), which then wrote cursor=0, reconciled
+    // visited envs against the empty result, and cleared the stale-entry
+    // gauge. That hid real Redis problems and silenced the alerts the
+    // sweep exists to raise.
+    if (!results) {
+      throw new Error("MollifierStaleSweepState.readOrgListSlice: pipeline.exec returned null");
+    }
     const [lrangeErr, lrangeRes] = results[0] as [Error | null, string[] | null];
     const [llenErr, llenRes] = results[1] as [Error | null, number | null];
     if (lrangeErr || llenErr) {
@@ -109,7 +118,10 @@ export class MollifierStaleSweepState implements StaleSweepStateStore {
         lrangeErr: lrangeErr?.message,
         llenErr: llenErr?.message,
       });
-      return { orgs: [], total: 0 };
+      // Same reasoning as the null-result path above — propagate the
+      // failure so the sweep's interval wrapper records a failed cycle
+      // and the durable cursor / counts hash stay untouched.
+      throw lrangeErr ?? llenErr ?? new Error("MollifierStaleSweepState.readOrgListSlice failed");
     }
     return { orgs: lrangeRes ?? [], total: llenRes ?? 0 };
   }

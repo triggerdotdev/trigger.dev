@@ -117,6 +117,62 @@ describe("runStaleSweepOnce — unit", () => {
     expect(snapshots).toHaveLength(1);
     expect(snapshots[0].size).toBe(0);
   });
+
+  it("surfaces readOrgListSlice failures and leaves durable state untouched", async () => {
+    // Regression: previously a Redis read failure inside
+    // `readOrgListSlice` returned `{ orgs: [], total: 0 }` and the
+    // sweep treated that as a clean empty cycle — writing cursor=0,
+    // reconciling visited envs against the empty result, and CLEARING
+    // the stale-entry gauge. That silenced the very alerts the sweep
+    // exists to raise. The fix re-throws; the caller (this function
+    // and the interval wrapper above it) must NOT mutate cursor or
+    // counts when readOrgListSlice fails.
+    const state = makeFakeState();
+    // Seed durable state so we can assert it isn't touched on failure.
+    await state.writeCursor(42);
+    await state.setEnvStaleCount("env_seed", 7);
+    await state.rebuildOrgList(["org_pre"]);
+    // Inject a failure on the very next slice read.
+    const readErr = new Error("Redis read failed");
+    let readAttempts = 0;
+    const failingState = {
+      ...state,
+      readOrgListSlice: async (start: number, count: number) => {
+        readAttempts += 1;
+        throw readErr;
+      },
+    };
+    const spies = spyDeps();
+    const buffer = {
+      listOrgs: async () => ["org_pre"],
+      listEnvsForOrg: async () => [],
+      listEntriesForEnv: async () => [],
+    } as unknown as MollifierBuffer;
+
+    await expect(
+      runStaleSweepOnce(
+        { staleThresholdMs: 60_000, maxOrgsPerPass: 10 },
+        {
+          ...spies.deps,
+          state: failingState,
+          getBuffer: () => buffer,
+          now: () => Date.now(),
+        },
+      ),
+    ).rejects.toThrow("Redis read failed");
+
+    expect(readAttempts).toBe(1);
+    // Cursor untouched (still the seeded 42, not reset to 0).
+    expect(await state.readCursor()).toBe(42);
+    // Counts hash untouched — the seeded env's count survives the
+    // failed cycle so the gauge keeps reporting its last-known value.
+    const counts = await state.readAllEnvStaleCounts();
+    expect(counts.get("env_seed")).toBe(7);
+    // No snapshot was reported because the function threw before
+    // reaching reportStaleEntrySnapshot.
+    expect(spies.snapshots).toHaveLength(0);
+    expect(spies.staleEntryCount).toBe(0);
+  });
 });
 
 describe("runStaleSweepOnce — testcontainers", () => {
