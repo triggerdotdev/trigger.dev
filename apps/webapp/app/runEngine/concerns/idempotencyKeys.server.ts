@@ -287,8 +287,16 @@ export class IdempotencyKeyConcern {
     // DB query, same predicate the gate uses — keeping the claim's Redis
     // RTT off the hot path for non-opted-in orgs during incremental
     // rollout.
+    // Match the gate's bypass list (`mollifierGate.server.ts:158-175`).
+    // debounce + oneTimeUseToken triggers always return pass_through from
+    // the gate, so claiming a Redis SETNX here is wasted RTT on the
+    // trigger hot path. Excluding them keeps the claim aligned with the
+    // gate — if the gate would never mollify the request, there's no
+    // buffer to serialise against.
     const claimEligible =
       !request.body.options?.resumeParentOnCompletion &&
+      !request.body.options?.debounce &&
+      !request.options?.oneTimeUseToken &&
       (await resolveOrgMollifierFlag({
         envId: request.environment.id,
         orgId: request.environment.organizationId,
