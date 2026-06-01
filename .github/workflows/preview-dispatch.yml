@@ -6,6 +6,15 @@ on:
   pull_request:
     types: [opened, reopened, synchronize, closed, labeled, unlabeled]
 
+# Serialize a PR's events so dispatches arrive in order. Cloud-side concurrency
+# collapses by branch but can't fix out-of-order arrival — e.g. a push racing a
+# close could cancel the in-flight destroy and leak the preview. One short API
+# call, so queuing is cheap; cancel-in-progress: false lets an in-flight
+# dispatch finish (GitHub keeps only the latest pending, the desired behavior).
+concurrency:
+  group: preview-dispatch-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
 permissions: {}
 
 jobs:
