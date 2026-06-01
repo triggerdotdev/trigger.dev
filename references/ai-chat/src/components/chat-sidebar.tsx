@@ -119,6 +119,7 @@ export function ChatSidebar({
             <option value="upgrade-test">upgrade-test (requestUpgrade after 3 turns)</option>
             <option value="stress-emit">stress-emit (UI stress test)</option>
             <option value="cf-trust-test">cf-trust-test (Cloudflare proxy trust)</option>
+            <option value="tool-model-output-test">tool-model-output-test (toModelOutput cross-turn)</option>
           </select>
         </div>
         <label

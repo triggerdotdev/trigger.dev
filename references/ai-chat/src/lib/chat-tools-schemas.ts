@@ -29,6 +29,7 @@
  */
 import { tool } from "ai";
 import type { InferUITools, UIDataTypes, UIMessage } from "ai";
+import type { InferChatUIMessageFromTools } from "@trigger.dev/sdk/ai";
 import { z } from "zod";
 
 export const inspectEnvironment = tool({
@@ -186,4 +187,5 @@ export const headStartTools = {
 
 type ChatToolSet = typeof headStartTools;
 export type ChatUiTools = InferUITools<ChatToolSet>;
-export type ChatUiMessage = UIMessage<unknown, UIDataTypes, ChatUiTools>;
+// Equivalent to `UIMessage<unknown, UIDataTypes, ChatUiTools>`, via the SDK helper.
+export type ChatUiMessage = InferChatUIMessageFromTools<ChatToolSet>;

@@ -2082,3 +2082,139 @@ describe("mockChatAgent", () => {
     });
   });
 });
+
+describe("mockChatAgent tools / toModelOutput (TRI-10149)", () => {
+  // A tool whose raw `execute`/output never contains the marker; the marker
+  // lives ONLY in `toModelOutput`. If the SDK re-converts prior-turn history
+  // without threading tools, `toModelOutput` is skipped and the marker is lost.
+  const makeVault = () =>
+    tool({
+      description: "Vault.",
+      inputSchema: z.object({}),
+      toModelOutput: () => ({ type: "text" as const, value: "MARKER-XYZ" }),
+    });
+
+  // Seed a prior assistant turn that already carries a resolved vault tool
+  // result whose raw output has NO marker.
+  const seedAssistantWithToolResult = {
+    id: "a-vault",
+    role: "assistant" as const,
+    parts: [
+      {
+        type: "tool-vault" as const,
+        toolCallId: "tc_vault",
+        state: "output-available" as const,
+        input: {},
+        output: { bytes: "raw-no-marker" },
+      },
+    ],
+  };
+
+  it("re-applies tool.toModelOutput when re-converting prior-turn history (static tools)", async () => {
+    const vault = makeVault();
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("ok") }),
+    });
+
+    const seenToolResults: string[] = [];
+    const agent = chat.agent({
+      id: "mockChatAgent.toModelOutput-static",
+      tools: { vault },
+      run: async ({ messages, tools, signal }) => {
+        // REUSE A: `tools` is threaded onto the run payload (typed concretely,
+        // not the broad `ToolSet`). The static-form type inference is validated
+        // end-to-end by the references/ai-chat typecheck; here we exercise the
+        // runtime behavior. (test/ is not part of the package's tsc pass.)
+        for (const m of messages) {
+          if (m.role === "tool") seenToolResults.push(JSON.stringify(m.content));
+        }
+        return streamText({ model, messages, tools, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-tmo-static" });
+    try {
+      // Turn 1 seeds the tool result; turn 2 forces a re-conversion of history.
+      await harness.sendMessage(seedAssistantWithToolResult as any);
+      await harness.sendMessage(userMessage("recall"));
+      await new Promise((r) => setTimeout(r, 20));
+
+      const all = seenToolResults.join("|");
+      // toModelOutput ran → transformed value present, raw output gone.
+      expect(all).toContain("MARKER-XYZ");
+      expect(all).not.toContain("raw-no-marker");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("resolves the per-turn function form of tools and re-applies toModelOutput", async () => {
+    const vault = makeVault();
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("ok") }),
+    });
+
+    const seenToolResults: string[] = [];
+    let resolverCalls = 0;
+    const agent = chat.agent({
+      id: "mockChatAgent.toModelOutput-fn",
+      tools: () => {
+        resolverCalls++;
+        return { vault };
+      },
+      run: async ({ messages, tools, signal }) => {
+        for (const m of messages) {
+          if (m.role === "tool") seenToolResults.push(JSON.stringify(m.content));
+        }
+        return streamText({ model, messages, tools, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-tmo-fn" });
+    try {
+      await harness.sendMessage(seedAssistantWithToolResult as any);
+      await harness.sendMessage(userMessage("recall"));
+      await new Promise((r) => setTimeout(r, 20));
+
+      const all = seenToolResults.join("|");
+      expect(all).toContain("MARKER-XYZ");
+      expect(all).not.toContain("raw-no-marker");
+      // The resolver runs per turn (once each), not per conversion call.
+      expect(resolverCalls).toBeGreaterThanOrEqual(2);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("leaves conversion unchanged when no tools are declared (raw output passes through)", async () => {
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("ok") }),
+    });
+
+    const seenToolResults: string[] = [];
+    const agent = chat.agent({
+      id: "mockChatAgent.toModelOutput-none",
+      run: async ({ messages, signal }) => {
+        for (const m of messages) {
+          if (m.role === "tool") seenToolResults.push(JSON.stringify(m.content));
+        }
+        return streamText({ model, messages, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-tmo-none" });
+    try {
+      await harness.sendMessage(seedAssistantWithToolResult as any);
+      await harness.sendMessage(userMessage("recall"));
+      await new Promise((r) => setTimeout(r, 20));
+
+      // No tools declared → no toModelOutput lookup → raw output stringified
+      // (the pre-feature behavior, preserved for backward compatibility).
+      const all = seenToolResults.join("|");
+      expect(all).toContain("raw-no-marker");
+      expect(all).not.toContain("MARKER-XYZ");
+    } finally {
+      await harness.close();
+    }
+  });
+});
