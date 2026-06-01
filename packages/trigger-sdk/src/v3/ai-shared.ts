@@ -16,7 +16,7 @@
  */
 
 import type { Task, AnyTask } from "@trigger.dev/core/v3";
-import type { ModelMessage, UIMessage } from "ai";
+import type { InferUITools, ModelMessage, ToolSet, UIDataTypes, UIMessage } from "ai";
 
 /**
  * Message-part `type` value for the pending-message data part the agent
@@ -198,6 +198,26 @@ export type InferChatUIMessage<TTask extends AnyTask> = TTask extends Task<
 >
   ? TUIM
   : UIMessage;
+
+/**
+ * Derive the chat `UIMessage` type for a given tool set. The tool-part types
+ * (`tool-${name}` with typed input/output) are inferred from the tools. Use
+ * this to declare the message type from your tools (e.g. to pass to
+ * `chat.withUIMessage<...>()` or to type the frontend) without hand-writing
+ * the `UIMessage<unknown, UIDataTypes, InferUITools<...>>` triple.
+ *
+ * @example
+ * ```ts
+ * import type { InferChatUIMessageFromTools } from "@trigger.dev/sdk/ai";
+ * const tools = { search, readFile };
+ * type ChatUiMessage = InferChatUIMessageFromTools<typeof tools>;
+ * ```
+ */
+export type InferChatUIMessageFromTools<TTools extends ToolSet> = UIMessage<
+  unknown,
+  UIDataTypes,
+  InferUITools<TTools>
+>;
 
 /**
  * Upsert an incoming wire message into the customer's DB-backed chain
