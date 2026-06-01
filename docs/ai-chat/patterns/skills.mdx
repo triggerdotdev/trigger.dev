@@ -185,6 +185,8 @@ return streamText({
 
 Your tools win on name conflicts. (Pick names that don't collide with `loadSkill` / `readFile` / `bash` to keep things predictable.)
 
+Also declare those same tools on the agent's [`tools`](/ai-chat/tools) config. `toStreamTextOptions` merges them with the skill tools for the model call, while the config option threads them into history re-conversion so any `toModelOutput` survives across turns. The auto-injected skill tools (`loadSkill` / `readFile` / `bash`) don't define `toModelOutput`, so they don't need to be on the config.
+
 ## Bundling
 
 Bundling is **built-in to the CLI** — there's no extension to import. When you run `trigger deploy` or `trigger dev`:

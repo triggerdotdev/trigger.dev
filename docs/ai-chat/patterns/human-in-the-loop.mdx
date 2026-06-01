@@ -69,17 +69,20 @@ const askUser = tool({
 
 export const myChat = chat.agent({
   id: "my-chat",
-  run: async ({ messages, signal }) => {
+  tools: { askUser },
+  run: async ({ messages, tools, signal }) => {
     return streamText({
       model: anthropic("claude-sonnet-4-5"),
       messages,
-      tools: { askUser },
+      tools,
       abortSignal: signal,
       stopWhen: stepCountIs(15),
     });
   },
 });
 ```
+
+Declaring `tools` on the config (and reading them back from the payload) is the recommended shape for any agent with tools. See [Tools](/ai-chat/tools).
 
 ## Frontend: render the question and collect the answer
 

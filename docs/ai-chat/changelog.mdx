@@ -4,6 +4,30 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="June 1, 2026" description="4.5.0-rc.4" tags={["SDK"]}>
+
+## `tools` option on `chat.agent`: `toModelOutput` survives across turns
+
+`chat.agent` now takes a `tools` option. Until now tools only went to `streamText` inside `run()`, which meant the SDK had no tools when it re-converted the persisted `UIMessage` history at the start of each turn. Any tool with a `toModelOutput` (raw image bytes turned into an image content part, or a sub-agent transcript compressed to a summary) had its transform applied on turn 1 and skipped from turn 2 onward, so the raw output got stringified back into the prompt.
+
+Declare your tools on the config and the SDK threads them into that conversion, so `toModelOutput` is re-applied every turn. The resolved set is handed back, typed, on the `run()` payload as `tools`, so you declare them once:
+
+```ts
+const tools = { searchDocs, renderChart };
+
+export const myChat = chat.agent({
+  tools,
+  run: async ({ messages, tools, signal }) =>
+    streamText({ ...chat.toStreamTextOptions({ tools }), messages, abortSignal: signal }),
+});
+```
+
+`tools` also accepts a per-turn function (`(event) => ToolSet`) for tools that depend on the user or a feature flag. Only `inputSchema` and `toModelOutput` are read during conversion, never `execute`. No behavior change for agents that don't declare `tools`.
+
+A new `InferChatUIMessageFromTools<typeof tools>` helper derives the chat `UIMessage` type (with typed tool parts) directly from a tool set. See the new [Tools](/ai-chat/tools) guide.
+
+</Update>
+
 <Update label="May 23, 2026" description="4.5.0-rc.2" tags={["SDK", "Webapp", "Bug fix"]}>
 
 ## HITL continuations — slim wire by default + field-level merge

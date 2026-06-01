@@ -155,6 +155,29 @@ For piping streams from subtasks to the parent chat (via `target: "root"`), see 
 
 Every `chat.agent` conversation is backed by a durable [Session](/ai-chat/sessions): `externalId` is your `chatId`, `type` is `"chat.agent"`, and `taskIdentifier` is the agent's task ID. The session is the run manager. It owns the chat's runs, persists across run lifecycles, and orchestrates handoffs (idle continuation, `chat.requestUpgrade`). You rarely touch it directly, since `chat.stream`, `chat.messages`, and `chat.stopSignal` wrap everything, but `payload.sessionId` is there when you need to reach in, e.g. `sessions.open(payload.sessionId)` to write from a sub-agent or from outside the turn loop.
 
+### Tools
+
+Declare your tools on the agent config, then read them back (typed) from the `run()` payload. Declaring them on the config, not just on `streamText`, is what lets the SDK re-apply each tool's `toModelOutput` when it re-converts history on later turns.
+
+```ts
+const tools = { searchDocs };
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  tools,
+  run: async ({ messages, tools, signal }) =>
+    streamText({
+      ...chat.toStreamTextOptions({ tools }),
+      model: anthropic("claude-sonnet-4-5"),
+      messages,
+      abortSignal: signal,
+      stopWhen: stepCountIs(15),
+    }),
+});
+```
+
+See [Tools](/ai-chat/tools) for `toModelOutput` across turns, per-turn dynamic tools, the typed run payload, and how config tools relate to skills.
+
 ### Lifecycle hooks
 
 `chat.agent({ ... })` accepts hooks that fire in a fixed order around each turn, plus dedicated suspend/resume hooks. The full reference lives on its own page:

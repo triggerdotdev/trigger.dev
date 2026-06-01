@@ -48,6 +48,10 @@ type MyChatDataTypes = UIDataTypes & {
 export type MyChatUIMessage = UIMessage<unknown, MyChatDataTypes, MyChatTools>;
 ```
 
+<Tip>
+  If you don't need custom `data-*` parts, [`InferChatUIMessageFromTools<typeof myTools>`](/ai-chat/tools#typing-messages-from-your-tools) from `@trigger.dev/sdk/ai` collapses the tools half into one line (it's shorthand for `UIMessage<unknown, UIDataTypes, InferUITools<typeof myTools>>`).
+</Tip>
+
 Task-backed tools should use AI SDK [`tool()`](https://sdk.vercel.ai/docs/ai-sdk-core/tools-and-tool-calling) with `execute: ai.toolExecute(schemaTask)` where needed — see [Task-backed AI tools](/tasks/schemaTask#task-backed-ai-tools).
 
 ### Backend: `chat.withUIMessage(...).agent(...)`
@@ -82,6 +86,7 @@ export const myChat = chat
   })
   .agent({
     id: "my-chat",
+    tools: myTools,
     onTurnStart: async ({ uiMessages, writer }) => {
       // uiMessages is MyChatUIMessage[] — custom data parts are typed
       writer.write({
@@ -89,11 +94,12 @@ export const myChat = chat
         data: { status: "preparing" },
       });
     },
-    run: async ({ messages, signal }) => {
+    run: async ({ messages, tools, signal }) => {
+      // `tools` is myTools, typed, handed back on the payload
       return streamText({
         model: anthropic("claude-sonnet-4-5"),
         messages,
-        tools: myTools,
+        tools,
         abortSignal: signal,
         stopWhen: stepCountIs(15),
       });
