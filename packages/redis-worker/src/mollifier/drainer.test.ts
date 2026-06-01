@@ -276,7 +276,13 @@ describe("MollifierDrainer.drainBatchSize", () => {
       handler: async (input) => {
         handled.push(input.runId);
       },
-      concurrency: 5,
+      // Concurrency=1 so the worker pool runs sequentially and pop calls
+      // can't race past the `skip.add(envId)` that fires after a pop
+      // failure. The semantic this test pins (one env's pop blowup
+      // aborts its batch and counts as one failure) is the deterministic
+      // case; multi-worker race semantics are exercised by the safety
+      // property test below.
+      concurrency: 1,
       maxAttempts: 3,
       isRetryable: () => false,
       drainBatchSize: 5,
@@ -484,6 +490,69 @@ describe("MollifierDrainer.drainBatchSize", () => {
     expect(r.failed).toBe(2);
   });
 
+  it("never has more than `concurrency` entries popped-but-not-acked at any moment", async () => {
+    // Regression guard for the DRAINING blast radius. Each pop+process
+    // happens inside a single pLimit slot, so at any instant the number
+    // of entries that have been popped (and therefore marked DRAINING in
+    // a real buffer) but not yet acked is bounded by `concurrency`. This
+    // matters because the stale sweep only catches DRAINING entries
+    // visibly after a threshold — a process crash with thousands of
+    // mid-flight entries would mean a long detection/recovery window.
+    const envCount = 10;
+    const perEnv = 20;
+    const queues = new Map<string, string[]>();
+    for (let i = 0; i < envCount; i++) {
+      queues.set(
+        `env_${i}`,
+        Array.from({ length: perEnv }, (_, j) => `env_${i}_run_${j}`),
+      );
+    }
+    let inflightPoppedNotAcked = 0;
+    let peak = 0;
+    const concurrency = 4;
+    const buffer = makeStubBuffer({
+      ...eachEnvAsOwnOrg([...queues.keys()]),
+      pop: async (envId: string) => {
+        const q = queues.get(envId);
+        if (!q || q.length === 0) return null;
+        const runId = q.shift()!;
+        inflightPoppedNotAcked += 1;
+        if (inflightPoppedNotAcked > peak) peak = inflightPoppedNotAcked;
+        return {
+          runId,
+          envId,
+          orgId: envId,
+          payload: "{}",
+          attempts: 0,
+          createdAt: new Date(),
+        } as any;
+      },
+      ack: async () => {
+        inflightPoppedNotAcked -= 1;
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async () => {
+        // Force handler overlap if scheduling allowed it — without a
+        // tight per-slot bound the peak would visibly exceed `concurrency`.
+        await new Promise((r) => setTimeout(r, 15));
+      },
+      concurrency,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      drainBatchSize: perEnv,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    const r = await drainer.runOnce();
+    expect(r.drained).toBe(envCount * perEnv);
+    expect(peak).toBeGreaterThan(1); // concurrency is real, not serialised
+    expect(peak).toBeLessThanOrEqual(concurrency); // and bounded by it
+    expect(inflightPoppedNotAcked).toBe(0); // everything settled
+  });
+
   it("stops popping early when the env's queue empties before reaching drainBatchSize", async () => {
     const queue = ["only_1", "only_2"];
     const handled: string[] = [];
@@ -511,7 +580,12 @@ describe("MollifierDrainer.drainBatchSize", () => {
       handler: async (input) => {
         handled.push(input.runId);
       },
-      concurrency: 5,
+      // Concurrency=1 isolates the "stop on empty" semantic from the
+      // worker pool's parallel-pick race: with multiple workers, several
+      // can pick env_a simultaneously and pop in parallel before any of
+      // them can `skip.add(envId)`, so the empty-pop count would be
+      // >1 nondeterministically.
+      concurrency: 1,
       maxAttempts: 3,
       isRetryable: () => false,
       drainBatchSize: 10,
