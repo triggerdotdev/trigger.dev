@@ -14,6 +14,8 @@ export {
   MollifierDrainer,
   type MollifierDrainerOptions,
   type MollifierDrainerHandler,
+  type MollifierDrainerTerminalFailureHandler,
+  type MollifierDrainerTerminalFailureCause,
   type DrainResult,
 } from "./drainer.js";
 export {

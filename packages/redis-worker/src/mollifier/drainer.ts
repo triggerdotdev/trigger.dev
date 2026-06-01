@@ -12,9 +12,30 @@ export type MollifierDrainerHandler<TPayload> = (input: {
   createdAt: Date;
 }) => Promise<void>;
 
+// Invoked once per entry before `buffer.fail()` on any terminal path —
+// non-retryable error OR retryable error after maxAttempts. Lets the caller
+// land a SYSTEM_FAILURE PG row so the customer sees the run instead of it
+// silently disappearing alongside the buffer entry. Throwing a retryable
+// error from the callback causes the drainer to requeue rather than fail
+// (so the PG write itself gets another chance once PG recovers); throwing
+// anything else falls through to `buffer.fail()` to avoid an infinite loop
+// on a genuinely bad payload.
+export type MollifierDrainerTerminalFailureCause = "non-retryable" | "max-attempts-exhausted";
+export type MollifierDrainerTerminalFailureHandler<TPayload> = (input: {
+  runId: string;
+  envId: string;
+  orgId: string;
+  payload: TPayload;
+  attempts: number;
+  createdAt: Date;
+  error: { code: string; message: string };
+  cause: MollifierDrainerTerminalFailureCause;
+}) => Promise<void>;
+
 export type MollifierDrainerOptions<TPayload> = {
   buffer: MollifierBuffer;
   handler: MollifierDrainerHandler<TPayload>;
+  onTerminalFailure?: MollifierDrainerTerminalFailureHandler<TPayload>;
   concurrency: number;
   maxAttempts: number;
   isRetryable: (err: unknown) => boolean;
@@ -42,6 +63,7 @@ export type DrainResult = {
 export class MollifierDrainer<TPayload = unknown> {
   private readonly buffer: MollifierBuffer;
   private readonly handler: MollifierDrainerHandler<TPayload>;
+  private readonly onTerminalFailure?: MollifierDrainerTerminalFailureHandler<TPayload>;
   private readonly maxAttempts: number;
   private readonly isRetryable: (err: unknown) => boolean;
   private readonly pollIntervalMs: number;
@@ -60,6 +82,7 @@ export class MollifierDrainer<TPayload = unknown> {
   constructor(options: MollifierDrainerOptions<TPayload>) {
     this.buffer = options.buffer;
     this.handler = options.handler;
+    this.onTerminalFailure = options.onTerminalFailure;
     this.maxAttempts = options.maxAttempts;
     this.isRetryable = options.isRetryable;
     this.pollIntervalMs = options.pollIntervalMs ?? 100;
@@ -275,13 +298,56 @@ export class MollifierDrainer<TPayload = unknown> {
         });
         return "failed";
       }
+      const cause: MollifierDrainerTerminalFailureCause = this.isRetryable(err)
+        ? "max-attempts-exhausted"
+        : "non-retryable";
       const code = err instanceof Error ? err.name : "Unknown";
       const message = err instanceof Error ? err.message : String(err);
+      // Run the terminal-failure callback BEFORE buffer.fail() so a
+      // SYSTEM_FAILURE PG row can land while the entry is still around to
+      // read from (and so we don't lose the run if the callback's own
+      // write itself needs a retry). If the callback throws a retryable
+      // error, requeue the entry instead of fail()ing — PG is still
+      // unreachable, give it another tick. Any other callback failure
+      // falls through to buffer.fail() so a genuinely bad snapshot
+      // doesn't loop forever.
+      if (this.onTerminalFailure) {
+        try {
+          await this.onTerminalFailure({
+            runId: entry.runId,
+            envId: entry.envId,
+            orgId: entry.orgId,
+            payload: deserialiseSnapshot<TPayload>(entry.payload),
+            attempts: nextAttempts,
+            createdAt: entry.createdAt,
+            error: { code, message },
+            cause,
+          });
+        } catch (writeErr) {
+          if (this.isRetryable(writeErr)) {
+            await this.buffer.requeue(entry.runId);
+            this.logger.warn(
+              "MollifierDrainer: terminal-failure callback retryable; requeued",
+              {
+                runId: entry.runId,
+                attempts: nextAttempts,
+                writeErr,
+              },
+            );
+            return "failed";
+          }
+          this.logger.error("MollifierDrainer: terminal-failure callback failed", {
+            runId: entry.runId,
+            writeErr,
+          });
+        }
+      }
       await this.buffer.fail(entry.runId, { code, message });
       this.logger.error("MollifierDrainer: terminal failure", {
         runId: entry.runId,
         code,
         message,
+        cause,
       });
       return "failed";
     }

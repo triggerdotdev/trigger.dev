@@ -1,10 +1,16 @@
-import { createHash } from "node:crypto";
-import { MollifierDrainer, serialiseSnapshot } from "@trigger.dev/redis-worker";
+import { MollifierDrainer } from "@trigger.dev/redis-worker";
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { engine as runEngine } from "~/v3/runEngine.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
-import type { BufferedTriggerPayload } from "./bufferedTriggerPayload.server";
+import {
+  createDrainerHandler,
+  createDrainerTerminalFailureHandler,
+  isRetryablePgError,
+} from "./mollifierDrainerHandler.server";
+import type { MollifierSnapshot } from "./mollifierSnapshot.server";
 
 // Distinct error class for the deterministic "fail loud at boot" throws
 // below. The bootstrap in `mollifierDrainerWorker.server.ts` catches
@@ -25,7 +31,7 @@ export class MollifierConfigurationError extends Error {
   }
 }
 
-function initializeMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> {
+function initializeMollifierDrainer(): MollifierDrainer<MollifierSnapshot> {
   const buffer = getMollifierBuffer();
   if (!buffer) {
     // Unreachable in normal config: getMollifierDrainer() gates on the
@@ -68,40 +74,14 @@ function initializeMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> 
     maxAttempts: env.TRIGGER_MOLLIFIER_DRAIN_MAX_ATTEMPTS,
   });
 
-  // No-op ack handler: the trigger has ALREADY been written to Postgres
-  // via engine.trigger (dual-write at the call site). Popping + acking
-  // here proves the dequeue mechanism works end-to-end without duplicating
-  // the work. A later change replaces this with an engine.trigger replay
-  // that performs the actual Postgres write.
-  const drainer = new MollifierDrainer<BufferedTriggerPayload>({
+  const drainer = new MollifierDrainer<MollifierSnapshot>({
     buffer,
-    handler: async (input) => {
-      // Hash the (re-serialised, canonical) payload on the drain side rather
-      // than on the trigger hot path. Burst-time CPU stays with engine.trigger;
-      // the drainer is the natural place for the audit-equivalence checksum.
-      // Re-serialisation is identity for the BufferedTriggerPayload shape
-      // (only strings/numbers/plain objects), so this hash matches what the
-      // call site wrote into Redis.
-      const reserialised = serialiseSnapshot(input.payload);
-      const payloadHash = createHash("sha256").update(reserialised).digest("hex");
-      logger.info("mollifier.drained", {
-        runId: input.runId,
-        envId: input.envId,
-        orgId: input.orgId,
-        taskId: input.payload.taskId,
-        attempts: input.attempts,
-        ageMs: Date.now() - input.createdAt.getTime(),
-        payloadBytes: reserialised.length,
-        payloadHash,
-      });
-    },
+    handler: createDrainerHandler({ engine: runEngine, prisma }),
+    onTerminalFailure: createDrainerTerminalFailureHandler({ engine: runEngine, prisma }),
     concurrency: env.TRIGGER_MOLLIFIER_DRAIN_CONCURRENCY,
     maxAttempts: env.TRIGGER_MOLLIFIER_DRAIN_MAX_ATTEMPTS,
     maxOrgsPerTick: env.TRIGGER_MOLLIFIER_DRAIN_MAX_ORGS_PER_TICK,
-    // A no-op handler shouldn't throw, but if something does (e.g. an
-    // unexpected deserialise failure), don't loop — let it FAIL terminally
-    // so the entry is observable in metrics.
-    isRetryable: () => false,
+    isRetryable: isRetryablePgError,
   });
 
   return drainer;
@@ -114,7 +94,7 @@ function initializeMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> 
 // handler registration, leaving a narrow window where a SIGTERM landing
 // between `start()` and `process.once("SIGTERM", ...)` would skip the
 // graceful stop. The split is intentional.
-export function getMollifierDrainer(): MollifierDrainer<BufferedTriggerPayload> | null {
+export function getMollifierDrainer(): MollifierDrainer<MollifierSnapshot> | null {
   if (env.TRIGGER_MOLLIFIER_ENABLED !== "1") return null;
   return singleton("mollifierDrainer", initializeMollifierDrainer);
 }

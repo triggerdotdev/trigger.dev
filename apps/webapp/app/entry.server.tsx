@@ -9,6 +9,7 @@ import { renderToPipeableStream } from "react-dom/server";
 import { PassThrough } from "stream";
 import * as Worker from "~/services/worker.server";
 import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
+import { initMollifierStaleSweepWorker } from "~/v3/mollifierStaleSweepWorker.server";
 import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 import {
@@ -228,6 +229,7 @@ Worker.init().catch((error) => {
 });
 
 initMollifierDrainerWorker();
+initMollifierStaleSweepWorker();
 
 bootstrap().catch((error) => {
   logError(error);

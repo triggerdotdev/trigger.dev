@@ -1063,13 +1063,16 @@ const EnvironmentSchema = z
     // Separate switch for the drainer (consumer side) so it can be split
     // off onto a dedicated worker service. Unset → inherits
     // TRIGGER_MOLLIFIER_ENABLED, so single-container self-hosters don't have to
-    // flip two switches. In multi-replica deployments, set this to "0"
-    // explicitly on every replica except the one dedicated drainer
-    // service — otherwise every replica's polling loop races for the
-    // same buffer entries. `TRIGGER_MOLLIFIER_ENABLED` is still the master kill
-    // switch; setting this to "1" while `TRIGGER_MOLLIFIER_ENABLED` is "0" is a
-    // no-op because the gate-side singleton refuses to construct a
-    // buffer when the system is off.
+    // flip two switches. Multi-replica drainers are correct — `popAndMarkDraining`
+    // is an atomic ZPOPMIN + status flip in one Lua call, so only one replica
+    // can win any given entry — but inefficient: polling load (SMEMBERS +
+    // per-env scans) multiplies by N, and `TRIGGER_MOLLIFIER_DRAIN_CONCURRENCY`
+    // is per-process so engine load also multiplies. Splitting the drainer
+    // onto a dedicated worker keeps that traffic off the request-serving
+    // replicas. `TRIGGER_MOLLIFIER_ENABLED` is still the master kill switch;
+    // setting this to "1" while `TRIGGER_MOLLIFIER_ENABLED` is "0" is a
+    // no-op because the gate-side singleton refuses to construct a buffer
+    // when the system is off.
     TRIGGER_MOLLIFIER_DRAINER_ENABLED: z.string().default(process.env.TRIGGER_MOLLIFIER_ENABLED ?? "0"),
     TRIGGER_MOLLIFIER_SHADOW_MODE: z.string().default("0"),
     TRIGGER_MOLLIFIER_REDIS_HOST: z
@@ -1098,6 +1101,32 @@ const EnvironmentSchema = z
     TRIGGER_MOLLIFIER_DRAIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
     TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
     TRIGGER_MOLLIFIER_DRAIN_MAX_ORGS_PER_TICK: z.coerce.number().int().positive().default(500),
+    // Periodic sweep that scans buffer queue LISTs for entries whose
+    // dwell exceeds the stale threshold. Independent of the drainer —
+    // its job is exactly to make a stuck/offline drainer visible to
+    // ops. Defaults: explicitly opt-in (a separate kill switch from
+    // the mollifier itself), run every 5 minutes, alert on anything
+    // that's been dwelling for 5+ minutes (matches the sweep interval
+    // — "anything still here when we check" is the simplest threshold
+    // that converges).
+    //
+    // The sweep was previously defaulting to inherit
+    // `TRIGGER_MOLLIFIER_ENABLED`, which meant any deployment already
+    // running with the mollifier on would auto-start the sweep worker
+    // on upgrade — turning on new background load with no explicit
+    // rollout step. Hard-defaulting to "0" preserves the intent of
+    // exposing the sweep as a separate switch.
+    TRIGGER_MOLLIFIER_STALE_SWEEP_ENABLED: z.string().default("0"),
+    TRIGGER_MOLLIFIER_STALE_SWEEP_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(5 * 60_000),
+    TRIGGER_MOLLIFIER_STALE_SWEEP_THRESHOLD_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(5 * 60_000),
 
     BATCH_TRIGGER_PROCESS_JOB_VISIBILITY_TIMEOUT_MS: z.coerce
       .number()

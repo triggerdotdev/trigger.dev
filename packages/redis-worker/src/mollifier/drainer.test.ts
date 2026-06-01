@@ -279,6 +279,296 @@ describe("MollifierDrainer error handling", () => {
   );
 });
 
+// `onTerminalFailure` is the callback the drainer fires on any terminal
+// path (non-retryable OR max-attempts-exhausted retryable) before it
+// calls `buffer.fail()`. Webapp wires it to `createFailedTaskRun` so the
+// customer's run lands a SYSTEM_FAILURE PG row in both cases. Pre-fix,
+// the retryable-exhausted path called `buffer.fail()` with no PG row,
+// silently losing the run. These tests pin both terminal causes plus the
+// retry-on-retryable-callback-failure escape hatch.
+describe("MollifierDrainer.onTerminalFailure", () => {
+  redisTest(
+    "fires with cause max-attempts-exhausted after retryable failures exhaust",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
+      });
+
+      let handlerCalls = 0;
+      const handler = async () => {
+        handlerCalls++;
+        throw new Error("retryable PG blip");
+      };
+
+      type TerminalCallArgs = {
+        runId: string;
+        attempts: number;
+        cause: "non-retryable" | "max-attempts-exhausted";
+        errorMessage: string;
+      };
+      const terminalCalls: TerminalCallArgs[] = [];
+
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        onTerminalFailure: async (input) => {
+          terminalCalls.push({
+            runId: input.runId,
+            attempts: input.attempts,
+            cause: input.cause,
+            errorMessage: input.error.message,
+          });
+        },
+        concurrency: 1,
+        maxAttempts: 2,
+        isRetryable: () => true,
+        logger: new Logger("test-drainer", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "run_exhaust", envId: "env_a", orgId: "org_1", payload: "{}" });
+
+        // Attempt 1: retryable error → requeue, no terminal callback fires.
+        const r1 = await drainer.runOnce();
+        expect(r1.failed).toBe(1);
+        expect(terminalCalls).toHaveLength(0);
+        const after1 = await buffer.getEntry("run_exhaust");
+        expect(after1!.status).toBe("QUEUED");
+        expect(after1!.attempts).toBe(1);
+
+        // Attempt 2: maxAttempts (2) reached → terminal callback fires
+        // with cause "max-attempts-exhausted", THEN buffer.fail() deletes.
+        const r2 = await drainer.runOnce();
+        expect(r2.failed).toBe(1);
+        expect(handlerCalls).toBe(2);
+        expect(terminalCalls).toHaveLength(1);
+        expect(terminalCalls[0]).toMatchObject({
+          runId: "run_exhaust",
+          attempts: 2,
+          cause: "max-attempts-exhausted",
+          errorMessage: "retryable PG blip",
+        });
+        // buffer entry torn down post-callback.
+        expect(await buffer.getEntry("run_exhaust")).toBeNull();
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "fires with cause non-retryable on the first non-retryable error",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
+      });
+
+      const handler = async () => {
+        throw new Error("validation failure");
+      };
+
+      const terminalCalls: Array<{ cause: string; attempts: number }> = [];
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        onTerminalFailure: async (input) => {
+          terminalCalls.push({ cause: input.cause, attempts: input.attempts });
+        },
+        concurrency: 1,
+        // Generous attempts budget — non-retryable should bypass it
+        // entirely and terminate on the first attempt.
+        maxAttempts: 5,
+        isRetryable: () => false,
+        logger: new Logger("test-drainer", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "run_nr", envId: "env_a", orgId: "org_1", payload: "{}" });
+
+        const r = await drainer.runOnce();
+        expect(r.failed).toBe(1);
+        expect(terminalCalls).toHaveLength(1);
+        expect(terminalCalls[0]).toEqual({ cause: "non-retryable", attempts: 1 });
+        expect(await buffer.getEntry("run_nr")).toBeNull();
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "callback throwing a retryable error requeues instead of failing",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
+      });
+
+      // Handler always fails (non-retryable so we hit onTerminalFailure
+      // on the first attempt regardless of maxAttempts).
+      const handler = async () => {
+        throw new Error("validation failure");
+      };
+
+      let callbackInvocations = 0;
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        onTerminalFailure: async () => {
+          callbackInvocations++;
+          // Simulate PG still unreachable when we try to write the
+          // SYSTEM_FAILURE row — drainer should requeue, not fail.
+          const err: Error & { code?: string } = new Error("Can't reach database server");
+          err.code = "P1001";
+          throw err;
+        },
+        concurrency: 1,
+        maxAttempts: 3,
+        // Both `validation failure` (handler) AND `P1001` (callback) are
+        // retryable from the drainer's perspective. The handler's
+        // non-retryable disposition is set by the underlying error
+        // identity, not by `isRetryable` — callers like the webapp use a
+        // narrower retryable predicate. Here we set `isRetryable: true`
+        // because the test only cares about the callback-retryable path.
+        isRetryable: () => true,
+        logger: new Logger("test-drainer", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "run_cb_retry", envId: "env_a", orgId: "org_1", payload: "{}" });
+
+        // Tick 1: handler throws → attempts=1 < maxAttempts=3 → requeue
+        // (no callback invocation, retryable path).
+        const r1 = await drainer.runOnce();
+        expect(r1.failed).toBe(1);
+        expect(callbackInvocations).toBe(0);
+        const after1 = await buffer.getEntry("run_cb_retry");
+        expect(after1!.status).toBe("QUEUED");
+        expect(after1!.attempts).toBe(1);
+
+        // Tick 2: handler throws → attempts=2 < 3 → requeue again.
+        const r2 = await drainer.runOnce();
+        expect(r2.failed).toBe(1);
+        expect(callbackInvocations).toBe(0);
+
+        // Tick 3: handler throws → attempts=3 (the nextAttempts check is
+        // `< maxAttempts`, so 3 < 3 is false) → terminal. Callback throws
+        // retryable → drainer requeues instead of fail(). Entry survives.
+        const r3 = await drainer.runOnce();
+        expect(r3.failed).toBe(1);
+        expect(callbackInvocations).toBe(1);
+        const after3 = await buffer.getEntry("run_cb_retry");
+        expect(after3).not.toBeNull();
+        expect(after3!.status).toBe("QUEUED");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "callback throwing a non-retryable error falls through to buffer.fail()",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
+      });
+
+      const handler = async () => {
+        throw new Error("validation failure");
+      };
+
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        onTerminalFailure: async () => {
+          // Genuinely bad write (e.g. snapshot too malformed to insert).
+          // Drainer must NOT loop on this — falls through to buffer.fail.
+          throw new Error("malformed snapshot");
+        },
+        concurrency: 1,
+        maxAttempts: 3,
+        isRetryable: () => false,
+        logger: new Logger("test-drainer", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "run_cb_dead", envId: "env_a", orgId: "org_1", payload: "{}" });
+
+        const r = await drainer.runOnce();
+        expect(r.failed).toBe(1);
+        // Entry was failed despite the callback throwing — the
+        // non-retryable branch of the callback-error guard sends it to
+        // buffer.fail so a poisoned run can't loop forever.
+        expect(await buffer.getEntry("run_cb_dead")).toBeNull();
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "no onTerminalFailure provided keeps pre-fix behaviour (buffer.fail with no callback)",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
+      });
+
+      const handler = async () => {
+        throw new Error("validation failure");
+      };
+
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        // onTerminalFailure intentionally omitted — verifies the option
+        // is genuinely optional and backwards-compatible.
+        concurrency: 1,
+        maxAttempts: 2,
+        isRetryable: () => false,
+        logger: new Logger("test-drainer", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "run_no_cb", envId: "env_a", orgId: "org_1", payload: "{}" });
+        const r = await drainer.runOnce();
+        expect(r.failed).toBe(1);
+        expect(await buffer.getEntry("run_no_cb")).toBeNull();
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+});
+
 // Transient Redis errors used to permanently kill the loop because
 // `processOneFromEnv` didn't catch `buffer.pop()` rejections — the error
 // bubbled through `Promise.all` → `runOnce` → `loop`'s outer catch and
