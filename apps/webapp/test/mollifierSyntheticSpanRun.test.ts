@@ -182,6 +182,12 @@ describe("buildSyntheticSpanRun", () => {
       type: "STRING_ERROR",
       raw: "GATE_REJECTED: buffer rejected the run",
     });
+    // PG-resident SYSTEM_FAILURE rows always have completedAt set;
+    // mirror that on the synth path so callers checking
+    // `isFinished && completedAt` don't render a finished run with
+    // no completion timestamp. The buffer entry has no separate
+    // failedAt, so createdAt is the best-available proxy.
+    expect(synth.completedAt).toEqual(NOW);
   });
 
   it("flags the synthetic run as 'not cached' since cache lookup did not match it", async () => {

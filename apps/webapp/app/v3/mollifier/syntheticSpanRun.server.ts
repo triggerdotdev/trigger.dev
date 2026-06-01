@@ -102,7 +102,14 @@ export async function buildSyntheticSpanRun(args: {
     updatedAt: run.cancelledAt ?? run.createdAt,
     delayUntil: run.delayUntil ?? null,
     expiredAt: null,
-    completedAt: run.cancelledAt ?? null,
+    // Symmetric with `ApiRetrieveRunPresenter` — FAILED buffered runs
+    // must surface a non-null `completedAt` so the run-detail panel
+    // (and any caller checking `isFinished && completedAt`) doesn't
+    // render a finished run with no completion timestamp. PG-resident
+    // SYSTEM_FAILURE rows always have completedAt set; the buffer
+    // entry has no separate failedAt, so we fall back to createdAt
+    // as the best proxy for when the terminal state landed.
+    completedAt: run.cancelledAt ?? (isFailed ? run.createdAt : null),
     logsDeletedAt: null,
     ttl: run.ttl ?? null,
     taskIdentifier: run.taskIdentifier ?? "",
