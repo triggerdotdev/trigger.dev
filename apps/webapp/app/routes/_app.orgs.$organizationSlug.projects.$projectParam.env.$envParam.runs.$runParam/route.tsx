@@ -92,7 +92,11 @@ import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
-import { RunEnvironmentMismatchError, RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import {
+  RunEnvironmentMismatchError,
+  RunNotInPgError,
+  RunPresenter,
+} from "~/presenters/v3/RunPresenter.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import { buildSyntheticRunHeader } from "~/v3/mollifier/syntheticRunHeader.server";
 import { buildSyntheticTraceForBufferedRun } from "~/v3/mollifier/syntheticTrace.server";
@@ -279,6 +283,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           { friendlyId: runParam }
         )
       );
+    }
+
+    // Only fall back to the mollifier buffer on a genuine PG miss. Any
+    // other error (DB timeout during trace queries, event-repository
+    // failure, etc.) means the run WAS in PG but a downstream lookup
+    // failed — falling back to the buffer here would either return a
+    // stale synth entry if one happens to exist in the brief drainer-
+    // materialisation race window, or quietly mask the real failure.
+    // `RunNotInPgError` is the typed signal RunPresenter throws for the
+    // route loader's specific case (`RunPresenter.server.ts:130`).
+    if (!(error instanceof RunNotInPgError)) {
+      throw error;
     }
 
     // PG miss → try the mollifier buffer. When the gate diverts a trigger
