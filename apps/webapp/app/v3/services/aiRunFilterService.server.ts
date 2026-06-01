@@ -14,17 +14,25 @@ const AIFilters = TaskRunListSearchFilters.omit({
   to: z.string().optional().describe("The ISO datetime to filter to"),
 });
 
+// The response is wrapped in an object with a single `response` field because
+// OpenAI structured outputs (both the Chat and Responses APIs) require the root
+// JSON Schema to be `type: "object"`. A bare `z.discriminatedUnion` compiles to
+// a root-level `anyOf`, which OpenAI rejects ("schema must be of type object").
+// Nesting the union under a property keeps the discriminated-union ergonomics
+// while satisfying the root-object constraint.
 const AIFilterResponseSchema = z
-  .discriminatedUnion("success", [
-    z.object({
-      success: z.literal(true),
-      filters: AIFilters,
-    }),
-    z.object({
-      success: z.literal(false),
-      error: z.string().describe("A short human-readable error message"),
-    }),
-  ])
+  .object({
+    response: z.discriminatedUnion("success", [
+      z.object({
+        success: z.literal(true),
+        filters: AIFilters,
+      }),
+      z.object({
+        success: z.literal(false),
+        error: z.string().describe("A short human-readable error message"),
+      }),
+    ]),
+  })
   .describe("The response from the AI filter service");
 
 export interface QueryQueues {
@@ -88,6 +96,16 @@ export class AIRunFilterService {
       const result = await generateText({
         model: this.model,
         experimental_output: Output.object({ schema: AIFilterResponseSchema }),
+        // Disable OpenAI strict JSON-schema mode. The filters schema has many
+        // optional fields, and strict mode requires every property to appear in
+        // `required` (it rejects bare optionals). Non-strict mode treats the
+        // schema as guidance; the `AIFilters.safeParse` below still validates
+        // the result, so correctness is preserved.
+        providerOptions: {
+          openai: {
+            strictJsonSchema: false,
+          },
+        },
         tools: {
           lookupTags: tool({
             description: "Look up available tags in the environment",
@@ -198,21 +216,24 @@ export class AIRunFilterService {
   
   The filters object should only contain the fields that are actually being filtered. Do not include fields with empty arrays or undefined values.
   
-  CRITICAL: The response must be a valid JSON object with exactly this structure:
+  CRITICAL: The response must be a valid JSON object with a single top-level "response" key wrapping this structure:
   {
-    "success": true,
-    "filters": {
-      // only include fields that have actual values
-    },
-    "explanation": "string explaining what filters were applied"
+    "response": {
+      "success": true,
+      "filters": {
+        // only include fields that have actual values
+      }
+    }
   }
-  
+
   or if you can't figure out the filters then return:
   {
-    "success": false,
-    "error": "<short human understandable suggestion>"
+    "response": {
+      "success": false,
+      "error": "<short human understandable suggestion>"
+    }
   }
-  
+
   Make the error no more than 8 words.
   `,
         prompt: text,
@@ -224,19 +245,21 @@ export class AIRunFilterService {
         },
       });
 
-      if (!result.experimental_output.success) {
+      const output = result.experimental_output.response;
+
+      if (!output.success) {
         return {
           success: false,
-          error: result.experimental_output.error,
+          error: output.error,
         };
       }
 
       // Validate the filters against the schema to catch any issues
-      const validationResult = AIFilters.safeParse(result.experimental_output.filters);
+      const validationResult = AIFilters.safeParse(output.filters);
       if (!validationResult.success) {
         logger.error("AI filter validation failed", {
           errors: validationResult.error.errors,
-          filters: result.experimental_output.filters,
+          filters: output.filters,
         });
 
         return {
