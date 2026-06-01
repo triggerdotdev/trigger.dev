@@ -629,7 +629,16 @@ export function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
     createdAt: buffered.createdAt,
     startedAt: null,
     updatedAt: buffered.cancelledAt ?? buffered.createdAt,
-    completedAt: buffered.cancelledAt ?? null,
+    // PG-resident SYSTEM_FAILURE rows always have `completedAt` set by
+    // the engine; the buffer-synth path must match so SDK consumers
+    // that poll on `isCompleted` and then read `finishedAt` see a real
+    // timestamp instead of `undefined`. CANCELED already had this via
+    // `buffered.cancelledAt`; fall back to `buffered.createdAt` for
+    // FAILED (the buffer entry has no separate "failedAt" — the
+    // best-available approximation of when the terminal state landed
+    // is the entry's creation time).
+    completedAt:
+      buffered.cancelledAt ?? (status === "SYSTEM_FAILURE" ? buffered.createdAt : null),
     expiredAt: null,
     delayUntil: buffered.delayUntil ?? null,
     metadata,
