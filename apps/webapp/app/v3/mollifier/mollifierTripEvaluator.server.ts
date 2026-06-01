@@ -35,8 +35,8 @@ export function createRealTripEvaluator(deps: CreateRealTripEvaluatorDeps): Trip
     } catch (err) {
       // Deliberate: no error counter here. Shadow mode means a silent miss is
       // harmless — fail-open is the safe direction. The error log + Sentry
-      // capture is sufficient operability for Phase 1. Revisit in Phase 2
-      // when buffer writes are the primary path and a missed evaluation has cost.
+      // capture is sufficient operability while this runs in shadow mode. Revisit
+      // once buffer writes are the primary path and a missed evaluation has cost.
       logger.error("mollifier trip evaluator: fail-open on error", {
         envId: inputs.envId,
         err: err instanceof Error ? err.message : String(err),

@@ -374,13 +374,13 @@ export class RunEngineTriggerTaskService {
 
             const payloadPacket = await this.payloadProcessor.process(triggerRequest);
 
-            // Phase 1 dual-write: if the org has the mollifier feature flag
+            // Dual-write: if the org has the mollifier feature flag
             // enabled and the per-env trip evaluator says divert, write the
             // canonical replay payload to the buffer AND continue through
             // engine.trigger as normal. The buffer entry is an audit/preview
             // copy; the drainer's no-op handler consumes it to prove the
-            // dequeue mechanism works. Phase 2 will replace engine.trigger
-            // (below) with a synthesised 200 response and rely on the
+            // dequeue mechanism works. A later change replaces engine.trigger
+            // (below) with a synthesised 200 response and relies on the
             // drainer to perform the Postgres write via replay.
             if (mollifierOutcome?.action === "mollify") {
               const buffer = this.getMollifierBuffer();
@@ -430,8 +430,8 @@ export class RunEngineTriggerTaskService {
                   });
                 } catch (err) {
                   // Fail-open: buffer write must never block the customer's
-                  // trigger. engine.trigger below is the primary write path
-                  // in Phase 1 — the customer still gets a valid run.
+                  // trigger. engine.trigger below is still the primary write
+                  // path here — the customer still gets a valid run.
                   logger.error("mollifier.buffer_accept_failed", {
                     runId: runFriendlyId,
                     envId: environment.id,

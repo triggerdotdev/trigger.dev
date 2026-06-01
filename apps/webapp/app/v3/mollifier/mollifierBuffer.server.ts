@@ -22,7 +22,6 @@ function initializeMollifierBuffer(): MollifierBuffer {
       enableAutoPipelining: true,
       ...(env.TRIGGER_MOLLIFIER_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
     },
-    entryTtlSeconds: env.TRIGGER_MOLLIFIER_ENTRY_TTL_S,
   });
 }
 
