@@ -14,7 +14,7 @@ describe("createRealTripEvaluator", () => {
   redisTest(
     "returns divert=false when the sliding window stays under threshold",
     async ({ redisOptions }) => {
-      const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 600 });
+      const buffer = new MollifierBuffer({ redisOptions });
       try {
         const evaluator = createRealTripEvaluator({
           getBuffer: () => buffer,
@@ -32,7 +32,7 @@ describe("createRealTripEvaluator", () => {
   redisTest(
     "returns divert=true with reason per_env_rate once the window trips",
     async ({ redisOptions }) => {
-      const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 600 });
+      const buffer = new MollifierBuffer({ redisOptions });
       try {
         // threshold=2 → the 3rd call within windowMs is the first that trips.
         const options = { windowMs: 5000, threshold: 2, holdMs: 5000 } as const;
@@ -73,7 +73,7 @@ describe("createRealTripEvaluator", () => {
   redisTest(
     "returns divert=false when buffer throws (fail-open)",
     async ({ redisOptions }) => {
-      const buffer = new MollifierBuffer({ redisOptions, entryTtlSeconds: 600 });
+      const buffer = new MollifierBuffer({ redisOptions });
       // Closing the client up front means evaluateTrip will throw on the first
       // Redis command — a real failure mode, not a stub.
       await buffer.close();
