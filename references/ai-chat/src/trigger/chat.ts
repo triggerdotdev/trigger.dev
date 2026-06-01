@@ -1150,6 +1150,10 @@ function logVaultProbe(messages: ModelMessage[]) {
   }
 }
 
+const vaultSystemPrompt =
+  "You are a vault assistant. Follow the user's formatting instructions exactly. " +
+  "When the user asks for the codeword, answer with it directly.";
+
 export const toolModelOutputTest = chat.agent({
   id: "tool-model-output-test",
   idleTimeoutInSeconds: 60,
@@ -1161,9 +1165,27 @@ export const toolModelOutputTest = chat.agent({
     logVaultProbe(messages);
     return streamText({
       model: openai("gpt-4o-mini"),
-      system:
-        "You are a vault assistant. Follow the user's formatting instructions exactly. " +
-        "When the user asks for the codeword, answer with it directly.",
+      system: vaultSystemPrompt,
+      messages,
+      tools,
+      stopWhen: stepCountIs(5),
+      abortSignal: signal,
+    });
+  },
+});
+
+// Same test, but with the per-turn function form of `tools`. Exercises the
+// resolver path: resolved per turn (and at boot, with the payload's clientData,
+// so a continuation's restored history still gets toModelOutput re-applied).
+export const toolModelOutputFnTest = chat.agent({
+  id: "tool-model-output-fn-test",
+  idleTimeoutInSeconds: 60,
+  tools: () => ({ vault: vaultTool }),
+  run: async ({ messages, tools, signal }) => {
+    logVaultProbe(messages);
+    return streamText({
+      model: openai("gpt-4o-mini"),
+      system: vaultSystemPrompt,
       messages,
       tools,
       stopWhen: stepCountIs(5),

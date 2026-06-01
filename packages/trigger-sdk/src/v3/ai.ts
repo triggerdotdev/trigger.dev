@@ -2861,15 +2861,22 @@ async function applyPrepareMessages(
 }
 
 /**
- * Resolve the `tools` option for the current turn and cache it in locals so
+ * Resolve the `tools` option into a concrete `ToolSet` and cache it in locals so
  * `toModelMessages` can pass it to `convertToModelMessages`. For the function
- * form, invokes the user function once per turn with the current turn context
- * (which already has parsed `clientData`). No-op when no `tools` were declared.
- * A throwing tools function logs and leaves the previously-resolved value in
- * place rather than killing the turn.
+ * form, invokes the user function with the given context (or the current turn
+ * context when no override is passed). Pass an `override` for the boot-time
+ * history conversion, which runs before the per-turn context exists and uses
+ * the run/continuation payload's `clientData`.
+ *
+ * Fails closed: a throwing resolver propagates rather than carrying a prior
+ * turn's set forward. The function form can gate capabilities by user or flag,
+ * so reusing stale tools would leak capabilities. No-op when no `tools` were
+ * declared.
  * @internal
  */
-async function resolveTurnTools(): Promise<void> {
+async function resolveTurnTools(
+  override?: { chatId: string; turn: number; continuation: boolean; clientData: unknown }
+): Promise<void> {
   const option = locals.get(chatToolsOptionKey);
   if (!option) return;
 
@@ -2878,20 +2885,14 @@ async function resolveTurnTools(): Promise<void> {
     return;
   }
 
-  const turnCtx = locals.get(chatTurnContextKey);
-  try {
-    const resolved = await option({
-      chatId: turnCtx?.chatId ?? "",
-      turn: turnCtx?.turn ?? 0,
-      continuation: turnCtx?.continuation ?? false,
-      clientData: turnCtx?.clientData,
-    });
-    locals.set(chatResolvedToolsKey, resolved);
-  } catch (error) {
-    logger.warn("chat.agent: tools() resolver threw; reusing previous tools for this turn", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+  const ctx = override ?? locals.get(chatTurnContextKey);
+  const resolved = await option({
+    chatId: ctx?.chatId ?? "",
+    turn: ctx?.turn ?? 0,
+    continuation: ctx?.continuation ?? false,
+    clientData: ctx?.clientData,
+  });
+  locals.set(chatResolvedToolsKey, resolved);
 }
 
 /**
@@ -5194,9 +5195,9 @@ function chatAgent<
             | ToolSet
             | ((event: ResolveToolsEvent<unknown>) => ToolSet | Promise<ToolSet>)
         );
-        // Static tools are usable immediately (e.g. the boot-time history
-        // seed before the first turn context exists). The function form is
-        // resolved per-turn once `clientData` is parsed (see resolveTurnTools).
+        // Static tools are usable immediately. The function form is resolved
+        // just before the boot history conversion (with the payload's
+        // clientData) and again per-turn (see resolveTurnTools).
         if (typeof toolsOption !== "function") {
           locals.set(chatResolvedToolsKey, toolsOption);
         }
@@ -5591,6 +5592,29 @@ function chatAgent<
         }
 
         if (accumulatedUIMessages.length > 0) {
+          // Resolve a function-form `tools` with the run/continuation payload's
+          // clientData so this conversion of the restored history applies each
+          // tool's toModelOutput (static tools were already seeded above). This
+          // only re-renders saved history, so it fails open: a resolver hiccup
+          // logs and converts without tools rather than blocking the resume.
+          // Per-turn resolveTurnTools still fails closed for live turns.
+          if (typeof toolsOption === "function") {
+            try {
+              await resolveTurnTools({
+                chatId: payload.chatId,
+                turn: 0,
+                continuation: payload.continuation ?? false,
+                clientData: parseClientData
+                  ? await parseClientData(payload.metadata)
+                  : payload.metadata,
+              });
+            } catch (error) {
+              logger.warn(
+                "chat.agent: tools() resolver threw at boot; restored history converted without toModelOutput",
+                { error: error instanceof Error ? error.message : String(error) }
+              );
+            }
+          }
           try {
             accumulatedMessages = await toModelMessages(accumulatedUIMessages);
           } catch (error) {
