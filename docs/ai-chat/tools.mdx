@@ -1,0 +1,191 @@
+---
+title: "Tools"
+sidebarTitle: "Tools"
+description: "Declare tools on chat.agent so toModelOutput survives across turns, get them back typed in run(), and type your messages from them."
+---
+
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
+`chat.agent` doesn't call the model for you — your tools still go to [`streamText`](https://sdk.vercel.ai/docs/ai-sdk-core/tools-and-tool-calling) inside `run()`. But you should **also declare them on the agent config**:
+
+```ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText, stepCountIs, tool } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { z } from "zod";
+
+const tools = {
+  searchDocs: tool({
+    description: "Search the docs.",
+    inputSchema: z.object({ query: z.string() }),
+    execute: async ({ query }) => searchIndex(query),
+  }),
+};
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  tools, // ← declare here
+  run: async ({ messages, tools, signal }) =>
+    streamText({
+      ...chat.toStreamTextOptions({ tools }), // ← the same set, handed back on the payload
+      model: anthropic("claude-sonnet-4-5"),
+      messages,
+      abortSignal: signal,
+      stopWhen: stepCountIs(15),
+    }),
+});
+```
+
+Declaring `tools` on the config does two things you can't get by passing them to `streamText` alone:
+
+- It threads your tools into the SDK's internal message conversion, so each tool's [`toModelOutput`](https://sdk.vercel.ai/docs/ai-sdk-core/tools-and-tool-calling#tomodeloutput) is re-applied when prior-turn history is re-converted (see [`toModelOutput` across turns](#tomodeloutput-across-turns)).
+- It hands the resolved set back, typed, on the `run()` payload as `tools`, so you declare them once and don't re-import the map.
+
+## Where tools go
+
+There are three places a tool set shows up. Declare once, reuse:
+
+| Surface | What it's for |
+| --- | --- |
+| `chat.agent({ tools })` | Re-applies `toModelOutput` on prior-turn history; hands the set back typed on the `run()` payload. |
+| `chat.toStreamTextOptions({ tools })` | Detects which tool calls need [HITL approval](/ai-chat/patterns/human-in-the-loop) (`needsApproval`) and merges any auto-injected [skill](/ai-chat/patterns/skills) tools. |
+| `streamText({ tools })` | What the model actually calls. `chat.toStreamTextOptions({ tools })` already sets this — spread it instead of passing `tools` twice. |
+
+The canonical pattern: declare `tools` on the config, read them back from the `run()` payload, and pass that to `chat.toStreamTextOptions({ tools })`. One declaration flows everywhere.
+
+<Tip>
+  Conversion only reads each tool's `inputSchema` and `toModelOutput` — never `execute`. If you keep heavy `execute` dependencies out of a module (for bundle reasons), you can declare a lightweight schema-only tool map on the config and add the executes where you call `streamText`.
+</Tip>
+
+## `toModelOutput` across turns
+
+`toModelOutput` transforms a tool's result before it enters the model's context — turning raw image bytes into an image content part, or compressing a long sub-agent transcript into a one-line summary. The full result still streams to the frontend; the model only sees the transformed version.
+
+The catch is multi-turn. After each turn, `chat.agent` persists the conversation as `UIMessage[]` and re-converts it to model messages at the start of the next turn. That conversion needs your tools to find each `toModelOutput`. **If you only pass tools to `streamText` and not to the config, the transform runs on turn 1 but is skipped on every later turn** — the raw output gets stringified back into the prompt instead, and the model loses the transformed view.
+
+Declaring `tools` on the config fixes this: the SDK threads them into the conversion, so `toModelOutput` is re-applied on every turn.
+
+```ts
+const tools = {
+  renderChart: tool({
+    description: "Render a chart and return it as an image.",
+    inputSchema: z.object({ spec: z.string() }),
+    execute: async ({ spec }) => renderToPng(spec), // raw bytes
+    // The model should see an image part, not base64 bytes:
+    toModelOutput: ({ output }) => ({
+      type: "content",
+      value: [{ type: "media", mediaType: "image/png", data: output.base64 }],
+    }),
+  }),
+};
+
+export const chartChat = chat.agent({
+  id: "chart-chat",
+  tools, // ← without this, the image is "remembered" on turn 1 and gone from turn 2
+  run: async ({ messages, tools, signal }) =>
+    streamText({
+      ...chat.toStreamTextOptions({ tools }),
+      model: anthropic("claude-sonnet-4-5"),
+      messages,
+      abortSignal: signal,
+      stopWhen: stepCountIs(15),
+    }),
+});
+```
+
+## Static or per-turn tools
+
+`tools` accepts either a static `ToolSet` or a function that returns one per turn — for tools that depend on the user, a feature flag, or anything in the turn context:
+
+```ts
+export const myChat = chat
+  .withClientData({ schema: z.object({ userId: z.string(), plan: z.string() }) })
+  .agent({
+    id: "my-chat",
+    tools: ({ clientData }) => ({
+      searchDocs,
+      ...(clientData?.plan === "pro" ? { deepResearch } : {}),
+    }),
+    run: async ({ messages, tools, signal }) =>
+      streamText({
+        ...chat.toStreamTextOptions({ tools }),
+        model: anthropic("claude-sonnet-4-5"),
+        messages,
+        abortSignal: signal,
+        stopWhen: stepCountIs(15),
+      }),
+  });
+```
+
+The function receives a `ResolveToolsEvent` and runs once per turn (after `clientData` is parsed):
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `chatId` | `string` | The chat session ID. |
+| `turn` | `number` | The current turn number (0-indexed). |
+| `continuation` | `boolean` | Whether this run is continuing an existing chat. |
+| `clientData` | `TClientData` | Parsed client data from the frontend. |
+
+The resolved set is what lands on the `run()` payload's `tools`.
+
+## Typed tools in `run()`
+
+The `run()` payload's `tools` is typed to whatever you declared, so you can pass it straight through without re-importing the map:
+
+```ts
+run: async ({ messages, tools, signal }) => {
+  // `tools` is typed as your tool set, not a broad `ToolSet`
+  return streamText({
+    ...chat.toStreamTextOptions({ tools }),
+    model: anthropic("claude-sonnet-4-5"),
+    messages,
+    abortSignal: signal,
+  });
+};
+```
+
+When no `tools` are declared, the payload's `tools` is an empty object and behaves exactly as before — declaring tools is fully opt-in.
+
+## Typing messages from your tools
+
+To get typed tool parts (`tool-${name}` with typed input/output) on your `UIMessage` — in hooks like `onTurnComplete` and on the frontend — derive the message type from your tool set with `InferChatUIMessageFromTools`:
+
+```ts
+import type { InferChatUIMessageFromTools } from "@trigger.dev/sdk/ai";
+
+const tools = { searchDocs, renderChart };
+
+export type ChatUiMessage = InferChatUIMessageFromTools<typeof tools>;
+```
+
+This is shorthand for `UIMessage<unknown, UIDataTypes, InferUITools<typeof tools>>`. Pin it on the agent with [`chat.withUIMessage<ChatUiMessage>()`](/ai-chat/types#custom-uimessage-with-chat-withuimessage) and reuse it on the client. If you also have custom `data-*` parts, build the `UIMessage` generic directly instead — see [Types](/ai-chat/types).
+
+## Skills
+
+[Agent skills](/ai-chat/patterns/skills) are auto-injected as tools (`loadSkill`, `readFile`, `bash`) by `chat.toStreamTextOptions()`. They're separate from your config `tools`: declare your own tools on the config (so their `toModelOutput` survives across turns), and let `toStreamTextOptions` merge the skill tools on top at call time. Skill tools don't define `toModelOutput`, so they don't need to be on the config.
+
+## Manual turn loops (`chat.customAgent`)
+
+The `tools` config option belongs to the managed [`chat.agent`](/ai-chat/backend#chat-agent). When you drive the loop yourself with [`chat.customAgent`](/ai-chat/backend#raw-task-primitives) (or build messages from `chat.history`), you own the conversion — so pass your tools to `convertToModelMessages` directly to get the same cross-turn `toModelOutput` behavior:
+
+```ts
+import { convertToModelMessages, streamText } from "ai";
+
+// Inside your loop, with `tools` in scope:
+const uiMessages = chat.history.all();
+const messages = await convertToModelMessages(uiMessages, {
+  tools,
+  ignoreIncompleteToolCalls: true,
+});
+
+return streamText({ model: anthropic("claude-sonnet-4-5"), messages, tools });
+```
+
+## Learn more
+
+- [Human-in-the-loop](/ai-chat/patterns/human-in-the-loop) — tools that pause for approval.
+- [Sub-agents](/ai-chat/patterns/sub-agents) — tools that delegate to other agents and compress their output with `toModelOutput`.
+- [Tool result auditing](/ai-chat/patterns/tool-result-auditing) — logging tool results as they resolve.
+- [AI SDK: Tools and tool calling](https://sdk.vercel.ai/docs/ai-sdk-core/tools-and-tool-calling).
