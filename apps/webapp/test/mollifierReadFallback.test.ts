@@ -137,7 +137,7 @@ describe("findRunByIdWithMollifierFallback", () => {
         metadata: '{"customer":"acme"}',
         metadataType: "application/json",
         idempotencyKey: "client-abc",
-        idempotencyKeyOptions: ["payload"],
+        idempotencyKeyOptions: { key: "client-abc", scope: "run" },
         isTest: true,
         depth: 2,
         ttl: "1h",
@@ -161,7 +161,7 @@ describe("findRunByIdWithMollifierFallback", () => {
     expect(result!.metadata).toBe('{"customer":"acme"}');
     expect(result!.metadataType).toBe("application/json");
     expect(result!.idempotencyKey).toBe("client-abc");
-    expect(result!.idempotencyKeyOptions).toEqual(["payload"]);
+    expect(result!.idempotencyKeyOptions).toEqual({ key: "client-abc", scope: "run" });
     expect(result!.isTest).toBe(true);
     expect(result!.depth).toBe(2);
     expect(result!.ttl).toBe("1h");
@@ -193,6 +193,73 @@ describe("findRunByIdWithMollifierFallback", () => {
     expect(result!.traceId).toBe("trace_abc");
     expect(result!.spanId).toBe("span_xyz");
     expect(result!.parentSpanId).toBe("span_parent");
+  });
+
+  it("parses idempotencyKeyOptions in the canonical { key, scope } object shape (regression for the buffered-vs-PG API contract divergence)", async () => {
+    // Regression for the bug where `readFallback` parsed
+    // `idempotencyKeyOptions` via Array.isArray and rejected the
+    // canonical object shape. The SDK and Prisma both serialise this
+    // as `{ key, scope }`; the legacy array check would reject it,
+    // returning `undefined` here, which downstream demoted the API's
+    // `idempotencyKey` field to surface the *hash* (server-side
+    // generated) instead of the user-supplied key — diverging from
+    // how materialised runs render the same field, and creating a
+    // silent contract flip at the drainer-materialisation boundary.
+    // Pin the schema-parse path so the buffered response matches
+    // PG-resident behaviour from the moment the run is buffered.
+    const entry: BufferEntry = {
+      runId: "run_1",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: JSON.stringify({
+        taskIdentifier: "t",
+        idempotencyKey: "<hashed>",
+        idempotencyKeyOptions: { key: "user-supplied-key", scope: "global" },
+      }),
+      status: "QUEUED",
+      attempts: 0,
+      createdAt: NOW,
+    };
+    const result = await findRunByIdWithMollifierFallback(
+      { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
+      { getBuffer: () => fakeBuffer(entry) },
+    );
+    expect(result).not.toBeNull();
+    expect(result!.idempotencyKeyOptions).toEqual({
+      key: "user-supplied-key",
+      scope: "global",
+    });
+  });
+
+  it("returns undefined for idempotencyKeyOptions when the snapshot carries a legacy/invalid shape", async () => {
+    // The Zod schema parse rejects:
+    //   - array shape (the legacy bug we just fixed)
+    //   - object without required fields
+    //   - missing field entirely
+    // In all these cases the field is left `undefined`. Downstream
+    // `getUserProvidedIdempotencyKey` then falls back to the
+    // `idempotencyKey` field, matching how PG-resident runs handle
+    // malformed/missing options.
+    const entry: BufferEntry = {
+      runId: "run_1",
+      envId: "env_a",
+      orgId: "org_1",
+      payload: JSON.stringify({
+        taskIdentifier: "t",
+        idempotencyKey: "<hashed>",
+        // Legacy array shape — must NOT be accepted.
+        idempotencyKeyOptions: ["payload"],
+      }),
+      status: "QUEUED",
+      attempts: 0,
+      createdAt: NOW,
+    };
+    const result = await findRunByIdWithMollifierFallback(
+      { runId: "run_1", environmentId: "env_a", organizationId: "org_1" },
+      { getBuffer: () => fakeBuffer(entry) },
+    );
+    expect(result).not.toBeNull();
+    expect(result!.idempotencyKeyOptions).toBeUndefined();
   });
 
   it("defaults snapshot-derived fields to safe values when absent", async () => {
