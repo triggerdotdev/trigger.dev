@@ -91,8 +91,19 @@ export async function mutateWithFallback<TResponse>(
   }
 
   if (!buffer) {
-    // No buffer configured (mollifier disabled or boot-time error). PG
-    // missed; nothing else to consult.
+    // No buffer configured (mollifier disabled or boot-time error). The
+    // pre-PR mutation routes read from the writer directly, so a freshly-
+    // created PG row was always visible regardless of replication lag.
+    // Now that the read moved to the replica (line 87) for the offload,
+    // a `!buffer` short-circuit would regress: a real PG row + replica
+    // lag would return 404. Mirror the writer-disambiguation block below
+    // (line 148, the buffer-says-not-found path) so degraded mode
+    // (mollifier disabled) still matches pre-PR mutation behaviour.
+    const writerRow = await findRunInPg(writer, input.runId, input.environmentId);
+    if (writerRow) {
+      const response = await input.pgMutation(writerRow);
+      return { kind: "pg", response };
+    }
     return { kind: "not_found" };
   }
 

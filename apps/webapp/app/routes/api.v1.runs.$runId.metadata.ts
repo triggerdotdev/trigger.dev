@@ -71,7 +71,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 // `_ingestion_only` flag: a synthetic body that has the operations
 // promoted to top-level `operations` so the service applies them to
 // `targetRunId` directly.
-async function routeOperationsToRun(
+// Exported so the silent-failure logging behaviour can be unit-tested.
+// The route handler itself isn't an attractive test target (createActionApiRoute
+// wraps it in auth + body parsing + error-handler middleware), but the
+// fan-out helper carries the load-bearing logic — including the ops-
+// visibility branch this change adds.
+export async function routeOperationsToRun(
   targetRunId: string | undefined,
   operations: RunMetadataChangeOperation[] | undefined,
   env: AuthenticatedEnvironment
@@ -118,7 +123,7 @@ async function routeOperationsToRun(
   // Best-effort buffer fallback. Wrap so a transient Redis throw on
   // this auxiliary op can't 500 the request after the primary mutation
   // already succeeded.
-  const [bufferError] = await tryCatch(
+  const [bufferError, bufferOutcome] = await tryCatch(
     applyMetadataMutationToBufferedRun({
       runId: targetRunId,
       environmentId: env.id,
@@ -131,6 +136,22 @@ async function routeOperationsToRun(
     logger.warn("metadata route: buffer fallback for parent/root op failed", {
       targetRunId,
       error: bufferError instanceof Error ? bufferError.message : String(bufferError),
+    });
+    return;
+  }
+  // `applyMetadataMutationToBufferedRun` reports non-throw failures via
+  // its returned outcome kind: `not_found`, `busy`, `version_exhausted`,
+  // `metadata_too_large`. Without inspecting `.kind`, the parent/root
+  // operation can silently disappear — no PG row landed it (handled
+  // above) and the buffer rejected it for one of these reasons but the
+  // helper returned cleanly. Surface a warn log per non-success branch
+  // so ops can trace why a parent/root op went missing. The customer's
+  // primary mutation has already succeeded by this point; this remains
+  // best-effort, so we still don't bubble these to the response.
+  if (bufferOutcome && bufferOutcome.kind !== "applied") {
+    logger.warn("metadata route: parent/root buffer op did not apply", {
+      targetRunId,
+      kind: bufferOutcome.kind,
     });
   }
 }

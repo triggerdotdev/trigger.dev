@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("~/db.server", () => ({
-  prisma: {},
+  // Both default clients return null. Individual tests inject their
+  // own fakes via `deps` when they want non-default behaviour.
+  prisma: { taskRun: { findFirst: vi.fn(async () => null) } },
   $replica: { taskRun: { findFirst: vi.fn(async () => null) } },
 }));
 
@@ -18,6 +20,9 @@ import type { BufferEntry, MollifierBuffer } from "@trigger.dev/redis-worker";
 const NOW = new Date("2026-05-21T10:00:00Z");
 
 function fakeReplica(row: { friendlyId: string } | null) {
+  return { taskRun: { findFirst: vi.fn(async () => row) } };
+}
+function fakeWriter(row: { friendlyId: string } | null) {
   return { taskRun: { findFirst: vi.fn(async () => row) } };
 }
 
@@ -150,5 +155,75 @@ describe("resolveRunForMutation", () => {
     });
     expect(result?.source).toBe("pg");
     expect(buffer.getEntry).not.toHaveBeenCalled();
+  });
+
+  // Regressions for the degraded-mode false-404 CodeRabbit flagged.
+  //
+  // Pre-PR the mutation routes read from the writer directly, so any
+  // PG row was visible regardless of replication lag. This helper
+  // moved the read to the replica for offload purposes. The route
+  // builder treats a null return as a hard 404 BEFORE the action
+  // handler runs, so any path where replica misses and the writer has
+  // the row needs to be reachable here — otherwise mutateWithFallback's
+  // own writer recovery never gets a chance to fire.
+  it("falls back to the writer when both replica and buffer miss, returning the writer row as 'pg' source", async () => {
+    const result = await resolveRunForMutation({
+      ...baseInput,
+      deps: {
+        prismaReplica: fakeReplica(null),
+        prismaWriter: fakeWriter({ friendlyId: "run_1" }),
+        getBuffer: () => fakeBuffer(null),
+      },
+    });
+    expect(result?.source).toBe("pg");
+    expect(result?.friendlyId).toBe("run_1");
+  });
+
+  it("falls back to the writer when the buffer is unavailable (mollifier disabled) and replica misses", async () => {
+    const result = await resolveRunForMutation({
+      ...baseInput,
+      deps: {
+        prismaReplica: fakeReplica(null),
+        prismaWriter: fakeWriter({ friendlyId: "run_1" }),
+        getBuffer: () => null,
+      },
+    });
+    expect(result?.source).toBe("pg");
+    expect(result?.friendlyId).toBe("run_1");
+  });
+
+  it("still returns null when replica, buffer, AND writer all miss (legitimate not-found)", async () => {
+    const writer = fakeWriter(null);
+    const result = await resolveRunForMutation({
+      ...baseInput,
+      deps: {
+        prismaReplica: fakeReplica(null),
+        prismaWriter: writer,
+        getBuffer: () => fakeBuffer(null),
+      },
+    });
+    expect(result).toBeNull();
+    // Writer probe ran — the fallback fires exactly once on the miss
+    // path; doesn't pile retries.
+    expect(writer.taskRun.findFirst).toHaveBeenCalledOnce();
+  });
+
+  it("PG-hit short-circuits before consulting either the buffer OR the writer", async () => {
+    const buffer = fakeBuffer(null);
+    const writer = fakeWriter({ friendlyId: "should-not-be-read" });
+    const result = await resolveRunForMutation({
+      ...baseInput,
+      deps: {
+        prismaReplica: fakeReplica({ friendlyId: "run_1" }),
+        prismaWriter: writer,
+        getBuffer: () => buffer,
+      },
+    });
+    expect(result?.source).toBe("pg");
+    expect(result?.friendlyId).toBe("run_1");
+    expect(buffer.getEntry).not.toHaveBeenCalled();
+    // Writer must NOT fire when the replica already had the row —
+    // otherwise we'd negate the whole replica-offload purpose.
+    expect(writer.taskRun.findFirst).not.toHaveBeenCalled();
   });
 });

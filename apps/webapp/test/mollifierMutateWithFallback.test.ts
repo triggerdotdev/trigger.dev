@@ -159,6 +159,40 @@ describe("mutateWithFallback", () => {
     expect(ctx?.bufferEntry?.orgId).toBe("org_1");
   });
 
+  // Symmetric writer-fallback in the `!buffer` short-circuit. Without
+  // this, mollifier-disabled deployments (or boot-time buffer init
+  // failures) would regress the pre-PR mutation routes — those read
+  // from the writer directly, so a fresh PG row was always visible.
+  // The replica offload introduced here moves the read to the lagging
+  // follower; if the buffer isn't available to disambiguate, we still
+  // probe the writer before returning 404.
+  it("replica miss + !buffer + writer hit → pgMutation (mollifier-disabled mode recovery)", async () => {
+    const row = fakeRun({ friendlyId: "run_1" });
+    const pgMutation = vi.fn(async () => "pg-recovered-no-buffer");
+    const result = await mutateWithFallback({
+      ...baseInput,
+      pgMutation,
+      synthesisedResponse: () => "snap",
+      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      prismaWriter: fakePrisma([row]) as unknown as typeof import("~/db.server").prisma,
+      getBuffer: () => null,
+    });
+    expect(result).toEqual({ kind: "pg", response: "pg-recovered-no-buffer" });
+    expect(pgMutation).toHaveBeenCalledWith(row);
+  });
+
+  it("replica miss + !buffer + writer miss → not_found (genuine 404 in mollifier-disabled mode)", async () => {
+    const result = await mutateWithFallback({
+      ...baseInput,
+      pgMutation: async () => "pg",
+      synthesisedResponse: () => "snap",
+      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      prismaWriter: fakePrisma([null]) as unknown as typeof import("~/db.server").prisma,
+      getBuffer: () => null,
+    });
+    expect(result).toEqual({ kind: "not_found" });
+  });
+
   it("replica miss + buffer not_found + writer miss → not_found", async () => {
     const result = await mutateWithFallback({
       ...baseInput,
