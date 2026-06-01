@@ -731,7 +731,14 @@ export class RunEngineTriggerTaskService {
       taskVersion: args.lockedToBackgroundWorker?.version,
       sdkVersion: args.lockedToBackgroundWorker?.sdkVersion,
       cliVersion: args.lockedToBackgroundWorker?.cliVersion,
-      concurrencyKey: args.body.options?.concurrencyKey,
+      // Schema-level coercion now lands `body.options.concurrencyKey` as
+      // `string` on the API path, but the BatchQueue worker rebuilds
+      // body.options from Redis-stored items (Record<string, unknown>),
+      // which can still carry the pre-fix shape from in-flight batches.
+      concurrencyKey:
+        typeof args.body.options?.concurrencyKey === "number"
+          ? String(args.body.options.concurrencyKey)
+          : args.body.options?.concurrencyKey,
       queue: args.queueName,
       lockedQueueId: args.lockedQueueId,
       workerQueue: args.workerQueue,
