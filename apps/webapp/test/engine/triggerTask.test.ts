@@ -1385,6 +1385,18 @@ describe("RunEngineTriggerTaskService", () => {
       expect(synthetic.notice.message).toBeTypeOf("string");
       expect(synthetic.notice.docs).toBeTypeOf("string");
 
+      // The mollify branch must flag `isMollified: true` on the result so
+      // the trigger route can skip `saveRequestIdempotency`. Caching the
+      // synthetic runId in the request-idempotency table would mean a
+      // lost-response SDK retry (same `x-trigger-request-idempotency-key`
+      // header) hits a PG miss in `handleRequestIdempotency` and falls
+      // through to a fresh trigger — producing a duplicate buffer entry
+      // for trigger calls without a task-level idempotency key. The
+      // bounded behaviour (accept retry-as-fresh-trigger during the
+      // buffer window) is the deliberate choice; a stale-cache lookup
+      // returning null is not.
+      expect(result?.isMollified).toBe(true);
+
       // buffer.accept ran — Redis has the canonical engine.trigger snapshot
       // under the synthesised friendlyId. The drainer will read this and
       // replay it through engine.trigger to materialise the run.
@@ -1490,6 +1502,12 @@ describe("RunEngineTriggerTaskService", () => {
       // getMollifierBuffer must not be called either — the call site short-circuits
       // before touching the singleton when the gate says pass_through.
       expect(getBufferSpy).not.toHaveBeenCalled();
+      // Pass-through must NOT set `isMollified` — `result.run` is a real
+      // PG row, and the trigger route's `saveRequestIdempotency` is
+      // safe to call. Setting the flag here would silently skip the
+      // request-idempotency cache for every non-mollified trigger on a
+      // mollifier-enabled org, breaking lost-response retry dedup.
+      expect(result?.isMollified).toBeFalsy();
 
       await engine.quit();
     },

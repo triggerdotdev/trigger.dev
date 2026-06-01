@@ -514,7 +514,13 @@ export class RunEngineTriggerTaskService {
                     // TaskRun; the route handler only reads
                     // `result.run.friendlyId`. traceRun flushes the PARTIAL
                     // run-span event to ClickHouse on callback return.
-                    return result as unknown as TriggerTaskServiceResult;
+                    // `isMollified` flags the route to skip the request-
+                    // idempotency cache write — see the field's contract on
+                    // `TriggerTaskServiceResult`.
+                    return {
+                      ...(result as unknown as TriggerTaskServiceResult),
+                      isMollified: true,
+                    };
                   }
                   if (!mollifierBuffer) {
                     logger.warn(
