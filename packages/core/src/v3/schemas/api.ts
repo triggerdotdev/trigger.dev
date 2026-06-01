@@ -157,6 +157,14 @@ export const IdempotencyKeyOptionsSchema = z.object({
 
 export type IdempotencyKeyOptionsSchema = z.infer<typeof IdempotencyKeyOptionsSchema>;
 
+// Coerces user-supplied concurrencyKey values to string. The downstream Prisma
+// column is String?, so passing a number (a common foot-gun when callers do
+// `concurrencyKey: payload.userId`) used to fail at `prisma.taskRun.create`
+// with PrismaClientValidationError. Accept the intent and stringify here.
+const ConcurrencyKeySchema = z
+  .union([z.string(), z.number()])
+  .transform((value) => String(value));
+
 export const TriggerTaskRequestBody = z.object({
   payload: z.any(),
   context: z.any(),
@@ -195,7 +203,7 @@ export const TriggerTaskRequestBody = z.object({
           concurrencyLimit: z.number().int().optional(),
         })
         .optional(),
-      concurrencyKey: z.string().optional(),
+      concurrencyKey: ConcurrencyKeySchema.optional(),
       delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z
         .string()
@@ -253,7 +261,7 @@ export const BatchTriggerTaskItem = z.object({
   context: z.any(),
   options: z
     .object({
-      concurrencyKey: z.string().optional(),
+      concurrencyKey: ConcurrencyKeySchema.optional(),
       delay: z.string().or(z.coerce.date()).optional(),
       idempotencyKey: z
         .string()
@@ -401,7 +409,12 @@ export type CreateBatchResponse = z.infer<typeof CreateBatchResponse>;
 
 /**
  * Phase 2: Individual item in the NDJSON stream
- * Each line in the NDJSON body should match this schema
+ * Each line in the NDJSON body should match this schema.
+ *
+ * `options` reuses the strict shape from BatchTriggerTaskItem so that the
+ * Phase-2 streaming path validates option fields identically to the V2/V3
+ * batch trigger endpoints — historically this used z.record(z.unknown()) and
+ * let invalid values (e.g. numeric concurrencyKey) reach Prisma.
  */
 export const BatchItemNDJSON = z.object({
   /** Zero-based index of this item (used for idempotency and ordering) */
@@ -411,7 +424,7 @@ export const BatchItemNDJSON = z.object({
   /** The payload for this task run */
   payload: z.unknown().optional(),
   /** Options for this specific item */
-  options: z.record(z.unknown()).optional(),
+  options: BatchTriggerTaskItem.shape.options,
 });
 
 export type BatchItemNDJSON = z.infer<typeof BatchItemNDJSON>;

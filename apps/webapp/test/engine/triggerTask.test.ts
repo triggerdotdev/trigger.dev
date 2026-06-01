@@ -267,6 +267,76 @@ describe("RunEngineTriggerTaskService", () => {
     await engine.quit();
   });
 
+  // The BatchQueue worker rebuilds body.options from Redis-stored items
+  // (Record<string, unknown>), so the Phase-2 schema coercion doesn't apply
+  // to in-flight items enqueued before the schema fix. The defensive
+  // `typeof === "number"` coercion at the engine.trigger call site is what
+  // prevents these from failing at prisma.taskRun.create with
+  // "Argument concurrencyKey: Expected String or Null, provided Int".
+  containerTest(
+    "coerces a numeric concurrencyKey to a string at the engine.trigger boundary",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: { redis: redisOptions },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0005,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const taskIdentifier = "test-task";
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      const triggerTaskService = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: new DefaultQueueManager(prisma, engine),
+        idempotencyKeyConcern: new IdempotencyKeyConcern(
+          prisma,
+          engine,
+          new MockTraceEventConcern()
+        ),
+        validator: new MockTriggerTaskValidator(),
+        traceEventConcern: new MockTraceEventConcern(),
+        tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024 * 1,
+      });
+
+      const result = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        // Cast through `any` to simulate the in-flight Redis batch-item shape
+        // (Record<string, unknown>) that bypasses the BatchItemNDJSON schema.
+        body: { payload: { userId: 51262 }, options: { concurrencyKey: 51262 as any } },
+      });
+
+      expect(result).toBeDefined();
+      const run = await prisma.taskRun.findUnique({ where: { id: result!.run.id } });
+      expect(run?.concurrencyKey).toBe("51262");
+
+      await engine.quit();
+    }
+  );
+
   containerTest("should handle idempotency keys correctly", async ({ prisma, redisOptions }) => {
     const engine = new RunEngine({
       prisma,
