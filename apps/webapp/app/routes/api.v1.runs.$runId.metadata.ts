@@ -233,6 +233,13 @@ const { action } = createActionApiRoute(
       ),
     ]);
 
+    // Wire-shape parity with the PG branch. `UpdateMetadataService.call`
+    // returns `{ metadata: <object> }` (see `updateMetadata.server.ts:356-358`),
+    // sourced from `applyResults.newMetadata` / `parsePacket(metadataPacket)`
+    // — both parsed `Record<string, unknown>`. `bufferOutcome.newMetadata`
+    // is typed identically (`applyMetadataMutation.server.ts:27`). SDK
+    // consumers see the same response shape regardless of which branch
+    // serves the request.
     return json({ metadata: bufferOutcome.newMetadata }, { status: 200 });
   }
 );
