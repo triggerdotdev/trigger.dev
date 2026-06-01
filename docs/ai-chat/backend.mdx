@@ -12,32 +12,6 @@ import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
 
 The highest-level approach. Handles message accumulation, stop signals, turn lifecycle, and auto-piping automatically.
 
-<Tip>
-  To fix a **custom** `UIMessage` subtype or typed client data schema, use the [ChatBuilder](/ai-chat/types#chatbuilder) via `chat.withUIMessage<...>()` and/or `chat.withClientData({ schema })`. Builder-level hooks can also be chained before `.agent()`. See [Types](/ai-chat/types).
-</Tip>
-
-<Info>
-  Every `chat.agent` conversation is backed by a durable Session — `externalId` is your `chatId`, `type` is `"chat.agent"`, `taskIdentifier` is the agent's task ID. The session is the run manager: it owns the chat's runs, persists across run lifecycles, and orchestrates handoffs (idle continuation, `chat.requestUpgrade`). You rarely need to touch the session directly (`chat.stream`, `chat.messages`, `chat.stopSignal` wrap everything), but `payload.sessionId` is available if you want to reach in — e.g. `sessions.open(payload.sessionId)` to write from a sub-agent or from outside the turn loop.
-</Info>
-
-<Warning>
-  **Always spread `chat.toStreamTextOptions()` into every `streamText` call.** It wires up the `prepareStep` callback that drives [compaction](/ai-chat/compaction), [steering](/ai-chat/pending-messages), and [background injection](/ai-chat/background-injection) — features that silently no-op if the spread is missing. It also injects the system prompt set via `chat.prompt()`, the resolved model (when a registry is provided), and telemetry metadata.
-
-  Spread it **first** in the options object so any explicit overrides win:
-
-  ```ts
-  streamText({
-    ...chat.toStreamTextOptions(),     // or: chat.toStreamTextOptions({ registry, tools }) — see below
-    messages,
-    abortSignal: signal,
-    // any explicit overrides go here
-    stopWhen: stepCountIs(15),
-  });
-  ```
-
-  Examples in this doc keep the spread implicit for brevity, but you should include it in real code.
-</Warning>
-
 ### Simple: return a StreamTextResult
 
 Return the `streamText` result from `run` and it's automatically piped to the frontend:
@@ -51,7 +25,7 @@ export const simpleChat = chat.agent({
   id: "simple-chat",
   run: async ({ messages, signal }) => {
     return streamText({
-      ...chat.toStreamTextOptions(), // prepareStep, system, telemetry — see callout above
+      ...chat.toStreamTextOptions(), // prepareStep, system, telemetry (see note below)
       model: anthropic("claude-sonnet-4-5"),
       system: "You are a helpful assistant.",
       messages,
@@ -61,6 +35,10 @@ export const simpleChat = chat.agent({
   },
 });
 ```
+
+<Warning>
+  **Always spread `chat.toStreamTextOptions()` first** (as above) so your explicit overrides win. It wires up the `prepareStep` callback behind [compaction](/ai-chat/compaction), [steering](/ai-chat/pending-messages), and [background injection](/ai-chat/background-injection), all of which silently no-op without it, and injects the system prompt from `chat.prompt()`, the resolved model (when you pass a `registry`), and telemetry metadata. Examples below keep the spread implicit for brevity, so include it in real code.
+</Warning>
 
 ### Using chat.pipe() for complex flows
 
@@ -172,6 +150,10 @@ await waitUntilComplete();
 | `chat.stream.read(runId, options?)` | Read the stream by run ID |
 
 For piping streams from subtasks to the parent chat (via `target: "root"`), see the [Sub-agents pattern](/ai-chat/patterns/sub-agents).
+
+### Backed by a Session
+
+Every `chat.agent` conversation is backed by a durable [Session](/ai-chat/sessions): `externalId` is your `chatId`, `type` is `"chat.agent"`, and `taskIdentifier` is the agent's task ID. The session is the run manager. It owns the chat's runs, persists across run lifecycles, and orchestrates handoffs (idle continuation, `chat.requestUpgrade`). You rarely touch it directly, since `chat.stream`, `chat.messages`, and `chat.stopSignal` wrap everything, but `payload.sessionId` is there when you need to reach in, e.g. `sessions.open(payload.sessionId)` to write from a sub-agent or from outside the turn loop.
 
 ### Lifecycle hooks
 
