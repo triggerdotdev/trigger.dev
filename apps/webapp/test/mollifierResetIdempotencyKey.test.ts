@@ -106,4 +106,53 @@ describe("ResetIdempotencyKeyService — buffer-outage handling", () => {
       status: 404,
     });
   });
+
+  // Regression for the PG↔buffer handoff race CodeRabbit flagged on PR #3756.
+  //
+  // Sequence the test models (deterministic, by setup):
+  //   1. ResetIdempotencyKeyService.call begins while the run is still
+  //      buffered. The initial pg.updateMany sees no PG row → count=0.
+  //   2. Between that update and the buffer reset, the drainer materialises
+  //      the buffered run into PG (engine.trigger writes the row with the
+  //      original idempotencyKey intact) AND `buffer.ack` clears the
+  //      associated Redis idempotency lookup — that's part of ack's
+  //      atomic contract (see `buffer.ts:493` comment).
+  //   3. buffer.resetIdempotency runs after ack → returns
+  //      `{ clearedRunId: null }` because the lookup is gone.
+  //
+  // Without the handoff re-check, totalCount = 0 + 0 = 0 → the service
+  // throws 404 for a key that genuinely still exists on the now-
+  // materialised PG row. The customer's reset is silently lost.
+  //
+  // Correct behaviour: the service must discover the materialised row
+  // and clear its key, returning success. This test pins that contract.
+  it("succeeds when a buffered run materialises into PG between the initial pgUpdate and the buffer reset (handoff race)", async () => {
+    let updateManyCalls = 0;
+    const prisma: FakePrisma = {
+      taskRun: {
+        // First call: pre-materialisation, no PG row yet → 0.
+        // Second call (the fix's re-check after both surfaces report
+        // nothing): post-materialisation, drainer wrote the row → 1.
+        updateMany: vi.fn(async () => {
+          updateManyCalls += 1;
+          return updateManyCalls === 1 ? { count: 0 } : { count: 1 };
+        }),
+      },
+    };
+    const resetIdempotency = vi.fn(async () => ({ clearedRunId: null as string | null }));
+    bufferMock.current = { resetIdempotency };
+
+    const service = new ResetIdempotencyKeyService(prisma as never);
+
+    const result = await service.call("ikey", "task", env);
+    expect(result).toEqual({ id: "ikey" });
+
+    // Load-bearing pieces of the fix:
+    //   - The buffer path was consulted (we didn't bypass the normal
+    //     handoff window check), and
+    //   - A second pg.updateMany fired AFTER the buffer's null result,
+    //     catching the now-materialised row.
+    expect(resetIdempotency).toHaveBeenCalledOnce();
+    expect(updateManyCalls).toBe(2);
+  });
 });

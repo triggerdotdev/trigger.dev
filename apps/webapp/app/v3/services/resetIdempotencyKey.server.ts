@@ -63,6 +63,35 @@ export class ResetIdempotencyKeyService extends BaseService {
     }
 
     if (totalCount === 0) {
+      // PG↔buffer handoff re-check. Between the initial `pg.updateMany`
+      // and the buffer reset above, a buffered run can materialise into
+      // PG: the drainer's `engine.trigger` writes the row with the
+      // original idempotencyKey, then `buffer.ack` clears the Redis
+      // idempotency lookup (per ack's contract on
+      // `packages/redis-worker/src/mollifier/buffer.ts`). Both surfaces
+      // now report "nothing", but the key still lives on the freshly-
+      // materialised PG row. One more conditional updateMany catches
+      // that row before we 404 the customer. Cost: a single indexed
+      // lookup against the writer when there's nothing to find;
+      // otherwise the exact write the customer asked for (i.e., not
+      // duplicative — without it the reset is silently lost).
+      const { count: handoffPgCount } = await this._prisma.taskRun.updateMany({
+        where: {
+          idempotencyKey,
+          taskIdentifier,
+          runtimeEnvironmentId: authenticatedEnv.id,
+        },
+        data: {
+          idempotencyKey: null,
+          idempotencyKeyExpiresAt: null,
+        },
+      });
+      if (handoffPgCount > 0) {
+        logger.info(
+          `Reset idempotency key via handoff re-check: ${idempotencyKey} for task: ${taskIdentifier} in env: ${authenticatedEnv.id}, affected ${handoffPgCount} run(s)`
+        );
+        return { id: idempotencyKey };
+      }
       throw new ServiceValidationError(
         `No runs found with idempotency key: ${idempotencyKey} and task: ${taskIdentifier}`,
         404
