@@ -1,6 +1,6 @@
 import { openai } from "@ai-sdk/openai";
 import { type TaskTriggerSource } from "@trigger.dev/database";
-import { generateText, LanguageModelV1, Output, tool } from "ai";
+import { generateText, stepCountIs, type LanguageModel, Output, tool } from "ai";
 import { z } from "zod";
 import { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { logger } from "~/services/logger.server";
@@ -80,7 +80,7 @@ export class AIRunFilterService {
       queryQueues: QueryQueues;
       queryTasks: QueryTasks;
     },
-    private readonly model: LanguageModelV1 = openai("gpt-4o-mini")
+    private readonly model: LanguageModel = openai("gpt-4o-mini")
   ) {}
 
   async call(text: string, environmentId: string): Promise<AIFilterResult> {
@@ -91,7 +91,7 @@ export class AIRunFilterService {
         tools: {
           lookupTags: tool({
             description: "Look up available tags in the environment",
-            parameters: z.object({
+            inputSchema: z.object({
               query: z.string().optional().describe("Optional search query to filter tags"),
             }),
             execute: async ({ query }) => {
@@ -101,7 +101,7 @@ export class AIRunFilterService {
           lookupVersions: tool({
             description:
               "Look up available versions in the environment. If you specify `isCurrent` it will return a single version string if it finds one. Otherwise it will return an array of version strings.",
-            parameters: z.object({
+            inputSchema: z.object({
               isCurrent: z
                 .boolean()
                 .optional()
@@ -119,7 +119,7 @@ export class AIRunFilterService {
           }),
           lookupQueues: tool({
             description: "Look up available queues in the environment",
-            parameters: z.object({
+            inputSchema: z.object({
               query: z.string().optional().describe("Optional search query to filter queues"),
               type: z
                 .enum(["task", "custom"])
@@ -135,13 +135,13 @@ export class AIRunFilterService {
           lookupTasks: tool({
             description:
               "Look up available tasks in the environment. It will return each one. The `slug` is used for the filtering. You also get the triggerSource which is either `STANDARD` or `SCHEDULED`",
-            parameters: z.object({}),
+            inputSchema: z.object({}),
             execute: async () => {
               return await this.queryFns.queryTasks.query();
             },
           }),
         },
-        maxSteps: 5,
+        stopWhen: stepCountIs(5),
         system: `You are an AI assistant that converts natural language descriptions into structured filter parameters for a task run filtering system.
   
   Available filter options:
