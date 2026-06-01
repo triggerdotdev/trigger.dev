@@ -129,7 +129,14 @@ export async function applyMetadataMutationToBufferedRun(input: {
     };
 
     let metadataObject: Record<string, unknown>;
-    if (input.body.operations?.length) {
+    // Use `Array.isArray` (the PG service's predicate) instead of a
+    // truthy length check. For `{ metadata, operations: [] }` PG sees
+    // Array.isArray([])=true and no-ops on existing metadata; a
+    // `.length` check would treat the empty array as falsy and fall
+    // through to the `body.metadata` branch, replacing metadata —
+    // exactly the cross-boundary drift the comment above warns
+    // against.
+    if (Array.isArray(input.body.operations)) {
       // Operations take precedence: apply on top of existing snapshot
       // metadata; ignore `body.metadata` to match PG behaviour.
       metadataObject = applyMetadataOperations(
