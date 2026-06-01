@@ -193,9 +193,18 @@ export class MollifierDrainer<TPayload = unknown> {
           // tick (don't keep hammering a broken Redis) and counts as
           // exactly one failure — same as the pre-batch path on a pop
           // blowup. Other envs continue.
+          //
+          // `pickNextEnv` decrements `remaining` before the pop settles,
+          // so multiple workers can race into the same env and all hit
+          // a throwing pop before the first catch lands. Guarding the
+          // failure increment on `!skip.has(envId)` keeps the per-env
+          // failure count at exactly one even under that race —
+          // matching the documented contract.
           this.logger.error("MollifierDrainer.pop failed", { envId, err });
-          skip.add(envId);
-          failed += 1;
+          if (!skip.has(envId)) {
+            skip.add(envId);
+            failed += 1;
+          }
           continue;
         }
         if (!entry) {

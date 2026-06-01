@@ -291,13 +291,11 @@ describe("MollifierDrainer.drainBatchSize", () => {
     // ever produces) and env_good's pop returns good_1 (its only entry).
     expect(result.drained).toBe(3);
     expect(new Set(handled)).toEqual(new Set(["bad_1", "bad_2", "good_1"]));
-    // At least one failure is recorded (env_bad's throwing pop). With
-    // concurrency > 1 the race between "worker loops after empty/null"
-    // and "skip.add(envBad) propagates" can re-pop the broken env, so
-    // the upper bound is concurrency. The property we're pinning is
-    // bounded retry, not "exactly one".
-    expect(result.failed).toBeGreaterThanOrEqual(1);
-    expect(result.failed).toBeLessThanOrEqual(concurrency);
+    // Exactly one failure recorded for env_bad, even though multiple
+    // workers can race into a broken env before skip propagates — the
+    // catch guards the increment on `!skip.has(envId)`, so the documented
+    // "one failure per env batch" contract holds.
+    expect(result.failed).toBe(1);
     // env_bad's pop call count is bounded too — at most concurrency
     // retries after the first throw — definitely never reaches the
     // drainBatchSize ceiling.
