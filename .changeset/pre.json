@@ -38,9 +38,12 @@
     "mollifier-redis-worker-primitives",
     "plugin-auth-path",
     "resource-catalog-runtime-registration",
+    "retry-middleware-errors",
     "retry-sigsegv",
     "runs-list-region-filter",
     "sessions-primitive",
-    "trigger-client"
+    "trigger-client",
+    "unflatten-attributes-conflict",
+    "warm-start-external-trace-context-leak"
   ]
 }

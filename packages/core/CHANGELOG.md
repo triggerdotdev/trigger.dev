@@ -1,5 +1,13 @@
 # internal-platform
 
+## 4.5.0-rc.3
+
+### Patch Changes
+
+- Retry `TASK_MIDDLEWARE_ERROR` under the task's retry policy instead of failing the run on the first attempt. The error was already classified as retryable by `shouldRetryError`, but `shouldLookupRetrySettings` did not include it, so the retry flow fell through to `fail_run`. Fixes #3231. ([#3676](https://github.com/triggerdotdev/trigger.dev/pull/3676))
+- Fix `TypeError` in `unflattenAttributes` when the input attribute map contains conflicting dotted key paths (e.g. both `a.b` set to a scalar and `a.b.c` set to a value). The path-walk loop now applies last-write-wins when a prior key wrote a primitive, null, or array at an intermediate slot, matching the existing precedent in `AttributeFlattener.addAttribute`. Callers no longer crash when handed malformed external attribute inputs. ([#3762](https://github.com/triggerdotdev/trigger.dev/pull/3762))
+- Fix external trace context leaking across runs on warm-started workers with `processKeepAlive` enabled. Every subsequent run's attempt span was being exported with the first run's `traceId` and `parentSpanId`, breaking causal-chain navigation in external APM tools. Runs without an external trace context are unaffected. ([#3768](https://github.com/triggerdotdev/trigger.dev/pull/3768))
+
 ## 4.5.0-rc.2
 
 ## 4.5.0-rc.1

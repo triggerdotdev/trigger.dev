@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/plugins",
-  "version": "4.5.0-rc.2",
+  "version": "4.5.0-rc.3",
   "description": "Plugin contracts and interfaces for Trigger.dev",
   "license": "MIT",
   "publishConfig": {
