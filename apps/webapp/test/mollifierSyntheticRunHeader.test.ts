@@ -86,6 +86,22 @@ describe("buildSyntheticRunHeader", () => {
     expect(header.completedAt).toEqual(CANCELLED_AT);
   });
 
+  it("populates completedAt for FAILED runs so the route stops live-reloading and renders as completed", () => {
+    // The run-detail route derives `isCompleted` from
+    // `run.completedAt !== null` and gates SSE live-reloading on it
+    // (`route.tsx:459`, `:551`). Leaving completedAt null for FAILED
+    // buffered runs would keep a terminal run live-reloading forever
+    // while the badge already says SYSTEM_FAILURE. Symmetric with
+    // buildSyntheticSpanRun + ApiRetrieveRunPresenter.
+    const header = buildSyntheticRunHeader({
+      run: makeSyntheticRun({ status: "FAILED" }),
+      environment: ENV,
+    });
+    expect(header.status).toBe("SYSTEM_FAILURE");
+    expect(header.isFinished).toBe(true);
+    expect(header.completedAt).toEqual(NOW);
+  });
+
   it("forwards identity and environment fields from the snapshot", () => {
     const header = buildSyntheticRunHeader({ run: makeSyntheticRun(), environment: ENV });
     expect(header.friendlyId).toBe("run_friendly_1");
