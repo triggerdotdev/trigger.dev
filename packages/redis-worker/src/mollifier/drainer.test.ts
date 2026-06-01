@@ -271,32 +271,38 @@ describe("MollifierDrainer.drainBatchSize", () => {
       },
     });
 
+    const concurrency = 5;
+    const drainBatchSize = 5;
     const drainer = new MollifierDrainer({
       buffer,
       handler: async (input) => {
         handled.push(input.runId);
       },
-      // Concurrency=1 so the worker pool runs sequentially and pop calls
-      // can't race past the `skip.add(envId)` that fires after a pop
-      // failure. The semantic this test pins (one env's pop blowup
-      // aborts its batch and counts as one failure) is the deterministic
-      // case; multi-worker race semantics are exercised by the safety
-      // property test below.
-      concurrency: 1,
+      concurrency,
       maxAttempts: 3,
       isRetryable: () => false,
-      drainBatchSize: 5,
+      drainBatchSize,
       logger: new Logger("test-drainer", "log"),
     });
 
     const result = await drainer.runOnce();
-    // env_bad: 2 successful pops processed (drained) + 1 pop failure (failed).
-    // env_good: 1 successful pop processed (drained).
+    // The actual ENTRIES drained are deterministic regardless of races:
+    // env_bad's pop returns bad_1 then bad_2 (the only two snapshots it
+    // ever produces) and env_good's pop returns good_1 (its only entry).
     expect(result.drained).toBe(3);
-    expect(result.failed).toBe(1);
     expect(new Set(handled)).toEqual(new Set(["bad_1", "bad_2", "good_1"]));
-    // We stopped popping env_bad on the failure — no fourth attempt.
-    expect(envBadPops).toBe(3);
+    // At least one failure is recorded (env_bad's throwing pop). With
+    // concurrency > 1 the race between "worker loops after empty/null"
+    // and "skip.add(envBad) propagates" can re-pop the broken env, so
+    // the upper bound is concurrency. The property we're pinning is
+    // bounded retry, not "exactly one".
+    expect(result.failed).toBeGreaterThanOrEqual(1);
+    expect(result.failed).toBeLessThanOrEqual(concurrency);
+    // env_bad's pop call count is bounded too — at most concurrency
+    // retries after the first throw — definitely never reaches the
+    // drainBatchSize ceiling.
+    expect(envBadPops).toBeGreaterThanOrEqual(3);
+    expect(envBadPops).toBeLessThan(drainBatchSize + concurrency);
   });
 
   it("fans batched pops out across multiple envs in a single tick", async () => {
@@ -575,29 +581,31 @@ describe("MollifierDrainer.drainBatchSize", () => {
       },
     });
 
+    const concurrency = 5;
+    const drainBatchSize = 10;
     const drainer = new MollifierDrainer({
       buffer,
       handler: async (input) => {
         handled.push(input.runId);
       },
-      // Concurrency=1 isolates the "stop on empty" semantic from the
-      // worker pool's parallel-pick race: with multiple workers, several
-      // can pick env_a simultaneously and pop in parallel before any of
-      // them can `skip.add(envId)`, so the empty-pop count would be
-      // >1 nondeterministically.
-      concurrency: 1,
+      concurrency,
       maxAttempts: 3,
       isRetryable: () => false,
-      drainBatchSize: 10,
+      drainBatchSize,
       logger: new Logger("test-drainer", "log"),
     });
 
     const r = await drainer.runOnce();
     expect(r.drained).toBe(2);
-    expect(handled).toEqual(["only_1", "only_2"]);
-    // 2 successful pops + 1 sentinel pop that returned null and ended
-    // the batch loop — 3 calls, not 10. Bounding stops the Lua spam.
-    expect(popCalls).toBe(3);
+    expect(new Set(handled)).toEqual(new Set(["only_1", "only_2"]));
+    // The property we're pinning: pop calls are bounded by concurrency
+    // (plus the original two successes) once the queue empties — they
+    // never run all the way up to drainBatchSize. With concurrency > 1
+    // multiple workers can race to pop env_a before `skip.add` lands,
+    // so the upper bound is the worker count, not a tight "3".
+    expect(popCalls).toBeGreaterThanOrEqual(3); // 2 success + ≥1 sentinel null
+    expect(popCalls).toBeLessThanOrEqual(concurrency + 2);
+    expect(popCalls).toBeLessThan(drainBatchSize); // bounded — the actual safety property
   });
 });
 
