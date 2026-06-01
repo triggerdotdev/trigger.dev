@@ -88,10 +88,18 @@ import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { type Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useHasAdminAccess } from "~/hooks/useUser";
+import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
-import { RunEnvironmentMismatchError, RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import {
+  RunEnvironmentMismatchError,
+  RunNotInPgError,
+  RunPresenter,
+} from "~/presenters/v3/RunPresenter.server";
+import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
+import { buildSyntheticRunHeader } from "~/v3/mollifier/syntheticRunHeader.server";
+import { buildSyntheticTraceForBufferedRun } from "~/v3/mollifier/syntheticTrace.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
@@ -277,7 +285,76 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       );
     }
 
+    // Only fall back to the mollifier buffer on a genuine PG miss. Any
+    // other error (DB timeout during trace queries, event-repository
+    // failure, etc.) means the run WAS in PG but a downstream lookup
+    // failed — falling back to the buffer here would either return a
+    // stale synth entry if one happens to exist in the brief drainer-
+    // materialisation race window, or quietly mask the real failure.
+    // `RunNotInPgError` is the typed signal RunPresenter throws for the
+    // route loader's specific case (`RunPresenter.server.ts:130`).
+    if (!(error instanceof RunNotInPgError)) {
+      throw error;
+    }
+
+    // PG miss → try the mollifier buffer. When the gate diverts a trigger
+    // the run sits in Redis until the drainer materialises it; without
+    // this fallback the run-detail page 404s for the brief buffered window
+    // even though the API has accepted the trigger and returned an id.
+    const buffered = await tryMollifiedRunFallback({
+      runFriendlyId: runParam,
+      organizationSlug,
+      projectSlug: projectParam,
+      envSlug: envParam,
+      userId,
+    });
+
+    if (buffered) {
+      // Preselect the root span on the initial page load when the URL
+      // doesn't already carry `?span=`. The sibling redirect routes
+      // (runs.$runParam.ts, @.runs.$runParam.ts,
+      // projects.v3.$projectRef.runs.$runParam.ts) all do this, but
+      // direct navigation to the canonical project-scoped URL never
+      // hit those redirects — leaving the right detail panel collapsed.
+      // Skip on `_data` requests (Remix data fetches): they're
+      // client-driven follow-ups and the client URL is what matters,
+      // not the loader's view of it.
+      if (
+        !url.searchParams.has("span") &&
+        !url.searchParams.has("_data") &&
+        buffered.run.spanId
+      ) {
+        url.searchParams.set("span", buffered.run.spanId);
+        throw redirect(url.pathname + "?" + url.searchParams.toString());
+      }
+
+      const parent = await getResizableSnapshot(request, resizableSettings.parent.autosaveId);
+      const tree = await getResizableSnapshot(request, resizableSettings.tree.autosaveId);
+
+      return json({
+        run: buffered.run,
+        trace: buffered.trace,
+        maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
+        resizable: { parent, tree },
+        runsList: null,
+      });
+    }
+
     throw error;
+  }
+
+  // Preselect the root span on the initial page load when the URL
+  // doesn't already carry `?span=`. See the comment on the equivalent
+  // block in the buffered fallback above — the sibling redirect routes
+  // do this, but direct navigation to the canonical project-scoped URL
+  // never hits them, leaving the right detail panel collapsed.
+  if (
+    !url.searchParams.has("span") &&
+    !url.searchParams.has("_data") &&
+    result.run.spanId
+  ) {
+    url.searchParams.set("span", result.run.spanId);
+    throw redirect(url.pathname + "?" + url.searchParams.toString());
   }
 
   //resizable settings
@@ -304,6 +381,39 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     runsList,
   });
 };
+
+async function tryMollifiedRunFallback(args: {
+  runFriendlyId: string;
+  organizationSlug: string;
+  projectSlug: string;
+  envSlug: string;
+  userId: string;
+}) {
+  const project = await findProjectBySlug(args.organizationSlug, args.projectSlug, args.userId);
+  if (!project) return null;
+  const environment = await findEnvironmentBySlug(project.id, args.envSlug, args.userId);
+  if (!environment) return null;
+
+  const buffered = await findRunByIdWithMollifierFallback({
+    runId: args.runFriendlyId,
+    environmentId: environment.id,
+    organizationId: project.organizationId,
+  });
+  if (!buffered) return null;
+
+  return {
+    run: buildSyntheticRunHeader({
+      run: buffered,
+      environment: {
+        id: environment.id,
+        organizationId: project.organizationId,
+        type: environment.type,
+        slug: environment.slug,
+      },
+    }),
+    trace: buildSyntheticTraceForBufferedRun(buffered),
+  };
+}
 
 type LoaderData = SerializeFrom<typeof loader>;
 
@@ -407,23 +517,17 @@ export default function Page() {
             />
           </Dialog>
           {run.isFinished ? null : (
-            <Dialog key={`cancel-${run.friendlyId}`}>
-              <DialogTrigger asChild>
-                <Button variant="danger/small" LeadingIcon={StopCircleIcon} shortcut={{ key: "C" }}>
-                  Cancel run…
-                </Button>
-              </DialogTrigger>
-              <CancelRunDialog
-                runFriendlyId={run.friendlyId}
-                redirectPath={v3RunSpanPath(
-                  organization,
-                  project,
-                  environment,
-                  { friendlyId: run.friendlyId },
-                  { spanId: run.spanId }
-                )}
-              />
-            </Dialog>
+            <ControlledCancelRunDialog
+              key={`cancel-${run.friendlyId}`}
+              runFriendlyId={run.friendlyId}
+              redirectPath={v3RunSpanPath(
+                organization,
+                project,
+                environment,
+                { friendlyId: run.friendlyId },
+                { spanId: run.spanId }
+              )}
+            />
           )}
         </PageAccessories>
       </NavBar>
@@ -587,6 +691,35 @@ function TraceView({
   );
 }
 
+// Controlled wrapper around the cancel dialog. Owns the Radix open state
+// so the dialog closes itself once the cancel action transitions through
+// submission. We can't `<DialogClose asChild>`-wrap the submit button
+// because Radix's onClick handler swallows the button's name=value pair
+// that the form action depends on for `redirectUrl`.
+function ControlledCancelRunDialog({
+  runFriendlyId,
+  redirectPath,
+}: {
+  runFriendlyId: string;
+  redirectPath: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="danger/small" LeadingIcon={StopCircleIcon} shortcut={{ key: "C" }}>
+          Cancel run…
+        </Button>
+      </DialogTrigger>
+      <CancelRunDialog
+        runFriendlyId={runFriendlyId}
+        redirectPath={redirectPath}
+        onCancelSubmitted={() => setOpen(false)}
+      />
+    </Dialog>
+  );
+}
+
 function NoLogsView({ run, resizable }: Pick<LoaderData, "run" | "resizable">) {
   const plan = useCurrentPlan();
   const organization = useOrganization();
@@ -616,6 +749,11 @@ function NoLogsView({ run, resizable }: Pick<LoaderData, "run" | "resizable">) {
         >
           <div className="grid h-full place-items-center">
             {daysSinceCompleted === undefined ? (
+              // NoLogsView only renders when the loader returns no trace.
+              // Buffered runs always carry a synthetic trace (see
+              // buildSyntheticTraceForBufferedRun) so they never reach
+              // this branch — the message here is the pre-mollifier
+              // copy for runs with no completedAt and no logs.
               <InfoPanel variant="info" icon={InformationCircleIcon} title="We delete old logs">
                 <Paragraph variant="small">
                   We tidy up older logs to keep things running smoothly.

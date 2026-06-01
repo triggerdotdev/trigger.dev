@@ -20,6 +20,20 @@ export class RunEnvironmentMismatchError extends Error {
   }
 }
 
+// Thrown by `call()` when the run isn't in PG. The route loader catches
+// this and falls back to the mollifier buffer via `tryMollifiedRunFallback`.
+// Using a typed error (rather than Prisma's `findFirstOrThrow` exception)
+// keeps the buffered case off the PrismaClient error path — that path
+// emits a `PrismaClient error` log every time it fires, which on the
+// run-detail page polls becomes per-tick log spam and Sentry noise for
+// any run that legitimately lives in the buffer.
+export class RunNotInPgError extends Error {
+  constructor(public readonly runFriendlyId: string) {
+    super(`Run ${runFriendlyId} not in PG`);
+    this.name = "RunNotInPgError";
+  }
+}
+
 export class RunPresenter {
   #prismaClient: PrismaClient;
 
@@ -42,7 +56,13 @@ export class RunPresenter {
     showDeletedLogs: boolean;
     showDebug: boolean;
   }) {
-    const run = await this.#prismaClient.taskRun.findFirstOrThrow({
+    // `findFirst` + explicit null check (not `findFirstOrThrow`) because
+    // a missing PG row is the *expected* path for buffered runs — the
+    // route catches `RunNotInPgError` and falls back to the synthesised
+    // buffer view. `findFirstOrThrow` would log a `PrismaClient error`
+    // every tick of the page poll, masking real DB issues with synthetic
+    // not-found noise.
+    const run = await this.#prismaClient.taskRun.findFirst({
       select: {
         id: true,
         createdAt: true,
@@ -105,6 +125,10 @@ export class RunPresenter {
         },
       },
     });
+
+    if (!run) {
+      throw new RunNotInPgError(runFriendlyId);
+    }
 
     if (environmentSlug !== run.runtimeEnvironment.slug) {
       throw new RunEnvironmentMismatchError(
