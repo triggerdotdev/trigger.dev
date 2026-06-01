@@ -112,7 +112,7 @@
     "@remix-run/serve": "2.17.4",
     "@remix-run/server-runtime": "2.17.4",
     "@remix-run/v1-meta": "^0.1.3",
-    "@s2-dev/streamstore": "^0.22.5",
+    "@s2-dev/streamstore": "^0.22.10",
     "@sentry/remix": "9.46.0",
     "@slack/web-api": "7.9.1",
     "@socket.io/redis-adapter": "^8.3.0",
