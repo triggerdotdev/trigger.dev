@@ -12,7 +12,7 @@ export function PadlockIcon({ className }: { className?: string }) {
       <rect x="11" y="13" width="2" height="5" rx="1" fill="currentColor" />
       <rect x="10" y="12" width="4" height="4" rx="2" fill="currentColor" />
       <path
-        d="M16 8V7C16 4.79086 14.2091 3 12 3C9.79086 3 8 4.79086 8 7V8"
+        d="M17 9V8C17 5.23858 14.7614 3 12 3C9.23858 3 7 5.23858 7 8V9"
         stroke="currentColor"
         strokeWidth="2"
       />

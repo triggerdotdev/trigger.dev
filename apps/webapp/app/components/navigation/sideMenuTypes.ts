@@ -7,6 +7,7 @@ export const SideMenuSectionIdSchema = z.enum([
   "metrics",
   "deployments",
   "project-settings",
+  "tasks",
 ]);
 
 // Inferred type from the schema

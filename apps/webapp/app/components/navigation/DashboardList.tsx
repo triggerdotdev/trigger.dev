@@ -6,10 +6,7 @@ import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { type MatchedOrganization, useCustomDashboards } from "~/hooks/useOrganizations";
 import { type UserWithDashboardPreferences } from "~/models/user.server";
 import { type RenderIcon } from "~/components/primitives/Icon";
-import {
-  v3BuiltInDashboardPath,
-  v3CustomDashboardPath,
-} from "~/utils/pathBuilder";
+import { v3BuiltInDashboardPath, v3CustomDashboardPath } from "~/utils/pathBuilder";
 import { type SideMenuEnvironment, type SideMenuProject } from "./SideMenu";
 import { SideMenuItem } from "./SideMenuItem";
 import { TreeConnectorBranch, TreeConnectorEnd } from "./TreeConnectors";
@@ -59,7 +56,7 @@ export function DashboardList({
     {
       key: "builtin:overview",
       kind: "builtin",
-      label: "Runs",
+      label: "Run metrics",
       path: v3BuiltInDashboardPath(organization, project, environment, "overview"),
       collapsedIcon: RunsIcon,
       activeColor: "text-runs",
@@ -67,17 +64,19 @@ export function DashboardList({
     {
       key: "builtin:llm",
       kind: "builtin",
-      label: "Agents",
+      label: "AI metrics",
       path: v3BuiltInDashboardPath(organization, project, environment, "llm"),
       collapsedIcon: AIMetricsIcon,
       activeColor: "text-aiMetrics",
     },
-    ...customDashboards.map((d): DashboardChild => ({
-      key: `custom:${d.friendlyId}`,
-      kind: "custom",
-      label: d.title,
-      path: v3CustomDashboardPath(organization, project, environment, d),
-    })),
+    ...customDashboards.map(
+      (d): DashboardChild => ({
+        key: `custom:${d.friendlyId}`,
+        kind: "custom",
+        label: d.title,
+        path: v3CustomDashboardPath(organization, project, environment, d),
+      })
+    ),
   ];
 
   const initialOrder =
@@ -171,17 +170,10 @@ function DashboardChildMenuItem({
         ? item.activeColor
         : undefined
       : isCollapsed
-      ? "text-customDashboards"
+      ? "text-text-bright"
       : undefined;
 
-  const inactiveIconColor =
-    item.kind === "builtin"
-      ? isCollapsed
-        ? item.activeColor
-        : "text-charcoal-700"
-      : isCollapsed
-      ? "text-customDashboards"
-      : "text-charcoal-700";
+  const inactiveIconColor = isCollapsed ? "text-text-dimmed" : "text-charcoal-700";
 
   return (
     <SideMenuItem

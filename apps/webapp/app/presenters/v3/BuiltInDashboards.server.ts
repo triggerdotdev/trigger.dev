@@ -3,7 +3,7 @@ import { z } from "zod";
 
 const overviewDashboard: BuiltInDashboard = {
   key: "overview",
-  title: "Metrics",
+  title: "Run metrics",
   filters: ["tasks", "queues"],
   layout: {
     version: "1",

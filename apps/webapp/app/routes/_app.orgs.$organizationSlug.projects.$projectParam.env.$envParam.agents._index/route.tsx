@@ -62,7 +62,7 @@ import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { PlaygroundIcon } from "~/assets/icons/PlaygroundIcon";
 
 export const meta: MetaFunction = () => {
-  return [{ title: "Agents | Trigger.dev" }];
+  return [{ title: "Agent tasks | Trigger.dev" }];
 };
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {

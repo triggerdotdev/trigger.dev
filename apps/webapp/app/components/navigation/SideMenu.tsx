@@ -387,9 +387,15 @@ export function SideMenu({
               </div>
             </div>
 
-            <div className="w-full">
+            <SideMenuSection
+              title="Tasks"
+              isSideMenuCollapsed={isCollapsed}
+              itemSpacingClassName="space-y-0"
+              initialCollapsed={getSectionCollapsed(user.dashboardPreferences.sideMenu, "tasks")}
+              onCollapseToggle={handleSectionToggle("tasks")}
+            >
               <SideMenuItem
-                name="Agent tasks"
+                name="Agents"
                 icon={CubeSparkleIcon}
                 activeIconColor="text-agents"
                 inactiveIconColor="text-text-dimmed"
@@ -398,7 +404,7 @@ export function SideMenu({
                 isCollapsed={isCollapsed}
               />
               <SideMenuItem
-                name="Standard tasks"
+                name="Standard"
                 icon={TaskIcon}
                 activeIconColor="text-tasks"
                 inactiveIconColor="text-text-dimmed"
@@ -407,7 +413,7 @@ export function SideMenu({
                 isCollapsed={isCollapsed}
               />
               <SideMenuItem
-                name="Scheduled tasks"
+                name="Schedules"
                 icon={ClockIcon}
                 activeIconColor="text-schedules"
                 inactiveIconColor="text-text-dimmed"
@@ -433,7 +439,7 @@ export function SideMenu({
                 data-action="sessions"
                 isCollapsed={isCollapsed}
               />
-            </div>
+            </SideMenuSection>
 
             {(user.admin || user.isImpersonating || featureFlags.hasAiAccess) && (
               <SideMenuSection
