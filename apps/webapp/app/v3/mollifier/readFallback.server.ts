@@ -1,5 +1,7 @@
 import type { MollifierBuffer } from "@trigger.dev/redis-worker";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
+import { IdempotencyKeyOptionsSchema } from "@trigger.dev/core/v3/schemas";
+import type { z } from "zod";
 import { logger } from "~/services/logger.server";
 import { deserialiseMollifierSnapshot } from "./mollifierSnapshot.server";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
@@ -50,7 +52,15 @@ export type SyntheticRun = {
   // expose it here so the cached-hit branch can apply the same check
   // rather than indefinitely returning the buffered run's id.
   idempotencyKeyExpiresAt: Date | undefined;
-  idempotencyKeyOptions: string[] | undefined;
+  // `{ key, scope }` object form, matching how the SDK serialises and PG
+  // stores it. Previously typed as `string[]` (legacy/incorrect — Prisma
+  // is `Json?` carrying the schema-shaped object). `getUserProvidedIdempotencyKey`
+  // and `extractIdempotencyKeyScope` both parse via the same Zod schema;
+  // they returned `undefined` for the array-shape, which silently
+  // demoted the response to surface the hash instead of the user-
+  // provided key for buffered runs — a contract divergence from
+  // PG-resident runs. See the regression test in `mollifierReadFallback.test.ts`.
+  idempotencyKeyOptions: z.infer<typeof IdempotencyKeyOptionsSchema> | undefined;
   isTest: boolean;
   depth: number;
   ttl: string | undefined;
@@ -145,9 +155,18 @@ export async function findRunByIdWithMollifierFallback(
     }
 
     const snapshot = deserialiseMollifierSnapshot(entry.payload);
-    const idempotencyKeyOptionsRaw = snapshot.idempotencyKeyOptions;
-    const idempotencyKeyOptions = Array.isArray(idempotencyKeyOptionsRaw)
-      ? asStringArray(idempotencyKeyOptionsRaw)
+    // Parse via the canonical schema (`{ key: string, scope: "run" |
+    // "attempt" | "global" }`) rather than the legacy Array.isArray
+    // check. The SDK and Prisma both store this as an object; the array
+    // form never matches, so a buffered run's response previously fell
+    // back to the server-side hash in `getUserProvidedIdempotencyKey`
+    // instead of the customer-supplied key — diverging from how
+    // materialised runs render the same field.
+    const idempotencyKeyOptionsParsed = IdempotencyKeyOptionsSchema.safeParse(
+      snapshot.idempotencyKeyOptions,
+    );
+    const idempotencyKeyOptions = idempotencyKeyOptionsParsed.success
+      ? idempotencyKeyOptionsParsed.data
       : undefined;
 
     const tags = asStringArray(snapshot.tags);
