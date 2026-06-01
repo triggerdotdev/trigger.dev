@@ -1,0 +1,67 @@
+name: 🌱 Preview environment dispatch
+
+# Opt-in per-PR preview environments
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed, labeled, unlabeled]
+
+permissions: {}
+
+jobs:
+  dispatch:
+    name: Dispatch preview-deploy to cloud
+    runs-on: ubuntu-latest
+    #   label added             -> create
+    #   new commit while labeled -> update
+    #   label removed / PR closed -> destroy
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (
+        (github.event.action == 'labeled' && github.event.label.name == 'preview') ||
+        (github.event.action == 'unlabeled' && github.event.label.name == 'preview') ||
+        (
+          contains(github.event.pull_request.labels.*.name, 'preview') &&
+          contains(fromJSON('["opened","reopened","synchronize","closed"]'), github.event.action)
+        )
+      )
+    steps:
+      - name: Build dispatch payload
+        id: payload
+        env:
+          ACTION: ${{ github.event.action }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          COMMIT: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Map the GitHub PR action to the cloud pipeline's lifecycle event.
+          case "$ACTION" in
+            labeled | opened | reopened) EVENT=opened ;;
+            synchronize) EVENT=synchronize ;;
+            unlabeled | closed) EVENT=closed ;;
+            *) echo "unexpected action: $ACTION" >&2; exit 1 ;;
+          esac
+          # jq --arg JSON-escapes every value, so a branch name containing
+          # quotes/braces can't break or inject into the client payload.
+          payload=$(jq -nc \
+            --arg b "$BRANCH" \
+            --arg c "$COMMIT" \
+            --arg e "$EVENT" \
+            '{branch_name: $b, commit: $c, pull_request_event: $e}')
+          {
+            echo "client_payload=$payload"
+            echo "summary=$EVENT for $BRANCH @ ${COMMIT:0:7}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log dispatch
+        env:
+          SUMMARY: ${{ steps.payload.outputs.summary }}
+        run: echo "Dispatching preview-deploy event ($SUMMARY)"
+
+      - name: Send repository_dispatch
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
+        with:
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          repository: triggerdotdev/cloud
+          event-type: preview-deploy
+          client-payload: ${{ steps.payload.outputs.client_payload }}
