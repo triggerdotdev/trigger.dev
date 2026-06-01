@@ -194,10 +194,18 @@ describe("synthesiseFoundRunFromBuffer", () => {
   });
 
   it("forwards runTags from the snapshot tags array", () => {
+    // Use distinct values for `tags` and `runTags` so the assertion
+    // actually pins the mapping. With the fixture's previous
+    // `runTags` default matching the same `["alpha", "beta"]` input,
+    // this test would have passed even if synthesiseFoundRunFromBuffer
+    // accidentally read `runTags` instead of `tags`.
     const found = synthesiseFoundRunFromBuffer(
-      makeSyntheticRun({ tags: ["alpha", "beta"] })
+      makeSyntheticRun({
+        tags: ["from-tags"],
+        runTags: ["stale-run-tags"],
+      })
     );
-    expect(found.runTags).toEqual(["alpha", "beta"]);
+    expect(found.runTags).toEqual(["from-tags"]);
   });
 
   it("pins engine to V2 and taskEventStore to taskEvent (only valid values for a buffered run)", () => {

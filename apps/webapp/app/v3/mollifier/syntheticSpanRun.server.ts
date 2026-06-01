@@ -41,11 +41,16 @@ export async function buildSyntheticSpanRun(args: {
       ? await prettyPrintPacket(run.payload, run.payloadType ?? undefined)
       : undefined;
 
-  const metadata = run.metadata
-    ? await prettyPrintPacket(run.metadata, run.metadataType, {
-        filteredKeys: ["$$streams", "$$streamsVersion", "$$streamsBaseUrl"],
-      })
-    : undefined;
+  // Nullish check, not truthy — matches the payload branch above so an
+  // intentionally-empty packet (e.g. metadata: "") still gets handed to
+  // `prettyPrintPacket` and renders consistently. A truthy check would
+  // drop the empty-string case and the two paths would diverge.
+  const metadata =
+    typeof run.metadata !== "undefined" && run.metadata !== null
+      ? await prettyPrintPacket(run.metadata, run.metadataType, {
+          filteredKeys: ["$$streams", "$$streamsVersion", "$$streamsBaseUrl"],
+        })
+      : undefined;
 
   const idempotencyShape = {
     idempotencyKey: run.idempotencyKey ?? null,
