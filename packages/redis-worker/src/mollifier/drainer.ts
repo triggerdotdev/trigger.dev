@@ -52,6 +52,21 @@ export type MollifierDrainerOptions<TPayload> = {
   // as an org with 1 env — tenant-level drainage throughput is determined
   // by org count, not env count.
   maxOrgsPerTick?: number;
+  // Per-env per-tick pop cap. Default 1 preserves the original
+  // one-pop-per-env-per-tick behaviour. Setting it higher lets a single
+  // env drain at handler-parallelism speed: each tick the drainer pops
+  // up to `drainBatchSize` entries from the env's queue, then dispatches
+  // them all through the shared `concurrency`-bounded pLimit. For a
+  // single-env burst this turns N sequential ticks into one tick of N
+  // parallel handler calls, capped by `concurrency`. Org/env fairness
+  // still holds — each org still contributes exactly one env per tick.
+  //
+  // Memory: per-tick in-flight entries ≤ `maxOrgsPerTick × drainBatchSize`.
+  // Operators sizing this should ensure their PG pool / engine handler
+  // can sustain `concurrency` parallel writes; popping more than the
+  // handler can process per tick just queues entries in JS waiting on
+  // pLimit.
+  drainBatchSize?: number;
   logger?: Logger;
 };
 
@@ -68,6 +83,7 @@ export class MollifierDrainer<TPayload = unknown> {
   private readonly isRetryable: (err: unknown) => boolean;
   private readonly pollIntervalMs: number;
   private readonly maxOrgsPerTick: number;
+  private readonly drainBatchSize: number;
   private readonly logger: Logger;
   private readonly limit: ReturnType<typeof pLimit>;
   // Rotation state. `orgCursor` advances through the active-orgs list.
@@ -87,6 +103,7 @@ export class MollifierDrainer<TPayload = unknown> {
     this.isRetryable = options.isRetryable;
     this.pollIntervalMs = options.pollIntervalMs ?? 100;
     this.maxOrgsPerTick = options.maxOrgsPerTick ?? 500;
+    this.drainBatchSize = Math.max(1, options.drainBatchSize ?? 1);
     this.logger = options.logger ?? new Logger("MollifierDrainer", "debug");
     this.limit = pLimit(options.concurrency);
   }
@@ -116,15 +133,63 @@ export class MollifierDrainer<TPayload = unknown> {
       targets.push(envId);
     }
 
-    const inflight: Promise<"drained" | "failed" | "empty">[] = [];
-    for (const envId of targets) {
-      inflight.push(this.limit(() => this.processOneFromEnv(envId)));
+    // Pop a batch from each target env in parallel. Within an env we pop
+    // sequentially (each Lua `pop` is atomic; back-to-back pops on the
+    // same env can't be concurrent without a `popBatch` Lua, and Redis
+    // RTT × drainBatchSize is cheap compared to the engine.trigger work
+    // that follows). A pop failure mid-batch aborts only that env's
+    // batch and counts as one failure — same semantics as the previous
+    // one-pop-per-env path, generalised.
+    const envBatches = await Promise.all(
+      targets.map(async (envId) => {
+        const entries: BufferEntry[] = [];
+        let popFailed = false;
+        for (let i = 0; i < this.drainBatchSize; i++) {
+          let entry: BufferEntry | null;
+          try {
+            entry = await this.buffer.pop(envId);
+          } catch (err) {
+            this.logger.error("MollifierDrainer.pop failed", { envId, err });
+            popFailed = true;
+            break;
+          }
+          if (!entry) break;
+          entries.push(entry);
+        }
+        return { entries, popFailed };
+      }),
+    );
+
+    const popFailures = envBatches.reduce((n, b) => n + (b.popFailed ? 1 : 0), 0);
+    const allEntries = envBatches.flatMap((b) => b.entries);
+    if (allEntries.length === 0) {
+      return { drained: 0, failed: popFailures };
     }
+
+    // Dispatch every popped entry through the shared pLimit so the
+    // global in-flight cap is `concurrency` regardless of how many envs
+    // contributed entries this tick. Per-entry errors are caught inside
+    // the closure so a single bad entry can't poison the tick — same
+    // safety net the old `processOneFromEnv` provided.
+    const inflight = allEntries.map((entry) =>
+      this.limit(async () => {
+        try {
+          return await this.processEntry(entry);
+        } catch (err) {
+          this.logger.error("MollifierDrainer.processEntry failed", {
+            envId: entry.envId,
+            runId: entry.runId,
+            err,
+          });
+          return "failed" as const;
+        }
+      }),
+    );
 
     const results = await Promise.all(inflight);
     return {
       drained: results.filter((r) => r === "drained").length,
-      failed: results.filter((r) => r === "failed").length,
+      failed: results.filter((r) => r === "failed").length + popFailures,
     };
   }
 
@@ -247,32 +312,6 @@ export class MollifierDrainer<TPayload = unknown> {
     const idx = cursor % sorted.length;
     this.perOrgEnvCursors.set(orgId, (cursor + 1) % sorted.length);
     return sorted[idx]!;
-  }
-
-  // A failure for one env (e.g. a Redis hiccup mid-batch in `pop`, or in
-  // `requeue`/`fail` during error recovery inside `processEntry`) must not
-  // poison the rest of the batch — `Promise.all` would otherwise reject and
-  // bubble all the way to `loop()`. Catch both stages here so the failed env
-  // is just counted as "failed" for this tick and we move on.
-  private async processOneFromEnv(envId: string): Promise<"drained" | "failed" | "empty"> {
-    let entry: BufferEntry | null;
-    try {
-      entry = await this.buffer.pop(envId);
-    } catch (err) {
-      this.logger.error("MollifierDrainer.pop failed", { envId, err });
-      return "failed";
-    }
-    if (!entry) return "empty";
-    try {
-      return await this.processEntry(entry);
-    } catch (err) {
-      this.logger.error("MollifierDrainer.processEntry failed", {
-        envId,
-        runId: entry.runId,
-        err,
-      });
-      return "failed";
-    }
   }
 
   private async processEntry(entry: BufferEntry): Promise<"drained" | "failed"> {
