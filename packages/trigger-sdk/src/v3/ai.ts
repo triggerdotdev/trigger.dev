@@ -102,7 +102,16 @@ const METADATA_KEY = "tool.execute.options";
  * stopped/aborted conversations with partial tool parts.
  */
 function toModelMessages(messages: UIMessage[]): Promise<ModelMessage[]> {
-  return convertToModelMessages(messages, { ignoreIncompleteToolCalls: true });
+  // Pass the resolved per-turn `tools` (if any) so the AI SDK can look up each
+  // tool's `toModelOutput` and re-apply it to prior-turn tool results. Without
+  // `tools` it falls back to JSON-stringifying the raw output (TRI-10149). The
+  // conditional spread keeps the options object byte-identical to the no-tools
+  // path when nothing was declared.
+  const tools = locals.get(chatResolvedToolsKey);
+  return convertToModelMessages(messages, {
+    ignoreIncompleteToolCalls: true,
+    ...(tools ? { tools } : {}),
+  });
 }
 
 export type ToolCallExecutionOptions = {
@@ -1425,7 +1434,10 @@ export type ChatTaskSignals = {
  * The full payload passed to a `chatAgent` run function.
  * Extends `ChatTaskPayload` (the wire payload) with abort signals.
  */
-export type ChatTaskRunPayload<TClientData = unknown> = ChatTaskPayload<TClientData> &
+export type ChatTaskRunPayload<
+  TClientData = unknown,
+  TTools extends ToolSet = ToolSet,
+> = ChatTaskPayload<TClientData> &
   ChatTaskSignals & {
     /**
      * Task run context — same object as the `ctx` passed to a standard `task({ run })` handler’s second argument.
@@ -1436,6 +1448,21 @@ export type ChatTaskRunPayload<TClientData = unknown> = ChatTaskPayload<TClientD
     previousTurnUsage?: LanguageModelUsage;
     /** Cumulative token usage across all completed turns so far. */
     totalUsage: LanguageModelUsage;
+    /**
+     * The resolved tool set for this turn, the same `tools` you declared on
+     * `chat.agent({ tools })` (or the result of the per-turn `tools` function).
+     * Pass straight to `streamText({ tools })` so you don't redeclare them:
+     *
+     * ```ts
+     * run: ({ messages, tools, signal }) =>
+     *   streamText({ model, messages, tools, abortSignal: signal })
+     * ```
+     *
+     * Declaring `tools` on the config is also what lets the SDK re-run each
+     * tool's `toModelOutput` when it re-converts prior-turn history (see the
+     * `tools` option on `chat.agent`). Empty object when no `tools` were declared.
+     */
+    tools: TTools;
   };
 
 // Input streams for bidirectional chat communication
@@ -2366,6 +2393,20 @@ const chatPrepareMessagesKey =
   locals.create<(event: PrepareMessagesEvent<unknown>) => ModelMessage[] | Promise<ModelMessage[]>>(
     "chat.prepareMessages"
   );
+/**
+ * @internal The raw `tools` option from `chat.agent({ tools })`, either a
+ * static `ToolSet` or a per-turn function. Set once at boot.
+ */
+const chatToolsOptionKey = locals.create<
+  ToolSet | ((event: ResolveToolsEvent<unknown>) => ToolSet | Promise<ToolSet>)
+>("chat.toolsOption");
+/**
+ * @internal The concrete `ToolSet` resolved for the current turn. Read by
+ * `toModelMessages` so `convertToModelMessages` can re-run `toModelOutput` on
+ * prior-turn tool results. Unset when no `tools` were declared (preserves the
+ * exact pre-feature conversion behavior).
+ */
+const chatResolvedToolsKey = locals.create<ToolSet>("chat.resolvedTools");
 
 /** @internal Flag set by `chat.requestUpgrade()` to exit the loop after the current turn. */
 const chatUpgradeRequestedKey = locals.create<boolean>("chat.upgradeRequested");
@@ -2627,6 +2668,25 @@ export type PrepareMessagesEvent<TClientData = unknown> = {
 };
 
 /**
+ * Event passed to the per-turn `tools` function form on `chat.agent`.
+ *
+ * Use this when the active tool set depends on per-turn context (the user, a
+ * feature flag, etc.). Return the `ToolSet` to use for converting this turn's
+ * history. Only `inputSchema` and `toModelOutput` are read during conversion,
+ * so a lightweight map (no `execute`) is fine.
+ */
+export type ResolveToolsEvent<TClientData = unknown> = {
+  /** The chat session ID. */
+  chatId: string;
+  /** The current turn number (0-indexed). */
+  turn: number;
+  /** Whether this run is continuing an existing chat. */
+  continuation: boolean;
+  /** Custom data from the frontend. */
+  clientData?: TClientData;
+};
+
+/**
  * Data shape for `data-compaction` stream chunks emitted during compaction.
  * Use to type the `data` field when rendering compaction parts in the frontend.
  */
@@ -2798,6 +2858,40 @@ async function applyPrepareMessages(
       },
     }
   );
+}
+
+/**
+ * Resolve the `tools` option for the current turn and cache it in locals so
+ * `toModelMessages` can pass it to `convertToModelMessages`. For the function
+ * form, invokes the user function once per turn with the current turn context
+ * (which already has parsed `clientData`). No-op when no `tools` were declared.
+ * A throwing tools function logs and leaves the previously-resolved value in
+ * place rather than killing the turn.
+ * @internal
+ */
+async function resolveTurnTools(): Promise<void> {
+  const option = locals.get(chatToolsOptionKey);
+  if (!option) return;
+
+  if (typeof option !== "function") {
+    locals.set(chatResolvedToolsKey, option);
+    return;
+  }
+
+  const turnCtx = locals.get(chatTurnContextKey);
+  try {
+    const resolved = await option({
+      chatId: turnCtx?.chatId ?? "",
+      turn: turnCtx?.turn ?? 0,
+      continuation: turnCtx?.continuation ?? false,
+      clientData: turnCtx?.clientData,
+    });
+    locals.set(chatResolvedToolsKey, resolved);
+  } catch (error) {
+    logger.warn("chat.agent: tools() resolver threw; reusing previous tools for this turn", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 /**
@@ -4250,6 +4344,7 @@ export type ChatAgentOptions<
   TClientDataSchema extends TaskSchema | undefined = undefined,
   TUIMessage extends UIMessage = UIMessage,
   TActionSchema extends TaskSchema | undefined = undefined,
+  TTools extends ToolSet = ToolSet,
 > = Omit<
   TaskOptions<
     TIdentifier,
@@ -4361,6 +4456,41 @@ export type ChatAgentOptions<
   ) => Promise<unknown> | unknown;
 
   /**
+   * The tools available to this agent.
+   *
+   * `chat.agent` doesn't call the model for you. Your tools still go to
+   * `streamText({ tools })` inside `run()`. Declaring them here additionally
+   * lets the SDK re-run each tool's
+   * [`toModelOutput`](https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling#tomodeloutput)
+   * when it re-converts persisted history on later turns. Without this, the
+   * AI SDK has no `tools` to look up `toModelOutput` against, so a tool's
+   * transformed result (e.g. raw image bytes → an image content part, or a
+   * sub-agent summary) silently degrades to its raw JSON output from turn 2
+   * onward.
+   *
+   * Only `inputSchema` and `toModelOutput` are read during conversion (never
+   * `execute`), so you may pass a lightweight map if you keep heavy execute
+   * deps out of this module.
+   *
+   * Pass either a static `ToolSet` or a function of per-turn context (for
+   * tools that depend on the user, a feature flag, etc.). The resolved set is
+   * available on the `run()` payload as `tools`.
+   *
+   * @example
+   * ```ts
+   * const tools = { read_file, search };
+   * chat.agent({
+   *   tools,
+   *   run: async ({ messages, tools, signal }) =>
+   *     streamText({ model, messages, tools, abortSignal: signal }),
+   * });
+   * ```
+   */
+  tools?:
+    | TTools
+    | ((event: ResolveToolsEvent<inferSchemaOut<TClientDataSchema>>) => TTools | Promise<TTools>);
+
+  /**
    * The run function for the chat task.
    *
    * Receives a `ChatTaskRunPayload` with the conversation messages, chat session ID,
@@ -4370,7 +4500,9 @@ export type ChatAgentOptions<
    * **Auto-piping:** If this function returns a value with `.toUIMessageStream()`,
    * the stream is automatically piped to the frontend.
    */
-  run: (payload: ChatTaskRunPayload<inferSchemaOut<TClientDataSchema>>) => Promise<unknown>;
+  run: (
+    payload: ChatTaskRunPayload<inferSchemaOut<TClientDataSchema>, TTools>
+  ) => Promise<unknown>;
 
   /**
    * Called once at the start of every run boot — for the initial run, for
@@ -4951,8 +5083,9 @@ function chatAgent<
   TClientDataSchema extends TaskSchema | undefined = undefined,
   TUIMessage extends UIMessage = UIMessage,
   TActionSchema extends TaskSchema | undefined = undefined,
+  TTools extends ToolSet = ToolSet,
 >(
-  options: ChatAgentOptions<TIdentifier, TClientDataSchema, TUIMessage, TActionSchema>
+  options: ChatAgentOptions<TIdentifier, TClientDataSchema, TUIMessage, TActionSchema, TTools>
 ): Task<TIdentifier, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown> {
   const {
     run: userRun,
@@ -4971,6 +5104,7 @@ function chatAgent<
     compaction,
     pendingMessages: pendingMessagesConfig,
     prepareMessages,
+    tools: toolsOption,
     onTurnComplete,
     maxTurns = 100,
     turnTimeout = "1h",
@@ -5047,6 +5181,25 @@ function chatAgent<
 
       if (prepareMessages) {
         locals.set(chatPrepareMessagesKey, prepareMessages);
+      }
+
+      if (toolsOption) {
+        // Cast: the option's function form is typed against the parsed
+        // `clientData` (`ResolveToolsEvent<inferSchemaOut<...>>`), but the
+        // locals key uses the erased `ResolveToolsEvent<unknown>`. The runtime
+        // value is identical; this mirrors how `prepareMessages` is stored.
+        locals.set(
+          chatToolsOptionKey,
+          toolsOption as
+            | ToolSet
+            | ((event: ResolveToolsEvent<unknown>) => ToolSet | Promise<ToolSet>)
+        );
+        // Static tools are usable immediately (e.g. the boot-time history
+        // seed before the first turn context exists). The function form is
+        // resolved per-turn once `clientData` is parsed (see resolveTurnTools).
+        if (typeof toolsOption !== "function") {
+          locals.set(chatResolvedToolsKey, toolsOption);
+        }
       }
 
       if (compaction) {
@@ -5958,6 +6111,11 @@ function chatAgent<
                     clientData,
                   });
 
+                  // Resolve the per-turn `tools` set now that turn context
+                  // (incl. parsed clientData) exists, so every toModelMessages
+                  // call this turn can re-apply tool `toModelOutput`.
+                  await resolveTurnTools();
+
                   // Per-turn stop controller (reset each turn)
                   const stopController = new AbortController();
                   currentStopController = stopController;
@@ -6613,6 +6771,7 @@ function chatAgent<
                         previousTurnUsage,
                         totalUsage: cumulativeUsage,
                         ctx,
+                        tools: locals.get(chatResolvedToolsKey) ?? {},
                         signal: combinedSignal,
                         cancelSignal,
                         stopSignal,
@@ -7512,11 +7671,11 @@ export interface ChatBuilder<
    * (backwards compatible).
    */
   agent: [TClientDataSchema] extends [undefined]
-  ? <TId extends string, TInfer extends TaskSchema | undefined = undefined, TAction extends TaskSchema | undefined = undefined>(
-    options: ChatAgentOptions<TId, TInfer, TUIMessage, TAction>
+  ? <TId extends string, TInfer extends TaskSchema | undefined = undefined, TAction extends TaskSchema | undefined = undefined, TTools extends ToolSet = ToolSet>(
+    options: ChatAgentOptions<TId, TInfer, TUIMessage, TAction, TTools>
   ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TInfer>>, unknown>
-  : <TId extends string, TAction extends TaskSchema | undefined = undefined>(
-    options: Omit<ChatAgentOptions<TId, TClientDataSchema, TUIMessage, TAction>, "clientDataSchema">
+  : <TId extends string, TAction extends TaskSchema | undefined = undefined, TTools extends ToolSet = ToolSet>(
+    options: Omit<ChatAgentOptions<TId, TClientDataSchema, TUIMessage, TAction, TTools>, "clientDataSchema">
   ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown>;
 
   /**
@@ -9145,7 +9304,11 @@ function chatLocal<T extends Record<string, unknown>>(options: { id: string }): 
 // the browser graph. Re-exported here so `@trigger.dev/sdk/ai` consumers
 // still see them.
 import type { InferChatClientData, InferChatUIMessage } from "./ai-shared.js";
-export type { InferChatClientData, InferChatUIMessage } from "./ai-shared.js";
+export type {
+  InferChatClientData,
+  InferChatUIMessage,
+  InferChatUIMessageFromTools,
+} from "./ai-shared.js";
 
 /**
  * Options for {@link createChatStartSessionAction}.

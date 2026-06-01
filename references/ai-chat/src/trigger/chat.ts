@@ -10,7 +10,8 @@ import {
   createProviderRegistry,
   validateUIMessages,
 } from "ai";
-import type { LanguageModel, LanguageModelUsage, UIMessage } from "ai";
+import type { LanguageModel, LanguageModelUsage, ModelMessage, UIMessage } from "ai";
+import { tool } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
@@ -183,6 +184,12 @@ export const aiChat = chat
     id: "ai-chat",
     idleTimeoutInSeconds: 60,
     chatAccessTokenTTL: "1h",
+
+    // Declare tools on the config so the SDK threads them into its internal
+    // convertToModelMessages, so any tool `toModelOutput` is re-applied when
+    // prior-turn history is re-converted. The resolved set comes back, typed,
+    // on the run payload (used below instead of referencing `chatTools` again).
+    tools: chatTools,
 
     // #region Compaction — automatic context window management
     compaction: {
@@ -537,7 +544,7 @@ export const aiChat = chat
     // #endregion
 
     // #region run — just return streamText(), chat.agent handles everything else
-    run: async ({ messages, clientData, stopSignal }) => {
+    run: async ({ messages, clientData, stopSignal, tools }) => {
       userContext.messageCount++;
       if (clientData?.model) {
         userContext.preferredModel = clientData.model;
@@ -550,7 +557,8 @@ export const aiChat = chat
         ...chat.toStreamTextOptions({
           registry,
           telemetry: clientData?.userId ? { userId: clientData.userId } : undefined,
-          tools: chatTools,
+          // `tools` is the same `chatTools` set, handed back typed on the payload.
+          tools,
         }),
         model: languageModelForChatTurn(modelOverride),
         messages: messages,
@@ -1074,3 +1082,92 @@ export const cfTrustTestAgent = chat
       });
     },
   });
+
+// ============================================================================
+// tool-model-output-test: TRI-10149 regression
+//
+// A tool whose `toModelOutput` rewrites the result into a marker phrase that
+// the *raw* tool output never contains. The model only ever learns the
+// codeword through `toModelOutput`.
+//
+//   Turn 1: the model calls `vault`, sees the codeword via `toModelOutput`,
+//           but is told to reply with exactly "ACK", so the codeword never
+//           enters the assistant's text. The tool result is its only home in
+//           the persisted history.
+//   Turn 2: the model is asked to recall the codeword. The SDK re-converts the
+//           accumulated UIMessage history into the `messages: ModelMessage[]`
+//           handed to `run()`. If `tools` is threaded into that internal
+//           `convertToModelMessages` call, `toModelOutput` runs again and the
+//           model (and the `messages` we receive) see "GIRAFFE-7731". If not
+//           (the bug), the raw output is JSON-stringified and the codeword is
+//           gone.
+//
+// `run()` inspects its OWN incoming `messages` each turn and logs whether the
+// prior-turn tool result still carries the marker, a deterministic,
+// model-independent assertion point (this array is the literal output of the
+// `toModelMessages` wrapper under test). The model's turn-2 recall is a
+// secondary, user-facing signal.
+// ============================================================================
+
+const VAULT_CODEWORD = "GIRAFFE-7731";
+
+const vaultTool = tool({
+  description:
+    "Open the vault. You MUST call this tool to learn the codeword. The raw " +
+    "tool result is opaque bytes; only your model-side view reveals the codeword.",
+  inputSchema: z.object({}),
+  // Raw output deliberately omits the codeword. This is what streams to the
+  // frontend AND what gets JSON-stringified into the prompt when the history
+  // is re-converted WITHOUT tools (the bug this test guards against).
+  execute: async () => ({
+    kind: "vault-blob",
+    bytes: "9f3a8c1d7e2b40960aa5510fbe33cc77",
+    note: "raw vault bytes, not human readable",
+  }),
+  // Model-side view: the ONLY place the codeword appears. Skipped on turn 2+
+  // unless the SDK threads `tools` through its internal convertToModelMessages.
+  toModelOutput: () => ({
+    type: "text" as const,
+    value: `VAULT CONTENTS: the codeword is ${VAULT_CODEWORD}.`,
+  }),
+});
+
+/**
+ * Log whether each incoming tool-result message still carries the
+ * `toModelOutput` marker. `messages` is the exact output of the internal
+ * `toModelMessages` wrapper, so `containsCodeword` is the deterministic verdict
+ * for TRI-10149 on every turn after the tool has been called.
+ */
+function logVaultProbe(messages: ModelMessage[]) {
+  for (const m of messages) {
+    if (m.role !== "tool") continue;
+    const serialized = JSON.stringify(m.content);
+    logger.info("tool-model-output-test: incoming tool result", {
+      messageCount: messages.length,
+      containsCodeword: serialized.includes(VAULT_CODEWORD),
+      serialized: serialized.slice(0, 500),
+    });
+  }
+}
+
+export const toolModelOutputTest = chat.agent({
+  id: "tool-model-output-test",
+  idleTimeoutInSeconds: 60,
+  // Declaring tools on the config (TRI-10149) threads them into the SDK's
+  // internal convertToModelMessages so `toModelOutput` re-runs when prior-turn
+  // history is re-converted. `tools` is then handed back, typed, on the run payload.
+  tools: { vault: vaultTool },
+  run: async ({ messages, tools, signal }) => {
+    logVaultProbe(messages);
+    return streamText({
+      model: openai("gpt-4o-mini"),
+      system:
+        "You are a vault assistant. Follow the user's formatting instructions exactly. " +
+        "When the user asks for the codeword, answer with it directly.",
+      messages,
+      tools,
+      stopWhen: stepCountIs(5),
+      abortSignal: signal,
+    });
+  },
+});
