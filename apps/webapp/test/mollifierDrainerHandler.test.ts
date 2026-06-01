@@ -348,6 +348,85 @@ describe("createDrainerHandler", () => {
     ).rejects.toThrow("Can't reach database server");
   });
 
+  it("writes a SYSTEM_FAILURE row when createCancelledRun fails non-retryably (cancel bifurcation)", async () => {
+    // Without this guard a non-conflict, non-retryable failure from
+    // createCancelledRun rethrows out of the handler. The drainer's
+    // onTerminalFailure gates on cause==="max-attempts-exhausted" and
+    // skips "non-retryable", so buffer.fail() deletes the entry with
+    // no PG row written — the cancellation disappears silently.
+    // Mirror the non-cancel path's SYSTEM_FAILURE fallback so the
+    // customer always sees a terminal row.
+    const friendlyId = RunId.generate().friendlyId;
+    const cancelErr = new Error("validation failed: bad cancel snapshot");
+    const createCancelledRun = vi.fn(async () => {
+      throw cancelErr;
+    });
+    const createFailedTaskRun = vi.fn(async () => ({ id: "internal_x" }));
+    const handler = createDrainerHandler({
+      engine: { createCancelledRun, createFailedTaskRun } as any,
+      prisma: {} as any,
+    });
+
+    await handler({
+      runId: friendlyId,
+      envId: "env_a",
+      orgId: "org_1",
+      payload: {
+        friendlyId,
+        taskIdentifier: "t",
+        environment: envFixture,
+        cancelledAt: new Date().toISOString(),
+        cancelReason: "Canceled by user",
+      },
+      attempts: 0,
+      createdAt: new Date(),
+    } as any);
+
+    // SYSTEM_FAILURE row was written via the shared helper. Handler
+    // returns cleanly so the drainer ACKs the entry instead of
+    // buffer.fail()ing it.
+    expect(createFailedTaskRun).toHaveBeenCalledOnce();
+    expect(createFailedTaskRun.mock.calls[0][0].friendlyId).toBe(friendlyId);
+    expect(createFailedTaskRun.mock.calls[0][0].error.raw).toContain(
+      "validation failed: bad cancel snapshot"
+    );
+  });
+
+  it("requeues when createCancelledRun fails with a retryable PG error (cancel bifurcation)", async () => {
+    // Retryable PG failures must rethrow so the drainer requeues the
+    // entry — writing a SYSTEM_FAILURE row when PG is transiently
+    // unreachable would still fail. The drainer's existing retry loop
+    // handles the requeue.
+    const friendlyId = RunId.generate().friendlyId;
+    const cancelErr = new Error("Can't reach database server");
+    const createCancelledRun = vi.fn(async () => {
+      throw cancelErr;
+    });
+    const createFailedTaskRun = vi.fn();
+    const handler = createDrainerHandler({
+      engine: { createCancelledRun, createFailedTaskRun } as any,
+      prisma: {} as any,
+    });
+
+    await expect(
+      handler({
+        runId: friendlyId,
+        envId: "env_a",
+        orgId: "org_1",
+        payload: {
+          friendlyId,
+          taskIdentifier: "t",
+          environment: envFixture,
+          cancelledAt: new Date().toISOString(),
+          cancelReason: "Canceled by user",
+        },
+        attempts: 0,
+        createdAt: new Date(),
+      } as any)
+    ).rejects.toThrow("Can't reach database server");
+    expect(createFailedTaskRun).not.toHaveBeenCalled();
+  });
+
   it("rethrows the original error when the snapshot lacks an environment block", async () => {
     const triggerErr = new Error("engine rejected the snapshot");
     const trigger = vi.fn(async () => {

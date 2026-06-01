@@ -103,6 +103,39 @@ export function createDrainerHandler(deps: {
             const isConflict =
               err instanceof Error && err.message.startsWith("createCancelledRun conflict");
             if (!isConflict) {
+              // Mirror the SYSTEM_FAILURE fallback the non-cancelled
+              // trigger path uses below. Without this branch, a
+              // non-retryable createCancelledRun failure rethrows, the
+              // drainer's onTerminalFailure handler skips because it
+              // gates on `cause === "max-attempts-exhausted"` (and the
+              // outer drainer classifies non-retryable failures with
+              // `cause: "non-retryable"`), and buffer.fail() deletes
+              // the entry — leaving NO PG row. The cancellation
+              // disappears silently from the customer's dashboard.
+              // Writing a SYSTEM_FAILURE row gives the run a terminal,
+              // visible state.
+              if (isRetryablePgError(err)) {
+                throw err;
+              }
+              span.setAttribute("mollifier.cancel_terminal_failure_reason",
+                err instanceof Error ? err.message : String(err));
+              try {
+                const wrote = await writeMollifierTerminalFailureRow(deps, {
+                  friendlyId: input.runId,
+                  snapshot: input.payload as Record<string, unknown>,
+                  reason: err instanceof Error ? err.message : String(err),
+                });
+                if (wrote) return;
+              } catch (writeErr) {
+                if (isRetryablePgError(writeErr)) {
+                  span.setAttribute("mollifier.cancel_terminal_write_retryable", true);
+                  throw writeErr;
+                }
+                span.setAttribute(
+                  "mollifier.cancel_terminal_write_error",
+                  writeErr instanceof Error ? writeErr.message : String(writeErr)
+                );
+              }
               throw err;
             }
             span.setAttribute("mollifier.cancel_conflict", true);

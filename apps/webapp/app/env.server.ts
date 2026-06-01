@@ -1104,13 +1104,19 @@ const EnvironmentSchema = z
     // Periodic sweep that scans buffer queue LISTs for entries whose
     // dwell exceeds the stale threshold. Independent of the drainer —
     // its job is exactly to make a stuck/offline drainer visible to
-    // ops. Defaults: enabled when the mollifier is enabled, run every
-    // 5 minutes, alert on anything that's been dwelling for 5+ minutes
-    // (matches the sweep interval — "anything still here when we
-    // check" is the simplest threshold that converges).
-    TRIGGER_MOLLIFIER_STALE_SWEEP_ENABLED: z
-      .string()
-      .default(process.env.TRIGGER_MOLLIFIER_ENABLED ?? "0"),
+    // ops. Defaults: explicitly opt-in (a separate kill switch from
+    // the mollifier itself), run every 5 minutes, alert on anything
+    // that's been dwelling for 5+ minutes (matches the sweep interval
+    // — "anything still here when we check" is the simplest threshold
+    // that converges).
+    //
+    // The sweep was previously defaulting to inherit
+    // `TRIGGER_MOLLIFIER_ENABLED`, which meant any deployment already
+    // running with the mollifier on would auto-start the sweep worker
+    // on upgrade — turning on new background load with no explicit
+    // rollout step. Hard-defaulting to "0" preserves the intent of
+    // exposing the sweep as a separate switch.
+    TRIGGER_MOLLIFIER_STALE_SWEEP_ENABLED: z.string().default("0"),
     TRIGGER_MOLLIFIER_STALE_SWEEP_INTERVAL_MS: z.coerce
       .number()
       .int()
