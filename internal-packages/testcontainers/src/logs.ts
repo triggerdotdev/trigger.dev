@@ -1,5 +1,5 @@
 import { env, isCI } from "std-env";
-import { TaskContext } from "vitest";
+import { TestContext } from "vitest";
 import { DockerDiagnostics, getDockerDiagnostics } from "./docker";
 import { StartedTestContainer } from "testcontainers";
 
@@ -31,7 +31,7 @@ export function getContainerMetadata(container: StartedTestContainer) {
   };
 }
 
-export function getTaskMetadata(task: TaskContext["task"]) {
+export function getTaskMetadata(task: TestContext["task"]) {
   return {
     testName: task.name,
   };

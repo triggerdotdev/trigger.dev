@@ -513,6 +513,7 @@ describe("RunsReplicationService (part 2/2)", () => {
 
   containerTest(
     "should be able to handle processing transactions for a long period of time",
+    { timeout: 60_000 * 5 },
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
 
@@ -614,8 +615,7 @@ describe("RunsReplicationService (part 2/2)", () => {
       expect(result?.length).toBeGreaterThanOrEqual(50);
 
       await runsReplicationService.stop();
-    },
-    { timeout: 60_000 * 5 }
+    }
   );
 
   containerTest(

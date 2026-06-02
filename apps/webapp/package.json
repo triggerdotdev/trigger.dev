@@ -27,7 +27,7 @@
     "/public/build"
   ],
   "dependencies": {
-    "@ai-sdk/openai": "^1.3.23",
+    "@ai-sdk/openai": "^3.0.0",
     "@ai-sdk/react": "^3.0.0",
     "@ariakit/react": "^0.4.6",
     "@ariakit/react-core": "^0.4.6",
@@ -138,7 +138,7 @@
     "@vercel/sdk": "^1.19.1",
     "@whatwg-node/fetch": "^0.9.14",
     "@window-splitter/react": "1.1.3",
-    "ai": "^4.3.19",
+    "ai": "^6.0.116",
     "assert-never": "^1.2.1",
     "aws4fetch": "^1.0.18",
     "class-variance-authority": "^0.5.2",
@@ -286,7 +286,7 @@
     "eslint-plugin-import": "^2.29.1",
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-turbo": "^2.0.4",
-    "evalite": "^0.11.4",
+    "evalite": "1.0.0-beta.16",
     "npm-run-all": "^4.1.5",
     "postcss-import": "^16.0.1",
     "postcss-loader": "^8.1.1",

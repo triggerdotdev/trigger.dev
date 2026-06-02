@@ -3,6 +3,7 @@ import { BufferEntrySchema, serialiseSnapshot, deserialiseSnapshot } from "./sch
 import { redisTest } from "@internal/testcontainers";
 import { Logger } from "@trigger.dev/core/logger";
 import {
+  DRAINING_SET_KEY,
   MollifierBuffer,
   idempotencyLookupKeyFor,
   makeIdempotencyClaimKey,
@@ -2718,6 +2719,253 @@ describe("MollifierBuffer pre-gate claim — ownership token safety", () => {
           ttlSeconds: 60,
         });
         expect(published).toBe(true);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+});
+
+// The DRAINING set is observability-only: a sorted set keyed by the
+// pop wall-clock millis whose membership mirrors entries currently in
+// DRAINING state (popped, not yet acked/failed/requeued). The gauge in
+// `mollifierDrainerWorker.server.ts` polls `getDrainingCount` and emits
+// `mollifier.draining.current` for ops dashboards / post-crash
+// forensics. Tests pin the lifecycle transitions on every Lua boundary
+// so a regression that breaks the gauge surfaces here, not at 03:00.
+describe("MollifierBuffer.draining tracker (observability)", () => {
+  redisTest(
+    "pop ZADDs to the draining set with a positive recent score",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        const before = Date.now();
+        await buffer.accept({ runId: "drn_1", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await buffer.pop("env_a");
+
+        const count = await buffer.getDrainingCount();
+        expect(count).toBe(1);
+
+        // Score is the pop wall-clock in millis (Redis TIME, computed
+        // inside the Lua). Sanity-check it's within a tight window of
+        // the test's wall-clock so a future bug substituting createdAt
+        // or zero would surface.
+        const score = await buffer["redis"].zscore(DRAINING_SET_KEY, "drn_1");
+        expect(score).not.toBeNull();
+        const scoreMs = Number(score);
+        expect(scoreMs).toBeGreaterThanOrEqual(before - 1_000);
+        expect(scoreMs).toBeLessThanOrEqual(Date.now() + 1_000);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "ack ZREMs from the draining set",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "drn_ack", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await buffer.pop("env_a");
+        expect(await buffer.getDrainingCount()).toBe(1);
+
+        await buffer.ack("drn_ack");
+        expect(await buffer.getDrainingCount()).toBe(0);
+        expect(await buffer["redis"].zscore(DRAINING_SET_KEY, "drn_ack")).toBeNull();
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "fail ZREMs from the draining set even though the entry hash is torn down",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "drn_fail", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await buffer.pop("env_a");
+        expect(await buffer.getDrainingCount()).toBe(1);
+
+        await buffer.fail("drn_fail", { code: "X", message: "y" });
+        expect(await buffer.getDrainingCount()).toBe(0);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "requeue ZREMs from the draining set so the entry is no longer counted as in-flight",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "drn_rq", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await buffer.pop("env_a");
+        expect(await buffer.getDrainingCount()).toBe(1);
+
+        await buffer.requeue("drn_rq");
+        // Back in QUEUED — not currently "draining", so the tracker is
+        // empty even though the entry hash still exists.
+        expect(await buffer.getDrainingCount()).toBe(0);
+        const entry = await buffer.getEntry("drn_rq");
+        expect(entry!.status).toBe("QUEUED");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "the same entry going through pop → requeue → pop is tracked at the latest pop's score",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      // The pop Lua does ZADD (no NX/XX/GT flags) so the second pop
+      // overwrites the score with the new wall-clock. listStaleDraining
+      // therefore measures "time since the most recent pop", which is
+      // what an operator wants — a requeued entry that just got picked
+      // up again isn't stale, only one that was popped and stayed there.
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "drn_re", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await buffer.pop("env_a");
+        const firstScore = Number(await buffer["redis"].zscore(DRAINING_SET_KEY, "drn_re"));
+
+        await buffer.requeue("drn_re");
+        // ZREMed; not counted as draining between pops.
+        expect(await buffer.getDrainingCount()).toBe(0);
+
+        // Tiny sleep so the second pop's TIME is observably later.
+        await new Promise((r) => setTimeout(r, 25));
+        await buffer.pop("env_a");
+        const secondScore = Number(await buffer["redis"].zscore(DRAINING_SET_KEY, "drn_re"));
+        expect(secondScore).toBeGreaterThanOrEqual(firstScore);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "listStaleDraining returns runIds popped before the cutoff and respects the limit",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        // Pop two entries, wait, then pop a third. With the cutoff set
+        // to the gap, only the first two should come back.
+        await buffer.accept({ runId: "old_1", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await buffer.accept({ runId: "old_2", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await buffer.pop("env_a");
+        await buffer.pop("env_a");
+
+        await new Promise((r) => setTimeout(r, 75));
+
+        await buffer.accept({ runId: "new_1", envId: "env_b", orgId: "org_1", payload: "{}" });
+        await buffer.pop("env_b");
+
+        // 50ms cutoff: old_1 and old_2 qualify, new_1 is too fresh.
+        const stale = await buffer.listStaleDraining(50, 10);
+        expect(stale.sort()).toEqual(["old_1", "old_2"]);
+
+        // Limit caps the result set.
+        const capped = await buffer.listStaleDraining(50, 1);
+        expect(capped.length).toBe(1);
+        expect(["old_1", "old_2"]).toContain(capped[0]);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "draining set is not load-bearing for correctness: stale-sweep & entry hash still drive recovery",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      // Documents the invariant we rely on for graceful degradation: if
+      // a deploy somehow regresses the ZREM-on-ack (or the set is
+      // manually wiped), correctness still holds because the per-entry
+      // hash carries `status` and the stale-sweep scans the queue LISTs.
+      // The gauge would just over-report — an ops issue, not a data-loss
+      // bug. Pinning this with a direct DEL keeps the principle visible
+      // in test output.
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "deg_1", envId: "env_a", orgId: "org_1", payload: "{}" });
+        const popped = await buffer.pop("env_a");
+        expect(popped!.status).toBe("DRAINING");
+
+        // Wipe the tracker out-of-band. Correctness must not regress.
+        await buffer["redis"].del(DRAINING_SET_KEY);
+
+        // ack still succeeds, entry hash still flips to materialised,
+        // grace TTL still applied. The next gauge poll just sees a
+        // count of 0 instead of 1 — an observability blip, not a bug.
+        await buffer.ack("deg_1");
+        const after = await buffer.getEntry("deg_1");
+        expect(after).not.toBeNull();
+        expect(after!.materialised).toBe(true);
       } finally {
         await buffer.close();
       }

@@ -14,6 +14,10 @@ export interface ImportEnvironmentVariablesParams {
    */
   variables: Record<string, string>;
   override?: boolean;
+  /**
+   * When `true`, the imported variables are created as secret (redacted) environment variables. Defaults to `false`.
+   */
+  isSecret?: boolean;
 }
 
 export interface CreateEnvironmentVariableParams {
