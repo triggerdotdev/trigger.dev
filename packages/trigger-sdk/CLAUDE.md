@@ -21,7 +21,7 @@ Always import from `@trigger.dev/sdk`. Never use `@trigger.dev/sdk/v3` (deprecat
 ## When Adding Features
 
 1. Implement the feature in the SDK
-2. Test with `references/hello-world` reference project
+2. Test with the `hello-world` project in the [`triggerdotdev/references`](https://github.com/triggerdotdev/references) repo
 3. Docs updates (`docs/`) are usually done in a separate PR
 
 Do NOT update `rules/` or `.claude/skills/trigger-dev-tasks/` unless explicitly asked. These are maintained in separate dedicated passes.

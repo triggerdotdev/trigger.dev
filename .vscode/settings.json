@@ -1,5 +1,5 @@
 {
-  "deno.enablePaths": ["references/deno-reference", "runtime_tests/tests/deno"],
+  "deno.enablePaths": ["runtime_tests/tests/deno"],
   "debug.toolBarLocation": "commandCenter",
   "typescript.tsdk": "node_modules/typescript/lib",
   "search.exclude": {

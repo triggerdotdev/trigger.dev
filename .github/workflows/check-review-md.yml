@@ -7,7 +7,6 @@ on:
       - "docs/**"
       - ".changeset/**"
       - ".server-changes/**"
-      - "references/**"
 
 concurrency:
   group: review-md-drift-${{ github.event.pull_request.number }}
