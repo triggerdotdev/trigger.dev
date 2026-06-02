@@ -789,4 +789,107 @@ describe("RunsRepository (part 2/2)", () => {
       expect(secondPage.pagination.previousCursor).toBeTruthy();
     }
   );
+
+  containerTest(
+    "should count new runs with listRunIds",
+    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
+      const { clickhouse } = await setupClickhouseReplication({
+        prisma,
+        databaseUrl: postgresContainer.getConnectionUri(),
+        clickhouseUrl: clickhouseContainer.getConnectionUrl(),
+        redisOptions,
+      });
+
+      const organization = await prisma.organization.create({
+        data: {
+          title: "test",
+          slug: "test",
+        },
+      });
+
+      const project = await prisma.project.create({
+        data: {
+          name: "test",
+          slug: "test",
+          organizationId: organization.id,
+          externalRef: "test",
+        },
+      });
+
+      const runtimeEnvironment = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "test",
+          type: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "test",
+          pkApiKey: "test",
+          shortcode: "test",
+        },
+      });
+
+      const taskRun = await prisma.taskRun.create({
+        data: {
+          friendlyId: "run_has_new",
+          taskIdentifier: "my-task",
+          payload: JSON.stringify({ foo: "bar" }),
+          traceId: "1234",
+          spanId: "1234",
+          queue: "test",
+          runtimeEnvironmentId: runtimeEnvironment.id,
+          projectId: project.id,
+          organizationId: organization.id,
+          environmentType: "DEVELOPMENT",
+          engine: "V2",
+        },
+      });
+
+      await setTimeout(1000);
+
+      const runsRepository = new RunsRepository({
+        prisma,
+        clickhouse,
+      });
+
+      const baseOptions = {
+        projectId: project.id,
+        environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
+      };
+
+      const createdAtMs = taskRun.createdAt.getTime();
+
+      const newRunIdsBefore = await runsRepository.listRunIds({
+        ...baseOptions,
+        from: createdAtMs - 1,
+        page: { size: 100 },
+      });
+      expect(newRunIdsBefore.length).toBeGreaterThanOrEqual(1);
+
+      const newRunIdsAfter = await runsRepository.listRunIds({
+        ...baseOptions,
+        from: createdAtMs + 60_000,
+        page: { size: 100 },
+      });
+      expect(newRunIdsAfter).toHaveLength(0);
+
+      const fromBeforeRun = createdAtMs - 1;
+
+      const matchingTaskIds = await runsRepository.listRunIds({
+        ...baseOptions,
+        from: fromBeforeRun,
+        tasks: ["my-task"],
+        page: { size: 100 },
+      });
+      expect(matchingTaskIds.length).toBeGreaterThanOrEqual(1);
+
+      const otherTaskIds = await runsRepository.listRunIds({
+        ...baseOptions,
+        from: fromBeforeRun,
+        tasks: ["other-task"],
+        page: { size: 100 },
+      });
+      expect(otherTaskIds).toHaveLength(0);
+    }
+  );
 });

@@ -318,12 +318,12 @@ export function ButtonContent(props: ButtonContentPropsType) {
 
 type ButtonPropsType = Pick<
   JSX.IntrinsicElements["button"],
-  "type" | "disabled" | "onClick" | "name" | "value" | "form" | "autoFocus"
+  "type" | "disabled" | "onClick" | "name" | "value" | "form" | "autoFocus" | "aria-label"
 > &
   React.ComponentProps<typeof ButtonContent>;
 
 export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
-  ({ type, disabled, autoFocus, onClick, ...props }, ref) => {
+  ({ type, disabled, autoFocus, onClick, "aria-label": ariaLabel, ...props }, ref) => {
     const innerRef = useRef<HTMLButtonElement>(null);
     useImperativeHandle(ref, () => innerRef.current as HTMLButtonElement);
 
@@ -352,6 +352,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
         ref={innerRef}
         form={props.form}
         autoFocus={autoFocus}
+        aria-label={ariaLabel}
       >
         <ButtonContent
           {...props}
