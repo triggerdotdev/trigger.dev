@@ -24,6 +24,7 @@ import type { ClickhouseFactory } from "~/services/clickhouse/clickhouseFactory.
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 
 import { generateSpanId } from "./eventRepository/common.server";
+import { eventRepository } from "./eventRepository/eventRepository.server";
 import type {
   CreatableEventKind,
   CreatableEventStatus,
@@ -120,10 +121,25 @@ class OTLPExporter {
         const routeKey = `${event.organizationId}\0${taskEventStore}`;
         let resolved = routeCache.get(routeKey);
         if (!resolved) {
-          resolved = this._clickhouseFactory.getEventRepositoryForOrganizationSync(
-            taskEventStore,
-            event.organizationId
-          );
+          // Non-ClickHouse stores (taskEvent / taskEventPartitioned) are Postgres-backed.
+          // The ClickHouse factory only handles clickhouse/clickhouse_v2 and throws otherwise.
+          if (taskEventStore !== "clickhouse" && taskEventStore !== "clickhouse_v2") {
+            resolved = { key: "postgres:default", repository: eventRepository };
+          } else {
+            try {
+              resolved = this._clickhouseFactory.getEventRepositoryForOrganizationSync(
+                taskEventStore,
+                event.organizationId
+              );
+            } catch (error) {
+              logger.error("[OTLPExporter] Failed to resolve ClickHouse event repository", {
+                taskEventStore,
+                organizationId: event.organizationId,
+                error: error instanceof Error ? error.message : error,
+              });
+              resolved = { key: "postgres:default", repository: eventRepository };
+            }
+          }
           routeCache.set(routeKey, resolved);
         }
 
