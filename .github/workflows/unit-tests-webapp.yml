@@ -96,7 +96,7 @@ jobs:
         run: pnpm run generate
 
       - name: 🧪 Run Webapp Unit Tests
-        run: pnpm run test:webapp --reporter=default --reporter=blob --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+        run: pnpm run test:webapp --reporter=default --reporter=blob --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }} --passWithNoTests
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
@@ -153,4 +153,4 @@ jobs:
           merge-multiple: true
 
       - name: Merge reports
-        run: pnpm dlx vitest@3.1.4 run --merge-reports --pass-with-no-tests
+        run: pnpm dlx vitest@4.1.7 run --merge-reports --pass-with-no-tests

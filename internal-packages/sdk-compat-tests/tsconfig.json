@@ -9,7 +9,7 @@
     "declaration": false,
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["vitest/globals"]
+    "types": ["vitest/globals", "node"]
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "src/fixtures"]
