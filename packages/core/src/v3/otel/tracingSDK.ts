@@ -522,6 +522,10 @@ class ExternalLogRecordExporterWrapper {
     return this.underlyingExporter.shutdown();
   }
 
+  forceFlush(): Promise<void> {
+    return this.underlyingExporter.forceFlush?.() ?? Promise.resolve();
+  }
+
   transformLogRecord(
     logRecord: ReadableLogRecord,
     externalTraceContext:
