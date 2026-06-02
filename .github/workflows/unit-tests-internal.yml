@@ -96,7 +96,7 @@ jobs:
         run: pnpm run generate
 
       - name: 🧪 Run Internal Unit Tests
-        run: pnpm run test:internal --reporter=default --reporter=blob --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+        run: pnpm run test:internal --reporter=default --reporter=blob --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }} --passWithNoTests
 
       - name: Gather all reports
         if: ${{ !cancelled() }}
@@ -145,4 +145,4 @@ jobs:
           merge-multiple: true
 
       - name: Merge reports
-        run: pnpm dlx vitest@3.1.4 run --merge-reports --pass-with-no-tests
+        run: pnpm dlx vitest@4.1.7 run --merge-reports --pass-with-no-tests
