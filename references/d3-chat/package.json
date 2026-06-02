@@ -31,7 +31,7 @@
     "@opentelemetry/instrumentation": "^0.203.0",
     "@opentelemetry/sdk-logs": "^0.203.0",
     "@radix-ui/react-avatar": "^1.1.3",
-    "@slack/web-api": "7.9.1",
+    "@slack/web-api": "7.16.0",
     "@trigger.dev/python": "workspace:*",
     "@trigger.dev/react-hooks": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",

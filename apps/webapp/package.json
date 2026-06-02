@@ -114,7 +114,7 @@
     "@remix-run/v1-meta": "^0.1.3",
     "@s2-dev/streamstore": "^0.22.10",
     "@sentry/remix": "9.46.0",
-    "@slack/web-api": "7.9.1",
+    "@slack/web-api": "7.16.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "@tabler/icons-react": "^3.36.1",
     "@tailwindcss/container-queries": "^0.1.1",
