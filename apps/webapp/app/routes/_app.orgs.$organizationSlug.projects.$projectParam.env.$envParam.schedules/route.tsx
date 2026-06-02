@@ -129,16 +129,14 @@ const PurchaseSchema = z.discriminatedUnion("action", [
     amount: z.coerce
       .number()
       .int("Must be a whole number")
-      .min(0, "Amount must be 0 or more")
-      .refine((n) => n % 1000 === 0, "Schedules are sold in bundles of 1,000"),
+      .min(0, "Amount must be 0 or more"),
   }),
   z.object({
     action: z.literal("quota-increase"),
     amount: z.coerce
       .number()
       .int("Must be a whole number")
-      .min(1, "Amount must be greater than 0")
-      .refine((n) => n % 1000 === 0, "Schedules are sold in bundles of 1,000"),
+      .min(1, "Amount must be greater than 0"),
   }),
 ]);
 
