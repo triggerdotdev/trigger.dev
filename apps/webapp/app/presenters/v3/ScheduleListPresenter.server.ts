@@ -2,7 +2,7 @@ import { type RuntimeEnvironmentType, type ScheduleType } from "@trigger.dev/dat
 import { type ScheduleListFilters } from "~/components/runs/v3/ScheduleFilters";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getTaskIdentifiers } from "~/models/task.server";
-import { getLimit } from "~/services/platform.v3.server";
+import { getCurrentPlan, getLimit, getPlans } from "~/services/platform.v3.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { CheckScheduleService } from "~/v3/services/checkSchedule.server";
@@ -103,7 +103,27 @@ export class ScheduleListPresenter extends BasePresenter {
       projectId,
     });
 
-    const limit = await getLimit(project.organizationId, "schedules", 100_000_000);
+    const baseLimit = await getLimit(project.organizationId, "schedules", 100_000_000);
+    const [currentPlan, plans] = await Promise.all([
+      getCurrentPlan(project.organizationId),
+      getPlans(),
+    ]);
+
+    const extraSchedules = currentPlan?.v3Subscription?.addOns?.schedules?.purchased ?? 0;
+    const limit = baseLimit + extraSchedules;
+    const canPurchaseSchedules =
+      currentPlan?.v3Subscription?.plan?.limits.schedules.canExceed === true;
+    const maxScheduleQuota = currentPlan?.v3Subscription?.addOns?.schedules?.quota ?? 0;
+    const planScheduleLimit = currentPlan?.v3Subscription?.plan?.limits.schedules.number ?? 0;
+    const schedulePricing = plans?.addOnPricing.schedules ?? null;
+
+    const purchaseInfo = {
+      canPurchaseSchedules,
+      extraSchedules,
+      maxScheduleQuota,
+      planScheduleLimit,
+      schedulePricing,
+    };
 
     //get the latest BackgroundWorker
     const latestWorker = await findCurrentWorkerFromEnvironment(environment, this._replica);
@@ -119,6 +139,7 @@ export class ScheduleListPresenter extends BasePresenter {
           used: schedulesCount,
           limit,
         },
+        ...purchaseInfo,
         filters: {
           tasks,
           search,
@@ -314,6 +335,7 @@ export class ScheduleListPresenter extends BasePresenter {
         used: schedulesCount,
         limit,
       },
+      ...purchaseInfo,
       filters: {
         tasks,
         search,
