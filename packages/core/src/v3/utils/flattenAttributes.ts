@@ -2,6 +2,7 @@ import { Attributes } from "@opentelemetry/api";
 
 export const NULL_SENTINEL = "$@null((";
 export const CIRCULAR_REFERENCE_SENTINEL = "$@circular((";
+const DOT_ESCAPE = "$@dot";
 
 const DEFAULT_MAX_DEPTH = 128;
 
@@ -200,7 +201,8 @@ class AttributeFlattener {
         break;
       }
 
-      const newPrefix = `${prefix ? `${prefix}.` : ""}${Array.isArray(obj) ? `[${key}]` : key}`;
+      const escapedKey = Array.isArray(obj) ? `[${key}]` : key.replace(/\./g, DOT_ESCAPE);
+      const newPrefix = `${prefix ? `${prefix}.` : ""}${escapedKey}`;
 
       if (Array.isArray(value)) {
         for (let i = 0; i < value.length; i++) {
@@ -280,17 +282,18 @@ export function unflattenAttributes(
 
     const parts = key.split(".").reduce(
       (acc, part) => {
-        if (part.startsWith("[") && part.endsWith("]")) {
+        const unescaped = part.split(DOT_ESCAPE).join(".");
+        if (unescaped.startsWith("[") && unescaped.endsWith("]")) {
           // Handle array indices more precisely
-          const match = part.match(/^\[(\d+)\]$/);
+          const match = unescaped.match(/^\[(\d+)\]$/);
           if (match && match[1]) {
             acc.push(parseInt(match[1]));
           } else {
             // Remove brackets for non-numeric array keys
-            acc.push(part.slice(1, -1));
+            acc.push(unescaped.slice(1, -1));
           }
         } else {
-          acc.push(part);
+          acc.push(unescaped);
         }
         return acc;
       },
