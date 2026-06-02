@@ -1215,6 +1215,8 @@ export const ImportEnvironmentVariablesRequestBody = z.object({
   variables: z.record(z.string()),
   parentVariables: z.record(z.string()).optional(),
   override: z.boolean().optional(),
+  // When omitted, variables default to non-secret (the DB default is false).
+  isSecret: z.boolean().optional(),
   source: z
     .discriminatedUnion("type", [
       z.object({ type: z.literal("user"), userId: z.string() }),
