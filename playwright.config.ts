@@ -56,10 +56,5 @@ export default defineConfig({
       url: "http://localhost:3030",
       reuseExistingServer: !process.env.CI,
     },
-    {
-      command: "pnpm run --filter @references/nextjs-test dev",
-      url: "http://localhost:3000",
-      reuseExistingServer: !process.env.CI,
-    },
   ],
 });

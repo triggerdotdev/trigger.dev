@@ -107,24 +107,32 @@ branch are tagged into a release periodically.
 
 ## Manual testing using hello-world
 
-We use the `<root>/references/hello-world` subdirectory as a staging ground for testing changes to the SDK (`@trigger.dev/sdk` at `<root>/packages/trigger-sdk`), the Core package (`@trigger.dev/core` at `<root>packages/core`), the CLI (`trigger.dev` at `<root>/packages/cli-v3`) and the platform (The remix app at `<root>/apps/webapp`). The instructions below will get you started on using the `hello-world` for local development of Trigger.dev.
+The `hello-world` reference project (and the others) live in a separate repo:
+[`triggerdotdev/references`](https://github.com/triggerdotdev/references). Clone it
+alongside this repo. It's the staging ground for testing changes to the SDK
+(`@trigger.dev/sdk` at `<root>/packages/trigger-sdk`), the Core package
+(`@trigger.dev/core` at `<root>/packages/core`), the CLI (`trigger.dev` at
+`<root>/packages/cli-v3`) and the platform (the Remix app at `<root>/apps/webapp`).
+To exercise your local monorepo changes, the reference project links to your local
+build — see the references repo's README for the `pnpm run link` flow.
+
+> Paths below such as `projects/hello-world` are relative to your `references`
+> clone, not this repo.
 
 ### First-time setup
 
 First, make sure you are running the webapp according to the instructions above. The seed step from setup already created a `hello-world` project under the `References` org with the stable ref `proj_rrkpdguyagvsoktglnod` — log in at http://localhost:3030 with any email to access it. Then:
 
-1. Build the CLI (skip if you already ran the build step in setup)
+1. Build the CLI and packages (skip if you already ran the build step in setup)
 
 ```sh
-pnpm run build --filter trigger.dev
-# Make it accessible to `pnpm exec`
-pnpm i
+pnpm run build --filter trigger.dev --filter "@trigger.dev/*"
 ```
 
-2. Change into the `<root>/references/hello-world` directory and authorize the CLI to the local server:
+2. In your `references` clone, link to your local monorepo build (see its README), then change into `projects/hello-world` and authorize the CLI to the local server:
 
 ```sh
-cd references/hello-world
+cd projects/hello-world
 cp .env.example .env
 pnpm exec trigger login -a http://localhost:3030
 ```
@@ -134,7 +142,7 @@ This will open a new browser window and authorize the CLI against your local use
 You can optionally pass a `--profile` flag to the `login` command, which will allow you to use the CLI with separate accounts/servers. We suggest using a profile called `local` for your local development:
 
 ```sh
-cd references/hello-world
+cd projects/hello-world
 pnpm exec trigger login -a http://localhost:3030 --profile local
 # later when you run the dev or deploy command:
 pnpm exec trigger dev --profile local
@@ -147,35 +155,35 @@ The following steps should be followed any time you start working on a new featu
 
 1. Make sure the webapp is running on localhost:3030
 
-2. Open a terminal window and build the CLI and packages and watch for changes
+2. In this repo, open a terminal window and build the CLI and packages and watch for changes (the reference project links against this build)
 
 ```sh
 pnpm run dev --filter trigger.dev --filter "@trigger.dev/*"
 ```
 
-3. Open another terminal window, and change into the `<root>/references/hello-world` directory.
+3. Open another terminal window, and change into `projects/hello-world` in your `references` clone.
 
 4. Run the `dev` command, which will register all the local tasks with the platform and allow you to start testing task execution:
 
 ```sh
-# in <root>/references/hello-world
+# in <references-clone>/projects/hello-world
 pnpm exec trigger dev
 ```
 
 If you want additional debug logging, you can use the `--log-level debug` flag:
 
 ```sh
-# in <root>/references/hello-world
+# in <references-clone>/projects/hello-world
 pnpm exec trigger dev --log-level debug
 ```
 
-5. If you make any changes in the CLI/Core/SDK, you'll need to `CTRL+C` to exit the `dev` command and restart it to pickup changes. Any changes to the files inside of the `hello-world/src/trigger` dir will automatically be rebuilt by the `dev` command.
+5. If you make any changes in the CLI/Core/SDK, you'll need to `CTRL+C` to exit the `dev` command and restart it to pickup changes. Any changes to the files inside the reference project's `src/trigger` dir will automatically be rebuilt by the `dev` command.
 
 6. Navigate to the `hello-world` project in your local dashboard at localhost:3030 and you should see the list of tasks.
 
-7. Go to the "Test" page in the sidebar and select a task. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the `/references/hello-world/src/trigger` folder. Many of them accept an empty payload.
+7. Go to the "Test" page in the sidebar and select a task. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the reference project's `src/trigger` folder. Many of them accept an empty payload.
 
-8. Feel free to add additional files in `hello-world/src/trigger` to test out specific aspects of the system, or add in edge cases.
+8. Feel free to add additional files in the reference project's `src/trigger` dir to test out specific aspects of the system, or add in edge cases.
 
 ## Adding and running migrations
 

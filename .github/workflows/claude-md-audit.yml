@@ -8,7 +8,6 @@ on:
       - ".changeset/**"
       - ".server-changes/**"
       - "**/*.md"
-      - "references/**"
 
 concurrency:
   group: claude-md-audit-${{ github.event.pull_request.number }}
