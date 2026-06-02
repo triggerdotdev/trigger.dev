@@ -72,6 +72,7 @@ function initializeMollifierDrainer(): MollifierDrainer<MollifierSnapshot> {
   logger.debug("Initializing mollifier drainer", {
     concurrency: env.TRIGGER_MOLLIFIER_DRAIN_CONCURRENCY,
     maxAttempts: env.TRIGGER_MOLLIFIER_DRAIN_MAX_ATTEMPTS,
+    drainBatchSize: env.TRIGGER_MOLLIFIER_DRAIN_BATCH_SIZE,
   });
 
   const drainer = new MollifierDrainer<MollifierSnapshot>({
@@ -81,6 +82,7 @@ function initializeMollifierDrainer(): MollifierDrainer<MollifierSnapshot> {
     concurrency: env.TRIGGER_MOLLIFIER_DRAIN_CONCURRENCY,
     maxAttempts: env.TRIGGER_MOLLIFIER_DRAIN_MAX_ATTEMPTS,
     maxOrgsPerTick: env.TRIGGER_MOLLIFIER_DRAIN_MAX_ORGS_PER_TICK,
+    drainBatchSize: env.TRIGGER_MOLLIFIER_DRAIN_BATCH_SIZE,
     isRetryable: isRetryablePgError,
   });
 

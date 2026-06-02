@@ -18,6 +18,17 @@ export type MollifierBufferOptions = {
 // have a safety net while PG replica lag settles.
 const ACK_GRACE_TTL_SECONDS = 30;
 
+// Observability-only sorted set of entries currently in DRAINING state
+// (popped by the drainer, not yet acked/failed/requeued). Score is the
+// pop wall-clock in milliseconds — `ZRANGEBYSCORE 0 <now-Xms>` gives
+// the entries stuck mid-drain for longer than X. NOT load-bearing for
+// correctness: the per-entry hash already carries `status` and the
+// stale-sweep would catch stranded entries via the queue LISTs. This
+// set is a fast top-level index for ops (gauge cardinality, post-crash
+// forensics after an ECS OOM) — see `mollifierDrainerWorker` for the
+// gauge wiring.
+export const DRAINING_SET_KEY = "mollifier:draining";
+
 // ioredis reconnect backoff for the mollifier buffer client. The base
 // grows linearly with the attempt count and is capped at 1s (the same
 // envelope as the previous fixed `Math.min(times * 50, 1000)` schedule).
@@ -204,6 +215,7 @@ export class MollifierBuffer {
     const encoded = (await this.redis.popAndMarkDraining(
       queueKey,
       orgsKey,
+      DRAINING_SET_KEY,
       entryPrefix,
       envId,
       "mollifier:org-envs:",
@@ -493,7 +505,9 @@ export class MollifierBuffer {
   async ack(runId: string): Promise<void> {
     await this.redis.ackMollifierEntry(
       `mollifier:entries:${runId}`,
+      DRAINING_SET_KEY,
       String(ACK_GRACE_TTL_SECONDS),
+      runId,
     );
   }
 
@@ -501,6 +515,7 @@ export class MollifierBuffer {
     await this.redis.requeueMollifierEntry(
       `mollifier:entries:${runId}`,
       "mollifier:orgs",
+      DRAINING_SET_KEY,
       "mollifier:queue:",
       runId,
       "mollifier:org-envs:",
@@ -516,9 +531,37 @@ export class MollifierBuffer {
   async fail(runId: string, error: { code: string; message: string }): Promise<boolean> {
     const result = await this.redis.failMollifierEntry(
       `mollifier:entries:${runId}`,
+      DRAINING_SET_KEY,
       JSON.stringify(error),
+      runId,
     );
     return result === 1;
+  }
+
+  // Observability-only: number of entries currently in DRAINING state
+  // (popped, not yet acked/failed/requeued). The gauge in the webapp
+  // drainer worker polls this on a short interval and emits it as
+  // `mollifier.draining.current` for ops dashboards and post-crash
+  // forensics. Cheap (single ZCARD).
+  async getDrainingCount(): Promise<number> {
+    return this.redis.zcard(DRAINING_SET_KEY);
+  }
+
+  // Observability-only: list runIds that have been DRAINING longer than
+  // `olderThanMs` (i.e. popped before `now - olderThanMs`). Bounded by
+  // `limit` to keep the result set tractable when something has gone
+  // very wrong. ZRANGEBYSCORE is O(log N + K). Score is the pop wall-clock
+  // in milliseconds as written by the popAndMarkDraining Lua.
+  async listStaleDraining(olderThanMs: number, limit: number): Promise<string[]> {
+    const maxScore = Date.now() - Math.max(0, olderThanMs);
+    return this.redis.zrangebyscore(
+      DRAINING_SET_KEY,
+      "-inf",
+      String(maxScore),
+      "LIMIT",
+      0,
+      Math.max(0, limit),
+    );
   }
 
   // Returns Redis-side TTL on the entry hash. Returns -1 for entries
@@ -630,10 +673,11 @@ export class MollifierBuffer {
     });
 
     this.redis.defineCommand("requeueMollifierEntry", {
-      numberOfKeys: 2,
+      numberOfKeys: 3,
       lua: `
         local entryKey = KEYS[1]
         local orgsKey = KEYS[2]
+        local drainingSetKey = KEYS[3]
         local queuePrefix = ARGV[1]
         local runId = ARGV[2]
         local orgEnvsPrefix = ARGV[3]
@@ -661,18 +705,31 @@ export class MollifierBuffer {
           redis.call('SADD', orgsKey, orgId)
           redis.call('SADD', orgEnvsPrefix .. orgId, envId)
         end
+        -- Observability-only: leaving DRAINING state, so drop the
+        -- entry from the draining-tracker set. ZREM on absent member
+        -- is a no-op.
+        redis.call('ZREM', drainingSetKey, runId)
         return 1
       `,
     });
 
     this.redis.defineCommand("popAndMarkDraining", {
-      numberOfKeys: 2,
+      numberOfKeys: 3,
       lua: `
         local queueKey = KEYS[1]
         local orgsKey = KEYS[2]
+        local drainingSetKey = KEYS[3]
         local entryPrefix = ARGV[1]
         local envId = ARGV[2]
         local orgEnvsPrefix = ARGV[3]
+
+        -- Wall-clock millis used as the ZADD score on the draining-tracker
+        -- set. Computed once per script invocation so all observers see
+        -- the same pop instant. redis.call('TIME') is deterministic per
+        -- script execution (Lua sees it as a single read), satisfying the
+        -- write-determinism contract on replicas/AOF replay.
+        local timeArr = redis.call('TIME')
+        local nowMs = tonumber(timeArr[1]) * 1000 + math.floor(tonumber(timeArr[2]) / 1000)
 
         -- Helper: prune org-level membership when an env's queue empties.
         -- Called only from the success branch where we know orgId from the
@@ -706,6 +763,14 @@ export class MollifierBuffer {
           local entryKey = entryPrefix .. runId
           if redis.call('EXISTS', entryKey) == 1 then
             redis.call('HSET', entryKey, 'status', 'DRAINING')
+            -- Observability-only: track the runId in the draining set
+            -- with the pop wall-clock as score. Acked/failed/requeued
+            -- in the corresponding Lua scripts. The set is NOT
+            -- load-bearing for correctness — the per-entry hash carries
+            -- status — so a missed ZREM on a partial Lua execution is
+            -- recoverable via the stale-sweep + entry hash, not a
+            -- correctness bug.
+            redis.call('ZADD', drainingSetKey, nowMs, runId)
             local raw = redis.call('HGETALL', entryKey)
             local result = {}
             for i = 1, #raw, 2 do
@@ -957,10 +1022,18 @@ export class MollifierBuffer {
     });
 
     this.redis.defineCommand("ackMollifierEntry", {
-      numberOfKeys: 1,
+      numberOfKeys: 2,
       lua: `
         local entryKey = KEYS[1]
+        local drainingSetKey = KEYS[2]
         local graceTtlSeconds = tonumber(ARGV[1])
+        local runId = ARGV[2]
+
+        -- Always ZREM from the draining-tracker — even if the entry hash
+        -- has been concurrently torn down, the runId might still be in
+        -- the set (e.g. fail() ran first and cleared the hash but a
+        -- delayed ack races in). Idempotent: ZREM on absent is a no-op.
+        redis.call('ZREM', drainingSetKey, runId)
 
         -- Guard: never create a partial entry. If the hash is gone between
         -- pop and ack (concurrent fail or eviction — QUEUED entries carry
@@ -984,10 +1057,17 @@ export class MollifierBuffer {
     });
 
     this.redis.defineCommand("failMollifierEntry", {
-      numberOfKeys: 1,
+      numberOfKeys: 2,
       lua: `
         local entryKey = KEYS[1]
+        local drainingSetKey = KEYS[2]
         local errorPayload = ARGV[1]
+        local runId = ARGV[2]
+
+        -- Always ZREM from the draining-tracker (idempotent on absent).
+        -- Mirrors ack: the runId may be in the set even if the entry hash
+        -- has been raced away.
+        redis.call('ZREM', drainingSetKey, runId)
 
         -- Guard: nothing to mark FAILED if the hash is gone (concurrent
         -- ack/manual cleanup). Returning 0 lets the caller distinguish
@@ -1077,6 +1157,7 @@ declare module "@internal/redis" {
     popAndMarkDraining(
       queueKey: string,
       orgsKey: string,
+      drainingSetKey: string,
       entryPrefix: string,
       envId: string,
       orgEnvsPrefix: string,
@@ -1085,6 +1166,7 @@ declare module "@internal/redis" {
     requeueMollifierEntry(
       entryKey: string,
       orgsKey: string,
+      drainingSetKey: string,
       queuePrefix: string,
       runId: string,
       orgEnvsPrefix: string,
@@ -1129,12 +1211,16 @@ declare module "@internal/redis" {
     ): Result<number, Context>;
     ackMollifierEntry(
       entryKey: string,
+      drainingSetKey: string,
       graceTtlSeconds: string,
+      runId: string,
       callback?: Callback<number>,
     ): Result<number, Context>;
     failMollifierEntry(
       entryKey: string,
+      drainingSetKey: string,
       errorPayload: string,
+      runId: string,
       callback?: Callback<number>,
     ): Result<number, Context>;
     delMollifierKeyIfEquals(
