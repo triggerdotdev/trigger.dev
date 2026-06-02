@@ -1,5 +1,12 @@
 # internal-platform
 
+## 4.5.0-rc.4
+
+### Patch Changes
+
+- Coerce numeric `concurrencyKey` values to string at the API boundary across `tasks.trigger`, `tasks.batchTrigger`, and the Phase-2 streaming batch endpoint. ([#3789](https://github.com/triggerdotdev/trigger.dev/pull/3789))
+- Bump `@s2-dev/streamstore` to `0.22.10` to fix a `TASK_RUN_UNCAUGHT_EXCEPTION` ("Invalid state: Unable to enqueue") when a `chat.agent` turn is aborted mid-stream. ([#3792](https://github.com/triggerdotdev/trigger.dev/pull/3792))
+
 ## 4.5.0-rc.3
 
 ### Patch Changes
