@@ -268,14 +268,35 @@ export class AIRunFilterService {
         };
       }
 
+      // `from`/`to` are validated as strings, so a malformed value (e.g. the
+      // model returning a non-ISO date) would survive safeParse and then
+      // produce NaN here. NaN serializes to `null` over JSON, silently dropping
+      // the date constraint while still reporting success — so reject it.
+      const from = validationResult.data.from
+        ? new Date(validationResult.data.from).getTime()
+        : undefined;
+      const to = validationResult.data.to
+        ? new Date(validationResult.data.to).getTime()
+        : undefined;
+
+      if ((from !== undefined && Number.isNaN(from)) || (to !== undefined && Number.isNaN(to))) {
+        logger.error("AI filter returned an invalid datetime", {
+          from: validationResult.data.from,
+          to: validationResult.data.to,
+        });
+
+        return {
+          success: false,
+          error: "AI response contained an invalid date",
+        };
+      }
+
       return {
         success: true,
         filters: {
           ...validationResult.data,
-          from: validationResult.data.from
-            ? new Date(validationResult.data.from).getTime()
-            : undefined,
-          to: validationResult.data.to ? new Date(validationResult.data.to).getTime() : undefined,
+          from,
+          to,
         },
       };
     } catch (error) {
