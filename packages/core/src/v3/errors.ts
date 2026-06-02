@@ -657,7 +657,9 @@ export class MaxDurationExceededError extends Error {
     public readonly maxDurationInSeconds: number,
     public readonly elapsedTimeInSeconds: number
   ) {
-    super(`Run exceeded maximum compute time (maxDuration) of ${maxDurationInSeconds} seconds`);
+    super(
+      `Run exceeded maximum compute time (maxComputeSeconds) of ${maxDurationInSeconds} seconds`
+    );
 
     this.name = "MaxDurationExceededError";
   }
@@ -755,6 +757,12 @@ const prettyInternalErrors: Partial<
     link: {
       name: "Read our troubleshooting guide",
       href: links.docs.troubleshooting.uncaughtException,
+    },
+  },
+  MAX_DURATION_EXCEEDED: {
+    link: {
+      name: "How to set maxComputeSeconds (maxDuration)",
+      href: links.docs.maxDuration,
     },
   },
 };
