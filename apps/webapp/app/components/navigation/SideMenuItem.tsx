@@ -56,9 +56,11 @@ export function SideMenuItem({
       target={target}
       data-action={dataAction}
       className={cn(
-        "group/menulink flex h-8 items-center gap-2 overflow-hidden rounded pl-[0.4375rem] pr-2 group-hover/menuitem:bg-charcoal-750 group-hover/menuitem:text-text-bright hover:bg-charcoal-750 hover:text-text-bright",
+        "group/menulink flex h-8 items-center gap-2 overflow-hidden rounded pl-[0.4375rem] pr-2",
         isIndented ? "min-w-0 flex-1" : "w-full",
-        isActive ? "bg-tertiary text-text-bright" : "text-text-dimmed"
+        isActive
+          ? "bg-tertiary text-text-bright"
+          : "text-text-dimmed group-hover/menuitem:bg-charcoal-750 group-hover/menuitem:text-text-bright hover:bg-charcoal-750 hover:text-text-bright"
       )}
     >
       <Icon

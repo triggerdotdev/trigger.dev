@@ -1,14 +1,14 @@
 import {
   BellAlertIcon,
   ChartBarIcon,
-  Cog8ToothIcon,
   CreditCardIcon,
   LockClosedIcon,
   ShieldCheckIcon,
-  UserGroupIcon,
 } from "@heroicons/react/20/solid";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { SlackIcon } from "@trigger.dev/companyicons";
+import { SlackIcon } from "~/assets/icons/SlackIcon";
+import { SlidersIcon } from "~/assets/icons/SlidersIcon";
+import { UserGroupIcon } from "~/assets/icons/UserGroupIcon";
 import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useFeatures } from "~/hooks/useFeatures";
@@ -86,16 +86,16 @@ export function OrganizationSettingsSideMenu({
               <SideMenuItem
                 name="Usage"
                 icon={ChartBarIcon}
-                activeIconColor="text-indigo-500"
-                inactiveIconColor="text-indigo-500"
+                activeIconColor="text-text-bright"
+                inactiveIconColor="text-text-dimmed"
                 to={v3UsagePath(organization)}
                 data-action="usage"
               />
               <SideMenuItem
                 name="Billing"
                 icon={CreditCardIcon}
-                activeIconColor="text-emerald-500"
-                inactiveIconColor="text-emerald-500"
+                activeIconColor="text-text-bright"
+                inactiveIconColor="text-text-dimmed"
                 to={v3BillingPath(organization)}
                 data-action="billing"
                 badge={
@@ -107,8 +107,8 @@ export function OrganizationSettingsSideMenu({
               <SideMenuItem
                 name="Billing alerts"
                 icon={BellAlertIcon}
-                activeIconColor="text-rose-500"
-                inactiveIconColor="text-rose-500"
+                activeIconColor="text-text-bright"
+                inactiveIconColor="text-text-dimmed"
                 to={v3BillingAlertsPath(organization)}
                 data-action="billing-alerts"
               />
@@ -118,8 +118,8 @@ export function OrganizationSettingsSideMenu({
             <SideMenuItem
               name="Private Connections"
               icon={LockClosedIcon}
-              activeIconColor="text-purple-500"
-              inactiveIconColor="text-purple-500"
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
               to={v3PrivateConnectionsPath(organization)}
               data-action="private-connections"
             />
@@ -127,8 +127,8 @@ export function OrganizationSettingsSideMenu({
           <SideMenuItem
             name="Team"
             icon={UserGroupIcon}
-            activeIconColor="text-amber-500"
-            inactiveIconColor="text-amber-500"
+            activeIconColor="text-text-bright"
+            inactiveIconColor="text-text-dimmed"
             to={organizationTeamPath(organization)}
             data-action="team"
           />
@@ -136,17 +136,17 @@ export function OrganizationSettingsSideMenu({
             <SideMenuItem
               name="Roles"
               icon={ShieldCheckIcon}
-              activeIconColor="text-sky-500"
-              inactiveIconColor="text-sky-500"
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
               to={organizationRolesPath(organization)}
               data-action="roles"
             />
           )}
           <SideMenuItem
             name="Settings"
-            icon={Cog8ToothIcon}
-            activeIconColor="text-orgSettings"
-            inactiveIconColor="text-orgSettings"
+            icon={SlidersIcon}
+            activeIconColor="text-text-bright"
+            inactiveIconColor="text-text-dimmed"
             to={organizationSettingsPath(organization)}
             data-action="settings"
           />
@@ -158,17 +158,18 @@ export function OrganizationSettingsSideMenu({
           <SideMenuItem
             name="Vercel"
             icon={VercelLogo}
-            activeIconColor="text-white"
-            inactiveIconColor="text-white"
-            iconClassName="size-4 ml-0.5"
+            activeIconColor="text-text-bright"
+            inactiveIconColor="text-text-dimmed"
+            iconClassName="size-4 ml-[0.15rem]"
             to={organizationVercelIntegrationPath(organization)}
             data-action="integrations"
           />
           <SideMenuItem
             name="Slack"
             icon={SlackIcon}
-            activeIconColor="text-white"
-            inactiveIconColor="text-white"
+            activeIconColor="text-text-bright"
+            inactiveIconColor="text-text-dimmed"
+            iconClassName="size-4 ml-0.5"
             to={organizationSlackIntegrationPath(organization)}
             data-action="integrations"
           />

@@ -2,7 +2,7 @@ import { IconChartHistogram } from "@tabler/icons-react";
 import { GripVerticalIcon } from "lucide-react";
 import ReactGridLayout from "react-grid-layout";
 import { AIMetricsIcon } from "~/assets/icons/AIMetricsIcon";
-import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { ChartArrowIcon } from "~/assets/icons/ChartArrowIcon";
 import { type MatchedOrganization, useCustomDashboards } from "~/hooks/useOrganizations";
 import { type UserWithDashboardPreferences } from "~/models/user.server";
 import { type RenderIcon } from "~/components/primitives/Icon";
@@ -58,7 +58,7 @@ export function DashboardList({
       kind: "builtin",
       label: "Run metrics",
       path: v3BuiltInDashboardPath(organization, project, environment, "overview"),
-      collapsedIcon: RunsIcon,
+      collapsedIcon: ChartArrowIcon,
       activeColor: "text-runs",
     },
     {
