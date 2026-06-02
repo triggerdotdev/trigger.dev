@@ -2,10 +2,11 @@ import {
   BellAlertIcon,
   ChartBarIcon,
   CreditCardIcon,
-  LockClosedIcon,
-  ShieldCheckIcon,
 } from "@heroicons/react/20/solid";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
+import { PadlockIcon } from "~/assets/icons/PadlockIcon";
+import { RolesIcon } from "~/assets/icons/RolesIcon";
+import { ShieldLockIcon } from "~/assets/icons/ShieldLockIcon";
 import { SlackIcon } from "~/assets/icons/SlackIcon";
 import { SlidersIcon } from "~/assets/icons/SlidersIcon";
 import { UserGroupIcon } from "~/assets/icons/UserGroupIcon";
@@ -114,16 +115,6 @@ export function OrganizationSettingsSideMenu({
               />
             </>
           )}
-          {featureFlags.hasPrivateConnections && (
-            <SideMenuItem
-              name="Private Connections"
-              icon={LockClosedIcon}
-              activeIconColor="text-text-bright"
-              inactiveIconColor="text-text-dimmed"
-              to={v3PrivateConnectionsPath(organization)}
-              data-action="private-connections"
-            />
-          )}
           <SideMenuItem
             name="Team"
             icon={UserGroupIcon}
@@ -132,16 +123,26 @@ export function OrganizationSettingsSideMenu({
             to={organizationTeamPath(organization)}
             data-action="team"
           />
-          {isUsingPlugin && (
-            <SideMenuItem
-              name="Roles"
-              icon={ShieldCheckIcon}
-              activeIconColor="text-text-bright"
-              inactiveIconColor="text-text-dimmed"
-              to={organizationRolesPath(organization)}
-              data-action="roles"
-            />
-          )}
+          {/* {isUsingPlugin && (  */}
+          {/* {featureFlags.hasPrivateConnections && ( */}
+          <SideMenuItem
+            name="Private Connections"
+            icon={PadlockIcon}
+            activeIconColor="text-text-bright"
+            inactiveIconColor="text-text-dimmed"
+            to={v3PrivateConnectionsPath(organization)}
+            data-action="private-connections"
+          />
+          {/* )} */}
+          <SideMenuItem
+            name="Roles"
+            icon={RolesIcon}
+            activeIconColor="text-text-bright"
+            inactiveIconColor="text-text-dimmed"
+            to={organizationRolesPath(organization)}
+            data-action="roles"
+          />
+          {/* )} */}
           <SideMenuItem
             name="Settings"
             icon={SlidersIcon}

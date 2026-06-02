@@ -16,6 +16,7 @@ import { AIPenIcon } from "~/assets/icons/AIPenIcon";
 import { ArrowLeftRightIcon } from "~/assets/icons/ArrowLeftRightIcon";
 import { ArrowRightSquareIcon } from "~/assets/icons/ArrowRightSquareIcon";
 import { AvatarCircleIcon } from "~/assets/icons/AvatarCircleIcon";
+import { HomeIcon } from "~/assets/icons/HomeIcon";
 import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { BatchesIcon } from "~/assets/icons/BatchesIcon";
 import { Box3DIcon } from "~/assets/icons/Box3DIcon";
@@ -316,7 +317,9 @@ export function SideMenu({
                     <LinkButton
                       variant="minimal/medium"
                       to={adminPath()}
-                      TrailingIcon={AvatarCircleIcon}
+                      TrailingIcon={HomeIcon}
+                      trailingIconClassName="h-4.5 w-4.5"
+                      className="h-8 w-8"
                     />
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className={"text-xs"}>
