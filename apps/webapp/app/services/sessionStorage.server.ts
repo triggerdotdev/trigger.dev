@@ -11,7 +11,7 @@ export const DEFAULT_SESSION_DURATION_SECONDS = 31_556_952;
 export const sessionStorage = createCookieSessionStorage({
   cookie: {
     name: "__session",
-    sameSite: "lax",
+    sameSite: env.NODE_ENV === "production" ? "none" : "lax",
     path: "/",
     httpOnly: true,
     secrets: [env.SESSION_SECRET],
