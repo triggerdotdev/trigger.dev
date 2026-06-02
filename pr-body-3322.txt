@@ -1,0 +1,34 @@
+## What
+
+Adds **OpenClaw agent** integration — a new agent provisioning system with Slack webhooks, agent setup/status pages, and database models.
+
+## Changes
+
+### New files
+- `routes/agents.$agentId.status.tsx` — agent status dashboard page
+- `routes/agents.setup.tsx` — agent setup wizard
+- `routes/api.agents.provision.ts` — provisioning API
+- `routes/webhooks.slack.ts` — Slack webhook handler
+- `internal-packages/database/prisma/migrations/20260325122458_add_openclaw_agents/migration.sql`
+- `.changeset/openclaw-agent-integration.md`
+
+### Schema
+- Added `AgentConfig`, `AgentExecution`, `AgentHealthCheck` models
+- Added `agentConfigs` relation to User model
+
+### Manual resolutions (merge conflicts)
+11 files conflicted during merge:
+- **LoginPageLayout, CodeBlock, AppLayout, Table, api.v1.artifacts, HelpAndFeedbackPopover**: kept main's version (branding/styling)
+- **test.tasks route, spans route**: kept main's version
+- **tailwind.css, tailwind.config.js**: kept main's version
+- **schema.prisma**: merged both sides (added AgentConfig + AgentExecution + AgentHealthCheck alongside main's LLM/PlatformNotification models)
+
+### Branding cleanup
+Reverted fork-specific branding (`AirTrigger` → `Trigger.dev`, `airtrigger.dev` → `trigger.dev`) across 53 files.
+
+## Notes
+- This is a rebased version of #3266, replacing the original PR
+- Some PR features (test task inline machine/version controls) were dropped during conflict resolution — consider re-adding as a follow-up
+- The animated resizable panel changes from #3267 are handled in PR #3321
+
+Co-authored-by: James Ritchie <james@trigger.dev>
