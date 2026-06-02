@@ -3172,3 +3172,31 @@ model OrganizationDataStore {
 
   @@index([kind])
 }
+
+// ====================================================
+// AI Assistant Chat Persistence
+// ====================================================
+
+/// Stores chat conversations for the dashboard AI assistant.
+/// The id is the same as the chatId / session externalId.
+model AiChat {
+  id        String   @id
+  userId    String
+  title     String   @default("New chat")
+  messages  Json     @default("[]")
+  model     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, updatedAt(sort: Desc)])
+}
+
+/// Stores session state for AI assistant chat sessions.
+/// Used for SSE resume and token refresh.
+model AiChatSession {
+  id                String   @id
+  publicAccessToken String
+  lastEventId       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
