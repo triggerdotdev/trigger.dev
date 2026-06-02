@@ -1,6 +1,12 @@
 {
   "exclude": ["./cypress", "./cypress.config.ts"],
-  "include": ["remix.env.d.ts", "global.d.ts", "**/*.ts", "**/*.tsx"],
+  "include": [
+    "remix.env.d.ts",
+    "global.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    "trigger.config.ts"
+  ],
   "compilerOptions": {
     "types": ["vitest/globals", "node"],
     "lib": ["DOM", "DOM.Iterable", "DOM.AsyncIterable", "ES2020"],
