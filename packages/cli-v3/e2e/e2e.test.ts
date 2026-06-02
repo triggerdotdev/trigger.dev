@@ -104,10 +104,17 @@ describe.concurrent("buildWorker", async () => {
 
   for (let testCase of testCases) {
     test.extend<E2EFixtureTest>({
+      // Seed `workspaceRelativeDir` before the spread so the key always exists.
+      // vitest 4 resolves fixture-to-fixture dependencies strictly at
+      // `test.extend()` time: the `workspaceDir` fixture below destructures
+      // `workspaceRelativeDir`, so it must be a defined fixture even for test
+      // cases that don't set it (it's an optional `TestCase` field). The spread
+      // overrides this default when the case provides its own value.
+      workspaceRelativeDir: "",
       ...testCase,
       fixtureDir: async ({ id }, use) =>
         await use(path.resolve(path.join(process.cwd(), "e2e/fixtures", id))),
-      workspaceDir: async ({ fixtureDir, workspaceRelativeDir = "" }, use) =>
+      workspaceDir: async ({ fixtureDir, workspaceRelativeDir }, use) =>
         await use(path.resolve(path.join(fixtureDir, workspaceRelativeDir))),
       packageManager: async ({ workspaceDir }, use) =>
         await use(await parsePackageManager(options.packageManager, workspaceDir)),

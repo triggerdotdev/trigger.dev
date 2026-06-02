@@ -45,6 +45,7 @@ Options for `chat.agent()`.
 | `compaction`                  | `ChatAgentCompactionOptions`                                | —                              | Automatic context compaction. See [Compaction](/ai-chat/compaction)                                 |
 | `pendingMessages`             | `PendingMessagesOptions`                                    | —                              | Mid-execution message injection. See [Pending Messages](/ai-chat/pending-messages)                  |
 | `prepareMessages`             | `(event: PrepareMessagesEvent) => ModelMessage[]`           | —                              | Transform model messages before use (cache breaks, context injection, etc.)                         |
+| `tools`                       | `ToolSet \| ((event: ResolveToolsEvent) => ToolSet \| Promise<ToolSet>)` | —                 | Tools for this agent. Threads each tool's `toModelOutput` through cross-turn history re-conversion, and hands the resolved set back on the run payload. Static set or per-turn function. See [Tools](/ai-chat/tools). |
 | `maxTurns`                    | `number`                                                    | `100`                          | Max conversational turns per run                                                                    |
 | `turnTimeout`                 | `string`                                                    | `"1h"`                         | How long to wait for next message                                                                   |
 | `idleTimeoutInSeconds`        | `number`                                                    | `30`                           | Seconds to stay idle before suspending                                                              |
@@ -87,6 +88,7 @@ The payload passed to the `run` function.
 | -------------- | ------------------------------------------ | -------------------------------------------------------------------- |
 | `ctx`          | `TaskRunContext`                           | Full task run context — same as `task` `run`’s `{ ctx }`             |
 | `messages`     | `ModelMessage[]`                           | Model-ready messages — pass directly to `streamText`                 |
+| `tools`        | `ToolSet`                                  | Resolved tools declared on the agent config (empty object when none). Pass straight to `streamText`. See [Tools](/ai-chat/tools). |
 | `chatId`       | `string`                                   | Your conversation ID (the session's `externalId`)                    |
 | `sessionId`    | `string`                                   | Friendly ID of the backing Session (`session_*`). Use with `sessions.open()` for advanced cases. Always set — every chat.agent run is bound to a Session. |
 | `trigger`      | `"submit-message" \| "regenerate-message"` | What triggered the request                                           |
@@ -190,6 +192,17 @@ Passed to the `onValidateMessages` callback.
 | `chatId`  | `string`                                                        | Chat session ID                          |
 | `turn`    | `number`                                                        | Turn number (0-indexed)                  |
 | `trigger` | `"submit-message" \| "regenerate-message" \| "preload" \| "close"` | The trigger type for this turn        |
+
+## ResolveToolsEvent
+
+Passed to the `tools` function form on `chat.agent`, once per turn, to resolve the tool set for that turn. See [Tools](/ai-chat/tools#static-or-per-turn-tools).
+
+| Field          | Type                        | Description                                       |
+| -------------- | --------------------------- | ------------------------------------------------- |
+| `chatId`       | `string`                    | Chat session ID                                   |
+| `turn`         | `number`                    | Turn number (0-indexed)                           |
+| `continuation` | `boolean`                   | Whether this run is continuing an existing chat   |
+| `clientData`   | Typed by `clientDataSchema` | Custom data from the frontend                     |
 
 ## HydrateMessagesEvent
 
@@ -531,6 +544,19 @@ type Msg = InferChatUIMessage<typeof myChat>;
 ```
 
 Use with `useChat<Msg>({ transport })` when using [`chat.withUIMessage`](/ai-chat/types). For agents defined with plain `chat.agent()` (no custom generic), this resolves to the base `UIMessage`.
+
+## `InferChatUIMessageFromTools`
+
+Type helper: derives the chat `UIMessage` type (with typed `tool-${name}` parts) directly from a tool set. Shorthand for `UIMessage<unknown, UIDataTypes, InferUITools<typeof tools>>`.
+
+```ts
+import type { InferChatUIMessageFromTools } from "@trigger.dev/sdk/ai";
+
+const tools = { search, readFile };
+type ChatUiMessage = InferChatUIMessageFromTools<typeof tools>;
+```
+
+Pin it on the agent with [`chat.withUIMessage<ChatUiMessage>()`](/ai-chat/types) and reuse it on the client. See [Tools](/ai-chat/tools#typing-messages-from-your-tools).
 
 ## AI helpers (`ai` from `@trigger.dev/sdk/ai`)
 

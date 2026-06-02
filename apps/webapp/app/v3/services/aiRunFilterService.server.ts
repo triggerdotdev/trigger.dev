@@ -1,6 +1,6 @@
 import { openai } from "@ai-sdk/openai";
 import { type TaskTriggerSource } from "@trigger.dev/database";
-import { generateText, LanguageModelV1, Output, tool } from "ai";
+import { generateText, stepCountIs, type LanguageModel, Output, tool } from "ai";
 import { z } from "zod";
 import { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { logger } from "~/services/logger.server";
@@ -14,17 +14,25 @@ const AIFilters = TaskRunListSearchFilters.omit({
   to: z.string().optional().describe("The ISO datetime to filter to"),
 });
 
+// The response is wrapped in an object with a single `response` field because
+// OpenAI structured outputs (both the Chat and Responses APIs) require the root
+// JSON Schema to be `type: "object"`. A bare `z.discriminatedUnion` compiles to
+// a root-level `anyOf`, which OpenAI rejects ("schema must be of type object").
+// Nesting the union under a property keeps the discriminated-union ergonomics
+// while satisfying the root-object constraint.
 const AIFilterResponseSchema = z
-  .discriminatedUnion("success", [
-    z.object({
-      success: z.literal(true),
-      filters: AIFilters,
-    }),
-    z.object({
-      success: z.literal(false),
-      error: z.string().describe("A short human-readable error message"),
-    }),
-  ])
+  .object({
+    response: z.discriminatedUnion("success", [
+      z.object({
+        success: z.literal(true),
+        filters: AIFilters,
+      }),
+      z.object({
+        success: z.literal(false),
+        error: z.string().describe("A short human-readable error message"),
+      }),
+    ]),
+  })
   .describe("The response from the AI filter service");
 
 export interface QueryQueues {
@@ -80,7 +88,7 @@ export class AIRunFilterService {
       queryQueues: QueryQueues;
       queryTasks: QueryTasks;
     },
-    private readonly model: LanguageModelV1 = openai("gpt-4o-mini")
+    private readonly model: LanguageModel = openai("gpt-4o-mini")
   ) {}
 
   async call(text: string, environmentId: string): Promise<AIFilterResult> {
@@ -88,10 +96,20 @@ export class AIRunFilterService {
       const result = await generateText({
         model: this.model,
         experimental_output: Output.object({ schema: AIFilterResponseSchema }),
+        // Disable OpenAI strict JSON-schema mode. The filters schema has many
+        // optional fields, and strict mode requires every property to appear in
+        // `required` (it rejects bare optionals). Non-strict mode treats the
+        // schema as guidance; the `AIFilters.safeParse` below still validates
+        // the result, so correctness is preserved.
+        providerOptions: {
+          openai: {
+            strictJsonSchema: false,
+          },
+        },
         tools: {
           lookupTags: tool({
             description: "Look up available tags in the environment",
-            parameters: z.object({
+            inputSchema: z.object({
               query: z.string().optional().describe("Optional search query to filter tags"),
             }),
             execute: async ({ query }) => {
@@ -101,7 +119,7 @@ export class AIRunFilterService {
           lookupVersions: tool({
             description:
               "Look up available versions in the environment. If you specify `isCurrent` it will return a single version string if it finds one. Otherwise it will return an array of version strings.",
-            parameters: z.object({
+            inputSchema: z.object({
               isCurrent: z
                 .boolean()
                 .optional()
@@ -119,7 +137,7 @@ export class AIRunFilterService {
           }),
           lookupQueues: tool({
             description: "Look up available queues in the environment",
-            parameters: z.object({
+            inputSchema: z.object({
               query: z.string().optional().describe("Optional search query to filter queues"),
               type: z
                 .enum(["task", "custom"])
@@ -135,13 +153,13 @@ export class AIRunFilterService {
           lookupTasks: tool({
             description:
               "Look up available tasks in the environment. It will return each one. The `slug` is used for the filtering. You also get the triggerSource which is either `STANDARD` or `SCHEDULED`",
-            parameters: z.object({}),
+            inputSchema: z.object({}),
             execute: async () => {
               return await this.queryFns.queryTasks.query();
             },
           }),
         },
-        maxSteps: 5,
+        stopWhen: stepCountIs(5),
         system: `You are an AI assistant that converts natural language descriptions into structured filter parameters for a task run filtering system.
   
   Available filter options:
@@ -198,21 +216,24 @@ export class AIRunFilterService {
   
   The filters object should only contain the fields that are actually being filtered. Do not include fields with empty arrays or undefined values.
   
-  CRITICAL: The response must be a valid JSON object with exactly this structure:
+  CRITICAL: The response must be a valid JSON object with a single top-level "response" key wrapping this structure:
   {
-    "success": true,
-    "filters": {
-      // only include fields that have actual values
-    },
-    "explanation": "string explaining what filters were applied"
+    "response": {
+      "success": true,
+      "filters": {
+        // only include fields that have actual values
+      }
+    }
   }
-  
+
   or if you can't figure out the filters then return:
   {
-    "success": false,
-    "error": "<short human understandable suggestion>"
+    "response": {
+      "success": false,
+      "error": "<short human understandable suggestion>"
+    }
   }
-  
+
   Make the error no more than 8 words.
   `,
         prompt: text,
@@ -224,19 +245,21 @@ export class AIRunFilterService {
         },
       });
 
-      if (!result.experimental_output.success) {
+      const output = result.experimental_output.response;
+
+      if (!output.success) {
         return {
           success: false,
-          error: result.experimental_output.error,
+          error: output.error,
         };
       }
 
       // Validate the filters against the schema to catch any issues
-      const validationResult = AIFilters.safeParse(result.experimental_output.filters);
+      const validationResult = AIFilters.safeParse(output.filters);
       if (!validationResult.success) {
         logger.error("AI filter validation failed", {
           errors: validationResult.error.errors,
-          filters: result.experimental_output.filters,
+          filters: output.filters,
         });
 
         return {
@@ -245,14 +268,35 @@ export class AIRunFilterService {
         };
       }
 
+      // `from`/`to` are validated as strings, so a malformed value (e.g. the
+      // model returning a non-ISO date) would survive safeParse and then
+      // produce NaN here. NaN serializes to `null` over JSON, silently dropping
+      // the date constraint while still reporting success — so reject it.
+      const from = validationResult.data.from
+        ? new Date(validationResult.data.from).getTime()
+        : undefined;
+      const to = validationResult.data.to
+        ? new Date(validationResult.data.to).getTime()
+        : undefined;
+
+      if ((from !== undefined && Number.isNaN(from)) || (to !== undefined && Number.isNaN(to))) {
+        logger.error("AI filter returned an invalid datetime", {
+          from: validationResult.data.from,
+          to: validationResult.data.to,
+        });
+
+        return {
+          success: false,
+          error: "AI response contained an invalid date",
+        };
+      }
+
       return {
         success: true,
         filters: {
           ...validationResult.data,
-          from: validationResult.data.from
-            ? new Date(validationResult.data.from).getTime()
-            : undefined,
-          to: validationResult.data.to ? new Date(validationResult.data.to).getTime() : undefined,
+          from,
+          to,
         },
       };
     } catch (error) {

@@ -1101,6 +1101,16 @@ const EnvironmentSchema = z
     TRIGGER_MOLLIFIER_DRAIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
     TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
     TRIGGER_MOLLIFIER_DRAIN_MAX_ORGS_PER_TICK: z.coerce.number().int().positive().default(500),
+    // Per-env per-tick pop cap. The drainer rotates one env per org per
+    // tick; this bounds how many entries it pops from that env before
+    // dispatching them through the shared `DRAIN_CONCURRENCY`-bounded
+    // limiter. Default matches `DRAIN_CONCURRENCY` so a single-env burst
+    // uses the full handler-parallelism budget — for 20k buffered on one
+    // env this is the difference between ~17m (one-pop-per-tick × ~50ms)
+    // and ~20s (400 ticks × concurrent engine.trigger). Org/env fairness
+    // is preserved because the per-tick env selection is unchanged; only
+    // the in-env pop count grows.
+    TRIGGER_MOLLIFIER_DRAIN_BATCH_SIZE: z.coerce.number().int().positive().default(50),
     // Periodic sweep that scans buffer queue LISTs for entries whose
     // dwell exceeds the stale threshold. Independent of the drainer —
     // its job is exactly to make a stuck/offline drainer visible to

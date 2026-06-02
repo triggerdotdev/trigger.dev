@@ -107,6 +107,7 @@
                   "ai-chat/how-it-works",
                   "ai-chat/backend",
                   "ai-chat/lifecycle-hooks",
+                  "ai-chat/tools",
                   "ai-chat/frontend",
                   "ai-chat/server-chat",
                   "ai-chat/sessions",
