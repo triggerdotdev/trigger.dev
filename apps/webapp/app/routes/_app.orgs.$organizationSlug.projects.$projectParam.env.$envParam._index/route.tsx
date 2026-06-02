@@ -4,23 +4,16 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   ExclamationTriangleIcon,
-  LightBulbIcon,
-  UserPlusIcon,
-  VideoCameraIcon,
 } from "@heroicons/react/20/solid";
-import { json, type MetaFunction } from "@remix-run/node";
-import { Link, useFetcher, useRevalidator } from "@remix-run/react";
-import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { DiscordIcon } from "@trigger.dev/companyicons";
+import { type MetaFunction } from "@remix-run/node";
+import { useRevalidator } from "@remix-run/react";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import type { TaskRunStatus } from "@trigger.dev/database";
-import { Fragment, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import type { PanelHandle } from "@window-splitter/react";
+import { Fragment, Suspense, useEffect, useState } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, type TooltipProps } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
-import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { HasNoTasksDeployed, HasNoTasksDev } from "~/components/BlankStatePanels";
 import {
   PackageManagerProvider,
@@ -30,23 +23,14 @@ import {
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { AnimatingArrow } from "~/components/primitives/AnimatingArrow";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { formatDateTime } from "~/components/primitives/DateTime";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/primitives/Dialog";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
 import * as Property from "~/components/primitives/PropertyTable";
-import {
-  RESIZABLE_PANEL_ANIMATION,
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-  collapsibleHandleClassName,
-} from "~/components/primitives/Resizable";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
@@ -81,23 +65,16 @@ import {
   type TaskListItem,
   taskListPresenter,
 } from "~/presenters/v3/TaskListPresenter.server";
-import {
-  getUsefulLinksPreference,
-  setUsefulLinksPreference,
-  uiPreferencesStorage,
-} from "~/services/preferences/uiPreferences.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
   docsPath,
   EnvironmentParamSchema,
-  inviteTeamMemberPath,
   v3AgentTaskPath,
   v3RunsPath,
   v3ScheduledTaskPath,
   v3StandardTaskPath,
   v3TasksStreamingPath,
-  v3TestPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
 
@@ -137,14 +114,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       environmentType: environment.type,
     });
 
-    const usefulLinksPreference = await getUsefulLinksPreference(request);
-
     return typeddefer({
       tasks,
       activity,
       runningStats,
       durations,
-      usefulLinksPreference,
     });
   } catch (error) {
     console.error(error);
@@ -155,28 +129,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
-export async function action({ request }: ActionFunctionArgs) {
-  const formData = await request.formData();
-  const showUsefulLinks = formData.get("showUsefulLinks") === "true";
-
-  const session = await setUsefulLinksPreference(showUsefulLinks, request);
-
-  return json(
-    { success: true },
-    {
-      headers: {
-        "Set-Cookie": await uiPreferencesStorage.commitSession(session),
-      },
-    }
-  );
-}
-
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { tasks, activity, runningStats, durations, usefulLinksPreference } =
-    useTypedLoaderData<typeof loader>();
+  const { tasks, activity, runningStats, durations } = useTypedLoaderData<typeof loader>();
   const { value } = useSearchParams();
   const { filteredItems } = useFuzzyFilter<TaskListItem>({
     items: tasks,
@@ -198,22 +155,6 @@ export default function Page() {
     }
     // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
   }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const [showUsefulLinks, setShowUsefulLinks] = useState(usefulLinksPreference ?? true);
-  const usefulLinksPanelRef = useRef<PanelHandle>(null);
-  const fetcher = useFetcher();
-  const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
-
-  const toggleUsefulLinks = useCallback((show: boolean) => {
-    setShowUsefulLinks(show);
-    if (show) {
-      usefulLinksPanelRef.current?.expand();
-    } else {
-      usefulLinksPanelRef.current?.collapse();
-    }
-    fetcherRef.current.submit({ showUsefulLinks: show.toString() }, { method: "post" });
-  }, []);
 
   return (
     <PageContainer>
@@ -239,219 +180,185 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <ResizablePanelGroup orientation="horizontal" className="max-h-full">
-          <ResizablePanel id="tasks-main" min="100px" className="max-h-full">
-            <div className={cn("grid h-full grid-rows-1")}>
-              {hasTasks ? (
-                <div className="flex min-w-0 max-w-full flex-col">
-                  {tasks.length === 0 ? <UserHasNoTasks /> : null}
-                  <div className="max-h-full overflow-hidden">
-                    <div className="flex items-center justify-between gap-1 p-2">
-                      <SearchInput placeholder="Search tasks…" autoFocus />
-                      {!showUsefulLinks && (
-                        <Button
-                          variant="secondary/small"
-                          TrailingIcon={LightBulbIcon}
-                          trailingIconClassName="text-text-dimmed"
-                          onClick={() => toggleUsefulLinks(true)}
-                          className="px-2.5"
-                        />
-                      )}
-                    </div>
-                    <Table containerClassName="max-h-full pb-[2.5rem]">
-                      <TableHeader>
-                        <TableRow>
-                          <TableHeaderCell>Task ID</TableHeaderCell>
-                          <TableHeaderCell>File</TableHeaderCell>
-                          <TableHeaderCell>Running</TableHeaderCell>
-                          <TableHeaderCell>Queued</TableHeaderCell>
-                          <TableHeaderCell>Activity (7d)</TableHeaderCell>
-                          <TableHeaderCell>Avg. duration</TableHeaderCell>
-                          <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredItems.length > 0 ? (
-                          filteredItems.map((task) => {
-                            const runsPath = v3RunsPath(organization, project, environment, {
-                              tasks: [task.slug],
-                            });
-                            const path =
-                              task.triggerSource === "AGENT"
-                                ? v3AgentTaskPath(organization, project, environment, task.slug)
-                                : task.triggerSource === "SCHEDULED"
-                                ? v3ScheduledTaskPath(organization, project, environment, task.slug)
-                                : v3StandardTaskPath(organization, project, environment, task.slug);
-
-                            const testPath = v3TestTaskPath(organization, project, environment, {
-                              taskIdentifier: task.slug,
-                            });
-
-                            return (
-                              <TableRow key={task.slug} className="group">
-                                <TableCell to={path} isTabbableCell>
-                                  <div className="flex items-center gap-2">
-                                    <SimpleTooltip
-                                      button={<TaskTriggerSourceIcon source={task.triggerSource} />}
-                                      content={taskTriggerSourceDescription(task.triggerSource)}
-                                    />
-                                    <span>{task.slug}</span>
-                                  </div>
-                                </TableCell>
-                                <TableCell to={path}>
-                                  <TaskFileName
-                                    fileName={task.filePath}
-                                    variant="extra-extra-small"
-                                  />
-                                </TableCell>
-                                <TableCell to={path}>
-                                  <Suspense
-                                    fallback={
-                                      <>
-                                        <Spinner color="muted" />
-                                      </>
-                                    }
-                                  >
-                                    <TypedAwait
-                                      resolve={runningStats}
-                                      errorElement={<FailedToLoadStats />}
-                                    >
-                                      {(data) => {
-                                        const taskData = data[task.slug];
-                                        return taskData?.running ?? "0";
-                                      }}
-                                    </TypedAwait>
-                                  </Suspense>
-                                </TableCell>
-                                <TableCell to={path}>
-                                  <Suspense fallback={<></>}>
-                                    <TypedAwait
-                                      resolve={runningStats}
-                                      errorElement={<FailedToLoadStats />}
-                                    >
-                                      {(data) => {
-                                        const taskData = data[task.slug];
-                                        return taskData?.queued ?? "0";
-                                      }}
-                                    </TypedAwait>
-                                  </Suspense>
-                                </TableCell>
-                                <TableCell to={path} actionClassName="py-1.5">
-                                  <Suspense fallback={<TaskActivityBlankState />}>
-                                    <TypedAwait
-                                      resolve={activity}
-                                      errorElement={<FailedToLoadStats />}
-                                    >
-                                      {(data) => {
-                                        const taskData = data[task.slug];
-                                        return (
-                                          <>
-                                            {taskData !== undefined ? (
-                                              <div className="h-6 w-[5.125rem] rounded-sm">
-                                                <TaskActivityGraph activity={taskData} />
-                                              </div>
-                                            ) : (
-                                              <TaskActivityBlankState />
-                                            )}
-                                          </>
-                                        );
-                                      }}
-                                    </TypedAwait>
-                                  </Suspense>
-                                </TableCell>
-                                <TableCell to={path}>
-                                  <Suspense fallback={<></>}>
-                                    <TypedAwait
-                                      resolve={durations}
-                                      errorElement={<FailedToLoadStats />}
-                                    >
-                                      {(data) => {
-                                        const taskData = data[task.slug];
-                                        return taskData
-                                          ? formatDurationMilliseconds(taskData * 1000, {
-                                              style: "short",
-                                            })
-                                          : "–";
-                                      }}
-                                    </TypedAwait>
-                                  </Suspense>
-                                </TableCell>
-                                <TableCellMenu
-                                  isSticky
-                                  popoverContent={
-                                    <>
-                                      <PopoverMenuItem
-                                        icon={RunsIcon}
-                                        to={runsPath}
-                                        title="View runs"
-                                        leadingIconClassName="text-runs"
-                                      />
-                                      <PopoverMenuItem
-                                        icon={BeakerIcon}
-                                        to={testPath}
-                                        title="Test task"
-                                        leadingIconClassName="text-tests"
-                                      />
-                                    </>
-                                  }
-                                  hiddenButtons={
-                                    <LinkButton
-                                      variant="minimal/small"
-                                      LeadingIcon={BeakerIcon}
-                                      leadingIconClassName="text-text-bright"
-                                      to={testPath}
-                                    >
-                                      Test
-                                    </LinkButton>
-                                  }
-                                />
-                              </TableRow>
-                            );
-                          })
-                        ) : (
-                          <TableBlankRow colSpan={8}>
-                            <Paragraph variant="small" className="flex items-center justify-center">
-                              No tasks match your filters
-                            </Paragraph>
-                          </TableBlankRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
+        <div className={cn("grid h-full grid-rows-1")}>
+          {hasTasks ? (
+            <div className="flex min-w-0 max-w-full flex-col">
+              {tasks.length === 0 ? <UserHasNoTasks /> : null}
+              <div className="max-h-full overflow-hidden">
+                <div className="flex items-center justify-between gap-1 p-2">
+                  <SearchInput placeholder="Search tasks…" autoFocus />
                 </div>
-              ) : environment.type === "DEVELOPMENT" ? (
-                <MainCenteredContainer className="max-w-prose">
-                  <HasNoTasksDev />
-                </MainCenteredContainer>
-              ) : (
-                <MainCenteredContainer className="max-w-prose">
-                  <HasNoTasksDeployed environment={environment} />
-                </MainCenteredContainer>
-              )}
+                <Table containerClassName="max-h-full pb-[2.5rem]">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHeaderCell>Task ID</TableHeaderCell>
+                      <TableHeaderCell>File</TableHeaderCell>
+                      <TableHeaderCell>Running</TableHeaderCell>
+                      <TableHeaderCell>Queued</TableHeaderCell>
+                      <TableHeaderCell>Activity (7d)</TableHeaderCell>
+                      <TableHeaderCell>Avg. duration</TableHeaderCell>
+                      <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredItems.length > 0 ? (
+                      filteredItems.map((task) => {
+                        const runsPath = v3RunsPath(organization, project, environment, {
+                          tasks: [task.slug],
+                        });
+                        const path =
+                          task.triggerSource === "AGENT"
+                            ? v3AgentTaskPath(organization, project, environment, task.slug)
+                            : task.triggerSource === "SCHEDULED"
+                            ? v3ScheduledTaskPath(organization, project, environment, task.slug)
+                            : v3StandardTaskPath(organization, project, environment, task.slug);
+
+                        const testPath = v3TestTaskPath(organization, project, environment, {
+                          taskIdentifier: task.slug,
+                        });
+
+                        return (
+                          <TableRow key={task.slug} className="group">
+                            <TableCell to={path} isTabbableCell>
+                              <div className="flex items-center gap-2">
+                                <SimpleTooltip
+                                  button={<TaskTriggerSourceIcon source={task.triggerSource} />}
+                                  content={taskTriggerSourceDescription(task.triggerSource)}
+                                />
+                                <span>{task.slug}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell to={path}>
+                              <TaskFileName
+                                fileName={task.filePath}
+                                variant="extra-extra-small"
+                              />
+                            </TableCell>
+                            <TableCell to={path}>
+                              <Suspense
+                                fallback={
+                                  <>
+                                    <Spinner color="muted" />
+                                  </>
+                                }
+                              >
+                                <TypedAwait
+                                  resolve={runningStats}
+                                  errorElement={<FailedToLoadStats />}
+                                >
+                                  {(data) => {
+                                    const taskData = data[task.slug];
+                                    return taskData?.running ?? "0";
+                                  }}
+                                </TypedAwait>
+                              </Suspense>
+                            </TableCell>
+                            <TableCell to={path}>
+                              <Suspense fallback={<></>}>
+                                <TypedAwait
+                                  resolve={runningStats}
+                                  errorElement={<FailedToLoadStats />}
+                                >
+                                  {(data) => {
+                                    const taskData = data[task.slug];
+                                    return taskData?.queued ?? "0";
+                                  }}
+                                </TypedAwait>
+                              </Suspense>
+                            </TableCell>
+                            <TableCell to={path} actionClassName="py-1.5">
+                              <Suspense fallback={<TaskActivityBlankState />}>
+                                <TypedAwait
+                                  resolve={activity}
+                                  errorElement={<FailedToLoadStats />}
+                                >
+                                  {(data) => {
+                                    const taskData = data[task.slug];
+                                    return (
+                                      <>
+                                        {taskData !== undefined ? (
+                                          <div className="h-6 w-[5.125rem] rounded-sm">
+                                            <TaskActivityGraph activity={taskData} />
+                                          </div>
+                                        ) : (
+                                          <TaskActivityBlankState />
+                                        )}
+                                      </>
+                                    );
+                                  }}
+                                </TypedAwait>
+                              </Suspense>
+                            </TableCell>
+                            <TableCell to={path}>
+                              <Suspense fallback={<></>}>
+                                <TypedAwait
+                                  resolve={durations}
+                                  errorElement={<FailedToLoadStats />}
+                                >
+                                  {(data) => {
+                                    const taskData = data[task.slug];
+                                    return taskData
+                                      ? formatDurationMilliseconds(taskData * 1000, {
+                                          style: "short",
+                                        })
+                                      : "–";
+                                  }}
+                                </TypedAwait>
+                              </Suspense>
+                            </TableCell>
+                            <TableCellMenu
+                              isSticky
+                              popoverContent={
+                                <>
+                                  <PopoverMenuItem
+                                    icon={RunsIcon}
+                                    to={runsPath}
+                                    title="View runs"
+                                    leadingIconClassName="text-runs"
+                                  />
+                                  <PopoverMenuItem
+                                    icon={BeakerIcon}
+                                    to={testPath}
+                                    title="Test task"
+                                    leadingIconClassName="text-tests"
+                                  />
+                                </>
+                              }
+                              hiddenButtons={
+                                <LinkButton
+                                  variant="minimal/small"
+                                  LeadingIcon={BeakerIcon}
+                                  leadingIconClassName="text-text-bright"
+                                  to={testPath}
+                                >
+                                  Test
+                                </LinkButton>
+                              }
+                            />
+                          </TableRow>
+                        );
+                      })
+                    ) : (
+                      <TableBlankRow colSpan={8}>
+                        <Paragraph variant="small" className="flex items-center justify-center">
+                          No tasks match your filters
+                        </Paragraph>
+                      </TableBlankRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
-          </ResizablePanel>
-          <ResizableHandle
-            id="tasks-handle"
-            className={collapsibleHandleClassName(hasTasks && showUsefulLinks)}
-          />
-          <ResizablePanel
-            id="tasks-inspector"
-            handle={usefulLinksPanelRef}
-            default="400px"
-            min="400px"
-            max="500px"
-            className="overflow-hidden"
-            collapsible
-            collapsed={!hasTasks || !showUsefulLinks}
-            onCollapseChange={() => {}}
-            collapsedSize="0px"
-            collapseAnimation={RESIZABLE_PANEL_ANIMATION}
-          >
-            <div className="h-full" style={{ minWidth: 400 }}>
-              {hasTasks && <HelpfulInfoHasTasks onClose={() => toggleUsefulLinks(false)} />}
-            </div>
-          </ResizablePanel>
-        </ResizablePanelGroup>
+          ) : environment.type === "DEVELOPMENT" ? (
+            <MainCenteredContainer className="max-w-prose">
+              <HasNoTasksDev />
+            </MainCenteredContainer>
+          ) : (
+            <MainCenteredContainer className="max-w-prose">
+              <HasNoTasksDeployed environment={environment} />
+            </MainCenteredContainer>
+          )}
+        </div>
       </PageBody>
     </PageContainer>
   );
@@ -612,255 +519,6 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
 
   return null;
 };
-
-function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const [isVideoDialogOpen, setIsVideoDialogOpen] = useState(false);
-
-  return (
-    <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="overflow-y-scroll p-3 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <div className="mb-2 flex items-center justify-between gap-2 border-b border-grid-dimmed pb-2">
-          <Header2 className="flex items-center gap-2">
-            <LightBulbIcon className="size-4 min-w-4 text-sun-500" />
-            Helpful next steps
-          </Header2>
-          <Button
-            onClick={onClose}
-            variant="minimal/small"
-            TrailingIcon={ExitIcon}
-            shortcut={{ key: "esc" }}
-            shortcutPosition="before-trailing-icon"
-            className="pl-[0.375rem]"
-          />
-        </div>
-        <LinkWithIcon
-          variant="withIcon"
-          to={v3TestPath(organization, project, environment)}
-          description="Test your tasks"
-          icon={<BeakerIcon className="size-5 text-lime-500" />}
-        />
-        <LinkWithIcon
-          variant="withIcon"
-          to={inviteTeamMemberPath(organization)}
-          description="Invite team members"
-          icon={<UserPlusIcon className="size-5 text-amber-500" />}
-        />
-        <div
-          role="button"
-          onClick={() => setIsVideoDialogOpen(true)}
-          className={cn(
-            "group flex w-full items-center justify-between gap-2 rounded-md p-1 pr-3 transition hover:bg-charcoal-750",
-            variants["withIcon"].container
-          )}
-        >
-          <div className="flex items-center gap-2">
-            <div className={variants["withIcon"].iconContainer}>
-              <VideoCameraIcon className="size-5 text-rose-500" />
-            </div>
-            <Paragraph variant="base" className="transition-colors group-hover:text-text-bright">
-              Watch a 14 min walkthrough video
-            </Paragraph>
-          </div>
-          <AnimatingArrow direction="right" theme="dimmed" />
-        </div>
-        <LinkWithIcon
-          variant="withIcon"
-          to="https://trigger.dev/discord"
-          description="Join our Discord for help and support"
-          icon={<DiscordIcon className="size-5" />}
-          isExternal
-        />
-        <div className="mb-2 flex items-center gap-2 border-b border-grid-dimmed pb-2 pt-6">
-          <Header2 className="flex items-center gap-2">
-            <BookOpenIcon className="size-5 text-blue-500" />
-            From the docs
-          </Header2>
-        </div>
-        <LinkWithIcon
-          to={docsPath("/writing-tasks-introduction")}
-          description="How to write a task"
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/tasks/scheduled")}
-          description="Scheduled tasks (cron)"
-          isExternal
-        />
-        <LinkWithIcon to={docsPath("/triggering")} description="How to trigger a task" isExternal />
-        <LinkWithIcon to={docsPath("/cli-dev")} description="Running the CLI" isExternal />
-        <LinkWithIcon
-          to={docsPath("/how-it-works")}
-          description="How Trigger.dev works"
-          isExternal
-        />
-        <div className="mb-2 flex items-center gap-2 border-b border-grid-dimmed pb-2 pt-6">
-          <Header2 className="flex items-center gap-2">
-            <TaskIcon className="size-5 text-blue-500" />
-            Example tasks
-          </Header2>
-        </div>
-        <LinkWithIcon
-          to={docsPath("/examples/dall-e3-generate-image")}
-          description="DALL·E 3 image generation"
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/examples/deepgram-transcribe-audio")}
-          description="Deepgram audio transcription"
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/examples/fal-ai-image-to-cartoon")}
-          description="Fal.ai image to cartoon"
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/examples/fal-ai-realtime")}
-          description="Fal.ai with Realtime"
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/examples/ffmpeg-video-processing")}
-          description="FFmpeg video processing"
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/examples/firecrawl-url-crawl")}
-          description="Firecrawl URL crawl"
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/examples/libreoffice-pdf-conversion")}
-          description="LibreOffice PDF conversion"
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/examples/open-ai-with-retrying")}
-          description="OpenAI with retrying"
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/examples/pdf-to-image")}
-          description="PDF to image"
-          isExternal
-        />
-        <LinkWithIcon to={docsPath("/examples/puppeteer")} description="Puppeteer" isExternal />
-        <LinkWithIcon to={docsPath("/examples/react-pdf")} description="React to PDF" isExternal />
-        <LinkWithIcon
-          to={docsPath("/examples/resend-email-sequence")}
-          description="Resend email sequence"
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/examples/scrape-hacker-news")}
-          description="Scrape Hacker News"
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/examples/sentry-error-tracking")}
-          description="Sentry error tracking"
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/examples/sharp-image-processing")}
-          description="Sharp image processing"
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/examples/supabase-database-operations")}
-          description="Supabase database operations"
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/examples/supabase-storage-upload")}
-          description="Supabase Storage upload"
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/examples/vercel-ai-sdk")}
-          description="Vercel AI SDK"
-          isExternal
-        />
-        <LinkWithIcon
-          to={docsPath("/examples/vercel-sync-env-vars")}
-          description="Vercel sync environment variables"
-          isExternal
-        />
-      </div>
-      <Dialog open={isVideoDialogOpen} onOpenChange={setIsVideoDialogOpen}>
-        <DialogContent className="sm:max-w-screen-lg">
-          <DialogHeader className="mb-4 pt-1">
-            <DialogTitle>Trigger.dev walkthrough</DialogTitle>
-          </DialogHeader>
-          <div className="aspect-video">
-            <iframe
-              width="100%"
-              height="100%"
-              src="https://www.youtube.com/embed/YH_4c0K7fGM?si=BcX6MAt_V139sRw9"
-              title="Trigger.dev walkthrough"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              referrerPolicy="strict-origin-when-cross-origin"
-              allowFullScreen
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-const variants = {
-  withIcon: {
-    container: "",
-    iconContainer:
-      "grid size-9 min-w-9 place-items-center rounded border border-transparent bg-charcoal-750 shadow transition group-hover:border-charcoal-650",
-  },
-  minimal: {
-    container: "pl-3 py-2",
-    iconContainer: "",
-  },
-} as const;
-
-type LinkWithIconProps = {
-  to: string;
-  description: string;
-  icon?: React.ReactNode;
-  isExternal?: boolean;
-  variant?: keyof typeof variants;
-};
-
-function LinkWithIcon({
-  to,
-  description,
-  icon,
-  isExternal,
-  variant = "minimal",
-}: LinkWithIconProps) {
-  const variation = variants[variant];
-
-  return (
-    <Link
-      to={to}
-      target={isExternal ? "_blank" : undefined}
-      rel={isExternal ? "noreferrer" : undefined}
-      className={cn(
-        "group flex w-full items-center justify-between gap-2 rounded-md p-1 pr-3 transition hover:bg-charcoal-750",
-        variation.container
-      )}
-    >
-      <div className="flex items-center gap-2">
-        {variant === "withIcon" && icon && <div className={variation.iconContainer}>{icon}</div>}
-        <Paragraph variant="base" className="transition-colors group-hover:text-text-bright">
-          {description}
-        </Paragraph>
-      </div>
-      <AnimatingArrow direction={isExternal ? "topRight" : "right"} theme="dimmed" />
-    </Link>
-  );
-}
 
 function FailedToLoadStats() {
   return (
