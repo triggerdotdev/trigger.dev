@@ -124,21 +124,14 @@ class OTLPExporter {
           // Non-ClickHouse stores (taskEvent / taskEventPartitioned) are Postgres-backed.
           // The ClickHouse factory only handles clickhouse/clickhouse_v2 and throws otherwise.
           if (taskEventStore !== "clickhouse" && taskEventStore !== "clickhouse_v2") {
+            // Non-ClickHouse stores (taskEvent / taskEventPartitioned) are Postgres-backed.
+            // The ClickHouse factory only handles clickhouse/clickhouse_v2 and throws otherwise.
             resolved = { key: "postgres:default", repository: eventRepository };
           } else {
-            try {
-              resolved = this._clickhouseFactory.getEventRepositoryForOrganizationSync(
-                taskEventStore,
-                event.organizationId
-              );
-            } catch (error) {
-              logger.error("[OTLPExporter] Failed to resolve ClickHouse event repository", {
-                taskEventStore,
-                organizationId: event.organizationId,
-                error: error instanceof Error ? error.message : error,
-              });
-              resolved = { key: "postgres:default", repository: eventRepository };
-            }
+            resolved = this._clickhouseFactory.getEventRepositoryForOrganizationSync(
+              taskEventStore,
+              event.organizationId
+            );
           }
           routeCache.set(routeKey, resolved);
         }
