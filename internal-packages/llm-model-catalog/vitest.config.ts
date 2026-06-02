@@ -6,11 +6,6 @@ export default defineConfig({
     globals: true,
     isolate: true,
     fileParallelism: false,
-    poolOptions: {
-      threads: {
-        singleThread: true,
-      },
-    },
     testTimeout: 120_000,
   },
 });

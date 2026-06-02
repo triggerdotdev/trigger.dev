@@ -64,7 +64,7 @@ jobs:
       - name: ⎔ Setup node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 20.20.0
+          node-version: 20.20.2
           cache: "pnpm"
 
       # ..to avoid rate limits when pulling images
@@ -96,7 +96,7 @@ jobs:
         run: pnpm run generate
 
       - name: 🧪 Run Package Unit Tests
-        run: pnpm run test:packages --reporter=default --reporter=blob --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+        run: pnpm run test:packages --reporter=default --reporter=blob --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }} --passWithNoTests
 
       - name: Gather all reports
         if: ${{ !cancelled() }}
@@ -134,7 +134,7 @@ jobs:
       - name: ⎔ Setup node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 20.20.0
+          node-version: 20.20.2
           # no cache enabled, we're not installing deps
 
       - name: Download blob reports from GitHub Actions Artifacts
@@ -145,4 +145,4 @@ jobs:
           merge-multiple: true
 
       - name: Merge reports
-        run: pnpm dlx vitest@3.1.4 run --merge-reports --pass-with-no-tests
+        run: pnpm dlx vitest@4.1.7 run --merge-reports --pass-with-no-tests
