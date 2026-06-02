@@ -25,6 +25,13 @@ describe("encodeBaggage", () => {
     expect(value.length).toBe(256);
   });
 
+  it("caps multibyte values by UTF-8 bytes, not code units", () => {
+    const long = "あ".repeat(512); // 3 UTF-8 bytes each
+    const got = encodeBaggage({ k: long });
+    const value = got.slice("k=".length);
+    expect(Buffer.byteLength(value, "utf8")).toBeLessThanOrEqual(256);
+  });
+
   it("caps the number of entries", () => {
     const meta: Record<string, string> = {};
     for (let i = 0; i < 50; i++) {

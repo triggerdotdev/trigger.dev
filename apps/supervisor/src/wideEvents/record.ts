@@ -1,5 +1,6 @@
 import { fromContext } from "./context.js";
 import type { PhaseRecord, State } from "./state.js";
+import { truncateUtf8 } from "./truncate.js";
 
 const MAX_ERROR_MSG_BYTES = 512;
 
@@ -32,8 +33,7 @@ export function recordPhase(
   };
   if (err) {
     p.errorCode = err.name || "Error";
-    const msg = err.message;
-    p.errorMsg = msg.length > MAX_ERROR_MSG_BYTES ? msg.slice(0, MAX_ERROR_MSG_BYTES) : msg;
+    p.errorMsg = truncateUtf8(err.message, MAX_ERROR_MSG_BYTES);
   }
   if (opts.sub) p.sub = opts.sub;
   state.phases.push(p);

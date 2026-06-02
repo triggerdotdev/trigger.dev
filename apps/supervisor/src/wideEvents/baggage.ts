@@ -10,6 +10,8 @@
  * APIs, third-party webhooks) must not include the Baggage header.
  */
 
+import { truncateUtf8 } from "./truncate.js";
+
 /**
  * Cap the number of entries serialised onto the header. A misbehaving
  * caller's `meta` map shouldn't blow up downstream event width.
@@ -36,7 +38,7 @@ export function encodeBaggage(meta: Record<string, string>): string {
   const out: string[] = [];
   for (const [k, raw] of entries) {
     if (out.length >= MAX_BAGGAGE_ENTRIES) break;
-    const v = raw.length > MAX_BAGGAGE_VALUE_BYTES ? raw.slice(0, MAX_BAGGAGE_VALUE_BYTES) : raw;
+    const v = truncateUtf8(raw, MAX_BAGGAGE_VALUE_BYTES);
     out.push(`${k}=${v}`);
   }
   return out.join(",");
