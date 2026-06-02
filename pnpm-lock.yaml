@@ -2376,8 +2376,8 @@ importers:
         specifier: ^1.1.3
         version: 1.1.3(@types/react-dom@19.0.4(@types/react@19.0.12))(@types/react@19.0.12)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@slack/web-api':
-        specifier: 7.9.1
-        version: 7.9.1
+        specifier: 7.16.0
+        version: 7.16.0
       '@trigger.dev/python':
         specifier: workspace:*
         version: link:../../packages/python
@@ -2470,8 +2470,8 @@ importers:
         specifier: 1.3.3
         version: 1.3.3(zod@3.25.76)
       '@slack/web-api':
-        specifier: 7.9.1
-        version: 7.9.1
+        specifier: 7.16.0
+        version: 7.16.0
       '@trigger.dev/python':
         specifier: workspace:*
         version: link:../../packages/python
@@ -9530,17 +9530,9 @@ packages:
     resolution: {integrity: sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ==}
     engines: {node: '>=18'}
 
-  '@slack/logger@4.0.0':
-    resolution: {integrity: sha512-Wz7QYfPAlG/DR+DfABddUZeNgoeY7d1J39OCR2jR+v7VBsB8ezulDK5szTnDDPDwLH5IWhLvXIHlCFZV7MSKgA==}
-    engines: {node: '>= 18', npm: '>= 8.6.0'}
-
   '@slack/logger@4.0.1':
     resolution: {integrity: sha512-6cmdPrV/RYfd2U0mDGiMK8S7OJqpCTm7enMLRR3edccsPX8j7zXTLnaEF4fhxxJJTAIOil6+qZrnUPTuaLvwrQ==}
     engines: {node: '>= 18', npm: '>= 8.6.0'}
-
-  '@slack/types@2.14.0':
-    resolution: {integrity: sha512-n0EGm7ENQRxlXbgKSrQZL69grzg1gHLAVd+GlRVQJ1NSORo0FrApR7wql/gaKdu2n4TO83Sq/AmeUOqD60aXUA==}
-    engines: {node: '>= 12.13.0', npm: '>= 6.12.0'}
 
   '@slack/types@2.21.1':
     resolution: {integrity: sha512-I8vmSjNYWsaxuWPx6dz4yeh0h7vRBWbgAMK14LEmblbZ404BtrPbXs6jDPx4cYgGf8msDGF4A9opLZBu21FViQ==}
@@ -9548,10 +9540,6 @@ packages:
 
   '@slack/web-api@7.16.0':
     resolution: {integrity: sha512-68SAV77uuGKuhyyaRytX8UijVnqSLsTSKslGXw17cjQYXn+jtNl7gbaEjHgC5x2rhCuFdahBrEC2VCLppbzReg==}
-    engines: {node: '>= 18', npm: '>= 8.6.0'}
-
-  '@slack/web-api@7.9.1':
-    resolution: {integrity: sha512-qMcb1oWw3Y/KlUIVJhkI8+NcQXq1lNymwf+ewk93ggZsGd6iuz9ObQsOEbvlqlx1J+wd8DmIm3DORGKs0fcKdg==}
     engines: {node: '>= 18', npm: '>= 8.6.0'}
 
   '@smithy/abort-controller@2.0.14':
@@ -29160,15 +29148,9 @@ snapshots:
 
   '@sindresorhus/merge-streams@4.0.0': {}
 
-  '@slack/logger@4.0.0':
-    dependencies:
-      '@types/node': 20.14.14
-
   '@slack/logger@4.0.1':
     dependencies:
       '@types/node': 20.14.14
-
-  '@slack/types@2.14.0': {}
 
   '@slack/types@2.21.1': {}
 
@@ -29189,23 +29171,6 @@ snapshots:
     transitivePeerDependencies:
       - debug
       - supports-color
-
-  '@slack/web-api@7.9.1':
-    dependencies:
-      '@slack/logger': 4.0.0
-      '@slack/types': 2.14.0
-      '@types/node': 20.14.14
-      '@types/retry': 0.12.0
-      axios: 1.15.1
-      eventemitter3: 5.0.1
-      form-data: 4.0.4
-      is-electron: 2.2.2
-      is-stream: 2.0.1
-      p-queue: 6.6.2
-      p-retry: 4.6.2
-      retry: 0.13.1
-    transitivePeerDependencies:
-      - debug
 
   '@smithy/abort-controller@2.0.14':
     dependencies:
