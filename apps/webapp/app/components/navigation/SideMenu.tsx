@@ -98,7 +98,6 @@ import {
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
 import { AlphaBadge } from "../AlphaBadge";
-import { AskAI } from "../AskAI";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
@@ -1202,7 +1201,6 @@ function HelpAndAI({ isCollapsed, organizationId, projectId }: { isCollapsed: bo
       >
         <ShortcutsAutoOpen />
         <HelpAndFeedback isCollapsed={isCollapsed} organizationId={organizationId} projectId={projectId} />
-        <AskAI isCollapsed={isCollapsed} />
       </div>
     </LayoutGroup>
   );

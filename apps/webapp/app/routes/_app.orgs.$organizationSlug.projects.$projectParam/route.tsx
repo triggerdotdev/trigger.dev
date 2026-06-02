@@ -8,6 +8,39 @@ import { useIsImpersonating, useOrganization, useOrganizations } from "~/hooks/u
 import { useProject } from "~/hooks/useProject";
 import { useUser } from "~/hooks/useUser";
 import { v3ProjectPath } from "~/utils/pathBuilder";
+import { AIChatProvider, useAIChat } from "~/components/ai-assistant/AIChatProvider";
+import { AIChatPanel } from "~/components/ai-assistant/AIChatPanel";
+import { useEffect, useState, type ReactNode } from "react";
+
+function AIChatLayout({ children }: { children: ReactNode }) {
+  const { isOpen } = useAIChat();
+
+  // Keep the panel mounted after the first open so the conversation persists
+  // across toggles and so the close transition has something to animate. Lazy
+  // mounting avoids the input stealing focus on every page load.
+  const [hasOpened, setHasOpened] = useState(false);
+  useEffect(() => {
+    if (isOpen) {
+      setHasOpened(true);
+    }
+  }, [isOpen]);
+
+  return (
+    <div
+      className="grid overflow-hidden transition-[grid-template-columns] duration-300 ease-in-out"
+      style={{
+        gridTemplateColumns: isOpen ? "auto minmax(0, 1fr) 380px" : "auto minmax(0, 1fr) 0px",
+      }}
+    >
+      {children}
+      {/* Right-anchored + overflow-hidden so the panel slides in from the right
+          edge as the column grows, rather than being revealed left-to-right. */}
+      <div className="flex h-full justify-end overflow-hidden">
+        {hasOpened && <AIChatPanel />}
+      </div>
+    </div>
+  );
+}
 
 export default function Project() {
   const organizations = useOrganizations();
@@ -18,8 +51,8 @@ export default function Project() {
   const isImpersonating = useIsImpersonating();
 
   return (
-    <>
-      <div className="grid grid-cols-[auto_1fr] overflow-hidden">
+    <AIChatProvider userId={user.id}>
+      <AIChatLayout>
         <DevPresenceProvider enabled={environment.type === "DEVELOPMENT"}>
           <SideMenu
             user={{ ...user, isImpersonating }}
@@ -32,8 +65,8 @@ export default function Project() {
             <Outlet />
           </MainBody>
         </DevPresenceProvider>
-      </div>
-    </>
+      </AIChatLayout>
+    </AIChatProvider>
   );
 }
 

@@ -1,0 +1,154 @@
+import { useChat } from "@ai-sdk/react";
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { dashboardAssistant } from "~/trigger/ai-assistant";
+import { useAIChat } from "./AIChatProvider";
+import { AIChatHeader } from "./AIChatHeader";
+import { AIChatContextBanner } from "./AIChatContextBanner";
+import { AIChatMessages } from "./AIChatMessages";
+import { AIChatSuggestedPrompts } from "./AIChatSuggestedPrompts";
+import { AIChatInput } from "./AIChatInput";
+
+async function postAssistant(body: Record<string, unknown>): Promise<any> {
+  const res = await fetch("/resources/ai-assistant", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`ai-assistant ${body.intent} failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export function AIChatPanel() {
+  const {
+    currentChatId,
+    currentChatMessages,
+    pageContext,
+    close,
+    pendingQuery,
+    clearPendingQuery,
+    refreshHistory,
+  } = useAIChat();
+
+  const [input, setInput] = useState("");
+
+  const transport = useTriggerChatTransport<typeof dashboardAssistant>({
+    task: "dashboard-assistant",
+    // Head Start intentionally disabled: running every turn inside the agent
+    // run is what surfaces the LLM + tool-call spans in the trace (at the cost
+    // of ~750ms first-token).
+    baseURL: typeof window !== "undefined" ? window.location.origin : undefined,
+    clientData: pageContext,
+    // Mint a fresh session-scoped PAT. Fired on first use + 401/403 refresh.
+    accessToken: async ({ chatId }) => {
+      const { publicAccessToken } = await postAssistant({
+        intent: "refreshToken",
+        chatId,
+        clientData: pageContext,
+      });
+      return publicAccessToken;
+    },
+    // Create (or resume) the session + trigger the first run server-side.
+    startSession: async ({ chatId, clientData }) => {
+      const { publicAccessToken } = await postAssistant({
+        intent: "createSession",
+        chatId,
+        clientData,
+      });
+      return { publicAccessToken };
+    },
+  });
+
+  const { messages, sendMessage, status, stop: aiStop } = useChat({
+    id: currentChatId,
+    messages: currentChatMessages,
+    transport,
+  });
+
+  const stop = useCallback(() => {
+    transport.stopGeneration(currentChatId);
+    aiStop();
+  }, [transport, currentChatId, aiStop]);
+
+  // Warm the agent run when the panel opens so it's waiting on `session.in`
+  // by the time the user sends — a cold boot races the first message ahead of
+  // the run's waitpoint and silently drops the turn.
+  useEffect(() => {
+    void transport.preload(currentChatId);
+  }, [transport, currentChatId]);
+
+  const submit = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      void sendMessage({ text: trimmed });
+      setInput("");
+    },
+    [sendMessage]
+  );
+
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      submit(input);
+    },
+    [submit, input]
+  );
+
+  // A pending query is set when the assistant is opened with an initial
+  // question (e.g. from a "Ask AI about this" affordance). Send it once.
+  const sentPending = useRef(false);
+  useEffect(() => {
+    if (pendingQuery && !sentPending.current) {
+      sentPending.current = true;
+      submit(pendingQuery);
+      clearPendingQuery();
+    }
+    if (!pendingQuery) {
+      sentPending.current = false;
+    }
+  }, [pendingQuery, submit, clearPendingQuery]);
+
+  // Refresh the chat history list once a turn settles (title/rows are written
+  // server-side by the agent's onTurnStart/onTurnComplete hooks).
+  const prevStatus = useRef(status);
+  useEffect(() => {
+    if (prevStatus.current === "streaming" && status === "ready") {
+      refreshHistory();
+    }
+    prevStatus.current = status;
+  }, [status, refreshHistory]);
+
+  const isLoading = status === "submitted" || status === "streaming";
+  const isEmpty = messages.length === 0;
+
+  return (
+    <div className="flex h-full w-[380px] flex-col border-l border-grid-bright bg-background-bright">
+      <AIChatHeader />
+      <AIChatContextBanner
+        projectSlug={pageContext.projectSlug}
+        environmentSlug={pageContext.environmentSlug}
+        currentPage={pageContext.currentPage}
+      />
+
+      {isEmpty ? (
+        <div className="flex-1 overflow-y-auto py-3">
+          <AIChatSuggestedPrompts currentPage={pageContext.currentPage} onSelect={submit} />
+        </div>
+      ) : (
+        <AIChatMessages messages={messages} />
+      )}
+
+      <AIChatInput
+        input={input}
+        onInputChange={(e) => setInput(e.target.value)}
+        onSubmit={handleSubmit}
+        onStop={stop}
+        isLoading={isLoading}
+        status={status}
+      />
+    </div>
+  );
+}
