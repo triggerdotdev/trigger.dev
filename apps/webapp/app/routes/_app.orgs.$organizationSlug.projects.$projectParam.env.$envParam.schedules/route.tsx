@@ -1,4 +1,4 @@
-import { conform, useForm } from "@conform-to/react";
+import { useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { ArrowUpCircleIcon, EnvelopeIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
@@ -126,11 +126,19 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 const PurchaseSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("purchase"),
-    amount: z.coerce.number().int("Must be a whole number").min(0, "Amount must be 0 or more"),
+    amount: z.coerce
+      .number()
+      .int("Must be a whole number")
+      .min(0, "Amount must be 0 or more")
+      .refine((n) => n % 1000 === 0, "Schedules are sold in bundles of 1,000"),
   }),
   z.object({
     action: z.literal("quota-increase"),
-    amount: z.coerce.number().int("Must be a whole number").min(1, "Amount must be greater than 0"),
+    amount: z.coerce
+      .number()
+      .int("Must be a whole number")
+      .min(1, "Amount must be greater than 0")
+      .refine((n) => n % 1000 === 0, "Schedules are sold in bundles of 1,000"),
   }),
 ]);
 
@@ -623,10 +631,12 @@ function PurchaseSchedulesModal({
     shouldRevalidate: "onSubmit",
   });
 
-  const [amountValue, setAmountValue] = useState(extraSchedules);
+  const stepSize = schedulePricing.stepSize;
+  const [bundles, setBundles] = useState(Math.round(extraSchedules / stepSize));
   useEffect(() => {
-    setAmountValue(extraSchedules);
-  }, [extraSchedules]);
+    setBundles(Math.round(extraSchedules / stepSize));
+  }, [extraSchedules, stepSize]);
+  const amountValue = bundles * stepSize;
   const isLoading = fetcher.state !== "idle";
 
   const [open, setOpen] = useState(false);
@@ -653,9 +663,9 @@ function PurchaseSchedulesModal({
   const changeClassName =
     state === "decrease" ? "text-error" : state === "increase" ? "text-success" : undefined;
 
-  const pricePerSchedule = schedulePricing.centsPerStep / schedulePricing.stepSize / 100;
+  const pricePerSchedule = schedulePricing.centsPerStep / stepSize / 100;
   const pricePerStep = schedulePricing.centsPerStep / 100;
-  const stepUnit = formatNumber(schedulePricing.stepSize);
+  const stepUnit = formatNumber(stepSize);
   const title = extraSchedules === 0 ? "Purchase extra schedules…" : "Add/remove extra schedules…";
 
   return (
@@ -673,25 +683,29 @@ function PurchaseSchedulesModal({
           <div className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-1">
               <Paragraph variant="small/bright">
-                Purchase extra schedules at {formatCurrency(pricePerStep, false)}/month per{" "}
-                {stepUnit} schedules. Reducing the number of schedules will take effect at the start
-                of the next billing cycle (1st of the month).
+                Schedules are purchased in bundles of {stepUnit}, at{" "}
+                {formatCurrency(pricePerStep, false)}/month per bundle. Reducing will take effect at
+                the start of the next billing cycle (1st of the month).
               </Paragraph>
             </div>
             <Fieldset>
               <InputGroup fullWidth>
-                <Label htmlFor="amount" className="text-text-dimmed">
-                  Total extra schedules
+                <Label htmlFor="schedule-bundles" className="text-text-dimmed">
+                  Bundles of {stepUnit} schedules
                 </Label>
                 <InputNumberStepper
-                  {...conform.input(amount, { type: "number" })}
-                  step={schedulePricing.stepSize}
+                  id="schedule-bundles"
+                  step={1}
                   min={0}
-                  max={undefined}
-                  value={amountValue}
-                  onChange={(e) => setAmountValue(Number(e.target.value))}
+                  value={bundles}
+                  onChange={(e) => setBundles(Number(e.target.value))}
                   disabled={isLoading}
                 />
+                <input type="hidden" name="amount" value={amountValue} />
+                <Paragraph variant="small" className="text-text-dimmed">
+                  {formatNumber(bundles)} {bundles === 1 ? "bundle" : "bundles"} ={" "}
+                  {formatNumber(amountValue)} schedules
+                </Paragraph>
                 <FormError id={amount.errorId}>
                   {amount.error ?? amount.initialError?.[""]?.[0]}
                 </FormError>
