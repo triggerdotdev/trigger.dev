@@ -22,12 +22,14 @@ on:
       - main
       - changeset-release/main
     paths:
+      - "package.json"
       - "packages/**"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - "turbo.json"
       - ".github/workflows/preview-packages.yml"
       - "scripts/stamp-preview-version.mjs"
+      - "scripts/updateVersion.ts"
 
 concurrency:
   group: preview-packages-${{ github.ref }}
