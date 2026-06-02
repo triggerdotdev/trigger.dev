@@ -183,7 +183,7 @@
     "p-retry": "^4.6.1",
     "parse-duration": "^2.1.0",
     "posthog-js": "^1.93.3",
-    "posthog-node": "4.17.1",
+    "posthog-node": "5.35.6",
     "prism-react-renderer": "^2.3.1",
     "prismjs": "^1.30.0",
     "prom-client": "^15.1.0",
