@@ -40,6 +40,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
 
   const result = await repository.create(environment.project.id, {
     override: typeof body.override === "boolean" ? body.override : false,
+    isSecret: body.isSecret,
     environmentIds: [environment.id],
     // Pass parent environment ID so new variables can inherit isSecret from parent
     parentEnvironmentId: environment.parentEnvironmentId ?? undefined,
@@ -54,6 +55,7 @@ export async function action({ params, request }: ActionFunctionArgs) {
   if (environment.parentEnvironmentId && body.parentVariables) {
     const parentResult = await repository.create(environment.project.id, {
       override: typeof body.override === "boolean" ? body.override : false,
+      isSecret: body.isSecret,
       environmentIds: [environment.parentEnvironmentId],
       variables: Object.entries(body.parentVariables).map(([key, value]) => ({
         key,
