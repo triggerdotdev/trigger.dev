@@ -133,6 +133,24 @@ export const dashboardAssistant = chat
         where: { id: chatId },
         data: { messages: uiMessages as unknown as ChatMessagesForWrite },
       });
+
+      if (Array.isArray(uiMessages)) {
+        const firstUser = uiMessages.find((m) => m?.role === "user");
+        const text = firstUser
+          ? (firstUser.parts ?? [])
+              .filter((p: { type?: string }) => p?.type === "text")
+              .map((p: { text?: string }) => p.text ?? "")
+              .join(" ")
+              .trim()
+          : "";
+        if (text) {
+          const title = text.length > 60 ? `${text.slice(0, 60).trimEnd()}…` : text;
+          await prisma.aiChat.updateMany({
+            where: { id: chatId, title: "New chat" },
+            data: { title },
+          });
+        }
+      }
     },
 
     // Atomic write of messages + session state; a non-atomic write races the

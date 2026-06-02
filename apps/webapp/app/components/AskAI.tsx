@@ -13,8 +13,8 @@ export function AskAI() {
   const chat = useOptionalAIChat();
 
   // The provider is only mounted in the project layout. On account/settings
-  // pages there's no assistant, so render nothing.
-  if (!chat) {
+  // pages there's no assistant, so render nothing. Hide while the drawer is open.
+  if (!chat || chat.isOpen) {
     return null;
   }
 

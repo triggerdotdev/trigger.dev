@@ -27,7 +27,7 @@ function AIChatLayout({ children }: { children: ReactNode }) {
 
   return (
     <div
-      className="grid overflow-hidden transition-[grid-template-columns] duration-300 ease-in-out"
+      className="grid overflow-hidden transition-[grid-template-columns] duration-200 ease-in-out"
       style={{
         gridTemplateColumns: isOpen ? "auto minmax(0, 1fr) 380px" : "auto minmax(0, 1fr) 0px",
       }}

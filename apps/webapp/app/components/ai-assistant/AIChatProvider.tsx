@@ -153,11 +153,16 @@ export function AIChatProvider({
         const res = await fetch(`/resources/ai-assistant/chat/${chatId}`);
         if (res.ok) {
           const data = (await res.json()) as {
-            chat?: { messages?: UIMessage[] };
+            chat?: { title?: string; messages?: UIMessage[] };
             session?: SessionState;
           };
           setCurrentChatMessages(data.chat?.messages ?? []);
           setSessionState(data.session ?? undefined);
+          if (data.chat?.title) {
+            setChatHistory((prev) =>
+              prev.map((c) => (c.id === chatId ? { ...c, title: data.chat!.title! } : c))
+            );
+          }
         }
       } catch {
         setCurrentChatMessages(undefined);

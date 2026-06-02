@@ -26,11 +26,14 @@ export function AIChatPanel() {
     currentChatId,
     currentChatMessages,
     pageContext,
+    isOpen,
     close,
     pendingQuery,
     clearPendingQuery,
     refreshHistory,
   } = useAIChat();
+
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const [input, setInput] = useState("");
 
@@ -61,7 +64,14 @@ export function AIChatPanel() {
     },
   });
 
-  const { messages, sendMessage, status, stop: aiStop } = useChat({
+  const {
+    messages,
+    sendMessage,
+    status,
+    stop: aiStop,
+    error,
+    regenerate,
+  } = useChat({
     id: currentChatId,
     messages: currentChatMessages,
     transport,
@@ -97,6 +107,19 @@ export function AIChatPanel() {
     [submit, input]
   );
 
+  // Close on Escape, but only when focus is inside the panel — a global
+  // Escape listener would hijack the key from menus/inputs elsewhere.
+  useEffect(() => {
+    if (!isOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && panelRef.current?.contains(document.activeElement)) {
+        close();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, close]);
+
   // A pending query is set when the assistant is opened with an initial
   // question (e.g. from a "Ask AI about this" affordance). Send it once.
   const sentPending = useRef(false);
@@ -111,8 +134,6 @@ export function AIChatPanel() {
     }
   }, [pendingQuery, submit, clearPendingQuery]);
 
-  // Refresh the chat history list once a turn settles (title/rows are written
-  // server-side by the agent's onTurnStart/onTurnComplete hooks).
   const prevStatus = useRef(status);
   useEffect(() => {
     if (prevStatus.current === "streaming" && status === "ready") {
@@ -125,7 +146,10 @@ export function AIChatPanel() {
   const isEmpty = messages.length === 0;
 
   return (
-    <div className="flex h-full w-[380px] flex-col border-l border-grid-bright bg-background-bright">
+    <div
+      ref={panelRef}
+      className="flex h-full w-[380px] flex-col border-l border-grid-bright bg-background-bright animate-in fade-in slide-in-from-right-2 duration-200"
+    >
       <AIChatHeader />
       <AIChatContextBanner
         projectSlug={pageContext.projectSlug}
@@ -138,7 +162,12 @@ export function AIChatPanel() {
           <AIChatSuggestedPrompts currentPage={pageContext.currentPage} onSelect={submit} />
         </div>
       ) : (
-        <AIChatMessages messages={messages} />
+        <AIChatMessages
+          messages={messages}
+          status={status}
+          error={error}
+          onRetry={() => void regenerate()}
+        />
       )}
 
       <AIChatInput
@@ -148,6 +177,7 @@ export function AIChatPanel() {
         onStop={stop}
         isLoading={isLoading}
         status={status}
+        chatId={currentChatId}
       />
     </div>
   );

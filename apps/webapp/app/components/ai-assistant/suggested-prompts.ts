@@ -33,6 +33,11 @@ export const SUGGESTED_PROMPTS: Record<string, string[]> = {
     "How do I sync env vars from Vercel?",
     "Can I use different values per environment?",
   ],
+  query: [
+    "How does TRQL work?",
+    "Show me example queries",
+    "How do I query run metrics?",
+  ],
 };
 
 export function getPrompts(pageId: string): string[] {
