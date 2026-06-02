@@ -1,0 +1,25 @@
+## What
+
+This PR updates route components to use the animated Resizable panel pattern:
+- Converts conditionally-rendered panels to always-mounted animated panels with `collapsible`, `collapsed`, and `collapseAnimation` props
+- Adds `useFrozenValue` hook usage to keep last selected item visible during panel collapse animation
+- Minor UI polish on logs, runs, schedules, waitpoints pages
+
+## Changes
+
+- **Resizable.tsx** — skipped (main already has these exports)
+- **Route files** (logs, runs, schedules, batches, etc.) — convert panel pattern, add `useFrozenValue`
+- **LogsTable, TreeView, GitMetadata** — minor improvements
+
+## Manual resolution
+
+Merge had 3 conflicts:
+- `Resizable.tsx`: kept main's version (already has animated panel exports with Firefox workarounds)
+- `logs/route.tsx` line 419: removed pointless `?? undefined` (PR's cleaner version)
+- `runs.$runParam/route.tsx`: kept `panel-run-parent-v3` autosaveId, removed `?? undefined`
+
+## Original PRs
+- Original: #3267
+- This replaces: #3319
+
+Co-authored-by: James Ritchie <james@trigger.dev>
