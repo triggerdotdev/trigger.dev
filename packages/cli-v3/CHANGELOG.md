@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.5.0-rc.4
+
+### Patch Changes
+
+- Bump `@s2-dev/streamstore` to `0.22.10` to fix a `TASK_RUN_UNCAUGHT_EXCEPTION` ("Invalid state: Unable to enqueue") when a `chat.agent` turn is aborted mid-stream. ([#3792](https://github.com/triggerdotdev/trigger.dev/pull/3792))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.4`
+  - `@trigger.dev/build@4.5.0-rc.4`
+  - `@trigger.dev/schema-to-json@4.5.0-rc.4`
+
 ## 4.5.0-rc.3
 
 ### Patch Changes

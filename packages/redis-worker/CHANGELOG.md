@@ -1,5 +1,19 @@
 # @trigger.dev/redis-worker
 
+## 4.5.0-rc.4
+
+### Minor Changes
+
+- Mollifier buffer extensions: idempotency dedup, an atomic `mutateSnapshot` API, metadata CAS, claim primitives, and a `MollifierSnapshot` type. The buffer's Redis client now reconnects with jittered backoff so a fleet of clients doesn't stampede Redis in lockstep after a blip. ([#3752](https://github.com/triggerdotdev/trigger.dev/pull/3752))
+- Add `onTerminalFailure` callback to `MollifierDrainerOptions` so the customer's run lands a SYSTEM_FAILURE PG row even when the drainer exhausts `maxAttempts` on a retryable PG error. Previously, retryable-error exhaustion called `buffer.fail()` directly, which atomically marks FAILED + DELs the entry hash with no PG write — silent data loss when PG was unreachable across the full retry budget. The callback fires before `buffer.fail()` on any terminal path (`cause: "non-retryable"` or `"max-attempts-exhausted"`); throwing a retryable error from the callback causes the drainer to requeue rather than fail. ([#3754](https://github.com/triggerdotdev/trigger.dev/pull/3754))
+
+### Patch Changes
+
+- Pipeline the per-entry `HGETALL` fetches in `MollifierBuffer.listEntriesForEnv`. The previous serial implementation issued one Redis round-trip per runId returned by `LRANGE`, which dominated stale-sweep wall-time at any meaningful backlog (at the sweep's default maxCount=1000, this is ~1000 RTTs per env per pass). Behaviour is unchanged — entries are still skipped when the entry hash has been torn down by a concurrent drainer ack/fail between the LRANGE and the HGETALL. ([#3752](https://github.com/triggerdotdev/trigger.dev/pull/3752))
+- Mollifier `mutateSnapshot` now enforces a tag cap: an `append_tags` patch carrying `maxTags` returns `"limit_exceeded"` (writing nothing) when the deduped tag count would exceed the limit, so a buffered run can't accumulate more tags via the tags API than the trigger validator allows at creation. ([#3756](https://github.com/triggerdotdev/trigger.dev/pull/3756))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.4`
+
 ## 4.5.0-rc.3
 
 ### Patch Changes
