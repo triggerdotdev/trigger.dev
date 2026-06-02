@@ -1104,7 +1104,7 @@ function TasksTreeView({
             <Popover>
               <PopoverArrowTrigger>Shortcuts</PopoverArrowTrigger>
               <PopoverContent
-                className="min-w-[20rem] overflow-y-auto p-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+                className="min-w-[20rem] overflow-y-auto p-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
                 align="start"
               >
                 <Header3 spacing>Keyboard shortcuts</Header3>
@@ -1200,7 +1200,7 @@ function TimelineView({
 
   return (
     <div
-      className="h-full overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+      className="h-full overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
       ref={timelineContainerRef}
     >
       <Timeline.Root

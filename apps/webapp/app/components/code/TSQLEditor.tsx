@@ -271,7 +271,7 @@ export function TSQLEditor(opts: TSQLEditorProps) {
     >
       <div
         className={cn(
-          "min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          "min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
         )}
         ref={editor}
         onClick={() => {

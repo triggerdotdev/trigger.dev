@@ -146,7 +146,7 @@ export function LogDetailView({ logId, initialLog, onClose, searchTerm }: LogDet
           className="pl-1"
         />
       </div>
-      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
         <DetailsTab log={log} runPath={runPath} runStatus={runStatus} searchTerm={searchTerm} />
       </div>
     </div>

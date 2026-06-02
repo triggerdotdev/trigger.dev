@@ -339,7 +339,7 @@ export function SideMenu({
             "min-h-0 overflow-y-auto pt-2",
             isCollapsed
               ? "scrollbar-none"
-              : "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+              : "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
           )}
           ref={borderRef}
         >
@@ -923,7 +923,7 @@ function ProjectSelector({
         disableHoverableContent
       />
       <PopoverContent
-        className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
         side={isCollapsed ? "right" : "bottom"}
         sideOffset={isCollapsed ? 8 : 4}
         align="start"
@@ -1095,7 +1095,7 @@ function SwitchOrganizations({
           </ButtonContent>
         </PopoverTrigger>
         <PopoverContent
-          className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
           align="start"
           style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
           side="right"

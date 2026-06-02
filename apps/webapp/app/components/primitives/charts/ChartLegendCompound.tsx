@@ -201,7 +201,7 @@ export function ChartLegendCompound({
         className={cn(
           "flex flex-col",
           scrollable &&
-            "min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+            "min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
         )}
       >
         {legendItems.visible.map((item) => {

@@ -275,7 +275,7 @@ export default function Page() {
       <DialogContent className="p-0 pt-2.5 md:max-w-2xl lg:max-w-3xl">
         <DialogHeader className="px-4">New environment variables</DialogHeader>
         <Form method="post" {...form.props}>
-          <Fieldset className="max-h-[70vh] overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <Fieldset className="max-h-[70vh] overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
             <InputGroup fullWidth>
               <Label>Environments</Label>
               {selectedBranchId ? (
