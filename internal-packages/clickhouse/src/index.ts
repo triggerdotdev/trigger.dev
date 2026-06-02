@@ -9,6 +9,7 @@ import {
   getTaskRunsQueryBuilder,
   getTaskActivityQueryBuilder,
   getCurrentRunningStats,
+  getChildRunStatusCounts,
   getAverageDurations,
   getTaskUsageByOrganization,
   getTaskRunsCountQueryBuilder,
@@ -228,6 +229,7 @@ export class ClickHouse {
       pendingVersionIdsQueryBuilder: getPendingVersionIdsQueryBuilder(this.reader),
       getTaskActivity: getTaskActivityQueryBuilder(this.reader),
       getCurrentRunningStats: getCurrentRunningStats(this.reader),
+      getChildRunStatusCounts: getChildRunStatusCounts(this.reader),
       getAverageDurations: getAverageDurations(this.reader),
       getTaskUsageByOrganization: getTaskUsageByOrganization(this.reader),
     };
