@@ -90,6 +90,39 @@ meter.addBatchObservableCallback(
   [staleEntriesGauge],
 );
 
+// Observability gauge for entries currently in DRAINING state — popped
+// by the drainer but not yet acked/failed/requeued. Backed by the
+// `mollifier:draining` ZSET (see `MollifierBuffer.getDrainingCount`)
+// and polled by the loop in `mollifierDrainingGaugeLoop.server.ts`.
+//
+// Useful for:
+//   - "Is anything mid-drain right now?" panels
+//   - Post-crash forensics ("how many entries got stranded by that ECS OOM?")
+//   - Alerting: a sustained non-zero with no drainer progress is a stall
+//
+// No `envId` attribute — same high-cardinality constraint as the other
+// mollifier gauges. The per-entry hash carries env/org for drill-down.
+export const drainingCountGauge = meter.createObservableGauge(
+  "mollifier.draining.current",
+  {
+    description:
+      "Mollifier buffer entries currently in DRAINING state (popped but not yet acked/failed/requeued)",
+  },
+);
+
+let latestDrainingCount = 0;
+
+export function reportDrainingCount(count: number): void {
+  latestDrainingCount = count;
+}
+
+meter.addBatchObservableCallback(
+  (result) => {
+    result.observe(drainingCountGauge, latestDrainingCount);
+  },
+  [drainingCountGauge],
+);
+
 // Electric SQL's shape-stream protocol adds a `handle=` query param on
 // every reconnect after the initial GET. Gating the realtime-buffered
 // log/counter on its absence keeps the signal at one tick per
