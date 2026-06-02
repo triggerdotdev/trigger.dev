@@ -133,6 +133,14 @@ export class ComputeWorkloadManager implements WorkloadManager {
     // Strip image digest - resolve by tag, not digest
     const imageRef = stripImageDigest(opts.image);
 
+    // Per-VM network endpoint labels, applied to the VM's network endpoint so
+    // network policy can select it. Mirrors the label the Kubernetes workload
+    // manager sets on the run pod.
+    const networkLabels: Record<string, string> = {};
+    if (opts.hasPrivateLink) {
+      networkLabels.privatelink = opts.orgId;
+    }
+
     // Wide event: single canonical log line emitted in finally
     const event: Record<string, unknown> = {
       // High-cardinality identifiers
@@ -173,6 +181,9 @@ export class ComputeWorkloadManager implements WorkloadManager {
             deploymentVersion: opts.deploymentVersion,
             machine: opts.machine.name,
           },
+          ...(Object.keys(networkLabels).length > 0
+            ? { network_labels: networkLabels }
+            : {}),
         })
       );
 
@@ -297,6 +308,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
     envId?: string;
     orgId?: string;
     projectId?: string;
+    hasPrivateLink?: boolean;
     dequeuedAt?: Date;
   }): Promise<boolean> {
     const metadata: Record<string, string> = {
@@ -308,6 +320,14 @@ export class ComputeWorkloadManager implements WorkloadManager {
       TRIGGER_SUPERVISOR_API_DOMAIN: this.opts.workloadApiDomain ?? "",
       TRIGGER_WORKER_INSTANCE_NAME: this.opts.runner.instanceName,
     };
+
+    // Carry the same network endpoint labels onto the restored VM (mirror of
+    // the create path) so network policy keeps matching after a restore —
+    // without them a restored run would lose its policy-based egress.
+    const networkLabels: Record<string, string> = {};
+    if (opts.hasPrivateLink && opts.orgId) {
+      networkLabels.privatelink = opts.orgId;
+    }
 
     this.logger.verbose("restore request body", {
       snapshotId: opts.snapshotId,
@@ -322,6 +342,9 @@ export class ComputeWorkloadManager implements WorkloadManager {
         metadata,
         cpu: opts.machine.cpu,
         memory_gb: opts.machine.memory,
+        ...(Object.keys(networkLabels).length > 0
+          ? { network_labels: networkLabels }
+          : {}),
       })
     );
 
