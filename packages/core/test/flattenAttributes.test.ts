@@ -1,6 +1,30 @@
 import { flattenAttributes, unflattenAttributes } from "../src/v3/utils/flattenAttributes.js";
 
 describe("flattenAttributes", () => {
+  it("escapes periods in object keys", () => {
+    const obj = { "Key 0.002mm": 31.4 };
+    const flattened = flattenAttributes(obj);
+    expect(flattened).toEqual({ "Key 0$@dot002mm": 31.4 });
+    expect(unflattenAttributes(flattened)).toEqual(obj);
+  });
+
+  it("handles multiple periods in a single key", () => {
+    const obj = { "a.b.c": "value" };
+    const flattened = flattenAttributes(obj);
+    expect(flattened).toEqual({ "a$@dotb$@dotc": "value" });
+    expect(unflattenAttributes(flattened)).toEqual(obj);
+  });
+
+  it("handles period keys nested inside regular objects", () => {
+    const obj = { meta: { "Key 0.002mm": 31.4, "version": 2 } };
+    const flattened = flattenAttributes(obj);
+    expect(flattened).toEqual({
+      "meta.Key 0$@dot002mm": 31.4,
+      "meta.version": 2,
+    });
+    expect(unflattenAttributes(flattened)).toEqual(obj);
+  });
+
   it("handles number keys correctly", () => {
     expect(flattenAttributes({ bar: { "25": "foo" } })).toEqual({ "bar.25": "foo" });
     expect(unflattenAttributes({ "bar.25": "foo" })).toEqual({ bar: { "25": "foo" } });
