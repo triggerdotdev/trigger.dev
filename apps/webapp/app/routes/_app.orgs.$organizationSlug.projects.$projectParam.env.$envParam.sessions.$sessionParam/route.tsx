@@ -515,7 +515,7 @@ function StreamColumnHeader({
   timeColWidth: string;
 }) {
   return (
-    <div className="flex select-none items-center border-b border-grid-dimmed bg-charcoal-900 px-2 py-1 text-xs uppercase tracking-wide text-text-dimmed">
+    <div className="flex select-none items-center border-b border-grid-dimmed bg-charcoal-900 py-1 text-xs uppercase tracking-wide text-text-dimmed">
       <div className="flex-none" style={{ width: `${rowNumberWidthCh}ch` }} />
       <div className="flex-none pl-3" style={{ width: timeColWidth }}>
         Time
