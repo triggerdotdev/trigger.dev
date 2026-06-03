@@ -445,7 +445,7 @@ type TierData = {
   prices: Record<string, number>;
 };
 
-const PRICING_UNITS = ["tokens", "characters", "images", "minutes", "requests", "free"];
+const PRICING_UNITS = ["tokens", "characters", "images", "minutes", "requests", "free", "not_findable"];
 
 const COMMON_USAGE_TYPES = [
   "input",
