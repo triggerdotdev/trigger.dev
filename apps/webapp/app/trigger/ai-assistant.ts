@@ -80,7 +80,7 @@ export const dashboardAssistant = chat
     // Declared here (not just on streamText) so the SDK re-applies each tool's
     // `toModelOutput` when re-converting prior-turn history. run() reads them
     // back via `tools`.
-    tools: async ({ clientData }) => buildAssistantTools(clientData!),
+    tools: async (event) => buildAssistantTools(event.clientData!),
 
     uiMessageStreamOptions: {
       onError: (error: unknown) => {

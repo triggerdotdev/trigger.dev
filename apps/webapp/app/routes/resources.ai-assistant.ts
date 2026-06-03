@@ -14,61 +14,86 @@ function envContext(
   userId: string,
   clientData: Record<string, unknown> | undefined
 ): AssistantEnvContext {
+  const orgSlug = String(clientData?.organizationSlug ?? "").trim();
+  const projSlug = String(clientData?.projectSlug ?? "").trim();
+  const envSlug = String(clientData?.environmentSlug ?? "").trim();
+
+  if (!orgSlug || !projSlug || !envSlug) {
+    throw new Error("Missing organization, project, or environment slug");
+  }
+
   return {
     userId,
-    organizationSlug: String(clientData?.organizationSlug ?? ""),
-    projectSlug: String(clientData?.projectSlug ?? ""),
-    environmentSlug: String(clientData?.environmentSlug ?? ""),
+    organizationSlug: orgSlug,
+    projectSlug: projSlug,
+    environmentSlug: envSlug,
   };
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const body = (await request.json()) as {
-    intent?: string;
-    chatId?: string;
-    clientData?: Record<string, unknown>;
-  };
+  try {
+    const userId = await requireUserId(request);
+    const body = (await request.json()) as {
+      intent?: string;
+      chatId?: string;
+      clientData?: Record<string, unknown>;
+    };
 
-  if (!body.chatId) {
-    return json({ error: "Missing chatId" }, { status: 400 });
-  }
-  const chatId = body.chatId;
+    if (!body.chatId) {
+      return json({ error: "Missing chatId" }, { status: 400 });
+    }
+    const chatId = body.chatId;
 
-  if (body.intent === "createSession") {
-    const { clientData } = body;
-    const ctx = envContext(userId, clientData);
+    if (body.intent === "createSession") {
+      const { clientData } = body;
+      const ctx = envContext(userId, clientData);
 
-    const result = await withAssistantAuth(ctx, () =>
-      startDashboardAssistant({
-        chatId,
-        // Override the browser-claimed userId with the server-trusted one.
-        clientData: { ...clientData, userId },
-      })
+      const result = await withAssistantAuth(ctx, () =>
+        startDashboardAssistant({
+          chatId,
+          // Override the browser-claimed userId with the server-trusted one.
+          clientData: {
+            userId,
+            organizationSlug: ctx.organizationSlug,
+            projectSlug: ctx.projectSlug,
+            environmentSlug: ctx.environmentSlug,
+            currentPage: String(clientData?.currentPage ?? ""),
+            currentParams: clientData?.currentParams
+              ? (clientData.currentParams as Record<string, string>)
+              : undefined,
+          },
+        })
+      );
+
+      return json({
+        sessionId: result.sessionId,
+        publicAccessToken: result.publicAccessToken,
+      });
+    }
+
+    if (body.intent === "refreshToken") {
+      const { chatId, clientData } = body;
+      const ctx = envContext(userId, clientData);
+
+      // Pure mint — no session create, no run trigger. Scoped to this chat.
+      const publicAccessToken = await withAssistantAuth(ctx, () =>
+        auth.createPublicToken({
+          scopes: {
+            read: { sessions: chatId },
+            write: { sessions: chatId },
+          },
+        })
+      );
+
+      return json({ publicAccessToken });
+    }
+
+    return json({ error: "Unknown intent" }, { status: 400 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return json(
+      { error: `AI assistant error: ${message}` },
+      { status: 500 }
     );
-
-    return json({
-      sessionId: result.sessionId,
-      publicAccessToken: result.publicAccessToken,
-    });
   }
-
-  if (body.intent === "refreshToken") {
-    const { chatId, clientData } = body;
-    const ctx = envContext(userId, clientData);
-
-    // Pure mint — no session create, no run trigger. Scoped to this chat.
-    const publicAccessToken = await withAssistantAuth(ctx, () =>
-      auth.createPublicToken({
-        scopes: {
-          read: { sessions: chatId },
-          write: { sessions: chatId },
-        },
-      })
-    );
-
-    return json({ publicAccessToken });
-  }
-
-  return json({ error: "Unknown intent" }, { status: 400 });
 };

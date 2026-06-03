@@ -51,7 +51,7 @@ export function createGetErrorDetailsTool(ctx: ToolContext) {
         );
         const presenter = new ErrorGroupPresenter(prisma, clickhouse, clickhouse);
 
-        const result = await presenter.call(environment.organizationId, {
+        const result = await presenter.call(environment.organizationId, environment.id, {
           projectId: environment.project.id,
           userId: ctx.clientData.userId,
           fingerprint: params.fingerprint,
@@ -72,11 +72,11 @@ export function createGetErrorDetailsTool(ctx: ToolContext) {
         }
 
         // Get affected runs
-        const affectedRuns = result.runs?.items
-          ? result.runs.items.map((run: any) => ({
+        const affectedRuns = result.runList?.runs
+          ? result.runList.runs.map((run: any) => ({
               friendlyId: run.friendlyId,
               status: run.status,
-              createdAt: run.createdAt,
+              createdAt: new Date(run.createdAt),
             }))
           : [];
 
