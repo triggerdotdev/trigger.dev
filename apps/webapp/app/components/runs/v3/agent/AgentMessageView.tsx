@@ -1,10 +1,6 @@
 import type { UIMessage } from "@ai-sdk/react";
 import { memo } from "react";
-import {
-  AssistantResponse,
-  ChatBubble,
-  ToolUseRow,
-} from "~/components/runs/v3/ai/AIChatMessages";
+import { AssistantResponse, ChatBubble, ToolUseRow } from "~/components/runs/v3/ai/AIChatMessages";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 
 // ---------------------------------------------------------------------------
@@ -42,11 +38,7 @@ export function AgentMessageView({ messages }: { messages: UIMessage[] }) {
 // Default shallow prop comparison is fine: AI SDK's useChat keeps stable
 // references for messages that haven't changed, so only the last message
 // (the one receiving new chunks) re-renders.
-export const MessageBubble = memo(function MessageBubble({
-  message,
-}: {
-  message: UIMessage;
-}) {
+export const MessageBubble = memo(function MessageBubble({ message }: { message: UIMessage }) {
   if (message.role === "user") {
     const text =
       message.parts
@@ -67,15 +59,47 @@ export const MessageBubble = memo(function MessageBubble({
     const hasContent = message.parts && message.parts.length > 0;
     if (!hasContent) return null;
 
-    return (
-      <div className="space-y-2">
-        {message.parts?.map((part, i) => renderPart(part, i))}
-      </div>
-    );
+    return <div className="space-y-2">{renderAssistantParts(message.parts ?? [])}</div>;
   }
 
   return null;
 });
+
+// Group consecutive data-* parts (rendered as inline DataPartPopover pills)
+// under a single "Tool calls:" label with a flex-wrap row so they have a
+// proper gap between them. Non-data parts pass through to renderPart
+// unchanged.
+function renderAssistantParts(parts: UIMessage["parts"]) {
+  const nodes: React.ReactNode[] = [];
+  let i = 0;
+  while (i < parts.length) {
+    const type = parts[i].type as string;
+    if (type?.startsWith?.("data-") && type !== "data-subagent-run") {
+      const groupStart = i;
+      const group: UIMessage["parts"] = [];
+      while (
+        i < parts.length &&
+        (parts[i].type as string)?.startsWith?.("data-") &&
+        (parts[i].type as string) !== "data-subagent-run"
+      ) {
+        group.push(parts[i]);
+        i++;
+      }
+      nodes.push(
+        <div key={`data-${groupStart}`} className="flex items-center gap-1.5">
+          <span className="text-xs font-medium text-text-dimmed">AI SDK data parts:</span>
+          <div className="flex flex-wrap gap-1.5">
+            {group.map((g, k) => renderPart(g, groupStart + k))}
+          </div>
+        </div>
+      );
+    } else {
+      nodes.push(renderPart(parts[i], i));
+      i++;
+    }
+  }
+  return nodes;
+}
 
 export function renderPart(part: UIMessage["parts"][number], i: number) {
   const p = part as any;
@@ -91,9 +115,7 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
     return (
       <div key={i} className="border-l-2 border-amber-500/40 pl-2">
         <ChatBubble>
-          <div className="whitespace-pre-wrap text-xs italic text-amber-200/70">
-            {p.text ?? ""}
-          </div>
+          <div className="whitespace-pre-wrap text-xs italic text-amber-200/70">{p.text ?? ""}</div>
         </ChatBubble>
       </div>
     );
@@ -117,8 +139,7 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
         .pop();
       resultOutput = lastText?.text ?? undefined;
     } else if (p.output != null) {
-      resultOutput =
-        typeof p.output === "string" ? p.output : JSON.stringify(p.output, null, 2);
+      resultOutput = typeof p.output === "string" ? p.output : JSON.stringify(p.output, null, 2);
     }
 
     return (
