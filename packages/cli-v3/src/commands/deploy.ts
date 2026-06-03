@@ -1149,8 +1149,9 @@ async function handleNativeBuildServerDeploy({
   const [readSessionError, readSession] = await tryCatch(
     stream.readSession(
       {
-        start: { from: { seqNum: 0 }, clamp: true },
-        stop: { waitSecs: 60 * 20 }, // 20 minutes
+        start: {
+          from: { seqNum: 0 },
+        },
       },
       { signal: abortController.signal }
     )

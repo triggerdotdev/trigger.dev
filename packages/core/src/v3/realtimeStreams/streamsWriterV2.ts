@@ -71,11 +71,11 @@ export class StreamsWriterV2<T = any> implements StreamsWriter {
       accessToken: options.accessToken,
       ...(options.endpoint
         ? {
-            endpoints: {
-              account: options.endpoint,
-              basin: options.endpoint,
-            },
-          }
+          endpoints: {
+            account: options.endpoint,
+            basin: options.endpoint,
+          },
+        }
         : {}),
     });
     this.flushIntervalMs = options.flushIntervalMs ?? 200;
@@ -238,7 +238,7 @@ async function* streamToAsyncIterator<T>(stream: ReadableStream<T>): AsyncIterab
 function safeReleaseLock(reader: ReadableStreamDefaultReader<any>) {
   try {
     reader.releaseLock();
-  } catch (error) {}
+  } catch (error) { }
 }
 
 // chat.agent emits two chunk shapes through this writer:

@@ -41,6 +41,8 @@ import {
   EnvironmentVariableResponseBody,
   EnvironmentVariableWithSecret,
   ListQueueOptions,
+  RunEvent,
+  ListRunEventsResponse,
   ListRunResponseItem,
   ListScheduleOptions,
   QueueItem,
@@ -748,7 +750,7 @@ export class ApiClient {
 
   listRunEvents(runId: string, requestOptions?: ZodFetchOptions) {
     return zodfetch(
-      z.any(), // TODO: define a proper schema for this
+      ListRunEventsResponse,
       `${this.baseUrl}/api/v1/runs/${runId}/events`,
       {
         method: "GET",
