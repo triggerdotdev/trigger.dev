@@ -51,7 +51,6 @@
     "arktype": "^2.0.0",
     "runtypes": "^6.7.0",
     "superstruct": "^2.0.2",
-    "tshy": "^3.0.2",
     "@sinclair/typebox": "^0.34.3",
     "valibot": "^1.1.0",
     "yup": "^1.7.0",

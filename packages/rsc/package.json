@@ -49,7 +49,6 @@
     "@types/react": "*",
     "@types/react-dom": "*",
     "rimraf": "^3.0.2",
-    "tshy": "^3.0.2",
     "tsx": "4.17.0"
   },
   "engines": {

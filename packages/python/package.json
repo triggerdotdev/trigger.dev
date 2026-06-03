@@ -51,8 +51,7 @@
   "devDependencies": {
     "@types/node": "20.14.14",
     "rimraf": "6.0.1",
-    "tshy": "^3.0.2",
-    "typescript": "^5.5.4",
+    "typescript": "^6.0.0",
     "tsx": "4.17.0",
     "esbuild": "^0.23.0",
     "@arethetypeswrong/cli": "^0.15.4",
