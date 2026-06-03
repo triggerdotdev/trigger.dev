@@ -227,9 +227,22 @@ export const TriggerTaskRequestBody = z.object({
           maxDelay: z.string().optional(),
         })
         .optional(),
-    })
-    .optional(),
-});
+      })
+      .optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.options?.payloadType !== "application/store") {
+      return;
+    }
+
+    if (typeof value.payload !== "string" || value.payload.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "payload must be a non-empty string when options.payloadType is application/store",
+        path: ["payload"],
+      });
+    }
+  });
 
 export type TriggerTaskRequestBody = z.infer<typeof TriggerTaskRequestBody>;
 
