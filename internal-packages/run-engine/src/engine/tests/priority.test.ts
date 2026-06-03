@@ -28,7 +28,12 @@ describe("RunEngine priority", () => {
         },
         queue: {
           redis: redisOptions,
-          processWorkerQueueDebounceMs: 50,
+          // Use a large debounce so the background processQueueForWorkerQueue job
+          // doesn't race with the manual processMasterQueueForEnvironment call.
+          // With PrismaPg adapter overhead each trigger() takes longer, so a small
+          // debounce causes items to be moved to the worker queue individually in
+          // arrival order rather than collectively in priority order.
+          processWorkerQueueDebounceMs: 10_000,
           masterQueueConsumersDisabled: true,
         },
         runLock: {

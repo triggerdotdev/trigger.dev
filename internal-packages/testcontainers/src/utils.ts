@@ -29,9 +29,10 @@ export async function createPostgresContainer(network: StartedNetwork) {
       "push",
       "--force-reset",
       "--accept-data-loss",
-      "--skip-generate",
       "--schema",
       `${databasePath}/prisma/schema.prisma`,
+      "--url",
+      container.getConnectionUri(),
     ],
     {
       nodeOptions: {

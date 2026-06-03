@@ -1,18 +1,13 @@
 import { PrismaClient } from "@trigger.dev/database";
+import { PrismaPg } from "@prisma/adapter-pg";
 
 type SetDBCallback = (prisma: PrismaClient) => Promise<void>;
 
 export const setDB = async (cb: SetDBCallback) => {
   const { DATABASE_URL } = process.env;
 
-  const prisma = new PrismaClient({
-    datasources: {
-      db: {
-        url: DATABASE_URL,
-        // We can't set directUrl here, and we don't have to
-      },
-    },
-  });
+  const adapter = new PrismaPg(DATABASE_URL ?? "postgresql://localhost:5432/trigger");
+  const prisma = new PrismaClient({ adapter });
 
   await prisma.$connect();
   await cb(prisma);

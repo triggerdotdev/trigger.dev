@@ -30,7 +30,8 @@ ENV NODE_ENV=development
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --no-frozen-lockfile
 # Generate Prisma client here where all deps are installed
 COPY --from=pruner --chown=node:node /triggerdotdev/internal-packages/database/prisma/schema.prisma /triggerdotdev/internal-packages/database/prisma/schema.prisma
-RUN pnpx prisma@6.14.0 generate --schema /triggerdotdev/internal-packages/database/prisma/schema.prisma
+COPY --from=pruner --chown=node:node /triggerdotdev/internal-packages/database/prisma.config.ts /triggerdotdev/internal-packages/database/prisma.config.ts
+RUN pnpx prisma@7.7.0 generate --schema /triggerdotdev/internal-packages/database/prisma/schema.prisma
 
 ## Production deps
 FROM base AS production-deps
