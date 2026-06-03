@@ -7,7 +7,7 @@ import {
 } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import type { UIMessage } from "ai";
@@ -30,8 +30,40 @@ export function AIChatMessages({ messages, status, error, onRetry }: AIChatMessa
   const autoScrollRef = useAutoScrollToBottom([messages]);
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const navigatedMessagesRef = useRef(new Set<string>());
 
   const isStreaming = status === "streaming" || status === "submitted";
+
+  // Auto-navigate when assistant produces a navigateToPage tool with output
+  useEffect(() => {
+    messages.forEach((message) => {
+      if (message.role === "assistant") {
+        message.parts.forEach((part, idx) => {
+          const toolPart = part as any;
+          if (toolPart.type === "dynamic-tool" || toolPart.type.startsWith("tool-")) {
+            const toolName =
+              toolPart.type === "dynamic-tool"
+                ? toolPart.toolName ?? "tool"
+                : toolPart.type.slice("tool-".length);
+
+            if (toolName === "navigateToPage" && toolPart.state === "output-available") {
+              const key = `${message.id}-${idx}`;
+              if (!navigatedMessagesRef.current.has(key)) {
+                const result = toolPart.output as {
+                  found: boolean;
+                  url?: string;
+                };
+                if (result?.found && result.url) {
+                  navigatedMessagesRef.current.add(key);
+                  navigate(result.url);
+                }
+              }
+            }
+          }
+        });
+      }
+    });
+  }, [messages, navigate]);
 
   // Feedback bar only attaches to the most recent assistant turn.
   let lastAssistantIndex = -1;
