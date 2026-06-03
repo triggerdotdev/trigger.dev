@@ -3,42 +3,101 @@ import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { extractAISpanData } from "~/components/runs/v3/ai";
-import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
+import {
+  anyResource,
+  createLoaderApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
+import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
+import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
+import { buildSyntheticSpanDetailBody } from "~/v3/mollifier/syntheticApiResponses.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
   spanId: z.string(),
 });
 
+// Resolve the run from either Postgres or the mollifier buffer.
+// Buffered runs only have one valid spanId (the queued span recorded at
+// gate time and reused as the run's root spanId when the drainer
+// materialises). Any other spanId returns a deterministic 404; the queued
+// span returns a minimal synthesised shape so the customer's SDK sees the
+// same 200 contract they'd get for a freshly-triggered run.
+type ResolvedRun =
+  | { source: "pg"; run: Awaited<ReturnType<typeof findPgRun>> & {} }
+  | { source: "buffer"; run: NonNullable<Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>>> };
+
+async function findPgRun(runId: string, environmentId: string) {
+  return $replica.taskRun.findFirst({
+    where: { friendlyId: runId, runtimeEnvironmentId: environmentId },
+  });
+}
+
 export const loader = createLoaderApiRoute(
   {
     params: ParamsSchema,
     allowJWT: true,
     corsStrategy: "all",
-    findResource: (params, auth) => {
-      return $replica.taskRun.findFirst({
-        where: {
-          friendlyId: params.runId,
-          runtimeEnvironmentId: auth.environment.id,
-        },
+    findResource: async (params, auth): Promise<ResolvedRun | null> => {
+      const pgRun = await findPgRun(params.runId, auth.environment.id);
+      if (pgRun) return { source: "pg", run: pgRun };
+
+      const buffered = await findRunByIdWithMollifierFallback({
+        runId: params.runId,
+        environmentId: auth.environment.id,
+        organizationId: auth.environment.organizationId,
       });
+      if (buffered) return { source: "buffer", run: buffered };
+
+      return null;
     },
     shouldRetryNotFound: true,
     authorization: {
       action: "read",
-      resource: (run) => ({
-        runs: run.friendlyId,
-        tags: run.runTags,
-        batch: run.batchId ? BatchId.toFriendlyId(run.batchId) : undefined,
-        tasks: run.taskIdentifier,
-      }),
-      superScopes: ["read:runs", "read:all", "admin"],
+      resource: (resolved) => {
+        if (resolved.source === "pg") {
+          const run = resolved.run;
+          const resources = [
+            { type: "runs", id: run.friendlyId },
+            { type: "tasks", id: run.taskIdentifier },
+            ...run.runTags.map((tag) => ({ type: "tags", id: tag })),
+          ];
+          if (run.batchId) {
+            resources.push({ type: "batch", id: BatchId.toFriendlyId(run.batchId) });
+          }
+          return anyResource(resources);
+        }
+        const run = resolved.run;
+        const resources = [
+          { type: "runs", id: run.friendlyId },
+          ...(run.taskIdentifier ? [{ type: "tasks", id: run.taskIdentifier }] : []),
+          ...run.tags.map((tag) => ({ type: "tags", id: tag })),
+        ];
+        if (run.batchId) {
+          resources.push({ type: "batch", id: BatchId.toFriendlyId(run.batchId) });
+        }
+        return anyResource(resources);
+      },
     },
   },
-  async ({ params, resource: run, authentication }) => {
-    const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
+  async ({ params, resource: resolved, authentication }) => {
+    if (resolved.source === "buffer") {
+      // Buffered runs have exactly one valid spanId — the queued span the
+      // mollifier gate recorded at trigger time, which becomes the run's
+      // root spanId once the drainer materialises. Any other spanId is a
+      // deterministic 404. The matching spanId returns a minimal shape
+      // representing "span exists, no execution data yet."
+      if (resolved.run.spanId !== params.spanId) {
+        return json({ error: "Span not found" }, { status: 404 });
+      }
+      return json(buildSyntheticSpanDetailBody(resolved.run), { status: 200 });
+    }
+
+    const run = resolved.run;
+    const eventRepository = await getEventRepositoryForStore(
+      run.taskEventStore,
+      authentication.environment.organization.id
+    );
     const eventStore = getTaskEventStoreTableForRun(run);
 
     const span = await eventRepository.getSpan(

@@ -2,6 +2,12 @@ import { z } from "zod";
 import { QueueManifest, RetryOptions, ScheduleMetadata } from "./schemas.js";
 import { MachineConfig } from "./common.js";
 
+export const AgentConfig = z.object({
+  type: z.string(), // "ai-sdk-chat" initially, extensible for future agent types
+});
+
+export type AgentConfig = z.infer<typeof AgentConfig>;
+
 export const TaskResource = z.object({
   id: z.string(),
   description: z.string().optional(),
@@ -11,6 +17,7 @@ export const TaskResource = z.object({
   retry: RetryOptions.optional(),
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
+  agentConfig: AgentConfig.optional(),
   schedule: ScheduleMetadata.optional(),
   maxDuration: z.number().optional(),
   ttl: z.string().or(z.number().nonnegative().int()).optional(),

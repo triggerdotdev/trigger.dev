@@ -37,6 +37,7 @@ import {
   type QueryWidgetData,
 } from "~/components/metrics/QueryWidget";
 import { SaveToDashboardDialog } from "~/components/metrics/SaveToDashboardDialog";
+import { ScopeFilter } from "~/components/metrics/ScopeFilter";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import {
@@ -88,12 +89,6 @@ function toISOString(value: Date | string): string {
   }
   return value.toISOString();
 }
-
-const scopeOptions = [
-  { value: "environment", label: "Environment" },
-  { value: "project", label: "Project" },
-  { value: "organization", label: "Organization" },
-] as const;
 
 // Type for the query action response
 type QueryActionResponse = {
@@ -277,7 +272,7 @@ const QueryEditorForm = forwardRef<
         <input type="hidden" name="from" value={from ?? ""} />
         <input type="hidden" name="to" value={to ?? ""} />
         <QueryHistoryPopover history={history} onQuerySelected={handleHistorySelected} />
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           {isAdmin && (
             <Button
               type="submit"
@@ -289,24 +284,11 @@ const QueryEditorForm = forwardRef<
               Explain
             </Button>
           )}
-          <Select
+          <ScopeFilter
             value={scope}
-            setValue={(value) => setScope(value as QueryScope)}
-            variant="secondary/small"
-            dropdownIcon={true}
-            items={[...scopeOptions]}
-            text={(value) => {
-              return <ScopeItem scope={value as QueryScope} />;
-            }}
-          >
-            {(items) =>
-              items.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  <ScopeItem scope={item.value as QueryScope} />
-                </SelectItem>
-              ))
-            }
-          </Select>
+            onValueChange={setScope}
+            shortcut={{ key: "e" }}
+          />
           {queryHasTriggeredAt ? (
             <SimpleTooltip
               asChild
@@ -335,6 +317,7 @@ const QueryEditorForm = forwardRef<
               period={period}
               from={from}
               to={to}
+              shortcut={{ key: "d" }}
               applyShortcut={{ key: "enter", enabledOnInputElements: true }}
               onValueChange={(values) => {
                 flushSync(() => {
@@ -1131,27 +1114,6 @@ function ExportResultsButton({
       </PopoverContent>
     </Popover>
   );
-}
-
-function ScopeItem({ scope }: { scope: QueryScope }) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-
-  switch (scope) {
-    case "organization":
-      return <span className="text-text-bright">{`Org: ${organization.title}`}</span>;
-    case "project":
-      return <span className="text-text-bright">{`Project: ${project.name}`}</span>;
-    case "environment":
-      return (
-        <span className="text-text-bright">
-          Env: <EnvironmentLabel environment={environment} />
-        </span>
-      );
-    default:
-      return <span className="text-text-bright">{scope}</span>;
-  }
 }
 
 function QueryResultsCallouts({

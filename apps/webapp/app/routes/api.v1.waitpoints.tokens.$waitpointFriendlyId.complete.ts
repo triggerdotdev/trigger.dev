@@ -23,8 +23,7 @@ const { action, loader } = createActionApiRoute(
     allowJWT: true,
     authorization: {
       action: "write",
-      resource: (params) => ({ waitpoints: params.waitpointFriendlyId }),
-      superScopes: ["write:waitpoints", "admin"],
+      resource: (params) => ({ type: "waitpoints", id: params.waitpointFriendlyId }),
     },
     corsStrategy: "all",
   },

@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { realtimeClient } from "~/services/realtimeClientGlobal.server";
-import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  anyResource,
+  createLoaderApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
 
 const SearchParamsSchema = z.object({
   tags: z
@@ -21,8 +24,18 @@ export const loader = createLoaderApiRoute(
     findResource: async () => 1, // This is a dummy value, it's not used
     authorization: {
       action: "read",
-      resource: (_, __, searchParams) => searchParams,
-      superScopes: ["read:runs", "read:all", "admin"],
+      resource: (_, __, searchParams) =>
+        // Pre-RBAC, the resource was the searchParams object itself and
+        // the legacy `checkAuthorization` iterated `Object.keys`, so a
+        // JWT with type-level `read:tags` (no id) granted access to the
+        // unfiltered runs stream. Including `{ type: "tags" }` here
+        // preserves that — per-id `read:tags:<tag>` still grants only
+        // when the filter includes that tag.
+        anyResource([
+          { type: "runs" },
+          { type: "tags" },
+          ...(searchParams.tags ?? []).map((tag) => ({ type: "tags", id: tag })),
+        ]),
     },
   },
   async ({ searchParams, authentication, request, apiVersion }) => {

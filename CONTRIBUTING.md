@@ -29,8 +29,8 @@ branch are tagged into a release periodically.
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/en) version 20.20.0
-- [pnpm package manager](https://pnpm.io/installation) version 10.23.0
+- [Node.js](https://nodejs.org/en) version 20.20.2
+- [pnpm package manager](https://pnpm.io/installation) version 10.33.2
 - [Docker](https://www.docker.com/get-started/)
 - [protobuf](https://github.com/protocolbuffers/protobuf)
 
@@ -49,9 +49,9 @@ branch are tagged into a release periodically.
    ```
    cd trigger.dev
    ```
-3. Ensure you are on the correct version of Node.js (20.20.0). If you are using `nvm`, there is an `.nvmrc` file that will automatically select the correct version of Node.js when you navigate to the repository.
+3. Ensure you are on the correct version of Node.js (20.20.2). If you are using `nvm`, there is an `.nvmrc` file that will automatically select the correct version of Node.js when you navigate to the repository.
 
-4. Run `corepack enable` to use the correct version of pnpm (`10.23.0`) as specified in the root `package.json` file.
+4. Run `corepack enable` to use the correct version of pnpm (`10.33.2`) as specified in the root `package.json` file.
 
 5. Install the required packages using pnpm.
    ```
@@ -71,11 +71,13 @@ branch are tagged into a release periodically.
 
    Feel free to update `SESSION_SECRET` and `MAGIC_LINK_SECRET` as well using the same method.
 
-8. Start Docker. This starts the required services: Postgres, Redis, Electric, and ClickHouse (the ClickHouse migrator runs once on first start). If this is your first time using Docker, consider going through this [guide](DOCKER_INSTALLATION.md).
+8. Start Docker. This starts the core dev services (Postgres, Redis, Electric, MinIO, ClickHouse, s2-lite) and runs the ClickHouse migrator once on first start. If this is your first time using Docker, consider going through this [guide](DOCKER_INSTALLATION.md).
 
    ```
    pnpm run docker
    ```
+
+   For the observability stack (Prometheus, Grafana, OTEL collector) and other optional tooling (Toxiproxy, nginx-h2, ch-ui, extra electric shard), use `pnpm run docker:full` instead. See `docker/docker-compose.extras.yml` for the full list.
 
 9. Migrate the database
    ```
@@ -105,24 +107,32 @@ branch are tagged into a release periodically.
 
 ## Manual testing using hello-world
 
-We use the `<root>/references/hello-world` subdirectory as a staging ground for testing changes to the SDK (`@trigger.dev/sdk` at `<root>/packages/trigger-sdk`), the Core package (`@trigger.dev/core` at `<root>packages/core`), the CLI (`trigger.dev` at `<root>/packages/cli-v3`) and the platform (The remix app at `<root>/apps/webapp`). The instructions below will get you started on using the `hello-world` for local development of Trigger.dev.
+The `hello-world` reference project (and the others) live in a separate repo:
+[`triggerdotdev/references`](https://github.com/triggerdotdev/references). Clone it
+alongside this repo. It's the staging ground for testing changes to the SDK
+(`@trigger.dev/sdk` at `<root>/packages/trigger-sdk`), the Core package
+(`@trigger.dev/core` at `<root>/packages/core`), the CLI (`trigger.dev` at
+`<root>/packages/cli-v3`) and the platform (the Remix app at `<root>/apps/webapp`).
+To exercise your local monorepo changes, the reference project links to your local
+build — see the references repo's README for the `pnpm run link` flow.
+
+> Paths below such as `projects/hello-world` are relative to your `references`
+> clone, not this repo.
 
 ### First-time setup
 
 First, make sure you are running the webapp according to the instructions above. The seed step from setup already created a `hello-world` project under the `References` org with the stable ref `proj_rrkpdguyagvsoktglnod` — log in at http://localhost:3030 with any email to access it. Then:
 
-1. Build the CLI (skip if you already ran the build step in setup)
+1. Build the CLI and packages (skip if you already ran the build step in setup)
 
 ```sh
-pnpm run build --filter trigger.dev
-# Make it accessible to `pnpm exec`
-pnpm i
+pnpm run build --filter trigger.dev --filter "@trigger.dev/*"
 ```
 
-2. Change into the `<root>/references/hello-world` directory and authorize the CLI to the local server:
+2. In your `references` clone, link to your local monorepo build (see its README), then change into `projects/hello-world` and authorize the CLI to the local server:
 
 ```sh
-cd references/hello-world
+cd projects/hello-world
 cp .env.example .env
 pnpm exec trigger login -a http://localhost:3030
 ```
@@ -132,7 +142,7 @@ This will open a new browser window and authorize the CLI against your local use
 You can optionally pass a `--profile` flag to the `login` command, which will allow you to use the CLI with separate accounts/servers. We suggest using a profile called `local` for your local development:
 
 ```sh
-cd references/hello-world
+cd projects/hello-world
 pnpm exec trigger login -a http://localhost:3030 --profile local
 # later when you run the dev or deploy command:
 pnpm exec trigger dev --profile local
@@ -145,35 +155,35 @@ The following steps should be followed any time you start working on a new featu
 
 1. Make sure the webapp is running on localhost:3030
 
-2. Open a terminal window and build the CLI and packages and watch for changes
+2. In this repo, open a terminal window and build the CLI and packages and watch for changes (the reference project links against this build)
 
 ```sh
 pnpm run dev --filter trigger.dev --filter "@trigger.dev/*"
 ```
 
-3. Open another terminal window, and change into the `<root>/references/hello-world` directory.
+3. Open another terminal window, and change into `projects/hello-world` in your `references` clone.
 
 4. Run the `dev` command, which will register all the local tasks with the platform and allow you to start testing task execution:
 
 ```sh
-# in <root>/references/hello-world
+# in <references-clone>/projects/hello-world
 pnpm exec trigger dev
 ```
 
 If you want additional debug logging, you can use the `--log-level debug` flag:
 
 ```sh
-# in <root>/references/hello-world
+# in <references-clone>/projects/hello-world
 pnpm exec trigger dev --log-level debug
 ```
 
-5. If you make any changes in the CLI/Core/SDK, you'll need to `CTRL+C` to exit the `dev` command and restart it to pickup changes. Any changes to the files inside of the `hello-world/src/trigger` dir will automatically be rebuilt by the `dev` command.
+5. If you make any changes in the CLI/Core/SDK, you'll need to `CTRL+C` to exit the `dev` command and restart it to pickup changes. Any changes to the files inside the reference project's `src/trigger` dir will automatically be rebuilt by the `dev` command.
 
 6. Navigate to the `hello-world` project in your local dashboard at localhost:3030 and you should see the list of tasks.
 
-7. Go to the "Test" page in the sidebar and select a task. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the `/references/hello-world/src/trigger` folder. Many of them accept an empty payload.
+7. Go to the "Test" page in the sidebar and select a task. Then enter a payload and click "Run test". You can tell what the payloads should be by looking at the relevant task file inside the reference project's `src/trigger` folder. Many of them accept an empty payload.
 
-8. Feel free to add additional files in `hello-world/src/trigger` to test out specific aspects of the system, or add in edge cases.
+8. Feel free to add additional files in the reference project's `src/trigger` dir to test out specific aspects of the system, or add in edge cases.
 
 ## Adding and running migrations
 
@@ -300,3 +310,7 @@ The process running on port `3030` should be destroyed.
    ```sh
    sudo kill -9 <PID>
    ```
+
+### Running two clones side by side (worktree, branch experiment)
+
+The default `pnpm run docker` uses the project name `triggerdotdev-docker` and the standard host ports (5432, 6379, 3060, 4566, 8123, 9000, 9005, 9006). To stand up a second instance in another clone without clashing, set a different `COMPOSE_PROJECT_NAME` and the offset host ports in that clone's `.env`. The "Running multiple instances side by side" block in `.env.example` lists every overridable env var with its default for reference; uncomment the lines you need and update `DATABASE_URL` / `CLICKHOUSE_URL` / `REDIS_PORT` / `APP_ORIGIN` / `LOGIN_ORIGIN` / `ELECTRIC_ORIGIN` / `REALTIME_STREAMS_S2_ENDPOINT` to match.

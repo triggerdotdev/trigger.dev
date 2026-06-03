@@ -55,6 +55,7 @@ import {
   v3SchedulePath,
   v3SchedulesPath,
 } from "~/utils/pathBuilder";
+import { throwNotFound } from "~/utils/httpErrors";
 import { DeleteTaskScheduleService } from "~/v3/services/deleteTaskSchedule.server";
 import { SetActiveOnTaskScheduleService } from "~/v3/services/setActiveOnTaskSchedule.server";
 
@@ -84,7 +85,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   });
 
   if (!result) {
-    throw new Error("Schedule not found");
+    throwNotFound("Schedule not found");
   }
 
   return typedjson({ schedule: result.schedule });

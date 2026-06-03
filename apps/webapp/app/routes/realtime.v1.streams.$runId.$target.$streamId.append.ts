@@ -72,6 +72,7 @@ const { action } = createActionApiRoute(
         realtimeStreamsVersion: true,
         completedAt: true,
         id: true,
+        streamBasinName: true,
       },
     });
 
@@ -102,7 +103,8 @@ const { action } = createActionApiRoute(
 
     const realtimeStream = getRealtimeStreamInstance(
       authentication.environment,
-      targetRun.realtimeStreamsVersion
+      targetRun.realtimeStreamsVersion,
+      { run: targetRun }
     );
 
     const partId = request.headers.get("X-Part-Id") ?? nanoid(7);

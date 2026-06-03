@@ -10,12 +10,13 @@ import CliRunTestStep from "/snippets/step-run-test.mdx";
 import CliViewRunStep from "/snippets/step-view-run.mdx";
 
 <Warning>
-  The trigger.dev CLI does not yet support Bun. So you will need to run the CLI using Node.js.
-  Bun will still be used to execute your tasks, even in the `dev` environment.
+  The trigger.dev CLI does not yet support Bun. So you will need to run the CLI using Node.js. Bun
+  will still be used to execute your tasks, even in the `dev` environment.
 </Warning>
 
 <Note>
-  **Supported Bun version:** Deployed tasks run on Bun 1.3.3. For local development, use Bun 1.3.x for compatibility.
+  **Supported Bun version:** Deployed tasks run on Bun 1.3.3. For local development, use Bun 1.3.x
+  for compatibility.
 </Note>
 
 <Prerequisites framework="Bun" />
@@ -27,6 +28,7 @@ import CliViewRunStep from "/snippets/step-view-run.mdx";
   ```bash
   mkdir -p ~/.bun/bin && ln -s $(which bun) ~/.bun/bin/bun
   ```
+- Bun's WebSocket client does not handle the `101 Switching Protocols` upgrade response correctly, so connecting to a remote browser via `puppeteer.connect()` / `playwright.connectOverCDP()` (e.g. BrowserBase, Browserless) fails silently — typically with an empty `{}` `ErrorEvent`. The remote session opens and immediately drops. **Workaround:** set `runtime: "node"` in `trigger.config.ts` for tasks that connect to a remote browser.
 
 ## Initial setup
 

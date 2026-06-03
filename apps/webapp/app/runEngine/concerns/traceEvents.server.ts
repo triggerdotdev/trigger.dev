@@ -10,6 +10,7 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
     parentStore: string | undefined
   ): Promise<{ repository: IEventRepository; store: string }> {
     return await getEventRepository(
+      request.environment.organization.id,
       request.environment.organization.featureFlags as Record<string, unknown>,
       parentStore
     );
@@ -162,18 +163,15 @@ export class DefaultTraceEventsConcern implements TraceEventConcern {
       },
       async (event, traceContext, traceparent) => {
         // Log a message about the debounced trigger
-        await repository.recordEvent(
-          `Debounced: using existing run with key "${debounceKey}"`,
-          {
-            taskSlug: request.taskId,
-            environment: request.environment,
-            attributes: {
-              runId: existingRun.friendlyId,
-            },
-            context: request.options?.traceContext,
-            parentId: event.spanId,
-          }
-        );
+        await repository.recordEvent(`Debounced: using existing run with key "${debounceKey}"`, {
+          taskSlug: request.taskId,
+          environment: request.environment,
+          attributes: {
+            runId: existingRun.friendlyId,
+          },
+          context: request.options?.traceContext,
+          parentId: event.spanId,
+        });
 
         return await callback(
           {

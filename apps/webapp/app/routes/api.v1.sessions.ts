@@ -10,16 +10,18 @@ import {
 import { SessionId } from "@trigger.dev/core/v3/isomorphic";
 import type { Prisma, Session } from "@trigger.dev/database";
 import { $replica, prisma, type PrismaClient } from "~/db.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
 import { mintSessionToken } from "~/services/realtime/mintSessionToken.server";
 import {
   ensureRunForSession,
   type SessionTriggerConfig,
 } from "~/services/realtime/sessionRunManager.server";
+import { chatSnapshotStoragePathForSession } from "~/services/realtime/chatSnapshot.server";
 import { serializeSession } from "~/services/realtime/sessions.server";
 import { SessionsRepository } from "~/services/sessionsRepository/sessionsRepository.server";
 import {
+  anyResource,
   createActionApiRoute,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
@@ -37,14 +39,31 @@ export const loader = createLoaderApiRoute(
     corsStrategy: "all",
     authorization: {
       action: "read",
-      resource: (_, __, searchParams) => ({ tasks: searchParams["filter[taskIdentifier]"] }),
-      superScopes: ["read:sessions", "read:all", "admin"],
+      // Multi-key resource preserves the pre-RBAC superScope semantics:
+      //   - Per-task scoping via `read:tasks:<id>` matches a task element
+      //   - Type-level `read:sessions` (the old superScope) matches the
+      //     sessions element (collection-level — no id)
+      //   - `read:all` / `admin` bypass via the JWT ability's wildcard branches
+      // The taskIdentifier filter accepts a string or an array; expand to
+      // one resource per task id so any per-task-scoped JWT among them
+      // grants access (the array gets OR semantics).
+      resource: (_, __, searchParams) => {
+        const taskFilter = asArray(searchParams["filter[taskIdentifier]"]) ?? [];
+        return anyResource([
+          ...taskFilter.map((id) => ({ type: "tasks" as const, id })),
+          { type: "sessions" as const },
+        ]);
+      },
     },
     findResource: async () => 1,
   },
   async ({ searchParams, authentication }) => {
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      authentication.environment.organizationId,
+      "standard"
+    );
     const repository = new SessionsRepository({
-      clickhouse: clickhouseClient,
+      clickhouse,
       prisma: $replica as PrismaClient,
     });
 
@@ -96,13 +115,38 @@ const { action } = createActionApiRoute(
     body: CreateSessionRequestBody,
     method: "POST",
     maxContentLength: 1024 * 32, // 32KB — metadata is the only thing that grows
-    // Secret-key only. Customer's server (typically wrapping
+    // Customer's server (typically wrapping
     // `chat.createStartSessionAction`) owns session creation so any
     // authorization decision (per-user/plan/quota) sits server-side
     // alongside whatever DB write the customer pairs with the create.
     // The session-scoped PAT returned in the response body is what the
     // browser uses thereafter against `.in/append`, `.out` SSE,
     // `end-and-continue`, etc.
+    //
+    // JWT is allowed when the caller holds an explicit `write:sessions` /
+    // `admin` super-scope plus a `tasks:<taskIdentifier>` scope — gates
+    // server-side surfaces like the cli-v3 MCP from creating sessions on
+    // behalf of the developer without weakening the browser model.
+    allowJWT: true,
+    authorization: {
+      // Per-task scoping via `body.taskIdentifier` (action-route resource
+      // callbacks receive the parsed body as the 4th arg — see
+      // `apiBuilder.server.ts:710`). A JWT scoped only to `write:tasks:foo`
+      // can only create sessions whose `taskIdentifier` is `"foo"`.
+      //
+      // Multi-key resource: pre-RBAC this route had a `superScopes:
+      // ["write:sessions", "admin"]` whitelist; post-RBAC the equivalent
+      // is the `{ type: "sessions" }` element below — a `write:sessions`
+      // JWT (no id) matches it directly, deliberately bypassing the
+      // per-task check exactly as before. `admin` / `write:all` bypass
+      // via the JWT ability's wildcard branches.
+      action: "write",
+      resource: (_params, _searchParams, _headers, body) =>
+        anyResource([
+          { type: "tasks", id: body.taskIdentifier },
+          { type: "sessions" },
+        ]),
+    },
     corsStrategy: "all",
   },
   async ({ authentication, body }) => {
@@ -141,6 +185,8 @@ const { action } = createActionApiRoute(
             runtimeEnvironmentId: authentication.environment.id,
             environmentType: authentication.environment.type,
             organizationId: authentication.environment.organizationId,
+            streamBasinName: authentication.environment.organization.streamBasinName,
+            chatSnapshotStoragePath: chatSnapshotStoragePathForSession(friendlyId),
           },
           update: { triggerConfig: triggerConfigJson },
         });
@@ -160,6 +206,8 @@ const { action } = createActionApiRoute(
             runtimeEnvironmentId: authentication.environment.id,
             environmentType: authentication.environment.type,
             organizationId: authentication.environment.organizationId,
+            streamBasinName: authentication.environment.organization.streamBasinName,
+            chatSnapshotStoragePath: chatSnapshotStoragePathForSession(friendlyId),
           },
         });
       }

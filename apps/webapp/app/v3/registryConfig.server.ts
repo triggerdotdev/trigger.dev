@@ -8,6 +8,7 @@ export type RegistryConfig = {
   ecrTags?: string;
   ecrAssumeRoleArn?: string;
   ecrAssumeRoleExternalId?: string;
+  ecrDefaultRepositoryPolicy?: string;
 };
 
 export function getRegistryConfig(isV4Deployment: boolean): RegistryConfig {
@@ -20,6 +21,7 @@ export function getRegistryConfig(isV4Deployment: boolean): RegistryConfig {
       ecrTags: env.V4_DEPLOY_REGISTRY_ECR_TAGS,
       ecrAssumeRoleArn: env.V4_DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN,
       ecrAssumeRoleExternalId: env.V4_DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID,
+      ecrDefaultRepositoryPolicy: env.V4_DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY,
     };
   }
 
@@ -31,5 +33,6 @@ export function getRegistryConfig(isV4Deployment: boolean): RegistryConfig {
     ecrTags: env.DEPLOY_REGISTRY_ECR_TAGS,
     ecrAssumeRoleArn: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_ARN,
     ecrAssumeRoleExternalId: env.DEPLOY_REGISTRY_ECR_ASSUME_ROLE_EXTERNAL_ID,
+    ecrDefaultRepositoryPolicy: env.DEPLOY_REGISTRY_ECR_DEFAULT_REPOSITORY_POLICY,
   };
 }

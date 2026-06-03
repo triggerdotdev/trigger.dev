@@ -312,10 +312,16 @@ export function unflattenAttributes(
       }
 
       if (typeof nextPart === "number") {
-        // Ensure we create an array for numeric indices
-        current[part] = Array.isArray(current[part]) ? current[part] : [];
-      } else if (current[part] === undefined) {
-        // Create an object for non-numeric paths
+        if (!Array.isArray(current[part])) {
+          current[part] = [];
+        }
+      } else if (
+        current[part] === null ||
+        typeof current[part] !== "object" ||
+        Array.isArray(current[part])
+      ) {
+        // Last-write-wins when a prior key wrote a primitive, null, or array
+        // at this slot — keeps unflatten total for conflicting OTLP inputs.
         current[part] = {};
       }
 

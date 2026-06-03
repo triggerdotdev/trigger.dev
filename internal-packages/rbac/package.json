@@ -1,0 +1,24 @@
+{
+  "name": "@trigger.dev/rbac",
+  "private": true,
+  "version": "0.0.1",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "dependencies": {
+    "@trigger.dev/core": "workspace:*",
+    "@trigger.dev/plugins": "workspace:*"
+  },
+  "devDependencies": {
+    "@trigger.dev/database": "workspace:*",
+    "@types/node": "^20.14.14",
+    "rimraf": "6.0.1"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "typecheck": "tsc --noEmit",
+    "build": "pnpm run clean && tsc --noEmit false --outDir dist --declaration",
+    "dev": "tsc --noEmit false --outDir dist --declaration --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  }
+}

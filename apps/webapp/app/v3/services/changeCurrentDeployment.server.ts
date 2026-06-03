@@ -1,15 +1,32 @@
-import { tryCatch } from "@trigger.dev/core/v3";
+import { BackgroundWorkerMetadata, tryCatch } from "@trigger.dev/core/v3";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
-import { WorkerDeployment } from "@trigger.dev/database";
+import { PrismaClientOrTransaction, WorkerDeployment } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
+import {
+  type TaskMetadataCache,
+  type TaskMetadataEntry,
+} from "~/services/taskMetadataCache.server";
+import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
+import { syncDeclarativeSchedules } from "./createBackgroundWorker.server";
 import { ExecuteTasksWaitingForDeployService } from "./executeTasksWaitingForDeploy";
 import { compareDeploymentVersions } from "../utils/deploymentVersions";
 
 export type ChangeCurrentDeploymentDirection = "promote" | "rollback";
 
 export class ChangeCurrentDeploymentService extends BaseService {
+  private readonly _taskMetaCache: TaskMetadataCache;
+
+  constructor(
+    prisma?: PrismaClientOrTransaction,
+    replica?: PrismaClientOrTransaction,
+    taskMetaCache: TaskMetadataCache = taskMetadataCacheInstance
+  ) {
+    super(prisma, replica);
+    this._taskMetaCache = taskMetaCache;
+  }
+
   public async call(
     deployment: WorkerDeployment,
     direction: ChangeCurrentDeploymentDirection,
@@ -53,10 +70,8 @@ export class ChangeCurrentDeploymentService extends BaseService {
         switch (direction) {
           case "promote": {
             if (
-              compareDeploymentVersions(
-                currentPromotion.deployment.version,
-                deployment.version
-              ) >= 0
+              compareDeploymentVersions(currentPromotion.deployment.version, deployment.version) >=
+              0
             ) {
               throw new ServiceValidationError(
                 "Cannot promote a deployment that is older than the current deployment."
@@ -66,10 +81,8 @@ export class ChangeCurrentDeploymentService extends BaseService {
           }
           case "rollback": {
             if (
-              compareDeploymentVersions(
-                currentPromotion.deployment.version,
-                deployment.version
-              ) <= 0
+              compareDeploymentVersions(currentPromotion.deployment.version, deployment.version) <=
+              0
             ) {
               throw new ServiceValidationError(
                 "Cannot rollback to a deployment that is newer than the current deployment."
@@ -99,25 +112,123 @@ export class ChangeCurrentDeploymentService extends BaseService {
       },
     });
 
-    const [syncError] = await tryCatch(
-      (async () => {
-        const tasks = await this._prisma.backgroundWorkerTask.findMany({
-          where: { workerId: deployment.workerId! },
-          select: { slug: true, triggerSource: true },
-        });
-        await syncTaskIdentifiers(
+    const [fetchTasksError, tasks] = await tryCatch(
+      this._prisma.backgroundWorkerTask.findMany({
+        where: { workerId: deployment.workerId! },
+        select: {
+          slug: true,
+          triggerSource: true,
+          ttl: true,
+          queue: { select: { id: true, name: true } },
+        },
+      })
+    );
+
+    if (fetchTasksError) {
+      logger.error("Error fetching worker tasks on deployment change", {
+        error: fetchTasksError,
+      });
+    }
+
+    if (tasks) {
+      // Side effect 1: refresh the `TaskIdentifier` table and the existing
+      // `tids:` Redis cache so the task-listing UI reflects the new deploy.
+      const [syncIdentifiersError] = await tryCatch(
+        syncTaskIdentifiers(
           deployment.environmentId,
           deployment.projectId,
           deployment.workerId!,
           tasks.map((t) => ({ id: t.slug, triggerSource: t.triggerSource }))
-        );
-      })()
-    );
+        )
+      );
 
-    if (syncError) {
-      logger.error("Error syncing task identifiers on deployment change", { error: syncError });
+      if (syncIdentifiersError) {
+        logger.error("Error syncing task identifiers on deployment change", {
+          error: syncIdentifiersError,
+        });
+      }
+
+      // Side effect 2: refresh the `task-meta:` cache that the queue resolver
+      // reads from. Independent of side effect 1 — if `syncTaskIdentifiers`
+      // throws, the queue resolver still gets a warm cache for the new worker.
+      const metadataEntries: TaskMetadataEntry[] = tasks.map((t) => ({
+        slug: t.slug,
+        ttl: t.ttl,
+        triggerSource: t.triggerSource,
+        queueId: t.queue?.id ?? null,
+        queueName: t.queue?.name ?? "",
+      }));
+
+      // Cache calls log+swallow internally.
+      await this._taskMetaCache.populateByCurrentWorker(
+        deployment.environmentId,
+        deployment.workerId!,
+        metadataEntries
+      );
     }
 
-    await ExecuteTasksWaitingForDeployService.enqueue(deployment.workerId);
+    const [scheduleSyncError] = await tryCatch(this.#syncSchedulesForDeployment(deployment));
+
+    if (scheduleSyncError) {
+      logger.error("Error syncing declarative schedules on deployment change", {
+        error: scheduleSyncError,
+      });
+    }
+
+    // Only V1 engine workers need the WAITING_FOR_DEPLOY drain — V2 runs sit
+    // in PENDING_VERSION and are handled out of band, so enqueuing here for V2
+    // just produces empty scans of the TaskRun status index.
+    const worker = await this._prisma.backgroundWorker.findFirst({
+      where: { id: deployment.workerId },
+      select: { engine: true },
+    });
+
+    if (worker?.engine === "V1") {
+      await ExecuteTasksWaitingForDeployService.enqueue(deployment.workerId);
+    }
+  }
+
+  async #syncSchedulesForDeployment(deployment: WorkerDeployment) {
+    const worker = await this._prisma.backgroundWorker.findFirst({
+      where: { id: deployment.workerId! },
+    });
+
+    if (!worker) {
+      logger.error("Worker not found for deployment schedule sync", {
+        deploymentId: deployment.id,
+        workerId: deployment.workerId,
+      });
+      return;
+    }
+
+    const parsed = BackgroundWorkerMetadata.safeParse(worker.metadata);
+
+    if (!parsed.success) {
+      logger.error("Failed to parse worker metadata for schedule sync", {
+        deploymentId: deployment.id,
+        workerId: deployment.workerId,
+        error: parsed.error,
+      });
+      return;
+    }
+
+    const environment = await this._prisma.runtimeEnvironment.findFirst({
+      where: { id: deployment.environmentId },
+      include: {
+        project: true,
+        organization: true,
+        orgMember: true,
+      },
+    });
+
+    if (!environment) {
+      logger.error("Environment not found for deployment schedule sync", {
+        deploymentId: deployment.id,
+        environmentId: deployment.environmentId,
+      });
+      return;
+    }
+
+    await syncDeclarativeSchedules(parsed.data.tasks, worker, environment, this._prisma);
   }
 }

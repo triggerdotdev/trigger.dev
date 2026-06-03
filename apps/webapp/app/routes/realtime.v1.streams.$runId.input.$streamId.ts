@@ -1,4 +1,5 @@
 import { json } from "@remix-run/server-runtime";
+import { tryCatch } from "@trigger.dev/core/utils";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
@@ -7,11 +8,13 @@ import {
   deleteInputStreamWaitpoint,
 } from "~/services/inputStreamWaitpointCache.server";
 import {
+  anyResource,
   createActionApiRoute,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { engine } from "~/v3/runEngine.server";
+import { ServiceValidationError } from "~/v3/services/common.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -31,8 +34,7 @@ const { action } = createActionApiRoute(
     corsStrategy: "all",
     authorization: {
       action: "write",
-      resource: (params) => ({ inputStreams: params.runId }),
-      superScopes: ["write:inputStreams", "write:all", "admin"],
+      resource: (params) => ({ type: "inputStreams", id: params.runId }),
     },
   },
   async ({ request, params, authentication }) => {
@@ -46,6 +48,7 @@ const { action } = createActionApiRoute(
         friendlyId: true,
         completedAt: true,
         realtimeStreamsVersion: true,
+        streamBasinName: true,
       },
     });
 
@@ -68,20 +71,37 @@ const { action } = createActionApiRoute(
 
     const realtimeStream = getRealtimeStreamInstance(
       authentication.environment,
-      run.realtimeStreamsVersion
+      run.realtimeStreamsVersion,
+      { run }
     );
 
     // Build the input stream record (raw user data, no wrapper)
     const recordId = `inp_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
     const record = JSON.stringify(body.data.data);
 
-    // Append the record to the per-stream S2 stream (auto-creates on first write)
-    await realtimeStream.appendPart(
-      record,
-      recordId,
-      run.friendlyId,
-      `$trigger.input:${params.streamId}`
+    // Append the record to the per-stream S2 stream (auto-creates on
+    // first write). `appendPart` can throw `S2RecordTooLargeError` (a
+    // `ServiceValidationError` with status 413) when the wrapped
+    // record exceeds S2's per-record ceiling — surface that as 413
+    // rather than letting it propagate to the apiBuilder catch-all
+    // as a generic 500.
+    const [appendError] = await tryCatch(
+      realtimeStream.appendPart(
+        record,
+        recordId,
+        run.friendlyId,
+        `$trigger.input:${params.streamId}`
+      )
     );
+    if (appendError) {
+      if (appendError instanceof ServiceValidationError) {
+        return json(
+          { ok: false, error: appendError.message },
+          { status: appendError.status ?? 422 }
+        );
+      }
+      throw appendError;
+    }
 
     // Check Redis cache for a linked .wait() waitpoint (fast, no DB hit if none)
     // Get first, complete, then delete — so the mapping survives if completeWaitpoint throws
@@ -125,13 +145,17 @@ const loader = createLoaderApiRoute(
     },
     authorization: {
       action: "read",
-      resource: (run) => ({
-        runs: run.friendlyId,
-        tags: run.runTags,
-        batch: run.batch?.friendlyId,
-        tasks: run.taskIdentifier,
-      }),
-      superScopes: ["read:runs", "read:all", "admin"],
+      resource: (run) => {
+        const resources = [
+          { type: "runs", id: run.friendlyId },
+          { type: "tasks", id: run.taskIdentifier },
+          ...run.runTags.map((tag) => ({ type: "tags", id: tag })),
+        ];
+        if (run.batch?.friendlyId) {
+          resources.push({ type: "batch", id: run.batch.friendlyId });
+        }
+        return anyResource(resources);
+      },
     },
   },
   async ({ params, request, resource: run, authentication }) => {
@@ -155,7 +179,8 @@ const loader = createLoaderApiRoute(
 
     const realtimeStream = getRealtimeStreamInstance(
       authentication.environment,
-      run.realtimeStreamsVersion
+      run.realtimeStreamsVersion,
+      { run }
     );
 
     // Read from the internal S2 stream name (prefixed to avoid user stream collisions)

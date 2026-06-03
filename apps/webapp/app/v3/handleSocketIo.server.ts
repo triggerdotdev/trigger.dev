@@ -15,6 +15,7 @@ import type {
   WorkerServerToClientEvents,
 } from "@trigger.dev/core/v3/workers";
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
+import { defaultReconnectOnError } from "@internal/redis";
 import { Redis } from "ioredis";
 import { Namespace, Server, Socket } from "socket.io";
 import { env } from "~/env.server";
@@ -93,6 +94,7 @@ function initializeSocketIOServerInstance() {
       username: env.REDIS_USERNAME,
       password: env.REDIS_PASSWORD,
       enableAutoPipelining: true,
+      reconnectOnError: defaultReconnectOnError,
       ...(env.REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
     });
     const subClient = pubClient.duplicate();
@@ -489,7 +491,10 @@ function createWorkerNamespace({
 
       next();
     } catch (error) {
-      logger.error("Worker authentication failed", {
+      // System handles auth failure by disconnecting the socket — not an
+      // error. Most volume is V1 /dev-worker reconnect churn from outdated
+      // CLIs anyway.
+      logger.warn("Worker authentication failed", {
         namespace,
         error: error instanceof Error ? error.message : error,
       });

@@ -123,12 +123,14 @@ const { action, loader } = createActionApiRoute(
       // and remove the pending registration.
       if (!result.isCached) {
         try {
-          // Session streams are always v2 (S2) — the writer in
-          // `appendPartToSessionStream` and the SSE subscribe both
-          // hardcode "v2", so the race-check reader has to match.
-          // Don't fall through to the run's own `realtimeStreamsVersion`,
-          // which only describes the run's run-scoped streams.
-          const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2");
+          // Match the writer's basin resolution exactly: session if the
+          // row exists, otherwise the org so we look at the same basin a
+          // fresh row would be stamped with. Mirrors the PUT/GET sister
+          // routes in `realtime.v1.sessions.$session.$io.ts`.
+          const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
+            session: maybeSession,
+            organization: maybeSession ? null : authentication.environment.organization,
+          });
 
           if (realtimeStream instanceof S2RealtimeStreams) {
             const records = await realtimeStream.readSessionStreamRecords(

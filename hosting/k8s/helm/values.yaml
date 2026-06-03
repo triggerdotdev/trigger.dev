@@ -542,7 +542,7 @@ clickhouse:
   image:
     # Use bitnami legacy repo
     repository: bitnamilegacy/clickhouse
-    # image: docker.io/bitnamilegacy/clickhouse:25.6.1-debian-12-r0
+    # image: docker.io/bitnamilegacy/clickhouse:25.7.5-debian-12-r0
 
   # TLS/Secure connection configuration
   secure: false # Set to true to use HTTPS and secure connections

@@ -32,7 +32,16 @@ function createBatchLimitsRedisClient() {
   return redisClient;
 }
 
-function createOrganizationRateLimiter(organization: Organization): RateLimiter {
+// Just the org fields this module reads. Compatible with both the full
+// Prisma `Organization` payload and the slim `AuthenticatedEnvironment`
+// `["organization"]` shape (when passed `batchRateLimitConfig` /
+// `batchQueueConcurrencyConfig` as `unknown`).
+type OrganizationForBatchLimits = {
+  batchRateLimitConfig?: unknown;
+  batchQueueConcurrencyConfig?: unknown;
+};
+
+function createOrganizationRateLimiter(organization: OrganizationForBatchLimits): RateLimiter {
   const limiterConfig = resolveBatchRateLimitConfig(organization.batchRateLimitConfig);
 
   const limiter = createLimiterFromConfig(limiterConfig);
@@ -72,7 +81,7 @@ function resolveBatchRateLimitConfig(batchRateLimitConfig?: unknown): RateLimite
  * Internally looks up the plan type, but doesn't expose it to callers.
  */
 export async function getBatchLimits(
-  organization: Organization
+  organization: OrganizationForBatchLimits
 ): Promise<{ rateLimiter: RateLimiter; config: BatchLimitsConfig }> {
   const rateLimiter = createOrganizationRateLimiter(organization);
   const config = resolveBatchLimitsConfig(organization.batchQueueConcurrencyConfig);

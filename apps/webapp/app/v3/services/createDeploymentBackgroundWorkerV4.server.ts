@@ -1,17 +1,34 @@
 import { CreateBackgroundWorkerRequestBody, logger, tryCatch } from "@trigger.dev/core/v3";
-import { BackgroundWorkerId } from "@trigger.dev/core/v3/isomorphic";
-import type { BackgroundWorker, Prisma, WorkerDeployment } from "@trigger.dev/database";
+import type {
+  BackgroundWorker,
+  PrismaClientOrTransaction,
+  WorkerDeployment,
+} from "@trigger.dev/database";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { type TaskMetadataCache } from "~/services/taskMetadataCache.server";
+import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import {
   createBackgroundFiles,
   createWorkerResources,
   syncDeclarativeSchedules,
 } from "./createBackgroundWorker.server";
+import { findOrCreateBackgroundWorker } from "./createDeploymentBackgroundWorkerV4/findOrCreateBackgroundWorker.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { env } from "~/env.server";
 
 export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
+  private readonly _taskMetaCache: TaskMetadataCache;
+
+  constructor(
+    prisma?: PrismaClientOrTransaction,
+    replica?: PrismaClientOrTransaction,
+    taskMetaCache: TaskMetadataCache = taskMetadataCacheInstance
+  ) {
+    super(prisma, replica);
+    this._taskMetaCache = taskMetaCache;
+  }
+
   public async call(
     environment: AuthenticatedEnvironment,
     deploymentId: string,
@@ -36,6 +53,11 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       });
 
       if (!deployment) {
+        logger.warn("createDeploymentBackgroundWorker: deployment not found", {
+          deploymentId,
+          environmentId: environment.id,
+          projectId: environment.projectId,
+        });
         return;
       }
 
@@ -55,27 +77,44 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         }
       }
 
+      // Late-retry idempotency: if a worker was registered by a prior fully-
+      // successful attempt and the deployment already moved past BUILDING, return
+      // that worker so the CLI can finalize instead of seeing a 5xx.
+      if (deployment.workerId) {
+        const linkedWorker = await this._prisma.backgroundWorker.findFirst({
+          where: { id: deployment.workerId },
+        });
+        if (linkedWorker) {
+          return linkedWorker;
+        }
+      }
+
       if (deployment.status !== "BUILDING") {
+        logger.warn("createDeploymentBackgroundWorker: deployment not in BUILDING state", {
+          deploymentId,
+          deploymentStatus: deployment.status,
+          environmentId: environment.id,
+          projectId: environment.projectId,
+        });
         return;
       }
 
-      const backgroundWorker = await this._prisma.backgroundWorker.create({
-        data: {
-          ...BackgroundWorkerId.generate(),
-          version: deployment.version,
-          runtimeEnvironmentId: environment.id,
-          projectId: environment.projectId,
-          // body.metadata has an index signature that Prisma doesn't like (from the JSONSchema type) so we are safe to just cast it
-          metadata: body.metadata as Prisma.InputJsonValue,
-          contentHash: body.metadata.contentHash,
-          cliVersion: body.metadata.cliPackageVersion,
-          sdkVersion: body.metadata.packageVersion,
-          supportsLazyAttempts: body.supportsLazyAttempts,
-          engine: body.engine,
-          runtime: body.metadata.runtime,
-          runtimeVersion: body.metadata.runtimeVersion,
-        },
-      });
+      const [findOrCreateError, backgroundWorker] = await tryCatch(
+        findOrCreateBackgroundWorker(environment, deployment, body, this._prisma)
+      );
+
+      if (findOrCreateError) {
+        // Definitive failures (e.g. contentHash drift) surface as
+        // `ServiceValidationError` — fail the deployment so the operator sees it
+        // immediately instead of waiting 8 minutes for the timeout. Transient
+        // races throw a plain `Error` and propagate as 5xx without failing.
+        if (findOrCreateError instanceof ServiceValidationError) {
+          // `#failBackgroundWorkerDeployment` already throws its argument; the
+          // outer `throw` covers the non-SVE branch.
+          await this.#failBackgroundWorkerDeployment(deployment, findOrCreateError);
+        }
+        throw findOrCreateError;
+      }
 
       //upgrade the project to engine "V2" if it's not already
       if (environment.project.engine === "V1" && body.engine === "V2") {
@@ -110,7 +149,7 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         throw serviceError;
       }
 
-      const [resourcesError] = await tryCatch(
+      const [resourcesError, workerTaskEntries] = await tryCatch(
         createWorkerResources(
           body.metadata,
           backgroundWorker,
@@ -134,29 +173,52 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
         throw serviceError;
       }
 
+      // V4 build path: worker created but NOT yet promoted to current. Write
+      // only the `task-meta:by-worker:{workerId}` keyspace so locked-version
+      // triggers against this build hit the cache. Promotion (which writes the
+      // env keyspace) happens later via finalizeDeployment → changeCurrentDeployment.
+      // Cache calls log+swallow internally, so a Redis blip can't stall the
+      // deployment state machine. Empty entries clears stale hashes.
+      if (workerTaskEntries) {
+        await this._taskMetaCache.populateByWorker(backgroundWorker.id, workerTaskEntries);
+      }
+
       const [schedulesError] = await tryCatch(
         syncDeclarativeSchedules(body.metadata.tasks, backgroundWorker, environment, this._prisma)
       );
 
       if (schedulesError) {
+        if (schedulesError instanceof ServiceValidationError) {
+          // Customer schedule config (typically invalid cron). Surface to
+          // client via the rethrow; system returns gracefully.
+          logger.warn("Error syncing declarative schedules", {
+            error: schedulesError.message,
+          });
+
+          await this.#failBackgroundWorkerDeployment(deployment, schedulesError);
+          throw schedulesError;
+        }
+
+        // Wrapping the underlying error into a ServiceValidationError below
+        // would otherwise hide it once the SDK-level filter drops SVEs; log at
+        // error so the underlying cause stays visible. Mirrors the
+        // waitpointCompletionPacket.server.ts pattern from dac9c83bd.
         logger.error("Error syncing declarative schedules", {
           error: schedulesError,
         });
 
-        const serviceError =
-          schedulesError instanceof ServiceValidationError
-            ? schedulesError
-            : new ServiceValidationError("Error syncing declarative schedules");
+        const serviceError = new ServiceValidationError("Error syncing declarative schedules");
 
         await this.#failBackgroundWorkerDeployment(deployment, serviceError);
 
         throw serviceError;
       }
 
-      // Link the deployment with the background worker
-      await this._prisma.workerDeployment.update({
+      // Guarded BUILDING → DEPLOYING transition. `updateMany` for optimistic concurrency control
+      const { count: updatedCount } = await this._prisma.workerDeployment.updateMany({
         where: {
           id: deployment.id,
+          status: "BUILDING",
         },
         data: {
           status: "DEPLOYING",
@@ -167,6 +229,18 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
           runtimeVersion: body.metadata.runtimeVersion,
         },
       });
+
+      if (updatedCount === 0) {
+        logger.warn(
+          "createDeploymentBackgroundWorker: deployment no longer in BUILDING state, skipping DEPLOYING transition",
+          {
+            deploymentId,
+            environmentId: environment.id,
+            projectId: environment.projectId,
+          }
+        );
+        return backgroundWorker;
+      }
 
       await TimeoutDeploymentService.enqueue(
         deployment.id,
@@ -180,9 +254,14 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
   }
 
   async #failBackgroundWorkerDeployment(deployment: WorkerDeployment, error: Error) {
-    await this._prisma.workerDeployment.update({
+    // Guarded BUILDING → FAILED transition, symmetric with the BUILDING → DEPLOYING
+    // transition in `call()`. With idempotent retries, two attempts can run side-by-side;
+    // without the predicate, one attempt's failure could downgrade the deployment after
+    // the other already flipped it to DEPLOYING, leaving it stuck in FAILED with a worker.
+    const { count: updatedCount } = await this._prisma.workerDeployment.updateMany({
       where: {
         id: deployment.id,
+        status: "BUILDING",
       },
       data: {
         status: "FAILED",
@@ -194,7 +273,20 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       },
     });
 
-    await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
+    if (updatedCount === 0) {
+      logger.warn(
+        "failBackgroundWorkerDeployment: deployment moved out of BUILDING during call, skipping FAILED transition",
+        {
+          deploymentId: deployment.id,
+          originalError: error.message,
+        }
+      );
+    } else {
+      // Only dequeue the timeout if we actually flipped to FAILED — otherwise a
+      // sibling attempt may have just enqueued it as part of a successful
+      // BUILDING → DEPLOYING transition.
+      await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
+    }
 
     throw error;
   }

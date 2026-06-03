@@ -66,6 +66,7 @@ function SimpleTooltip({
   sideOffset,
   open,
   onOpenChange,
+  delayDuration,
 }: {
   button: React.ReactNode;
   content: React.ReactNode;
@@ -80,12 +81,13 @@ function SimpleTooltip({
   sideOffset?: number;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  delayDuration?: number;
 }) {
   return (
     <TooltipProvider disableHoverableContent={disableHoverableContent}>
-      <Tooltip open={open} onOpenChange={onOpenChange}>
+      <Tooltip open={open} onOpenChange={onOpenChange} delayDuration={delayDuration}>
         <TooltipTrigger
-          type="button"
+          type={asChild ? undefined : "button"}
           tabIndex={-1}
           className={cn(!asChild && "h-fit", buttonClassName)}
           style={buttonStyle}

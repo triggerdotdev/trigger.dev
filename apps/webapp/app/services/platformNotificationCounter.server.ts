@@ -1,4 +1,5 @@
 import { Redis } from "ioredis";
+import { defaultReconnectOnError } from "@internal/redis";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { logger } from "./logger.server";
@@ -18,6 +19,7 @@ function initializeRedis(): Redis | undefined {
     password: env.CACHE_REDIS_PASSWORD,
     keyPrefix: "tr:",
     enableAutoPipelining: true,
+    reconnectOnError: defaultReconnectOnError,
     ...(env.CACHE_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
   });
 }

@@ -20,6 +20,7 @@ import {
   SubtaskUnwrapError,
   trigger,
   triggerAndWait,
+  triggerAndSubscribe,
 } from "./shared.js";
 
 export { SubtaskUnwrapError };
@@ -96,6 +97,7 @@ export const tasks = {
   trigger,
   batchTrigger,
   triggerAndWait,
+  triggerAndSubscribe,
   batchTriggerAndWait,
   /** @deprecated Use onStartAttempt instead */
   onStart,

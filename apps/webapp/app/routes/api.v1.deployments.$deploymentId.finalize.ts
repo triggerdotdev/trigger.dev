@@ -22,44 +22,47 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
-  // Next authenticate the request
-  const authenticationResult = await authenticateApiRequest(request);
-
-  if (!authenticationResult) {
-    logger.info("Invalid or missing api key", { url: request.url });
-    return json({ error: "Invalid or Missing API key" }, { status: 401 });
-  }
-
-  const authenticatedEnv = authenticationResult.environment;
-
-  const { deploymentId } = parsedParams.data;
-
-  const rawBody = await request.json();
-  const body = FinalizeDeploymentRequestBody.safeParse(rawBody);
-
-  if (!body.success) {
-    return json({ error: "Invalid body", issues: body.error.issues }, { status: 400 });
-  }
-
   try {
-    const service = new FinalizeDeploymentService();
-    await service.call(authenticatedEnv, deploymentId, body.data);
+    // Next authenticate the request
+    const authenticationResult = await authenticateApiRequest(request);
 
-    return json(
-      {
-        id: deploymentId,
-      },
-      { status: 200 }
-    );
-  } catch (error) {
-    if (error instanceof ServiceValidationError) {
-      return json({ error: error.message }, { status: 400 });
-    } else if (error instanceof Error) {
-      logger.error("Error finalizing deployment", { error: error.message });
-      return json({ error: `Internal server error: ${error.message}` }, { status: 500 });
-    } else {
-      logger.error("Error finalizing deployment", { error: String(error) });
+    if (!authenticationResult) {
+      logger.info("Invalid or missing api key", { url: request.url });
+      return json({ error: "Invalid or Missing API key" }, { status: 401 });
+    }
+
+    const authenticatedEnv = authenticationResult.environment;
+
+    const { deploymentId } = parsedParams.data;
+
+    const rawBody = await request.json();
+    const body = FinalizeDeploymentRequestBody.safeParse(rawBody);
+
+    if (!body.success) {
+      return json({ error: "Invalid body", issues: body.error.issues }, { status: 400 });
+    }
+
+    try {
+      const service = new FinalizeDeploymentService();
+      await service.call(authenticatedEnv, deploymentId, body.data);
+
+      return json(
+        {
+          id: deploymentId,
+        },
+        { status: 200 }
+      );
+    } catch (error) {
+      if (error instanceof ServiceValidationError) {
+        return json({ error: error.message }, { status: 400 });
+      }
+
+      logger.error("Error finalizing deployment", { error });
       return json({ error: "Internal server error" }, { status: 500 });
     }
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to finalize deployment", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

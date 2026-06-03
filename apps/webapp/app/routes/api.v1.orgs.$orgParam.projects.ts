@@ -20,17 +20,72 @@ const ParamsSchema = z.object({
 export async function loader({ request, params }: LoaderFunctionArgs) {
   logger.info("get projects", { url: request.url });
 
-  const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
+  try {
+    const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
 
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-  }
+    if (!authenticationResult) {
+      return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+    }
 
-  const { orgParam } = ParamsSchema.parse(params);
+    const { orgParam } = ParamsSchema.parse(params);
 
-  const projects = await prisma.project.findMany({
-    where: {
+    const projects = await prisma.project.findMany({
+      where: {
+        organization: {
+          ...orgParamWhereClause(orgParam),
+          deletedAt: null,
+          members: {
+            some: {
+              userId: authenticationResult.userId,
+            },
+          },
+        },
+        version: "V3",
+        deletedAt: null,
+      },
+      include: {
+        organization: true,
+      },
+    });
+
+    if (!projects) {
+      return json({ error: "Projects not found" }, { status: 404 });
+    }
+
+    const result: GetProjectsResponseBody = projects.map((project) => ({
+      id: project.id,
+      externalRef: project.externalRef,
+      name: project.name,
+      slug: project.slug,
+      createdAt: project.createdAt,
       organization: {
+        id: project.organization.id,
+        title: project.organization.title,
+        slug: project.organization.slug,
+        createdAt: project.organization.createdAt,
+      },
+    }));
+
+    return json(result);
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to list org projects", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  try {
+    const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
+
+    if (!authenticationResult) {
+      return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+    }
+
+    const { orgParam } = ParamsSchema.parse(params);
+
+    const organization = await prisma.organization.findFirst({
+      where: {
         ...orgParamWhereClause(orgParam),
         deletedAt: null,
         members: {
@@ -39,95 +94,53 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           },
         },
       },
-      version: "V3",
-      deletedAt: null,
-    },
-    include: {
-      organization: true,
-    },
-  });
+    });
 
-  if (!projects) {
-    return json({ error: "Projects not found" }, { status: 404 });
-  }
+    if (!organization) {
+      return json({ error: "Organization not found" }, { status: 404 });
+    }
 
-  const result: GetProjectsResponseBody = projects.map((project) => ({
-    id: project.id,
-    externalRef: project.externalRef,
-    name: project.name,
-    slug: project.slug,
-    createdAt: project.createdAt,
-    organization: {
-      id: project.organization.id,
-      title: project.organization.title,
-      slug: project.organization.slug,
-      createdAt: project.organization.createdAt,
-    },
-  }));
+    const body = await request.json();
+    const parsedBody = CreateProjectRequestBody.safeParse(body);
 
-  return json(result);
-}
+    if (!parsedBody.success) {
+      return json({ error: "Invalid request body" }, { status: 400 });
+    }
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  const authenticationResult = await authenticateApiRequestWithPersonalAccessToken(request);
+    const [error, project] = await tryCatch(
+      createProject({
+        organizationSlug: organization.slug,
+        name: parsedBody.data.name,
+        userId: authenticationResult.userId,
+        version: "v3",
+      })
+    );
 
-  if (!authenticationResult) {
-    return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
-  }
+    if (error) {
+      logger.error("Failed to create project", { error });
+      return json({ error: "Failed to create project" }, { status: 400 });
+    }
 
-  const { orgParam } = ParamsSchema.parse(params);
-
-  const organization = await prisma.organization.findFirst({
-    where: {
-      ...orgParamWhereClause(orgParam),
-      deletedAt: null,
-      members: {
-        some: {
-          userId: authenticationResult.userId,
-        },
+    const result: GetProjectResponseBody = {
+      id: project.id,
+      externalRef: project.externalRef,
+      name: project.name,
+      slug: project.slug,
+      createdAt: project.createdAt,
+      organization: {
+        id: project.organization.id,
+        title: project.organization.title,
+        slug: project.organization.slug,
+        createdAt: project.organization.createdAt,
       },
-    },
-  });
+    };
 
-  if (!organization) {
-    return json({ error: "Organization not found" }, { status: 404 });
+    return json(result);
+  } catch (error) {
+    if (error instanceof Response) throw error;
+    logger.error("Failed to create org project", { error });
+    return json({ error: "Internal Server Error" }, { status: 500 });
   }
-
-  const body = await request.json();
-  const parsedBody = CreateProjectRequestBody.safeParse(body);
-
-  if (!parsedBody.success) {
-    return json({ error: "Invalid request body" }, { status: 400 });
-  }
-
-  const [error, project] = await tryCatch(
-    createProject({
-      organizationSlug: organization.slug,
-      name: parsedBody.data.name,
-      userId: authenticationResult.userId,
-      version: "v3",
-    })
-  );
-
-  if (error) {
-    return json({ error: error.message }, { status: 400 });
-  }
-
-  const result: GetProjectResponseBody = {
-    id: project.id,
-    externalRef: project.externalRef,
-    name: project.name,
-    slug: project.slug,
-    createdAt: project.createdAt,
-    organization: {
-      id: project.organization.id,
-      title: project.organization.title,
-      slug: project.organization.slug,
-      createdAt: project.organization.createdAt,
-    },
-  };
-
-  return json(result);
 }
 
 function orgParamWhereClause(orgParam: string) {

@@ -151,6 +151,8 @@ export class ClickHouseRunsRepository implements IRunsRepository {
         metadataType: true,
         machinePreset: true,
         queue: true,
+        workerQueue: true,
+        annotations: true,
       },
     });
 
@@ -323,6 +325,10 @@ function applyRunFiltersToQueryBuilder<T>(
     queryBuilder.where("queue IN {queues: Array(String)}", { queues: options.queues });
   }
 
+  if (options.regions && options.regions.length > 0) {
+    queryBuilder.where("worker_queue IN {regions: Array(String)}", { regions: options.regions });
+  }
+
   if (options.machines && options.machines.length > 0) {
     queryBuilder.where("machine_preset IN {machines: Array(String)}", {
       machines: options.machines,
@@ -333,5 +339,23 @@ function applyRunFiltersToQueryBuilder<T>(
     queryBuilder.where("error_fingerprint = {errorFingerprint: String}", {
       errorFingerprint: ErrorId.toId(options.errorId),
     });
+  }
+
+  if (options.taskKinds && options.taskKinds.length > 0) {
+    const includesStandard = options.taskKinds.includes("STANDARD");
+    // Include empty string when filtering for STANDARD (default value for pre-existing runs)
+    const effectiveKinds = includesStandard
+      ? [...options.taskKinds, ""]
+      : options.taskKinds;
+
+    if (effectiveKinds.length === 1) {
+      queryBuilder.where("task_kind = {taskKind: String}", {
+        taskKind: effectiveKinds[0]!,
+      });
+    } else {
+      queryBuilder.where("task_kind IN {taskKinds: Array(String)}", {
+        taskKinds: effectiveKinds,
+      });
+    }
   }
 }

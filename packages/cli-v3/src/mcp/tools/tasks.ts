@@ -44,7 +44,8 @@ export const getCurrentWorker = {
       contents.push(`The worker has ${worker.tasks.length} tasks registered:`);
 
       for (const task of worker.tasks) {
-        contents.push(`- ${task.slug} in ${task.filePath}`);
+        const label = task.triggerSource === "AGENT" ? " [agent]" : "";
+        contents.push(`- ${task.slug}${label} in ${task.filePath}`);
       }
 
       contents.push("");

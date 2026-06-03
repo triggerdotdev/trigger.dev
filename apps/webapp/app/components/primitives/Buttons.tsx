@@ -305,7 +305,7 @@ export function ButtonContent(props: ButtonContentPropsType) {
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>{buttonContent}</TooltipTrigger>
-          <TooltipContent className="flex items-center gap-3 py-1.5 pl-2.5 pr-3 text-xs text-text-bright">
+          <TooltipContent className="flex items-center gap-1.5 py-1.5 pl-2.5 pr-2 text-xs text-text-bright">
             {tooltip} {shortcut && renderShortcutKey()}
           </TooltipContent>
         </Tooltip>
@@ -318,12 +318,12 @@ export function ButtonContent(props: ButtonContentPropsType) {
 
 type ButtonPropsType = Pick<
   JSX.IntrinsicElements["button"],
-  "type" | "disabled" | "onClick" | "name" | "value" | "form" | "autoFocus"
+  "type" | "disabled" | "onClick" | "name" | "value" | "form" | "autoFocus" | "aria-label"
 > &
   React.ComponentProps<typeof ButtonContent>;
 
 export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
-  ({ type, disabled, autoFocus, onClick, ...props }, ref) => {
+  ({ type, disabled, autoFocus, onClick, "aria-label": ariaLabel, ...props }, ref) => {
     const innerRef = useRef<HTMLButtonElement>(null);
     useImperativeHandle(ref, () => innerRef.current as HTMLButtonElement);
 
@@ -352,8 +352,13 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
         ref={innerRef}
         form={props.form}
         autoFocus={autoFocus}
+        aria-label={ariaLabel}
       >
-        <ButtonContent {...props} tooltip={undefined} />
+        <ButtonContent
+          {...props}
+          tooltip={undefined}
+          hideShortcutKey={props.tooltip ? true : props.hideShortcutKey}
+        />
       </button>
     );
 
@@ -362,13 +367,13 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className={isDisabled ? "cursor-default" : undefined}>
+              <span className={cn("flex", isDisabled && "cursor-default")}>
                 {buttonElement}
               </span>
             </TooltipTrigger>
-            <TooltipContent className="flex items-center gap-3 py-1.5 pl-2.5 pr-3 text-xs text-text-bright">
+            <TooltipContent className="flex items-center gap-1.5 py-1.5 pl-2.5 pr-2 text-xs text-text-bright">
               {props.tooltip} {props.shortcut && !props.hideShortcutKey && (
-                <ShortcutKey shortcut={props.shortcut} variant="medium" className="ml-1" />
+                <ShortcutKey shortcut={props.shortcut} variant="medium" />
               )}
             </TooltipContent>
           </Tooltip>

@@ -55,6 +55,7 @@ import {
   statusActionToastMessage,
 } from "~/components/errors/ErrorStatusMenu";
 import { useToast } from "~/components/primitives/Toast";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { appliedSummary, FilterMenuProvider, TimeFilter } from "~/components/runs/v3/SharedFilters";
 import { $replica } from "~/db.server";
@@ -70,7 +71,7 @@ import {
   type ErrorOccurrences,
   type ErrorsList as ErrorsListData,
 } from "~/presenters/v3/ErrorsListPresenter.server";
-import { logsClickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 import { requireUser } from "~/services/session.server";
 import { formatNumberCompact } from "~/utils/numberFormatter";
@@ -123,6 +124,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const plan = await getCurrentPlan(project.organizationId);
   const retentionLimitDays = plan?.v3Subscription?.plan?.limits.logRetentionDays.number ?? 30;
 
+  const logsClickhouseClient = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "logs"
+  );
   const presenter = new ErrorsListPresenter($replica, logsClickhouseClient);
 
   const listPromise = presenter
@@ -289,6 +294,8 @@ const errorStatusOptions = [
 
 const statusIcon = <IconBugFilled className="size-4" />;
 const statusShortcut = { key: "s" };
+const timeShortcut = { key: "d" };
+const alertsShortcut = { key: "c" };
 
 function StatusFilter() {
   const { values, del } = useSearchParams();
@@ -305,8 +312,9 @@ function StatusFilter() {
                 variant="secondary/small"
                 shortcut={statusShortcut}
                 tooltipTitle="Filter by status"
+                className="pl-1.5"
               >
-                <span className="ml-0.5">Status</span>
+                <span className="ml-1">Status</span>
               </SelectTrigger>
             }
             searchValue={search}
@@ -415,9 +423,10 @@ function FiltersBar({
 
   return (
     <div className="flex items-start justify-between gap-x-2 border-b border-grid-bright p-2">
-      <div className="flex flex-row flex-wrap items-center gap-2">
+      <div className="flex flex-row flex-wrap items-center gap-1.5">
         {list ? (
           <>
+            <SearchInput placeholder="Search errors…" />
             <StatusFilter />
             <LogsTaskFilter possibleTasks={list.filters.possibleTasks} />
             <LogsVersionFilter />
@@ -425,45 +434,55 @@ function FiltersBar({
               defaultPeriod={defaultPeriod}
               maxPeriodDays={retentionLimitDays}
               labelName="Occurred"
+              shortcut={timeShortcut}
             />
-            <SearchInput placeholder="Search errors…" />
             {hasFilters && (
-              <Form className="h-6">
+              <Form className="-ml-1 h-6">
                 <Button
-                  variant="secondary/small"
+                  variant="minimal/small"
                   LeadingIcon={XMarkIcon}
                   tooltip="Clear all filters"
+                  className="group-hover/button:bg-transparent"
+                  leadingIconClassName="group-hover/button:text-text-bright"
                 />
               </Form>
             )}
           </>
         ) : (
           <>
+            <SearchInput placeholder="Search errors…" />
             <StatusFilter />
             <LogsTaskFilter possibleTasks={[]} />
             <LogsVersionFilter />
-            <TimeFilter defaultPeriod={defaultPeriod} maxPeriodDays={retentionLimitDays} />
-            <SearchInput placeholder="Search errors…" />
+            <TimeFilter
+              defaultPeriod={defaultPeriod}
+              maxPeriodDays={retentionLimitDays}
+              shortcut={timeShortcut}
+            />
             {hasFilters && (
-              <Form className="h-6">
+              <Form className="-ml-1 h-6">
                 <Button
-                  variant="secondary/small"
+                  variant="minimal/small"
                   LeadingIcon={XMarkIcon}
                   tooltip="Clear all filters"
+                  className="group-hover/button:bg-transparent"
+                  leadingIconClassName="group-hover/button:text-text-bright"
                 />
               </Form>
             )}
           </>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1.5">
         <LinkButton
           to={alertsHref}
           variant="secondary/small"
           LeadingIcon={BellAlertIcon}
           leadingIconClassName="text-alerts"
+          shortcut={alertsShortcut}
+          tooltip="Configure alerts"
         >
-          Configure alerts
+          Configure alerts…
         </LinkButton>
         {list && <ListPagination list={list} />}
       </div>
@@ -706,9 +725,15 @@ function ErrorActivityGraph({ activity }: { activity: ErrorOccurrenceActivity })
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <span className="-mt-1 text-xxs tabular-nums text-text-dimmed">
-        {formatNumberCompact(maxCount)}
-      </span>
+      <SimpleTooltip
+        asChild
+        button={
+          <span className="-mt-1 text-xxs tabular-nums text-text-dimmed">
+            {formatNumberCompact(maxCount)}
+          </span>
+        }
+        content="Peak occurrences in a single time bucket"
+      />
     </div>
   );
 }

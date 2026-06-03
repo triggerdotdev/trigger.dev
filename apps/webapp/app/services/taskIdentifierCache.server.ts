@@ -1,4 +1,5 @@
 import { Redis } from "ioredis";
+import { defaultReconnectOnError } from "@internal/redis";
 import type { TaskTriggerSource } from "@trigger.dev/database";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
@@ -53,6 +54,7 @@ function initializeRedis(): Redis | undefined {
     password: env.CACHE_REDIS_PASSWORD,
     keyPrefix: "tr:",
     enableAutoPipelining: true,
+    reconnectOnError: defaultReconnectOnError,
     ...(env.CACHE_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
   });
 }

@@ -74,7 +74,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components
 import { DialogClose, DialogDescription } from "@radix-ui/react-dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { $replica } from "~/db.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { RegionsPresenter, type Region } from "~/presenters/v3/RegionsPresenter.server";
 import { TestSidebarTabs } from "./TestSidebarTabs";
 import { AIPayloadTabContent } from "./AIPayloadTabContent";
@@ -102,8 +102,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 
-  const presenter = new TestTaskPresenter($replica, clickhouseClient);
   try {
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      project.organizationId,
+      "standard"
+    );
+    const presenter = new TestTaskPresenter($replica, clickhouse);
+
     const [result, regionsResult] = await Promise.all([
       presenter.call({
         userId: user.id,

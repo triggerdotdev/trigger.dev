@@ -4,10 +4,13 @@ This file provides guidance to Claude Code when working with this repository. Su
 
 ## Build and Development Commands
 
-This is a pnpm 10.23.0 monorepo using Turborepo. Run commands from root with `pnpm run`.
+This is a pnpm 10.33.2 monorepo using Turborepo. Run commands from root with `pnpm run`.
+
+**Adding dependencies:** Edit `package.json` directly instead of using `pnpm add`, then run `pnpm i` from the repo root. See `.claude/rules/package-installation.md` for the full process.
 
 ```bash
-pnpm run docker              # Start Docker services (PostgreSQL, Redis, Electric)
+pnpm run docker              # Core dev services (Postgres, Redis, Electric, MinIO, ClickHouse, s2-lite)
+# pnpm run docker:full       # Same + observability stack (Prometheus, Grafana, OTEL) and chaos tooling
 pnpm run db:migrate           # Run database migrations
 pnpm run db:seed              # Seed the database (required for reference projects)
 
@@ -65,6 +68,17 @@ containerTest("should use both", async ({ prisma, redisOptions }) => {
   /* ... */
 });
 ```
+
+## Code Style
+
+### Imports
+
+**Prefer static imports over dynamic imports.** Only use dynamic `import()` when:
+- Circular dependencies cannot be resolved otherwise
+- Code splitting is genuinely needed for performance
+- The module must be loaded conditionally at runtime
+
+Dynamic imports add unnecessary overhead in hot paths and make code harder to analyze. If you find yourself using `await import()`, ask if a regular `import` statement would work instead.
 
 ## Changesets and Server Changes
 
@@ -124,7 +138,7 @@ Docs live in `docs/` as a Mintlify site (MDX format). See `docs/CLAUDE.md` for c
 
 ### Reference Projects
 
-The `references/` directory contains test workspaces for testing SDK and platform features. Use `references/hello-world` to manually test changes before submitting PRs.
+Reference/example projects for testing SDK and platform features live in a separate repo: [`triggerdotdev/references`](https://github.com/triggerdotdev/references). Clone it alongside this repo and use its `projects/hello-world` to manually test changes before submitting PRs. See that repo's README for setup and linking to a local monorepo build.
 
 ## Docker Image Guidelines
 
@@ -153,15 +167,17 @@ export const myTask = task({
 
 The `rules/` directory contains versioned SDK documentation distributed via the SDK installer. Current version: `rules/manifest.json`. Do NOT update `rules/` or `.claude/skills/trigger-dev-tasks/` unless explicitly asked - these are maintained in separate dedicated passes.
 
-## Testing with hello-world Reference Project
+## Testing with the hello-world Reference Project
+
+The reference projects live in the separate [`triggerdotdev/references`](https://github.com/triggerdotdev/references) repo - clone it alongside this repo.
 
 First-time setup:
 
-1. `pnpm run db:seed` to seed the database
-2. Build CLI: `pnpm run build --filter trigger.dev && pnpm i`
-3. Authorize: `cd references/hello-world && pnpm exec trigger login -a http://localhost:3030`
+1. `pnpm run db:seed` to seed the database (creates the References org + hello-world project)
+2. Build the CLI/packages you want to test: `pnpm run build --filter trigger.dev`
+3. In your `references` clone, follow its README to link to your local monorepo build, then authorize: `cd projects/hello-world && pnpm exec trigger login -a http://localhost:3030`
 
-Running: `cd references/hello-world && pnpm exec trigger dev`
+Running (from your `references` clone): `cd projects/hello-world && pnpm exec trigger dev`
 
 ## Local Task Testing Workflow
 
@@ -176,7 +192,8 @@ curl -s http://localhost:3030/healthcheck  # Verify running
 ### Step 2: Start Trigger Dev in Background
 
 ```bash
-cd references/hello-world && pnpm exec trigger dev
+# in your triggerdotdev/references clone
+cd projects/hello-world && pnpm exec trigger dev
 # Wait for "Local worker ready [node]"
 ```
 

@@ -16,7 +16,7 @@ COPY --from=pruner --chown=node:node /app/out/json/ .
 COPY --from=pruner --chown=node:node /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=pruner --chown=node:node /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
-RUN corepack enable && corepack prepare pnpm@10.23.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 
 FROM base AS deps-fetcher
 RUN apk add --no-cache python3-dev py3-setuptools make g++ gcc linux-headers

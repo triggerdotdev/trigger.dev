@@ -1,6 +1,8 @@
 import {
   PromptManifest,
   PromptMetadata,
+  SkillManifest,
+  SkillMetadata,
   TaskFileMetadata,
   TaskMetadata,
   TaskManifest,
@@ -9,6 +11,18 @@ import {
 } from "../schemas/index.js";
 import { PromptMetadataWithFunctions, TaskMetadataWithFunctions, TaskSchema } from "../types/index.js";
 import { ResourceCatalog } from "./catalog.js";
+
+/**
+ * Sentinel file-context value the runtime workers set around task execution
+ * (via `TaskExecutor.execute`) so that `task()` calls firing during a run —
+ * e.g. as a side effect of `await import(...)` of a module containing a
+ * task definition — register normally instead of hitting the silent-drop
+ * guard in `registerTaskMetadata`. The catalog uses this exact string to
+ * detect "registered during execution" and emit a one-time warning per
+ * task id. The indexer never sets this context, so its behavior is
+ * unchanged.
+ */
+export const NO_FILE_CONTEXT = "<no-context>";
 
 export class StandardResourceCatalog implements ResourceCatalog {
   private _taskSchemas: Map<string, TaskSchema> = new Map();
@@ -21,6 +35,9 @@ export class StandardResourceCatalog implements ResourceCatalog {
   private _promptSchemas: Map<string, TaskSchema> = new Map();
   private _currentFileContext?: Omit<TaskFileMetadata, "exportName">;
   private _queueMetadata: Map<string, QueueManifest> = new Map();
+  private _skillMetadata: Map<string, SkillMetadata> = new Map();
+  private _skillFileMetadata: Map<string, TaskFileMetadata> = new Map();
+  private _sentinelContextWarned: Set<string> = new Set();
 
   setCurrentFileContext(filePath: string, entryPoint: string) {
     this._currentFileContext = { filePath, entryPoint };
@@ -73,6 +90,20 @@ export class StandardResourceCatalog implements ResourceCatalog {
       return;
     }
 
+    // When the current context is the sentinel set by TaskExecutor around a
+    // run, the task() call fired during execution — most commonly via a
+    // dynamic import inside another task's run(). Warn once per task id so
+    // the pattern stays visible.
+    if (
+      this._currentFileContext.filePath === NO_FILE_CONTEXT &&
+      !this._sentinelContextWarned.has(task.id)
+    ) {
+      this._sentinelContextWarned.add(task.id);
+      console.warn(
+        `[trigger.dev] task "${task.id}" was registered via dynamic import during another task's run(); move to a static import if you notice any issues.`
+      );
+    }
+
     this._taskFileMetadata.set(task.id, {
       ...this._currentFileContext,
     });
@@ -86,24 +117,30 @@ export class StandardResourceCatalog implements ResourceCatalog {
   }
 
   updateTaskMetadata(id: string, updates: Partial<TaskMetadataWithFunctions>): void {
+    const { fns, schema, ...metadataUpdates } = updates;
+
     const existingMetadata = this._taskMetadata.get(id);
 
-    if (existingMetadata) {
+    if (existingMetadata && Object.keys(metadataUpdates).length > 0) {
       this._taskMetadata.set(id, {
         ...existingMetadata,
-        ...updates,
+        ...metadataUpdates,
       });
     }
 
-    if (updates.fns) {
+    if (fns) {
       const existingFunctions = this._taskFunctions.get(id);
 
       if (existingFunctions) {
         this._taskFunctions.set(id, {
           ...existingFunctions,
-          ...updates.fns,
+          ...fns,
         });
       }
+    }
+
+    if (schema) {
+      this._taskSchemas.set(id, schema);
     }
   }
 
@@ -230,6 +267,58 @@ export class StandardResourceCatalog implements ResourceCatalog {
       ...metadata,
       ...fileMetadata,
       fns,
+    };
+  }
+
+  registerSkillMetadata(skill: SkillMetadata): void {
+    if (!this._currentFileContext) {
+      return;
+    }
+
+    if (!skill.id) {
+      return;
+    }
+
+    const existing = this._skillMetadata.get(skill.id);
+    if (existing && existing.sourcePath !== skill.sourcePath) {
+      console.warn(
+        `Skill "${skill.id}" is defined twice with different paths. Keeping the first:\n` +
+          `  existing: ${existing.sourcePath}\n` +
+          `  ignored:  ${skill.sourcePath}`
+      );
+      return;
+    }
+
+    this._skillFileMetadata.set(skill.id, {
+      ...this._currentFileContext,
+    });
+    this._skillMetadata.set(skill.id, skill);
+  }
+
+  listSkillManifests(): Array<SkillManifest> {
+    const result: Array<SkillManifest> = [];
+
+    for (const [id, metadata] of this._skillMetadata) {
+      const fileMetadata = this._skillFileMetadata.get(id);
+      if (!fileMetadata) continue;
+
+      result.push({
+        ...metadata,
+        ...fileMetadata,
+      });
+    }
+
+    return result;
+  }
+
+  getSkillManifest(id: string): SkillManifest | undefined {
+    const metadata = this._skillMetadata.get(id);
+    const fileMetadata = this._skillFileMetadata.get(id);
+    if (!metadata || !fileMetadata) return undefined;
+
+    return {
+      ...metadata,
+      ...fileMetadata,
     };
   }
 

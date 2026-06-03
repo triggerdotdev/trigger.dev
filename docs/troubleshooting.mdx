@@ -278,6 +278,55 @@ You could also offload the CPU-heavy work to a Node.js worker thread, but this i
 
 If the above doesn't work, then we recommend you try increasing the machine size of your task. See our [machines guide](/machines) for more information.
 
+### Uncaught exceptions
+
+If you see a `TASK_RUN_UNCAUGHT_EXCEPTION` error, an exception escaped your task's `run()` function without being thrown through your `await` chain — the runtime caught it via Node's `process.on("uncaughtException")` handler. The dashboard surfaces this as a regular task failure (status `Failed`) and the run will retry according to your task's retry policy, but the exception still indicates a bug worth fixing.
+
+The most common cause is a Node `EventEmitter` emitting an `"error"` event with no listener attached. When this happens, Node escalates the event into an `uncaughtException`. Long-lived clients like `node-redis`, `pg`, `kafkajs`, and `mongodb` all surface socket-level errors this way.
+
+For example, a `node-redis` client with no error listener will fail your run with an `Error: read ECONNRESET` (or similar TCP error) the next time the socket is reset:
+
+```ts
+import { task } from "@trigger.dev/sdk";
+import { createClient } from "redis";
+
+export const myTask = task({
+  id: "my-task",
+  run: async () => {
+    const client = createClient({ url: process.env.REDIS_URL });
+
+    // BAD: no .on("error", ...) listener — a socket reset will crash the run
+    // with an uncaught exception, even if the next .get() would have worked.
+    await client.connect();
+    return await client.get("foo");
+  },
+});
+```
+
+Fix it by attaching an `error` listener so the event has somewhere to go:
+
+```ts
+const client = createClient({ url: process.env.REDIS_URL });
+
+// GOOD: the listener catches socket-level errors. The awaited command
+// (e.g. .get) will still reject if the connection is broken, and that
+// rejection propagates through your run() and fails the attempt cleanly.
+client.on("error", (err) => {
+  logger.warn("Redis client error", { err });
+});
+
+await client.connect();
+return await client.get("foo");
+```
+
+The same fix applies to any library that emits `"error"` events. As a rule, attach an `.on("error", ...)` listener to every long-lived client you create inside a task.
+
+<Note>
+
+Unhandled promise rejections (e.g. `Promise.reject(...)` with no `.catch`) take the same path — Node routes them through `uncaughtException` by default, and the runtime treats them as `TASK_RUN_UNCAUGHT_EXCEPTION` for the same reasons. Make sure every promise either gets `await`ed or has a `.catch(...)` handler.
+
+</Note>
+
 ### Realtime stream error (`sendBatchNonBlocking` / `S2AppendSession`)
 
 Errors mentioning `sendBatchNonBlocking`, `@s2-dev/streamstore`, or `S2AppendSession` (often with `code: undefined`) can occur when you close a stream and then await `waitUntilComplete()`, or when a stream runs for a long time (e.g. 20+ minutes). Wrap `waitUntilComplete()` in try/catch so Transport/closed-stream errors don't fail your task:

@@ -151,11 +151,18 @@
 
 /* Streamdown markdown styling */
 .streamdown-container {
-  /* Streamdown uses shadcn/ui CSS variables - define them for our theme */
-  --muted: 220 13% 20%;
-  --muted-foreground: 215 14% 60%;
-  --foreground: 210 20% 90%;
-  --border: 217 19% 27%;
+  /* Streamdown uses shadcn/ui CSS variables - define them for our theme.
+     These map Tailwind utility classes like bg-background, bg-primary, etc.
+     that streamdown uses internally for its link safety modal, code blocks,
+     and other interactive elements. */
+  --background: 230 16% 9%; /* charcoal-900 #121317 */
+  --foreground: 215 19% 87%; /* charcoal-200 #D7D9DD */
+  --muted: 220 8% 17%; /* charcoal-775 #1C1E21 */
+  --muted-foreground: 220 8% 57%; /* charcoal-400 #878C99 */
+  --border: 216 7% 27%; /* charcoal-650 #2C3034 */
+  --primary: 95 100% 66%; /* apple-500 #A8FF53 */
+  --primary-foreground: 230 16% 9%; /* charcoal-900 */
+  --sidebar: 228 10% 11%; /* charcoal-850 #15171A */;
 
   /* Code block styling */
   & [data-code-block-container] {

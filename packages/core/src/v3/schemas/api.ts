@@ -157,6 +157,14 @@ export const IdempotencyKeyOptionsSchema = z.object({
 
 export type IdempotencyKeyOptionsSchema = z.infer<typeof IdempotencyKeyOptionsSchema>;
 
+// Coerces user-supplied concurrencyKey values to string. The downstream Prisma
+// column is String?, so passing a number (a common foot-gun when callers do
+// `concurrencyKey: payload.userId`) used to fail at `prisma.taskRun.create`
+// with PrismaClientValidationError. Accept the intent and stringify here.
+const ConcurrencyKeySchema = z
+  .union([z.string(), z.number()])
+  .transform((value) => String(value));
+
 export const TriggerTaskRequestBody = z.object({
   payload: z.any(),
   context: z.any(),
@@ -195,9 +203,15 @@ export const TriggerTaskRequestBody = z.object({
           concurrencyLimit: z.number().int().optional(),
         })
         .optional(),
-      concurrencyKey: z.string().optional(),
+      concurrencyKey: ConcurrencyKeySchema.optional(),
       delay: z.string().or(z.coerce.date()).optional(),
-      idempotencyKey: z.string().optional(),
+      idempotencyKey: z
+        .string()
+        // Caps user-supplied keys before they reach the unique idempotency index
+        // on the underlying table — values past this fail at the database layer
+        // rather than returning a clean 400.
+        .max(2048, "idempotencyKey must be 2048 characters or less")
+        .optional(),
       idempotencyKeyTTL: z.string().optional(),
       /** The original user-provided idempotency key and scope */
       idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
@@ -247,9 +261,15 @@ export const BatchTriggerTaskItem = z.object({
   context: z.any(),
   options: z
     .object({
-      concurrencyKey: z.string().optional(),
+      concurrencyKey: ConcurrencyKeySchema.optional(),
       delay: z.string().or(z.coerce.date()).optional(),
-      idempotencyKey: z.string().optional(),
+      idempotencyKey: z
+        .string()
+        // Caps user-supplied keys before they reach the unique idempotency index
+        // on the underlying table — values past this fail at the database layer
+        // rather than returning a clean 400.
+        .max(2048, "idempotencyKey must be 2048 characters or less")
+        .optional(),
       idempotencyKeyTTL: z.string().optional(),
       /** The original user-provided idempotency key and scope */
       idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
@@ -358,7 +378,13 @@ export const CreateBatchRequestBody = z.object({
   /** Whether to resume parent on completion (true for batchTriggerAndWait) */
   resumeParentOnCompletion: z.boolean().optional(),
   /** Idempotency key for the batch */
-  idempotencyKey: z.string().optional(),
+  idempotencyKey: z
+    .string()
+    // Caps user-supplied keys before they reach the unique idempotency index
+    // on the underlying table — values past this fail at the database layer
+    // rather than returning a clean 400.
+    .max(2048, "idempotencyKey must be 2048 characters or less")
+    .optional(),
   /** The original user-provided idempotency key and scope */
   idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
 });
@@ -383,7 +409,12 @@ export type CreateBatchResponse = z.infer<typeof CreateBatchResponse>;
 
 /**
  * Phase 2: Individual item in the NDJSON stream
- * Each line in the NDJSON body should match this schema
+ * Each line in the NDJSON body should match this schema.
+ *
+ * `options` reuses the strict shape from BatchTriggerTaskItem so that the
+ * Phase-2 streaming path validates option fields identically to the V2/V3
+ * batch trigger endpoints — historically this used z.record(z.unknown()) and
+ * let invalid values (e.g. numeric concurrencyKey) reach Prisma.
  */
 export const BatchItemNDJSON = z.object({
   /** Zero-based index of this item (used for idempotency and ordering) */
@@ -393,7 +424,7 @@ export const BatchItemNDJSON = z.object({
   /** The payload for this task run */
   payload: z.unknown().optional(),
   /** Options for this specific item */
-  options: z.record(z.unknown()).optional(),
+  options: BatchTriggerTaskItem.shape.options,
 });
 
 export type BatchItemNDJSON = z.infer<typeof BatchItemNDJSON>;
@@ -1115,6 +1146,8 @@ const CommonRunFields = {
   baseCostInCents: z.number(),
   durationMs: z.number(),
   metadata: z.record(z.any()).optional(),
+  taskKind: z.string().optional(),
+  region: z.string().optional(),
 };
 
 const RetrieveRunCommandFields = {
@@ -1182,6 +1215,8 @@ export const ImportEnvironmentVariablesRequestBody = z.object({
   variables: z.record(z.string()),
   parentVariables: z.record(z.string()).optional(),
   override: z.boolean().optional(),
+  // When omitted, variables default to non-secret (the DB default is false).
+  isSecret: z.boolean().optional(),
   source: z
     .discriminatedUnion("type", [
       z.object({ type: z.literal("user"), userId: z.string() }),
@@ -1350,7 +1385,13 @@ export const CreateWaitpointTokenRequestBody = z.object({
    *
    * Note: This waitpoint may already be complete, in which case when you wait for it, it will immediately continue.
    */
-  idempotencyKey: z.string().optional(),
+  idempotencyKey: z
+    .string()
+    // Caps user-supplied keys before they reach the unique idempotency index
+    // on the underlying table — values past this fail at the database layer
+    // rather than returning a clean 400.
+    .max(2048, "idempotencyKey must be 2048 characters or less")
+    .optional(),
   /**
    * When set, this means the passed in idempotency key will expire after this time.
    * This means after that time if you pass the same idempotency key again, you will get a new waitpoint.
@@ -1389,7 +1430,13 @@ export type CreateWaitpointTokenResponseBody = z.infer<typeof CreateWaitpointTok
 export const CreateInputStreamWaitpointRequestBody = z.object({
   streamId: z.string(),
   timeout: z.string().optional(),
-  idempotencyKey: z.string().optional(),
+  idempotencyKey: z
+    .string()
+    // Caps user-supplied keys before they reach the unique idempotency index
+    // on the underlying table — values past this fail at the database layer
+    // rather than returning a clean 400.
+    .max(2048, "idempotencyKey must be 2048 characters or less")
+    .optional(),
   idempotencyKeyTTL: z.string().optional(),
   tags: z.union([z.string(), z.array(z.string())]).optional(),
   /**
@@ -1422,7 +1469,13 @@ export const CreateSessionStreamWaitpointRequestBody = z.object({
   session: z.string(),
   io: z.enum(["out", "in"]),
   timeout: z.string().optional(),
-  idempotencyKey: z.string().optional(),
+  idempotencyKey: z
+    .string()
+    // Caps user-supplied keys before they reach the unique idempotency index
+    // on the underlying table — values past this fail at the database layer
+    // rather than returning a clean 400.
+    .max(2048, "idempotencyKey must be 2048 characters or less")
+    .optional(),
   idempotencyKeyTTL: z.string().optional(),
   tags: z.union([z.string(), z.array(z.string())]).optional(),
   /**
@@ -1494,6 +1547,12 @@ export const SessionTriggerConfig = z.object({
   queue: z.string().max(128).optional(),
   tags: z.array(z.string().max(128)).max(5).optional(),
   maxAttempts: z.number().int().positive().max(10).optional(),
+  /** Per-run wall-clock cap (seconds). Forwarded to `TaskRunOptions.maxDuration`. */
+  maxDuration: z.number().int().positive().optional(),
+  /** Pin every run to a specific worker version. Forwarded to `TaskRunOptions.lockToVersion`. */
+  lockToVersion: z.string().optional(),
+  /** Region to schedule runs in. Forwarded to `TaskRunOptions.region`. */
+  region: z.string().optional(),
   /** Convenience field surfaced to chat.agent via the wire payload. */
   idleTimeoutInSeconds: z.number().int().positive().max(3600).optional(),
 });
@@ -1711,7 +1770,13 @@ export const WaitForDurationRequestBody = z.object({
    *
    * Note: This waitpoint may already be complete, in which case when you wait for it, it will immediately continue.
    */
-  idempotencyKey: z.string().optional(),
+  idempotencyKey: z
+    .string()
+    // Caps user-supplied keys before they reach the unique idempotency index
+    // on the underlying table — values past this fail at the database layer
+    // rather than returning a clean 400.
+    .max(2048, "idempotencyKey must be 2048 characters or less")
+    .optional(),
   /**
    * When set, this means the passed in idempotency key will expire after this time.
    * This means after that time if you pass the same idempotency key again, you will get a new waitpoint.
@@ -1817,6 +1882,9 @@ export const ApiDeploymentListResponseItem = z.object({
 });
 
 export type ApiDeploymentListResponseItem = z.infer<typeof ApiDeploymentListResponseItem>;
+
+export const RetrieveCurrentDeploymentResponseBody = ApiDeploymentListResponseItem;
+export type RetrieveCurrentDeploymentResponseBody = ApiDeploymentListResponseItem;
 
 export const ApiBranchListResponseBody = z.object({
   branches: z.array(
@@ -1937,6 +2005,34 @@ export const SendInputStreamResponseBody = z.object({
   ok: z.boolean(),
 });
 export type SendInputStreamResponseBody = z.infer<typeof SendInputStreamResponseBody>;
+
+/**
+ * Response body for `GET /realtime/v1/sessions/:id/:io/records`. A non-SSE,
+ * `wait=0` drain of a session channel — used at run boot for snapshot
+ * replay where the SSE long-poll tax (~1s on empty streams) was the
+ * dominant cost.
+ *
+ * `data` is the parsed chunk body (the SDK writer puts the chunk object
+ * directly into the S2 record envelope; the route unwraps the envelope
+ * and forwards the inner object as-is). Callers use it directly — no
+ * additional JSON.parse step. Schema is `z.unknown()` because chunk
+ * shape varies by `chunk.type` (the AI SDK's `UIMessageChunk`
+ * discriminated union plus Trigger control records); consumers
+ * already runtime-check on the discriminator and tolerate malformed
+ * records by skipping them.
+ */
+export const ReadSessionStreamRecordsResponseBody = z.object({
+  records: z.array(
+    z.object({
+      data: z.unknown(),
+      id: z.string(),
+      seqNum: z.number(),
+    })
+  ),
+});
+export type ReadSessionStreamRecordsResponseBody = z.infer<
+  typeof ReadSessionStreamRecordsResponseBody
+>;
 
 export const ResolvePromptRequestBody = z.object({
   variables: z.record(z.unknown()).default({}),

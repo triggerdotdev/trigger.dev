@@ -1,5 +1,5 @@
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction, useNavigation } from "@remix-run/react";
+import { type MetaFunction, useNavigation, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense } from "react";
 import {
@@ -14,11 +14,12 @@ import { DevDisconnectedBanner, useDevPresence } from "~/components/DevPresence"
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header1 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { PulsingDot } from "~/components/primitives/PulsingDot";
 import {
   RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
@@ -40,11 +41,12 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { redirectWithErrorMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import {
   setRootOnlyFilterPreference,
   uiPreferencesStorage,
@@ -59,9 +61,11 @@ import {
   v3TestPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
+import { throwNotFound } from "~/utils/httpErrors";
 import { ListPagination } from "../../components/ListPagination";
 import { CreateBulkActionInspector } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
 import { Callout } from "~/components/primitives/Callout";
+import { useRunsLiveReload } from "./useRunsLiveReload";
 
 export const meta: MetaFunction = () => {
   return [
@@ -77,25 +81,39 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
-    throw new Error("Project not found");
+    return redirectWithErrorMessage("/", request, "Project not found");
   }
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) {
-    throw new Error("Environment not found");
+    throwNotFound("Environment not found");
   }
 
   const filters = await getRunFiltersFromRequest(request);
 
-  const presenter = new NextRunListPresenter($replica, clickhouseClient);
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
+  const presenter = new NextRunListPresenter($replica, clickhouse);
   const list = presenter.call(project.organizationId, environment.id, {
     userId,
     projectId: project.id,
     ...filters,
   });
 
-  const session = await setRootOnlyFilterPreference(filters.rootOnly, request);
-  const cookieValue = await uiPreferencesStorage.commitSession(session);
+  // Only persist rootOnly when no tasks are filtered. While a task filter is active,
+  // the toggle's URL value can be a temporary auto-flip (or a user override scoped to
+  // the current task filter), and we don't want either bleeding into the saved
+  // session preference. Clearing the task filter restores the saved preference.
+  const shouldPersistRootOnly = !filters.tasks || filters.tasks.length === 0;
+  const headers = shouldPersistRootOnly
+    ? {
+        "Set-Cookie": await uiPreferencesStorage.commitSession(
+          await setRootOnlyFilterPreference(filters.rootOnly, request)
+        ),
+      }
+    : undefined;
 
   return typeddefer(
     {
@@ -103,11 +121,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       rootOnlyDefault: filters.rootOnly,
       filters,
     },
-    {
-      headers: {
-        "Set-Cookie": cookieValue,
-      },
-    }
+    headers ? { headers } : undefined
   );
 };
 
@@ -194,12 +208,36 @@ function RunsList({
   rootOnlyDefault: boolean;
   filters: TaskRunListSearchFilters;
 }) {
+  const revalidator = useRevalidator();
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle";
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
   const { has, replace } = useSearchParams();
+  const { visibleRuns, showNewRunsBanner, newRunsCount, dismissNewRuns, childrenStatusesBasePath } =
+    useRunsLiveReload({
+      runs: list.runs,
+      hasAnyRuns: list.hasAnyRuns,
+      isLoading,
+      organizationSlug: organization.slug,
+      projectSlug: project.slug,
+      environmentSlug: environment.slug,
+    });
+
+  const onClickShowNewRuns = () => {
+    const isPaginated = has("cursor") || has("direction");
+    dismissNewRuns();
+    if (isPaginated) {
+      replace({
+        cursor: undefined,
+        direction: undefined,
+      });
+      return;
+    }
+
+    revalidator.revalidate();
+  };
 
   // Shortcut keys for bulk actions
   useShortcutKeys({
@@ -256,6 +294,22 @@ function RunsList({
                     rootOnlyDefault={rootOnlyDefault}
                   />
                   <div className="flex items-center justify-end gap-x-2">
+                    {showNewRunsBanner && (
+                      <span className="flex duration-150 animate-in fade-in-0">
+                        <Button
+                          variant="secondary/small"
+                          className="text-text-bright"
+                          onClick={onClickShowNewRuns}
+                          LeadingIcon={<PulsingDot className="h-2 w-2" />}
+                          tooltip="Refresh to see new runs"
+                          aria-label="New runs created. Refresh to see new runs."
+                        >
+                          {newRunsCount >= 100
+                            ? "99+ new runs"
+                            : `${newRunsCount} new ${newRunsCount === 1 ? "run" : "runs"}`}
+                        </Button>
+                      </span>
+                    )}
                     {!isShowingBulkActionInspector && (
                       <LinkButton
                         variant="secondary/small"
@@ -294,10 +348,11 @@ function RunsList({
                 </div>
 
                 <TaskRunsTable
-                  total={list.runs.length}
+                  total={visibleRuns.length}
                   hasFilters={list.hasFilters}
                   filters={list.filters}
-                  runs={list.runs}
+                  runs={visibleRuns}
+                  childrenStatusesBasePath={childrenStatusesBasePath}
                   isLoading={isLoading}
                   allowSelection
                   rootOnlyDefault={rootOnlyDefault}

@@ -176,11 +176,19 @@ export const runsSchema: TableSchema = {
     idempotency_key: {
       name: "idempotency_key",
       clickhouseName: "idempotency_key_user",
-      ...column("String", { description: "Idempotency key (available from 4.3.3)", example: "user-123-action-456" }),
+      ...column("String", {
+        description: "Idempotency key (available from 4.3.3)",
+        example: "user-123-action-456",
+      }),
     },
     idempotency_key_scope: {
       name: "idempotency_key_scope",
-      ...column("String", { description: "The idempotency key scope determines whether a task should be considered unique within a parent run, a specific attempt, or globally. An empty value means there's no idempotency key set (available from 4.3.3).", example: "run", allowedValues: ["global", "run", "attempt"], }),
+      ...column("String", {
+        description:
+          "The idempotency key scope determines whether a task should be considered unique within a parent run, a specific attempt, or globally. An empty value means there's no idempotency key set (available from 4.3.3).",
+        example: "run",
+        allowedValues: ["global", "run", "attempt"],
+      }),
     },
     region: {
       name: "region",
@@ -403,6 +411,13 @@ export const runsSchema: TableSchema = {
       name: "is_test",
       ...column("UInt8", { description: "Whether this is a test run (0 or 1)", example: "0" }),
       expression: "if(is_test > 0, true, false)",
+    },
+    is_warm_start: {
+      name: "is_warm_start",
+      ...column("Nullable(UInt8)", {
+        description: "Whether this run used a warm start vs a cold start.",
+        example: "1",
+      }),
     },
     concurrency_key: {
       name: "concurrency_key",

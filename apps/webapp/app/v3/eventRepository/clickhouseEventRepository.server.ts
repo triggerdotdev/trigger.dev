@@ -1,6 +1,7 @@
 import type {
   ClickHouse,
   LlmMetricsV1Input,
+  MetricsV1Input,
   TaskEventDetailedSummaryV1Result,
   TaskEventDetailsV1Result,
   TaskEventSummaryV1Result,
@@ -45,6 +46,11 @@ import {
   removePrivateProperties,
   isEmptyObject,
 } from "./common.server";
+import {
+  isClickHouseJsonParseError,
+  parseRowNumberFromError,
+  sanitizeRows,
+} from "./sanitizeRowsOnParseError.server";
 import type {
   CompleteableTaskRun,
   CreateEventInput,
@@ -91,6 +97,10 @@ export type ClickhouseEventRepositoryConfig = {
   llmMetricsFlushInterval?: number;
   llmMetricsMaxBatchSize?: number;
   llmMetricsMaxConcurrency?: number;
+  /** OTLP / task metrics_v1 flush scheduler config */
+  otlpMetricsBatchSize?: number;
+  otlpMetricsFlushInterval?: number;
+  otlpMetricsMaxConcurrency?: number;
 };
 
 /**
@@ -102,8 +112,16 @@ export class ClickhouseEventRepository implements IEventRepository {
   private _config: ClickhouseEventRepositoryConfig;
   private readonly _flushScheduler: DynamicFlushScheduler<TaskEventV1Input | TaskEventV2Input>;
   private readonly _llmMetricsFlushScheduler: DynamicFlushScheduler<LlmMetricsV1Input>;
+  private readonly _otlpMetricsFlushScheduler: DynamicFlushScheduler<MetricsV1Input>;
   private _tracer: Tracer;
   private _version: "v1" | "v2";
+  /**
+   * Counts batches that hit a ClickHouse JSON parse failure that survived
+   * one sanitize-retry. These batches are dropped on the floor (the scheduler
+   * is told the flush "succeeded" so its queue counter doesn't leak), and we
+   * track the drop count for observability.
+   */
+  private _permanentlyDroppedBatches = 0;
 
   constructor(config: ClickhouseEventRepositoryConfig) {
     this._clickhouse = config.clickhouse;
@@ -137,6 +155,15 @@ export class ClickhouseEventRepository implements IEventRepository {
       memoryPressureThreshold: config.llmMetricsMaxBatchSize ?? 10000,
       loadSheddingEnabled: false,
     });
+
+    this._otlpMetricsFlushScheduler = new DynamicFlushScheduler({
+      batchSize: config.otlpMetricsBatchSize ?? 10000,
+      flushInterval: config.otlpMetricsFlushInterval ?? 1000,
+      callback: this.#flushOtelMetricsBatch.bind(this),
+      minConcurrency: 1,
+      maxConcurrency: config.otlpMetricsMaxConcurrency ?? 3,
+      loadSheddingEnabled: false,
+    });
   }
 
   get version() {
@@ -145,6 +172,11 @@ export class ClickhouseEventRepository implements IEventRepository {
 
   get maximumLiveReloadingSetting() {
     return this._config.maximumLiveReloadingSetting ?? 1000;
+  }
+
+  /** Exposed for tests and metrics — total batches lost to unrecoverable parse errors. */
+  get permanentlyDroppedBatches() {
+    return this._permanentlyDroppedBatches;
   }
 
   /**
@@ -215,7 +247,171 @@ export class ClickhouseEventRepository implements IEventRepository {
           ? this._clickhouse.taskEventsV2.insert
           : this._clickhouse.taskEvents.insert;
 
-      const [insertError, insertResult] = await insertFn(events, {
+      const doInsert = async () => {
+        const [insertError, insertResult] = await insertFn(events, {
+          params: {
+            clickhouse_settings: this.#getClickhouseInsertSettings(),
+          },
+        });
+        if (insertError) throw insertError;
+        return insertResult;
+      };
+
+      const outcome = await this.#insertWithJsonParseRecovery(
+        flushId,
+        events,
+        doInsert,
+        `task_events_${this._version}`
+      );
+
+      if (outcome.kind === "dropped") {
+        // Loud log already emitted; nothing landed in ClickHouse — don't publish to Redis.
+        return;
+      }
+
+      logger.info("ClickhouseEventRepository.flushBatch Inserted batch into clickhouse", {
+        events: events.length,
+        insertResult: outcome.insertResult,
+        sanitized: outcome.kind === "sanitized",
+        version: this._version,
+      });
+
+      this.#publishToRedis(events);
+    });
+  }
+
+  async #flushLlmMetricsBatch(flushId: string, rows: LlmMetricsV1Input[]) {
+    const doInsert = async () => {
+      const [insertError, insertResult] = await this._clickhouse.llmMetrics.insert(rows, {
+        params: {
+          clickhouse_settings: this.#getClickhouseInsertSettings(),
+        },
+      });
+      if (insertError) throw insertError;
+      return insertResult;
+    };
+
+    const outcome = await this.#insertWithJsonParseRecovery(
+      flushId,
+      rows,
+      doInsert,
+      "llm_metrics_v1"
+    );
+
+    if (outcome.kind === "dropped") {
+      return;
+    }
+
+    logger.info("ClickhouseEventRepository.flushLlmMetricsBatch Inserted LLM metrics batch", {
+      rows: rows.length,
+      sanitized: outcome.kind === "sanitized",
+    });
+  }
+
+  /**
+   * Wraps a ClickHouse insert callable with reactive UTF-16 sanitization.
+   *
+   * On a `Cannot parse JSON object` failure:
+   *   1. Sanitize the batch from `max(0, parsedRowN - 1)` onwards (rows
+   *      before the failing one parsed fine — known good).
+   *   2. Retry the insert once with the sanitized batch.
+   *   3. If the retry still fails with the same error class, log loudly,
+   *      increment `permanentlyDroppedBatches`, and return without
+   *      throwing — the scheduler's transient-retry path would just repeat
+   *      the same deterministic failure.
+   *
+   * Non-parse errors propagate unchanged so the scheduler's existing
+   * backoff/retry behaviour still handles transient network or CH issues.
+   */
+  async #insertWithJsonParseRecovery<T extends object>(
+    flushId: string,
+    rows: T[],
+    doInsert: () => Promise<unknown>,
+    contextLabel: string
+  ): Promise<
+    | { kind: "inserted"; insertResult: unknown }
+    | { kind: "sanitized"; insertResult: unknown }
+    | { kind: "dropped" }
+  > {
+    try {
+      return { kind: "inserted", insertResult: await doInsert() };
+    } catch (firstError) {
+      if (!isClickHouseJsonParseError(firstError)) throw firstError;
+
+      const firstMessage =
+        typeof firstError === "object" && firstError !== null && "message" in firstError
+          ? String((firstError as { message?: unknown }).message ?? "")
+          : String(firstError);
+
+      // Sanitize the whole batch. ClickHouse's `at row N` index is logged
+      // for observability but not used to slice — its semantics under
+      // parallel parsing are not stable enough to safely skip rows.
+      const rowHint = parseRowNumberFromError(firstMessage);
+      const { rowsTouched, fieldsSanitized } = sanitizeRows(rows);
+
+      // Sanitizer found nothing to fix → retrying the exact same batch is
+      // guaranteed to hit the same deterministic parse failure. Skip the
+      // wasted ClickHouse round-trip and drop loudly. Throwing instead would
+      // hand the failure back to the scheduler's 3× transient-retry loop —
+      // exactly the retry storm this wrapper is designed to avoid.
+      if (fieldsSanitized === 0) {
+        this._permanentlyDroppedBatches += 1;
+        logger.error(
+          "Dropped batch — ClickHouse JSON parse error but sanitizer found nothing to fix",
+          {
+            flushId,
+            contextLabel,
+            batchSize: rows.length,
+            clickhouseRowHint: rowHint,
+            permanentlyDroppedBatches: this._permanentlyDroppedBatches,
+            sampleRow: JSON.stringify(rows[0] ?? null).slice(0, 1024),
+            clickhouseError: firstMessage.split("\n")[0],
+          }
+        );
+        return { kind: "dropped" };
+      }
+
+      logger.warn("Sanitizing batch after ClickHouse JSON parse error", {
+        flushId,
+        contextLabel,
+        batchSize: rows.length,
+        clickhouseRowHint: rowHint,
+        rowsTouched,
+        fieldsSanitized,
+        clickhouseError: firstMessage.split("\n")[0],
+      });
+
+      try {
+        return { kind: "sanitized", insertResult: await doInsert() };
+      } catch (retryError) {
+        if (!isClickHouseJsonParseError(retryError)) throw retryError;
+
+        this._permanentlyDroppedBatches += 1;
+        const retryMessage =
+          typeof retryError === "object" && retryError !== null && "message" in retryError
+            ? String((retryError as { message?: unknown }).message ?? "")
+            : String(retryError);
+        logger.error("Dropped batch after sanitize-retry still hit ClickHouse JSON parse error", {
+          flushId,
+          contextLabel,
+          batchSize: rows.length,
+          permanentlyDroppedBatches: this._permanentlyDroppedBatches,
+          sampleRow: JSON.stringify(rows[0] ?? null).slice(0, 1024),
+          firstError: firstMessage.split("\n")[0],
+          retryError: retryMessage.split("\n")[0],
+        });
+
+        return { kind: "dropped" };
+      }
+    }
+  }
+
+  async #flushOtelMetricsBatch(flushId: string, rows: MetricsV1Input[]) {
+    await startSpan(this._tracer, "flushOtelMetricsBatch", async (span) => {
+      span.setAttribute("flush_id", flushId);
+      span.setAttribute("row_count", rows.length);
+
+      const [insertError] = await this._clickhouse.metrics.insert(rows, {
         params: {
           clickhouse_settings: this.#getClickhouseInsertSettings(),
         },
@@ -225,30 +421,9 @@ export class ClickhouseEventRepository implements IEventRepository {
         throw insertError;
       }
 
-      logger.info("ClickhouseEventRepository.flushBatch Inserted batch into clickhouse", {
-        events: events.length,
-        insertResult,
-        version: this._version,
+      logger.info("ClickhouseEventRepository.flushOtelMetricsBatch Inserted OTLP metrics batch", {
+        rows: rows.length,
       });
-
-      this.#publishToRedis(events);
-    });
-  }
-
-  async #flushLlmMetricsBatch(flushId: string, rows: LlmMetricsV1Input[]) {
-
-    const [insertError] = await this._clickhouse.llmMetrics.insert(rows, {
-      params: {
-        clickhouse_settings: this.#getClickhouseInsertSettings(),
-      },
-    });
-
-    if (insertError) {
-      throw insertError;
-    }
-
-    logger.info("ClickhouseEventRepository.flushLlmMetricsBatch Inserted LLM metrics batch", {
-      rows: rows.length,
     });
   }
 
@@ -310,7 +485,7 @@ export class ClickhouseEventRepository implements IEventRepository {
     await tracePubSub.publish(events.map((e) => e.trace_id));
   }
 
-  async insertMany(events: CreateEventInput[]): Promise<void> {
+  insertMany(events: CreateEventInput[]): void {
     this.addToBatch(events.flatMap((event) => this.createEventToTaskEventV1Input(event)));
 
     // Dual-write LLM metrics records for spans with cost enrichment
@@ -325,6 +500,11 @@ export class ClickhouseEventRepository implements IEventRepository {
 
   async insertManyImmediate(events: CreateEventInput[]): Promise<void> {
     this.insertMany(events);
+  }
+
+  insertManyMetrics(rows: MetricsV1Input[]): void {
+    if (rows.length === 0) return;
+    this._otlpMetricsFlushScheduler.addToBatch(rows);
   }
 
   private createEventToTaskEventV1Input(event: CreateEventInput): TaskEventV1Input[] {

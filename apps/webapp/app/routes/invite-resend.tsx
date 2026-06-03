@@ -4,7 +4,7 @@ import { env } from "process";
 import { z } from "zod";
 import { resendInvite } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
-import { scheduleEmail } from "~/services/email.server";
+import { scheduleEmail } from "~/services/scheduleEmail.server";
 import { requireUserId } from "~/services/session.server";
 import { acceptInvitePath, organizationTeamPath } from "~/utils/pathBuilder";
 

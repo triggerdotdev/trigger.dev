@@ -216,7 +216,7 @@ const overviewDashboard: BuiltInDashboard = {
 
 const llmDashboard: BuiltInDashboard = {
   key: "llm",
-  title: "AI Metrics",
+  title: "AI metrics",
   filters: ["tasks", "models", "prompts", "operations", "providers"],
   layout: {
     version: "1",

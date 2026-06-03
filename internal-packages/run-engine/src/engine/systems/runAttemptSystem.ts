@@ -63,6 +63,7 @@ import {
 import { SystemResources } from "./systems.js";
 import { WaitpointSystem } from "./waitpointSystem.js";
 import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
+import type { AuthenticatedEnvironment } from "../../shared/index.js";
 
 export type RunAttemptSystemOptions = {
   resources: SystemResources;
@@ -1055,7 +1056,16 @@ export class RunAttemptSystem {
                 organization: {
                   id: run.runtimeEnvironment.organizationId,
                 },
-                environment: run.runtimeEnvironment,
+                // The Prisma payload structurally satisfies the slim
+                // AuthenticatedEnvironment except for `concurrencyLimitBurstFactor`
+                // (Decimal vs number). Coerce that one field; cast away
+                // the excess-property mismatch (the rest of Prisma's
+                // RuntimeEnvironment columns are extra, not missing).
+                environment: {
+                  ...run.runtimeEnvironment,
+                  concurrencyLimitBurstFactor:
+                    run.runtimeEnvironment.concurrencyLimitBurstFactor.toNumber(),
+                } as unknown as AuthenticatedEnvironment,
                 retryAt,
               });
 
@@ -1980,30 +1990,25 @@ export class RunAttemptSystem {
     }
 
     if (completion.flushedMetadata) {
-      const [packetError, packet] = await tryCatch(parsePacket(completion.flushedMetadata));
+      const [, packet] = await tryCatch(parsePacket(completion.flushedMetadata));
 
       if (!packet) {
-        return;
-      }
-
-      if (packetError) {
-        this.$.logger.error("RunEngine.completeRunAttempt(): failed to parse flushed metadata", {
-          runId,
-          flushedMetadata: completion.flushedMetadata,
-          error: packetError,
-        });
-
         return;
       }
 
       const metadata = FlushedRunMetadata.safeParse(packet);
 
       if (!metadata.success) {
-        this.$.logger.error("RunEngine.completeRunAttempt(): failed to parse flushed metadata", {
-          runId,
-          flushedMetadata: completion.flushedMetadata,
-          error: metadata.error,
-        });
+        // Customer's metadata operations don't match the schema (typically
+        // non-JSON values in `operations[].value`). System ignores it.
+        this.$.logger.warn(
+          "RunEngine.completeRunAttempt(): failed to validate flushed metadata",
+          {
+            runId,
+            flushedMetadata: completion.flushedMetadata,
+            error: metadata.error,
+          }
+        );
 
         return;
       }

@@ -7,7 +7,7 @@ import path from "path";
 import { isDebug } from "std-env";
 import { GenericContainer, StartedNetwork, StartedTestContainer, Wait } from "testcontainers";
 import { x } from "tinyexec";
-import { expect, TaskContext } from "vitest";
+import type { TestContext } from "vitest";
 import { ClickHouseContainer, runClickhouseMigrations } from "./clickhouse";
 import { MinIOContainer } from "./minio";
 import { getContainerMetadata, getTaskMetadata, logCleanup, logSetup } from "./logs";
@@ -186,8 +186,21 @@ export async function createMinIOContainer(network: StartedNetwork) {
 }
 
 export function assertNonNullable<T>(value: T): asserts value is NonNullable<T> {
-  expect(value).toBeDefined();
-  expect(value).not.toBeNull();
+  // Plain throw — *not* `vitest.expect`. Two reasons:
+  //   1. This module is imported by globalSetup files that run before any
+  //      vitest worker exists, so `import { expect }` from "vitest" at
+  //      top level can crash on init.
+  //   2. Lazy-loading via `require("vitest")` (the prior fix) collides
+  //      with OTel auto-instrumentation: `@opentelemetry/instrumentation`
+  //      hooks `require()` via `require-in-the-middle`, and vitest is
+  //      ESM-only — the require() throws "Vitest cannot be imported in
+  //      a CommonJS module using require()", failing every test that
+  //      uses `assertNonNullable` after OTel's been touched.
+  // The plain throw still gives vitest a useful failure (the message is
+  // shown in the stack trace) without the instrumentation hazard.
+  if (value === null || value === undefined) {
+    throw new Error(`assertNonNullable: value was ${value === null ? "null" : "undefined"}`);
+  }
 }
 
 export async function withContainerSetup<T>({
@@ -196,7 +209,7 @@ export async function withContainerSetup<T>({
   setup,
 }: {
   name: string;
-  task: TaskContext["task"];
+  task: TestContext["task"];
   setup: Promise<T extends { container: StartedTestContainer } ? T : never>;
 }): Promise<T & { metadata: Record<string, unknown> }> {
   const testName = task.name;
@@ -223,7 +236,7 @@ export async function useContainer<TContainer extends StartedTestContainer>(
     container,
     task,
     use,
-  }: { container: TContainer; task: TaskContext["task"]; use: () => Promise<void> }
+  }: { container: TContainer; task: TestContext["task"]; use: () => Promise<void> }
 ) {
   const metadata = {
     ...getTaskMetadata(task),

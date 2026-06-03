@@ -1,6 +1,6 @@
-import { ClickHouse } from "@internal/clickhouse";
 import invariant from "tiny-invariant";
 import { env } from "~/env.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { singleton } from "~/utils/singleton";
 import { meter, provider } from "~/v3/tracer.server";
 import { RunsReplicationService } from "./runsReplicationService.server";
@@ -22,22 +22,8 @@ function initializeRunsReplicationInstance() {
 
   console.log("🗃️  Runs replication service enabled");
 
-  const clickhouse = new ClickHouse({
-    url: env.RUN_REPLICATION_CLICKHOUSE_URL,
-    name: "runs-replication",
-    keepAlive: {
-      enabled: env.RUN_REPLICATION_KEEP_ALIVE_ENABLED === "1",
-      idleSocketTtl: env.RUN_REPLICATION_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
-    },
-    logLevel: env.RUN_REPLICATION_CLICKHOUSE_LOG_LEVEL,
-    compression: {
-      request: true,
-    },
-    maxOpenConnections: env.RUN_REPLICATION_MAX_OPEN_CONNECTIONS,
-  });
-
   const service = new RunsReplicationService({
-    clickhouse: clickhouse,
+    clickhouseFactory,
     pgConnectionUrl: DATABASE_URL,
     serviceName: "runs-replication",
     slotName: env.RUN_REPLICATION_SLOT_NAME,
@@ -72,8 +58,9 @@ function initializeRunsReplicationInstance() {
   });
 
   if (env.RUN_REPLICATION_ENABLED === "1") {
-    service
-      .start()
+    clickhouseFactory
+      .isReady()
+      .then(() => service.start())
       .then(() => {
         console.log("🗃️ Runs replication service started");
       })

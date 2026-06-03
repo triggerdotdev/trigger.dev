@@ -9,10 +9,12 @@ import {
   getTaskRunsQueryBuilder,
   getTaskActivityQueryBuilder,
   getCurrentRunningStats,
+  getChildRunStatusCounts,
   getAverageDurations,
   getTaskUsageByOrganization,
   getTaskRunsCountQueryBuilder,
   getTaskRunTagsQueryBuilder,
+  getPendingVersionIdsQueryBuilder,
 } from "./taskRuns.js";
 import {
   getSpanDetailsQueryBuilder,
@@ -224,8 +226,10 @@ export class ClickHouse {
       queryBuilder: getTaskRunsQueryBuilder(this.reader),
       countQueryBuilder: getTaskRunsCountQueryBuilder(this.reader),
       tagQueryBuilder: getTaskRunTagsQueryBuilder(this.reader),
+      pendingVersionIdsQueryBuilder: getPendingVersionIdsQueryBuilder(this.reader),
       getTaskActivity: getTaskActivityQueryBuilder(this.reader),
       getCurrentRunningStats: getCurrentRunningStats(this.reader),
+      getChildRunStatusCounts: getChildRunStatusCounts(this.reader),
       getAverageDurations: getAverageDurations(this.reader),
       getTaskUsageByOrganization: getTaskUsageByOrganization(this.reader),
     };

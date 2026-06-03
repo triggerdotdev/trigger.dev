@@ -361,7 +361,6 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "CONFIGURED_INCORRECTLY":
         case "TASK_ALREADY_RUNNING":
         case "TASK_PROCESS_SIGKILL_TIMEOUT":
-        case "TASK_PROCESS_SIGSEGV":
         case "TASK_PROCESS_OOM_KILLED":
         case "TASK_PROCESS_MAYBE_OOM_KILLED":
         case "TASK_RUN_CANCELLED":
@@ -395,8 +394,10 @@ export function shouldRetryError(error: TaskRunError): boolean {
         case "TASK_EXECUTION_ABORTED":
         case "TASK_EXECUTION_FAILED":
         case "TASK_RUN_CRASHED":
+        case "TASK_RUN_UNCAUGHT_EXCEPTION":
         case "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE":
         case "TASK_PROCESS_SIGTERM":
+        case "TASK_PROCESS_SIGSEGV":
           return true;
 
         default:
@@ -425,6 +426,8 @@ export function shouldLookupRetrySettings(error: TaskRunError): boolean {
         case "TASK_PROCESS_EXITED_WITH_NON_ZERO_CODE":
         case "TASK_PROCESS_SIGTERM":
         case "TASK_PROCESS_SIGSEGV":
+        case "TASK_RUN_UNCAUGHT_EXCEPTION":
+        case "TASK_MIDDLEWARE_ERROR":
           return true;
 
         default:
@@ -629,6 +632,26 @@ export class GracefulExitTimeoutError extends Error {
   }
 }
 
+export class ChatChunkTooLargeError extends Error {
+  constructor(
+    public readonly chunkSize: number,
+    public readonly maxSize: number,
+    public readonly chunkType?: string
+  ) {
+    super(
+      `chat.agent chunk${chunkType ? ` of type "${chunkType}"` : ""} is ${chunkSize} bytes, ` +
+        `over the realtime stream's per-record cap of ${maxSize} bytes. ` +
+        `For oversized payloads (e.g. large tool outputs), write the value to your own store and ` +
+        `emit only an id/url through the chat stream — see https://trigger.dev/docs/ai-chat/patterns/large-payloads.`
+    );
+    this.name = "ChatChunkTooLargeError";
+  }
+}
+
+export function isChatChunkTooLargeError(error: unknown): error is ChatChunkTooLargeError {
+  return error instanceof Error && error.name === "ChatChunkTooLargeError";
+}
+
 export class MaxDurationExceededError extends Error {
   constructor(
     public readonly maxDurationInSeconds: number,
@@ -720,6 +743,18 @@ const prettyInternalErrors: Partial<
     link: {
       name: "Read our troubleshooting guide",
       href: links.docs.troubleshooting.stalledExecution,
+    },
+  },
+  // Link only — we deliberately do NOT set `message`, so the original
+  // error message (e.g. "read ECONNRESET") is preserved in the dashboard.
+  // Common cause: an EventEmitter (node-redis, pg, etc.) emitted "error"
+  // with no listener attached, which Node escalates to uncaughtException.
+  // The docs page explains how to attach .on("error") listeners and how
+  // unhandled rejections route through the same path.
+  TASK_RUN_UNCAUGHT_EXCEPTION: {
+    link: {
+      name: "Read our troubleshooting guide",
+      href: links.docs.troubleshooting.uncaughtException,
     },
   },
 };

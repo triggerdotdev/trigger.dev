@@ -10,9 +10,18 @@ import { SpinnerWhite } from "~/components/primitives/Spinner";
 type CancelRunDialogProps = {
   runFriendlyId: string;
   redirectPath: string;
+  // Fired on submit so the parent can close the Radix Dialog without
+  // wrapping the submit button in `DialogClose` — that wrapper races
+  // submit (close fires first, unmounts the form, and the cancel POST
+  // never lands). Optional so existing call sites still type-check.
+  onCancelSubmitted?: () => void;
 };
 
-export function CancelRunDialog({ runFriendlyId, redirectPath }: CancelRunDialogProps) {
+export function CancelRunDialog({
+  runFriendlyId,
+  redirectPath,
+  onCancelSubmitted,
+}: CancelRunDialogProps) {
   const navigation = useNavigation();
 
   const formAction = `/resources/taskruns/${runFriendlyId}/cancel`;
@@ -27,7 +36,11 @@ export function CancelRunDialog({ runFriendlyId, redirectPath }: CancelRunDialog
         </Paragraph>
         <FormButtons
           confirmButton={
-            <Form action={`/resources/taskruns/${runFriendlyId}/cancel`} method="post">
+            <Form
+              action={`/resources/taskruns/${runFriendlyId}/cancel`}
+              method="post"
+              onSubmit={() => onCancelSubmitted?.()}
+            >
               <Button
                 type="submit"
                 name="redirectUrl"

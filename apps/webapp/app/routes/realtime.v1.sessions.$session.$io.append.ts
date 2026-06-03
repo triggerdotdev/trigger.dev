@@ -12,7 +12,10 @@ import {
 } from "~/services/realtime/sessions.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { drainSessionStreamWaitpoints } from "~/services/sessionStreamWaitpointCache.server";
-import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import {
+  anyResource,
+  createActionApiRoute,
+} from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 
@@ -24,12 +27,18 @@ const ParamsSchema = z.object({
 // POST: server-side append of a single record to a session channel. Mirrors
 // the existing /realtime/v1/streams/:runId/:target/:streamId/append route,
 // scoped to a Session primitive.
-// S2 enforces a 1 MiB per-record limit (metered as
-// `8 + 2*H + Σ(header name+value) + body`). We cap the raw HTTP body at
-// 512 KiB so the JSON wrapper (`{"data":"...","id":"..."}`), string
-// escaping, and any future per-record header additions all stay comfortably
-// below S2's ceiling. See https://s2.dev/docs/limits.
-const MAX_APPEND_BODY_BYTES = 1024 * 512;
+//
+// The HTTP body cap here is just a DoS pre-guard — set generously at
+// 1 MiB so we don't buffer arbitrarily large inputs before we can
+// compute the wrapped size. The actual S2 per-record limit (verified
+// empirically against cloud S2) is enforced precisely inside
+// `S2RealtimeStreams.#appendPartByName` — it throws
+// `S2RecordTooLargeError` (a `ServiceValidationError` with status
+// 413) when the metered record size would exceed S2's 1 MiB ceiling
+// after JSON wrapping. That lets legitimate bodies up to ~1023 KiB
+// raw through (ASCII or low-escape content) while still rejecting
+// pathological all-quote content that would double on wrap.
+const MAX_APPEND_BODY_BYTES = 1024 * 1024;
 
 const { action, loader } = createActionApiRoute(
   {
@@ -49,15 +58,16 @@ const { action, loader } = createActionApiRoute(
       action: "write",
       // Authorize against the union of the URL form, friendlyId, and
       // externalId so a JWT scoped to any form authorizes any URL.
+      // Type-level `write:sessions` (no id) also matches; `write:all` /
+      // `admin` bypass via the JWT ability's wildcard branches.
       resource: (params, _, __, ___, session) => {
         const ids = new Set<string>([params.session]);
         if (session) {
           ids.add(session.friendlyId);
           if (session.externalId) ids.add(session.externalId);
         }
-        return { sessions: [...ids] };
+        return anyResource([...ids].map((id) => ({ type: "sessions", id })));
       },
-      superScopes: ["write:sessions", "write:all", "admin"],
     },
   },
   async ({ request, params, authentication, resource: session }) => {
@@ -81,7 +91,9 @@ const { action, loader } = createActionApiRoute(
       );
     }
 
-    const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2");
+    const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
+      session,
+    });
 
     if (!(realtimeStream instanceof S2RealtimeStreams)) {
       return json(
@@ -133,7 +145,12 @@ const { action, loader } = createActionApiRoute(
           { status: appendError.status ?? 422 }
         );
       }
-      return json({ ok: false, error: appendError.message }, { status: 500 });
+      logger.error("Failed to append to session stream", {
+        sessionId: session.id,
+        io: params.io,
+        error: appendError,
+      });
+      return json({ ok: false, error: "Something went wrong, please try again." }, { status: 500 });
     }
 
     // Fire any run-scoped waitpoints registered against this channel. Best
