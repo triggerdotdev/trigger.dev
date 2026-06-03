@@ -1,6 +1,50 @@
 import { tool } from "ai";
+import { logger } from "@trigger.dev/sdk";
+import { isTaskRunStatus, QUEUED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+import { FAILED_RUN_STATUSES } from "~/v3/taskStatus";
 import { listRuns as listRunsSchema } from "~/lib/ai-assistant/tool-schemas";
 import type { ToolContext } from "../types";
+
+// The LLM passes colloquial statuses ("failed", "running") that aren't real
+// TaskRunStatus values, so filtering on them matches nothing. Map those onto
+// the canonical groupings the /runs status filter uses, so this stays in sync.
+const STATUS_SYNONYMS: Record<string, readonly string[]> = {
+  FAILED: FAILED_RUN_STATUSES,
+  FAILURE: FAILED_RUN_STATUSES,
+  ERROR: FAILED_RUN_STATUSES,
+  ERRORED: FAILED_RUN_STATUSES,
+  SUCCESS: ["COMPLETED_SUCCESSFULLY"],
+  SUCCESSFUL: ["COMPLETED_SUCCESSFULLY"],
+  SUCCEEDED: ["COMPLETED_SUCCESSFULLY"],
+  COMPLETED: ["COMPLETED_SUCCESSFULLY"],
+  RUNNING: RUNNING_STATUSES,
+  IN_PROGRESS: RUNNING_STATUSES,
+  CANCELLED: ["CANCELED"],
+  TIMEOUT: ["TIMED_OUT"],
+  QUEUED: QUEUED_STATUSES,
+};
+
+function normalizeStatuses(input?: string[]): string[] | undefined {
+  if (!input || input.length === 0) return undefined;
+  const out = new Set<string>();
+  const unrecognized: string[] = [];
+  for (const raw of input) {
+    const key = raw.trim().toUpperCase().replace(/\s+/g, "_");
+    if (isTaskRunStatus(key)) {
+      out.add(key);
+    } else if (STATUS_SYNONYMS[key]) {
+      for (const s of STATUS_SYNONYMS[key]) out.add(s);
+    } else {
+      // Drop rather than pass through — a bogus status would silently filter
+      // out everything (ClickHouse returns zero rows, no error).
+      unrecognized.push(raw);
+    }
+  }
+  if (unrecognized.length > 0) {
+    logger.warn("listRuns ignored unrecognized status filter values", { unrecognized });
+  }
+  return out.size > 0 ? Array.from(out) : undefined;
+}
 
 function parsePeriod(period: string): { from: number; to: number } {
   const now = Date.now();
@@ -68,7 +112,7 @@ export function createListRunsTool(ctx: ToolContext) {
           {
             projectId: environment.project.id,
             tasks: params.taskIdentifier ? [params.taskIdentifier] : undefined,
-            statuses: params.status ? (params.status as any[]) : undefined,
+            statuses: normalizeStatuses(params.status) as any[] | undefined,
             tags: params.tags,
             from: timeFilters.from,
             to: timeFilters.to,

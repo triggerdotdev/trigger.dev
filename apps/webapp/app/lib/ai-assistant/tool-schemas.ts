@@ -57,7 +57,13 @@ export const listRuns = tool({
     status: z
       .array(z.string())
       .optional()
-      .describe("Filter by run status (e.g., 'SUCCESS', 'FAILURE', 'RUNNING')"),
+      .describe(
+        "Filter by run status. Valid statuses: PENDING, DELAYED, DEQUEUED, EXECUTING, " +
+          "WAITING_TO_RESUME, COMPLETED_SUCCESSFULLY, COMPLETED_WITH_ERRORS, TIMED_OUT, " +
+          "CRASHED, SYSTEM_FAILURE, CANCELED, EXPIRED. For 'failed' runs pass " +
+          "[COMPLETED_WITH_ERRORS, CRASHED, TIMED_OUT, SYSTEM_FAILURE]; for 'successful' pass " +
+          "[COMPLETED_SUCCESSFULLY]; for 'running' pass [EXECUTING]."
+      ),
     taskIdentifier: z.string().optional().describe("Filter by task identifier"),
     period: z.string().optional().describe("Time period filter (e.g., '1h', '24h', '7d')"),
     tags: z.array(z.string()).optional().describe("Filter by tags"),

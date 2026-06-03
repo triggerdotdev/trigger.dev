@@ -15,6 +15,7 @@ import { marked } from "marked";
 import type { UIMessage } from "ai";
 import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
 import { AIChatToolCall } from "./AIChatToolCall";
+import { FailureSummaryCard, FilterChips, MiniTable } from "./AIChatToolResults";
 import { toolLabels } from "~/lib/ai-assistant/tool-schemas";
 
 interface AIChatMessagesProps {
@@ -22,13 +23,20 @@ interface AIChatMessagesProps {
   status: string;
   error: Error | undefined;
   onRetry: () => void;
+  onSendMessage?: (text: string) => void;
 }
 
 // User has scrolled this many px up from the bottom before the
 // "scroll to bottom" affordance appears.
 const SCROLL_BUTTON_THRESHOLD_PX = 100;
 
-export function AIChatMessages({ messages, status, error, onRetry }: AIChatMessagesProps) {
+export function AIChatMessages({
+  messages,
+  status,
+  error,
+  onRetry,
+  onSendMessage,
+}: AIChatMessagesProps) {
   const navigate = useNavigate();
   const autoScrollRef = useAutoScrollToBottom([messages]);
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
@@ -184,10 +192,17 @@ export function AIChatMessages({ messages, status, error, onRetry }: AIChatMessa
                         }
                       }
 
-                      // Show all other tool outputs with collapsible details
+                      // Render structured outputs as rich cards, falling back
+                      // to a collapsible JSON view for everything else.
                       if (toolPart.state === "output-available") {
                         return (
-                          <ToolResultCard key={i} toolName={toolName} input={toolPart.input} output={toolPart.output} />
+                          <ToolOutput
+                            key={i}
+                            toolName={toolName}
+                            input={toolPart.input}
+                            output={toolPart.output}
+                            onSendMessage={onSendMessage}
+                          />
                         );
                       }
 
@@ -235,6 +250,72 @@ export function AIChatMessages({ messages, status, error, onRetry }: AIChatMessa
       )}
     </div>
   );
+}
+
+// Dispatches a completed tool result to its specialized renderer, falling back
+// to a collapsible JSON card when there's no dedicated view (or the tool errored).
+function ToolOutput({
+  toolName,
+  input,
+  output,
+  onSendMessage,
+}: {
+  toolName: string;
+  input: unknown;
+  output: unknown;
+  onSendMessage?: (text: string) => void;
+}) {
+  const result = output as Record<string, unknown> | undefined;
+
+  if (toolName === "classifyFailure" && result?.category) {
+    return (
+      <FailureSummaryCard
+        result={result as any}
+        runFriendlyId={(input as { runFriendlyId?: string })?.runFriendlyId}
+        onSendMessage={onSendMessage}
+      />
+    );
+  }
+
+  if (toolName === "applyRunFilters" && result?.success && result.filters) {
+    return <FilterChips filters={result.filters as any} />;
+  }
+
+  if (toolName === "listRuns" && Array.isArray(result?.runs) && result.runs.length > 0) {
+    const runs = result.runs as Array<{ id: string; status?: string; duration?: string }>;
+    const columns = ["Run", "Status", "Duration"];
+    const rows = runs.map((r) => [r.id, friendlyStatus(r.status), r.duration ?? "—"]);
+    return <MiniTable columns={columns} rows={rows} />;
+  }
+
+  if (toolName === "aggregateRuns" && Array.isArray(result?.results) && result.results.length > 0) {
+    const groupBy = String(result.groupBy ?? "Group");
+    const metric = String(result.metric ?? "Value");
+    const columns = [capitalize(groupBy), capitalize(metric)];
+    const rows = (result.results as Array<{ dimension: unknown; value: unknown }>).map((r) => [
+      r.dimension,
+      r.value,
+    ]);
+    return <MiniTable columns={columns} rows={rows} />;
+  }
+
+  if (toolName === "queryRuns" && result?.success && Array.isArray(result.results) && result.results.length > 0) {
+    const data = result.results as Array<Record<string, unknown>>;
+    const columns = Object.keys(data[0]);
+    const rows = data.map((row) => columns.map((c) => row[c]));
+    return <MiniTable columns={columns} rows={rows} />;
+  }
+
+  return <ToolResultCard toolName={toolName} input={input} output={output} />;
+}
+
+function capitalize(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function friendlyStatus(status?: string) {
+  if (!status) return "—";
+  return capitalize(status.replace(/_/g, " ").toLowerCase());
 }
 
 function ToolResultCard({

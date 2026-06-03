@@ -168,6 +168,7 @@ export function AIChatPanel() {
           status={status}
           error={error}
           onRetry={() => void regenerate()}
+          onSendMessage={submit}
         />
       )}
 
