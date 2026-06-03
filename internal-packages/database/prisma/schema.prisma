@@ -2909,11 +2909,7 @@ model LlmModel {
   capabilities    String[] @default([]) @map("capabilities")
   isHidden        Boolean  @default(false) @map("is_hidden")
   baseModelName   String?  @map("base_model_name")
-  /// Billing unit the model is priced in, classified by the research-model
-  /// job: "tokens" | "characters" | "images" | "minutes" | "requests" |
-  /// "free" | "not_findable". null until researched. Lets pricing-coverage
-  /// metrics exclude models that aren't priced per-token, and is the
-  /// foundation for non-token pricing support.
+  // "tokens", "images", "characters", "minutes", "requests", "free", "not_findable"; null until researched
   pricingUnit     String?  @map("pricing_unit")
 
   pricingTiers LlmPricingTier[]
