@@ -1,8 +1,15 @@
+import { BoltIcon, BoltSlashIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { Clipboard, ClipboardCheck } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import simplur from "simplur";
 import { z } from "zod";
+import { MoveToBottomIcon } from "~/assets/icons/MoveToBottomIcon";
+import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -17,10 +24,16 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
-import SegmentedControl from "~/components/primitives/SegmentedControl";
+import { Spinner } from "~/components/primitives/Spinner";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import {
+  SimpleTooltip,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "~/components/primitives/Tooltip";
 import { AgentView } from "~/components/runs/v3/agent/AgentView";
 import { RunTag } from "~/components/runs/v3/RunTag";
 import {
@@ -39,9 +52,13 @@ import { redirectWithErrorMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { SessionPresenter } from "~/presenters/v3/SessionPresenter.server";
-import { RealtimeStreamViewer } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.streams.$streamKey/route";
+import {
+  type StreamChunk,
+  useRealtimeStream,
+} from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.$runParam.streams.$streamKey/route";
 import { requireUserId } from "~/services/session.server";
 import { type SessionStatus } from "~/services/sessionsRepository/sessionsRepository.server";
+import { cn } from "~/utils/cn";
 import { throwNotFound } from "~/utils/httpErrors";
 import {
   docsPath,
@@ -168,64 +185,417 @@ function ConversationPane({ session }: { session: LoadedSession }) {
   const environment = useEnvironment();
   const { value, replace } = useSearchParams();
   const isRaw = value("raw") === "1";
-  const stream: "out" | "in" = value("stream") === "in" ? "in" : "out";
 
   const sessionId = session.agentView.sessionId;
   const encodedSession = encodeURIComponent(sessionId);
   const sessionResourceBase = `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/sessions/${encodedSession}/realtime/v1`;
 
-  const viewToggle = (
-    <SegmentedControl
-      name="conversation-view"
-      value={isRaw ? "raw" : "rendered"}
-      variant="secondary/small"
-      options={[
-        { label: "Rendered", value: "rendered" },
-        { label: "Raw", value: "raw" },
-      ]}
-      onChange={(v) => replace({ raw: v === "raw" ? "1" : undefined })}
-    />
-  );
+  const setView = useCallback((raw: boolean) => replace({ raw: raw ? "1" : undefined }), [replace]);
 
   return (
     <div className="flex h-full max-h-full flex-col overflow-hidden bg-background-bright">
       {isRaw ? (
-        <RealtimeStreamViewer
-          key={stream}
-          resourcePath={`${sessionResourceBase}/${stream}`}
-          displayName={`.${stream}`}
-          hideViewModeToggle
-          headerClassName="bg-charcoal-900"
-          headerLeft={
-            <TabContainer>
-              <TabButton
-                isActive={stream === "out"}
-                layoutId="conversation-stream"
-                onClick={() => replace({ stream: undefined })}
-              >
-                Output
-              </TabButton>
-              <TabButton
-                isActive={stream === "in"}
-                layoutId="conversation-stream"
-                onClick={() => replace({ stream: "in" })}
-              >
-                Input
-              </TabButton>
-            </TabContainer>
-          }
-          headerRight={viewToggle}
+        <RawConversationView
+          inResourcePath={`${sessionResourceBase}/in`}
+          outResourcePath={`${sessionResourceBase}/out`}
+          isRaw={isRaw}
+          onChangeView={setView}
         />
       ) : (
         <>
-          <div className="flex items-center justify-end border-b border-grid-bright px-3 py-2.5">
-            {viewToggle}
-          </div>
+          <ConversationUtilityBar isRaw={isRaw} onChangeView={setView} />
           <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <AgentView agentView={session.agentView} />
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function ConversationUtilityBar({
+  isRaw,
+  onChangeView,
+  right,
+}: {
+  isRaw: boolean;
+  onChangeView: (raw: boolean) => void;
+  right?: React.ReactNode;
+}) {
+  return (
+    <div className="flex h-9 items-center justify-between gap-3 border-b border-grid-bright px-3">
+      <TabContainer className="-mb-2">
+        <TabButton
+          isActive={!isRaw}
+          layoutId="conversation-view-mode"
+          onClick={() => onChangeView(false)}
+        >
+          Rendered
+        </TabButton>
+        <TabButton
+          isActive={isRaw}
+          layoutId="conversation-view-mode"
+          onClick={() => onChangeView(true)}
+        >
+          Raw
+        </TabButton>
+      </TabContainer>
+      {right}
+    </div>
+  );
+}
+
+type MergedChunk = StreamChunk & { source: "in" | "out" };
+
+const ROW_NUMBER_COL_MIN_CH = 3;
+const TIME_COL_WIDTH = "9.5rem";
+
+function RawConversationView({
+  inResourcePath,
+  outResourcePath,
+  isRaw,
+  onChangeView,
+}: {
+  inResourcePath: string;
+  outResourcePath: string;
+  isRaw: boolean;
+  onChangeView: (raw: boolean) => void;
+}) {
+  const {
+    chunks: inChunks,
+    error: inError,
+    isConnected: inConnected,
+  } = useRealtimeStream(inResourcePath);
+  const {
+    chunks: outChunks,
+    error: outError,
+    isConnected: outConnected,
+  } = useRealtimeStream(outResourcePath);
+
+  const merged = useMemo<MergedChunk[]>(() => {
+    const all: MergedChunk[] = [
+      ...inChunks.map((c) => ({ ...c, source: "in" as const })),
+      ...outChunks.map((c) => ({ ...c, source: "out" as const })),
+    ];
+    all.sort((a, b) => a.timestamp - b.timestamp);
+    return all;
+  }, [inChunks, outChunks]);
+
+  const error = inError ?? outError;
+  const isConnected = inConnected || outConnected;
+  const totalChunks = merged.length;
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const [mouseOver, setMouseOver] = useState(false);
+
+  const getCompactText = useCallback(() => {
+    return merged
+      .map((chunk) => {
+        const prefix = chunk.source === "in" ? "» " : "« ";
+        const text = typeof chunk.data === "string" ? chunk.data : JSON.stringify(chunk.data);
+        return `${prefix}${text}`;
+      })
+      .join("\n");
+  }, [merged]);
+
+  const onCopied = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      navigator.clipboard.writeText(getCompactText());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    },
+    [getCompactText]
+  );
+
+  useEffect(() => {
+    const bottomElement = bottomRef.current;
+    const scrollElement = scrollRef.current;
+    if (!bottomElement || !scrollElement) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry) setIsAtBottom(entry.isIntersecting);
+      },
+      { root: scrollElement, threshold: 0.1, rootMargin: "0px" }
+    );
+
+    observer.observe(bottomElement);
+
+    let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
+    const handleScroll = () => {
+      if (!scrollElement || !bottomElement) return;
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        const scrollBottom = scrollElement.scrollTop + scrollElement.clientHeight;
+        const isNearBottom = scrollElement.scrollHeight - scrollBottom < 50;
+        setIsAtBottom(isNearBottom);
+      }, 100);
+    };
+
+    scrollElement.addEventListener("scroll", handleScroll);
+    const scrollBottom = scrollElement.scrollTop + scrollElement.clientHeight;
+    const isNearBottom = scrollElement.scrollHeight - scrollBottom < 50;
+    setIsAtBottom(isNearBottom);
+
+    return () => {
+      observer.disconnect();
+      scrollElement.removeEventListener("scroll", handleScroll);
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+    };
+  }, [merged.length]);
+
+  useEffect(() => {
+    if (isAtBottom && scrollRef.current) {
+      const currentScrollLeft = scrollRef.current.scrollLeft;
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollLeft = currentScrollLeft;
+    }
+  }, [merged, isAtBottom]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: merged.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 28,
+    overscan: 8,
+  });
+
+  const rowNumberWidthCh = Math.max(ROW_NUMBER_COL_MIN_CH, merged.length.toString().length);
+
+  const controls = (
+    <div className="flex items-center gap-3">
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger>
+            {isConnected ? (
+              <BoltIcon className="size-3.5 animate-pulse cursor-default text-success" />
+            ) : (
+              <BoltSlashIcon className="size-3.5 cursor-default text-text-dimmed" />
+            )}
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-xs">
+            {isConnected ? "Connected" : "Disconnected"}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <Paragraph variant="small" className="mb-0 whitespace-nowrap">
+        {simplur`${totalChunks} chunk[|s]`}
+      </Paragraph>
+      <TooltipProvider>
+        <Tooltip
+          open={totalChunks === 0 ? false : copied || mouseOver || undefined}
+          disableHoverableContent
+        >
+          <TooltipTrigger
+            disabled={totalChunks === 0}
+            onClick={onCopied}
+            onMouseEnter={() => setMouseOver(true)}
+            onMouseLeave={() => setMouseOver(false)}
+            className={cn(
+              "transition-colors duration-100 focus-custom",
+              totalChunks === 0
+                ? "cursor-not-allowed opacity-50"
+                : copied
+                ? "text-success hover:cursor-pointer"
+                : "text-text-dimmed hover:cursor-pointer hover:text-text-bright"
+            )}
+          >
+            {copied ? <ClipboardCheck className="size-4" /> : <Clipboard className="size-4" />}
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-xs">
+            {copied ? "Copied" : "Copy"}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <TooltipProvider>
+        <Tooltip open={totalChunks === 0 ? false : undefined} disableHoverableContent>
+          <TooltipTrigger
+            disabled={totalChunks === 0}
+            onClick={() => {
+              if (isAtBottom) {
+                scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+              } else {
+                bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+              }
+            }}
+            className={cn(
+              "text-text-dimmed transition-colors focus-custom",
+              totalChunks === 0
+                ? "cursor-not-allowed opacity-50"
+                : "hover:cursor-pointer hover:text-text-bright"
+            )}
+          >
+            {isAtBottom ? (
+              <MoveToTopIcon className="size-4" />
+            ) : (
+              <MoveToBottomIcon className="size-4" />
+            )}
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-xs">
+            {isAtBottom ? "Scroll to top" : "Scroll to bottom"}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
+  );
+
+  return (
+    <>
+      <ConversationUtilityBar isRaw={isRaw} onChangeView={onChangeView} right={controls} />
+      <div className="flex min-h-0 flex-1 flex-col bg-charcoal-900">
+        <StreamColumnHeader rowNumberWidthCh={rowNumberWidthCh} timeColWidth={TIME_COL_WIDTH} />
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        >
+          {error && (
+            <div className="border-b border-error/20 bg-error/10 p-3">
+              <Paragraph variant="small" className="mb-0 text-error">
+                Error: {error.message}
+              </Paragraph>
+            </div>
+          )}
+
+          {merged.length === 0 && !error && (
+            <div className="flex h-full items-center justify-center">
+              {isConnected ? (
+                <div className="flex items-center gap-2">
+                  <Spinner />
+                  <Paragraph variant="small" className="mb-0 text-text-dimmed">
+                    Waiting for data…
+                  </Paragraph>
+                </div>
+              ) : (
+                <Paragraph variant="small" className="mb-0 text-text-dimmed">
+                  No data received
+                </Paragraph>
+              )}
+            </div>
+          )}
+
+          {merged.length > 0 && (
+            <div className="font-mono text-xs leading-tight">
+              <div
+                style={{
+                  height: `${rowVirtualizer.getTotalSize()}px`,
+                  position: "relative",
+                  minWidth: "100%",
+                }}
+              >
+                {rowVirtualizer.getVirtualItems().map((virtualItem) => {
+                  const chunk = merged[virtualItem.index];
+                  return (
+                    <MergedStreamRow
+                      key={virtualItem.key}
+                      chunk={chunk}
+                      lineNumber={virtualItem.index + 1}
+                      rowNumberWidthCh={rowNumberWidthCh}
+                      timeColWidth={TIME_COL_WIDTH}
+                      start={virtualItem.start}
+                      measure={(el) => rowVirtualizer.measureElement(el)}
+                      index={virtualItem.index}
+                    />
+                  );
+                })}
+                <div
+                  ref={bottomRef}
+                  className="h-px"
+                  style={{
+                    position: "absolute",
+                    top: `${rowVirtualizer.getTotalSize()}px`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function StreamColumnHeader({
+  rowNumberWidthCh,
+  timeColWidth,
+}: {
+  rowNumberWidthCh: number;
+  timeColWidth: string;
+}) {
+  return (
+    <div className="flex select-none items-center border-b border-grid-dimmed bg-charcoal-900 px-2 py-1 text-xs uppercase tracking-wide text-text-dimmed">
+      <div className="flex-none" style={{ width: `${rowNumberWidthCh}ch` }} />
+      <div className="flex-none pl-3" style={{ width: timeColWidth }}>
+        Time
+      </div>
+      <div className="min-w-0 flex-1 px-3">Input</div>
+      <div className="min-w-0 flex-1 px-3">Output</div>
+    </div>
+  );
+}
+
+function MergedStreamRow({
+  chunk,
+  lineNumber,
+  rowNumberWidthCh,
+  timeColWidth,
+  start,
+  measure,
+  index,
+}: {
+  chunk: MergedChunk;
+  lineNumber: number;
+  rowNumberWidthCh: number;
+  timeColWidth: string;
+  start: number;
+  measure: (el: HTMLDivElement | null) => void;
+  index: number;
+}) {
+  const formattedData =
+    typeof chunk.data === "string" ? chunk.data : JSON.stringify(chunk.data, null, 2);
+
+  const date = new Date(chunk.timestamp);
+  const timeString = date.toLocaleTimeString("en-US", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const milliseconds = date.getMilliseconds().toString().padStart(3, "0");
+  const timestamp = `${timeString}.${milliseconds}`;
+
+  return (
+    <div
+      ref={measure}
+      data-index={index}
+      className="group flex items-start py-1 hover:bg-charcoal-800"
+      style={{
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        transform: `translateY(${start}px)`,
+      }}
+    >
+      <div
+        className="flex-none select-none pl-2 text-right text-charcoal-500"
+        style={{ width: `${rowNumberWidthCh}ch` }}
+      >
+        {lineNumber}
+      </div>
+      <div className="flex-none select-none pl-3 text-charcoal-500" style={{ width: timeColWidth }}>
+        {timestamp}
+      </div>
+      <div className="min-w-0 flex-1 whitespace-pre-wrap break-words px-3 text-text-bright">
+        {chunk.source === "in" ? formattedData : null}
+      </div>
+      <div className="min-w-0 flex-1 whitespace-pre-wrap break-words px-3 text-text-bright">
+        {chunk.source === "out" ? formattedData : null}
+      </div>
     </div>
   );
 }

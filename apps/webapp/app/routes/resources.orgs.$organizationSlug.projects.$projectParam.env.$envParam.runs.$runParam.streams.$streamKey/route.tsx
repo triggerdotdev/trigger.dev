@@ -29,7 +29,7 @@ import { v3RunStreamParamsSchema } from "~/utils/pathBuilder";
 
 type ViewMode = "list" | "compact";
 
-type StreamChunk = {
+export type StreamChunk = {
   id: string;
   data: unknown;
   timestamp: number;
@@ -525,7 +525,7 @@ function StreamChunkLine({
   );
 }
 
-function useRealtimeStream(resourcePath: string, startIndex?: number) {
+export function useRealtimeStream(resourcePath: string, startIndex?: number) {
   const [chunks, setChunks] = useState<StreamChunk[]>([]);
   const [error, setError] = useState<Error | null>(null);
   const [isConnected, setIsConnected] = useState(false);
