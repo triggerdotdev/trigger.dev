@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import simplur from "simplur";
 import { z } from "zod";
+import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { MoveToBottomIcon } from "~/assets/icons/MoveToBottomIcon";
 import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
@@ -128,11 +129,10 @@ export default function Page() {
         <PageTitle
           backButton={{ to: sessionsPath, text: "Sessions" }}
           title={
-            <CopyableText
-              value={displayId}
-              variant="text-below"
-              className="-ml-[0.4375rem] h-6 px-1.5 font-mono text-xs hover:text-text-bright"
-            />
+            <span className="flex items-center gap-1">
+              <AIChatIcon className="size-4.5 text-sessions" />
+              <CopyableText value={displayId} />
+            </span>
           }
         />
         <PageAccessories>
