@@ -3,6 +3,7 @@
   "exclude": ["src/**/*.test.ts"],
   "compilerOptions": {
     "composite": true,
+    "types": ["node"],
     "target": "ES2019",
     "lib": ["ES2019", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
     "outDir": "dist",

@@ -14,7 +14,7 @@
   "devDependencies": {
     "esbuild": "^0.24.0",
     "execa": "^9.3.0",
-    "typescript": "^5.5.0",
+    "typescript": "^6.0.0",
     "vitest": "4.1.7"
   }
 }

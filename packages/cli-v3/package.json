@@ -66,7 +66,6 @@
     "find-up": "^7.0.0",
     "rimraf": "^6.0.1",
     "ts-essentials": "10.0.1",
-    "tshy": "^3.0.2",
     "tsx": "4.17.0"
   },
   "scripts": {

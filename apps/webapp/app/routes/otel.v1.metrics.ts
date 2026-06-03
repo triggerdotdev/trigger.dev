@@ -26,7 +26,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
       const exportResponse = await exporter.exportMetrics(exportRequest);
 
-      return new Response(ExportMetricsServiceResponse.encode(exportResponse).finish(), {
+      return new Response(ExportMetricsServiceResponse.encode(exportResponse).finish().slice(), {
         status: 200,
       });
     } else {

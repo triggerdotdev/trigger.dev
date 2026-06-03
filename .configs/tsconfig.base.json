@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "types": ["node"],
     "target": "es2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
     "module": "NodeNext",
@@ -26,7 +27,6 @@
     "esModuleInterop": true,
     "emitDecoratorMetadata": false,
     "experimentalDecorators": false,
-    "downlevelIteration": true,
     "isolatedModules": true,
     "noUncheckedIndexedAccess": true,
 

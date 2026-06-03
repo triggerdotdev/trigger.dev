@@ -20,7 +20,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
       const exportResponse = await exporter.exportLogs(exportRequest);
 
-      return new Response(ExportLogsServiceResponse.encode(exportResponse).finish(), {
+      return new Response(ExportLogsServiceResponse.encode(exportResponse).finish().slice(), {
         status: 200,
       });
     } else {

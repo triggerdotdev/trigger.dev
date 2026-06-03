@@ -306,7 +306,7 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
   }
 
   async ingestData(
-    stream: ReadableStream<Uint8Array>,
+    stream: ReadableStream<Uint8Array<ArrayBuffer>>,
     runId: string,
     streamId: string,
     clientId: string,
