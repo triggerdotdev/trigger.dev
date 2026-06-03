@@ -171,21 +171,21 @@ export class TaskDetailPresenter {
     }
 
     const bucketMap = new Map<number, Record<string, number>>();
-    const usedGroups = new Set<GroupLabel>();
     for (const row of rows) {
       const group = groupForStatus(row.status) ?? "RUNNING";
-      usedGroups.add(group);
       const ts = row.bucket * 1000;
       const existing = bucketMap.get(ts) ?? {};
       existing[group] = (existing[group] ?? 0) + row.val;
       bucketMap.set(ts, existing);
     }
 
+    // Always emit every status group so the chart legend is stable across
+    // time ranges (even when a group has no runs in the current window).
     const bucketMs = bucketSeconds * 1000;
     const start = Math.floor(from.getTime() / bucketMs) * bucketMs;
     const end = Math.ceil(to.getTime() / bucketMs) * bucketMs;
     const points: TaskActivityPoint[] = [];
-    const orderedStatuses = GROUP_LABEL.filter((g) => usedGroups.has(g));
+    const orderedStatuses = [...GROUP_LABEL];
     for (let ts = start; ts < end; ts += bucketMs) {
       const existing = bucketMap.get(ts) ?? {};
       const point: TaskActivityPoint = { bucket: ts };
