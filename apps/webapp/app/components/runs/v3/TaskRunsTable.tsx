@@ -6,7 +6,7 @@ import {
   NoSymbolIcon,
   RectangleStackIcon,
 } from "@heroicons/react/20/solid";
-import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
+import { BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
 import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { useCallback, useRef } from "react";
@@ -61,6 +61,7 @@ import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import type { TaskTriggerSource } from "@trigger.dev/database";
+import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 
 type RunsTableProps = {
   total: number;
@@ -663,24 +664,15 @@ function BlankState({
         <Paragraph className="w-auto" variant="base/bright" spacing>
           There are no runs for {filters.tasks[0]}
         </Paragraph>
-        <div className="mt-6 flex items-center justify-center gap-2">
+        <div className="flex justify-center">
           <LinkButton
             to={testPath}
-            variant="tertiary/medium"
+            variant="secondary/medium"
             LeadingIcon={BeakerIcon}
-            leadingIconClassName="text-tests"
+            leadingIconClassName="text-tests -mx-2 gap-2"
             className="inline-flex"
           >
             Create a test run
-          </LinkButton>
-          <Paragraph variant="small">or</Paragraph>
-          <LinkButton
-            to={docsPath("v3/triggering")}
-            variant="tertiary/medium"
-            LeadingIcon={BookOpenIcon}
-            className="inline-flex"
-          >
-            Triggering a task docs
           </LinkButton>
         </div>
       </TableBlankRow>
@@ -696,7 +688,7 @@ function BlankState({
         <div className="flex items-center gap-2">
           <Button
             LeadingIcon={ArrowPathIcon}
-            variant="tertiary/medium"
+            variant="secondary/medium"
             onClick={() => {
               window.location.reload();
             }}
@@ -707,7 +699,7 @@ function BlankState({
           <LinkButton
             LeadingIcon={BeakerIcon}
             leadingIconClassName="text-tests"
-            variant="tertiary/medium"
+            variant="secondary/medium"
             to={testPath}
           >
             Run a test
