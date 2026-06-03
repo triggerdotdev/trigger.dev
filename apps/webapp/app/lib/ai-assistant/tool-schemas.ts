@@ -17,15 +17,33 @@ export const searchDocs = tool({
 
 export const navigateToPage = tool({
   description:
-    "Navigate the user to a specific dashboard page. Use when the user asks " +
-    "'where do I find X', 'take me to Y', 'show me the Z page', or 'go to settings'. " +
-    "Returns a URL that the frontend renders as a clickable link.",
+    "Navigate the user to a specific dashboard page, or deep-link directly to a run " +
+    "(and optionally a specific span/subtrace within it). Use when the user asks " +
+    "'where do I find X', 'take me to Y', 'show me the Z page', 'go to settings', or " +
+    "'open run run_…' / 'take me to that run'. Returns a URL that the frontend renders " +
+    "as a clickable link and auto-navigates to during live chat.",
   inputSchema: z.object({
     destination: z
       .string()
+      .optional()
       .describe(
-        "Where the user wants to go, e.g. 'runs page', 'environment variables', " +
-          "'deployment settings', 'error alerts', 'concurrency configuration'"
+        "A named section to go to, e.g. 'runs page', 'environment variables', " +
+          "'deployment settings', 'error alerts', 'concurrency configuration'. " +
+          "Omit when deep-linking to a run via runId."
+      ),
+    runId: z
+      .string()
+      .optional()
+      .describe(
+        "Deep-link to a specific run by its friendly ID (e.g. 'run_cmpy8wwvg0006htra3f5jtr8i'). " +
+          "Opens the run detail / trace view. Takes precedence over destination."
+      ),
+    spanId: z
+      .string()
+      .optional()
+      .describe(
+        "When deep-linking to a run, optionally select a specific span (subtrace) in the " +
+          "trace view by its span ID. Requires runId."
       ),
   }),
 });
@@ -77,6 +95,24 @@ export const getRunDetails = tool({
     "Use when the user wants to investigate a particular run.",
   inputSchema: z.object({
     runFriendlyId: z.string().describe("The friendly ID of the run"),
+  }),
+});
+
+export const getSpanDetails = tool({
+  description:
+    "Get the full detail of a single span (subtrace) within a run's trace, including its " +
+    "error/exception (message + stack trace), log level, span events, properties, and metadata. " +
+    "First call getRunDetails to list the trace's spans, then pass a span's `id` here as `spanId` " +
+    "to drill into the one that failed. Use this to answer 'look at the subtrace and tell me exactly " +
+    "what and why caused the error'. If the span is itself a triggered child run, also returns that " +
+    "run's error and output.",
+  inputSchema: z.object({
+    runFriendlyId: z
+      .string()
+      .describe("The friendly ID of the run that owns the trace (e.g. 'run_…')"),
+    spanId: z
+      .string()
+      .describe("The span ID to inspect — the `id` field from a span in getRunDetails' trace"),
   }),
 });
 
@@ -204,6 +240,7 @@ export const toolLabels: Record<string, string> = {
   searchPages: "Searching dashboard pages",
   listRuns: "Querying task runs",
   getRunDetails: "Loading run details",
+  getSpanDetails: "Inspecting subtrace",
   getRunLogs: "Fetching run logs",
   getRunGraph: "Building run hierarchy",
   applyRunFilters: "Applying run filters",

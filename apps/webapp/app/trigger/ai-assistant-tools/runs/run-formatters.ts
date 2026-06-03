@@ -31,6 +31,7 @@ export function summarizeSpan(span: RunEvent): SpanSummary {
     isPartial: span.data?.isPartial ?? false,
     duration: span.data?.duration ?? undefined,
     level: span.data?.level ?? "info",
+    runId: span.runId ?? undefined,
   };
 }
 

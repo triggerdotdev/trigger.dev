@@ -4,13 +4,13 @@ import {
   ChevronUpIcon,
   ClipboardDocumentIcon,
   CodeBracketSquareIcon,
+  DocumentTextIcon,
 } from "@heroicons/react/20/solid";
 import { Suspense, useEffect, useState } from "react";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
-import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
 import type { DisplayItem, ToolUse } from "./types";
 
 export type PromptLink = {
@@ -89,9 +89,7 @@ function SystemSection({
           {promptLink && (
             <LinkButton to={promptLink.path} variant="minimal/small">
               <span className="flex items-center gap-1">
-                <svg className="size-3.5 shrink-0 text-text-dimmed">
-                  <use xlinkHref={`${tablerSpritePath}#tabler-file-text-ai`} />
-                </svg>
+                <DocumentTextIcon className="size-3.5 shrink-0 text-text-dimmed" />
                 {promptLink.slug}
                 {promptLink.version ? ` v${promptLink.version}` : ""}
               </span>

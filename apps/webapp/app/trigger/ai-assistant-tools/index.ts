@@ -12,6 +12,7 @@ import { createGetCurrentContextTool } from "./navigation/get-current-context";
 async function loadServerTools() {
   const { createListRunsTool } = await import("./runs/list-runs");
   const { createGetRunDetailsTool } = await import("./runs/get-run-details");
+  const { createGetSpanDetailsTool } = await import("./runs/get-span-details");
   const { createGetRunLogsTool } = await import("./runs/get-run-logs");
   const { createGetRunGraphTool } = await import("./runs/get-run-graph");
   const { createApplyRunFiltersTool } = await import("./runs/apply-run-filters");
@@ -27,6 +28,7 @@ async function loadServerTools() {
   return {
     createListRunsTool,
     createGetRunDetailsTool,
+    createGetSpanDetailsTool,
     createGetRunLogsTool,
     createGetRunGraphTool,
     createApplyRunFiltersTool,
@@ -58,6 +60,7 @@ export async function buildAssistantTools(clientData: ClientData) {
     // Runs
     listRuns: serverTools.createListRunsTool(ctx),
     getRunDetails: serverTools.createGetRunDetailsTool(ctx),
+    getSpanDetails: serverTools.createGetSpanDetailsTool(ctx),
     getRunLogs: serverTools.createGetRunLogsTool(ctx),
     getRunGraph: serverTools.createGetRunGraphTool(ctx),
     applyRunFilters: serverTools.createApplyRunFiltersTool(ctx),

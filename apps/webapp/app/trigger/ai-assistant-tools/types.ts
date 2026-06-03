@@ -37,6 +37,37 @@ export interface SpanSummary {
   isPartial: boolean;
   duration?: number;
   level: string;
+  // Friendly ID of the run this span triggered, if the span is itself a run.
+  // Lets the agent drill into the child run (getRunDetails / getSpanDetails).
+  runId?: string;
+}
+
+// Extracted exception from a span event or run error.
+export interface SpanException {
+  type?: string;
+  message?: string;
+  stackTrace?: string;
+}
+
+// Full detail of a single span (subtrace), tuned for LLM error investigation.
+export interface SpanDetailSummary {
+  spanId: string;
+  // "span" = generic trace span; "run" = the span is itself a triggered run.
+  kind: "span" | "run";
+  message: string;
+  isError: boolean;
+  isCancelled?: boolean;
+  level?: string;
+  duration?: string;
+  // For run-kind spans:
+  runFriendlyId?: string;
+  taskIdentifier?: string;
+  status?: string;
+  // The thing the agent actually wants when asked "why did this fail":
+  exceptions: SpanException[];
+  metadata?: string;
+  properties?: string;
+  output?: string;
 }
 
 export interface TraceSummary {
