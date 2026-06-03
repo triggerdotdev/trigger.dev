@@ -321,12 +321,19 @@ module.exports = {
           "0%": { "background-position": "-1px" },
           "100%": { "background-position": "7px" },
         },
+        "ai-sparkle-hover": {
+          "0%": { transform: "scale(1) rotate(0deg)" },
+          "45%": { transform: "scale(1.1) rotate(-6deg)" },
+          "75%": { transform: "scale(1.06) rotate(4deg)" },
+          "100%": { transform: "scale(1) rotate(0deg)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "tile-scroll": "tile-move 0.5s infinite linear",
         "tile-scroll-offset": "tile-move-offset 0.5s infinite linear",
+        "ai-sparkle-hover": "ai-sparkle-hover 0.45s ease-out 1",
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(closest-side, var(--tw-gradient-stops))",
