@@ -1,14 +1,15 @@
 import type { ClientData } from "./types";
 import { buildToolContext } from "./types";
 
-// V1A - Docs and Navigation (always safe to import)
+// Docs and navigation tools are safe to import at module load (no env.server.ts).
 import { createSearchDocsTool } from "./docs/search-docs";
 import { createNavigateToPageTool } from "./navigation/navigate-to-page";
 import { createSearchPagesTool } from "./navigation/search-pages";
 import { createGetCurrentContextTool } from "./navigation/get-current-context";
 
-// V1B tools are lazy-loaded to avoid env.server.ts at CLI indexing time
-async function loadV1BTools() {
+// Runs, errors, and analytics tools reach into env.server.ts, so they're loaded
+// lazily to keep that out of the CLI indexing path.
+async function loadServerTools() {
   const { createListRunsTool } = await import("./runs/list-runs");
   const { createGetRunDetailsTool } = await import("./runs/get-run-details");
   const { createGetRunLogsTool } = await import("./runs/get-run-logs");
@@ -43,39 +44,34 @@ async function loadV1BTools() {
 // Builds the tool set for a client context. Called from the agent's run() per turn.
 export async function buildAssistantTools(clientData: ClientData) {
   const ctx = buildToolContext(clientData);
+  const serverTools = await loadServerTools();
 
-  // V1A tools are always available
-  const v1aTools = {
+  return {
+    // Docs
     searchDocs: createSearchDocsTool(),
+
+    // Navigation
     navigateToPage: createNavigateToPageTool(ctx),
     searchPages: createSearchPagesTool(ctx),
     getCurrentContext: createGetCurrentContextTool(ctx),
-  };
 
-  // V1B tools are lazy-loaded
-  const v1bTools = await loadV1BTools();
+    // Runs
+    listRuns: serverTools.createListRunsTool(ctx),
+    getRunDetails: serverTools.createGetRunDetailsTool(ctx),
+    getRunLogs: serverTools.createGetRunLogsTool(ctx),
+    getRunGraph: serverTools.createGetRunGraphTool(ctx),
+    applyRunFilters: serverTools.createApplyRunFiltersTool(ctx),
+    queryRuns: serverTools.createQueryRunsTool(ctx),
 
-  return {
-    // V1A - Docs and Navigation
-    ...v1aTools,
+    // Errors
+    listErrors: serverTools.createListErrorsTool(ctx),
+    getErrorDetails: serverTools.createGetErrorDetailsTool(ctx),
+    findSimilarErrors: serverTools.createFindSimilarErrorsTool(ctx),
+    classifyFailure: serverTools.createClassifyFailureTool(ctx),
 
-    // V1B - Runs
-    listRuns: v1bTools.createListRunsTool(ctx),
-    getRunDetails: v1bTools.createGetRunDetailsTool(ctx),
-    getRunLogs: v1bTools.createGetRunLogsTool(ctx),
-    getRunGraph: v1bTools.createGetRunGraphTool(ctx),
-    applyRunFilters: v1bTools.createApplyRunFiltersTool(ctx),
-    queryRuns: v1bTools.createQueryRunsTool(ctx),
-
-    // V1B - Errors
-    listErrors: v1bTools.createListErrorsTool(ctx),
-    getErrorDetails: v1bTools.createGetErrorDetailsTool(ctx),
-    findSimilarErrors: v1bTools.createFindSimilarErrorsTool(ctx),
-    classifyFailure: v1bTools.createClassifyFailureTool(ctx),
-
-    // V1B - Analytics
-    summarizeCurrentView: v1bTools.createSummarizeCurrentViewTool(ctx),
-    aggregateRuns: v1bTools.createAggregateRunsTool(ctx),
-    correlateRunsWithDeploy: v1bTools.createCorrelateRunsWithDeployTool(ctx),
+    // Analytics
+    summarizeCurrentView: serverTools.createSummarizeCurrentViewTool(ctx),
+    aggregateRuns: serverTools.createAggregateRunsTool(ctx),
+    correlateRunsWithDeploy: serverTools.createCorrelateRunsWithDeployTool(ctx),
   };
 }
