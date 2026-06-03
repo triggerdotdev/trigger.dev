@@ -129,6 +129,9 @@ export async function routeOperationsToRun(
       environmentId: env.id,
       organizationId: env.organizationId,
       maximumSize: appEnv.TASK_RUN_METADATA_MAXIMUM_SIZE,
+      maxRetries: appEnv.TRIGGER_MOLLIFIER_METADATA_MAX_RETRIES,
+      backoffBaseMs: appEnv.TRIGGER_MOLLIFIER_METADATA_BACKOFF_BASE_MS,
+      backoffStepMs: appEnv.TRIGGER_MOLLIFIER_METADATA_BACKOFF_STEP_MS,
       body: { operations },
     })
   );
@@ -190,6 +193,9 @@ const { action } = createActionApiRoute(
       environmentId: env.id,
       organizationId: env.organizationId,
       maximumSize: appEnv.TASK_RUN_METADATA_MAXIMUM_SIZE,
+      maxRetries: appEnv.TRIGGER_MOLLIFIER_METADATA_MAX_RETRIES,
+      backoffBaseMs: appEnv.TRIGGER_MOLLIFIER_METADATA_BACKOFF_BASE_MS,
+      backoffStepMs: appEnv.TRIGGER_MOLLIFIER_METADATA_BACKOFF_STEP_MS,
       body: { metadata: body.metadata, operations: body.operations },
     });
 

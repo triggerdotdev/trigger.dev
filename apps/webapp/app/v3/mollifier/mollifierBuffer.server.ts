@@ -22,6 +22,10 @@ function initializeMollifierBuffer(): MollifierBuffer {
       enableAutoPipelining: true,
       ...(env.TRIGGER_MOLLIFIER_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
     },
+    ackGraceTtlSeconds: env.TRIGGER_MOLLIFIER_ACK_GRACE_TTL_SECONDS,
+    maxRetriesPerRequest: env.TRIGGER_MOLLIFIER_REDIS_MAX_RETRIES_PER_REQUEST,
+    reconnectStepMs: env.TRIGGER_MOLLIFIER_REDIS_RECONNECT_STEP_MS,
+    reconnectMaxMs: env.TRIGGER_MOLLIFIER_REDIS_RECONNECT_MAX_MS,
   });
 }
 

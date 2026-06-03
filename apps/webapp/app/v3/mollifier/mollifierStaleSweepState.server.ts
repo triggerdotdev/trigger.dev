@@ -58,10 +58,14 @@ export class MollifierStaleSweepState implements StaleSweepStateStore {
   private readonly redis: Redis;
   private readonly logger: Logger;
 
-  constructor(options: { redisOptions: RedisOptions; logger?: Logger }) {
+  constructor(options: {
+    redisOptions: RedisOptions;
+    logger?: Logger;
+    maxRetriesPerRequest?: number;
+  }) {
     this.logger = options.logger ?? new Logger("MollifierStaleSweepState", "debug");
     this.redis = createRedisClient(
-      { ...options.redisOptions, maxRetriesPerRequest: 20 },
+      { ...options.redisOptions, maxRetriesPerRequest: options.maxRetriesPerRequest ?? 20 },
       {
         onError: (error) => {
           this.logger.error("MollifierStaleSweepState redis client error:", { error });
