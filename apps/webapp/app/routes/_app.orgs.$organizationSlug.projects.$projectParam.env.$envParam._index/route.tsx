@@ -1,10 +1,10 @@
 import {
-  BeakerIcon,
   BookOpenIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   ExclamationTriangleIcon,
 } from "@heroicons/react/20/solid";
+import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { type MetaFunction } from "@remix-run/node";
 import { useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -328,7 +328,7 @@ export default function Page() {
                                 <LinkButton
                                   variant="minimal/small"
                                   LeadingIcon={BeakerIcon}
-                                  leadingIconClassName="text-text-bright"
+                                  leadingIconClassName="-mx-2.5 text-text-bright"
                                   to={testPath}
                                 >
                                   Test

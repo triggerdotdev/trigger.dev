@@ -880,6 +880,7 @@ function StandardTaskForm({
             type="submit"
             variant="primary/medium"
             LeadingIcon={BeakerIcon}
+            leadingIconClassName="text-tests"
             shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
             name="formAction"
             value={"run-standard" satisfies FormAction}
@@ -1457,6 +1458,7 @@ function ScheduledTaskForm({
             type="submit"
             variant="primary/medium"
             LeadingIcon={BeakerIcon}
+            leadingIconClassName="text-tests"
             shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
             name="formAction"
             value={"run-scheduled" satisfies FormAction}

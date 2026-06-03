@@ -161,7 +161,12 @@ export default function Page() {
           }
         />
         <PageAccessories>
-          <LinkButton variant="secondary/small" to={testPath} LeadingIcon={BeakerIcon}>
+          <LinkButton
+            variant="secondary/small"
+            to={testPath}
+            LeadingIcon={BeakerIcon}
+            leadingIconClassName="text-tests"
+          >
             Test scheduled task
           </LinkButton>
         </PageAccessories>

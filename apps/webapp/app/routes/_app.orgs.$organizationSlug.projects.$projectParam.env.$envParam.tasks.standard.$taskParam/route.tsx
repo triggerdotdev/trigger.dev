@@ -225,7 +225,7 @@ function TaskDetailSidebar({ task, testPath }: { task: TaskDetail; testPath: str
                 to={testPath}
                 LeadingIcon={BeakerIcon}
                 iconSpacing="gap-x-1"
-                leadingIconClassName="-mx-1.5"
+                leadingIconClassName="-mx-1.5 text-tests"
               >
                 Test task
               </LinkButton>

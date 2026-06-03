@@ -391,7 +391,7 @@ function RunTaskInstructions({ task }: { task?: { slug: string } }) {
           }
           variant="secondary/medium"
           LeadingIcon={BeakerIcon}
-          leadingIconClassName="text-lime-500"
+          leadingIconClassName="text-tests"
           className="inline-flex"
         >
           Test

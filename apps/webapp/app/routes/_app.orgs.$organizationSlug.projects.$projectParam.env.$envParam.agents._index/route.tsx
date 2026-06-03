@@ -354,7 +354,7 @@ export default function AgentsPage() {
                                     agent.slug
                                   )}
                                   title="Test"
-                                  leadingIconClassName="text-playgrounds"
+                                  leadingIconClassName="text-tests"
                                 />
                               </>
                             }

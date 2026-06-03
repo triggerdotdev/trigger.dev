@@ -668,6 +668,7 @@ function BlankState({
             to={testPath}
             variant="tertiary/medium"
             LeadingIcon={BeakerIcon}
+            leadingIconClassName="text-tests"
             className="inline-flex"
           >
             Create a test run
@@ -703,7 +704,12 @@ function BlankState({
             Refresh
           </Button>
           <Paragraph>or</Paragraph>
-          <LinkButton LeadingIcon={BeakerIcon} variant="tertiary/medium" to={testPath}>
+          <LinkButton
+            LeadingIcon={BeakerIcon}
+            leadingIconClassName="text-tests"
+            variant="tertiary/medium"
+            to={testPath}
+          >
             Run a test
           </LinkButton>
         </div>
