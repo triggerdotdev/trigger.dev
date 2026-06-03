@@ -18,8 +18,21 @@ function getVisibleLength(str: string): number {
   );
 }
 
+// Matches a single ANSI escape sequence (terminal hyperlink or CSI sequence)
+// at the regex's lastIndex. Used to skip escape codes while counting visible
+// characters during truncation.
+const ANSI_SEQUENCE = /\u001b]8;;[^\u0007]*\u0007|\x1b\[[0-9;]*[a-zA-Z]/y;
+
 function truncateMessage(msg: string, maxLength?: number): string {
-  const terminalWidth = maxLength ?? process.stdout.columns ?? 80;
+  // When there is no explicit max and no TTY (e.g. a non-interactive CI shell),
+  // `process.stdout.columns` is undefined and there is no terminal width to fit
+  // to, so leave the message untouched. This also avoids the work below on the
+  // large messages emitted during a deploy.
+  const terminalWidth = maxLength ?? process.stdout.columns;
+  if (terminalWidth == null) {
+    return msg;
+  }
+
   const availableWidth = terminalWidth - 5; // Reserve some space for the spinner and padding
   const visibleLength = getVisibleLength(msg);
 
@@ -27,14 +40,32 @@ function truncateMessage(msg: string, maxLength?: number): string {
     return msg;
   }
 
-  // We need to truncate based on visible characters, but preserve ANSI sequences
-  // Simple approach: truncate character by character until we fit
-  let truncated = msg;
-  while (getVisibleLength(truncated) > availableWidth - 3) {
-    truncated = truncated.slice(0, -1);
+  // Truncate based on visible characters while preserving ANSI sequences, in a
+  // single forward pass. The previous implementation removed one character at a
+  // time and re-scanned the whole string with two regexes on every iteration --
+  // O(n^2) -- which pegged the CPU for minutes on the large messages a deploy
+  // emits, especially in CI where the message isn't a short live-updating line.
+  const limit = Math.max(availableWidth - 3, 0);
+  let result = "";
+  let visible = 0;
+  let index = 0;
+
+  while (index < msg.length && visible < limit) {
+    ANSI_SEQUENCE.lastIndex = index;
+    const match = ANSI_SEQUENCE.exec(msg);
+
+    if (match) {
+      // Escape sequences don't count toward the visible width.
+      result += match[0];
+      index += match[0].length;
+    } else {
+      result += msg[index];
+      visible += 1;
+      index += 1;
+    }
   }
 
-  return truncated + "...";
+  return result + "...";
 }
 
 const wrappedClackSpinner = () => {
