@@ -1,10 +1,30 @@
 import { Spinner } from "~/components/primitives/Spinner";
 
 const TOOL_LABELS: Record<string, string> = {
+  // V1A - Docs and Navigation
   searchDocs: "Searching documentation…",
   navigateToPage: "Finding page…",
   getCurrentContext: "Checking context…",
   searchPages: "Searching pages…",
+
+  // V1B - Runs
+  listRuns: "Querying runs…",
+  getRunDetails: "Loading run details…",
+  getRunLogs: "Fetching logs…",
+  getRunGraph: "Building run graph…",
+  applyRunFilters: "Building filters…",
+  queryRuns: "Running analytics query…",
+
+  // V1B - Errors
+  listErrors: "Loading error groups…",
+  getErrorDetails: "Loading error details…",
+  findSimilarErrors: "Searching error history…",
+  classifyFailure: "Classifying failure…",
+
+  // V1B - Analytics
+  summarizeCurrentView: "Analyzing current view…",
+  aggregateRuns: "Computing aggregations…",
+  correlateRunsWithDeploy: "Checking deploy correlation…",
 };
 
 interface AIChatToolCallProps {

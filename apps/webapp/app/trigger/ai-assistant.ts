@@ -1,6 +1,6 @@
 import { chat } from "@trigger.dev/sdk/ai";
 import { logger, prompts } from "@trigger.dev/sdk";
-import { streamText, stepCountIs } from "ai";
+import { streamText, stepCountIs, generateText, generateId } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { prisma } from "./db";
@@ -47,7 +47,7 @@ const systemPrompt = prompts.define({
   content: `You are the Trigger.dev AI assistant, embedded in the dashboard.
 
 ## Your role
-Help the user navigate the dashboard, find documentation, and understand Trigger.dev features.
+Help the user navigate the dashboard, find documentation, understand Trigger.dev features, and investigate runs and errors.
 
 ## Current context
 The user is viewing: project "{{projectSlug}}" / {{environmentSlug}} environment / {{currentPage}} page.
@@ -61,16 +61,32 @@ The user is viewing: project "{{projectSlug}}" / {{environmentSlug}} environment
 - If you don't know something, say so — don't make things up.
 - When you use a tool, briefly explain what you're doing.
 
-## What you CAN do (V1A)
+## What you CAN do (V1A + V1B)
 - Search and read Trigger.dev documentation
 - Navigate the user to any dashboard page
 - Explain Trigger.dev features, configuration, and APIs
 - Help with common questions about retries, concurrency, deployments, env vars, etc.
+- Inspect specific runs, errors, and logs (V1B)
+- Analyze run failures and trends
+- Find similar errors and correlate with deployments
 
 ## What you CANNOT do yet
-- Inspect specific runs, errors, or logs (coming soon)
-- Modify settings or trigger actions (coming soon)
-- Access the user's code (coming soon)`,
+- Modify settings or trigger actions
+- Access the user's code
+
+## When explaining why a run failed, use this format:
+
+**Summary:** One sentence.
+**Category:** Timeout / OOM / Missing env var / Child task failed / User code exception / AI provider error / Deploy regression / Platform issue / Unknown
+**Likely cause:** 1-2 sentences with evidence.
+**Confidence:** High / Medium / Low
+**Evidence:**
+- Error: <message>
+- Failed span: <name, duration>
+- Deploy: <version, time since deploy>
+**Next steps:**
+1. ...
+2. ...`,
 });
 
 export const dashboardAssistant = chat
@@ -169,6 +185,54 @@ export const dashboardAssistant = chat
       ]);
     },
 
+    compaction: {
+      shouldCompact: ({ totalTokens }) => (totalTokens ?? 0) > 80_000,
+      summarize: async ({ messages }) => {
+        return generateText({
+          model: openai("gpt-4.1-mini"),
+          messages: [
+            ...messages,
+            {
+              role: "user",
+              content: "Summarize this conversation concisely. Capture key topics, " +
+                "questions asked, answers given, runs/errors inspected, and any " +
+                "conclusions reached. Keep context needed to continue naturally.",
+            },
+          ],
+        }).then((r) => r.text);
+      },
+      compactUIMessages: ({ uiMessages, summary }) => [
+        {
+          id: generateId(),
+          role: "assistant",
+          parts: [{ type: "text", text: `[Conversation summary]\n\n${summary}` }],
+        },
+        ...uiMessages.slice(-2),
+      ],
+    },
+
+    pendingMessages: {
+      shouldInject: ({ steps }) => steps.length > 0,
+      prepare: ({ messages }) => {
+        const getMessageText = (m: any) => {
+          const textPart = m?.parts?.find((p: any) => p?.type === "text");
+          return textPart?.text ?? "";
+        };
+
+        if (messages.length === 1) {
+          return [{ role: "user", content: getMessageText(messages[0]) }];
+        }
+
+        const messageList = messages
+          .map((m, i) => `${i + 1}. ${getMessageText(m)}`)
+          .join("\n");
+        return [{
+          role: "user",
+          content: `The user sent ${messages.length} messages while you were working:\n\n${messageList}`,
+        }];
+      },
+    },
+
     // chat.toStreamTextOptions() must be spread first. `tools` comes from the
     // run payload so streamText and the history re-converter see the same set.
     run: async ({ messages, tools, stopSignal }) => {
@@ -177,7 +241,7 @@ export const dashboardAssistant = chat
         model: openai("gpt-4.1-mini"),
         messages,
         abortSignal: stopSignal,
-        stopWhen: stepCountIs(5),
+        stopWhen: stepCountIs(10),
       });
     },
   });

@@ -60,8 +60,19 @@ import { prisma } from "~/db.server";
 import { metricsRegister } from "~/metrics.server";
 import type { Prisma } from "@trigger.dev/database";
 import { performance } from "node:perf_hooks";
+import type { TracerProvider } from "@opentelemetry/api";
 
 export const SEMINTATTRS_FORCE_RECORDING = "forceRecording";
+
+/** True when another SDK (e.g. CLI index/run worker `TracingSDK`) already registered OTel globals. */
+function isOtelGloballyInitialized(): boolean {
+  const provider = trace.getTracerProvider();
+  if (typeof (provider as TracerProvider & { getDelegate?: () => TracerProvider }).getDelegate === "function") {
+    const delegate = (provider as TracerProvider & { getDelegate: () => TracerProvider }).getDelegate();
+    return delegate.constructor.name !== "NoopTracerProvider";
+  }
+  return true;
+}
 
 export const DATASOURCE_CONTEXT_KEY = createContextKey("trigger.db.datasource");
 
@@ -210,6 +221,17 @@ function getResource() {
 }
 
 function setupTelemetry() {
+  if (isOtelGloballyInitialized()) {
+    console.log(`🔦 Tracer: reusing existing global OpenTelemetry provider`);
+
+    return {
+      tracer: trace.getTracer("trigger.dev", "3.3.12"),
+      logger: logs.getLogger("trigger.dev", "3.3.12"),
+      provider: trace.getTracerProvider() as NodeTracerProvider,
+      meter: setupMetrics(),
+    };
+  }
+
   if (env.INTERNAL_OTEL_TRACE_DISABLED === "1") {
     console.log(`🔦 Tracer disabled, returning a noop tracer`);
 
@@ -331,7 +353,7 @@ function setupTelemetry() {
 }
 
 function setupMetrics() {
-  if (env.INTERNAL_OTEL_METRIC_EXPORTER_ENABLED === "0") {
+  if (env.INTERNAL_OTEL_METRIC_EXPORTER_ENABLED === "0" || isOtelGloballyInitialized()) {
     return metrics.getMeter("trigger.dev", "3.3.12");
   }
 
