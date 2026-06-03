@@ -143,18 +143,6 @@ export default function Page() {
           >
             Sessions docs
           </LinkButton>
-          {status === "ACTIVE" && (
-            <Dialog key={`close-${session.friendlyId}`}>
-              <DialogTrigger asChild>
-                <Button variant="danger/small">Close session…</Button>
-              </DialogTrigger>
-              <CloseSessionDialog
-                sessionParam={session.friendlyId}
-                environmentId={environment.id}
-                redirectPath={`${sessionsPath}/${session.friendlyId}`}
-              />
-            </Dialog>
-          )}
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
@@ -665,16 +653,31 @@ function OverviewTab({ session, status }: { session: LoadedSession; status: Sess
   const project = useProject();
   const environment = useEnvironment();
   const isAdmin = useHasAdminAccess();
+  const sessionsPath = v3SessionsPath(organization, project, environment);
 
   return (
     <div className="flex flex-col gap-4">
       <Property.Table>
-        <Property.Item>
-          <Property.Label>Status</Property.Label>
-          <Property.Value>
-            <SessionStatusCombo status={status} />
-          </Property.Value>
-        </Property.Item>
+        <div className="flex items-start justify-between gap-3">
+          <Property.Item>
+            <Property.Label>Status</Property.Label>
+            <Property.Value>
+              <SessionStatusCombo status={status} />
+            </Property.Value>
+          </Property.Item>
+          {status === "ACTIVE" && (
+            <Dialog key={`close-${session.friendlyId}`}>
+              <DialogTrigger asChild>
+                <Button variant="danger/small">Close session…</Button>
+              </DialogTrigger>
+              <CloseSessionDialog
+                sessionParam={session.friendlyId}
+                environmentId={environment.id}
+                redirectPath={`${sessionsPath}/${session.friendlyId}`}
+              />
+            </Dialog>
+          )}
+        </div>
         <Property.Item>
           <Property.Label>Friendly ID</Property.Label>
           <Property.Value>
