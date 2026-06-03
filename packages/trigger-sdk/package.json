@@ -85,7 +85,7 @@
   },
   "devDependencies": {
     "@ai-sdk/provider": "3.0.8",
-    "@arethetypeswrong/cli": "^0.15.4",
+    "@arethetypeswrong/cli": "^0.18.3",
     "@types/debug": "^4.1.7",
     "@types/react": "^19.2.14",
     "@types/slug": "^5.0.3",

@@ -226,7 +226,7 @@
   },
   "devDependencies": {
     "@ai-sdk/provider-utils": "^1.0.22",
-    "@arethetypeswrong/cli": "^0.15.4",
+    "@arethetypeswrong/cli": "^0.18.3",
     "@epic-web/test-server": "^0.1.0",
     "@trigger.dev/database": "workspace:*",
     "@types/humanize-duration": "^3.27.1",

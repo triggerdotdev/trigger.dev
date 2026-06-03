@@ -41,7 +41,7 @@
     "swr": "^2.2.5"
   },
   "devDependencies": {
-    "@arethetypeswrong/cli": "^0.15.4",
+    "@arethetypeswrong/cli": "^0.18.3",
     "@types/node": "^20.14.14",
     "@types/react": "*",
     "@types/react-dom": "*",

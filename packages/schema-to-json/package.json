@@ -55,7 +55,7 @@
     "valibot": "^1.1.0",
     "yup": "^1.7.0",
     "rimraf": "6.0.1",
-    "@arethetypeswrong/cli": "^0.15.4"
+    "@arethetypeswrong/cli": "^0.18.3"
   },
   "peerDependencies": {
     "arktype": ">=2.0.0",
