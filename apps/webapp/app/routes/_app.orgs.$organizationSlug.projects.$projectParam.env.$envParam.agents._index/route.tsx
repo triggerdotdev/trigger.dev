@@ -59,7 +59,7 @@ import {
 import { cn } from "~/utils/cn";
 import { Box3DIcon } from "~/assets/icons/Box3DIcon";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
-import { PlaygroundIcon } from "~/assets/icons/PlaygroundIcon";
+import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 
 export const meta: MetaFunction = () => {
   return [{ title: "Agent tasks | Trigger.dev" }];
@@ -346,7 +346,7 @@ export default function AgentsPage() {
                                   leadingIconClassName="text-runs"
                                 />
                                 <PopoverMenuItem
-                                  icon={PlaygroundIcon}
+                                  icon={BeakerIcon}
                                   to={v3PlaygroundAgentPath(
                                     organization,
                                     project,
@@ -361,7 +361,7 @@ export default function AgentsPage() {
                             hiddenButtons={
                               <LinkButton
                                 variant="minimal/small"
-                                LeadingIcon={PlaygroundIcon}
+                                LeadingIcon={BeakerIcon}
                                 leadingIconClassName="-mx-2.5 text-text-bright"
                                 to={v3PlaygroundAgentPath(
                                   organization,

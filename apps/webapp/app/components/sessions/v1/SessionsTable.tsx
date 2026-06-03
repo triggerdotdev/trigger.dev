@@ -34,9 +34,15 @@ import {
   allSessionStatuses,
 } from "./SessionStatus";
 
-type SessionsTableProps = Pick<SessionList, "sessions" | "filters" | "hasFilters">;
+type SessionsTableProps = Pick<SessionList, "sessions" | "filters" | "hasFilters"> & {
+  showTopBorder?: boolean;
+};
 
-export function SessionsTable({ sessions, hasFilters }: SessionsTableProps) {
+export function SessionsTable({
+  sessions,
+  hasFilters,
+  showTopBorder = true,
+}: SessionsTableProps) {
   const navigation = useNavigation();
   const location = useLocation();
   const isLoading =
@@ -47,7 +53,7 @@ export function SessionsTable({ sessions, hasFilters }: SessionsTableProps) {
   const environment = useEnvironment();
 
   return (
-    <Table className="max-h-full overflow-y-auto">
+    <Table className="max-h-full overflow-y-auto" showTopBorder={showTopBorder}>
       <TableHeader>
         <TableRow>
           <TableHeaderCell>ID</TableHeaderCell>

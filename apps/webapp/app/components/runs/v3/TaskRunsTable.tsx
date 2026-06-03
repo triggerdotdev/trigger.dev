@@ -74,6 +74,7 @@ type RunsTableProps = {
   variant?: TableVariant;
   disableAdjacentRows?: boolean;
   additionalTableState?: Record<string, string>;
+  showTopBorder?: boolean;
 };
 
 export function TaskRunsTable({
@@ -87,6 +88,7 @@ export function TaskRunsTable({
   allowSelection = false,
   variant = "dimmed",
   additionalTableState,
+  showTopBorder = true,
 }: RunsTableProps) {
   const regions = useRegions();
   const regionByMasterQueue = new Map(regions.map((r) => [r.masterQueue, r] as const));
@@ -141,7 +143,7 @@ export function TaskRunsTable({
   );
 
   return (
-    <Table variant={variant} className="max-h-full overflow-y-auto">
+    <Table variant={variant} className="max-h-full overflow-y-auto" showTopBorder={showTopBorder}>
       <TableHeader>
         <TableRow>
           {allowSelection && (

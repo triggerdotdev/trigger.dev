@@ -41,6 +41,8 @@ export type ChartBarRendererProps = {
   tooltipLabelFormatter?: (label: string, payload: any[]) => string;
   /** Optional formatter for numeric tooltip values (e.g. bytes, duration) */
   tooltipValueFormatter?: (value: number) => string;
+  /** Corner radius for the outermost bars in each stack (defaults to 2). Pass 0 for square corners. */
+  barRadius?: number;
   /** Width injected by ResponsiveContainer */
   width?: number;
   /** Height injected by ResponsiveContainer */
@@ -66,6 +68,7 @@ export function ChartBarRenderer({
   referenceLine,
   tooltipLabelFormatter,
   tooltipValueFormatter,
+  barRadius = 2,
   width,
   height,
 }: ChartBarRendererProps) {
@@ -205,10 +208,10 @@ export function ChartBarRenderer({
             fill={config[key]?.color}
             radius={
               [
-                index === array.length - 1 ? 2 : 0,
-                index === array.length - 1 ? 2 : 0,
-                index === 0 ? 2 : 0,
-                index === 0 ? 2 : 0,
+                index === array.length - 1 ? barRadius : 0,
+                index === array.length - 1 ? barRadius : 0,
+                index === 0 ? barRadius : 0,
+                index === 0 ? barRadius : 0,
               ] as [number, number, number, number]
             }
             activeBar={false}

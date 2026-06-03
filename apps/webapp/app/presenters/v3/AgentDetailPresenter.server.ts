@@ -127,6 +127,11 @@ export class AgentDetailPresenter {
         ? 6 * 60 * 60 // 6h buckets
         : 24 * 60 * 60; // 1d buckets
 
+    // NOTE: We intentionally don't filter by `task_kind = 'AGENT'` here:
+    // ClickHouse stores `task_kind = ""` for pre-migration rows and rows
+    // whose taskKind annotation was never set, even for AGENT tasks. We've
+    // already verified this task is an agent via `findAgent` (Postgres), so
+    // matching on environment_id + task_identifier is sufficient.
     const queryFn = this.clickhouse.reader.query({
       name: "agentRunStatusActivity",
       query: `SELECT
@@ -136,7 +141,6 @@ export class AgentDetailPresenter {
         FROM trigger_dev.task_runs_v2
         WHERE environment_id = {environmentId: String}
           AND task_identifier = {agentSlug: String}
-          AND task_kind = 'AGENT'
           AND created_at >= {fromTime: DateTime64(3, 'UTC')}
           AND created_at < {toTime: DateTime64(3, 'UTC')}
         GROUP BY bucket, status
@@ -159,8 +163,10 @@ export class AgentDetailPresenter {
       environmentId,
       agentSlug,
       bucketSeconds,
-      fromTime: from.toISOString(),
-      toTime: to.toISOString(),
+      // ClickHouse's DateTime64(3, 'UTC') parser rejects the trailing `Z` from
+      // JS toISOString() ("only 23 of 24 bytes was parsed"). Strip it.
+      fromTime: from.toISOString().slice(0, -1),
+      toTime: to.toISOString().slice(0, -1),
     });
 
     if (error) {
@@ -169,22 +175,22 @@ export class AgentDetailPresenter {
     }
 
     const bucketMap = new Map<number, Record<string, number>>();
-    const usedGroups = new Set<GroupLabel>();
     for (const row of rows) {
       const group = groupForStatus(row.status) ?? "RUNNING";
-      usedGroups.add(group);
       const ts = row.bucket * 1000;
       const existing = bucketMap.get(ts) ?? {};
       existing[group] = (existing[group] ?? 0) + row.val;
       bucketMap.set(ts, existing);
     }
 
-    // Build zero-filled time series
+    // Build zero-filled time series. We always emit every status group so
+    // the chart legend is stable across time ranges (even when a group has
+    // no runs in the current window).
     const bucketMs = bucketSeconds * 1000;
     const start = Math.floor(from.getTime() / bucketMs) * bucketMs;
     const end = Math.ceil(to.getTime() / bucketMs) * bucketMs;
     const points: AgentActivityPoint[] = [];
-    const orderedStatuses = GROUP_LABEL.filter((g) => usedGroups.has(g));
+    const orderedStatuses = [...GROUP_LABEL];
     for (let ts = start; ts < end; ts += bucketMs) {
       const existing = bucketMap.get(ts) ?? {};
       const point: AgentActivityPoint = { bucket: ts };

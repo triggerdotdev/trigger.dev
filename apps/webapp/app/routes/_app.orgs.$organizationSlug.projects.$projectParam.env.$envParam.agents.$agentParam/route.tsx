@@ -1,44 +1,29 @@
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Suspense, useMemo } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  type TooltipProps,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Suspense, useMemo, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
-import { PlaygroundIcon } from "~/assets/icons/PlaygroundIcon";
 import { PageBody } from "~/components/layout/AppLayout";
-import { ListPagination, DirectionSchema } from "~/components/ListPagination";
+import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
-import { Header2, Header3 } from "~/components/primitives/Headers";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { Header2 } from "~/components/primitives/Headers";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import * as Property from "~/components/primitives/PropertyTable";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
-import {
-  ClientTabs,
-  ClientTabsContent,
-  ClientTabsList,
-  ClientTabsTrigger,
-} from "~/components/primitives/ClientTabs";
-import * as Property from "~/components/primitives/PropertyTable";
-import { CopyableText } from "~/components/primitives/CopyableText";
 import { Spinner } from "~/components/primitives/Spinner";
-import TooltipPortal from "~/components/primitives/TooltipPortal";
-import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
+import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { SessionsTable } from "~/components/sessions/v1/SessionsTable";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -55,11 +40,7 @@ import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.serve
 import { SessionListPresenter } from "~/presenters/v3/SessionListPresenter.server";
 import { clickhouseClient } from "~/services/clickhouseInstance.server";
 import { requireUser } from "~/services/session.server";
-import {
-  EnvironmentParamSchema,
-  v3AgentsPath,
-  v3PlaygroundAgentPath,
-} from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3AgentsPath, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const slug = (data as { agent?: AgentDetail | null } | undefined)?.agent?.slug;
@@ -166,109 +147,45 @@ export default function Page() {
         <PageTitle
           backButton={{ to: agentsPath, text: "Agent tasks" }}
           title={
-            <span className="flex items-center gap-2">
+            <span className="flex items-center gap-1">
               <CubeSparkleIcon className="size-4 text-agents" />
               <span>{agent.slug}</span>
             </span>
           }
         />
-        <PageAccessories>
-          <LinkButton variant="secondary/small" to={playgroundPath} LeadingIcon={PlaygroundIcon}>
-            Test agent task
-          </LinkButton>
-        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="agent-main" min="300px">
-            <div className="grid h-full grid-rows-[12rem_1fr] overflow-hidden">
+            <ResizablePanelGroup orientation="vertical" className="max-h-full">
               {/* Activity chart + filters */}
-              <div className="flex flex-col gap-3 overflow-hidden border-b border-grid-bright bg-background-bright py-2 pl-2 pr-4">
-                <div className="flex items-center gap-2">
-                  <TimeFilter defaultPeriod="7d" labelName="Runs" />
+              <ResizablePanel id="agent-activity" min="144px" default="200px">
+                <div className="flex h-full flex-col gap-3 overflow-hidden bg-background-bright py-2 pl-2 pr-4">
+                  <div className="flex items-center gap-2">
+                    <TimeFilter defaultPeriod="7d" labelName="Runs" />
+                  </div>
+                  <div className="flex min-h-0 flex-1 flex-col">
+                    <Suspense fallback={<ActivityChartSkeleton />}>
+                      <TypedAwait resolve={activity} errorElement={<ActivityChartSkeleton />}>
+                        {(result) => <ActivityChart activity={result} />}
+                      </TypedAwait>
+                    </Suspense>
+                  </div>
                 </div>
-                <Suspense fallback={<ActivityChartSkeleton />}>
-                  <TypedAwait resolve={activity} errorElement={<ActivityChartSkeleton />}>
-                    {(result) =>
-                      result.data.length > 0 && result.statuses.length > 0 ? (
-                        <ActivityChart activity={result} />
-                      ) : (
-                        <ActivityChartEmpty />
-                      )
-                    }
-                  </TypedAwait>
-                </Suspense>
-              </div>
+              </ResizablePanel>
+
+              <ResizableHandle id="agent-activity-handle" />
 
               {/* Runs / Sessions tabs */}
-              <ClientTabs defaultValue="sessions" className="flex flex-col overflow-hidden">
-                <ClientTabsList className="border-b border-grid-dimmed px-3">
-                  <ClientTabsTrigger value="sessions">Sessions</ClientTabsTrigger>
-                  <ClientTabsTrigger value="runs">Runs</ClientTabsTrigger>
-                </ClientTabsList>
-                <ClientTabsContent value="sessions" className="flex-1 overflow-hidden">
-                  <Suspense fallback={<TableLoading />}>
-                    <TypedAwait resolve={sessionList} errorElement={<TableLoading />}>
-                      {(list) =>
-                        list ? (
-                          <div className="flex h-full flex-col gap-1 overflow-hidden">
-                            <div className="flex items-center justify-end px-3 pt-2">
-                              <ListPagination list={list} />
-                            </div>
-                            <div className="flex-1 overflow-y-auto">
-                              <SessionsTable
-                                sessions={list.sessions}
-                                filters={list.filters}
-                                hasFilters={list.hasFilters}
-                              />
-                            </div>
-                          </div>
-                        ) : (
-                          <TableLoading />
-                        )
-                      }
-                    </TypedAwait>
-                  </Suspense>
-                </ClientTabsContent>
-                <ClientTabsContent value="runs" className="flex-1 overflow-hidden">
-                  <Suspense fallback={<TableLoading />}>
-                    <TypedAwait resolve={runList} errorElement={<TableLoading />}>
-                      {(list) =>
-                        list ? (
-                          <div className="flex h-full flex-col gap-1 overflow-hidden">
-                            <div className="flex items-center justify-end px-3 pt-2">
-                              <ListPagination list={list} />
-                            </div>
-                            <div className="flex-1 overflow-y-auto">
-                              <TaskRunsTable
-                                total={list.runs.length}
-                                hasFilters={list.hasFilters}
-                                filters={list.filters}
-                                runs={list.runs}
-                                variant="dimmed"
-                              />
-                            </div>
-                          </div>
-                        ) : (
-                          <TableLoading />
-                        )
-                      }
-                    </TypedAwait>
-                  </Suspense>
-                </ClientTabsContent>
-              </ClientTabs>
-            </div>
+              <ResizablePanel id="agent-content" min="160px">
+                <AgentContentTabs sessionList={sessionList} runList={runList} />
+              </ResizablePanel>
+            </ResizablePanelGroup>
           </ResizablePanel>
 
           <ResizableHandle id="agent-detail-handle" />
-          <ResizablePanel
-            id="agent-detail"
-            min="280px"
-            default="380px"
-            max="500px"
-            isStaticAtRest
-          >
-            <AgentDetailSidebar agent={agent} />
+          <ResizablePanel id="agent-detail" min="280px" default="380px" max="500px" isStaticAtRest>
+            <AgentDetailSidebar agent={agent} playgroundPath={playgroundPath} />
           </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
@@ -276,21 +193,130 @@ export default function Page() {
   );
 }
 
-function AgentDetailSidebar({ agent }: { agent: AgentDetail }) {
+type LoaderData = ReturnType<typeof useTypedLoaderData<typeof loader>>;
+
+function AgentContentTabs({ sessionList, runList }: Pick<LoaderData, "sessionList" | "runList">) {
+  const [tab, setTab] = useState<"sessions" | "runs">("sessions");
+
+  return (
+    <div className="grid h-full grid-rows-[2.25rem_1fr] overflow-hidden">
+      {/* Tab bar + pagination on the same row */}
+      <div className="flex items-center justify-between border-b border-grid-dimmed bg-background-bright pl-3 pr-1">
+        <TabContainer className="-mb-px translate-y-[2px]">
+          <TabButton
+            isActive={tab === "sessions"}
+            layoutId="agent-content-tabs"
+            onClick={() => setTab("sessions")}
+          >
+            Sessions
+          </TabButton>
+          <TabButton
+            isActive={tab === "runs"}
+            layoutId="agent-content-tabs"
+            onClick={() => setTab("runs")}
+          >
+            Runs
+          </TabButton>
+        </TabContainer>
+        {tab === "sessions" ? (
+          <Suspense fallback={null}>
+            <TypedAwait resolve={sessionList} errorElement={null}>
+              {(list) => (list ? <ListPagination list={list} /> : null)}
+            </TypedAwait>
+          </Suspense>
+        ) : (
+          <Suspense fallback={null}>
+            <TypedAwait resolve={runList} errorElement={null}>
+              {(list) => (list ? <ListPagination list={list} /> : null)}
+            </TypedAwait>
+          </Suspense>
+        )}
+      </div>
+
+      {/* Tab content */}
+      <div className="min-h-0 overflow-hidden">
+        {tab === "sessions" ? (
+          <Suspense fallback={<TableLoading />}>
+            <TypedAwait resolve={sessionList} errorElement={<TableLoading />}>
+              {(list) =>
+                list ? (
+                  <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                    <SessionsTable
+                      sessions={list.sessions}
+                      filters={list.filters}
+                      hasFilters={list.hasFilters}
+                      showTopBorder={false}
+                    />
+                  </div>
+                ) : (
+                  <TableLoading />
+                )
+              }
+            </TypedAwait>
+          </Suspense>
+        ) : (
+          <Suspense fallback={<TableLoading />}>
+            <TypedAwait resolve={runList} errorElement={<TableLoading />}>
+              {(list) =>
+                list ? (
+                  <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                    <TaskRunsTable
+                      total={list.runs.length}
+                      hasFilters={list.hasFilters}
+                      filters={list.filters}
+                      runs={list.runs}
+                      variant="dimmed"
+                      showTopBorder={false}
+                    />
+                  </div>
+                ) : (
+                  <TableLoading />
+                )
+              }
+            </TypedAwait>
+          </Suspense>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AgentDetailSidebar({
+  agent,
+  playgroundPath,
+}: {
+  agent: AgentDetail;
+  playgroundPath: string;
+}) {
   const config = (agent.config ?? {}) as Record<string, unknown>;
-  const agentType =
-    typeof config.type === "string" ? config.type : undefined;
+  const agentType = typeof config.type === "string" ? config.type : undefined;
   const model = typeof config.model === "string" ? config.model : undefined;
-  const instructions =
-    typeof config.instructions === "string" ? config.instructions : undefined;
+  const instructions = typeof config.instructions === "string" ? config.instructions : undefined;
 
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
       <div className="border-b border-grid-dimmed px-3 py-2">
-        <Header2 className="truncate">Agent details</Header2>
+        <Header2 className="flex min-w-0 items-center gap-1.5">
+          <CubeSparkleIcon className="size-4 shrink-0 text-agents" />
+          <span className="truncate">{agent.slug}</span>
+        </Header2>
       </div>
       <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <Property.Table>
+          <Property.Item>
+            <Property.Label>Test this agent</Property.Label>
+            <Property.Value className="mt-1">
+              <LinkButton
+                variant="primary/small"
+                to={playgroundPath}
+                LeadingIcon={BeakerIcon}
+                iconSpacing="gap-x-2"
+                leadingIconClassName="-mx-2"
+              >
+                Test
+              </LinkButton>
+            </Property.Value>
+          </Property.Item>
           <Property.Item>
             <Property.Label>Slug</Property.Label>
             <Property.Value>
@@ -307,7 +333,7 @@ function AgentDetailSidebar({ agent }: { agent: AgentDetail }) {
             <Property.Item>
               <Property.Label>Type</Property.Label>
               <Property.Value>
-                <span className="font-mono text-xs">{agentType}</span>
+                <span className="font-mono text-sm">{agentType}</span>
               </Property.Value>
             </Property.Item>
           )}
@@ -315,7 +341,7 @@ function AgentDetailSidebar({ agent }: { agent: AgentDetail }) {
             <Property.Item>
               <Property.Label>Model</Property.Label>
               <Property.Value>
-                <span className="font-mono text-xs">{model}</span>
+                <span className="font-mono text-sm">{model}</span>
               </Property.Value>
             </Property.Item>
           )}
@@ -335,12 +361,6 @@ function AgentDetailSidebar({ agent }: { agent: AgentDetail }) {
               <DateTime date={agent.createdAt} />
             </Property.Value>
           </Property.Item>
-          <Property.Item>
-            <Property.Label>Last seen</Property.Label>
-            <Property.Value>
-              <RelativeDateTime date={agent.createdAt} />
-            </Property.Value>
-          </Property.Item>
         </Property.Table>
       </div>
     </div>
@@ -348,111 +368,110 @@ function AgentDetailSidebar({ agent }: { agent: AgentDetail }) {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  COMPLETED: "#22c55e",
-  RUNNING: "#3b82f6",
-  FAILED: "#ef4444",
+  COMPLETED: "#28BF5C",
+  RUNNING: "#3B82F6",
+  FAILED: "#E11D48",
   CANCELED: "#878C99",
 };
 
 function ActivityChart({ activity }: { activity: AgentActivity }) {
-  const data = activity.data;
-
-  const xAxisFormatter = useMemo(() => {
-    return (value: number) => {
-      const date = new Date(value);
-      return date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        hour12: false,
-      });
-    };
-  }, []);
-
-  const midnightTicks = useMemo(() => {
-    const ticks: number[] = [];
-    for (const d of data) {
-      const date = new Date(d.bucket);
-      if (date.getHours() === 0) ticks.push(d.bucket);
+  const chartConfig: ChartConfig = useMemo(() => {
+    const cfg: ChartConfig = {};
+    for (const status of activity.statuses) {
+      cfg[status] = {
+        label: status.charAt(0) + status.slice(1).toLowerCase(),
+        color: STATUS_COLOR[status] ?? "#9CA3AF",
+      };
     }
-    return ticks;
-  }, [data]);
+    return cfg;
+  }, [activity.statuses]);
+
+  const { xAxisFormatter, xAxisTicks } = useMemo(() => {
+    const data = activity.data;
+    const range = data.length >= 2 ? data[data.length - 1].bucket - data[0].bucket : 0;
+    const oneDay = 24 * 60 * 60 * 1000;
+    const showTime = range <= oneDay;
+
+    // ClickHouse buckets are aligned to UTC, so we format and pick ticks in
+    // UTC. Using local time here causes off-by-one day labels and a tick
+    // filter that matches zero buckets in any timezone other than UTC.
+    const formatter = (value: number) => {
+      const date = new Date(value);
+      return showTime
+        ? date.toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+            timeZone: "UTC",
+          })
+        : date.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            timeZone: "UTC",
+          });
+    };
+
+    // For multi-day ranges with sub-day buckets, only label the midnight
+    // bucket on each day so we don't get repeated "Jun 1" labels across the
+    // multiple 6h buckets within a single day.
+    const ticks = showTime
+      ? undefined
+      : data.filter((d) => new Date(d.bucket).getUTCHours() === 0).map((d) => d.bucket);
+
+    return { xAxisFormatter: formatter, xAxisTicks: ticks };
+  }, [activity.data]);
+
+  const tooltipLabelFormatter = useMemo(() => {
+    const data = activity.data;
+    // Infer bucket size from the data so we can pick a sensible date format.
+    const bucketMs = data.length >= 2 ? data[1].bucket - data[0].bucket : 0;
+    const oneDay = 24 * 60 * 60 * 1000;
+    const isSubDayBucket = bucketMs > 0 && bucketMs < oneDay;
+
+    return (_label: string, payload: { payload?: { bucket?: number } }[]) => {
+      const ts = payload?.[0]?.payload?.bucket;
+      if (typeof ts !== "number" || !Number.isFinite(ts)) return _label;
+      const date = new Date(ts);
+      return isSubDayBucket
+        ? date.toLocaleString("en-US", {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+            timeZone: "UTC",
+          })
+        : date.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            timeZone: "UTC",
+          });
+    };
+  }, [activity.data]);
 
   return (
-    <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-        <CartesianGrid vertical={false} stroke="#272A2E" strokeDasharray="3 3" />
-        <XAxis
-          dataKey="bucket"
-          tickFormatter={xAxisFormatter}
-          ticks={midnightTicks}
-          height={24}
-          axisLine={false}
-          tickLine={false}
-          tick={{ fontSize: 11, fill: "#878C99" }}
-        />
-        <YAxis
-          width={30}
-          tickMargin={4}
-          axisLine={false}
-          tickLine={false}
-          tick={{ fontSize: 11, fill: "#878C99" }}
-          domain={["auto", (dataMax: number) => Math.max(1, dataMax * 1.15)]}
-        />
-        <Tooltip
-          cursor={{ fill: "rgba(255, 255, 255, 0.06)" }}
-          content={<ActivityTooltip />}
-          allowEscapeViewBox={{ x: true, y: true }}
-          wrapperStyle={{ zIndex: 1000 }}
-          animationDuration={0}
-        />
-        {activity.statuses.map((status) => (
-          <Bar
-            key={status}
-            dataKey={status}
-            stackId="status"
-            fill={STATUS_COLOR[status] ?? "#9CA3AF"}
-            strokeWidth={0}
-            isAnimationActive={false}
-          />
-        ))}
-      </BarChart>
-    </ResponsiveContainer>
+    <Chart.Root
+      config={chartConfig}
+      data={activity.data}
+      dataKey="bucket"
+      series={activity.statuses}
+      fillContainer
+    >
+      <Chart.Bar
+        stackId="status"
+        barRadius={0}
+        xAxisProps={{
+          tickFormatter: xAxisFormatter,
+          // Explicit ticks (one per midnight) on multi-day ranges; recharts
+          // auto-spaces when undefined (sub-day ranges).
+          ...(xAxisTicks ? { ticks: xAxisTicks, interval: 0 } : {}),
+        }}
+        tooltipLabelFormatter={tooltipLabelFormatter}
+      />
+    </Chart.Root>
   );
 }
-
-const ActivityTooltip = ({ active, payload }: TooltipProps<number, string>) => {
-  if (!active || !payload?.length) return null;
-  const timestamp = payload[0]?.payload?.bucket as number | undefined;
-  if (!timestamp) return null;
-  const date = new Date(timestamp);
-  const formatted = date.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  return (
-    <TooltipPortal active={active}>
-      <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
-        <Header3 className="border-b border-b-charcoal-650 pb-2">{formatted}</Header3>
-        <div className="mt-2 flex flex-col gap-1">
-          {payload.map((entry) => {
-            const value = (entry.value as number) ?? 0;
-            return (
-              <div key={entry.dataKey} className="flex items-center gap-2 text-xs">
-                <div className="size-2 rounded-[2px]" style={{ backgroundColor: entry.color }} />
-                <span className="text-text-dimmed">{entry.dataKey}</span>
-                <span className="tabular-nums text-text-bright">{value}</span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </TooltipPortal>
-  );
-};
 
 function ActivityChartSkeleton() {
   return (
@@ -460,16 +479,6 @@ function ActivityChartSkeleton() {
       {Array.from({ length: 42 }).map((_, i) => (
         <div key={i} className="h-full flex-1 bg-charcoal-850" />
       ))}
-    </div>
-  );
-}
-
-function ActivityChartEmpty() {
-  return (
-    <div className="flex h-full items-center justify-center">
-      <Paragraph variant="small" className="text-text-dimmed">
-        No runs in this time range.
-      </Paragraph>
     </div>
   );
 }

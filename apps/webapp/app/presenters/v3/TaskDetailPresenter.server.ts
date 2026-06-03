@@ -159,8 +159,10 @@ export class TaskDetailPresenter {
       environmentId,
       taskSlug,
       bucketSeconds,
-      fromTime: from.toISOString(),
-      toTime: to.toISOString(),
+      // ClickHouse's DateTime64(3, 'UTC') parser rejects the trailing `Z` from
+      // JS toISOString() ("only 23 of 24 bytes was parsed"). Strip it.
+      fromTime: from.toISOString().slice(0, -1),
+      toTime: to.toISOString().slice(0, -1),
     });
 
     if (error) {
