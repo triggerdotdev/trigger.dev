@@ -27,6 +27,7 @@ const CreateSchema = z.object({
   maxOutputTokens: z.string().optional(),
   capabilities: z.string().optional(),
   isHidden: z.string().optional(),
+  pricingUnit: z.string().optional(),
 });
 
 export const action = dashboardAction(
@@ -65,7 +66,7 @@ export const action = dashboardAction(
       return typedjson({ error: "Invalid pricing tiers JSON" }, { status: 400 });
     }
 
-    const { provider, description, contextWindow, maxOutputTokens, capabilities, isHidden } = parsed.data;
+    const { provider, description, contextWindow, maxOutputTokens, capabilities, isHidden, pricingUnit } = parsed.data;
 
     const model = await prisma.llmModel.create({
       data: {
@@ -79,6 +80,7 @@ export const action = dashboardAction(
         maxOutputTokens: maxOutputTokens ? parseInt(maxOutputTokens) || null : null,
         capabilities: capabilities ? capabilities.split(",").map((s) => s.trim()).filter(Boolean) : [],
         isHidden: isHidden === "on",
+        pricingUnit: pricingUnit || null,
       },
     });
 
@@ -118,6 +120,7 @@ export default function AdminLlmModelNewRoute() {
   const [maxOutputTokens, setMaxOutputTokens] = useState("");
   const [capabilities, setCapabilities] = useState("");
   const [isHidden, setIsHidden] = useState(false);
+  const [pricingUnit, setPricingUnit] = useState("tokens");
   const [testInput, setTestInput] = useState("");
   const [tiers, setTiers] = useState<TierData[]>([
     { name: "Standard", isDefault: true, priority: 0, conditions: [], prices: { input: 0, output: 0 } },
@@ -279,6 +282,23 @@ export default function AdminLlmModelNewRoute() {
                 </div>
               </div>
 
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-text-dimmed">Pricing Unit</label>
+                <select
+                  name="pricingUnit"
+                  value={pricingUnit}
+                  onChange={(e) => setPricingUnit(e.target.value)}
+                  className="w-full rounded border border-grid-dimmed bg-charcoal-750 px-2 py-1.5 text-sm text-text-bright"
+                >
+                  <option value="">(unset)</option>
+                  {PRICING_UNITS.map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <label className="flex items-center gap-2 text-xs text-text-dimmed">
                 <input
                   type="checkbox"
@@ -365,6 +385,8 @@ type TierData = {
   conditions: Array<{ usageDetailPattern: string; operator: string; value: number }>;
   prices: Record<string, number>;
 };
+
+const PRICING_UNITS = ["tokens", "characters", "images", "minutes", "requests", "free"];
 
 const COMMON_USAGE_TYPES = [
   "input",
