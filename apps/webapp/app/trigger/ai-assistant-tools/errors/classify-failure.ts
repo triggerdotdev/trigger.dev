@@ -4,7 +4,6 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { classifyFailure as classifyFailureSchema } from "~/lib/ai-assistant/tool-schemas";
 import type { ToolContext } from "../types";
-import { getRunForLLM } from "../runs/run-presenter-adapter";
 
 const FailureClassificationSchema = z.object({
   category: z
@@ -34,6 +33,9 @@ export function createClassifyFailureTool(ctx: ToolContext) {
     ...classifyFailureSchema,
     execute: async (params: { runFriendlyId: string }) => {
       try {
+        // Lazy import to avoid env validation issues
+        const { getRunForLLM } = await import("../runs/run-presenter-adapter");
+
         // Fetch run details including logs
         const runWithTrace = await getRunForLLM(ctx, params.runFriendlyId);
 

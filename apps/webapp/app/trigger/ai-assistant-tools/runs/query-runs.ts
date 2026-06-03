@@ -9,7 +9,7 @@ export function createQueryRunsTool(ctx: ToolContext) {
       try {
         const { AIQueryService } = await import("~/v3/services/aiQueryService.server");
         const { runsSchema } = await import("~/v3/querySchemas");
-        const { clickhouseClient } = await import("~/v3/clickhouse.server");
+        const { clickhouseFactory } = await import("~/services/clickhouse/clickhouseFactoryInstance.server");
         const { prisma } = await import("~/db.server");
 
         // Fetch environment to validate access
@@ -51,9 +51,11 @@ export function createQueryRunsTool(ctx: ToolContext) {
           };
         }
 
-        // Execute the query against ClickHouse, with tenant filtering
-        const { Database } = await import("@internal/clickhouse");
-        const db = new Database(clickhouseClient);
+        // Get the clickhouse client for this organization
+        const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+          environment.organizationId,
+          "standard"
+        );
 
         // Build the final query with tenant filters applied
         const tenantFiltered = `
@@ -68,18 +70,18 @@ export function createQueryRunsTool(ctx: ToolContext) {
           LIMIT 100
         `;
 
-        const results = await clickhouseClient.query({
+        const results = await clickhouse.query({
           query: tenantFiltered,
           format: "JSONCompact",
         });
 
-        const parsedResults = JSON.parse(results.text);
+        const parsedResults = JSON.parse(results.text) as Record<string, unknown>;
 
         return {
           success: true,
           query: queryResult.query,
-          results: parsedResults.data || [],
-          rowCount: parsedResults.rows || 0,
+          results: (parsedResults.data as unknown[]) || [],
+          rowCount: (parsedResults.rows as number) || 0,
         };
       } catch (error) {
         return {

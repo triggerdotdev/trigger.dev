@@ -1,5 +1,5 @@
 import { chat } from "@trigger.dev/sdk/ai";
-import { logger, prompts } from "@trigger.dev/sdk";
+import { logger, prompts, sessions } from "@trigger.dev/sdk";
 import { streamText, stepCountIs, generateText, generateId } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
@@ -9,31 +9,6 @@ import { buildAssistantTools } from "./ai-assistant-tools";
 type ChatMessagesForWrite = NonNullable<
   Parameters<typeof prisma.aiChat.update>[0]["data"]
 >["messages"];
-
-// Idempotently create the chat + session rows before onTurnStart's update
-// runs. Must happen in onPreload (every chat boots preloaded) with onChatStart
-// as the non-preloaded fallback.
-async function ensureChatRows(args: {
-  chatId: string;
-  chatAccessToken: string;
-  userId: string;
-}) {
-  await prisma.aiChat.upsert({
-    where: { id: args.chatId },
-    create: {
-      id: args.chatId,
-      title: "New chat",
-      userId: args.userId,
-      model: "gpt-4.1-mini",
-    },
-    update: {},
-  });
-  await prisma.aiChatSession.upsert({
-    where: { id: args.chatId },
-    create: { id: args.chatId, publicAccessToken: args.chatAccessToken },
-    update: { publicAccessToken: args.chatAccessToken },
-  });
-}
 
 const systemPrompt = prompts.define({
   id: "dashboard-assistant-system",
@@ -61,7 +36,7 @@ The user is viewing: project "{{projectSlug}}" / {{environmentSlug}} environment
 - If you don't know something, say so — don't make things up.
 - When you use a tool, briefly explain what you're doing.
 
-## What you CAN do (V1A + V1B)
+## What you CAN do
 - Search and read Trigger.dev documentation
 - Navigate the user to any dashboard page
 - Explain Trigger.dev features, configuration, and APIs
@@ -83,10 +58,7 @@ The user is viewing: project "{{projectSlug}}" / {{environmentSlug}} environment
 **Evidence:**
 - Error: <message>
 - Failed span: <name, duration>
-- Deploy: <version, time since deploy>
-**Next steps:**
-1. ...
-2. ...`,
+- Deploy: <version, time since deploy>`,
 });
 
 export const dashboardAssistant = chat
@@ -108,7 +80,7 @@ export const dashboardAssistant = chat
     // Declared here (not just on streamText) so the SDK re-applies each tool's
     // `toModelOutput` when re-converting prior-turn history. run() reads them
     // back via `tools`.
-    tools: ({ clientData }) => buildAssistantTools(clientData!),
+    tools: async ({ clientData }) => buildAssistantTools(clientData!),
 
     uiMessageStreamOptions: {
       onError: (error: unknown) => {
@@ -130,16 +102,78 @@ export const dashboardAssistant = chat
       chat.prompt.set(resolved);
     },
 
-    onPreload: async ({ chatId, chatAccessToken, clientData }) => {
+    onPreload: async ({ chatId, clientData }) => {
       if (!clientData) return;
-      await ensureChatRows({ chatId, chatAccessToken, userId: clientData.userId });
+      // Create session through Trigger platform and local chat record
+      await sessions.start({
+        type: "chat.agent",
+        externalId: chatId,
+        taskIdentifier: "dashboard-assistant",
+        triggerConfig: {
+          basePayload: {
+            userId: clientData.userId,
+            organizationSlug: clientData.organizationSlug,
+            projectSlug: clientData.projectSlug,
+            environmentSlug: clientData.environmentSlug,
+            currentPage: clientData.currentPage,
+            currentParams: clientData.currentParams,
+          },
+        },
+        tags: [
+          `user:${clientData.userId}`,
+          `org:${clientData.organizationSlug}`,
+          `project:${clientData.projectSlug}`,
+        ],
+      });
+      // Create local chat record for message history
+      await prisma.aiChat.upsert({
+        where: { id: chatId },
+        create: {
+          id: chatId,
+          title: "New chat",
+          userId: clientData.userId,
+          model: "gpt-4.1-mini",
+        },
+        update: {},
+      });
     },
 
-    // Fallback for non-preloaded runs; onPreload already created the rows.
-    onChatStart: async ({ chatId, chatAccessToken, clientData, preloaded }) => {
+    // Fallback for non-preloaded runs; onPreload already created the session.
+    onChatStart: async ({ chatId, clientData, preloaded }) => {
       if (preloaded) return;
       if (!clientData) return;
-      await ensureChatRows({ chatId, chatAccessToken, userId: clientData.userId });
+      // Create session through Trigger platform and local chat record
+      await sessions.start({
+        type: "chat.agent",
+        externalId: chatId,
+        taskIdentifier: "dashboard-assistant",
+        triggerConfig: {
+          basePayload: {
+            userId: clientData.userId,
+            organizationSlug: clientData.organizationSlug,
+            projectSlug: clientData.projectSlug,
+            environmentSlug: clientData.environmentSlug,
+            currentPage: clientData.currentPage,
+            currentParams: clientData.currentParams,
+          },
+        },
+        tags: [
+          `user:${clientData.userId}`,
+          `org:${clientData.organizationSlug}`,
+          `project:${clientData.projectSlug}`,
+        ],
+      });
+      // Create local chat record for message history
+      await prisma.aiChat.upsert({
+        where: { id: chatId },
+        create: {
+          id: chatId,
+          title: "New chat",
+          userId: clientData.userId,
+          model: "gpt-4.1-mini",
+        },
+        update: {},
+      });
     },
 
     // Await the write (not chat.defer): a deferred write loses the user
@@ -169,20 +203,12 @@ export const dashboardAssistant = chat
       }
     },
 
-    // Atomic write of messages + session state; a non-atomic write races the
-    // resume-replay.
-    onTurnComplete: async ({ chatId, uiMessages, chatAccessToken, lastEventId }) => {
-      await prisma.$transaction([
-        prisma.aiChat.update({
-          where: { id: chatId },
-          data: { messages: uiMessages as unknown as ChatMessagesForWrite },
-        }),
-        prisma.aiChatSession.upsert({
-          where: { id: chatId },
-          create: { id: chatId, publicAccessToken: chatAccessToken, lastEventId },
-          update: { publicAccessToken: chatAccessToken, lastEventId },
-        }),
-      ]);
+    // Persist messages after turn completes
+    onTurnComplete: async ({ chatId, uiMessages }) => {
+      await prisma.aiChat.update({
+        where: { id: chatId },
+        data: { messages: uiMessages as unknown as ChatMessagesForWrite },
+      });
     },
 
     compaction: {

@@ -1,59 +1,81 @@
 import type { ClientData } from "./types";
 import { buildToolContext } from "./types";
 
-// V1A - Docs and Navigation
+// V1A - Docs and Navigation (always safe to import)
 import { createSearchDocsTool } from "./docs/search-docs";
 import { createNavigateToPageTool } from "./navigation/navigate-to-page";
 import { createSearchPagesTool } from "./navigation/search-pages";
 import { createGetCurrentContextTool } from "./navigation/get-current-context";
 
-// V1B - Runs domain
-import { createListRunsTool } from "./runs/list-runs";
-import { createGetRunDetailsTool } from "./runs/get-run-details";
-import { createGetRunLogsTool } from "./runs/get-run-logs";
-import { createGetRunGraphTool } from "./runs/get-run-graph";
-import { createApplyRunFiltersTool } from "./runs/apply-run-filters";
-import { createQueryRunsTool } from "./runs/query-runs";
-
-// V1B - Errors domain
-import { createListErrorsTool } from "./errors/list-errors";
-import { createGetErrorDetailsTool } from "./errors/get-error-details";
-import { createFindSimilarErrorsTool } from "./errors/find-similar-errors";
-import { createClassifyFailureTool } from "./errors/classify-failure";
-
-// V1B - Analytics domain
-import { createSummarizeCurrentViewTool } from "./analytics/summarize-current-view";
-import { createAggregateRunsTool } from "./analytics/aggregate-runs";
-import { createCorrelateRunsWithDeployTool } from "./analytics/correlate-runs-with-deploy";
-
-// Builds the tool set for a client context. Called from the agent's run() per turn.
-export function buildAssistantTools(clientData: ClientData) {
-  const ctx = buildToolContext(clientData);
+// V1B tools are lazy-loaded to avoid env.server.ts at CLI indexing time
+async function loadV1BTools() {
+  const { createListRunsTool } = await import("./runs/list-runs");
+  const { createGetRunDetailsTool } = await import("./runs/get-run-details");
+  const { createGetRunLogsTool } = await import("./runs/get-run-logs");
+  const { createGetRunGraphTool } = await import("./runs/get-run-graph");
+  const { createApplyRunFiltersTool } = await import("./runs/apply-run-filters");
+  const { createQueryRunsTool } = await import("./runs/query-runs");
+  const { createListErrorsTool } = await import("./errors/list-errors");
+  const { createGetErrorDetailsTool } = await import("./errors/get-error-details");
+  const { createFindSimilarErrorsTool } = await import("./errors/find-similar-errors");
+  const { createClassifyFailureTool } = await import("./errors/classify-failure");
+  const { createSummarizeCurrentViewTool } = await import("./analytics/summarize-current-view");
+  const { createAggregateRunsTool } = await import("./analytics/aggregate-runs");
+  const { createCorrelateRunsWithDeployTool } = await import("./analytics/correlate-runs-with-deploy");
 
   return {
-    // V1A - Docs and Navigation
+    createListRunsTool,
+    createGetRunDetailsTool,
+    createGetRunLogsTool,
+    createGetRunGraphTool,
+    createApplyRunFiltersTool,
+    createQueryRunsTool,
+    createListErrorsTool,
+    createGetErrorDetailsTool,
+    createFindSimilarErrorsTool,
+    createClassifyFailureTool,
+    createSummarizeCurrentViewTool,
+    createAggregateRunsTool,
+    createCorrelateRunsWithDeployTool,
+  };
+}
+
+// Builds the tool set for a client context. Called from the agent's run() per turn.
+export async function buildAssistantTools(clientData: ClientData) {
+  const ctx = buildToolContext(clientData);
+
+  // V1A tools are always available
+  const v1aTools = {
     searchDocs: createSearchDocsTool(),
     navigateToPage: createNavigateToPageTool(ctx),
     searchPages: createSearchPagesTool(ctx),
     getCurrentContext: createGetCurrentContextTool(ctx),
+  };
+
+  // V1B tools are lazy-loaded
+  const v1bTools = await loadV1BTools();
+
+  return {
+    // V1A - Docs and Navigation
+    ...v1aTools,
 
     // V1B - Runs
-    listRuns: createListRunsTool(ctx),
-    getRunDetails: createGetRunDetailsTool(ctx),
-    getRunLogs: createGetRunLogsTool(ctx),
-    getRunGraph: createGetRunGraphTool(ctx),
-    applyRunFilters: createApplyRunFiltersTool(ctx),
-    queryRuns: createQueryRunsTool(ctx),
+    listRuns: v1bTools.createListRunsTool(ctx),
+    getRunDetails: v1bTools.createGetRunDetailsTool(ctx),
+    getRunLogs: v1bTools.createGetRunLogsTool(ctx),
+    getRunGraph: v1bTools.createGetRunGraphTool(ctx),
+    applyRunFilters: v1bTools.createApplyRunFiltersTool(ctx),
+    queryRuns: v1bTools.createQueryRunsTool(ctx),
 
     // V1B - Errors
-    listErrors: createListErrorsTool(ctx),
-    getErrorDetails: createGetErrorDetailsTool(ctx),
-    findSimilarErrors: createFindSimilarErrorsTool(ctx),
-    classifyFailure: createClassifyFailureTool(ctx),
+    listErrors: v1bTools.createListErrorsTool(ctx),
+    getErrorDetails: v1bTools.createGetErrorDetailsTool(ctx),
+    findSimilarErrors: v1bTools.createFindSimilarErrorsTool(ctx),
+    classifyFailure: v1bTools.createClassifyFailureTool(ctx),
 
     // V1B - Analytics
-    summarizeCurrentView: createSummarizeCurrentViewTool(ctx),
-    aggregateRuns: createAggregateRunsTool(ctx),
-    correlateRunsWithDeploy: createCorrelateRunsWithDeployTool(ctx),
+    summarizeCurrentView: v1bTools.createSummarizeCurrentViewTool(ctx),
+    aggregateRuns: v1bTools.createAggregateRunsTool(ctx),
+    correlateRunsWithDeploy: v1bTools.createCorrelateRunsWithDeployTool(ctx),
   };
 }

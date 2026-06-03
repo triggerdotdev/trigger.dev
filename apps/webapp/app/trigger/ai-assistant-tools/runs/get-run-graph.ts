@@ -1,13 +1,13 @@
 import { tool } from "ai";
 import { getRunGraph as getRunGraphSchema } from "~/lib/ai-assistant/tool-schemas";
-import type { ToolContext, RunSummary } from "../types";
-import { getRunForLLM } from "./run-presenter-adapter";
+import type { ToolContext } from "../types";
 
 export function createGetRunGraphTool(ctx: ToolContext) {
   return tool({
     ...getRunGraphSchema,
     execute: async (params: { runFriendlyId: string }) => {
       try {
+        const { getRunForLLM } = await import("./run-presenter-adapter");
         const runWithTrace = await getRunForLLM(ctx, params.runFriendlyId);
 
         if (!runWithTrace) {
@@ -25,7 +25,7 @@ export function createGetRunGraphTool(ctx: ToolContext) {
           root: run,
           parent: run.parentRunId ? { id: run.parentRunId } : null,
           ancestorChain: [] as string[],
-          children: [] as RunSummary[],
+          children: [] as any[],
         };
 
         // If we have root run info, that's the top of the chain
@@ -40,8 +40,7 @@ export function createGetRunGraphTool(ctx: ToolContext) {
 
             const childRuns = await prisma.taskRun.findMany({
               where: {
-                parentRunId: { not: null },
-                rootTaskRunId: run.id,
+                parentRunId: run.id,
                 runtimeEnvironment: {
                   slug: ctx.clientData.environmentSlug,
                   project: {
@@ -52,20 +51,18 @@ export function createGetRunGraphTool(ctx: ToolContext) {
               select: {
                 friendlyId: true,
                 status: true,
-                isFinished: true,
                 startedAt: true,
-                completedAt: true,
+                finishedAt: true,
               },
               orderBy: { createdAt: "asc" },
               take: 20,
             });
 
-            graph.children = childRuns.map((child) => ({
+            graph.children = childRuns.map((child: any) => ({
               id: child.friendlyId,
               status: child.status,
-              isFinished: child.isFinished,
-              startedAt: child.startedAt?.toISOString(),
-              completedAt: child.completedAt?.toISOString(),
+              startedAt: child.startedAt ? new Date(child.startedAt).toISOString() : undefined,
+              finishedAt: child.finishedAt ? new Date(child.finishedAt).toISOString() : undefined,
             }));
           } catch {
             // If we can't fetch children, just return the root
