@@ -224,10 +224,10 @@ function TaskDetailSidebar({ task, testPath }: { task: TaskDetail; testPath: str
                 variant="primary/small"
                 to={testPath}
                 LeadingIcon={BeakerIcon}
-                iconSpacing="gap-x-1"
-                leadingIconClassName="-mx-1.5 text-tests"
+                iconSpacing="gap-x-2"
+                leadingIconClassName="-mx-2"
               >
-                Test task
+                Test
               </LinkButton>
             </Property.Value>
           </Property.Item>

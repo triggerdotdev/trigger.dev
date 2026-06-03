@@ -314,13 +314,13 @@ export default function Page() {
                                     icon={RunsIcon}
                                     to={runsPath}
                                     title="View runs"
-                                    leadingIconClassName="text-runs"
+                                    leadingIconClassName="-mx-1 text-runs"
                                   />
                                   <PopoverMenuItem
                                     icon={BeakerIcon}
                                     to={testPath}
                                     title="Test task"
-                                    leadingIconClassName="text-tests"
+                                    leadingIconClassName="-mx-1 text-tests"
                                   />
                                 </>
                               }

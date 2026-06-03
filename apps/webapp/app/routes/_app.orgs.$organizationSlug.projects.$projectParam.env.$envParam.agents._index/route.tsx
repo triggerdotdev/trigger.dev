@@ -343,7 +343,7 @@ export default function AgentsPage() {
                                   icon={RunsIcon}
                                   to={runsPath}
                                   title="View runs"
-                                  leadingIconClassName="text-runs"
+                                  leadingIconClassName="-mx-1 text-runs"
                                 />
                                 <PopoverMenuItem
                                   icon={BeakerIcon}
@@ -354,7 +354,7 @@ export default function AgentsPage() {
                                     agent.slug
                                   )}
                                   title="Test"
-                                  leadingIconClassName="text-tests"
+                                  leadingIconClassName="-mx-1 text-tests"
                                 />
                               </>
                             }

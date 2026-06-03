@@ -311,7 +311,7 @@ function AgentDetailSidebar({
                 to={playgroundPath}
                 LeadingIcon={BeakerIcon}
                 iconSpacing="gap-x-2"
-                leadingIconClassName="-mx-2 text-tests"
+                leadingIconClassName="-mx-2"
               >
                 Test
               </LinkButton>

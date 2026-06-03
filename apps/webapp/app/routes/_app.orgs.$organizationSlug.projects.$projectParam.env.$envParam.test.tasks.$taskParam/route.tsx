@@ -1,7 +1,6 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import {
-  BeakerIcon,
   StarIcon,
   RectangleStackIcon,
   TrashIcon,
@@ -79,6 +78,7 @@ import { RegionsPresenter, type Region } from "~/presenters/v3/RegionsPresenter.
 import { TestSidebarTabs } from "./TestSidebarTabs";
 import { AIPayloadTabContent } from "./AIPayloadTabContent";
 import { SchemaTabContent } from "./SchemaTabContent";
+import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 
 type FormAction = "create-template" | "delete-template" | "run-scheduled" | "run-standard";
 
@@ -880,7 +880,8 @@ function StandardTaskForm({
             type="submit"
             variant="primary/medium"
             LeadingIcon={BeakerIcon}
-            leadingIconClassName="text-tests"
+            iconSpacing="gap-x-2.5"
+            leadingIconClassName="-mx-2"
             shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
             name="formAction"
             value={"run-standard" satisfies FormAction}
@@ -1458,7 +1459,8 @@ function ScheduledTaskForm({
             type="submit"
             variant="primary/medium"
             LeadingIcon={BeakerIcon}
-            leadingIconClassName="text-tests"
+            iconSpacing="gap-x-2.5"
+            leadingIconClassName="-mx-2"
             shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
             name="formAction"
             value={"run-scheduled" satisfies FormAction}
