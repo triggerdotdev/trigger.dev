@@ -125,17 +125,6 @@ export const dashboardAssistant = chat
           `project:${clientData.projectSlug}`,
         ],
       });
-      // Create local chat record for message history
-      await prisma.aiChat.upsert({
-        where: { id: chatId },
-        create: {
-          id: chatId,
-          title: "New chat",
-          userId: clientData.userId,
-          model: "gpt-4.1-mini",
-        },
-        update: {},
-      });
     },
 
     // Fallback for non-preloaded runs; onPreload already created the session.
@@ -163,25 +152,22 @@ export const dashboardAssistant = chat
           `project:${clientData.projectSlug}`,
         ],
       });
-      // Create local chat record for message history
+    },
+
+    // Await the write (not chat.defer): a deferred write loses the user
+    // message on a mid-stream page refresh.
+    onTurnStart: async ({ chatId, uiMessages, clientData }) => {
+      const messages = uiMessages as unknown as ChatMessagesForWrite;
       await prisma.aiChat.upsert({
         where: { id: chatId },
         create: {
           id: chatId,
           title: "New chat",
-          userId: clientData.userId,
+          userId: clientData?.userId ?? "",
           model: "gpt-4.1-mini",
+          messages,
         },
-        update: {},
-      });
-    },
-
-    // Await the write (not chat.defer): a deferred write loses the user
-    // message on a mid-stream page refresh.
-    onTurnStart: async ({ chatId, uiMessages }) => {
-      await prisma.aiChat.update({
-        where: { id: chatId },
-        data: { messages: uiMessages as unknown as ChatMessagesForWrite },
+        update: { messages },
       });
 
       if (Array.isArray(uiMessages)) {

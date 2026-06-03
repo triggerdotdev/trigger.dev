@@ -75,6 +75,7 @@ export function AIChatPanel() {
     id: currentChatId,
     messages: currentChatMessages,
     transport,
+    resume: (currentChatMessages?.length ?? 0) > 0,
   });
 
   const stop = useCallback(() => {

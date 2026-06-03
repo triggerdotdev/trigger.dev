@@ -189,3 +189,24 @@ export const correlateRunsWithDeploy = tool({
     period: z.string().optional().describe("Time period (e.g., '1h', '24h', '7d')"),
   }),
 });
+
+// Tool labels for UI display (3-4 words max, action-oriented)
+export const toolLabels: Record<string, string> = {
+  searchDocs: "Searching documentation",
+  navigateToPage: "Navigating to page",
+  getCurrentContext: "Checking current context",
+  searchPages: "Searching dashboard pages",
+  listRuns: "Querying task runs",
+  getRunDetails: "Loading run details",
+  getRunLogs: "Fetching run logs",
+  getRunGraph: "Building run hierarchy",
+  applyRunFilters: "Applying run filters",
+  queryRuns: "Running analytics query",
+  listErrors: "Loading error groups",
+  getErrorDetails: "Loading error details",
+  findSimilarErrors: "Finding similar errors",
+  classifyFailure: "Classifying run failure",
+  summarizeCurrentView: "Analyzing current view",
+  aggregateRuns: "Computing aggregations",
+  correlateRunsWithDeploy: "Checking deploy correlation",
+};
