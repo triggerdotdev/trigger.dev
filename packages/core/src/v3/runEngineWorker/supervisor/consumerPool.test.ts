@@ -718,4 +718,65 @@ describe("RunQueueConsumerPool", () => {
       expect(pool.size).toBe(1);
     });
   });
+
+  describe("Backpressure scale-up freeze", () => {
+    it("freezes scale-up while shouldPauseScaling returns true, then resumes", async () => {
+      let paused = true;
+      pool = new RunQueueConsumerPool({
+        ...defaultOptions,
+        scaling: {
+          strategy: "smooth",
+          minConsumerCount: 1,
+          maxConsumerCount: 10,
+          scaleUpCooldownMs: 0,
+          disableJitter: true,
+          shouldPauseScaling: () => paused,
+        },
+      });
+      await pool.start();
+      expect(pool.size).toBe(1);
+
+      // A high queue would normally scale up, but backpressure freezes it.
+      pool.updateQueueLength(10);
+      advanceTimeAndProcessMetrics(1100);
+      expect(pool.size).toBe(1);
+
+      // Once backpressure releases, scaling resumes.
+      paused = false;
+      pool.updateQueueLength(10);
+      advanceTimeAndProcessMetrics(1100);
+      expect(pool.size).toBeGreaterThan(1);
+    });
+
+    it("still allows scale-down while paused", async () => {
+      let paused = false;
+      pool = new RunQueueConsumerPool({
+        ...defaultOptions,
+        scaling: {
+          strategy: "smooth",
+          minConsumerCount: 1,
+          maxConsumerCount: 10,
+          scaleUpCooldownMs: 0,
+          scaleDownCooldownMs: 0,
+          disableJitter: true,
+          shouldPauseScaling: () => paused,
+        },
+      });
+      await pool.start();
+
+      pool.updateQueueLength(10);
+      advanceTimeAndProcessMetrics(1100);
+      const scaledUp = pool.size;
+      expect(scaledUp).toBeGreaterThan(1);
+
+      // Pausing must not block shrinking - we want to drain down, just not grow.
+      // Loop to let the EWMA-smoothed queue length fall (one batch isn't enough).
+      paused = true;
+      for (let i = 0; i < 5; i++) {
+        pool.updateQueueLength(0);
+        advanceTimeAndProcessMetrics(1100);
+      }
+      expect(pool.size).toBeLessThan(scaledUp);
+    });
+  });
 });
