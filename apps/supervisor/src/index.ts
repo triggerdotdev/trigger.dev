@@ -28,6 +28,9 @@ import { FailedPodHandler } from "./services/failedPodHandler.js";
 import { getWorkerToken } from "./workerToken.js";
 import { OtlpTraceService } from "./services/otlpTraceService.js";
 import { extractTraceparent, getRestoreRunnerId } from "./util.js";
+import { createRedisClient } from "@internal/redis";
+import { BackpressureMonitor } from "./backpressure/backpressureMonitor.js";
+import { RedisBackpressureSignalSource } from "./backpressure/redisBackpressureSignalSource.js";
 import {
   fromContext,
   recordPhaseSince,
@@ -54,6 +57,7 @@ class ManagedSupervisor {
   private readonly podCleaner?: PodCleaner;
   private readonly failedPodHandler?: FailedPodHandler;
   private readonly tracing?: OtlpTraceService;
+  private readonly backpressureMonitor?: BackpressureMonitor;
 
   private readonly isKubernetes = isKubernetesEnvironment(env.KUBERNETES_FORCE_ENABLED);
   private readonly warmStartUrl = env.TRIGGER_WARM_START_URL;
@@ -181,6 +185,38 @@ class ManagedSupervisor {
       );
     }
 
+    if (env.TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED) {
+      const backpressureRedis = createRedisClient(
+        {
+          host: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST,
+          port: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PORT,
+          username: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_USERNAME,
+          password: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PASSWORD,
+          ...(env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_TLS_DISABLED ? {} : { tls: {} }),
+        },
+        {
+          onError: (error) =>
+            this.logger.error("Backpressure redis error", { error: error.message }),
+        }
+      );
+
+      this.backpressureMonitor = new BackpressureMonitor({
+        enabled: true,
+        source: new RedisBackpressureSignalSource(
+          backpressureRedis,
+          env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_KEY
+        ),
+        refreshIntervalMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_REFRESH_MS,
+        maxVerdictAgeMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_MAX_VERDICT_AGE_MS,
+      });
+
+      this.logger.log("🛑 Dequeue backpressure enabled", {
+        key: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_KEY,
+        refreshIntervalMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_REFRESH_MS,
+        maxVerdictAgeMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_MAX_VERDICT_AGE_MS,
+      });
+    }
+
     this.workerSession = new SupervisorSession({
       workerToken: getWorkerToken(),
       apiUrl: env.TRIGGER_API_URL,
@@ -206,13 +242,12 @@ class ManagedSupervisor {
       heartbeatIntervalSeconds: env.TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS,
       sendRunDebugLogs: env.SEND_RUN_DEBUG_LOGS,
       preDequeue: async () => {
-        if (!env.RESOURCE_MONITOR_ENABLED) {
-          return {};
-        }
+        // Synchronous, hot-path-safe cached read; undefined when backpressure is disabled.
+        const skipForBackpressure = this.backpressureMonitor?.shouldSkipDequeue() ?? false;
 
-        if (this.isKubernetes) {
-          // Not used in k8s for now
-          return {};
+        if (!env.RESOURCE_MONITOR_ENABLED || this.isKubernetes) {
+          // Resource monitor is not used in k8s; backpressure is the only gate there.
+          return { skipDequeue: skipForBackpressure };
         }
 
         const resources = await this.resourceMonitor.getNodeResources();
@@ -222,7 +257,10 @@ class ManagedSupervisor {
             cpu: resources.cpuAvailable,
             memory: resources.memoryAvailable,
           },
-          skipDequeue: resources.cpuAvailable < 0.25 || resources.memoryAvailable < 0.25,
+          skipDequeue:
+            skipForBackpressure ||
+            resources.cpuAvailable < 0.25 ||
+            resources.memoryAvailable < 0.25,
         };
       },
       preSkip: async () => {
@@ -552,6 +590,7 @@ class ManagedSupervisor {
     this.logger.log("Starting up");
 
     // Optional services
+    this.backpressureMonitor?.start();
     await this.podCleaner?.start();
     await this.failedPodHandler?.start();
     await this.metricsServer?.start();
@@ -576,6 +615,7 @@ class ManagedSupervisor {
     await this.workerSession.stop();
 
     // Optional services
+    this.backpressureMonitor?.stop();
     await this.podCleaner?.stop();
     await this.failedPodHandler?.stop();
     await this.metricsServer?.stop();
