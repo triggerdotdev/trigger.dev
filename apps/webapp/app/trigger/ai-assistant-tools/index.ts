@@ -24,6 +24,9 @@ async function loadServerTools() {
   const { createSummarizeCurrentViewTool } = await import("./analytics/summarize-current-view");
   const { createAggregateRunsTool } = await import("./analytics/aggregate-runs");
   const { createCorrelateRunsWithDeployTool } = await import("./analytics/correlate-runs-with-deploy");
+  const { createListTestableTasksTool } = await import("./test/list-testable-tasks");
+  const { createGenerateTestPayloadTool } = await import("./test/generate-test-payload");
+  const { createRunTestTaskTool } = await import("./test/run-test-task");
 
   return {
     createListRunsTool,
@@ -40,6 +43,9 @@ async function loadServerTools() {
     createSummarizeCurrentViewTool,
     createAggregateRunsTool,
     createCorrelateRunsWithDeployTool,
+    createListTestableTasksTool,
+    createGenerateTestPayloadTool,
+    createRunTestTaskTool,
   };
 }
 
@@ -76,5 +82,10 @@ export async function buildAssistantTools(clientData: ClientData) {
     summarizeCurrentView: serverTools.createSummarizeCurrentViewTool(ctx),
     aggregateRuns: serverTools.createAggregateRunsTool(ctx),
     correlateRunsWithDeploy: serverTools.createCorrelateRunsWithDeployTool(ctx),
+
+    // Test
+    listTestableTasks: serverTools.createListTestableTasksTool(ctx),
+    generateTestPayload: serverTools.createGenerateTestPayloadTool(ctx),
+    runTestTask: serverTools.createRunTestTaskTool(ctx),
   };
 }

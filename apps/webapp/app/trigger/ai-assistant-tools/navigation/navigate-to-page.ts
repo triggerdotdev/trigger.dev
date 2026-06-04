@@ -1,13 +1,26 @@
 import { tool } from "ai";
 import { navigateToPage as navigateSchema } from "~/lib/ai-assistant/tool-schemas";
-import { v3RunPath, v3RunSpanPath } from "~/utils/pathBuilder";
+import { v3RunPath, v3RunSpanPath, v3TestTaskPath } from "~/utils/pathBuilder";
 import type { ToolContext } from "../types";
 import { findBestMatch } from "./page-matcher";
 
 export function createNavigateToPageTool(ctx: ToolContext) {
   return tool({
     ...navigateSchema,
-    execute: async ({ destination, runId, spanId }) => {
+    execute: async ({ destination, runId, spanId, testTaskId }) => {
+      // Deep-link to a task's Test page takes precedence — the user wants to test it.
+      if (testTaskId) {
+        const url = v3TestTaskPath(ctx.org, ctx.project, ctx.env, {
+          taskIdentifier: testTaskId,
+        });
+        return {
+          found: true,
+          pageName: `Test ${testTaskId}`,
+          description: "Test page for the task — fill a payload and run it",
+          url,
+        };
+      }
+
       // Deep-link to a specific run (optionally a span within it) takes precedence
       // over a named-section lookup.
       if (runId) {

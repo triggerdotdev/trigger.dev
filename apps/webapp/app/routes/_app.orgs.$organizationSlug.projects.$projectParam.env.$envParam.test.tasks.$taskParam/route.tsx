@@ -35,6 +35,7 @@ import { Select, SelectItem } from "~/components/primitives/Select";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { TimezoneList } from "~/components/scheduled/timezones";
+import { useOptionalAIChat } from "~/components/ai-assistant/AIChatProvider";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useParams, Form, useActionData, useFetcher, useSubmit } from "@remix-run/react";
@@ -383,6 +384,18 @@ function StandardTaskForm({
   }, []);
 
   const currentPayloadJson = useRef<string>(defaultPayloadJson);
+
+  // The AI assistant can generate a payload for this task and ask us to fill the
+  // editor with it (matching what the on-page AI does). Consume it once.
+  const aiChat = useOptionalAIChat();
+  const pendingTestFill = aiChat?.pendingTestFill;
+  const clearTestFill = aiChat?.clearTestFill;
+  useEffect(() => {
+    if (!pendingTestFill || pendingTestFill.taskIdentifier !== task.taskIdentifier) return;
+    setPayload(pendingTestFill.payload);
+    currentPayloadJson.current = pendingTestFill.payload;
+    clearTestFill?.();
+  }, [pendingTestFill, task.taskIdentifier, setPayload, clearTestFill]);
 
   const [defaultMetadataJson, setDefaultMetadataJson] = useState<string>(
     lastRun?.seedMetadata ?? startingJson

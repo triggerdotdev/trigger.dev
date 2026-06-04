@@ -17,6 +17,7 @@ import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
 import { AIChatToolCall } from "./AIChatToolCall";
 import { FailureSummaryCard, FilterChips, MiniTable } from "./AIChatToolResults";
 import { toolLabels } from "~/lib/ai-assistant/tool-schemas";
+import { useAIChat } from "./AIChatProvider";
 
 interface AIChatMessagesProps {
   messages: UIMessage[];
@@ -38,6 +39,7 @@ export function AIChatMessages({
   onSendMessage,
 }: AIChatMessagesProps) {
   const navigate = useNavigate();
+  const { requestTestFill } = useAIChat();
   const autoScrollRef = useAutoScrollToBottom([messages]);
   const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
@@ -75,9 +77,39 @@ export function AIChatMessages({
             }
           }
         }
+
+        // Fill the Test page editor with a generated payload (the Test page for
+        // the matching task consumes it). Fire-and-forget; not deduped per-key
+        // because re-applying the same payload is harmless.
+        if (toolName === "generateTestPayload" && toolPart.state === "output-available") {
+          const key = `${lastMessage.id}-${idx}`;
+          if (!navigatedMessagesRef.current.has(key)) {
+            const result = toolPart.output as {
+              success?: boolean;
+              taskIdentifier?: string;
+              payload?: string;
+            };
+            if (result?.success && result.taskIdentifier && result.payload) {
+              navigatedMessagesRef.current.add(key);
+              requestTestFill({ taskIdentifier: result.taskIdentifier, payload: result.payload });
+            }
+          }
+        }
+
+        // Navigate to the run that runTestTask just triggered so the user can watch it.
+        if (toolName === "runTestTask" && toolPart.state === "output-available") {
+          const key = `${lastMessage.id}-${idx}`;
+          if (!navigatedMessagesRef.current.has(key)) {
+            const result = toolPart.output as { success?: boolean; url?: string };
+            if (result?.success && result.url) {
+              navigatedMessagesRef.current.add(key);
+              navigate(result.url);
+            }
+          }
+        }
       }
     });
-  }, [messages, status, navigate, isStreaming]);
+  }, [messages, status, navigate, requestTestFill, isStreaming]);
 
   // Feedback bar only attaches to the most recent assistant turn.
   let lastAssistantIndex = -1;
@@ -306,6 +338,27 @@ function ToolOutput({
     return <MiniTable columns={columns} rows={rows} />;
   }
 
+  if (toolName === "listTestableTasks" && Array.isArray(result?.tasks) && result.tasks.length > 0) {
+    const tasks = result.tasks as Array<{ taskIdentifier: string; triggerSource?: string }>;
+    const columns = ["Task", "Type"];
+    const rows = tasks.map((t) => [t.taskIdentifier, friendlyStatus(t.triggerSource)]);
+    return <MiniTable columns={columns} rows={rows} />;
+  }
+
+  if (toolName === "generateTestPayload" && result?.success && typeof result.payload === "string") {
+    return <GeneratedPayloadCard payload={result.payload} />;
+  }
+
+  if (toolName === "runTestTask" && result?.success && result.runId) {
+    return (
+      <TestRunCard
+        taskIdentifier={String(result.taskIdentifier ?? "")}
+        runId={String(result.runId)}
+        url={result.url ? String(result.url) : undefined}
+      />
+    );
+  }
+
   return <ToolResultCard toolName={toolName} input={input} output={output} />;
 }
 
@@ -316,6 +369,49 @@ function capitalize(value: string) {
 function friendlyStatus(status?: string) {
   if (!status) return "—";
   return capitalize(status.replace(/_/g, " ").toLowerCase());
+}
+
+function GeneratedPayloadCard({ payload }: { payload: string }) {
+  return (
+    <div className="my-1 overflow-hidden rounded-md border border-grid-bright bg-charcoal-800/40">
+      <div className="flex items-center gap-1.5 border-b border-grid-bright px-3 py-1.5">
+        <SparklesIcon className="size-3.5 shrink-0 text-indigo-400" />
+        <span className="text-xs text-text-bright">Generated test payload</span>
+        <span className="ml-auto text-[10px] text-text-dimmed">filled into the editor</span>
+      </div>
+      <pre className="max-h-56 overflow-auto bg-charcoal-900 p-2.5 text-xs text-text-dimmed">
+        {payload}
+      </pre>
+    </div>
+  );
+}
+
+function TestRunCard({
+  taskIdentifier,
+  runId,
+  url,
+}: {
+  taskIdentifier: string;
+  runId: string;
+  url?: string;
+}) {
+  const navigate = useNavigate();
+  return (
+    <button
+      type="button"
+      onClick={() => url && navigate(url)}
+      disabled={!url}
+      className="group my-1 flex w-full items-center gap-2.5 rounded-md border border-green-500/30 bg-green-500/5 px-3 py-2 text-left transition-colors animate-in fade-in slide-in-from-bottom-1 duration-150 hover:border-green-500/50 enabled:hover:bg-green-500/10"
+    >
+      <ArrowTopRightOnSquareIcon className="size-4 shrink-0 text-green-400" />
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate text-sm text-text-bright group-hover:text-green-300">
+          Test run triggered{taskIdentifier ? ` — ${taskIdentifier}` : ""}
+        </span>
+        <span className="truncate text-xs text-text-dimmed">{runId}</span>
+      </span>
+    </button>
+  );
 }
 
 function ToolResultCard({

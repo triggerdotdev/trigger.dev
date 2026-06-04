@@ -45,6 +45,66 @@ export const navigateToPage = tool({
         "When deep-linking to a run, optionally select a specific span (subtrace) in the " +
           "trace view by its span ID. Requires runId."
       ),
+    testTaskId: z
+      .string()
+      .optional()
+      .describe(
+        "Deep-link to the Test page for a specific task by its task identifier (e.g. " +
+          "'hello-world'). Opens the test form where a payload can be filled and the task run. " +
+          "Use when the user wants to test/run a specific task. Takes precedence over destination."
+      ),
+  }),
+});
+
+// V1C Test domain tools
+export const listTestableTasks = tool({
+  description:
+    "List the tasks available to test in the current environment (the same list shown on the " +
+    "Test page). Use when the user asks what they can test, or to resolve a task before testing it.",
+  inputSchema: z.object({
+    query: z
+      .string()
+      .optional()
+      .describe("Optional substring to filter task identifiers (e.g. 'hello')"),
+  }),
+});
+
+export const generateTestPayload = tool({
+  description:
+    "Generate a realistic JSON payload to test a task with — the same AI payload generation used " +
+    "on the Test page. Conforms to the task's payload schema if it has one, otherwise infers the " +
+    "shape from the task's source code. When the user is on (or you have just navigated to) that " +
+    "task's Test page, the generated payload is filled into the editor for them. Call this before " +
+    "runTestTask so the run uses a sensible payload.",
+  inputSchema: z.object({
+    taskIdentifier: z.string().describe("The task identifier to generate a payload for"),
+    instruction: z
+      .string()
+      .optional()
+      .describe(
+        "What kind of payload to generate, e.g. 'a smoke test', 'minimal valid payload', " +
+          "'edge cases', 'a payload with nested objects'. Defaults to a simple valid payload."
+      ),
+  }),
+});
+
+export const runTestTask = tool({
+  description:
+    "Trigger a test run of a task — the equivalent of filling the payload and clicking 'Run test' " +
+    "on the Test page. Only call this when the user explicitly asks to run/trigger/smoke-test a " +
+    "task. Pass the payload from generateTestPayload. Returns the new run's friendly ID; the UI " +
+    "navigates the user to the run so they can watch it.",
+  inputSchema: z.object({
+    taskIdentifier: z.string().describe("The task identifier to run"),
+    payload: z
+      .record(z.unknown())
+      .optional()
+      .describe("The JSON payload object to run the task with (from generateTestPayload). Defaults to {}"),
+    metadata: z
+      .record(z.unknown())
+      .optional()
+      .describe("Optional run metadata object"),
+    tags: z.array(z.string()).optional().describe("Optional run tags (max 10)"),
   }),
 });
 
@@ -252,4 +312,7 @@ export const toolLabels: Record<string, string> = {
   summarizeCurrentView: "Analyzing current view",
   aggregateRuns: "Computing aggregations",
   correlateRunsWithDeploy: "Checking deploy correlation",
+  listTestableTasks: "Listing testable tasks",
+  generateTestPayload: "Generating test payload",
+  runTestTask: "Running test task",
 };

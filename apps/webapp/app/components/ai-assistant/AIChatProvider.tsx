@@ -30,6 +30,13 @@ interface SessionState {
   lastEventId: string | null;
 }
 
+// A payload the assistant generated and wants filled into the Test page editor.
+// The Test page for the matching task consumes it and clears it.
+interface PendingTestFill {
+  taskIdentifier: string;
+  payload: string;
+}
+
 interface AIChatContextValue {
   isOpen: boolean;
   toggle: () => void;
@@ -45,6 +52,9 @@ interface AIChatContextValue {
   pageContext: PageContext;
   pendingQuery: string | undefined;
   clearPendingQuery: () => void;
+  pendingTestFill: PendingTestFill | undefined;
+  requestTestFill: (fill: PendingTestFill) => void;
+  clearTestFill: () => void;
 }
 
 const AIChatContext = createContext<AIChatContextValue | null>(null);
@@ -100,6 +110,7 @@ export function AIChatProvider({
   const [currentChatMessages, setCurrentChatMessages] = useState<UIMessage[] | undefined>();
   const [sessionState, setSessionState] = useState<SessionState | undefined>();
   const [pendingQuery, setPendingQuery] = useState<string | undefined>();
+  const [pendingTestFill, setPendingTestFill] = useState<PendingTestFill | undefined>();
 
   const switchRequestRef = useRef<string | undefined>(undefined);
 
@@ -192,6 +203,14 @@ export function AIChatProvider({
     setPendingQuery(undefined);
   }, []);
 
+  const requestTestFill = useCallback((fill: PendingTestFill) => {
+    setPendingTestFill(fill);
+  }, []);
+
+  const clearTestFill = useCallback(() => {
+    setPendingTestFill(undefined);
+  }, []);
+
   // Load history when panel opens
   useEffect(() => {
     if (isOpen) {
@@ -216,6 +235,9 @@ export function AIChatProvider({
         pageContext,
         pendingQuery,
         clearPendingQuery,
+        pendingTestFill,
+        requestTestFill,
+        clearTestFill,
       }}
     >
       {children}
