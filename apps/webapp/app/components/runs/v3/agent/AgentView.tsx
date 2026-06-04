@@ -249,6 +249,20 @@ function useAgentSessionMessages({
     [initialMessages]
   );
 
+  // The snapshot URL is re-signed by the loader on every navigation
+  // (tab switches in the inspector pane re-run the session loader),
+  // which would otherwise re-trigger the subscription effect below
+  // and replay post-snapshot `.out` chunks on top of the messages we
+  // already accumulated — duplicating any assistant content that
+  // lives past `snapshot.lastOutEventId` (e.g., a canceled run whose
+  // turn never completed). Hold the URL behind a ref and keep it
+  // out of the effect's deps so the effect runs exactly once per
+  // mount.
+  const snapshotUrlRef = useRef(snapshotPresignedUrl);
+  useEffect(() => {
+    snapshotUrlRef.current = snapshotPresignedUrl;
+  }, [snapshotPresignedUrl]);
+
   // `pendingRef` is the authoritative, eagerly-updated message state:
   // chunks mutate this synchronously as they arrive. A throttled flush
   // copies it into React state so UI updates are capped at ~10x/sec.
@@ -309,9 +323,10 @@ function useAgentSessionMessages({
      * have never completed a turn).
      */
     const loadSnapshot = async (): Promise<string | undefined> => {
-      if (!snapshotPresignedUrl) return undefined;
+      const url = snapshotUrlRef.current;
+      if (!url) return undefined;
       try {
-        const resp = await fetch(snapshotPresignedUrl, { signal: abort.signal });
+        const resp = await fetch(url, { signal: abort.signal });
         if (!resp.ok) return undefined;
         const json = (await resp.json()) as unknown;
         const parsed = ChatSnapshotV1Schema.safeParse(json);
@@ -550,7 +565,12 @@ function useAgentSessionMessages({
         pendingTimerRef.current = null;
       }
     };
-  }, [sessionId, apiOrigin, orgSlug, projectSlug, envSlug, snapshotPresignedUrl]);
+    // `snapshotPresignedUrl` is intentionally NOT in this dep list — see
+    // `snapshotUrlRef` above for the reasoning. Including it caused the
+    // subscription to tear down + replay on every inspector tab click,
+    // which appended duplicate parts to any assistant message whose
+    // chunks lived past `snapshot.lastOutEventId`.
+  }, [sessionId, apiOrigin, orgSlug, projectSlug, envSlug]);
 
   return useMemo(() => {
     const timestamps = timestampsRef.current;
