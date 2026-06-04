@@ -54,6 +54,8 @@ const Env = z
     TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED: BoolEnv.default(false),
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_KEY: z.string().default("engine:dequeue:backpressure"),
     TRIGGER_DEQUEUE_BACKPRESSURE_REFRESH_MS: z.coerce.number().int().positive().default(1000),
+    TRIGGER_DEQUEUE_BACKPRESSURE_RAMP_MS: z.coerce.number().int().min(0).default(30_000), // Resume ramp window after release; 0 = instant resume
+
     TRIGGER_DEQUEUE_BACKPRESSURE_MAX_VERDICT_AGE_MS: z.coerce
       .number()
       .int()
