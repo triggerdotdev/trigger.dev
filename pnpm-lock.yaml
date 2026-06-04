@@ -1062,6 +1062,9 @@ importers:
       vite-tsconfig-paths:
         specifier: ^4.0.5
         version: 4.0.5(typescript@5.5.4)
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
 
   docs: {}
 

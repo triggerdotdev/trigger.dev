@@ -1,0 +1,2069 @@
+[
+  {
+    "operationId": "activate_schedule_v1",
+    "method": "POST",
+    "path": "/api/v1/schedules/{schedule_id}/activate",
+    "summary": "Activate Schedule",
+    "description": "Activate a schedule by its ID. This will only work on `IMPERATIVE` schedules that were created in the dashboard or using the imperative SDK functions like `schedules.create()`.",
+    "tag": "schedules",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "schedule_id",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of the schedule."
+      }
+    ],
+    "requiredParams": [
+      "schedule_id"
+    ],
+    "searchText": "activate_schedule_v1 activate schedule activate a schedule by its id. this will only work on `imperative` schedules that were created in the dashboard or using the imperative sdk functions like `schedules.create()`. schedules post /api/v1/schedules/{schedule_id}/activate schedule_id"
+  },
+  {
+    "operationId": "add_run_tags_v1",
+    "method": "POST",
+    "path": "/api/v1/runs/{runId}/tags",
+    "summary": "Add tags to a run",
+    "description": "Adds one or more tags to a run. Runs can have a maximum of 10 tags. Duplicate tags are ignored.",
+    "tag": "runs",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "runId",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of an run, starts with `run_`. The run ID will be returned when you trigger a run on a task."
+      },
+      {
+        "name": "_body",
+        "in": "body",
+        "required": true,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "required": [
+            "tags"
+          ],
+          "properties": {
+            "tags": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "maxLength": 128,
+                  "description": "A single run tag. Must be less than 128 characters.",
+                  "example": "user_123456"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 128,
+                    "description": "A single run tag. Must be less than 128 characters.",
+                    "example": "user_123456"
+                  },
+                  "maxItems": 10,
+                  "uniqueItems": true,
+                  "example": [
+                    "user_123456",
+                    "product_4629101"
+                  ]
+                }
+              ],
+              "description": "One or more tags to attach to a run. Runs can have a maximum of 10 tags."
+            }
+          }
+        }
+      }
+    ],
+    "requiredParams": [
+      "runId",
+      "_body"
+    ],
+    "searchText": "add_run_tags_v1 add tags to a run adds one or more tags to a run. runs can have a maximum of 10 tags. duplicate tags are ignored. runs post /api/v1/runs/{runid}/tags runid _body tags"
+  },
+  {
+    "operationId": "batch_trigger_task_by_id_v1",
+    "method": "POST",
+    "path": "/api/v1/tasks/{taskIdentifier}/batch",
+    "summary": "Batch trigger a specific task",
+    "description": "Batch trigger a specific task with up to 1,000 payloads. All items in the batch run the same task.",
+    "tag": "tasks",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "taskIdentifier",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The id of a task"
+      },
+      {
+        "name": "_body",
+        "in": "body",
+        "required": true,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "required": [
+            "items"
+          ],
+          "properties": {
+            "items": {
+              "type": "array",
+              "description": "An array of payloads to trigger the task with (max 1,000 items).",
+              "maxItems": 1000,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "payload": {
+                    "description": "The payload can include any valid JSON"
+                  },
+                  "context": {
+                    "description": "The context can include any valid JSON"
+                  },
+                  "options": {
+                    "type": "object",
+                    "properties": {
+                      "queue": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "description": "You can define a shared queue and then pass the name in to your task."
+                          },
+                          "concurrencyLimit": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 1000,
+                            "description": "An optional property that specifies the maximum number of concurrent run executions. If this property is omitted, the task can potentially use up the full concurrency of an environment."
+                          }
+                        }
+                      },
+                      "concurrencyKey": {
+                        "type": "string",
+                        "description": "Scope the concurrency limit to a specific key."
+                      },
+                      "idempotencyKey": {
+                        "type": "string",
+                        "description": "An optional property that specifies the idempotency key used to prevent creating duplicate runs. If you provide an existing idempotency key, we will return the existing run ID."
+                      },
+                      "ttl": {
+                        "type": [
+                          "string",
+                          "number"
+                        ],
+                        "description": "The time-to-live for this run. If the run is not executed within this time, it will be removed from the queue and never execute. You can use a string in this format: `1h`, `1m`, `1h42m` or a number of seconds (min. 1).",
+                        "example": "1h42m"
+                      },
+                      "delay": {
+                        "type": "string",
+                        "description": "The delay before the task is executed. This can be a Date object, a string like `1h` or a date-time string.\n\n* \"1h\" - 1 hour\n* \"30d\" - 30 days\n* \"15m\" - 15 minutes\n* \"2w\" - 2 weeks\n* \"60s\" - 60 seconds\n* new Date(\"2025-01-01T00:00:00Z\")\n"
+                      },
+                      "tags": {
+                        "allOf": [
+                          {
+                            "oneOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 128,
+                                "description": "A single run tag. Must be less than 128 characters.",
+                                "example": "user_123456"
+                              },
+                              {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 128,
+                                  "description": "A single run tag. Must be less than 128 characters.",
+                                  "example": "user_123456"
+                                },
+                                "maxItems": 10,
+                                "uniqueItems": true,
+                                "example": [
+                                  "user_123456",
+                                  "product_4629101"
+                                ]
+                              }
+                            ],
+                            "description": "One or more tags to attach to a run. Runs can have a maximum of 10 tags."
+                          }
+                        ],
+                        "description": "Tags to attach to the run. Tags can be used to filter runs in the dashboard and using the SDK.\n\nYou can set up to 10 tags per run, each must be less than 128 characters.\n\nWe recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`. Stripe uses underscores.\n"
+                      },
+                      "machine": {
+                        "type": "string",
+                        "enum": [
+                          "micro",
+                          "small-1x",
+                          "small-2x",
+                          "medium-1x",
+                          "medium-2x",
+                          "large-1x",
+                          "large-2x"
+                        ],
+                        "example": "small-2x",
+                        "description": "The machine preset to use for this run. This will override the task's machine preset and any defaults."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    ],
+    "requiredParams": [
+      "taskIdentifier",
+      "_body"
+    ],
+    "searchText": "batch_trigger_task_by_id_v1 batch trigger a specific task batch trigger a specific task with up to 1,000 payloads. all items in the batch run the same task. tasks post /api/v1/tasks/{taskidentifier}/batch taskidentifier _body items payload context options queue name concurrencylimit concurrencykey idempotencykey ttl delay tags machine"
+  },
+  {
+    "operationId": "batch_trigger_task_v1",
+    "method": "POST",
+    "path": "/api/v1/tasks/batch",
+    "summary": "Batch trigger tasks",
+    "description": "Batch trigger tasks with up to 1,000 payloads with SDK 4.3.1+ (500 in prior versions).",
+    "tag": "tasks",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "_body",
+        "in": "body",
+        "required": true,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "allOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "payload": {
+                        "description": "The payload can include any valid JSON"
+                      },
+                      "context": {
+                        "description": "The context can include any valid JSON"
+                      },
+                      "options": {
+                        "type": "object",
+                        "properties": {
+                          "queue": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "description": "You can define a shared queue and then pass the name in to your task."
+                              },
+                              "concurrencyLimit": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 1000,
+                                "description": "An optional property that specifies the maximum number of concurrent run executions. If this property is omitted, the task can potentially use up the full concurrency of an environment."
+                              }
+                            }
+                          },
+                          "concurrencyKey": {
+                            "type": "string",
+                            "description": "Scope the concurrency limit to a specific key."
+                          },
+                          "idempotencyKey": {
+                            "type": "string",
+                            "description": "An optional property that specifies the idempotency key used to prevent creating duplicate runs. If you provide an existing idempotency key, we will return the existing run ID."
+                          },
+                          "ttl": {
+                            "type": [
+                              "string",
+                              "number"
+                            ],
+                            "description": "The time-to-live for this run. If the run is not executed within this time, it will be removed from the queue and never execute. You can use a string in this format: `1h`, `1m`, `1h42m` or a number of seconds (min. 1).",
+                            "example": "1h42m"
+                          },
+                          "delay": {
+                            "type": "string",
+                            "description": "The delay before the task is executed. This can be a Date object, a string like `1h` or a date-time string.\n\n* \"1h\" - 1 hour\n* \"30d\" - 30 days\n* \"15m\" - 15 minutes\n* \"2w\" - 2 weeks\n* \"60s\" - 60 seconds\n* new Date(\"2025-01-01T00:00:00Z\")\n"
+                          },
+                          "tags": {
+                            "allOf": [
+                              {
+                                "oneOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 128,
+                                    "description": "A single run tag. Must be less than 128 characters.",
+                                    "example": "user_123456"
+                                  },
+                                  {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 128,
+                                      "description": "A single run tag. Must be less than 128 characters.",
+                                      "example": "user_123456"
+                                    },
+                                    "maxItems": 10,
+                                    "uniqueItems": true,
+                                    "example": [
+                                      "user_123456",
+                                      "product_4629101"
+                                    ]
+                                  }
+                                ],
+                                "description": "One or more tags to attach to a run. Runs can have a maximum of 10 tags."
+                              }
+                            ],
+                            "description": "Tags to attach to the run. Tags can be used to filter runs in the dashboard and using the SDK.\n\nYou can set up to 10 tags per run, each must be less than 128 characters.\n\nWe recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`. Stripe uses underscores.\n"
+                          },
+                          "machine": {
+                            "type": "string",
+                            "enum": [
+                              "micro",
+                              "small-1x",
+                              "small-2x",
+                              "medium-1x",
+                              "medium-2x",
+                              "large-1x",
+                              "large-2x"
+                            ],
+                            "example": "small-2x",
+                            "description": "The machine preset to use for this run. This will override the task's machine preset and any defaults."
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "task": {
+                        "type": "string",
+                        "description": "The task identifier to trigger. This is the `id` set in your `task()` functions."
+                      }
+                    },
+                    "required": [
+                      "task"
+                    ]
+                  }
+                ]
+              },
+              "description": "An array of payloads to trigger the task with"
+            }
+          },
+          "required": [
+            "items"
+          ]
+        }
+      }
+    ],
+    "requiredParams": [
+      "_body"
+    ],
+    "searchText": "batch_trigger_task_v1 batch trigger tasks batch trigger tasks with up to 1,000 payloads with sdk 4.3.1+ (500 in prior versions). tasks post /api/v1/tasks/batch _body items payload context options queue concurrencykey idempotencykey ttl delay tags machine task"
+  },
+  {
+    "operationId": "cancel_run_v1",
+    "method": "POST",
+    "path": "/api/v2/runs/{runId}/cancel",
+    "summary": "Cancel a run",
+    "description": "Cancels an in-progress run. If the run is already completed, this will have no effect.",
+    "tag": "runs",
+    "auth": "secretKey",
+    "destructive": true,
+    "parameters": [
+      {
+        "name": "runId",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of an run, starts with `run_`. The run ID will be returned when you trigger a run on a task."
+      }
+    ],
+    "requiredParams": [
+      "runId"
+    ],
+    "searchText": "cancel_run_v1 cancel a run cancels an in-progress run. if the run is already completed, this will have no effect. runs post /api/v2/runs/{runid}/cancel runid"
+  },
+  {
+    "operationId": "complete_waitpoint_token_callback_v1",
+    "method": "POST",
+    "path": "/api/v1/waitpoints/tokens/{waitpointId}/callback/{callbackHash}",
+    "summary": "Complete a waitpoint token via HTTP callback",
+    "description": "Completes a waitpoint token using the pre-signed callback URL returned in the `url` field when the token was created. No API key is required — the `callbackHash` in the URL acts as the authentication token.\n\nThis is designed to be given directly to external services (e.g. as a webhook URL) so they can unblock a waiting run without needing access to your API key. The entire request body is passed as the output data to the waiting run.\n\nIf the token is already completed, this is a no-op and returns `success: true`.",
+    "tag": "waitpoints",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "waitpointId",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of the waitpoint token."
+      },
+      {
+        "name": "callbackHash",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The HMAC hash that authenticates the request. This is embedded in the `url` returned when creating the token — do not construct it manually."
+      },
+      {
+        "name": "_body",
+        "in": "body",
+        "required": false,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "description": "Any JSON object. The entire body is passed as the output data to the run waiting on this token. If the body is not valid JSON, an empty object is used.",
+          "example": {
+            "status": "approved",
+            "comment": "Looks good to me!"
+          }
+        }
+      }
+    ],
+    "requiredParams": [
+      "waitpointId",
+      "callbackHash"
+    ],
+    "searchText": "complete_waitpoint_token_callback_v1 complete a waitpoint token via http callback completes a waitpoint token using the pre-signed callback url returned in the `url` field when the token was created. no api key is required — the `callbackhash` in the url acts as the authentication token. this is designed to be given directly to external services (e.g. as a webhook url) so they can unblock a waiting run without needing access to your api key. the entire request body is passed as the output data to the waiting run. if the token is already completed, this is a no-op and returns `success: true`. waitpoints post /api/v1/waitpoints/tokens/{waitpointid}/callback/{callbackhash} waitpointid callbackhash _body"
+  },
+  {
+    "operationId": "complete_waitpoint_token_v1",
+    "method": "POST",
+    "path": "/api/v1/waitpoints/tokens/{waitpointId}/complete",
+    "summary": "Complete a waitpoint token",
+    "description": "Completes a waitpoint token, unblocking any run that is waiting for it via `wait.forToken()`. An optional `data` payload can be passed and will be returned to the waiting run. If the token is already completed, this is a no-op and returns `success: true`.\n\nThis endpoint accepts both secret API keys and short-lived JWTs (public access tokens), making it safe to call from frontend clients.",
+    "tag": "waitpoints",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "waitpointId",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of the waitpoint token to complete."
+      },
+      {
+        "name": "_body",
+        "in": "body",
+        "required": false,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "data": {
+              "description": "Any JSON-serializable value to pass back to the run waiting on this token. The data will be returned from `wait.forToken()` as the result payload.",
+              "example": {
+                "status": "approved",
+                "comment": "Looks good to me!"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "requiredParams": [
+      "waitpointId"
+    ],
+    "searchText": "complete_waitpoint_token_v1 complete a waitpoint token completes a waitpoint token, unblocking any run that is waiting for it via `wait.fortoken()`. an optional `data` payload can be passed and will be returned to the waiting run. if the token is already completed, this is a no-op and returns `success: true`. this endpoint accepts both secret api keys and short-lived jwts (public access tokens), making it safe to call from frontend clients. waitpoints post /api/v1/waitpoints/tokens/{waitpointid}/complete waitpointid _body data"
+  },
+  {
+    "operationId": "create_project_envvar_v1",
+    "method": "POST",
+    "path": "/api/v1/projects/{projectRef}/envvars/{env}",
+    "summary": "Create environment variable",
+    "description": "Create a new environment variable for a specific project and environment.",
+    "tag": "envvars",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "projectRef",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The external ref of the project. You can find this in the project settings. Starts with `proj_`."
+      },
+      {
+        "name": "env",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "enum": [
+          "dev",
+          "staging",
+          "prod"
+        ],
+        "description": "The environment of the project to list variables for."
+      },
+      {
+        "name": "_body",
+        "in": "body",
+        "required": true,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "example": "SLACK_API_KEY"
+            },
+            "value": {
+              "type": "string",
+              "example": "slack_123456"
+            }
+          },
+          "required": [
+            "name",
+            "value"
+          ]
+        }
+      }
+    ],
+    "requiredParams": [
+      "projectRef",
+      "env",
+      "_body"
+    ],
+    "searchText": "create_project_envvar_v1 create environment variable create a new environment variable for a specific project and environment. envvars post /api/v1/projects/{projectref}/envvars/{env} projectref env _body name value"
+  },
+  {
+    "operationId": "create_schedule_v1",
+    "method": "POST",
+    "path": "/api/v1/schedules",
+    "summary": "Create a schedule",
+    "description": "Create a new `IMPERATIVE` schedule based on the specified options.",
+    "tag": "schedules",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "_body",
+        "in": "body",
+        "required": true,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "task": {
+              "type": "string"
+            },
+            "cron": {
+              "type": "string"
+            },
+            "deduplicationKey": {
+              "type": "string"
+            },
+            "externalId": {
+              "type": "string"
+            },
+            "timezone": {
+              "type": "string",
+              "example": "America/New_York",
+              "description": "Defaults to \"UTC\". In IANA format (\"America/New_York\"). If set then it will trigger at the CRON frequency in that timezone and respect daylight savings time."
+            }
+          },
+          "required": [
+            "task",
+            "cron",
+            "deduplicationKey"
+          ]
+        }
+      }
+    ],
+    "requiredParams": [
+      "_body"
+    ],
+    "searchText": "create_schedule_v1 create a schedule create a new `imperative` schedule based on the specified options. schedules post /api/v1/schedules _body task cron deduplicationkey externalid timezone"
+  },
+  {
+    "operationId": "create_waitpoint_token_v1",
+    "method": "POST",
+    "path": "/api/v1/waitpoints/tokens",
+    "summary": "Create a waitpoint token",
+    "description": "Creates a new waitpoint token that can be used to pause a run until an external event completes it. The token includes a `url` which can be called via HTTP POST to complete the waitpoint. Use the token ID with `wait.forToken()` inside a task to pause execution until the token is completed.",
+    "tag": "waitpoints",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "_body",
+        "in": "body",
+        "required": false,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "idempotencyKey": {
+              "type": "string",
+              "description": "An optional idempotency key. If you pass the same key twice before it expires, you will receive the original token back. The returned token may already be completed, in which case `wait.forToken()` will continue immediately.",
+              "example": "approval-user-1234567"
+            },
+            "idempotencyKeyTTL": {
+              "type": "string",
+              "description": "How long the idempotency key is valid, after which passing the same key creates a new waitpoint. Accepts durations like \"30s\", \"1m\", \"2h\", \"3d\".",
+              "example": "1h"
+            },
+            "timeout": {
+              "type": "string",
+              "description": "How long to wait before the token times out. When a run is waiting for a timed-out token, `wait.forToken()` returns with `ok: false`. Accepts an ISO 8601 date string or duration shorthand like \"30s\", \"1m\", \"2h\", \"3d\", \"4w\".",
+              "example": "1h"
+            },
+            "tags": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "description": "Tags to attach to the waitpoint. You can set up to 10 tags, each under 128 characters. We recommend namespacing tags with a prefix like `user:1234567` or `org_9876543`.",
+              "example": [
+                "user:1234567",
+                "org:9876543"
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "requiredParams": [],
+    "searchText": "create_waitpoint_token_v1 create a waitpoint token creates a new waitpoint token that can be used to pause a run until an external event completes it. the token includes a `url` which can be called via http post to complete the waitpoint. use the token id with `wait.fortoken()` inside a task to pause execution until the token is completed. waitpoints post /api/v1/waitpoints/tokens _body idempotencykey idempotencykeyttl timeout tags"
+  },
+  {
+    "operationId": "deactivate_schedule_v1",
+    "method": "POST",
+    "path": "/api/v1/schedules/{schedule_id}/deactivate",
+    "summary": "Deactivate Schedule.",
+    "description": "Deactivate a schedule by its ID. This will only work on `IMPERATIVE` schedules that were created in the dashboard or using the imperative SDK functions like `schedules.create()`.",
+    "tag": "schedules",
+    "auth": "secretKey",
+    "destructive": true,
+    "parameters": [
+      {
+        "name": "schedule_id",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of the schedule."
+      }
+    ],
+    "requiredParams": [
+      "schedule_id"
+    ],
+    "searchText": "deactivate_schedule_v1 deactivate schedule. deactivate a schedule by its id. this will only work on `imperative` schedules that were created in the dashboard or using the imperative sdk functions like `schedules.create()`. schedules post /api/v1/schedules/{schedule_id}/deactivate schedule_id"
+  },
+  {
+    "operationId": "delete_project_envvar_v1",
+    "method": "DELETE",
+    "path": "/api/v1/projects/{projectRef}/envvars/{env}/{name}",
+    "summary": "Delete environment variable",
+    "description": "Delete a specific environment variable for a specific project and environment.",
+    "tag": "envvars",
+    "auth": "secretKey",
+    "destructive": true,
+    "parameters": [
+      {
+        "name": "projectRef",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The external ref of the project. You can find this in the project settings. Starts with `proj_`."
+      },
+      {
+        "name": "env",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "enum": [
+          "dev",
+          "staging",
+          "prod"
+        ],
+        "description": "The environment of the project to list variables for."
+      },
+      {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The name of the environment variable."
+      }
+    ],
+    "requiredParams": [
+      "projectRef",
+      "env",
+      "name"
+    ],
+    "searchText": "delete_project_envvar_v1 delete environment variable delete a specific environment variable for a specific project and environment. envvars delete /api/v1/projects/{projectref}/envvars/{env}/{name} projectref env name"
+  },
+  {
+    "operationId": "delete_schedule_v1",
+    "method": "DELETE",
+    "path": "/api/v1/schedules/{schedule_id}",
+    "summary": "Delete Schedule",
+    "description": "Delete a schedule by its ID. This will only work on `IMPERATIVE` schedules that were created in the dashboard or using the imperative SDK functions like `schedules.create()`.",
+    "tag": "schedules",
+    "auth": "secretKey",
+    "destructive": true,
+    "parameters": [
+      {
+        "name": "schedule_id",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of the schedule."
+      }
+    ],
+    "requiredParams": [
+      "schedule_id"
+    ],
+    "searchText": "delete_schedule_v1 delete schedule delete a schedule by its id. this will only work on `imperative` schedules that were created in the dashboard or using the imperative sdk functions like `schedules.create()`. schedules delete /api/v1/schedules/{schedule_id} schedule_id"
+  },
+  {
+    "operationId": "execute_query_v1",
+    "method": "POST",
+    "path": "/api/v1/query",
+    "summary": "Execute a TRQL query",
+    "description": "Execute a TRQL (Trigger.dev Query Language) query against your run data. TRQL is a SQL-style query language that allows you to analyze runs, calculate metrics, and export data.",
+    "tag": "query",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "_body",
+        "in": "body",
+        "required": true,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "required": [
+            "query"
+          ],
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The TRQL query to execute",
+              "example": "SELECT run_id, status, triggered_at FROM runs WHERE status = 'Failed' LIMIT 10"
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "environment",
+                "project",
+                "organization"
+              ],
+              "default": "environment",
+              "description": "The scope of data to query - environment (default), project, or organization"
+            },
+            "period": {
+              "type": "string",
+              "nullable": true,
+              "description": "Time period shorthand (e.g., \"7d\", \"30d\", \"1h\"). Cannot be used with from/to.",
+              "example": "7d"
+            },
+            "from": {
+              "type": "string",
+              "format": "date-time",
+              "nullable": true,
+              "description": "Start of time range as ISO 8601 timestamp. Must be used with 'to'.",
+              "example": "2024-01-01T00:00:00Z"
+            },
+            "to": {
+              "type": "string",
+              "format": "date-time",
+              "nullable": true,
+              "description": "End of time range as ISO 8601 timestamp. Must be used with 'from'.",
+              "example": "2024-01-31T23:59:59Z"
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ],
+              "default": "json",
+              "description": "Response format - \"json\" returns structured data (default), \"csv\" returns CSV string"
+            }
+          }
+        }
+      }
+    ],
+    "requiredParams": [
+      "_body"
+    ],
+    "searchText": "execute_query_v1 execute a trql query execute a trql (trigger.dev query language) query against your run data. trql is a sql-style query language that allows you to analyze runs, calculate metrics, and export data. query post /api/v1/query _body query scope period from to format"
+  },
+  {
+    "operationId": "get_batch_results_v1",
+    "method": "GET",
+    "path": "/api/v1/batches/{batchId}/results",
+    "summary": "Retrieve batch results",
+    "description": "Returns the execution results of all completed runs in a batch. Only finished runs (successful or failed) are included in the items array — runs that are still executing are omitted. Returns 404 if the batch doesn't exist.",
+    "tag": "batches",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "batchId",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of the batch, starts with `batch_`."
+      }
+    ],
+    "requiredParams": [
+      "batchId"
+    ],
+    "searchText": "get_batch_results_v1 retrieve batch results returns the execution results of all completed runs in a batch. only finished runs (successful or failed) are included in the items array — runs that are still executing are omitted. returns 404 if the batch doesn't exist. batches get /api/v1/batches/{batchid}/results batchid"
+  },
+  {
+    "operationId": "get_deployment_v1",
+    "method": "GET",
+    "path": "/api/v1/deployments/{deploymentId}",
+    "summary": "Get deployment",
+    "description": "Retrieve information about a specific deployment by its ID.",
+    "tag": "deployments",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "deploymentId",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The deployment ID."
+      }
+    ],
+    "requiredParams": [
+      "deploymentId"
+    ],
+    "searchText": "get_deployment_v1 get deployment retrieve information about a specific deployment by its id. deployments get /api/v1/deployments/{deploymentid} deploymentid"
+  },
+  {
+    "operationId": "get_latest_deployment_v1",
+    "method": "GET",
+    "path": "/api/v1/deployments/latest",
+    "summary": "Get latest deployment",
+    "description": "Retrieve information about the latest unmanaged deployment for the authenticated project.",
+    "tag": "deployments",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [],
+    "requiredParams": [],
+    "searchText": "get_latest_deployment_v1 get latest deployment retrieve information about the latest unmanaged deployment for the authenticated project. deployments get /api/v1/deployments/latest"
+  },
+  {
+    "operationId": "get_project_envvar_v1",
+    "method": "GET",
+    "path": "/api/v1/projects/{projectRef}/envvars/{env}/{name}",
+    "summary": "Retrieve environment variable",
+    "description": "Retrieve a specific environment variable for a specific project and environment.",
+    "tag": "envvars",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "projectRef",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The external ref of the project. You can find this in the project settings. Starts with `proj_`."
+      },
+      {
+        "name": "env",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "enum": [
+          "dev",
+          "staging",
+          "prod"
+        ],
+        "description": "The environment of the project to list variables for."
+      },
+      {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The name of the environment variable."
+      }
+    ],
+    "requiredParams": [
+      "projectRef",
+      "env",
+      "name"
+    ],
+    "searchText": "get_project_envvar_v1 retrieve environment variable retrieve a specific environment variable for a specific project and environment. envvars get /api/v1/projects/{projectref}/envvars/{env}/{name} projectref env name"
+  },
+  {
+    "operationId": "get_query_schema_v1",
+    "method": "GET",
+    "path": "/api/v1/query/schema",
+    "summary": "Get query schema",
+    "description": "Get the schema for TRQL queries, including all available tables, their columns, data types, descriptions, and allowed values.",
+    "tag": "query",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [],
+    "requiredParams": [],
+    "searchText": "get_query_schema_v1 get query schema get the schema for trql queries, including all available tables, their columns, data types, descriptions, and allowed values. query get /api/v1/query/schema"
+  },
+  {
+    "operationId": "get_run_events_v1",
+    "method": "GET",
+    "path": "/api/v1/runs/{runId}/events",
+    "summary": "Retrieve run events",
+    "description": "Returns all OTel span events for a run. Useful for debugging and observability.",
+    "tag": "runs",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "runId",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of an run, starts with `run_`. The run ID will be returned when you trigger a run on a task."
+      }
+    ],
+    "requiredParams": [
+      "runId"
+    ],
+    "searchText": "get_run_events_v1 retrieve run events returns all otel span events for a run. useful for debugging and observability. runs get /api/v1/runs/{runid}/events runid"
+  },
+  {
+    "operationId": "get_run_result_v1",
+    "method": "GET",
+    "path": "/api/v1/runs/{runId}/result",
+    "summary": "Retrieve run result",
+    "description": "Returns the execution result of a completed run. Returns 404 if the run doesn't exist or hasn't finished yet.",
+    "tag": "runs",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "runId",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of an run, starts with `run_`. The run ID will be returned when you trigger a run on a task."
+      }
+    ],
+    "requiredParams": [
+      "runId"
+    ],
+    "searchText": "get_run_result_v1 retrieve run result returns the execution result of a completed run. returns 404 if the run doesn't exist or hasn't finished yet. runs get /api/v1/runs/{runid}/result runid"
+  },
+  {
+    "operationId": "get_run_trace_v1",
+    "method": "GET",
+    "path": "/api/v1/runs/{runId}/trace",
+    "summary": "Retrieve run trace",
+    "description": "Returns the full OTel trace tree for a run, including all spans and their children.",
+    "tag": "runs",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "runId",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of an run, starts with `run_`. The run ID will be returned when you trigger a run on a task."
+      }
+    ],
+    "requiredParams": [
+      "runId"
+    ],
+    "searchText": "get_run_trace_v1 retrieve run trace returns the full otel trace tree for a run, including all spans and their children. runs get /api/v1/runs/{runid}/trace runid"
+  },
+  {
+    "operationId": "get_schedule_v1",
+    "method": "GET",
+    "path": "/api/v1/schedules/{schedule_id}",
+    "summary": "Retrieve Schedule",
+    "description": "Get a schedule by its ID.",
+    "tag": "schedules",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "schedule_id",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of the schedule."
+      }
+    ],
+    "requiredParams": [
+      "schedule_id"
+    ],
+    "searchText": "get_schedule_v1 retrieve schedule get a schedule by its id. schedules get /api/v1/schedules/{schedule_id} schedule_id"
+  },
+  {
+    "operationId": "get_timezones_v1",
+    "method": "GET",
+    "path": "/api/v1/timezones",
+    "summary": "Get all supported timezones",
+    "description": "Get all supported timezones that schedule tasks support.",
+    "tag": "schedules",
+    "auth": "none",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "excludeUtc",
+        "in": "query",
+        "required": false,
+        "type": "boolean",
+        "description": "Defaults to false. Whether to include UTC in the results or not."
+      }
+    ],
+    "requiredParams": [],
+    "searchText": "get_timezones_v1 get all supported timezones get all supported timezones that schedule tasks support. schedules get /api/v1/timezones excludeutc"
+  },
+  {
+    "operationId": "list_dashboards_v1",
+    "method": "GET",
+    "path": "/api/v1/query/dashboards",
+    "summary": "List built-in dashboards",
+    "description": "List available built-in dashboards with their widgets. Each dashboard contains pre-built TRQL queries for common metrics like run success rates, costs, and LLM usage.",
+    "tag": "query",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [],
+    "requiredParams": [],
+    "searchText": "list_dashboards_v1 list built-in dashboards list available built-in dashboards with their widgets. each dashboard contains pre-built trql queries for common metrics like run success rates, costs, and llm usage. query get /api/v1/query/dashboards"
+  },
+  {
+    "operationId": "list_deployments_v1",
+    "method": "GET",
+    "path": "/api/v1/deployments",
+    "summary": "List deployments",
+    "description": "List deployments for the authenticated environment, ordered by most recent first.",
+    "tag": "deployments",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "page[after]",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "The deployment ID to start the search from, to get the next page."
+      },
+      {
+        "name": "page[size]",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of deployments to return (default 20, min 5, max 100)."
+      },
+      {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "BUILDING",
+          "DEPLOYING",
+          "DEPLOYED",
+          "FAILED",
+          "CANCELED",
+          "TIMED_OUT"
+        ],
+        "description": "Filter deployments by status."
+      },
+      {
+        "name": "period",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "Filter deployments created within this period (e.g. 1d, 7d, 3h)."
+      },
+      {
+        "name": "from",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "Filter deployments created on or after this date (ISO 8601)."
+      },
+      {
+        "name": "to",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "Filter deployments created on or before this date (ISO 8601). Only applied when `from` is also provided."
+      }
+    ],
+    "requiredParams": [],
+    "searchText": "list_deployments_v1 list deployments list deployments for the authenticated environment, ordered by most recent first. deployments get /api/v1/deployments page[after] page[size] status period from to"
+  },
+  {
+    "operationId": "list_project_envvars_v1",
+    "method": "GET",
+    "path": "/api/v1/projects/{projectRef}/envvars/{env}",
+    "summary": "List environment variables",
+    "description": "List all environment variables for a specific project and environment.",
+    "tag": "envvars",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "projectRef",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The external ref of the project. You can find this in the project settings. Starts with `proj_`."
+      },
+      {
+        "name": "env",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "enum": [
+          "dev",
+          "staging",
+          "prod"
+        ],
+        "description": "The environment of the project to list variables for."
+      }
+    ],
+    "requiredParams": [
+      "projectRef",
+      "env"
+    ],
+    "searchText": "list_project_envvars_v1 list environment variables list all environment variables for a specific project and environment. envvars get /api/v1/projects/{projectref}/envvars/{env} projectref env"
+  },
+  {
+    "operationId": "list_project_runs_v1",
+    "method": "GET",
+    "path": "/api/v1/projects/{projectRef}/runs",
+    "summary": "List project runs",
+    "description": "List runs in a project, across multiple environments, using Personal Access Token auth. You can filter the runs by status, created at, task identifier, version, and more.",
+    "tag": "runs",
+    "auth": "personalAccessToken",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "projectRef",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The external ref of the project. You can find this in the project settings. Starts with `proj_`."
+      },
+      {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "type": "object",
+        "description": "Use this parameter to paginate the results. You can specify the number of runs per page, and the ID of the run to start the page after or before.\n\nFor object fields like `page`, you should use the \"form\" encoding style. For example, to get the next page of runs, you can use `page[after]=run_1234`."
+      },
+      {
+        "name": "filter",
+        "in": "query",
+        "required": false,
+        "description": "Use this parameter to filter the runs. You can filter by created at, environment, status, task identifier, and version.\n\nFor array fields, you can provide multiple values to filter by using a comma-separated list. For example, to get QUEUED and EXECUTING runs, you can use `filter[status]=QUEUED,EXECUTING`.\n\nFor object fields, you should use the \"form\" encoding style. For example, to filter by the period, you can use `filter[createdAt][period]=1d`."
+      }
+    ],
+    "requiredParams": [
+      "projectRef"
+    ],
+    "searchText": "list_project_runs_v1 list project runs list runs in a project, across multiple environments, using personal access token auth. you can filter the runs by status, created at, task identifier, version, and more. runs get /api/v1/projects/{projectref}/runs projectref page filter"
+  },
+  {
+    "operationId": "list_queues_v1",
+    "method": "GET",
+    "path": "/api/v1/queues",
+    "summary": "List all queues",
+    "description": "List all queues in your environment with pagination support.",
+    "tag": "queues",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "Page number of the queue listing (1-based)"
+      },
+      {
+        "name": "perPage",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "Number of queues per page"
+      }
+    ],
+    "requiredParams": [],
+    "searchText": "list_queues_v1 list all queues list all queues in your environment with pagination support. queues get /api/v1/queues page perpage"
+  },
+  {
+    "operationId": "list_runs_v1",
+    "method": "GET",
+    "path": "/api/v1/runs",
+    "summary": "List runs",
+    "description": "List runs in a specific environment. You can filter the runs by status, created at, task identifier, version, and more.",
+    "tag": "runs",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "type": "object",
+        "description": "Use this parameter to paginate the results. You can specify the number of runs per page, and the ID of the run to start the page after or before.\n\nFor object fields like `page`, you should use the \"form\" encoding style. For example, to get the next page of runs, you can use `page[after]=run_1234`."
+      },
+      {
+        "name": "filter",
+        "in": "query",
+        "required": false,
+        "type": "object",
+        "description": "Use this parameter to filter the runs. You can filter by created at, status, task identifier, and version.\n\nFor array fields, you can provide multiple values to filter by using a comma-separated list. For example, to get QUEUED and EXECUTING runs, you can use `filter[status]=QUEUED,EXECUTING`.\n\nFor object fields, you should use the \"form\" encoding style. For example, to filter by the period, you can use `filter[createdAt][period]=1d`."
+      }
+    ],
+    "requiredParams": [],
+    "searchText": "list_runs_v1 list runs list runs in a specific environment. you can filter the runs by status, created at, task identifier, version, and more. runs get /api/v1/runs page filter"
+  },
+  {
+    "operationId": "list_schedules_v1",
+    "method": "GET",
+    "path": "/api/v1/schedules",
+    "summary": "List all schedules",
+    "description": "List all schedules. You can also paginate the results.",
+    "tag": "schedules",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "Page number of the schedule listing"
+      },
+      {
+        "name": "perPage",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "Number of schedules per page"
+      }
+    ],
+    "requiredParams": [],
+    "searchText": "list_schedules_v1 list all schedules list all schedules. you can also paginate the results. schedules get /api/v1/schedules page perpage"
+  },
+  {
+    "operationId": "list_waitpoint_tokens_v1",
+    "method": "GET",
+    "path": "/api/v1/waitpoints/tokens",
+    "summary": "List waitpoint tokens",
+    "description": "Returns a paginated list of waitpoint tokens for the current environment. Results are ordered by creation date, newest first. Use cursor-based pagination with `page[after]` and `page[before]` to navigate pages.",
+    "tag": "waitpoints",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "page[size]",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "Number of tokens to return per page (1–100)."
+      },
+      {
+        "name": "page[after]",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "Return tokens after this cursor (from `pagination.next` in a previous response)."
+      },
+      {
+        "name": "page[before]",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "Return tokens before this cursor (from `pagination.previous` in a previous response)."
+      },
+      {
+        "name": "filter[status]",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "Comma-separated list of statuses to filter by. Allowed values: `WAITING`, `COMPLETED`, `TIMED_OUT`."
+      },
+      {
+        "name": "filter[idempotencyKey]",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "Filter by idempotency key."
+      },
+      {
+        "name": "filter[tags]",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "Comma-separated list of tags to filter by."
+      },
+      {
+        "name": "filter[createdAt][period]",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "Shorthand time period to filter by creation date (e.g. `1h`, `24h`, `7d`). Cannot be combined with `filter[createdAt][from]` or `filter[createdAt][to]`."
+      },
+      {
+        "name": "filter[createdAt][from]",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "Filter tokens created at or after this ISO 8601 timestamp."
+      },
+      {
+        "name": "filter[createdAt][to]",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "Filter tokens created at or before this ISO 8601 timestamp."
+      }
+    ],
+    "requiredParams": [],
+    "searchText": "list_waitpoint_tokens_v1 list waitpoint tokens returns a paginated list of waitpoint tokens for the current environment. results are ordered by creation date, newest first. use cursor-based pagination with `page[after]` and `page[before]` to navigate pages. waitpoints get /api/v1/waitpoints/tokens page[size] page[after] page[before] filter[status] filter[idempotencykey] filter[tags] filter[createdat][period] filter[createdat][from] filter[createdat][to]"
+  },
+  {
+    "operationId": "override_queue_concurrency_v1",
+    "method": "POST",
+    "path": "/api/v1/queues/{queueParam}/concurrency/override",
+    "summary": "Override queue concurrency limit",
+    "description": "Override the concurrency limit of a queue. This is useful for temporarily scaling up or down based on demand.",
+    "tag": "queues",
+    "auth": "secretKey",
+    "destructive": true,
+    "parameters": [
+      {
+        "name": "queueParam",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` body parameter."
+      },
+      {
+        "name": "_body",
+        "in": "body",
+        "required": true,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "required": [
+            "concurrencyLimit"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "id",
+                "task",
+                "custom"
+              ],
+              "default": "id",
+              "description": "How to interpret the `queueParam` path parameter:\n- `id`: Treat as a queue ID (default)\n- `task`: Treat as a task ID to get the task's default queue\n- `custom`: Treat as a custom queue name\n"
+            },
+            "concurrencyLimit": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000,
+              "description": "The new concurrency limit to set for the queue"
+            }
+          }
+        }
+      }
+    ],
+    "requiredParams": [
+      "queueParam",
+      "_body"
+    ],
+    "searchText": "override_queue_concurrency_v1 override queue concurrency limit override the concurrency limit of a queue. this is useful for temporarily scaling up or down based on demand. queues post /api/v1/queues/{queueparam}/concurrency/override queueparam _body type concurrencylimit"
+  },
+  {
+    "operationId": "pause_queue_v1",
+    "method": "POST",
+    "path": "/api/v1/queues/{queueParam}/pause",
+    "summary": "Pause or resume a queue",
+    "description": "Pause a queue to prevent new runs from starting, or resume a paused queue. Runs that are currently executing will continue to completion.",
+    "tag": "queues",
+    "auth": "secretKey",
+    "destructive": true,
+    "parameters": [
+      {
+        "name": "queueParam",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` body parameter."
+      },
+      {
+        "name": "_body",
+        "in": "body",
+        "required": true,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "id",
+                "task",
+                "custom"
+              ],
+              "default": "id",
+              "description": "How to interpret the `queueParam` path parameter:\n- `id`: Treat as a queue ID (default)\n- `task`: Treat as a task ID to get the task's default queue\n- `custom`: Treat as a custom queue name\n"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "pause",
+                "resume"
+              ],
+              "description": "Whether to pause or resume the queue"
+            }
+          }
+        }
+      }
+    ],
+    "requiredParams": [
+      "queueParam",
+      "_body"
+    ],
+    "searchText": "pause_queue_v1 pause or resume a queue pause a queue to prevent new runs from starting, or resume a paused queue. runs that are currently executing will continue to completion. queues post /api/v1/queues/{queueparam}/pause queueparam _body type action"
+  },
+  {
+    "operationId": "promote_deployment_v1",
+    "method": "POST",
+    "path": "/api/v1/deployments/{version}/promote",
+    "summary": "Promote deployment",
+    "description": "Promote a previously deployed version to be the current version for the environment. This makes the specified version active for new task runs.",
+    "tag": "deployments",
+    "auth": "secretKey",
+    "destructive": true,
+    "parameters": [
+      {
+        "name": "version",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The deployment version to promote (e.g., \"20250228.1\")."
+      }
+    ],
+    "requiredParams": [
+      "version"
+    ],
+    "searchText": "promote_deployment_v1 promote deployment promote a previously deployed version to be the current version for the environment. this makes the specified version active for new task runs. deployments post /api/v1/deployments/{version}/promote version"
+  },
+  {
+    "operationId": "replay_run_v1",
+    "method": "POST",
+    "path": "/api/v1/runs/{runId}/replay",
+    "summary": "Replay a run",
+    "description": "Creates a new run with the same payload and options as the original run.",
+    "tag": "runs",
+    "auth": "secretKey",
+    "destructive": true,
+    "parameters": [
+      {
+        "name": "runId",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of an run, starts with `run_`. The run ID will be returned when you trigger a run on a task."
+      }
+    ],
+    "requiredParams": [
+      "runId"
+    ],
+    "searchText": "replay_run_v1 replay a run creates a new run with the same payload and options as the original run. runs post /api/v1/runs/{runid}/replay runid"
+  },
+  {
+    "operationId": "reschedule_run_v1",
+    "method": "POST",
+    "path": "/api/v1/runs/{runId}/reschedule",
+    "summary": "Rescheduled a delayed run",
+    "description": "Updates a delayed run with a new delay. Only valid when the run is in the DELAYED state.",
+    "tag": "runs",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "runId",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of an run, starts with `run_`. The run ID will be returned when you trigger a run on a task."
+      },
+      {
+        "name": "_body",
+        "in": "body",
+        "required": true,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "delay": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "description": "The duration to delay the run by. The duration should be in the format of `1d`, `6h`, `10m`, `11s`, etc.",
+                  "example": "1hr"
+                },
+                {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "The Date to delay the run until, e.g. `new Date()` or `\"2024-06-25T15:45:26Z\"`",
+                  "example": "2024-06-25T15:45:26Z"
+                }
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "requiredParams": [
+      "runId",
+      "_body"
+    ],
+    "searchText": "reschedule_run_v1 rescheduled a delayed run updates a delayed run with a new delay. only valid when the run is in the delayed state. runs post /api/v1/runs/{runid}/reschedule runid _body delay"
+  },
+  {
+    "operationId": "reset_queue_concurrency_v1",
+    "method": "POST",
+    "path": "/api/v1/queues/{queueParam}/concurrency/reset",
+    "summary": "Reset queue concurrency limit",
+    "description": "Reset the concurrency limit of a queue back to its base value defined in code.",
+    "tag": "queues",
+    "auth": "secretKey",
+    "destructive": true,
+    "parameters": [
+      {
+        "name": "queueParam",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` body parameter."
+      },
+      {
+        "name": "_body",
+        "in": "body",
+        "required": false,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "id",
+                "task",
+                "custom"
+              ],
+              "default": "id",
+              "description": "How to interpret the `queueParam` path parameter:\n- `id`: Treat as a queue ID (default)\n- `task`: Treat as a task ID to get the task's default queue\n- `custom`: Treat as a custom queue name\n"
+            }
+          }
+        }
+      }
+    ],
+    "requiredParams": [
+      "queueParam"
+    ],
+    "searchText": "reset_queue_concurrency_v1 reset queue concurrency limit reset the concurrency limit of a queue back to its base value defined in code. queues post /api/v1/queues/{queueparam}/concurrency/reset queueparam _body type"
+  },
+  {
+    "operationId": "retrieve_batch_v1",
+    "method": "GET",
+    "path": "/api/v1/batches/{batchId}",
+    "summary": "Retrieve a batch",
+    "description": "Retrieve a batch by its ID, including its status and the IDs of all runs in the batch.",
+    "tag": "batches",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "batchId",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of the batch, starts with `batch_`."
+      }
+    ],
+    "requiredParams": [
+      "batchId"
+    ],
+    "searchText": "retrieve_batch_v1 retrieve a batch retrieve a batch by its id, including its status and the ids of all runs in the batch. batches get /api/v1/batches/{batchid} batchid"
+  },
+  {
+    "operationId": "retrieve_queue_v1",
+    "method": "GET",
+    "path": "/api/v1/queues/{queueParam}",
+    "summary": "Retrieve a queue",
+    "description": "Get a queue by its ID, or by type and name.",
+    "tag": "queues",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "queueParam",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The queue ID (e.g., `queue_1234`), or the name of the queue when using the `type` query parameter."
+      },
+      {
+        "name": "type",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "enum": [
+          "id",
+          "task",
+          "custom"
+        ],
+        "description": "How to interpret the `queueParam` path parameter:\n- `id`: Treat as a queue ID (default)\n- `task`: Treat as a task ID to get the task's default queue\n- `custom`: Treat as a custom queue name"
+      }
+    ],
+    "requiredParams": [
+      "queueParam"
+    ],
+    "searchText": "retrieve_queue_v1 retrieve a queue get a queue by its id, or by type and name. queues get /api/v1/queues/{queueparam} queueparam type"
+  },
+  {
+    "operationId": "retrieve_run_v1",
+    "method": "GET",
+    "path": "/api/v3/runs/{runId}",
+    "summary": "Retrieve a run",
+    "description": "Retrieve information about a run, including its status, payload, output, and attempts. If you authenticate with a Public API key, we will omit the payload and output fields for security reasons.",
+    "tag": "run",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "runId",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of an run, starts with `run_`. The run ID will be returned when you trigger a run on a task."
+      }
+    ],
+    "requiredParams": [
+      "runId"
+    ],
+    "searchText": "retrieve_run_v1 retrieve a run retrieve information about a run, including its status, payload, output, and attempts. if you authenticate with a public api key, we will omit the payload and output fields for security reasons. run get /api/v3/runs/{runid} runid"
+  },
+  {
+    "operationId": "retrieve_waitpoint_token_v1",
+    "method": "GET",
+    "path": "/api/v1/waitpoints/tokens/{waitpointId}",
+    "summary": "Retrieve a waitpoint token",
+    "description": "Retrieves a waitpoint token by its ID, including its current status and output if it has been completed.",
+    "tag": "waitpoints",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "waitpointId",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of the waitpoint token."
+      }
+    ],
+    "requiredParams": [
+      "waitpointId"
+    ],
+    "searchText": "retrieve_waitpoint_token_v1 retrieve a waitpoint token retrieves a waitpoint token by its id, including its current status and output if it has been completed. waitpoints get /api/v1/waitpoints/tokens/{waitpointid} waitpointid"
+  },
+  {
+    "operationId": "trigger_task_v1",
+    "method": "POST",
+    "path": "/api/v1/tasks/{taskIdentifier}/trigger",
+    "summary": "Trigger a task",
+    "description": "Trigger a task by its identifier.",
+    "tag": "tasks",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "taskIdentifier",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The id of a task"
+      },
+      {
+        "name": "_body",
+        "in": "body",
+        "required": true,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "payload": {
+              "description": "The payload can include any valid JSON"
+            },
+            "context": {
+              "description": "The context can include any valid JSON"
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "queue": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "You can define a shared queue and then pass the name in to your task."
+                    },
+                    "concurrencyLimit": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1000,
+                      "description": "An optional property that specifies the maximum number of concurrent run executions. If this property is omitted, the task can potentially use up the full concurrency of an environment."
+                    }
+                  }
+                },
+                "concurrencyKey": {
+                  "type": "string",
+                  "description": "Scope the concurrency limit to a specific key."
+                },
+                "idempotencyKey": {
+                  "type": "string",
+                  "description": "An optional property that specifies the idempotency key used to prevent creating duplicate runs. If you provide an existing idempotency key, we will return the existing run ID."
+                },
+                "ttl": {
+                  "type": [
+                    "string",
+                    "number"
+                  ],
+                  "description": "The time-to-live for this run. If the run is not executed within this time, it will be removed from the queue and never execute. You can use a string in this format: `1h`, `1m`, `1h42m` or a number of seconds (min. 1).",
+                  "example": "1h42m"
+                },
+                "delay": {
+                  "type": "string",
+                  "description": "The delay before the task is executed. This can be a Date object, a string like `1h` or a date-time string.\n\n* \"1h\" - 1 hour\n* \"30d\" - 30 days\n* \"15m\" - 15 minutes\n* \"2w\" - 2 weeks\n* \"60s\" - 60 seconds\n* new Date(\"2025-01-01T00:00:00Z\")\n"
+                },
+                "tags": {
+                  "allOf": [
+                    {
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 128,
+                          "description": "A single run tag. Must be less than 128 characters.",
+                          "example": "user_123456"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 128,
+                            "description": "A single run tag. Must be less than 128 characters.",
+                            "example": "user_123456"
+                          },
+                          "maxItems": 10,
+                          "uniqueItems": true,
+                          "example": [
+                            "user_123456",
+                            "product_4629101"
+                          ]
+                        }
+                      ],
+                      "description": "One or more tags to attach to a run. Runs can have a maximum of 10 tags."
+                    }
+                  ],
+                  "description": "Tags to attach to the run. Tags can be used to filter runs in the dashboard and using the SDK.\n\nYou can set up to 10 tags per run, each must be less than 128 characters.\n\nWe recommend prefixing tags with a namespace using an underscore or colon, like `user_1234567` or `org:9876543`. Stripe uses underscores.\n"
+                },
+                "machine": {
+                  "type": "string",
+                  "enum": [
+                    "micro",
+                    "small-1x",
+                    "small-2x",
+                    "medium-1x",
+                    "medium-2x",
+                    "large-1x",
+                    "large-2x"
+                  ],
+                  "example": "small-2x",
+                  "description": "The machine preset to use for this run. This will override the task's machine preset and any defaults."
+                }
+              }
+            }
+          }
+        }
+      }
+    ],
+    "requiredParams": [
+      "taskIdentifier",
+      "_body"
+    ],
+    "searchText": "trigger_task_v1 trigger a task trigger a task by its identifier. tasks post /api/v1/tasks/{taskidentifier}/trigger taskidentifier _body payload context options queue name concurrencylimit concurrencykey idempotencykey ttl delay tags machine"
+  },
+  {
+    "operationId": "update_project_envvar_v1",
+    "method": "PUT",
+    "path": "/api/v1/projects/{projectRef}/envvars/{env}/{name}",
+    "summary": "Update environment variable",
+    "description": "Update a specific environment variable for a specific project and environment.",
+    "tag": "envvars",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "projectRef",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The external ref of the project. You can find this in the project settings. Starts with `proj_`."
+      },
+      {
+        "name": "env",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "enum": [
+          "dev",
+          "staging",
+          "prod"
+        ],
+        "description": "The environment of the project to list variables for."
+      },
+      {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The name of the environment variable."
+      },
+      {
+        "name": "_body",
+        "in": "body",
+        "required": true,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "string",
+              "example": "slack_123456"
+            }
+          },
+          "required": [
+            "value"
+          ]
+        }
+      }
+    ],
+    "requiredParams": [
+      "projectRef",
+      "env",
+      "name",
+      "_body"
+    ],
+    "searchText": "update_project_envvar_v1 update environment variable update a specific environment variable for a specific project and environment. envvars put /api/v1/projects/{projectref}/envvars/{env}/{name} projectref env name _body value"
+  },
+  {
+    "operationId": "update_run_metadata_v1",
+    "method": "PUT",
+    "path": "/api/v1/runs/{runId}/metadata",
+    "summary": "Update run metadata",
+    "description": "Update the metadata of a run.",
+    "tag": "runs",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "runId",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of an run, starts with `run_`. The run ID will be returned when you trigger a run on a task."
+      },
+      {
+        "name": "_body",
+        "in": "body",
+        "required": true,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "metadata": {
+              "type": "object",
+              "description": "The new metadata to set on the run.",
+              "example": {
+                "key": "value"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "requiredParams": [
+      "runId",
+      "_body"
+    ],
+    "searchText": "update_run_metadata_v1 update run metadata update the metadata of a run. runs put /api/v1/runs/{runid}/metadata runid _body metadata"
+  },
+  {
+    "operationId": "update_schedule_v1",
+    "method": "PUT",
+    "path": "/api/v1/schedules/{schedule_id}",
+    "summary": "Update Schedule",
+    "description": "Update a schedule by its ID. This will only work on `IMPERATIVE` schedules that were created in the dashboard or using the imperative SDK functions like `schedules.create()`.",
+    "tag": "schedules",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "schedule_id",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of the schedule."
+      },
+      {
+        "name": "_body",
+        "in": "body",
+        "required": true,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "task": {
+              "type": "string"
+            },
+            "cron": {
+              "type": "string"
+            },
+            "externalId": {
+              "type": "string"
+            },
+            "timezone": {
+              "type": "string",
+              "example": "America/New_York",
+              "description": "Defaults to \"UTC\". In IANA format (\"America/New_York\"). If set then it will trigger at the CRON frequency in that timezone and respect daylight savings time."
+            }
+          },
+          "required": [
+            "task",
+            "cron"
+          ]
+        }
+      }
+    ],
+    "requiredParams": [
+      "schedule_id",
+      "_body"
+    ],
+    "searchText": "update_schedule_v1 update schedule update a schedule by its id. this will only work on `imperative` schedules that were created in the dashboard or using the imperative sdk functions like `schedules.create()`. schedules put /api/v1/schedules/{schedule_id} schedule_id _body task cron externalid timezone"
+  },
+  {
+    "operationId": "upload_project_envvars_v1",
+    "method": "POST",
+    "path": "/api/v1/projects/{projectRef}/envvars/{env}/import",
+    "summary": "Upload environment variables",
+    "description": "Upload mulitple environment variables for a specific project and environment.",
+    "tag": "envvars",
+    "auth": "secretKey",
+    "destructive": false,
+    "parameters": [
+      {
+        "name": "projectRef",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The external ref of the project. You can find this in the project settings. Starts with `proj_`."
+      },
+      {
+        "name": "env",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "enum": [
+          "dev",
+          "staging",
+          "prod"
+        ],
+        "description": "The environment of the project to list variables for."
+      },
+      {
+        "name": "_body",
+        "in": "body",
+        "required": true,
+        "description": "JSON request body. Pass its fields directly inside `params`.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "variables": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "example": "SLACK_API_KEY"
+                  },
+                  "value": {
+                    "type": "string",
+                    "example": "slack_123456"
+                  }
+                },
+                "required": [
+                  "name",
+                  "value"
+                ]
+              }
+            },
+            "override": {
+              "type": "boolean",
+              "description": "Whether to override existing variables or not",
+              "default": false
+            }
+          },
+          "required": [
+            "variables"
+          ]
+        }
+      }
+    ],
+    "requiredParams": [
+      "projectRef",
+      "env",
+      "_body"
+    ],
+    "searchText": "upload_project_envvars_v1 upload environment variables upload mulitple environment variables for a specific project and environment. envvars post /api/v1/projects/{projectref}/envvars/{env}/import projectref env _body variables name value override"
+  }
+]

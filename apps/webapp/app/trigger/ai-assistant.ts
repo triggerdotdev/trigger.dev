@@ -1,52 +1,15 @@
 import { chat } from "@trigger.dev/sdk/ai";
-import { logger, prompts, sessions } from "@trigger.dev/sdk";
+import { logger, sessions } from "@trigger.dev/sdk";
 import { streamText, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { prisma } from "./db";
 import { buildAssistantTools } from "./ai-assistant-tools";
+import { routerSystemPrompt } from "./ai-assistant-tools/router/prompt";
 
 type ChatMessagesForWrite = NonNullable<
   Parameters<typeof prisma.aiChat.update>[0]["data"]
 >["messages"];
-
-const systemPrompt = prompts.define({
-  id: "dashboard-assistant-system",
-  model: "openai:gpt-4.1-mini",
-  config: { temperature: 0.7 },
-  variables: z.object({
-    projectSlug: z.string(),
-    environmentSlug: z.string(),
-    currentPage: z.string(),
-  }),
-  content: `You are the Trigger.dev AI assistant, embedded in the dashboard.
-
-## Your role
-Help the user navigate the dashboard, find documentation, and understand Trigger.dev features.
-
-## Current context
-The user is viewing: project "{{projectSlug}}" / {{environmentSlug}} environment / {{currentPage}} page.
-
-## Guidelines
-- Be concise and friendly. Prefer short, direct answers unless the user asks for detail.
-- When the user asks how something works, ALWAYS search documentation first.
-- When the user asks "where do I find X" or "take me to Y", use navigateToPage.
-- Use getCurrentContext to ground answers in what the user is viewing.
-- Use markdown formatting for code blocks, lists, and structured output.
-- If you don't know something, say so — don't make things up.
-- When you use a tool, briefly explain what you're doing.
-
-## What you CAN do (V1A)
-- Search and read Trigger.dev documentation
-- Navigate the user to any dashboard page
-- Explain Trigger.dev features, configuration, and APIs
-- Help with common questions about retries, concurrency, deployments, env vars, etc.
-
-## What you CANNOT do yet
-- Inspect specific runs, errors, or logs (coming soon)
-- Modify settings or trigger actions (coming soon)
-- Access the user's code (coming soon)`,
-});
 
 export const dashboardAssistant = chat
   .withClientData({
@@ -81,7 +44,7 @@ export const dashboardAssistant = chat
 
     onBoot: async ({ clientData }) => {
       if (!clientData) return;
-      const resolved = await systemPrompt.resolve({
+      const resolved = await routerSystemPrompt.resolve({
         projectSlug: clientData.projectSlug,
         environmentSlug: clientData.environmentSlug,
         currentPage: clientData.currentPage,
@@ -191,7 +154,9 @@ export const dashboardAssistant = chat
         model: openai("gpt-4.1-mini"),
         messages,
         abortSignal: stopSignal,
-        stopWhen: stepCountIs(5),
+        // Allow multi-step tool chains: searchApi → list/retrieve → callApi →
+        // summarize, or getQuerySchema → executeTrql → summarize.
+        stopWhen: stepCountIs(10),
       });
     },
   });
