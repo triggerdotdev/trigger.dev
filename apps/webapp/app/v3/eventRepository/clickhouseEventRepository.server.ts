@@ -269,7 +269,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         return;
       }
 
-      logger.info("ClickhouseEventRepository.flushBatch Inserted batch into clickhouse", {
+      logger.debug("ClickhouseEventRepository.flushBatch Inserted batch into clickhouse", {
         events: events.length,
         insertResult: outcome.insertResult,
         sanitized: outcome.kind === "sanitized",
@@ -302,7 +302,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       return;
     }
 
-    logger.info("ClickhouseEventRepository.flushLlmMetricsBatch Inserted LLM metrics batch", {
+    logger.debug("ClickhouseEventRepository.flushLlmMetricsBatch Inserted LLM metrics batch", {
       rows: rows.length,
       sanitized: outcome.kind === "sanitized",
     });
@@ -421,7 +421,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         throw insertError;
       }
 
-      logger.info("ClickhouseEventRepository.flushOtelMetricsBatch Inserted OTLP metrics batch", {
+      logger.debug("ClickhouseEventRepository.flushOtelMetricsBatch Inserted OTLP metrics batch", {
         rows: rows.length,
       });
     });
