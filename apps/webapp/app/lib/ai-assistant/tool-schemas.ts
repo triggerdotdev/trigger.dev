@@ -15,6 +15,18 @@ export const searchDocs = tool({
   }),
 });
 
+export const askExpert = tool({
+  description:
+    "Delegate complex questions to a specialist agent with a more powerful model. Use " +
+    "for: architecture questions, debugging help, explaining errors, analyzing patterns, " +
+    "or anything requiring deeper reasoning. The expert can also search docs if needed.",
+  inputSchema: z.object({
+    question: z
+      .string()
+      .describe("The full question to delegate, with any relevant context the expert needs"),
+  }),
+});
+
 export const navigateToPage = tool({
   description:
     "Navigate the user to a specific dashboard page. Use when the user asks " +
@@ -147,6 +159,7 @@ export const listDashboards = tool({
 
 // Friendly labels for completed tool steps shown in the chat transcript.
 export const toolLabels: Record<string, string> = {
+  askExpert: "Consulted the expert",
   searchDocs: "Searched documentation",
   navigateToPage: "Navigated to page",
   getCurrentContext: "Checked current context",

@@ -1,6 +1,6 @@
 import type { ClientData } from "./types";
 import { buildToolContext } from "./types";
-import { createSearchDocsTool } from "./docs/search-docs";
+import { createAskExpertTool } from "./expert/ask-expert";
 import { createNavigateToPageTool } from "./navigation/navigate-to-page";
 import { createSearchPagesTool } from "./navigation/search-pages";
 import { createGetCurrentContextTool } from "./navigation/get-current-context";
@@ -16,8 +16,8 @@ export function buildAssistantTools(clientData: ClientData) {
   const ctx = buildToolContext(clientData);
 
   return {
-    // Docs + navigation
-    searchDocs: createSearchDocsTool(),
+    // Expert delegation + navigation
+    askExpert: createAskExpertTool(),
     navigateToPage: createNavigateToPageTool(ctx),
     searchPages: createSearchPagesTool(ctx),
     getCurrentContext: createGetCurrentContextTool(ctx),

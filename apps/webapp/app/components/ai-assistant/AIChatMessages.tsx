@@ -4,14 +4,11 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   ExclamationTriangleIcon,
-  HandThumbDownIcon,
-  HandThumbUpIcon,
   ShieldExclamationIcon,
   SparklesIcon,
   XCircleIcon,
 } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
-import { motion } from "framer-motion";
 import { useCallback, useState } from "react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
@@ -65,17 +62,6 @@ export function AIChatMessages({
     [fadeRef]
   );
 
-  const isStreaming = status === "streaming" || status === "submitted";
-
-  // Feedback bar only attaches to the most recent assistant turn.
-  let lastAssistantIndex = -1;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === "assistant") {
-      lastAssistantIndex = i;
-      break;
-    }
-  }
-
   const handleScroll = () => {
     if (!scrollContainer) return;
     const distanceFromBottom =
@@ -99,7 +85,7 @@ export function AIChatMessages({
         className="flex-1 overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
       >
         <div ref={autoScrollRef}>
-          {messages.map((message, msgIndex) => (
+          {messages.map((message) => (
             <div key={message.id} className="mb-4">
               {message.role === "user" && (
                 <div className="py-2 text-sm font-semibold text-text-bright">
@@ -230,9 +216,6 @@ export function AIChatMessages({
                     return null;
                   })}
                 </div>
-              )}
-              {message.role === "assistant" && msgIndex === lastAssistantIndex && !isStreaming && (
-                <FeedbackBar key={message.id} />
               )}
             </div>
           ))}
@@ -489,44 +472,6 @@ function ApprovalStatus({ approved }: { approved: boolean }) {
           <span className="text-text-dimmed">Cancelled — no changes made</span>
         </>
       )}
-    </div>
-  );
-}
-
-function FeedbackBar() {
-  const [submitted, setSubmitted] = useState(false);
-
-  if (submitted) {
-    return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.3 }}
-        className="pt-1 text-xs text-text-dimmed"
-      >
-        Thanks for the feedback
-      </motion.div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-1 pt-1">
-      <button
-        type="button"
-        onClick={() => setSubmitted(true)}
-        title="Good response"
-        className="rounded p-1 transition-colors hover:bg-charcoal-700"
-      >
-        <HandThumbUpIcon className="size-3.5 text-text-dimmed transition-colors hover:text-green-400" />
-      </button>
-      <button
-        type="button"
-        onClick={() => setSubmitted(true)}
-        title="Bad response"
-        className="rounded p-1 transition-colors hover:bg-charcoal-700"
-      >
-        <HandThumbDownIcon className="size-3.5 text-text-dimmed transition-colors hover:text-rose-400" />
-      </button>
     </div>
   );
 }

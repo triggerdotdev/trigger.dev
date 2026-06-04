@@ -1,6 +1,7 @@
 import { Spinner } from "~/components/primitives/Spinner";
 
 const TOOL_LABELS: Record<string, string> = {
+  askExpert: "Consulting the expert…",
   searchDocs: "Searching documentation…",
   navigateToPage: "Finding page…",
   getCurrentContext: "Checking context…",
