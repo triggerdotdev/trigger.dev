@@ -69,6 +69,7 @@ import {
   type EnvironmentVariableWithSetValues,
   EnvironmentVariablesPresenter,
 } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
+import { type EnvironmentVariablesEnvironment } from "~/presenters/v3/environmentVariablesEnvironments.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
@@ -101,6 +102,20 @@ export const meta: MetaFunction = () => {
     },
   ];
 };
+
+type PageVercelIntegration = NonNullable<
+  Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>["vercelIntegration"]
+>;
+
+export type EnvironmentVariablesPageLoaderData = {
+  environmentVariables: EnvironmentVariableWithSetValues[];
+  environments: EnvironmentVariablesEnvironment[];
+  hasStaging: boolean;
+  vercelIntegration: PageVercelIntegration | null;
+};
+
+export const environmentVariablesRouteId =
+  "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -276,14 +291,19 @@ type GroupedEnvironmentVariable = EnvironmentVariableWithSetValues & {
   occurences: number;
 };
 
-type PageVercelIntegration = NonNullable<
-  Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>["vercelIntegration"]
->;
-
 export default function Page() {
+  const loaderData = useTypedLoaderData<EnvironmentVariablesPageLoaderData>();
+
+  return <EnvironmentVariablesListPage loaderData={loaderData} />;
+}
+
+function EnvironmentVariablesListPage({
+  loaderData,
+}: {
+  loaderData: EnvironmentVariablesPageLoaderData;
+}) {
   const [revealAll, setRevealAll] = useState(false);
-  const { environmentVariables, environments, vercelIntegration } =
-    useTypedLoaderData<typeof loader>();
+  const { environmentVariables, vercelIntegration } = loaderData;
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -487,8 +507,8 @@ export default function Page() {
             </Table>
           </div>
         </div>
-        <Outlet />
       </PageBody>
+      <Outlet />
     </PageContainer>
   );
 }

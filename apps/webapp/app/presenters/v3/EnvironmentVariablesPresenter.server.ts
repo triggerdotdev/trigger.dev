@@ -1,7 +1,6 @@
 import { PrismaClient, prisma } from "~/db.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
-import { filterOrphanedEnvironments, sortEnvironments } from "~/utils/environmentSort";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import type { EnvironmentVariableUpdater } from "~/v3/environmentVariables/repository";
 import {
@@ -9,6 +8,7 @@ import {
   EnvSlug,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
+import { loadEnvironmentVariablesEnvironments } from "./environmentVariablesEnvironments.server";
 
 type Result = Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>;
 export type EnvironmentVariableWithSetValues = Result["environmentVariables"][number];
@@ -62,16 +62,7 @@ export class EnvironmentVariablesPresenter {
         },
       },
       where: {
-        project: {
-          slug: projectSlug,
-          organization: {
-            members: {
-              some: {
-                userId,
-              },
-            },
-          },
-        },
+        projectId: project.id,
       },
     });
 
@@ -111,29 +102,12 @@ export class EnvironmentVariablesPresenter {
     const usersRecord: Record<string, { id: string; name: string | null; displayName: string | null; avatarUrl: string | null }> =
       Object.fromEntries(users.map((u) => [u.id, u]));
 
-    const environments = await this.#prismaClient.runtimeEnvironment.findMany({
-      select: {
-        id: true,
-        type: true,
-        isBranchableEnvironment: true,
-        branchName: true,
-        orgMember: {
-          select: {
-            userId: true,
-          },
-        },
-      },
-      where: {
-        project: {
-          slug: projectSlug,
-        },
-        archivedAt: null,
-      },
-    });
-
-    const sortedEnvironments = sortEnvironments(filterOrphanedEnvironments(environments)).filter(
-      (e) => e.orgMember?.userId === userId || e.orgMember === null
-    );
+    const { environments: sortedEnvironments, hasStaging } =
+      await loadEnvironmentVariablesEnvironments(
+        this.#prismaClient,
+        { userId, projectId: project.id },
+        { skipProjectAccessCheck: true }
+      );
 
     const repository = new EnvironmentVariablesRepository(this.#prismaClient);
 
@@ -215,13 +189,8 @@ export class EnvironmentVariablesPresenter {
           });
         })
         .sort((a, b) => a.key.localeCompare(b.key)),
-      environments: sortedEnvironments.map((environment) => ({
-        id: environment.id,
-        type: environment.type,
-        isBranchableEnvironment: environment.isBranchableEnvironment,
-        branchName: environment.branchName,
-      })),
-      hasStaging: environments.some((environment) => environment.type === "STAGING"),
+      environments: sortedEnvironments,
+      hasStaging,
       // Vercel integration data
       vercelIntegration: vercelIntegration
         ? {
