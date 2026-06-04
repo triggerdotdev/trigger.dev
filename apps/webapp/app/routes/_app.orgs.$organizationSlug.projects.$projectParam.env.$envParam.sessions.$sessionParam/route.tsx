@@ -639,7 +639,7 @@ function InspectorPane({ session, status }: { session: LoadedSession; status: Se
         {tab === "overview" ? (
           <OverviewTab session={session} status={status} />
         ) : tab === "runs" ? (
-          <RunsTab session={session} allRunsPath={allRunsPath} />
+          <RunsTab session={session} status={status} allRunsPath={allRunsPath} />
         ) : (
           <MetadataTab session={session} />
         )}
@@ -821,7 +821,15 @@ function MetadataTab({ session }: { session: LoadedSession }) {
   return <CodeBlock code={json} language="json" showLineNumbers={false} showTextWrapping />;
 }
 
-function RunsTab({ session, allRunsPath }: { session: LoadedSession; allRunsPath: string }) {
+function RunsTab({
+  session,
+  status,
+  allRunsPath,
+}: {
+  session: LoadedSession;
+  status: SessionStatus;
+  allRunsPath: string;
+}) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -831,55 +839,94 @@ function RunsTab({ session, allRunsPath }: { session: LoadedSession; allRunsPath
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <Property.Table>
-        {session.runs.map((entry) => {
-          const runPath = entry.run
-            ? v3RunPath(organization, project, environment, {
-                friendlyId: entry.run.friendlyId,
-              })
-            : undefined;
-          return (
-            <Property.Item key={entry.id}>
-              <Property.Label>
-                <div className="flex flex-col gap-0.5">
-                  <span className="capitalize">{entry.reason}</span>
-                  <span className="text-xs text-text-dimmed">
-                    <DateTime date={entry.triggeredAt} />
-                  </span>
-                </div>
-              </Property.Label>
-              <Property.Value>
-                {entry.run && runPath ? (
-                  <SimpleTooltip
-                    button={
-                      <TextLink
-                        to={runPath}
-                        className="group flex flex-wrap items-center gap-x-2 gap-y-0"
-                      >
-                        <CopyableText
-                          value={entry.run.friendlyId}
-                          copyValue={entry.run.friendlyId}
-                          asChild
-                        />
-                        <TaskRunStatusCombo status={entry.run.status} />
-                      </TextLink>
-                    }
-                    content={`Jump to run`}
-                    disableHoverableContent
-                  />
-                ) : (
-                  <span className="text-text-dimmed">–</span>
-                )}
-              </Property.Value>
-            </Property.Item>
-          );
-        })}
-      </Property.Table>
-      <div className="flex justify-end">
-        <LinkButton variant="tertiary/small" to={allRunsPath}>
+    <div className="flex flex-col">
+      <TimelineRow lineVariant="dashed">
+        <span className="flex items-center gap-1.5 text-sm font-medium text-text-bright">
+          <span>Session:</span>
+          <SessionStatusCombo status={status} className="text-sm" />
+        </span>
+        <span className="text-xs text-text-dimmed">{sessionStatusBlurb(status)}</span>
+        <LinkButton variant="secondary/small" to={allRunsPath} className="mt-1 w-fit">
           View all runs
         </LinkButton>
+      </TimelineRow>
+      {session.runs.map((entry, idx) => {
+        const isLast = idx === session.runs.length - 1;
+        const runPath = entry.run
+          ? v3RunPath(organization, project, environment, {
+              friendlyId: entry.run.friendlyId,
+            })
+          : undefined;
+        return (
+          <TimelineRow key={entry.id} isLast={isLast}>
+            <span className="text-sm font-medium text-text-bright">
+              <span className="capitalize">{entry.reason}</span> run
+            </span>
+            <span className="text-xs text-text-dimmed">
+              <DateTime date={entry.triggeredAt} />
+            </span>
+            {entry.run && runPath ? (
+              <>
+                <SimpleTooltip
+                  asChild
+                  buttonClassName="w-fit self-start"
+                  button={
+                    <TextLink to={runPath} className="font-mono text-sm">
+                      <CopyableText
+                        value={entry.run.friendlyId}
+                        copyValue={entry.run.friendlyId}
+                        asChild
+                      />
+                    </TextLink>
+                  }
+                  content="Jump to run"
+                  disableHoverableContent
+                />
+                <TaskRunStatusCombo status={entry.run.status} className="text-sm" />
+              </>
+            ) : (
+              <span className="text-text-dimmed">–</span>
+            )}
+          </TimelineRow>
+        );
+      })}
+    </div>
+  );
+}
+
+function sessionStatusBlurb(status: SessionStatus): string {
+  switch (status) {
+    case "ACTIVE":
+      return "Accepting new runs";
+    case "CLOSED":
+      return "No longer accepting new runs";
+    case "EXPIRED":
+      return "Expired without being closed";
+  }
+}
+
+function TimelineRow({
+  children,
+  isLast,
+  lineVariant = "solid",
+}: {
+  children: React.ReactNode;
+  isLast?: boolean;
+  lineVariant?: "solid" | "dashed";
+}) {
+  return (
+    <div className="flex gap-3">
+      <div className="flex flex-none flex-col items-center">
+        <div className="my-1.5 size-2.5 shrink-0 rounded-full border border-charcoal-500" />
+        {!isLast &&
+          (lineVariant === "dashed" ? (
+            <div className="flex-1 border-l border-dashed border-charcoal-600" />
+          ) : (
+            <div className="w-px flex-1 bg-charcoal-600" />
+          ))}
+      </div>
+      <div className={cn("flex min-w-0 flex-1 flex-col gap-0.5", !isLast && "pb-4")}>
+        {children}
       </div>
     </div>
   );
