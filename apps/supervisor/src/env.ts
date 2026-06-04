@@ -56,6 +56,9 @@ const Env = z
     // while the worker cluster can't schedule pods. Disabled = total no-op: no Redis
     // client is created, no reads happen, and the dequeue loop is unaffected.
     TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED: BoolEnv.default(false),
+    // Safety default: even when enabled, backpressure only logs what it would do.
+    // Set to false to actually skip dequeues / freeze scale-up.
+    TRIGGER_DEQUEUE_BACKPRESSURE_DRY_RUN: BoolEnv.default(true),
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_KEY: z.string().default("engine:dequeue:backpressure"),
     TRIGGER_DEQUEUE_BACKPRESSURE_REFRESH_MS: z.coerce.number().int().positive().default(1000),
     TRIGGER_DEQUEUE_BACKPRESSURE_RAMP_MS: z.coerce.number().int().min(0).default(30_000), // Resume ramp window after release; 0 = instant resume

@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { Registry } from "prom-client";
 import { BackpressureMonitor, type BackpressureSignalSource } from "./backpressureMonitor.js";
+import { BackpressureMetrics } from "./backpressureMetrics.js";
 
 function countingSource(verdict: { engaged: boolean } | null): {
   source: BackpressureSignalSource;
@@ -221,6 +223,74 @@ describe("BackpressureMonitor", () => {
     await vi.advanceTimersByTimeAsync(5000);
     rnd = 0.0;
     expect(monitor.shouldSkipDequeue()).toBe(false);
+
+    monitor.stop();
+  });
+
+  it("in dry-run, the gates are inert but computeEngaged still reflects the real signal", async () => {
+    const { source } = countingSource({ engaged: true });
+    const monitor = new BackpressureMonitor({
+      enabled: true,
+      source,
+      refreshIntervalMs: 1000,
+      dryRun: true,
+    });
+
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(monitor.computeEngaged()).toBe(true); // real signal, for observability/metrics
+    expect(monitor.isEngaged()).toBe(false); // inert: no scale-up freeze
+    expect(monitor.shouldSkipDequeue()).toBe(false); // inert: no dequeue skip
+
+    monitor.stop();
+  });
+
+  it("logs on verdict transitions", async () => {
+    let engaged = true;
+    const source: BackpressureSignalSource = { read: async () => ({ engaged }) };
+    const logs: Array<{ message: string; meta?: Record<string, unknown> }> = [];
+    const logger = {
+      info: (message: string, meta?: Record<string, unknown>) => logs.push({ message, meta }),
+    };
+    const monitor = new BackpressureMonitor({
+      enabled: true,
+      source,
+      refreshIntervalMs: 1000,
+      logger,
+    });
+
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(logs.some((l) => l.meta?.engaged === true)).toBe(true);
+
+    engaged = false;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(logs.some((l) => l.meta?.engaged === false)).toBe(true);
+
+    monitor.stop();
+  });
+
+  it("records prometheus metrics", async () => {
+    const { source } = countingSource({ engaged: true });
+    const register = new Registry();
+    const metrics = new BackpressureMetrics({ register });
+    const monitor = new BackpressureMonitor({
+      enabled: true,
+      source,
+      refreshIntervalMs: 1000,
+      metrics,
+    });
+
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(await register.metrics()).toContain("supervisor_backpressure_engaged 1");
+
+    monitor.shouldSkipDequeue();
+    expect(await register.metrics()).toMatch(
+      /supervisor_backpressure_skipped_dequeues_total\{dry_run="false"\} [1-9]/
+    );
 
     monitor.stop();
   });
