@@ -131,6 +131,8 @@ function toModelMessages(messages: UIMessage[]): Promise<ModelMessage[]> {
 export type ToolCallExecutionOptions = {
   toolCallId: string;
   experimental_context?: unknown;
+  /** v7 name for the user context (`experimental_context` on v6). */
+  context?: unknown;
   /** Chat context — only present when the tool runs inside a chat.agent turn. */
   chatId?: string;
   turn?: number;
@@ -907,9 +909,14 @@ function createTaskToolExecuteHandler<
     const toolMeta: ToolCallExecutionOptions = {
       toolCallId: toolOpts?.toolCallId ?? "",
     };
-    if (toolOpts?.experimental_context !== undefined) {
+    // v6 passes user context as `experimental_context`, v7 as `context`. Read
+    // whichever is set and stamp both so subtasks reading either name work.
+    const toolContext = toolOpts?.context ?? toolOpts?.experimental_context;
+    if (toolContext !== undefined) {
       try {
-        toolMeta.experimental_context = JSON.parse(JSON.stringify(toolOpts.experimental_context));
+        const serialized = JSON.parse(JSON.stringify(toolContext));
+        toolMeta.experimental_context = serialized;
+        toolMeta.context = serialized;
       } catch {
         /* non-serializable */
       }
