@@ -208,12 +208,14 @@ class ManagedSupervisor {
         ),
         refreshIntervalMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_REFRESH_MS,
         maxVerdictAgeMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_MAX_VERDICT_AGE_MS,
+        rampMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_RAMP_MS,
       });
 
       this.logger.log("🛑 Dequeue backpressure enabled", {
         key: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_KEY,
         refreshIntervalMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_REFRESH_MS,
         maxVerdictAgeMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_MAX_VERDICT_AGE_MS,
+        rampMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_RAMP_MS,
       });
     }
 
@@ -238,6 +240,9 @@ class ManagedSupervisor {
         ewmaAlpha: env.TRIGGER_DEQUEUE_SCALING_EWMA_ALPHA,
         batchWindowMs: env.TRIGGER_DEQUEUE_SCALING_BATCH_WINDOW_MS,
         dampingFactor: env.TRIGGER_DEQUEUE_SCALING_DAMPING_FACTOR,
+        // Freeze scale-up while backpressure is hard-engaged (not during the resume
+        // ramp). Undefined when backpressure is disabled → no effect on scaling.
+        shouldPauseScaling: () => this.backpressureMonitor?.isEngaged() ?? false,
       },
       runNotificationsEnabled: env.TRIGGER_WORKLOAD_API_ENABLED,
       heartbeatIntervalSeconds: env.TRIGGER_WORKER_HEARTBEAT_INTERVAL_SECONDS,
