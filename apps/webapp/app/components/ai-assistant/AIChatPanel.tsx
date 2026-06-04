@@ -1,4 +1,5 @@
 import { useChat } from "@ai-sdk/react";
+import { lastAssistantMessageIsCompleteWithApprovalResponses } from "ai";
 import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { dashboardAssistant } from "~/trigger/ai-assistant";
@@ -31,6 +32,7 @@ export function AIChatPanel() {
     pendingQuery,
     clearPendingQuery,
     refreshHistory,
+    apiOperations,
   } = useAIChat();
 
   const panelRef = useRef<HTMLDivElement>(null);
@@ -71,12 +73,26 @@ export function AIChatPanel() {
     stop: aiStop,
     error,
     regenerate,
+    addToolApprovalResponse,
   } = useChat({
     id: currentChatId,
     messages: currentChatMessages,
     transport,
     resume: (currentChatMessages?.length ?? 0) > 0,
+    // When the user approves/denies a gated action, resume the agent so the
+    // tool either runs or is reported as denied.
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
   });
+
+  const handleApprove = useCallback(
+    (approvalId: string) => addToolApprovalResponse({ id: approvalId, approved: true }),
+    [addToolApprovalResponse]
+  );
+  const handleDeny = useCallback(
+    (approvalId: string) =>
+      addToolApprovalResponse({ id: approvalId, approved: false, reason: "User denied" }),
+    [addToolApprovalResponse]
+  );
 
   const stop = useCallback(() => {
     transport.stopGeneration(currentChatId);
@@ -168,6 +184,9 @@ export function AIChatPanel() {
           status={status}
           error={error}
           onRetry={() => void regenerate()}
+          onApprove={handleApprove}
+          onDeny={handleDeny}
+          apiOperations={apiOperations}
         />
       )}
 

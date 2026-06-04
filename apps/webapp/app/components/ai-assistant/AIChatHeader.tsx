@@ -1,11 +1,12 @@
 import { PlusIcon, ClockIcon } from "@heroicons/react/20/solid";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { Button } from "~/components/primitives/Buttons";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import { cn } from "~/utils/cn";
 import { useAIChat } from "./AIChatProvider";
+import { ScrollEdgeFade, useScrollFades } from "./ScrollFade";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -29,93 +30,9 @@ function formatRelativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-const SCROLL_END_THRESHOLD_PX = 4;
-
-type ScrollFadeEdge = "top" | "bottom";
-
-const SCROLL_FADE_HEIGHT = "h-8";
-
-const scrollFadeBlurLayers: Record<ScrollFadeEdge, { blur: string; mask: string }[]> = {
-  bottom: [
-    {
-      blur: "backdrop-blur-[2px]",
-      mask: "linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.12) 50%, transparent 100%)",
-    },
-    {
-      blur: "backdrop-blur-[6px]",
-      mask: "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 45%, transparent 100%)",
-    },
-    {
-      blur: "backdrop-blur-[14px]",
-      mask: "linear-gradient(to top, black 0%, rgba(0,0,0,0.35) 40%, transparent 100%)",
-    },
-  ],
-  top: [
-    {
-      blur: "backdrop-blur-[2px]",
-      mask: "linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.12) 50%, transparent 100%)",
-    },
-    {
-      blur: "backdrop-blur-[6px]",
-      mask: "linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 45%, transparent 100%)",
-    },
-    {
-      blur: "backdrop-blur-[14px]",
-      mask: "linear-gradient(to bottom, black 0%, rgba(0,0,0,0.35) 40%, transparent 100%)",
-    },
-  ],
-};
-
 function historyListLabel(chat: { title: string | null; updatedAt: string }) {
   if (chat.title && chat.title !== "New chat") return chat.title;
   return formatRelativeTime(chat.updatedAt);
-}
-
-function ScrollEdgeGradientBlur({ edge, visible }: { edge: ScrollFadeEdge; visible: boolean }) {
-  const tintMask =
-    edge === "bottom"
-      ? "linear-gradient(to top, black 0%, transparent 72%)"
-      : "linear-gradient(to bottom, black 0%, transparent 72%)";
-
-  return (
-    <div
-      aria-hidden
-      className={cn(
-        "pointer-events-none absolute inset-x-0 z-10 transition-opacity duration-300",
-        SCROLL_FADE_HEIGHT,
-        edge === "bottom" ? "bottom-0" : "top-0",
-        visible ? "opacity-100" : "opacity-0"
-      )}
-    >
-      {scrollFadeBlurLayers[edge].map((layer) => (
-        <div
-          key={layer.blur}
-          className={cn("absolute inset-0", layer.blur)}
-          style={{ WebkitMaskImage: layer.mask, maskImage: layer.mask }}
-        />
-      ))}
-      <div
-        className={cn(
-          "absolute inset-0",
-          edge === "bottom"
-            ? "bg-gradient-to-t from-background-bright/35 via-background-bright/8 to-transparent"
-            : "bg-gradient-to-b from-background-bright/35 via-background-bright/8 to-transparent"
-        )}
-        style={{ WebkitMaskImage: tintMask, maskImage: tintMask }}
-      />
-    </div>
-  );
-}
-
-function measureScrollFades(el: HTMLDivElement) {
-  const canScroll = el.scrollHeight > el.clientHeight + 1;
-  const atTop = el.scrollTop <= SCROLL_END_THRESHOLD_PX;
-  const atBottom =
-    el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_END_THRESHOLD_PX;
-  return {
-    showTop: canScroll && !atTop,
-    showBottom: canScroll && !atBottom,
-  };
 }
 
 function ChatHistoryList({
@@ -129,57 +46,18 @@ function ChatHistoryList({
   isOpen: boolean;
   onSelect: (chatId: string) => void;
 }) {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [scrollFades, setScrollFades] = useState({ showTop: false, showBottom: false });
-
-  const updateScrollFades = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) {
-      setScrollFades({ showTop: false, showBottom: false });
-      return;
-    }
-    setScrollFades(measureScrollFades(el));
-  }, []);
-
-  const setScrollContainerRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      scrollRef.current = node;
-      if (node) {
-        setScrollFades(measureScrollFades(node));
-      }
-    },
-    []
-  );
-
-  useLayoutEffect(() => {
-    if (!isOpen) {
-      setScrollFades({ showTop: false, showBottom: false });
-      return;
-    }
-
-    updateScrollFades();
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const observer = new ResizeObserver(updateScrollFades);
-    observer.observe(el);
-
-    const raf = requestAnimationFrame(() => {
-      requestAnimationFrame(updateScrollFades);
-    });
-
-    return () => {
-      observer.disconnect();
-      cancelAnimationFrame(raf);
-    };
-  }, [isOpen, chats, updateScrollFades]);
+  const { ref, onScroll, fades } = useScrollFades({
+    axis: "vertical",
+    enabled: isOpen,
+    deps: [chats],
+  });
 
   return (
     <div className="relative">
-      <ScrollEdgeGradientBlur edge="top" visible={scrollFades.showTop} />
+      <ScrollEdgeFade edge="top" visible={fades.start} />
       <div
-        ref={setScrollContainerRef}
-        onScroll={updateScrollFades}
+        ref={ref}
+        onScroll={onScroll}
         className="max-h-[360px] overflow-y-auto py-1 pb-3 pt-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
       >
         {chats.map((chat) => {
@@ -202,7 +80,7 @@ function ChatHistoryList({
           );
         })}
       </div>
-      <ScrollEdgeGradientBlur edge="bottom" visible={scrollFades.showBottom} />
+      <ScrollEdgeFade edge="bottom" visible={fades.end} />
     </div>
   );
 }
