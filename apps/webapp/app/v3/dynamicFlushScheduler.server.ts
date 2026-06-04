@@ -310,7 +310,7 @@ export class DynamicFlushScheduler<T> {
     if (newConcurrency !== currentConcurrency) {
       this.limiter = pLimit(newConcurrency);
 
-      this.logger.info("Adjusted flush concurrency", {
+      this.logger.debug("Adjusted flush concurrency", {
         previousConcurrency: currentConcurrency,
         newConcurrency,
         queuePressure,
