@@ -98,7 +98,9 @@ export function initMollifierDrainerWorker(
       // drainer because that's the loop creating the DRAINING entries
       // — same pod, same Redis client lifecycle. Idempotent + unref'd
       // so it's safe under dev hot-reload and doesn't block shutdown.
-      startMollifierDrainingGauge();
+      startMollifierDrainingGauge({
+        intervalMs: env.TRIGGER_MOLLIFIER_DRAINING_GAUGE_INTERVAL_MS,
+      });
     }
   } catch (error) {
     // Deterministic misconfig (shutdown-timeout vs GRACEFUL_SHUTDOWN_TIMEOUT,

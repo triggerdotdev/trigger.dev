@@ -1064,7 +1064,7 @@ const EnvironmentSchema = z
     // off onto a dedicated worker service. Unset → inherits
     // TRIGGER_MOLLIFIER_ENABLED, so single-container self-hosters don't have to
     // flip two switches. Multi-replica drainers are correct — `popAndMarkDraining`
-    // is an atomic ZPOPMIN + status flip in one Lua call, so only one replica
+    // is an atomic RPOP + status flip in one Lua call, so only one replica
     // can win any given entry — but inefficient: polling load (SMEMBERS +
     // per-env scans) multiplies by N, and `TRIGGER_MOLLIFIER_DRAIN_CONCURRENCY`
     // is per-process so engine load also multiplies. Splitting the drainer
@@ -1137,6 +1137,78 @@ const EnvironmentSchema = z
       .int()
       .positive()
       .default(5 * 60_000),
+    // Bounds for one stale-sweep pass (see mollifierStaleSweep.server.ts).
+    // Max entries scanned per env and max orgs visited per tick — together
+    // they cap the Redis traffic / wall-time of a single sweep pass.
+    TRIGGER_MOLLIFIER_STALE_SWEEP_MAX_ENTRIES_PER_ENV: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(1000),
+    TRIGGER_MOLLIFIER_STALE_SWEEP_MAX_ORGS_PER_PASS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(100),
+
+    // --- Mollifier buffer internals (wired into MollifierBuffer in
+    // mollifierBuffer.server.ts). ---
+    // Grace TTL applied to the entry hash on drainer ack so direct reads
+    // (retrieve, trace) have a safety net while PG replica lag settles.
+    TRIGGER_MOLLIFIER_ACK_GRACE_TTL_SECONDS: z.coerce.number().int().positive().default(30),
+    // ioredis per-request retry limit on the buffer's Redis client.
+    TRIGGER_MOLLIFIER_REDIS_MAX_RETRIES_PER_REQUEST: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(20),
+    // ioredis reconnect backoff envelope for the buffer client: the base
+    // grows by `STEP_MS` per attempt, capped at `MAX_MS`, then equal-jittered.
+    TRIGGER_MOLLIFIER_REDIS_RECONNECT_STEP_MS: z.coerce.number().int().positive().default(50),
+    TRIGGER_MOLLIFIER_REDIS_RECONNECT_MAX_MS: z.coerce.number().int().positive().default(1000),
+
+    // --- Mollifier drainer loop internals (wired into MollifierDrainer in
+    // mollifierDrainer.server.ts). ---
+    // Tick gap when a tick drained nothing; under backlog ticks run back-to-back.
+    TRIGGER_MOLLIFIER_DRAIN_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(100),
+    // Cap on the drainer's exponential backoff after consecutive runOnce errors.
+    TRIGGER_MOLLIFIER_DRAIN_MAX_BACKOFF_MS: z.coerce.number().int().positive().default(5_000),
+    // Floor for the drainer's backoff base (so a tiny poll interval doesn't
+    // collapse the backoff to near-zero during a sustained outage).
+    TRIGGER_MOLLIFIER_DRAIN_BACKOFF_FLOOR_MS: z.coerce.number().int().positive().default(100),
+    // Required margin between the drainer's shutdown deadline and
+    // GRACEFUL_SHUTDOWN_TIMEOUT; boot fails loud if the timeout leaves less.
+    TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_MARGIN_MS: z.coerce.number().int().positive().default(1_000),
+
+    // How often the draining-tracker ZSET cardinality is polled into the gauge.
+    TRIGGER_MOLLIFIER_DRAINING_GAUGE_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(15_000),
+
+    // --- Pre-gate idempotency claim (idempotencyClaim.server.ts). ---
+    // TTL on the claim key (and the upper clamp on the customer-derived
+    // claim TTL), how long a waiter blocks before timing out, and the
+    // waiter poll interval.
+    TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS: z.coerce.number().int().positive().default(30),
+    TRIGGER_MOLLIFIER_CLAIM_WAIT_MS: z.coerce.number().int().positive().default(5_000),
+    TRIGGER_MOLLIFIER_CLAIM_POLL_MS: z.coerce.number().int().positive().default(25),
+
+    // --- Buffered-run mutate-with-fallback wait loop (mutateWithFallback.server.ts). ---
+    // Ceiling on the wait-for-materialisation loop, initial poll gap, the
+    // backoff ceiling, and the exponential growth factor (a float).
+    TRIGGER_MOLLIFIER_MUTATE_SAFETY_NET_MS: z.coerce.number().int().positive().default(2_000),
+    TRIGGER_MOLLIFIER_MUTATE_POLL_STEP_MS: z.coerce.number().int().positive().default(20),
+    TRIGGER_MOLLIFIER_MUTATE_MAX_POLL_STEP_MS: z.coerce.number().int().positive().default(250),
+    TRIGGER_MOLLIFIER_MUTATE_BACKOFF_FACTOR: z.coerce.number().gt(1).default(1.7),
+
+    // --- Buffered-run metadata CAS retry loop (applyMetadataMutation.server.ts). ---
+    // Retry budget for concurrent metadata writers, and the jittered
+    // conflict-backoff envelope: random in [0, base + attempt * step) ms.
+    TRIGGER_MOLLIFIER_METADATA_MAX_RETRIES: z.coerce.number().int().positive().default(12),
+    TRIGGER_MOLLIFIER_METADATA_BACKOFF_BASE_MS: z.coerce.number().int().positive().default(5),
+    TRIGGER_MOLLIFIER_METADATA_BACKOFF_STEP_MS: z.coerce.number().int().positive().default(5),
 
     BATCH_TRIGGER_PROCESS_JOB_VISIBILITY_TIMEOUT_MS: z.coerce
       .number()

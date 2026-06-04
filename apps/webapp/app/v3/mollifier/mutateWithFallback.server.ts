@@ -16,7 +16,7 @@ export const DEFAULT_SAFETY_NET_MS = 2_000;
 // cadence for the whole safety-net budget.
 export const DEFAULT_POLL_STEP_MS = 20;
 export const DEFAULT_MAX_POLL_STEP_MS = 250;
-const BACKOFF_FACTOR = 1.7;
+export const DEFAULT_BACKOFF_FACTOR = 1.7;
 
 export type MutateWithFallbackInput<TResponse> = {
   runId: string;
@@ -52,6 +52,7 @@ export type MutateWithFallbackInput<TResponse> = {
   safetyNetMs?: number;
   pollStepMs?: number;
   maxPollStepMs?: number;
+  backoffFactor?: number;
   // Test injection.
   getBuffer?: () => MollifierBuffer | null;
   prismaWriter?: TaskRunReader;
@@ -179,6 +180,7 @@ export async function mutateWithFallback<TResponse>(
   // for the real mutation.
   const safetyNetMs = input.safetyNetMs ?? DEFAULT_SAFETY_NET_MS;
   const maxPollStepMs = input.maxPollStepMs ?? DEFAULT_MAX_POLL_STEP_MS;
+  const backoffFactor = input.backoffFactor ?? DEFAULT_BACKOFF_FACTOR;
   const random = input.random ?? Math.random;
   const deadline = now() + safetyNetMs;
   let step = input.pollStepMs ?? DEFAULT_POLL_STEP_MS;
@@ -210,7 +212,7 @@ export async function mutateWithFallback<TResponse>(
     if (now() >= deadline) break;
     const jittered = step + Math.floor(random() * step);
     await sleep(jittered);
-    step = Math.min(Math.ceil(step * BACKOFF_FACTOR), maxPollStepMs);
+    step = Math.min(Math.ceil(step * backoffFactor), maxPollStepMs);
   }
 
   logger.warn("mollifier mutate-with-fallback: drainer resolution timed out", {

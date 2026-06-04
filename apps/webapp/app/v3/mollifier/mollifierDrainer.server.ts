@@ -59,7 +59,7 @@ function initializeMollifierDrainer(): MollifierDrainer<MollifierSnapshot> {
   // drainer is cut off mid-wait — "log a warning on timeout" turns into
   // "hard exit with no log". 1s margin gives the primary room to finish
   // its own teardown after the drainer settles.
-  const shutdownMarginMs = 1_000;
+  const shutdownMarginMs = env.TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_MARGIN_MS;
   if (
     env.TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS >=
     env.GRACEFUL_SHUTDOWN_TIMEOUT - shutdownMarginMs
@@ -83,6 +83,9 @@ function initializeMollifierDrainer(): MollifierDrainer<MollifierSnapshot> {
     maxAttempts: env.TRIGGER_MOLLIFIER_DRAIN_MAX_ATTEMPTS,
     maxOrgsPerTick: env.TRIGGER_MOLLIFIER_DRAIN_MAX_ORGS_PER_TICK,
     drainBatchSize: env.TRIGGER_MOLLIFIER_DRAIN_BATCH_SIZE,
+    pollIntervalMs: env.TRIGGER_MOLLIFIER_DRAIN_POLL_INTERVAL_MS,
+    maxBackoffMs: env.TRIGGER_MOLLIFIER_DRAIN_MAX_BACKOFF_MS,
+    backoffFloorMs: env.TRIGGER_MOLLIFIER_DRAIN_BACKOFF_FLOOR_MS,
     isRetryable: isRetryablePgError,
   });
 
