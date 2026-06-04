@@ -1,6 +1,8 @@
-import { XMarkIcon, PlusIcon, ClockIcon } from "@heroicons/react/20/solid";
+import { PlusIcon, ClockIcon } from "@heroicons/react/20/solid";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
+import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { Button } from "~/components/primitives/Buttons";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import { cn } from "~/utils/cn";
 import { useAIChat } from "./AIChatProvider";
@@ -212,7 +214,9 @@ export function AIChatHeader() {
   return (
     <div className="flex h-11 items-center justify-between border-b border-grid-bright px-3">
       <div className="flex items-center gap-1.5">
-        <AISparkleIcon className="size-4" />
+        <span className="inline-flex motion-safe:hover:animate-ai-sparkle-hover motion-reduce:hover:animate-none">
+          <AISparkleIcon className="size-4" />
+        </span>
         <span className="text-sm font-medium text-text-bright">AI Assistant</span>
       </div>
       <div className="flex items-center gap-1">
@@ -260,13 +264,14 @@ export function AIChatHeader() {
           <PlusIcon className="size-4" />
         </button>
 
-        <button
+        <Button
           onClick={close}
-          className="flex size-7 items-center justify-center rounded text-text-dimmed transition-colors hover:bg-charcoal-700 hover:text-text-bright"
-          title="Close"
-        >
-          <XMarkIcon className="size-4" />
-        </button>
+          variant="minimal/small"
+          TrailingIcon={ExitIcon}
+          shortcut={{ key: "esc" }}
+          shortcutPosition="before-trailing-icon"
+          className="pl-1"
+        />
       </div>
     </div>
   );

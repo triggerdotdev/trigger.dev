@@ -1,5 +1,5 @@
 import { chat } from "@trigger.dev/sdk/ai";
-import { logger, prompts } from "@trigger.dev/sdk";
+import { logger, prompts, sessions } from "@trigger.dev/sdk";
 import { streamText, stepCountIs } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
@@ -9,31 +9,6 @@ import { buildAssistantTools } from "./ai-assistant-tools";
 type ChatMessagesForWrite = NonNullable<
   Parameters<typeof prisma.aiChat.update>[0]["data"]
 >["messages"];
-
-// Idempotently create the chat + session rows before onTurnStart's update
-// runs. Must happen in onPreload (every chat boots preloaded) with onChatStart
-// as the non-preloaded fallback.
-async function ensureChatRows(args: {
-  chatId: string;
-  chatAccessToken: string;
-  userId: string;
-}) {
-  await prisma.aiChat.upsert({
-    where: { id: args.chatId },
-    create: {
-      id: args.chatId,
-      title: "New chat",
-      userId: args.userId,
-      model: "gpt-4.1-mini",
-    },
-    update: {},
-  });
-  await prisma.aiChatSession.upsert({
-    where: { id: args.chatId },
-    create: { id: args.chatId, publicAccessToken: args.chatAccessToken },
-    update: { publicAccessToken: args.chatAccessToken },
-  });
-}
 
 const systemPrompt = prompts.define({
   id: "dashboard-assistant-system",
@@ -114,35 +89,82 @@ export const dashboardAssistant = chat
       chat.prompt.set(resolved);
     },
 
-    onPreload: async ({ chatId, chatAccessToken, clientData }) => {
+    onPreload: async ({ chatId, clientData }) => {
       if (!clientData) return;
-      await ensureChatRows({ chatId, chatAccessToken, userId: clientData.userId });
+      // Create session through Trigger platform and local chat record
+      await sessions.start({
+        type: "chat.agent",
+        externalId: chatId,
+        taskIdentifier: "dashboard-assistant",
+        triggerConfig: {
+          basePayload: {
+            userId: clientData.userId,
+            organizationSlug: clientData.organizationSlug,
+            projectSlug: clientData.projectSlug,
+            environmentSlug: clientData.environmentSlug,
+            currentPage: clientData.currentPage,
+            currentParams: clientData.currentParams,
+          },
+        },
+        tags: [
+          `user:${clientData.userId}`,
+          `org:${clientData.organizationSlug}`,
+          `project:${clientData.projectSlug}`,
+        ],
+      });
     },
 
-    // Fallback for non-preloaded runs; onPreload already created the rows.
-    onChatStart: async ({ chatId, chatAccessToken, clientData, preloaded }) => {
+    // Fallback for non-preloaded runs; onPreload already created the session.
+    onChatStart: async ({ chatId, clientData, preloaded }) => {
       if (preloaded) return;
       if (!clientData) return;
-      await ensureChatRows({ chatId, chatAccessToken, userId: clientData.userId });
+      // Create session through Trigger platform and local chat record
+      await sessions.start({
+        type: "chat.agent",
+        externalId: chatId,
+        taskIdentifier: "dashboard-assistant",
+        triggerConfig: {
+          basePayload: {
+            userId: clientData.userId,
+            organizationSlug: clientData.organizationSlug,
+            projectSlug: clientData.projectSlug,
+            environmentSlug: clientData.environmentSlug,
+            currentPage: clientData.currentPage,
+            currentParams: clientData.currentParams,
+          },
+        },
+        tags: [
+          `user:${clientData.userId}`,
+          `org:${clientData.organizationSlug}`,
+          `project:${clientData.projectSlug}`,
+        ],
+      });
     },
 
     // Await the write (not chat.defer): a deferred write loses the user
     // message on a mid-stream page refresh.
-    onTurnStart: async ({ chatId, uiMessages }) => {
-      await prisma.aiChat.update({
+    onTurnStart: async ({ chatId, uiMessages, clientData }) => {
+      const messages = uiMessages as unknown as ChatMessagesForWrite;
+      await prisma.aiChat.upsert({
         where: { id: chatId },
-        data: { messages: uiMessages as unknown as ChatMessagesForWrite },
+        create: {
+          id: chatId,
+          title: "New chat",
+          userId: clientData?.userId ?? "",
+          model: "gpt-4.1-mini",
+          messages,
+        },
+        update: { messages },
       });
 
       if (Array.isArray(uiMessages)) {
         const firstUser = uiMessages.find((m) => m?.role === "user");
-        const text = firstUser
-          ? (firstUser.parts ?? [])
-              .filter((p: { type?: string }) => p?.type === "text")
-              .map((p: { text?: string }) => p.text ?? "")
-              .join(" ")
-              .trim()
-          : "";
+        const parts = (firstUser?.parts ?? []) as Array<{ type?: string; text?: string }>;
+        const text = parts
+          .filter((p) => p?.type === "text")
+          .map((p) => p.text ?? "")
+          .join(" ")
+          .trim();
         if (text) {
           const title = text.length > 60 ? `${text.slice(0, 60).trimEnd()}…` : text;
           await prisma.aiChat.updateMany({
@@ -153,20 +175,12 @@ export const dashboardAssistant = chat
       }
     },
 
-    // Atomic write of messages + session state; a non-atomic write races the
-    // resume-replay.
-    onTurnComplete: async ({ chatId, uiMessages, chatAccessToken, lastEventId }) => {
-      await prisma.$transaction([
-        prisma.aiChat.update({
-          where: { id: chatId },
-          data: { messages: uiMessages as unknown as ChatMessagesForWrite },
-        }),
-        prisma.aiChatSession.upsert({
-          where: { id: chatId },
-          create: { id: chatId, publicAccessToken: chatAccessToken, lastEventId },
-          update: { publicAccessToken: chatAccessToken, lastEventId },
-        }),
-      ]);
+    // Persist messages after turn completes
+    onTurnComplete: async ({ chatId, uiMessages }) => {
+      await prisma.aiChat.update({
+        where: { id: chatId },
+        data: { messages: uiMessages as unknown as ChatMessagesForWrite },
+      });
     },
 
     // chat.toStreamTextOptions() must be spread first. `tools` comes from the

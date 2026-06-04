@@ -47,3 +47,11 @@ export const searchPages = tool({
     query: z.string().describe("Description of what the user is looking for"),
   }),
 });
+
+// Friendly labels for completed tool steps shown in the chat transcript.
+export const toolLabels: Record<string, string> = {
+  searchDocs: "Searched documentation",
+  navigateToPage: "Navigated to page",
+  getCurrentContext: "Checked current context",
+  searchPages: "Searched dashboard pages",
+};

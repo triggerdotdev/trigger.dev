@@ -54,11 +54,11 @@ export function AIChatPanel() {
       return publicAccessToken;
     },
     // Create (or resume) the session + trigger the first run server-side.
-    startSession: async ({ chatId, clientData }) => {
+    startSession: async ({ chatId }) => {
       const { publicAccessToken } = await postAssistant({
         intent: "createSession",
         chatId,
-        clientData,
+        clientData: pageContext,
       });
       return { publicAccessToken };
     },
@@ -75,6 +75,7 @@ export function AIChatPanel() {
     id: currentChatId,
     messages: currentChatMessages,
     transport,
+    resume: (currentChatMessages?.length ?? 0) > 0,
   });
 
   const stop = useCallback(() => {

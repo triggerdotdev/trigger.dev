@@ -1,9 +1,11 @@
 import {
   ArrowTopRightOnSquareIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
   ExclamationTriangleIcon,
   HandThumbDownIcon,
   HandThumbUpIcon,
+  SparklesIcon,
 } from "@heroicons/react/20/solid";
 import { useNavigate } from "@remix-run/react";
 import { motion } from "framer-motion";
@@ -12,6 +14,7 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 import type { UIMessage } from "ai";
 import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
+import { toolLabels } from "~/lib/ai-assistant/tool-schemas";
 import { AIChatToolCall } from "./AIChatToolCall";
 
 interface AIChatMessagesProps {
@@ -92,6 +95,7 @@ export function AIChatMessages({ messages, status, error, onRetry }: AIChatMessa
                         type: string;
                         state: string;
                         toolName?: string;
+                        input?: unknown;
                         output?: unknown;
                       };
                       const toolName =
@@ -121,28 +125,47 @@ export function AIChatMessages({ messages, status, error, onRetry }: AIChatMessa
                         if (result?.found && result.url) {
                           const url = result.url;
                           return (
-                            <button
-                              key={i}
-                              type="button"
-                              onClick={() => navigate(url)}
-                              className="group my-2 flex w-full items-center gap-2.5 rounded-md border border-grid-bright bg-charcoal-800/40 px-3 py-2 text-left transition-colors animate-in fade-in slide-in-from-bottom-1 duration-150 hover:border-indigo-500/50 hover:bg-charcoal-800/60"
-                            >
-                              <ArrowTopRightOnSquareIcon className="size-4 shrink-0 text-text-dimmed group-hover:text-indigo-400" />
-                              <span className="flex min-w-0 flex-col">
-                                <span className="truncate text-sm text-text-bright group-hover:text-indigo-400">
-                                  {result.pageName}
-                                </span>
-                                {result.description && (
-                                  <span className="text-xs text-text-dimmed">
-                                    {result.description}
+                            <div key={i} className="space-y-2">
+                              <ToolResultCard
+                                toolName={toolName}
+                                input={toolPart.input}
+                                output={toolPart.output}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => navigate(url)}
+                                className="group flex w-full items-center gap-2.5 rounded-md border border-grid-bright bg-charcoal-800/40 px-3 py-2 text-left transition-colors animate-in fade-in slide-in-from-bottom-1 duration-150 hover:border-indigo-500/50 hover:bg-charcoal-800/60"
+                              >
+                                <ArrowTopRightOnSquareIcon className="size-4 shrink-0 text-text-dimmed group-hover:text-indigo-400" />
+                                <span className="flex min-w-0 flex-col">
+                                  <span className="truncate text-sm text-text-bright group-hover:text-indigo-400">
+                                    {result.pageName}
                                   </span>
-                                )}
-                              </span>
-                            </button>
+                                  {result.description && (
+                                    <span className="text-xs text-text-dimmed">
+                                      {result.description}
+                                    </span>
+                                  )}
+                                </span>
+                              </button>
+                            </div>
                           );
                         }
                       }
-                      // Other tool results are consumed by the LLM, no UI needed.
+
+                      // Every other completed tool call renders as a collapsed
+                      // step the user can expand to inspect its input and output.
+                      if (toolPart.state === "output-available") {
+                        return (
+                          <ToolResultCard
+                            key={i}
+                            toolName={toolName}
+                            input={toolPart.input}
+                            output={toolPart.output}
+                          />
+                        );
+                      }
+
                       return null;
                     }
                     return null;
@@ -184,6 +207,60 @@ export function AIChatMessages({ messages, status, error, onRetry }: AIChatMessa
           <ChevronDownIcon className="size-3.5 text-text-dimmed" />
           <span className="text-xs text-text-dimmed">New messages</span>
         </button>
+      )}
+    </div>
+  );
+}
+
+// A completed agent step: the tool's friendly name, expandable to reveal the
+// exact input it was called with and the output it returned.
+function ToolResultCard({
+  toolName,
+  input,
+  output,
+}: {
+  toolName: string;
+  input: unknown;
+  output: unknown;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const label = toolLabels[toolName] || `Ran ${toolName}`;
+
+  return (
+    <div className="my-1">
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="group inline-flex items-center gap-1.5 text-xs transition-colors hover:text-indigo-400"
+      >
+        {isExpanded ? (
+          <ChevronDownIcon className="size-3.5 shrink-0 text-indigo-400" />
+        ) : (
+          <ChevronRightIcon className="size-3.5 shrink-0 text-text-dimmed group-hover:text-indigo-400" />
+        )}
+        <SparklesIcon className="size-3 shrink-0 text-indigo-400" />
+        <span className="text-text-bright group-hover:text-indigo-400">{label}</span>
+      </button>
+
+      {isExpanded && (
+        <div className="ml-4 mt-2 space-y-2 text-xs">
+          {input != null && (
+            <div>
+              <div className="mb-1 text-text-dimmed">Input:</div>
+              <pre className="max-h-48 overflow-auto rounded bg-charcoal-900 p-2 text-xs text-text-dimmed">
+                {JSON.stringify(input, null, 2)}
+              </pre>
+            </div>
+          )}
+          {output != null && (
+            <div>
+              <div className="mb-1 text-text-dimmed">Output:</div>
+              <pre className="max-h-48 overflow-auto rounded bg-charcoal-900 p-2 text-xs text-text-dimmed">
+                {JSON.stringify(output, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

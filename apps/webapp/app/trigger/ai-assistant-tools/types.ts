@@ -17,6 +17,9 @@ export interface ToolContext {
 }
 
 export function buildToolContext(clientData: ClientData): ToolContext {
+  if (!clientData?.organizationSlug || !clientData?.projectSlug || !clientData?.environmentSlug) {
+    throw new Error("Invalid clientData: missing organization, project, or environment slug");
+  }
   return {
     clientData,
     org: { slug: clientData.organizationSlug },

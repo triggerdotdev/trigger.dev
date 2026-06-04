@@ -28,6 +28,7 @@ export function AskAI() {
             hideShortcutKey
             onClick={() => chat.toggle()}
             LeadingIcon={AISparkleIcon}
+            leadingIconClassName="motion-safe:group-hover/button:animate-ai-sparkle-hover motion-reduce:group-hover/button:animate-none"
           >
             Ask AI
           </Button>

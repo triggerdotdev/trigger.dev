@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -100,6 +101,8 @@ export function AIChatProvider({
   const [sessionState, setSessionState] = useState<SessionState | undefined>();
   const [pendingQuery, setPendingQuery] = useState<string | undefined>();
 
+  const switchRequestRef = useRef<string | undefined>(undefined);
+
   const pageContext = usePageContext(userId);
 
   const refreshHistory = useCallback(async () => {
@@ -139,7 +142,9 @@ export function AIChatProvider({
   }, []);
 
   const startNewChat = useCallback(() => {
-    setCurrentChatId(generateChatId());
+    const newChatId = generateChatId();
+    switchRequestRef.current = newChatId;
+    setCurrentChatId(newChatId);
     setCurrentChatMessages(undefined);
     setSessionState(undefined);
     setPendingQuery(undefined);
@@ -147,26 +152,37 @@ export function AIChatProvider({
 
   const switchChat = useCallback(
     async (chatId: string) => {
-      setCurrentChatId(chatId);
+      switchRequestRef.current = chatId;
       setPendingQuery(undefined);
       try {
         const res = await fetch(`/resources/ai-assistant/chat/${chatId}`);
+        if (switchRequestRef.current !== chatId) return;
         if (res.ok) {
           const data = (await res.json()) as {
             chat?: { title?: string; messages?: UIMessage[] };
             session?: SessionState;
           };
+          if (switchRequestRef.current !== chatId) return;
+          // Messages must be set before the id: useChat reads `messages` only
+          // when `id` changes, so both must land in the same render.
           setCurrentChatMessages(data.chat?.messages ?? []);
           setSessionState(data.session ?? undefined);
+          setCurrentChatId(chatId);
           if (data.chat?.title) {
             setChatHistory((prev) =>
               prev.map((c) => (c.id === chatId ? { ...c, title: data.chat!.title! } : c))
             );
           }
+        } else {
+          setCurrentChatMessages([]);
+          setSessionState(undefined);
+          setCurrentChatId(chatId);
         }
       } catch {
-        setCurrentChatMessages(undefined);
+        if (switchRequestRef.current !== chatId) return;
+        setCurrentChatMessages([]);
         setSessionState(undefined);
+        setCurrentChatId(chatId);
       }
     },
     []
