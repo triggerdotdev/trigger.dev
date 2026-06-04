@@ -51,6 +51,24 @@ const Env = z
     TRIGGER_DEQUEUE_SCALING_BATCH_WINDOW_MS: z.coerce.number().int().positive().default(1000), // Batch window for metrics processing (ms)
     TRIGGER_DEQUEUE_SCALING_DAMPING_FACTOR: z.coerce.number().min(0).max(1).default(0.7), // Smooths consumer count changes after EWMA (0=no scaling, 1=immediate)
 
+    // Dequeue backpressure - off by default. When enabled, the supervisor reads a
+    // verdict from Redis (written by the cluster-side aggregator) and pauses dequeues
+    // while the worker cluster can't schedule pods. Disabled = total no-op: no Redis
+    // client is created, no reads happen, and the dequeue loop is unaffected.
+    TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED: BoolEnv.default(false),
+    TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_KEY: z.string().default("engine:dequeue:backpressure"),
+    TRIGGER_DEQUEUE_BACKPRESSURE_REFRESH_MS: z.coerce.number().int().positive().default(1000),
+    TRIGGER_DEQUEUE_BACKPRESSURE_MAX_VERDICT_AGE_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(15_000), // Stale verdict → fail-open (treat as not engaged)
+    TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST: z.string().optional(),
+    TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PORT: z.coerce.number().int().optional(),
+    TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_USERNAME: z.string().optional(),
+    TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PASSWORD: z.string().optional(),
+    TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_TLS_DISABLED: BoolEnv.default(false),
+
     // Optional services
     TRIGGER_WARM_START_URL: z.string().optional(),
     TRIGGER_CHECKPOINT_URL: z.string().optional(),
@@ -283,6 +301,14 @@ const Env = z
         code: z.ZodIssueCode.custom,
         message: "TRIGGER_WORKLOAD_API_DOMAIN is required when COMPUTE_SNAPSHOTS_ENABLED is true",
         path: ["TRIGGER_WORKLOAD_API_DOMAIN"],
+      });
+    }
+    if (data.TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED && !data.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST is required when TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED is true",
+        path: ["TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST"],
       });
     }
   })
