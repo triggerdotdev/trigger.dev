@@ -151,4 +151,93 @@ describe("BackpressureMonitor", () => {
 
     expect(reads()).toBe(readsAtStop);
   });
+
+  it("isEngaged reflects the hard engaged state (the signal for freezing scale-up)", async () => {
+    const { source } = countingSource({ engaged: true });
+    const monitor = new BackpressureMonitor({ enabled: true, source, refreshIntervalMs: 1000 });
+
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(monitor.isEngaged()).toBe(true);
+
+    monitor.stop();
+  });
+
+  it("isEngaged is false when clear and when stale", async () => {
+    const source: BackpressureSignalSource = {
+      read: async () => ({ engaged: true, ts: Date.now() }),
+    };
+    const monitor = new BackpressureMonitor({
+      enabled: true,
+      source,
+      refreshIntervalMs: 1_000_000,
+      maxVerdictAgeMs: 15_000,
+    });
+
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(monitor.isEngaged()).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(15_001); // stale → fail-open
+    expect(monitor.isEngaged()).toBe(false);
+
+    monitor.stop();
+  });
+
+  it("ramps the dequeue gate after release instead of resuming instantly", async () => {
+    let engaged = true;
+    let rnd = 0.5;
+    const source: BackpressureSignalSource = { read: async () => ({ engaged }) };
+    const monitor = new BackpressureMonitor({
+      enabled: true,
+      source,
+      refreshIntervalMs: 1000,
+      rampMs: 10_000,
+      random: () => rnd,
+    });
+
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(monitor.shouldSkipDequeue()).toBe(true); // hard engaged
+
+    // Release: the next refresh observes the clear verdict and starts the ramp.
+    engaged = false;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(monitor.isEngaged()).toBe(false);
+
+    // Just after release (progress ~0): skip probability ~1, so skip regardless.
+    rnd = 0.99;
+    expect(monitor.shouldSkipDequeue()).toBe(true);
+
+    // Halfway through the ramp (progress 0.5): skip probability 0.5.
+    await vi.advanceTimersByTimeAsync(5000);
+    rnd = 0.4;
+    expect(monitor.shouldSkipDequeue()).toBe(true); // 0.4 < 0.5 → skip
+    rnd = 0.6;
+    expect(monitor.shouldSkipDequeue()).toBe(false); // 0.6 ≥ 0.5 → allow
+
+    // Past the ramp window: never skip.
+    await vi.advanceTimersByTimeAsync(5000);
+    rnd = 0.0;
+    expect(monitor.shouldSkipDequeue()).toBe(false);
+
+    monitor.stop();
+  });
+
+  it("resumes instantly when no ramp is configured", async () => {
+    let engaged = true;
+    const source: BackpressureSignalSource = { read: async () => ({ engaged }) };
+    const monitor = new BackpressureMonitor({ enabled: true, source, refreshIntervalMs: 1000 });
+
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(monitor.shouldSkipDequeue()).toBe(true);
+
+    engaged = false;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(monitor.shouldSkipDequeue()).toBe(false); // no ramp → instant resume
+
+    monitor.stop();
+  });
 });

@@ -22,6 +22,15 @@ export type BackpressureMonitorOptions = {
    * Guards against the source silently going stale (e.g. hanging reads).
    */
   maxVerdictAgeMs?: number;
+  /**
+   * If set, after backpressure releases the dequeue gate stays partially engaged
+   * for this long, skipping a linearly-decaying fraction of attempts so the
+   * aggregate dequeue rate ramps from ~0 to full instead of snapping to full and
+   * re-flooding a freshly-recovered cluster. 0/unset = instant resume.
+   */
+  rampMs?: number;
+  /** Injectable RNG for the resume ramp; defaults to Math.random. */
+  random?: () => number;
 };
 
 const DEFAULT_REFRESH_INTERVAL_MS = 1000;
@@ -29,6 +38,8 @@ const DEFAULT_REFRESH_INTERVAL_MS = 1000;
 export class BackpressureMonitor {
   private verdict: BackpressureVerdict | null = null;
   private timer?: ReturnType<typeof setInterval>;
+  private wasEngaged = false;
+  private releasedAt?: number;
 
   constructor(private readonly opts: BackpressureMonitorOptions) {}
 
@@ -51,8 +62,12 @@ export class BackpressureMonitor {
     }
   }
 
-  /** Hot-path read: synchronous, never performs I/O. */
-  shouldSkipDequeue(): boolean {
+  /**
+   * Hard backpressure state: true while the (fresh) verdict says engaged. This is
+   * the signal for freezing consumer-pool scale-up - distinct from the dequeue
+   * gate, which additionally ramps after release. Hot-path read, no I/O.
+   */
+  isEngaged(): boolean {
     const verdict = this.verdict;
     if (verdict?.engaged !== true) {
       return false;
@@ -66,6 +81,26 @@ export class BackpressureMonitor {
     return true;
   }
 
+  /** Hot-path read: synchronous, never performs I/O. */
+  shouldSkipDequeue(): boolean {
+    if (this.isEngaged()) {
+      return true;
+    }
+
+    // Post-release ramp: skip a linearly-decaying fraction of attempts so the
+    // aggregate dequeue rate climbs back to full over rampMs rather than snapping.
+    const rampMs = this.opts.rampMs;
+    if (rampMs && this.releasedAt !== undefined) {
+      const elapsed = Date.now() - this.releasedAt;
+      if (elapsed < rampMs) {
+        const skipProbability = 1 - elapsed / rampMs;
+        return (this.opts.random ?? Math.random)() < skipProbability;
+      }
+    }
+
+    return false;
+  }
+
   private async refresh(): Promise<void> {
     try {
       this.verdict = await this.opts.source.read();
@@ -74,5 +109,13 @@ export class BackpressureMonitor {
       // unknown (no verdict) so dequeue resumes as if backpressure were off.
       this.verdict = null;
     }
+
+    // Track the engaged→released transition to anchor the resume ramp. Based on
+    // the raw refreshed verdict, not the staleness-adjusted read.
+    const nowEngaged = this.verdict?.engaged === true;
+    if (this.wasEngaged && !nowEngaged) {
+      this.releasedAt = Date.now();
+    }
+    this.wasEngaged = nowEngaged;
   }
 }
