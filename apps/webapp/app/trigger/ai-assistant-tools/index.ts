@@ -4,7 +4,7 @@ import { createSearchDocsTool } from "./docs/search-docs";
 import { createNavigateToPageTool } from "./navigation/navigate-to-page";
 import { createSearchPagesTool } from "./navigation/search-pages";
 import { createGetCurrentContextTool } from "./navigation/get-current-context";
-import { createSearchApiTool, createCallApiTool } from "./api/tools";
+import { createSearchApiTool, createGetApiDetailsTool, createCallApiTool } from "./api/tools";
 import {
   createExecuteTrqlTool,
   createGetQuerySchemaTool,
@@ -23,6 +23,7 @@ export function buildAssistantTools(clientData: ClientData) {
     getCurrentContext: createGetCurrentContextTool(ctx),
     // REST API agent
     searchApi: createSearchApiTool(ctx),
+    getApiDetails: createGetApiDetailsTool(ctx),
     callApi: createCallApiTool(ctx),
     // Data-query agent
     executeTrql: createExecuteTrqlTool(ctx),

@@ -132,7 +132,10 @@ export async function executeApiCall(options: ExecuteApiCallOptions): Promise<Ap
   const operation = getOperation(operationId);
 
   if (!operation) {
-    return { status: "error", error: `Unknown operationId "${operationId}". Use searchApi first.` };
+    return {
+      status: "error",
+      error: `Unknown operationId "${operationId}". Use searchApi to find the right one.`,
+    };
   }
 
   if (operation.auth === "personalAccessToken") {
@@ -167,7 +170,7 @@ export async function executeApiCall(options: ExecuteApiCallOptions): Promise<Ap
   if (missing.length > 0) {
     return {
       status: "error",
-      error: `Missing required parameter(s): ${missing.join(", ")}.`,
+      error: `Missing required parameter(s): ${missing.join(", ")}. Call getApiDetails("${operationId}") to see the full parameter schema before retrying.`,
       details: { requiredParams: operation.requiredParams },
     };
   }
@@ -183,7 +186,10 @@ export async function executeApiCall(options: ExecuteApiCallOptions): Promise<Ap
       if (value === undefined && param.name === "projectRef") value = context.projectRef;
       if (value === undefined && param.name === "env") value = context.envSlug;
       if (value === undefined) {
-        return { status: "error", error: `Missing path parameter "${param.name}".` };
+        return {
+          status: "error",
+          error: `Missing path parameter "${param.name}". Call getApiDetails("${operationId}") to see all required parameters.`,
+        };
       }
       path = path.replace(`{${param.name}}`, encodeURIComponent(String(value)));
       consumed.add(param.name);

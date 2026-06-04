@@ -62,6 +62,17 @@ export const searchApi = tool({
   }),
 });
 
+export const getApiDetails = tool({
+  description:
+    "Get the full schema for a REST API operation before calling it: every parameter " +
+    "(name, location, type, required, allowed values, description), the request body " +
+    "shape, and whether it changes state. ALWAYS call this after searchApi and before " +
+    "callApi so you pass the right parameters instead of guessing.",
+  inputSchema: z.object({
+    operationId: z.string().describe("The operationId from a searchApi result"),
+  }),
+});
+
 export const callApi = tool({
   description:
     "Execute a Trigger.dev REST API operation discovered via searchApi. Pass the " +
@@ -136,6 +147,7 @@ export const toolLabels: Record<string, string> = {
   getCurrentContext: "Checked current context",
   searchPages: "Searched dashboard pages",
   searchApi: "Searched the API",
+  getApiDetails: "Checked API details",
   callApi: "Called the API",
   executeTrql: "Queried your data",
   getQuerySchema: "Checked the data schema",

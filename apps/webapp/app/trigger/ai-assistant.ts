@@ -154,9 +154,10 @@ export const dashboardAssistant = chat
         model: openai("gpt-4.1-mini"),
         messages,
         abortSignal: stopSignal,
-        // Allow multi-step tool chains: searchApi → list/retrieve → callApi →
-        // summarize, or getQuerySchema → executeTrql → summarize.
-        stopWhen: stepCountIs(10),
+        // Allow multi-step tool chains with room for self-correcting retries:
+        // searchApi → getApiDetails → callApi (→ retry on error), or
+        // getQuerySchema → executeTrql → summarize.
+        stopWhen: stepCountIs(16),
       });
     },
   });

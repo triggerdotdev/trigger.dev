@@ -1,5 +1,9 @@
 import { tool } from "ai";
-import { searchApi as searchApiSchema, callApi as callApiSchema } from "~/lib/ai-assistant/tool-schemas";
+import {
+  searchApi as searchApiSchema,
+  getApiDetails as getApiDetailsSchema,
+  callApi as callApiSchema,
+} from "~/lib/ai-assistant/tool-schemas";
 import type { ToolContext } from "../types";
 import { searchApi, getOperation, isReadOnlyOperation } from "./search";
 import { executeApiCall } from "./execute";
@@ -13,6 +17,43 @@ export function createSearchApiTool(_ctx: ToolContext) {
         return { found: false, message: "No matching API operations. Try different keywords." };
       }
       return { found: true, results };
+    },
+  });
+}
+
+export function createGetApiDetailsTool(_ctx: ToolContext) {
+  return tool({
+    ...getApiDetailsSchema,
+    execute: async ({ operationId }) => {
+      const operation = getOperation(operationId);
+      if (!operation) {
+        return {
+          found: false,
+          message: `Unknown operationId "${operationId}". Call searchApi to find the right one.`,
+        };
+      }
+      const body = operation.parameters.filter((p) => p.in === "body");
+      return {
+        found: true,
+        operationId: operation.operationId,
+        method: operation.method,
+        path: operation.path,
+        summary: operation.summary,
+        description: operation.description,
+        destructive: operation.destructive,
+        requiresApproval: !isReadOnlyOperation(operation),
+        parameters: operation.parameters.map((p) => ({
+          name: p.name,
+          in: p.in,
+          required: p.required,
+          type: p.type,
+          enum: p.enum,
+          description: p.description,
+          schema: p.schema,
+        })),
+        requiredParams: operation.requiredParams,
+        body: body.length > 0 ? body : undefined,
+      };
     },
   });
 }
