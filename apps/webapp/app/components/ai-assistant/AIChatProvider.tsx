@@ -25,6 +25,8 @@ interface ChatHistoryEntry {
   updatedAt: string;
 }
 
+export type ApiOperationsMap = Record<string, { method: string; path: string }>;
+
 interface SessionState {
   publicAccessToken: string;
   lastEventId: string | null;
@@ -45,6 +47,7 @@ interface AIChatContextValue {
   pageContext: PageContext;
   pendingQuery: string | undefined;
   clearPendingQuery: () => void;
+  apiOperations: ApiOperationsMap;
 }
 
 const AIChatContext = createContext<AIChatContextValue | null>(null);
@@ -89,9 +92,11 @@ function usePageContext(userId: string): PageContext {
 
 export function AIChatProvider({
   userId,
+  apiOperations,
   children,
 }: {
   userId: string;
+  apiOperations: ApiOperationsMap;
   children: ReactNode;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -216,6 +221,7 @@ export function AIChatProvider({
         pageContext,
         pendingQuery,
         clearPendingQuery,
+        apiOperations,
       }}
     >
       {children}

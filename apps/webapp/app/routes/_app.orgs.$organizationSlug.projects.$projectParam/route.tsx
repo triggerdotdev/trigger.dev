@@ -1,4 +1,6 @@
-import { Outlet } from "@remix-run/react";
+import { json } from "@remix-run/node";
+import { Outlet, useLoaderData, type ShouldRevalidateFunction } from "@remix-run/react";
+import { apiOperationsMap } from "~/lib/ai-assistant/api-operations.server";
 import { DevPresenceProvider } from "~/components/DevPresence";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { MainBody } from "~/components/layout/AppLayout";
@@ -11,6 +13,12 @@ import { v3ProjectPath } from "~/utils/pathBuilder";
 import { AIChatProvider, useAIChat } from "~/components/ai-assistant/AIChatProvider";
 import { AIChatPanel } from "~/components/ai-assistant/AIChatPanel";
 import { useEffect, useState, type ReactNode } from "react";
+
+export const shouldRevalidate: ShouldRevalidateFunction = () => false;
+
+export function loader() {
+  return json({ apiOperations: apiOperationsMap });
+}
 
 function AIChatLayout({ children }: { children: ReactNode }) {
   const { isOpen } = useAIChat();
@@ -49,9 +57,10 @@ export default function Project() {
   const environment = useEnvironment();
   const user = useUser();
   const isImpersonating = useIsImpersonating();
+  const { apiOperations } = useLoaderData<typeof loader>();
 
   return (
-    <AIChatProvider userId={user.id}>
+    <AIChatProvider userId={user.id} apiOperations={apiOperations}>
       <AIChatLayout>
         <DevPresenceProvider enabled={environment.type === "DEVELOPMENT"}>
           <SideMenu
