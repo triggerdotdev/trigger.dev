@@ -108,7 +108,7 @@ export const executeTrql = tool({
     "Run a TRQL (SQL-style) analytical query against Trigger.dev data — runs, " +
     "metrics, and LLM usage tables. Use for any aggregation, count, trend, average, " +
     "cost breakdown, or comparison ('how many', 'total cost', 'failures per day'). " +
-    "Call getQuerySchema first if you're unsure of table or column names. Queries are " +
+    "The available tables and columns are listed in the system prompt. Queries are " +
     "read-only and scoped to the current environment by default.",
   inputSchema: z.object({
     query: z.string().describe("A read-only TRQL SELECT query, e.g. 'SELECT count() FROM runs WHERE status = ..'"),
@@ -125,12 +125,17 @@ export const executeTrql = tool({
   }),
 });
 
-export const getQuerySchema = tool({
+export const getTableSchema = tool({
   description:
-    "Get the TRQL table schema: available tables (runs, metrics, llm_metrics, " +
-    "llm_models), their columns, types, and allowed values. Call this before writing " +
-    "a TRQL query when you're unsure of the exact table or column names.",
-  inputSchema: z.object({}),
+    "Get the full column schema for one TRQL table — runs, metrics, llm_metrics, or " +
+    "llm_models — including every column's type, description, and allowed values. " +
+    "ALWAYS call this for the table(s) you need before writing a TRQL query; never " +
+    "guess column names. Each table only needs to be fetched once per conversation.",
+  inputSchema: z.object({
+    table: z
+      .string()
+      .describe("One of: runs, metrics, llm_metrics, llm_models"),
+  }),
 });
 
 export const listDashboards = tool({
@@ -149,7 +154,7 @@ export const toolLabels: Record<string, string> = {
   searchApi: "Searched the API",
   getApiDetails: "Checked API details",
   callApi: "Called the API",
+  getTableSchema: "Checked table schema",
   executeTrql: "Queried your data",
-  getQuerySchema: "Checked the data schema",
   listDashboards: "Listed dashboards",
 };

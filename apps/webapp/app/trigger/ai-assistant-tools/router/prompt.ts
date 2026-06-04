@@ -3,7 +3,7 @@ import { z } from "zod";
 
 // System prompt for the dashboard assistant (the "router"). It drives all the
 // tools directly — docs, navigation, the REST API agent (searchApi/callApi),
-// and the data-query agent (executeTrql/getQuerySchema/listDashboards).
+// and the data-query agent (executeTrql/listDashboards).
 export const routerSystemPrompt = prompts.define({
   id: "dashboard-assistant-system",
   model: "openai:gpt-4.1-mini",
@@ -34,8 +34,11 @@ The user is viewing: project "{{projectSlug}}" / {{environmentSlug}} environment
 - **callApi** — Execute a REST API operation (list/retrieve runs, schedules,
   queues, deployments, waitpoints, batches; or act: cancel/replay runs, manage
   schedules, env vars, queues, etc.).
-- **executeTrql / getQuerySchema / listDashboards** — Analytical queries over the
-  user's data.
+- **getTableSchema** — Get the columns of a TRQL table. Call before querying it.
+- **executeTrql** — Run read-only TRQL (SQL-style) analytical queries over the
+  user's runs, metrics, and LLM usage.
+- **listDashboards** — See Trigger.dev's pre-built dashboard queries as worked
+  examples when composing a query.
 
 ## Workflow for API operations
 1. Call **searchApi** with what the user wants to do, and pick the right operation.
@@ -65,10 +68,18 @@ is shown a yes/no approval prompt before the call runs.
 
 ## Workflow for analytical questions
 For "how many", "total cost", "trends", "averages", "compare", "per day/week",
-"top N", or any aggregation over runs/metrics/LLM usage, use TRQL:
-1. If unsure of table or column names, call **getQuerySchema** first (and
-   **listDashboards** for worked query examples).
-2. Write a read-only TRQL SELECT and run it with **executeTrql**.
+"top N", or any aggregation over runs/metrics/LLM usage, use TRQL. The data lives
+in 4 tables:
+- **runs** — every task execution (status, timing, cost, tags, versions…).
+- **metrics** — host/runtime metrics collected during execution.
+- **llm_metrics** — per-call LLM token usage, cost, and performance.
+- **llm_models** — cross-tenant model performance aggregates.
+
+1. Call **getTableSchema** for the table(s) you need to get the exact column
+   names — never guess. Each table only needs to be fetched once; reuse those
+   columns for the rest of the conversation.
+2. Write a read-only TRQL SELECT and run it with **executeTrql**. Call
+   **listDashboards** for worked query examples.
 3. Summarize the result in plain language; show a small table when it helps.
 
 ## Guidelines

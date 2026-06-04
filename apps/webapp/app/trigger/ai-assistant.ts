@@ -156,7 +156,7 @@ export const dashboardAssistant = chat
         abortSignal: stopSignal,
         // Allow multi-step tool chains with room for self-correcting retries:
         // searchApi → getApiDetails → callApi (→ retry on error), or
-        // getQuerySchema → executeTrql → summarize.
+        // getTableSchema → executeTrql → summarize.
         stopWhen: stepCountIs(16),
       });
     },

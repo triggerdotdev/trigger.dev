@@ -7,7 +7,7 @@ import { createGetCurrentContextTool } from "./navigation/get-current-context";
 import { createSearchApiTool, createGetApiDetailsTool, createCallApiTool } from "./api/tools";
 import {
   createExecuteTrqlTool,
-  createGetQuerySchemaTool,
+  createGetTableSchemaTool,
   createListDashboardsTool,
 } from "./query/tools";
 
@@ -26,8 +26,8 @@ export function buildAssistantTools(clientData: ClientData) {
     getApiDetails: createGetApiDetailsTool(ctx),
     callApi: createCallApiTool(ctx),
     // Data-query agent
+    getTableSchema: createGetTableSchemaTool(ctx),
     executeTrql: createExecuteTrqlTool(ctx),
-    getQuerySchema: createGetQuerySchemaTool(ctx),
     listDashboards: createListDashboardsTool(ctx),
   };
 }
