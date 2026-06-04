@@ -28,7 +28,7 @@ import { FailedPodHandler } from "./services/failedPodHandler.js";
 import { getWorkerToken } from "./workerToken.js";
 import { OtlpTraceService } from "./services/otlpTraceService.js";
 import { extractTraceparent, getRestoreRunnerId } from "./util.js";
-import { createRedisClient } from "@internal/redis";
+import { createRedisClient, type Redis } from "@internal/redis";
 import { BackpressureMonitor } from "./backpressure/backpressureMonitor.js";
 import { RedisBackpressureSignalSource } from "./backpressure/redisBackpressureSignalSource.js";
 import { BackpressureMetrics } from "./backpressure/backpressureMetrics.js";
@@ -59,6 +59,7 @@ class ManagedSupervisor {
   private readonly failedPodHandler?: FailedPodHandler;
   private readonly tracing?: OtlpTraceService;
   private readonly backpressureMonitor?: BackpressureMonitor;
+  private readonly backpressureRedis?: Redis;
 
   private readonly isKubernetes = isKubernetesEnvironment(env.KUBERNETES_FORCE_ENABLED);
   private readonly warmStartUrl = env.TRIGGER_WARM_START_URL;
@@ -187,7 +188,7 @@ class ManagedSupervisor {
     }
 
     if (env.TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED) {
-      const backpressureRedis = createRedisClient(
+      this.backpressureRedis = createRedisClient(
         {
           host: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST,
           port: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PORT,
@@ -204,7 +205,7 @@ class ManagedSupervisor {
       this.backpressureMonitor = new BackpressureMonitor({
         enabled: true,
         source: new RedisBackpressureSignalSource(
-          backpressureRedis,
+          this.backpressureRedis,
           env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_KEY
         ),
         refreshIntervalMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_REFRESH_MS,
@@ -627,6 +628,7 @@ class ManagedSupervisor {
 
     // Optional services
     this.backpressureMonitor?.stop();
+    await this.backpressureRedis?.quit();
     await this.podCleaner?.stop();
     await this.failedPodHandler?.stop();
     await this.metricsServer?.stop();

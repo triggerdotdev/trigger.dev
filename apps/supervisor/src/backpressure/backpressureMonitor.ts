@@ -51,6 +51,7 @@ const DEFAULT_REFRESH_INTERVAL_MS = 1000;
 export class BackpressureMonitor {
   private verdict: BackpressureVerdict | null = null;
   private timer?: ReturnType<typeof setInterval>;
+  private refreshInFlight = false;
   private wasEngaged = false;
   private releasedAt?: number;
 
@@ -63,11 +64,24 @@ export class BackpressureMonitor {
       return;
     }
 
-    void this.refresh();
+    void this.refreshTick();
     this.timer = setInterval(
-      () => void this.refresh(),
+      () => void this.refreshTick(),
       this.opts.refreshIntervalMs ?? DEFAULT_REFRESH_INTERVAL_MS
     );
+  }
+
+  /** Skip a tick if the previous refresh is still in flight, so slow/hung reads can't stack. */
+  private async refreshTick(): Promise<void> {
+    if (this.refreshInFlight) {
+      return;
+    }
+    this.refreshInFlight = true;
+    try {
+      await this.refresh();
+    } finally {
+      this.refreshInFlight = false;
+    }
   }
 
   stop(): void {
@@ -141,9 +155,9 @@ export class BackpressureMonitor {
       this.verdict = null;
     }
 
-    // Track the engaged→released transition to anchor the resume ramp. Based on
-    // the raw refreshed verdict, not the staleness-adjusted read.
-    const nowEngaged = this.verdict?.engaged === true;
+    // Track the engaged→released transition to anchor the resume ramp. Use the
+    // staleness-aware state so a stale verdict doesn't pin wasEngaged / the gauge.
+    const nowEngaged = this.computeEngaged();
     this.opts.metrics?.engaged.set(nowEngaged ? 1 : 0);
 
     if (nowEngaged !== this.wasEngaged) {
