@@ -523,7 +523,13 @@ class ExternalLogRecordExporterWrapper {
   }
 
   forceFlush(): Promise<void> {
-    return this.underlyingExporter.forceFlush?.() ?? Promise.resolve();
+    const underlyingExporter = this.underlyingExporter as LogRecordExporter & {
+      forceFlush?: () => Promise<void>;
+    };
+
+    return underlyingExporter.forceFlush
+      ? underlyingExporter.forceFlush()
+      : Promise.resolve();
   }
 
   transformLogRecord(
