@@ -72,10 +72,13 @@ class ManagedSupervisor {
   private readonly wideEventsNoisyRoutes = env.TRIGGER_WIDE_EVENTS_NOISY_ROUTES;
 
   constructor() {
+    // Strip secret-like env vars before debug-logging the rest. Add any new
+    // secret env var here so it never lands in the DEBUG "Starting up" log.
     const {
       TRIGGER_WORKER_TOKEN,
       MANAGED_WORKER_SECRET,
       COMPUTE_GATEWAY_AUTH_TOKEN,
+      TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PASSWORD,
       ...envWithoutSecrets
     } = env;
 
