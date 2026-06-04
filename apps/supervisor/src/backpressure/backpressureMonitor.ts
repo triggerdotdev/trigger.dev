@@ -1,3 +1,9 @@
+import type { BackpressureMetrics } from "./backpressureMetrics.js";
+
+export interface BackpressureLogger {
+  info(message: string, meta?: Record<string, unknown>): void;
+}
+
 export type BackpressureVerdict = {
   engaged: boolean;
   /** Epoch ms the verdict was produced. Used for consumer-side staleness fail-open. */
@@ -31,6 +37,13 @@ export type BackpressureMonitorOptions = {
   rampMs?: number;
   /** Injectable RNG for the resume ramp; defaults to Math.random. */
   random?: () => number;
+  /**
+   * When true, the gates are inert (never skip dequeues, never freeze scale-up).
+   * computeEngaged() still reflects the real signal so it can be observed.
+   */
+  dryRun?: boolean;
+  logger?: BackpressureLogger;
+  metrics?: BackpressureMetrics;
 };
 
 const DEFAULT_REFRESH_INTERVAL_MS = 1000;
@@ -41,7 +54,9 @@ export class BackpressureMonitor {
   private wasEngaged = false;
   private releasedAt?: number;
 
-  constructor(private readonly opts: BackpressureMonitorOptions) {}
+  constructor(private readonly opts: BackpressureMonitorOptions) {
+    this.opts.metrics?.dryRun.set(this.opts.dryRun ? 1 : 0);
+  }
 
   start(): void {
     if (!this.opts.enabled) {
@@ -63,11 +78,11 @@ export class BackpressureMonitor {
   }
 
   /**
-   * Hard backpressure state: true while the (fresh) verdict says engaged. This is
-   * the signal for freezing consumer-pool scale-up - distinct from the dequeue
-   * gate, which additionally ramps after release. Hot-path read, no I/O.
+   * Raw hard backpressure state: true while the (fresh) verdict says engaged,
+   * ignoring dry-run. Used for observability/metrics so the real signal is
+   * visible even when the gates are inert.
    */
-  isEngaged(): boolean {
+  computeEngaged(): boolean {
     const verdict = this.verdict;
     if (verdict?.engaged !== true) {
       return false;
@@ -81,9 +96,25 @@ export class BackpressureMonitor {
     return true;
   }
 
-  /** Hot-path read: synchronous, never performs I/O. */
+  /**
+   * Effective hard state: the signal for freezing consumer-pool scale-up. Inert
+   * (false) in dry-run. Hot-path read, no I/O.
+   */
+  isEngaged(): boolean {
+    return this.opts.dryRun ? false : this.computeEngaged();
+  }
+
+  /** Hot-path read: synchronous, never performs I/O. Inert (false) in dry-run. */
   shouldSkipDequeue(): boolean {
-    if (this.isEngaged()) {
+    const wouldSkip = this.computeShouldSkip();
+    if (wouldSkip) {
+      this.opts.metrics?.skipsTotal.inc({ dry_run: this.opts.dryRun ? "true" : "false" });
+    }
+    return this.opts.dryRun ? false : wouldSkip;
+  }
+
+  private computeShouldSkip(): boolean {
+    if (this.computeEngaged()) {
       return true;
     }
 
@@ -113,6 +144,14 @@ export class BackpressureMonitor {
     // Track the engaged→released transition to anchor the resume ramp. Based on
     // the raw refreshed verdict, not the staleness-adjusted read.
     const nowEngaged = this.verdict?.engaged === true;
+    this.opts.metrics?.engaged.set(nowEngaged ? 1 : 0);
+
+    if (nowEngaged !== this.wasEngaged) {
+      this.opts.logger?.info("backpressure verdict changed", {
+        engaged: nowEngaged,
+        dryRun: !!this.opts.dryRun,
+      });
+    }
     if (this.wasEngaged && !nowEngaged) {
       this.releasedAt = Date.now();
     }

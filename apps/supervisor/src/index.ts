@@ -31,6 +31,7 @@ import { extractTraceparent, getRestoreRunnerId } from "./util.js";
 import { createRedisClient } from "@internal/redis";
 import { BackpressureMonitor } from "./backpressure/backpressureMonitor.js";
 import { RedisBackpressureSignalSource } from "./backpressure/redisBackpressureSignalSource.js";
+import { BackpressureMetrics } from "./backpressure/backpressureMetrics.js";
 import {
   fromContext,
   recordPhaseSince,
@@ -209,6 +210,9 @@ class ManagedSupervisor {
         refreshIntervalMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_REFRESH_MS,
         maxVerdictAgeMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_MAX_VERDICT_AGE_MS,
         rampMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_RAMP_MS,
+        dryRun: env.TRIGGER_DEQUEUE_BACKPRESSURE_DRY_RUN,
+        logger: this.logger,
+        metrics: new BackpressureMetrics({ register }),
       });
 
       this.logger.log("🛑 Dequeue backpressure enabled", {
@@ -216,6 +220,7 @@ class ManagedSupervisor {
         refreshIntervalMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_REFRESH_MS,
         maxVerdictAgeMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_MAX_VERDICT_AGE_MS,
         rampMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_RAMP_MS,
+        dryRun: env.TRIGGER_DEQUEUE_BACKPRESSURE_DRY_RUN,
       });
     }
 
