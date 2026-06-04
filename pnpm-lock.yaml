@@ -215,6 +215,9 @@ importers:
       '@internal/compute':
         specifier: workspace:*
         version: link:../../internal-packages/compute
+      '@internal/redis':
+        specifier: workspace:*
+        version: link:../../internal-packages/redis
       '@kubernetes/client-node':
         specifier: ^1.0.0
         version: 1.0.0(patch_hash=ba1a06f46256cdb8d6faf7167246692c0de2e7cd846a9dc0f13be0137e1c3745)(bufferutil@4.0.9)(encoding@0.1.13)
@@ -240,6 +243,9 @@ importers:
         specifier: 3.25.76
         version: 3.25.76
     devDependencies:
+      '@internal/testcontainers':
+        specifier: workspace:*
+        version: link:../../internal-packages/testcontainers
       '@types/dockerode':
         specifier: ^3.3.33
         version: 3.3.35
