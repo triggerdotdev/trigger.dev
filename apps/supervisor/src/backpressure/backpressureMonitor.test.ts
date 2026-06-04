@@ -140,6 +140,25 @@ describe("BackpressureMonitor", () => {
     monitor.stop();
   });
 
+  it("does not start an overlapping refresh while one is in flight", async () => {
+    let reads = 0;
+    const source: BackpressureSignalSource = {
+      // Never resolves - simulates a hung read.
+      read: () => {
+        reads++;
+        return new Promise<{ engaged: boolean } | null>(() => {});
+      },
+    };
+    const monitor = new BackpressureMonitor({ enabled: true, source, refreshIntervalMs: 1000 });
+
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(3000); // several intervals while the first read hangs
+
+    expect(reads).toBe(1); // in-flight guard prevents stacking
+
+    monitor.stop();
+  });
+
   it("stops refreshing after stop()", async () => {
     const { source, reads } = countingSource({ engaged: true });
     const monitor = new BackpressureMonitor({ enabled: true, source, refreshIntervalMs: 1000 });
