@@ -311,7 +311,10 @@ function useAgentSessionMessages({
         const idx = parts.findIndex((p) => (p as { toolCallId?: string }).toolCallId === toolCallId);
         if (idx < 0) continue;
         const cur = parts[idx]!;
-        const terminal = cur.state === "output-available" || cur.state === "output-error";
+        const terminal =
+          cur.state === "output-available" ||
+          cur.state === "output-error" ||
+          cur.state === "output-denied";
         const nextState = res.state != null && !terminal ? res.state : cur.state;
         const sameApproval = JSON.stringify(cur.approval) === JSON.stringify(res.approval);
         if (

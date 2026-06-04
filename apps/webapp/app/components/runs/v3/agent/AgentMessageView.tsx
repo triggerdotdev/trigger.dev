@@ -129,7 +129,7 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
       resultSummary = "calling...";
     } else if (p.state === "approval-requested") {
       resultSummary = "awaiting approval";
-    } else if (p.state === "approval-responded") {
+    } else if (p.state === "approval-responded" || p.state === "output-denied") {
       resultSummary = p.approval?.approved
         ? "approved"
         : `denied${p.approval?.reason ? `: ${p.approval.reason}` : ""}`;
