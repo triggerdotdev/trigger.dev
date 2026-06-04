@@ -136,7 +136,21 @@ export class EnvironmentVariablesPresenter {
     );
 
     const repository = new EnvironmentVariablesRepository(this.#prismaClient);
-    const variables = await repository.getProject(project.id);
+
+    const nonSecretItems: Array<{ environmentId: string; key: string }> = [];
+    for (const environmentVariable of environmentVariables) {
+      for (const env of sortedEnvironments) {
+        const valueRecord = environmentVariable.values.find((v) => v.environmentId === env.id);
+        if (valueRecord && !valueRecord.isSecret) {
+          nonSecretItems.push({ environmentId: env.id, key: environmentVariable.key });
+        }
+      }
+    }
+
+    const variableValuesByEnvAndKey = await repository.getVariableValuesForKeys(
+      project.id,
+      nonSecretItems
+    );
 
     // Get Vercel integration data if it exists
     const vercelService = new VercelIntegrationService(this.#prismaClient);
@@ -153,14 +167,19 @@ export class EnvironmentVariablesPresenter {
     return {
       environmentVariables: environmentVariables
         .flatMap((environmentVariable) => {
-          const variable = variables.find((v) => v.key === environmentVariable.key);
-
           return sortedEnvironments.flatMap((env) => {
-            const val = variable?.values.find((v) => v.environment.id === env.id);
             const valueRecord = environmentVariable.values.find((v) => v.environmentId === env.id);
             const isSecret = valueRecord?.isSecret ?? false;
 
-            if (!val || !valueRecord) {
+            if (!valueRecord) {
+              return [];
+            }
+
+            const val = isSecret
+              ? undefined
+              : variableValuesByEnvAndKey.get(`${env.id}:${environmentVariable.key}`);
+
+            if (!isSecret && val === undefined) {
               return [];
             }
 
@@ -185,7 +204,7 @@ export class EnvironmentVariablesPresenter {
                 id: environmentVariable.id,
                 key: environmentVariable.key,
                 environment: { type: env.type, id: env.id, branchName: env.branchName },
-                value: isSecret ? "" : val.value,
+                value: isSecret ? "" : val!,
                 isSecret,
                 version: valueRecord.version,
                 lastUpdatedBy,

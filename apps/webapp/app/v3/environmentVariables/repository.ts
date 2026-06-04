@@ -107,6 +107,14 @@ export interface Repository {
   editValue(projectId: string, options: EditEnvironmentVariableValue): Promise<Result>;
   getProject(projectId: string): Promise<ProjectEnvironmentVariable[]>;
   /**
+   * Fetch and decrypt only the given env var values (for dashboard display of non-secret rows).
+   * Map keys are `${environmentId}:${variableKey}`.
+   */
+  getVariableValuesForKeys(
+    projectId: string,
+    items: Array<{ environmentId: string; key: string }>
+  ): Promise<Map<string, string>>;
+  /**
    * Get the environment variables for a given environment, it does NOT return values for secret variables
    */
   getEnvironmentWithRedactedSecrets(
