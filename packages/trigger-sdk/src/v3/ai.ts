@@ -102,7 +102,16 @@ const METADATA_KEY = "tool.execute.options";
  * stopped/aborted conversations with partial tool parts.
  */
 function toModelMessages(messages: UIMessage[]): Promise<ModelMessage[]> {
-  return convertToModelMessages(messages, { ignoreIncompleteToolCalls: true });
+  // Pass the resolved per-turn `tools` (if any) so the AI SDK can look up each
+  // tool's `toModelOutput` and re-apply it to prior-turn tool results. Without
+  // `tools` it falls back to JSON-stringifying the raw output (TRI-10149). The
+  // conditional spread keeps the options object byte-identical to the no-tools
+  // path when nothing was declared.
+  const tools = locals.get(chatResolvedToolsKey);
+  return convertToModelMessages(messages, {
+    ignoreIncompleteToolCalls: true,
+    ...(tools ? { tools } : {}),
+  });
 }
 
 export type ToolCallExecutionOptions = {
@@ -220,20 +229,6 @@ async function findLatestSessionInCursor(
 export type { ChatSnapshotV1 } from "@trigger.dev/core/v3";
 
 /**
- * S3 key suffix for a session's snapshot blob. The webapp's presigned-URL
- * routes prefix this with `packets/{projectRef}/{envSlug}/` server-side, so
- * the final S3 key lands at
- * `packets/{projectRef}/{envSlug}/sessions/{sessionId}/snapshot.json`.
- *
- * Stable per session: the friendlyId persists across `chat.requestUpgrade`
- * continuations and idle-suspend restarts.
- * @internal
- */
-function snapshotFilename(sessionId: string): string {
-  return `sessions/${sessionId}/snapshot.json`;
-}
-
-/**
  * Test-only override hook — `mockChatAgent` installs a fake to return
  * synthetic snapshots without hitting S3. Mirrors the `__set*ImplForTests`
  * pattern in `sessions.ts`. Not part of the public API.
@@ -285,7 +280,7 @@ async function readChatSnapshot<TUIMessage extends UIMessage>(
   const apiClient = apiClientManager.clientOrThrow();
   let presignedUrl: string;
   try {
-    const resp = await apiClient.getPayloadUrl(snapshotFilename(sessionId));
+    const resp = await apiClient.getChatSnapshotUrl(sessionId);
     presignedUrl = resp.presignedUrl;
   } catch (error) {
     logger.warn("chat.agent: snapshot presign (read) failed; continuing without snapshot", {
@@ -360,7 +355,7 @@ async function writeChatSnapshot<TUIMessage extends UIMessage>(
   const apiClient = apiClientManager.clientOrThrow();
   let presignedUrl: string;
   try {
-    const resp = await apiClient.createUploadPayloadUrl(snapshotFilename(sessionId));
+    const resp = await apiClient.createChatSnapshotUploadUrl(sessionId);
     presignedUrl = resp.presignedUrl;
   } catch (error) {
     logger.warn("chat.agent: snapshot presign (write) failed; next run will replay further", {
@@ -1439,7 +1434,10 @@ export type ChatTaskSignals = {
  * The full payload passed to a `chatAgent` run function.
  * Extends `ChatTaskPayload` (the wire payload) with abort signals.
  */
-export type ChatTaskRunPayload<TClientData = unknown> = ChatTaskPayload<TClientData> &
+export type ChatTaskRunPayload<
+  TClientData = unknown,
+  TTools extends ToolSet = ToolSet,
+> = ChatTaskPayload<TClientData> &
   ChatTaskSignals & {
     /**
      * Task run context — same object as the `ctx` passed to a standard `task({ run })` handler’s second argument.
@@ -1450,6 +1448,21 @@ export type ChatTaskRunPayload<TClientData = unknown> = ChatTaskPayload<TClientD
     previousTurnUsage?: LanguageModelUsage;
     /** Cumulative token usage across all completed turns so far. */
     totalUsage: LanguageModelUsage;
+    /**
+     * The resolved tool set for this turn, the same `tools` you declared on
+     * `chat.agent({ tools })` (or the result of the per-turn `tools` function).
+     * Pass straight to `streamText({ tools })` so you don't redeclare them:
+     *
+     * ```ts
+     * run: ({ messages, tools, signal }) =>
+     *   streamText({ model, messages, tools, abortSignal: signal })
+     * ```
+     *
+     * Declaring `tools` on the config is also what lets the SDK re-run each
+     * tool's `toModelOutput` when it re-converts prior-turn history (see the
+     * `tools` option on `chat.agent`). Empty object when no `tools` were declared.
+     */
+    tools: TTools;
   };
 
 // Input streams for bidirectional chat communication
@@ -2143,6 +2156,110 @@ function extractNewToolResultsFromHistory(
 }
 
 /**
+ * Per-turn merge of an incoming wire `UIMessage` onto the matching entry
+ * a `hydrateMessages` hook (or the default accumulator) provides. Used
+ * to fold tool-state advances from the client into the agent's
+ * authoritative chain without trusting the wire copy for fields the
+ * LLM consumes.
+ *
+ * `hydrated` is treated as the source of truth for everything outside
+ * tool-state advancement: text, reasoning blobs, provider metadata,
+ * and tool `input` all stay as hydrated had them. We only overlay
+ * tool parts whose incoming state is wire-advanced — `output-available`
+ * / `output-error` (HITL `addToolOutput`) or `approval-responded` /
+ * `output-denied` (approval flow) — and only the corresponding
+ * resolution fields (`output` / `errorText` / `approval`). Hydrated
+ * `input` and everything else stay put.
+ *
+ * Without this, a slim wire copy (which `TriggerChatTransport` /
+ * `AgentChat.sendRaw` ship by default on HITL continuations) would
+ * clobber the hydrated assistant — the next LLM call would receive a
+ * tool call with no `input` and 4xx.
+ *
+ * @internal
+ */
+function mergeIncomingIntoHydrated<TMsg extends UIMessage>(
+  hydrated: TMsg,
+  incoming: UIMessage
+): TMsg {
+  const incomingAdvancedByCallId = new Map<string, any>();
+  for (const part of (incoming.parts ?? []) as any[]) {
+    if (!isToolUIPart(part)) continue;
+    const toolCallId = part.toolCallId;
+    if (typeof toolCallId !== "string" || toolCallId.length === 0) continue;
+    if (!isWireAdvanceableToolState(part.state)) continue;
+    incomingAdvancedByCallId.set(toolCallId, part);
+  }
+
+  if (incomingAdvancedByCallId.size === 0) return hydrated;
+
+  let mutated = false;
+  const hydratedParts = (hydrated.parts ?? []) as any[];
+  const mergedParts = hydratedParts.map((part) => {
+    if (!isToolUIPart(part)) return part;
+    const toolCallId = part.toolCallId;
+    if (typeof toolCallId !== "string" || toolCallId.length === 0) return part;
+    const incomingPart = incomingAdvancedByCallId.get(toolCallId);
+    if (!incomingPart) return part;
+    // Terminal hydrated states (`output-available`, `output-error`,
+    // `output-denied`) are authoritative — never regressed by a stale
+    // wire arrival (replay, retry, out-of-order). `output-denied`
+    // matters here because the wire's `approval-responded` could
+    // otherwise overwrite a hydrated denial back to a non-terminal
+    // state.
+    if (isResolvedToolState(part.state) || part.state === "output-denied") {
+      return part;
+    }
+    // Same state on both sides — no progression to apply.
+    if (part.state === incomingPart.state) return part;
+    mutated = true;
+    if (incomingPart.state === "output-available") {
+      return {
+        ...part,
+        state: incomingPart.state,
+        output: incomingPart.output,
+        ...(incomingPart.approval !== undefined ? { approval: incomingPart.approval } : {}),
+      };
+    }
+    if (incomingPart.state === "output-error") {
+      return {
+        ...part,
+        state: incomingPart.state,
+        errorText: incomingPart.errorText,
+        ...(incomingPart.approval !== undefined ? { approval: incomingPart.approval } : {}),
+      };
+    }
+    // approval-responded / output-denied — overlay state + approval.
+    return {
+      ...part,
+      state: incomingPart.state,
+      ...(incomingPart.approval !== undefined ? { approval: incomingPart.approval } : {}),
+    };
+  });
+
+  if (!mutated) return hydrated;
+  return { ...hydrated, parts: mergedParts };
+}
+
+/**
+ * Mirror of `slimSubmitMessageForWire`'s predicate. Kept here so the
+ * agent runtime doesn't have to import from `ai-shared.ts` for a
+ * one-liner. See that file for the full state-machine docs.
+ *
+ * @internal
+ */
+function isWireAdvanceableToolState(
+  state: unknown
+): state is "output-available" | "output-error" | "approval-responded" | "output-denied" {
+  return (
+    state === "output-available" ||
+    state === "output-error" ||
+    state === "approval-responded" ||
+    state === "output-denied"
+  );
+}
+
+/**
  * Imperative API for reading and modifying the accumulated message history.
  *
  * Mutations use the same deferred override mechanism as `chat.setMessages()`:
@@ -2276,6 +2393,20 @@ const chatPrepareMessagesKey =
   locals.create<(event: PrepareMessagesEvent<unknown>) => ModelMessage[] | Promise<ModelMessage[]>>(
     "chat.prepareMessages"
   );
+/**
+ * @internal The raw `tools` option from `chat.agent({ tools })`, either a
+ * static `ToolSet` or a per-turn function. Set once at boot.
+ */
+const chatToolsOptionKey = locals.create<
+  ToolSet | ((event: ResolveToolsEvent<unknown>) => ToolSet | Promise<ToolSet>)
+>("chat.toolsOption");
+/**
+ * @internal The concrete `ToolSet` resolved for the current turn. Read by
+ * `toModelMessages` so `convertToModelMessages` can re-run `toModelOutput` on
+ * prior-turn tool results. Unset when no `tools` were declared (preserves the
+ * exact pre-feature conversion behavior).
+ */
+const chatResolvedToolsKey = locals.create<ToolSet>("chat.resolvedTools");
 
 /** @internal Flag set by `chat.requestUpgrade()` to exit the loop after the current turn. */
 const chatUpgradeRequestedKey = locals.create<boolean>("chat.upgradeRequested");
@@ -2481,7 +2612,7 @@ export type PendingMessagesOptions<TUIM extends UIMessage = UIMessage> = {
 // React hooks (`@trigger.dev/sdk/chat/react`) can import it without
 // dragging `ai.ts` into the browser graph. Re-exported here so
 // `@trigger.dev/sdk/ai` consumers still see it.
-export { PENDING_MESSAGE_INJECTED_TYPE } from "./ai-shared.js";
+export { PENDING_MESSAGE_INJECTED_TYPE, upsertIncomingMessage } from "./ai-shared.js";
 import { PENDING_MESSAGE_INJECTED_TYPE } from "./ai-shared.js";
 
 /** @internal */
@@ -2532,6 +2663,25 @@ export type PrepareMessagesEvent<TClientData = unknown> = {
   chatId: string;
   /** The current turn number (0-indexed). */
   turn: number;
+  /** Custom data from the frontend. */
+  clientData?: TClientData;
+};
+
+/**
+ * Event passed to the per-turn `tools` function form on `chat.agent`.
+ *
+ * Use this when the active tool set depends on per-turn context (the user, a
+ * feature flag, etc.). Return the `ToolSet` to use for converting this turn's
+ * history. Only `inputSchema` and `toModelOutput` are read during conversion,
+ * so a lightweight map (no `execute`) is fine.
+ */
+export type ResolveToolsEvent<TClientData = unknown> = {
+  /** The chat session ID. */
+  chatId: string;
+  /** The current turn number (0-indexed). */
+  turn: number;
+  /** Whether this run is continuing an existing chat. */
+  continuation: boolean;
   /** Custom data from the frontend. */
   clientData?: TClientData;
 };
@@ -2708,6 +2858,41 @@ async function applyPrepareMessages(
       },
     }
   );
+}
+
+/**
+ * Resolve the `tools` option into a concrete `ToolSet` and cache it in locals so
+ * `toModelMessages` can pass it to `convertToModelMessages`. For the function
+ * form, invokes the user function with the given context (or the current turn
+ * context when no override is passed). Pass an `override` for the boot-time
+ * history conversion, which runs before the per-turn context exists and uses
+ * the run/continuation payload's `clientData`.
+ *
+ * Fails closed: a throwing resolver propagates rather than carrying a prior
+ * turn's set forward. The function form can gate capabilities by user or flag,
+ * so reusing stale tools would leak capabilities. No-op when no `tools` were
+ * declared.
+ * @internal
+ */
+async function resolveTurnTools(
+  override?: { chatId: string; turn: number; continuation: boolean; clientData: unknown }
+): Promise<void> {
+  const option = locals.get(chatToolsOptionKey);
+  if (!option) return;
+
+  if (typeof option !== "function") {
+    locals.set(chatResolvedToolsKey, option);
+    return;
+  }
+
+  const ctx = override ?? locals.get(chatTurnContextKey);
+  const resolved = await option({
+    chatId: ctx?.chatId ?? "",
+    turn: ctx?.turn ?? 0,
+    continuation: ctx?.continuation ?? false,
+    clientData: ctx?.clientData,
+  });
+  locals.set(chatResolvedToolsKey, resolved);
 }
 
 /**
@@ -3890,7 +4075,14 @@ export type HydrateMessagesEvent<TClientData = unknown, TUIM extends UIMessage =
  * Event passed to the `onValidateMessages` callback.
  */
 export type ValidateMessagesEvent<TUIM extends UIMessage = UIMessage> = {
-  /** The incoming UI messages for this turn (after cleanup of aborted tool parts). */
+  /**
+   * The incoming UI messages for this turn (after cleanup of aborted tool parts).
+   *
+   * For HITL continuations the assistant entry is slim — `state` + `output` /
+   * `errorText` / `approval` only, no `input` or other parts. Don't pass the
+   * full `messages` array to `validateUIMessages` from `ai`; filter to user
+   * messages (or your own subset) first.
+   */
   messages: TUIM[];
   /** The unique identifier for the chat session. */
   chatId: string;
@@ -4153,6 +4345,7 @@ export type ChatAgentOptions<
   TClientDataSchema extends TaskSchema | undefined = undefined,
   TUIMessage extends UIMessage = UIMessage,
   TActionSchema extends TaskSchema | undefined = undefined,
+  TTools extends ToolSet = ToolSet,
 > = Omit<
   TaskOptions<
     TIdentifier,
@@ -4264,6 +4457,41 @@ export type ChatAgentOptions<
   ) => Promise<unknown> | unknown;
 
   /**
+   * The tools available to this agent.
+   *
+   * `chat.agent` doesn't call the model for you. Your tools still go to
+   * `streamText({ tools })` inside `run()`. Declaring them here additionally
+   * lets the SDK re-run each tool's
+   * [`toModelOutput`](https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling#tomodeloutput)
+   * when it re-converts persisted history on later turns. Without this, the
+   * AI SDK has no `tools` to look up `toModelOutput` against, so a tool's
+   * transformed result (e.g. raw image bytes → an image content part, or a
+   * sub-agent summary) silently degrades to its raw JSON output from turn 2
+   * onward.
+   *
+   * Only `inputSchema` and `toModelOutput` are read during conversion (never
+   * `execute`), so you may pass a lightweight map if you keep heavy execute
+   * deps out of this module.
+   *
+   * Pass either a static `ToolSet` or a function of per-turn context (for
+   * tools that depend on the user, a feature flag, etc.). The resolved set is
+   * available on the `run()` payload as `tools`.
+   *
+   * @example
+   * ```ts
+   * const tools = { read_file, search };
+   * chat.agent({
+   *   tools,
+   *   run: async ({ messages, tools, signal }) =>
+   *     streamText({ model, messages, tools, abortSignal: signal }),
+   * });
+   * ```
+   */
+  tools?:
+    | TTools
+    | ((event: ResolveToolsEvent<inferSchemaOut<TClientDataSchema>>) => TTools | Promise<TTools>);
+
+  /**
    * The run function for the chat task.
    *
    * Receives a `ChatTaskRunPayload` with the conversation messages, chat session ID,
@@ -4273,7 +4501,9 @@ export type ChatAgentOptions<
    * **Auto-piping:** If this function returns a value with `.toUIMessageStream()`,
    * the stream is automatically piped to the frontend.
    */
-  run: (payload: ChatTaskRunPayload<inferSchemaOut<TClientDataSchema>>) => Promise<unknown>;
+  run: (
+    payload: ChatTaskRunPayload<inferSchemaOut<TClientDataSchema>, TTools>
+  ) => Promise<unknown>;
 
   /**
    * Called once at the start of every run boot — for the initial run, for
@@ -4386,8 +4616,13 @@ export type ChatAgentOptions<
    *
    * Return the validated messages array. Throw to abort the turn with an error.
    *
-   * This is the right place to call the AI SDK's `validateUIMessages` to catch
-   * malformed messages from storage or untrusted input before they reach the model.
+   * This is the right place to call the AI SDK's `validateUIMessages` on fresh
+   * user input. For HITL continuations (`addToolOutput` /
+   * `addToolApproveResponse`), the wire carries a slim assistant message — only
+   * the resolved tool parts, with `state` + `output` / `errorText` / `approval`
+   * and no `input`. `validateUIMessages` against the AI SDK schema rejects
+   * that shape, so filter to user messages (or skip validation entirely) on
+   * those turns.
    *
    * @example
    * ```ts
@@ -4396,7 +4631,11 @@ export type ChatAgentOptions<
    * chat.agent({
    *   id: "my-chat",
    *   onValidateMessages: async ({ messages }) => {
-   *     return validateUIMessages({ messages, tools: chatTools });
+   *     const userMessages = messages.filter((m) => m.role === "user");
+   *     if (userMessages.length > 0) {
+   *       await validateUIMessages({ messages: userMessages, tools: chatTools });
+   *     }
+   *     return messages;
    *   },
    *   run: async ({ messages }) => {
    *     return streamText({ model, messages, tools: chatTools });
@@ -4845,8 +5084,9 @@ function chatAgent<
   TClientDataSchema extends TaskSchema | undefined = undefined,
   TUIMessage extends UIMessage = UIMessage,
   TActionSchema extends TaskSchema | undefined = undefined,
+  TTools extends ToolSet = ToolSet,
 >(
-  options: ChatAgentOptions<TIdentifier, TClientDataSchema, TUIMessage, TActionSchema>
+  options: ChatAgentOptions<TIdentifier, TClientDataSchema, TUIMessage, TActionSchema, TTools>
 ): Task<TIdentifier, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown> {
   const {
     run: userRun,
@@ -4865,6 +5105,7 @@ function chatAgent<
     compaction,
     pendingMessages: pendingMessagesConfig,
     prepareMessages,
+    tools: toolsOption,
     onTurnComplete,
     maxTurns = 100,
     turnTimeout = "1h",
@@ -4941,6 +5182,25 @@ function chatAgent<
 
       if (prepareMessages) {
         locals.set(chatPrepareMessagesKey, prepareMessages);
+      }
+
+      if (toolsOption) {
+        // Cast: the option's function form is typed against the parsed
+        // `clientData` (`ResolveToolsEvent<inferSchemaOut<...>>`), but the
+        // locals key uses the erased `ResolveToolsEvent<unknown>`. The runtime
+        // value is identical; this mirrors how `prepareMessages` is stored.
+        locals.set(
+          chatToolsOptionKey,
+          toolsOption as
+            | ToolSet
+            | ((event: ResolveToolsEvent<unknown>) => ToolSet | Promise<ToolSet>)
+        );
+        // Static tools are usable immediately. The function form is resolved
+        // just before the boot history conversion (with the payload's
+        // clientData) and again per-turn (see resolveTurnTools).
+        if (typeof toolsOption !== "function") {
+          locals.set(chatResolvedToolsKey, toolsOption);
+        }
       }
 
       if (compaction) {
@@ -5332,6 +5592,29 @@ function chatAgent<
         }
 
         if (accumulatedUIMessages.length > 0) {
+          // Resolve a function-form `tools` with the run/continuation payload's
+          // clientData so this conversion of the restored history applies each
+          // tool's toModelOutput (static tools were already seeded above). This
+          // only re-renders saved history, so it fails open: a resolver hiccup
+          // logs and converts without tools rather than blocking the resume.
+          // Per-turn resolveTurnTools still fails closed for live turns.
+          if (typeof toolsOption === "function") {
+            try {
+              await resolveTurnTools({
+                chatId: payload.chatId,
+                turn: 0,
+                continuation: payload.continuation ?? false,
+                clientData: parseClientData
+                  ? await parseClientData(payload.metadata)
+                  : payload.metadata,
+              });
+            } catch (error) {
+              logger.warn(
+                "chat.agent: tools() resolver threw at boot; restored history converted without toModelOutput",
+                { error: error instanceof Error ? error.message : String(error) }
+              );
+            }
+          }
           try {
             accumulatedMessages = await toModelMessages(accumulatedUIMessages);
           } catch (error) {
@@ -5852,6 +6135,11 @@ function chatAgent<
                     clientData,
                   });
 
+                  // Resolve the per-turn `tools` set now that turn context
+                  // (incl. parsed clientData) exists, so every toModelMessages
+                  // call this turn can re-apply tool `toModelOutput`.
+                  await resolveTurnTools();
+
                   // Per-turn stop controller (reset each turn)
                   const stopController = new AbortController();
                   currentStopController = stopController;
@@ -6052,6 +6340,20 @@ function chatAgent<
                   }
 
                   if (hydrateMessages) {
+                    // Snapshot the ids the accumulator knew BEFORE this
+                    // turn ran — used below to decide whether an
+                    // incoming wire message is genuinely new or just a
+                    // state advance on an existing entry. We can't use
+                    // the post-`hydrateMessages` array for this because
+                    // the canonical hook pattern pushes the incoming
+                    // user message into the persisted chain and
+                    // returns it.
+                    const previouslyKnownMessageIds = new Set(
+                      accumulatedUIMessages
+                        .map((m) => m.id)
+                        .filter((id): id is string => typeof id === "string")
+                    );
+
                     // Backend hydration: load the full message history from the user's
                     // backend, replacing the built-in accumulator entirely. With slim
                     // wire, `incomingMessages` is consistently 0-or-1-length — what
@@ -6085,15 +6387,23 @@ function chatAgent<
                       }
                     );
 
-                    // Auto-merge tool approval updates: if any incoming wire message
-                    // has an ID that matches a hydrated message, replace it. This makes
-                    // tool approvals work transparently with backend hydration.
+                    // Per-turn merge of incoming wire messages onto the hydrated
+                    // chain. Hydrated stays authoritative for text, reasoning
+                    // blobs, provider metadata, and tool `input`; we only
+                    // overlay tool-part state/output/errorText for tool calls
+                    // the wire copy has just resolved. Apps that slim the wire
+                    // copy to fit the .in/append cap (or drop fields they
+                    // re-source from their own DB) get the hydrated copy
+                    // through unchanged.
                     const merged = [...hydrated] as TUIMessage[];
                     for (const incoming of cleanedUIMessages) {
                       if (!incoming.id) continue;
                       const idx = merged.findIndex((m) => m.id === incoming.id);
                       if (idx !== -1) {
-                        merged[idx] = incoming as TUIMessage;
+                        merged[idx] = mergeIncomingIntoHydrated(
+                          merged[idx]!,
+                          incoming
+                        ) as TUIMessage;
                       }
                     }
 
@@ -6101,15 +6411,32 @@ function chatAgent<
                     accumulatedMessages = await toModelMessages(merged);
                     locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
 
-                    // Track new messages for onTurnComplete.newUIMessages
+                    // Track new messages for onTurnComplete.newUIMessages.
+                    // Only push for genuinely new ids — HITL continuations
+                    // whose incoming wire id matches an existing entry are
+                    // state advances on an old message, not new messages.
+                    // We compare against `previouslyKnownMessageIds`
+                    // captured BEFORE hydration, not against `hydrated`:
+                    // the canonical hydrate pattern pushes the incoming
+                    // user message into the persisted chain and returns
+                    // it, so the new id IS in `hydrated`, which would
+                    // wrongly drop every fresh user turn from
+                    // `newUIMessages`. The non-hydrate branch below has
+                    // the same "push only on append" semantic via its
+                    // own append-vs-replace path.
                     if (
                       currentWirePayload.trigger === "submit-message" &&
                       cleanedUIMessages.length > 0
                     ) {
                       const lastUI = cleanedUIMessages[cleanedUIMessages.length - 1]!;
-                      turnNewUIMessages.push(lastUI);
-                      const lastModel = (await toModelMessages([lastUI]))[0];
-                      if (lastModel) turnNewModelMessages.push(lastModel);
+                      const matchedExisting =
+                        lastUI.id !== undefined &&
+                        previouslyKnownMessageIds.has(lastUI.id);
+                      if (!matchedExisting) {
+                        turnNewUIMessages.push(lastUI);
+                        const lastModel = (await toModelMessages([lastUI]))[0];
+                        if (lastModel) turnNewModelMessages.push(lastModel);
+                      }
                     }
                   } else {
                     // Default delta-merge accumulation.
@@ -6135,15 +6462,17 @@ function chatAgent<
                     } else if (cleanedUIMessages.length > 0) {
                       // Submit-message (and the special-cased
                       // handover-prepare → submit-message rewrite earlier in
-                      // this scope): append-or-replace-by-id for the single
-                      // delta message.
+                      // this scope): merge-or-append for the single delta
+                      // message.
                       //
                       // Tool approval responses arrive as a single assistant
                       // message whose id collides with the existing assistant
-                      // in the accumulator — we replace by id. The fallback
-                      // for HITL `addToolOutput` continuations where AI SDK
-                      // regenerates the id (TRI-9137) still applies via
-                      // `rewriteIncomingIdViaToolCallMap`.
+                      // in the accumulator — we merge the resolved tool-part
+                      // resolutions onto the existing entry, keeping text,
+                      // reasoning, and tool `input` from the prior snapshot.
+                      // The fallback for HITL `addToolOutput` continuations
+                      // where AI SDK regenerates the id (TRI-9137) still
+                      // applies via `rewriteIncomingIdViaToolCallMap`.
                       let replaced = false;
                       for (const raw of cleanedUIMessages) {
                         let incoming = raw;
@@ -6160,7 +6489,10 @@ function chatAgent<
                           }
                         }
                         if (idx !== -1) {
-                          accumulatedUIMessages[idx] = incoming as TUIMessage;
+                          accumulatedUIMessages[idx] = mergeIncomingIntoHydrated(
+                            accumulatedUIMessages[idx]!,
+                            incoming
+                          ) as TUIMessage;
                           replaced = true;
                         } else {
                           accumulatedUIMessages.push(incoming as TUIMessage);
@@ -6463,6 +6795,7 @@ function chatAgent<
                         previousTurnUsage,
                         totalUsage: cumulativeUsage,
                         ctx,
+                        tools: locals.get(chatResolvedToolsKey) ?? {},
                         signal: combinedSignal,
                         cancelSignal,
                         stopSignal,
@@ -7362,11 +7695,11 @@ export interface ChatBuilder<
    * (backwards compatible).
    */
   agent: [TClientDataSchema] extends [undefined]
-  ? <TId extends string, TInfer extends TaskSchema | undefined = undefined, TAction extends TaskSchema | undefined = undefined>(
-    options: ChatAgentOptions<TId, TInfer, TUIMessage, TAction>
+  ? <TId extends string, TInfer extends TaskSchema | undefined = undefined, TAction extends TaskSchema | undefined = undefined, TTools extends ToolSet = ToolSet>(
+    options: ChatAgentOptions<TId, TInfer, TUIMessage, TAction, TTools>
   ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TInfer>>, unknown>
-  : <TId extends string, TAction extends TaskSchema | undefined = undefined>(
-    options: Omit<ChatAgentOptions<TId, TClientDataSchema, TUIMessage, TAction>, "clientDataSchema">
+  : <TId extends string, TAction extends TaskSchema | undefined = undefined, TTools extends ToolSet = ToolSet>(
+    options: Omit<ChatAgentOptions<TId, TClientDataSchema, TUIMessage, TAction, TTools>, "clientDataSchema">
   ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown>;
 
   /**
@@ -8995,7 +9328,11 @@ function chatLocal<T extends Record<string, unknown>>(options: { id: string }): 
 // the browser graph. Re-exported here so `@trigger.dev/sdk/ai` consumers
 // still see them.
 import type { InferChatClientData, InferChatUIMessage } from "./ai-shared.js";
-export type { InferChatClientData, InferChatUIMessage } from "./ai-shared.js";
+export type {
+  InferChatClientData,
+  InferChatUIMessage,
+  InferChatUIMessageFromTools,
+} from "./ai-shared.js";
 
 /**
  * Options for {@link createChatStartSessionAction}.
@@ -9054,9 +9391,17 @@ export type CreateChatStartSessionActionOptions = {
 /**
  * Params for the function returned by {@link createChatStartSessionAction}.
  */
-export type ChatStartSessionParams = {
+export type ChatStartSessionParams<TChat extends AnyTask = AnyTask> = {
   /** Conversation id (mapped to the Session's `externalId`). */
   chatId: string;
+  /**
+   * Typed client data — folded into the first run's `payload.metadata` so
+   * `onPreload`, `onChatStart`, etc. see the same `clientData` shape on the
+   * first turn as subsequent turns get via the transport's `clientData`
+   * option. Typed via the agent's `clientDataSchema` when the action is
+   * parameterised with `createStartSessionAction<typeof myChat>(...)`.
+   */
+  clientData?: InferChatClientData<TChat>;
   /**
    * Per-call trigger config. Shallow-merged over the action's default
    * `triggerConfig`. `basePayload` is the customer's wire payload (for
@@ -9064,7 +9409,11 @@ export type ChatStartSessionParams = {
    * which the runtime injects automatically).
    */
   triggerConfig?: Partial<SessionTriggerConfig>;
-  /** Pass-through metadata folded into the session row. */
+  /**
+   * Opaque session-level metadata stored on the Session row. Separate from
+   * the per-turn `clientData` above. Use this when you want to attach
+   * server-side metadata that doesn't go through the agent's `clientDataSchema`.
+   */
   metadata?: Record<string, unknown>;
 };
 
@@ -9092,33 +9441,37 @@ export type ChatStartSessionResult = {
  * Wrap in a Next.js server action (or any server-side handler) so the
  * customer's secret key never crosses to the browser.
  *
+ * Parameterise the action with `<typeof yourChatAgent>` to type the
+ * `clientData` field against your agent's `clientDataSchema`.
+ *
  * @example
  * ```ts
  * // actions.ts
  * "use server";
  * import { chat } from "@trigger.dev/sdk/ai";
+ * import type { myChat } from "@/trigger/chat";
  *
- * export const startChatSession = chat.createStartSessionAction("my-chat", {
- *   triggerConfig: { machine: "small-1x" },
- * });
+ * export const startChatSession = chat.createStartSessionAction<typeof myChat>(
+ *   "my-chat",
+ *   { triggerConfig: { machine: "small-1x" } }
+ * );
  * ```
  *
- * Then in the browser:
+ * Then in the browser, threading the typed `clientData` from the transport:
  * ```tsx
- * const transport = useTriggerChatTransport({
+ * const transport = useTriggerChatTransport<typeof myChat>({
  *   task: "my-chat",
- *   accessToken: async ({ chatId }) => {
- *     const { publicAccessToken } = await startChatSession({ chatId });
- *     return publicAccessToken;
- *   },
+ *   accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+ *   startSession: ({ chatId, clientData }) =>
+ *     startChatSession({ chatId, clientData }),
  * });
  * ```
  */
-function createChatStartSessionAction(
+function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
   taskId: string,
   options?: CreateChatStartSessionActionOptions
-): (params: ChatStartSessionParams) => Promise<ChatStartSessionResult> {
-  return async (params: ChatStartSessionParams): Promise<ChatStartSessionResult> => {
+): (params: ChatStartSessionParams<TChat>) => Promise<ChatStartSessionResult> {
+  return async (params: ChatStartSessionParams<TChat>): Promise<ChatStartSessionResult> => {
     if (!params.chatId) {
       throw new Error(
         "chat.createStartSessionAction: params.chatId is required — used as the session externalId."
@@ -9131,14 +9484,17 @@ function createChatStartSessionAction(
     // `onPreload` fires, the runtime opens its `.in` subscription, the
     // first user message arrives moments later via `.in/append`.
     //
-    // `metadata` is the customer's transport-level `clientData`,
-    // threaded through so the agent's `clientDataSchema` validates on
-    // the very first turn (the typical schema requires `userId` etc.).
+    // `clientData` is folded into `basePayload.metadata` so the agent's
+    // `clientDataSchema` validates on the very first turn against the same
+    // shape per-turn `metadata` carries via the transport.
     // Auto-tag every chat.agent run with `chat:{chatId}` so the dashboard /
     // run-list filter by chat works without the customer having to wire it
     // up. Mirrors the browser-mediated `TriggerChatTransport.doStart` path.
     const userTags = params.triggerConfig?.tags ?? options?.triggerConfig?.tags ?? [];
     const tags = [`chat:${params.chatId}`, ...userTags].slice(0, 5);
+
+    const clientDataMetadata =
+      params.clientData !== undefined ? { metadata: params.clientData } : {};
 
     const triggerConfig: SessionTriggerConfig = {
       basePayload: {
@@ -9146,6 +9502,7 @@ function createChatStartSessionAction(
         trigger: "preload",
         ...(options?.triggerConfig?.basePayload ?? {}),
         ...(params.triggerConfig?.basePayload ?? {}),
+        ...clientDataMetadata,
         chatId: params.chatId,
       },
       ...(options?.triggerConfig?.machine || params.triggerConfig?.machine

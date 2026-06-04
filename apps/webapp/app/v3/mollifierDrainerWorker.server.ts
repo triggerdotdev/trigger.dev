@@ -5,6 +5,7 @@ import {
   getMollifierDrainer,
   MollifierConfigurationError,
 } from "./mollifier/mollifierDrainer.server";
+import { startMollifierDrainingGauge } from "./mollifier/mollifierDrainingGauge.server";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -92,13 +93,21 @@ export function initMollifierDrainerWorker(
       signalsEmitter.on("SIGINT", stopDrainer);
       global.__mollifierShutdownRegistered__ = true;
       drainer.start();
+      // Spin up the observability-only gauge poller for the
+      // `mollifier:draining` ZSET cardinality. Colocated with the
+      // drainer because that's the loop creating the DRAINING entries
+      // — same pod, same Redis client lifecycle. Idempotent + unref'd
+      // so it's safe under dev hot-reload and doesn't block shutdown.
+      startMollifierDrainingGauge({
+        intervalMs: env.TRIGGER_MOLLIFIER_DRAINING_GAUGE_INTERVAL_MS,
+      });
     }
   } catch (error) {
     // Deterministic misconfig (shutdown-timeout vs GRACEFUL_SHUTDOWN_TIMEOUT,
     // missing buffer client) is a deploy-time mistake the operator must
     // see immediately — rethrow so the process crashes, health checks
-    // fail, and the orchestrator rolls the deploy back. Phase 1 is
-    // monitoring-only and the silent-fallback was tempting, but Phase 2/3
+    // fail, and the orchestrator rolls the deploy back. The drainer is currently
+    // monitoring-only and the silent-fallback was tempting, but later phases
     // make the drainer the source of truth for diverted triggers, where a
     // silently-disabled drainer means data loss. Better to fail loud now
     // than retrofit later.

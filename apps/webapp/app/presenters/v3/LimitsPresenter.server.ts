@@ -375,7 +375,7 @@ export class LimitsPresenter extends BasePresenter {
           name: "Support level",
           description: "Type of support available for your plan",
           enabled: true,
-          value: supportLevel === "slack" ? "Slack" : "Community",
+          value: supportLevel === "slack" ? "Priority" : "Community",
         },
         includedUsage: {
           name: "Included compute",

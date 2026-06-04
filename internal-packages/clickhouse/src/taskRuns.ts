@@ -379,6 +379,25 @@ export function getTaskRunsQueryBuilder(ch: ClickhouseReader, settings?: ClickHo
   });
 }
 
+/**
+ * Lookup builder for the run-engine `PendingVersionSystem`. Returns just
+ * `run_id` from `task_runs_v2`. No `FINAL` — the run-engine re-validates
+ * each candidate against Postgres by primary key, so a stale
+ * `PENDING_VERSION` row from a not-yet-merged part is harmless and
+ * `FINAL` would be too expensive for this hot path.
+ */
+export function getPendingVersionIdsQueryBuilder(
+  ch: ClickhouseReader,
+  settings?: ClickHouseSettings
+) {
+  return ch.queryBuilder({
+    name: "getPendingVersionIds",
+    baseQuery: "SELECT run_id FROM trigger_dev.task_runs_v2",
+    schema: TaskRunV2QueryResult,
+    settings,
+  });
+}
+
 export function getTaskRunsCountQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
   return ch.queryBuilder({
     name: "getTaskRunsCount",
@@ -491,6 +510,51 @@ export function getCurrentRunningStats(ch: ClickhouseReader, settings?: ClickHou
     `,
     schema: CurrentRunningStatsQueryResult,
     params: CurrentRunningStatsQueryParams,
+    settings,
+  });
+}
+
+export const ChildRunStatusCountsQueryResult = z.object({
+  root_run_id: z.string(),
+  status: z.string(),
+  count: z.number().int(),
+});
+
+export type ChildRunStatusCountsQueryResult = z.infer<typeof ChildRunStatusCountsQueryResult>;
+
+export const ChildRunStatusCountsQueryParams = z.object({
+  organizationId: z.string(),
+  projectId: z.string(),
+  environmentId: z.string(),
+  rootRunIds: z.array(z.string()).min(1),
+  since: z.number().int(),
+});
+
+export function getChildRunStatusCounts(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.query({
+    name: "getChildRunStatusCounts",
+    query: `
+    SELECT
+        root_run_id,
+        status,
+        count() as count
+    FROM trigger_dev.task_runs_v2 FINAL
+    WHERE
+        organization_id = {organizationId: String}
+        AND project_id = {projectId: String}
+        AND environment_id = {environmentId: String}
+        AND root_run_id IN {rootRunIds: Array(String)}
+        AND created_at >= fromUnixTimestamp64Milli({since: Int64})
+        AND _is_deleted = 0
+    GROUP BY
+        root_run_id,
+        status
+    ORDER BY
+        root_run_id ASC,
+        status ASC
+    `,
+    schema: ChildRunStatusCountsQueryResult,
+    params: ChildRunStatusCountsQueryParams,
     settings,
   });
 }

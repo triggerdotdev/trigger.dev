@@ -6,7 +6,6 @@ import { MollifierDrainer } from "./drainer.js";
 import { serialiseSnapshot } from "./schemas.js";
 
 const noopOptions = {
-  entryTtlSeconds: 600,
   logger: new Logger("test", "log"),
 };
 
@@ -87,8 +86,11 @@ describe("MollifierDrainer.runOnce", () => {
         payload: { foo: 1 },
       });
 
+      // After ack the entry persists as a read-fallback safety net with
+      // materialised=true and a fresh grace TTL.
       const entry = await buffer.getEntry("run_1");
-      expect(entry).toBeNull();
+      expect(entry).not.toBeNull();
+      expect(entry!.materialised).toBe(true);
     } finally {
       await buffer.close();
     }
@@ -125,6 +127,483 @@ describe("MollifierDrainer.runOnce", () => {
     } finally {
       await buffer.close();
     }
+  });
+});
+
+describe("MollifierDrainer.drainBatchSize", () => {
+  // Default behaviour (drainBatchSize=1) is exercised by every other
+  // test in this file — one pop per env per tick. These tests pin the
+  // single-env batched-pop fast path: with drainBatchSize=N, a single
+  // env with K buffered entries drains in ceil(K / N) ticks instead of
+  // K ticks, capped by the shared `concurrency` for in-flight handlers.
+
+  it("pops up to drainBatchSize entries from a single env in one tick", async () => {
+    const queue: string[] = Array.from({ length: 10 }, (_, i) => `run_${i}`);
+    const handled: string[] = [];
+    const buffer = makeStubBuffer({
+      ...eachEnvAsOwnOrg(["env_a"]),
+      pop: async (envId: string) => {
+        if (envId !== "env_a") return null;
+        const runId = queue.shift();
+        if (!runId) return null;
+        return {
+          runId,
+          envId: "env_a",
+          orgId: "org_1",
+          payload: "{}",
+          attempts: 0,
+          createdAt: new Date(),
+        } as any;
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async (input) => {
+        handled.push(input.runId);
+      },
+      concurrency: 5,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      drainBatchSize: 5,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    const r1 = await drainer.runOnce();
+    expect(r1.drained).toBe(5);
+    expect(handled).toHaveLength(5);
+
+    const r2 = await drainer.runOnce();
+    expect(r2.drained).toBe(5);
+    expect(handled).toHaveLength(10);
+
+    // Queue now empty — next tick is a no-op.
+    const r3 = await drainer.runOnce();
+    expect(r3.drained).toBe(0);
+    expect(r3.failed).toBe(0);
+  });
+
+  it("respects global concurrency cap when batch dispatch exceeds it", async () => {
+    // drainBatchSize=10 with concurrency=3 means each tick pops 10
+    // entries but only 3 handlers run in parallel; the other 7 sit in
+    // pLimit's queue. The cap is on in-flight handlers, not on per-tick
+    // pop count.
+    const queue: string[] = Array.from({ length: 10 }, (_, i) => `run_${i}`);
+    let inflight = 0;
+    let peak = 0;
+    const buffer = makeStubBuffer({
+      ...eachEnvAsOwnOrg(["env_a"]),
+      pop: async (envId: string) => {
+        if (envId !== "env_a") return null;
+        const runId = queue.shift();
+        if (!runId) return null;
+        return {
+          runId,
+          envId: "env_a",
+          orgId: "org_1",
+          payload: "{}",
+          attempts: 0,
+          createdAt: new Date(),
+        } as any;
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async () => {
+        inflight += 1;
+        if (inflight > peak) peak = inflight;
+        await new Promise((r) => setTimeout(r, 25));
+        inflight -= 1;
+      },
+      concurrency: 3,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      drainBatchSize: 10,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    const result = await drainer.runOnce();
+    expect(result.drained).toBe(10);
+    expect(peak).toBeGreaterThan(1); // genuinely parallel
+    expect(peak).toBeLessThanOrEqual(3); // capped
+  });
+
+  it("a mid-batch pop failure aborts that env's batch and counts as one failure", async () => {
+    // Pin: when the third pop on env_bad throws, the drainer stops
+    // popping from that env for this tick (no infinite retry inside one
+    // tick), the two entries already popped still get processed, and
+    // the env contributes exactly one to the failed count.
+    let envBadPops = 0;
+    let envGoodPops = 0;
+    const handled: string[] = [];
+    const buffer = makeStubBuffer({
+      ...eachEnvAsOwnOrg(["env_bad", "env_good"]),
+      pop: async (envId: string) => {
+        if (envId === "env_bad") {
+          envBadPops += 1;
+          if (envBadPops > 2) {
+            throw new Error("simulated pop failure mid-batch");
+          }
+          return {
+            runId: `bad_${envBadPops}`,
+            envId: "env_bad",
+            orgId: "org_bad",
+            payload: "{}",
+            attempts: 0,
+            createdAt: new Date(),
+          } as any;
+        }
+        // env_good — one entry then empty. Track via pop-count rather
+        // than handler-side state so the pop loop's synchronous "is the
+        // queue empty?" check doesn't race against the parallel handler
+        // dispatch that runs after the whole batch is collected.
+        envGoodPops += 1;
+        if (envGoodPops > 1) return null;
+        return {
+          runId: "good_1",
+          envId: "env_good",
+          orgId: "org_good",
+          payload: "{}",
+          attempts: 0,
+          createdAt: new Date(),
+        } as any;
+      },
+    });
+
+    const concurrency = 5;
+    const drainBatchSize = 5;
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async (input) => {
+        handled.push(input.runId);
+      },
+      concurrency,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      drainBatchSize,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    const result = await drainer.runOnce();
+    // The actual ENTRIES drained are deterministic regardless of races:
+    // env_bad's pop returns bad_1 then bad_2 (the only two snapshots it
+    // ever produces) and env_good's pop returns good_1 (its only entry).
+    expect(result.drained).toBe(3);
+    expect(new Set(handled)).toEqual(new Set(["bad_1", "bad_2", "good_1"]));
+    // Exactly one failure recorded for env_bad, even though multiple
+    // workers can race into a broken env before skip propagates — the
+    // catch guards the increment on `!skip.has(envId)`, so the documented
+    // "one failure per env batch" contract holds.
+    expect(result.failed).toBe(1);
+    // env_bad's pop call count is bounded too — at most concurrency
+    // retries after the first throw — definitely never reaches the
+    // drainBatchSize ceiling.
+    expect(envBadPops).toBeGreaterThanOrEqual(3);
+    expect(envBadPops).toBeLessThan(drainBatchSize + concurrency);
+  });
+
+  it("fans batched pops out across multiple envs in a single tick", async () => {
+    // Pin: with N envs each holding K entries and drainBatchSize=K, one
+    // tick pops N×K entries and dispatches them all through the shared
+    // pLimit. Closes the gap that all the other batch tests cover a
+    // single env in isolation.
+    const envCount = 10;
+    const perEnv = 10;
+    const queues = new Map<string, string[]>();
+    for (let i = 0; i < envCount; i++) {
+      queues.set(
+        `env_${i}`,
+        Array.from({ length: perEnv }, (_, j) => `env_${i}_run_${j}`),
+      );
+    }
+    const handled: string[] = [];
+    const buffer = makeStubBuffer({
+      ...eachEnvAsOwnOrg([...queues.keys()]),
+      pop: async (envId: string) => {
+        const q = queues.get(envId);
+        if (!q || q.length === 0) return null;
+        const runId = q.shift()!;
+        return {
+          runId,
+          envId,
+          orgId: envId,
+          payload: "{}",
+          attempts: 0,
+          createdAt: new Date(),
+        } as any;
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async (input) => {
+        handled.push(input.runId);
+      },
+      concurrency: 20,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      drainBatchSize: perEnv,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    const r = await drainer.runOnce();
+    expect(r.drained).toBe(envCount * perEnv);
+    expect(handled).toHaveLength(envCount * perEnv);
+    // Every env contributed exactly perEnv entries.
+    const perEnvCounts = handled.reduce<Record<string, number>>((acc, runId) => {
+      const env = runId.replace(/_run_\d+$/, "");
+      acc[env] = (acc[env] ?? 0) + 1;
+      return acc;
+    }, {});
+    for (let i = 0; i < envCount; i++) {
+      expect(perEnvCounts[`env_${i}`]).toBe(perEnv);
+    }
+  });
+
+  it("preserves org-level fairness with drainBatchSize > 1", async () => {
+    // Regression guard for the hierarchical rotation property at batch
+    // > 1: a heavy org with many envs still gets ~1 org-slot per tick,
+    // not N. The original test at line ~1066 only exercises batchSize=1;
+    // this re-runs the same shape with batchSize=5 to ensure batching
+    // doesn't somehow give the noisy tenant more slots.
+    const orgAEnvs = Array.from({ length: 6 }, (_, i) => `env_orgA_${i}`);
+    const orgBEnv = "env_orgB_only";
+    const envOrg = new Map<string, string>();
+    for (const e of orgAEnvs) envOrg.set(e, "org_A");
+    envOrg.set(orgBEnv, "org_B");
+    const queues = new Map<string, Array<{ runId: string; orgId: string }>>();
+    for (const e of orgAEnvs) {
+      queues.set(
+        e,
+        Array.from({ length: 100 }, (_, i) => ({
+          runId: `${e}_run_${i}`,
+          orgId: "org_A",
+        })),
+      );
+    }
+    queues.set(
+      orgBEnv,
+      Array.from({ length: 100 }, (_, i) => ({
+        runId: `${orgBEnv}_run_${i}`,
+        orgId: "org_B",
+      })),
+    );
+
+    const drainedByOrg: Record<string, number> = { org_A: 0, org_B: 0 };
+    const buffer = makeStubBuffer({
+      listOrgs: async () => {
+        const orgs = new Set<string>();
+        for (const [envId, items] of queues.entries()) {
+          if (items.length > 0) orgs.add(envOrg.get(envId)!);
+        }
+        return [...orgs];
+      },
+      listEnvsForOrg: async (orgId: string) => {
+        const envs: string[] = [];
+        for (const [envId, items] of queues.entries()) {
+          if (items.length > 0 && envOrg.get(envId) === orgId) envs.push(envId);
+        }
+        return envs;
+      },
+      pop: async (envId: string) => {
+        const q = queues.get(envId);
+        if (!q || q.length === 0) return null;
+        const entry = q.shift()!;
+        return {
+          runId: entry.runId,
+          envId,
+          orgId: entry.orgId,
+          payload: "{}",
+          attempts: 0,
+          createdAt: new Date(),
+        } as any;
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async (input) => {
+        drainedByOrg[input.orgId] = (drainedByOrg[input.orgId] ?? 0) + 1;
+      },
+      concurrency: 10,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      maxOrgsPerTick: 100,
+      drainBatchSize: 5,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    for (let i = 0; i < 20; i++) {
+      await drainer.runOnce();
+    }
+
+    expect(drainedByOrg["org_A"]).toBeGreaterThan(0);
+    expect(drainedByOrg["org_B"]).toBeGreaterThan(0);
+    const ratio = drainedByOrg["org_A"]! / drainedByOrg["org_B"]!;
+    // Same fairness window as the batchSize=1 sibling test — batching
+    // multiplies per-tick throughput uniformly, not asymmetrically.
+    expect(ratio).toBeGreaterThan(0.7);
+    expect(ratio).toBeLessThan(1.5);
+  });
+
+  it("counts mixed handler success and failure within a batched tick correctly", async () => {
+    // 5 envs, one entry each, drainBatchSize=5. Three handlers succeed,
+    // two throw non-retryable → drained=3, failed=2. Pins that the batched
+    // dispatch's drained/failed accounting per entry is preserved when
+    // multiple outcomes interleave in one tick.
+    const envs = ["env_ok_1", "env_ok_2", "env_ok_3", "env_fail_1", "env_fail_2"];
+    const popsByEnv = new Map<string, number>();
+    const buffer = makeStubBuffer({
+      ...eachEnvAsOwnOrg(envs),
+      pop: async (envId: string) => {
+        if (!envs.includes(envId)) return null;
+        // One entry per env then empty. Track via a per-env pop counter
+        // so the batch loop terminates after the first hit even though
+        // drainBatchSize=5.
+        const popped = (popsByEnv.get(envId) ?? 0) + 1;
+        popsByEnv.set(envId, popped);
+        if (popped > 1) return null;
+        return {
+          runId: `run_${envId}`,
+          envId,
+          orgId: envId,
+          payload: "{}",
+          attempts: 0,
+          createdAt: new Date(),
+        } as any;
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async (input) => {
+        if (input.envId.startsWith("env_fail")) {
+          throw new Error("simulated handler failure");
+        }
+      },
+      concurrency: 10,
+      maxAttempts: 3,
+      isRetryable: () => false, // non-retryable → terminal on first attempt
+      drainBatchSize: 5,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    const r = await drainer.runOnce();
+    expect(r.drained).toBe(3);
+    expect(r.failed).toBe(2);
+  });
+
+  it("never has more than `concurrency` entries popped-but-not-acked at any moment", async () => {
+    // Regression guard for the DRAINING blast radius. Each pop+process
+    // happens inside a single pLimit slot, so at any instant the number
+    // of entries that have been popped (and therefore marked DRAINING in
+    // a real buffer) but not yet acked is bounded by `concurrency`. This
+    // matters because the stale sweep only catches DRAINING entries
+    // visibly after a threshold — a process crash with thousands of
+    // mid-flight entries would mean a long detection/recovery window.
+    const envCount = 10;
+    const perEnv = 20;
+    const queues = new Map<string, string[]>();
+    for (let i = 0; i < envCount; i++) {
+      queues.set(
+        `env_${i}`,
+        Array.from({ length: perEnv }, (_, j) => `env_${i}_run_${j}`),
+      );
+    }
+    let inflightPoppedNotAcked = 0;
+    let peak = 0;
+    const concurrency = 4;
+    const buffer = makeStubBuffer({
+      ...eachEnvAsOwnOrg([...queues.keys()]),
+      pop: async (envId: string) => {
+        const q = queues.get(envId);
+        if (!q || q.length === 0) return null;
+        const runId = q.shift()!;
+        inflightPoppedNotAcked += 1;
+        if (inflightPoppedNotAcked > peak) peak = inflightPoppedNotAcked;
+        return {
+          runId,
+          envId,
+          orgId: envId,
+          payload: "{}",
+          attempts: 0,
+          createdAt: new Date(),
+        } as any;
+      },
+      ack: async () => {
+        inflightPoppedNotAcked -= 1;
+      },
+    });
+
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async () => {
+        // Force handler overlap if scheduling allowed it — without a
+        // tight per-slot bound the peak would visibly exceed `concurrency`.
+        await new Promise((r) => setTimeout(r, 15));
+      },
+      concurrency,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      drainBatchSize: perEnv,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    const r = await drainer.runOnce();
+    expect(r.drained).toBe(envCount * perEnv);
+    expect(peak).toBeGreaterThan(1); // concurrency is real, not serialised
+    expect(peak).toBeLessThanOrEqual(concurrency); // and bounded by it
+    expect(inflightPoppedNotAcked).toBe(0); // everything settled
+  });
+
+  it("stops popping early when the env's queue empties before reaching drainBatchSize", async () => {
+    const queue = ["only_1", "only_2"];
+    const handled: string[] = [];
+    let popCalls = 0;
+    const buffer = makeStubBuffer({
+      ...eachEnvAsOwnOrg(["env_a"]),
+      pop: async (envId: string) => {
+        if (envId !== "env_a") return null;
+        popCalls += 1;
+        const runId = queue.shift();
+        if (!runId) return null;
+        return {
+          runId,
+          envId: "env_a",
+          orgId: "org_1",
+          payload: "{}",
+          attempts: 0,
+          createdAt: new Date(),
+        } as any;
+      },
+    });
+
+    const concurrency = 5;
+    const drainBatchSize = 10;
+    const drainer = new MollifierDrainer({
+      buffer,
+      handler: async (input) => {
+        handled.push(input.runId);
+      },
+      concurrency,
+      maxAttempts: 3,
+      isRetryable: () => false,
+      drainBatchSize,
+      logger: new Logger("test-drainer", "log"),
+    });
+
+    const r = await drainer.runOnce();
+    expect(r.drained).toBe(2);
+    expect(new Set(handled)).toEqual(new Set(["only_1", "only_2"]));
+    // The property we're pinning: pop calls are bounded by concurrency
+    // (plus the original two successes) once the queue empties — they
+    // never run all the way up to drainBatchSize. With concurrency > 1
+    // multiple workers can race to pop env_a before `skip.add` lands,
+    // so the upper bound is the worker count, not a tight "3".
+    expect(popCalls).toBeGreaterThanOrEqual(3); // 2 success + ≥1 sentinel null
+    expect(popCalls).toBeLessThanOrEqual(concurrency + 2);
+    expect(popCalls).toBeLessThan(drainBatchSize); // bounded — the actual safety property
   });
 });
 
@@ -167,9 +646,14 @@ describe("MollifierDrainer error handling", () => {
       expect(after2!.status).toBe("QUEUED");
       expect(after2!.attempts).toBe(2);
 
-      await drainer.runOnce();
+      const result3 = await drainer.runOnce();
+      // On attempt 3 the drainer hits maxAttempts and calls fail(),
+      // which deletes the entry — once the drainer-handler has written
+      // the SYSTEM_FAILURE PG row the buffer entry is no longer
+      // load-bearing. The runOnce result is the surviving signal.
       const after3 = await buffer.getEntry("run_r");
-      expect(after3!.status).toBe("FAILED");
+      expect(after3).toBeNull();
+      expect(result3.failed).toBe(1);
       expect(calls).toBe(3);
     } finally {
       await buffer.close();
@@ -202,11 +686,13 @@ describe("MollifierDrainer error handling", () => {
     try {
       await buffer.accept({ runId: "run_nr", envId: "env_a", orgId: "org_1", payload: "{}" });
 
-      await drainer.runOnce();
+      const result = await drainer.runOnce();
 
+      // fail() deletes the entry once the drainer-handler has written
+      // the canonical SYSTEM_FAILURE PG row.
       const entry = await buffer.getEntry("run_nr");
-      expect(entry!.status).toBe("FAILED");
-      expect(entry!.lastError).toEqual({ code: "Error", message: "validation failure" });
+      expect(entry).toBeNull();
+      expect(result.failed).toBe(1);
     } finally {
       await buffer.close();
     }
@@ -263,6 +749,296 @@ describe("MollifierDrainer error handling", () => {
         expect(r2.drained).toBe(1);
         expect(handled).toHaveLength(1);
         expect(["a1", "b1"]).toContain(handled[0]);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+});
+
+// `onTerminalFailure` is the callback the drainer fires on any terminal
+// path (non-retryable OR max-attempts-exhausted retryable) before it
+// calls `buffer.fail()`. Webapp wires it to `createFailedTaskRun` so the
+// customer's run lands a SYSTEM_FAILURE PG row in both cases. Pre-fix,
+// the retryable-exhausted path called `buffer.fail()` with no PG row,
+// silently losing the run. These tests pin both terminal causes plus the
+// retry-on-retryable-callback-failure escape hatch.
+describe("MollifierDrainer.onTerminalFailure", () => {
+  redisTest(
+    "fires with cause max-attempts-exhausted after retryable failures exhaust",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
+      });
+
+      let handlerCalls = 0;
+      const handler = async () => {
+        handlerCalls++;
+        throw new Error("retryable PG blip");
+      };
+
+      type TerminalCallArgs = {
+        runId: string;
+        attempts: number;
+        cause: "non-retryable" | "max-attempts-exhausted";
+        errorMessage: string;
+      };
+      const terminalCalls: TerminalCallArgs[] = [];
+
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        onTerminalFailure: async (input) => {
+          terminalCalls.push({
+            runId: input.runId,
+            attempts: input.attempts,
+            cause: input.cause,
+            errorMessage: input.error.message,
+          });
+        },
+        concurrency: 1,
+        maxAttempts: 2,
+        isRetryable: () => true,
+        logger: new Logger("test-drainer", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "run_exhaust", envId: "env_a", orgId: "org_1", payload: "{}" });
+
+        // Attempt 1: retryable error → requeue, no terminal callback fires.
+        const r1 = await drainer.runOnce();
+        expect(r1.failed).toBe(1);
+        expect(terminalCalls).toHaveLength(0);
+        const after1 = await buffer.getEntry("run_exhaust");
+        expect(after1!.status).toBe("QUEUED");
+        expect(after1!.attempts).toBe(1);
+
+        // Attempt 2: maxAttempts (2) reached → terminal callback fires
+        // with cause "max-attempts-exhausted", THEN buffer.fail() deletes.
+        const r2 = await drainer.runOnce();
+        expect(r2.failed).toBe(1);
+        expect(handlerCalls).toBe(2);
+        expect(terminalCalls).toHaveLength(1);
+        expect(terminalCalls[0]).toMatchObject({
+          runId: "run_exhaust",
+          attempts: 2,
+          cause: "max-attempts-exhausted",
+          errorMessage: "retryable PG blip",
+        });
+        // buffer entry torn down post-callback.
+        expect(await buffer.getEntry("run_exhaust")).toBeNull();
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "fires with cause non-retryable on the first non-retryable error",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
+      });
+
+      const handler = async () => {
+        throw new Error("validation failure");
+      };
+
+      const terminalCalls: Array<{ cause: string; attempts: number }> = [];
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        onTerminalFailure: async (input) => {
+          terminalCalls.push({ cause: input.cause, attempts: input.attempts });
+        },
+        concurrency: 1,
+        // Generous attempts budget — non-retryable should bypass it
+        // entirely and terminate on the first attempt.
+        maxAttempts: 5,
+        isRetryable: () => false,
+        logger: new Logger("test-drainer", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "run_nr", envId: "env_a", orgId: "org_1", payload: "{}" });
+
+        const r = await drainer.runOnce();
+        expect(r.failed).toBe(1);
+        expect(terminalCalls).toHaveLength(1);
+        expect(terminalCalls[0]).toEqual({ cause: "non-retryable", attempts: 1 });
+        expect(await buffer.getEntry("run_nr")).toBeNull();
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "callback throwing a retryable error requeues instead of failing",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
+      });
+
+      // Handler always fails (non-retryable so we hit onTerminalFailure
+      // on the first attempt regardless of maxAttempts).
+      const handler = async () => {
+        throw new Error("validation failure");
+      };
+
+      let callbackInvocations = 0;
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        onTerminalFailure: async () => {
+          callbackInvocations++;
+          // Simulate PG still unreachable when we try to write the
+          // SYSTEM_FAILURE row — drainer should requeue, not fail.
+          const err: Error & { code?: string } = new Error("Can't reach database server");
+          err.code = "P1001";
+          throw err;
+        },
+        concurrency: 1,
+        maxAttempts: 3,
+        // Both `validation failure` (handler) AND `P1001` (callback) are
+        // retryable from the drainer's perspective. The handler's
+        // non-retryable disposition is set by the underlying error
+        // identity, not by `isRetryable` — callers like the webapp use a
+        // narrower retryable predicate. Here we set `isRetryable: true`
+        // because the test only cares about the callback-retryable path.
+        isRetryable: () => true,
+        logger: new Logger("test-drainer", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "run_cb_retry", envId: "env_a", orgId: "org_1", payload: "{}" });
+
+        // Tick 1: handler throws → attempts=1 < maxAttempts=3 → requeue
+        // (no callback invocation, retryable path).
+        const r1 = await drainer.runOnce();
+        expect(r1.failed).toBe(1);
+        expect(callbackInvocations).toBe(0);
+        const after1 = await buffer.getEntry("run_cb_retry");
+        expect(after1!.status).toBe("QUEUED");
+        expect(after1!.attempts).toBe(1);
+
+        // Tick 2: handler throws → attempts=2 < 3 → requeue again.
+        const r2 = await drainer.runOnce();
+        expect(r2.failed).toBe(1);
+        expect(callbackInvocations).toBe(0);
+
+        // Tick 3: handler throws → attempts=3 (the nextAttempts check is
+        // `< maxAttempts`, so 3 < 3 is false) → terminal. Callback throws
+        // retryable → drainer requeues instead of fail(). Entry survives.
+        const r3 = await drainer.runOnce();
+        expect(r3.failed).toBe(1);
+        expect(callbackInvocations).toBe(1);
+        const after3 = await buffer.getEntry("run_cb_retry");
+        expect(after3).not.toBeNull();
+        expect(after3!.status).toBe("QUEUED");
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "callback throwing a non-retryable error falls through to buffer.fail()",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
+      });
+
+      const handler = async () => {
+        throw new Error("validation failure");
+      };
+
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        onTerminalFailure: async () => {
+          // Genuinely bad write (e.g. snapshot too malformed to insert).
+          // Drainer must NOT loop on this — falls through to buffer.fail.
+          throw new Error("malformed snapshot");
+        },
+        concurrency: 1,
+        maxAttempts: 3,
+        isRetryable: () => false,
+        logger: new Logger("test-drainer", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "run_cb_dead", envId: "env_a", orgId: "org_1", payload: "{}" });
+
+        const r = await drainer.runOnce();
+        expect(r.failed).toBe(1);
+        // Entry was failed despite the callback throwing — the
+        // non-retryable branch of the callback-error guard sends it to
+        // buffer.fail so a poisoned run can't loop forever.
+        expect(await buffer.getEntry("run_cb_dead")).toBeNull();
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "no onTerminalFailure provided keeps pre-fix behaviour (buffer.fail with no callback)",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        ...noopOptions,
+      });
+
+      const handler = async () => {
+        throw new Error("validation failure");
+      };
+
+      const drainer = new MollifierDrainer({
+        buffer,
+        handler,
+        // onTerminalFailure intentionally omitted — verifies the option
+        // is genuinely optional and backwards-compatible.
+        concurrency: 1,
+        maxAttempts: 2,
+        isRetryable: () => false,
+        logger: new Logger("test-drainer", "log"),
+      });
+
+      try {
+        await buffer.accept({ runId: "run_no_cb", envId: "env_a", orgId: "org_1", payload: "{}" });
+        const r = await drainer.runOnce();
+        expect(r.failed).toBe(1);
+        expect(await buffer.getEntry("run_no_cb")).toBeNull();
       } finally {
         await buffer.close();
       }
@@ -972,7 +1748,7 @@ describe("MollifierDrainer additional coverage", () => {
     // ack() lives inside the same try as the handler call, so if the
     // handler succeeds but ack throws (e.g. transient Redis blip), the
     // entry is routed through the retry/terminal path even though the
-    // handler-side work completed. Phase 2's engine-replay handler will
+    // handler-side work completed. A later engine-replay handler will
     // need idempotency to absorb the re-execution this implies on retry,
     // OR ack should be lifted out of the try block.
     let handlerCalls = 0;

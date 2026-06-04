@@ -7,13 +7,13 @@ This repository is a pnpm monorepo managed with Turbo. It contains multiple apps
 - `apps/supervisor` – Node application for executing built tasks.
 - `packages/*` – Published packages such as `@trigger.dev/sdk`, the CLI (`trigger.dev`), and shared libraries.
 - `internal-packages/*` – Internal-only packages used by the webapp and other apps.
-- `references/*` – Example projects for manual testing and development of new features.
+- Example/reference projects for manual testing live in a separate repo: [`triggerdotdev/references`](https://github.com/triggerdotdev/references).
 - `ai/references` – Contains additional documentation including an overview (`repo.md`) and testing guidelines (`tests.md`).
 
 See `ai/references/repo.md` for a more complete explanation of the workspaces.
 
 ## Development setup
-1. Install dependencies with `pnpm i` (pnpm `10.33.2` and Node.js `20.20.0` are required).
+1. Install dependencies with `pnpm i` (pnpm `10.33.2` and Node.js `20.20.2` are required).
 2. Copy `.env.example` to `.env` and generate a random 16 byte hex string for `ENCRYPTION_KEY` (`openssl rand -hex 16`). Update other secrets if needed.
 3. Start the local services with Docker:
    ```bash
@@ -65,5 +65,5 @@ Refer to `ai/references/tests.md` for details on writing tests. Tests should avo
   ```bash
   pnpm run dev --filter docs
   ```
-- `references/README.md` explains how to create new reference projects for manual testing.
+- The [`triggerdotdev/references`](https://github.com/triggerdotdev/references) repo's README explains how to create new reference projects for manual testing.
 

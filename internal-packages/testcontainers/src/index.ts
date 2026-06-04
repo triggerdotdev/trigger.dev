@@ -3,7 +3,7 @@ import { StartedRedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
 import { RedisOptions } from "ioredis";
 import { Network, type StartedNetwork } from "testcontainers";
-import { TaskContext, test } from "vitest";
+import { TestContext, test } from "vitest";
 import {
   createClickHouseContainer,
   createElectricContainer,
@@ -58,7 +58,7 @@ export type {
 
 type Use<T> = (value: T) => Promise<void>;
 
-export const network = async ({ task }: TaskContext, use: Use<StartedNetwork>) => {
+export const network = async ({ task }: TestContext, use: Use<StartedNetwork>) => {
   const testName = task.name;
 
   logSetup("network: starting", { testName });
@@ -85,7 +85,7 @@ export const network = async ({ task }: TaskContext, use: Use<StartedNetwork>) =
 };
 
 export const postgresContainer = async (
-  { network, task }: { network: StartedNetwork } & TaskContext,
+  { network, task }: { network: StartedNetwork } & TestContext,
   use: Use<StartedPostgreSqlContainer>
 ) => {
   const { container, metadata } = await withContainerSetup({
@@ -98,7 +98,7 @@ export const postgresContainer = async (
 };
 
 export const prisma = async (
-  { postgresContainer, task }: { postgresContainer: StartedPostgreSqlContainer } & TaskContext,
+  { postgresContainer, task }: { postgresContainer: StartedPostgreSqlContainer } & TestContext,
   use: Use<PrismaClient>
 ) => {
   const testName = task.name;
@@ -123,7 +123,7 @@ export const prisma = async (
 export const postgresTest = test.extend<PostgresContext>({ network, postgresContainer, prisma });
 
 export const redisContainer = async (
-  { network, task }: { network: StartedNetwork } & TaskContext,
+  { network, task }: { network: StartedNetwork } & TestContext,
   use: Use<StartedRedisContainer>
 ) => {
   const { container, metadata } = await withContainerSetup({
@@ -180,7 +180,7 @@ const electricOrigin = async (
     postgresContainer,
     network,
     task,
-  }: { postgresContainer: StartedPostgreSqlContainer; network: StartedNetwork } & TaskContext,
+  }: { postgresContainer: StartedPostgreSqlContainer; network: StartedNetwork } & TestContext,
   use: Use<string>
 ) => {
   const { origin, container, metadata } = await withContainerSetup({
@@ -193,7 +193,7 @@ const electricOrigin = async (
 };
 
 const clickhouseContainer = async (
-  { network, task }: { network: StartedNetwork } & TaskContext,
+  { network, task }: { network: StartedNetwork } & TestContext,
   use: Use<StartedClickHouseContainer>
 ) => {
   const { container, metadata } = await withContainerSetup({
@@ -206,7 +206,7 @@ const clickhouseContainer = async (
 };
 
 const clickhouseClient = async (
-  { clickhouseContainer, task }: { clickhouseContainer: StartedClickHouseContainer } & TaskContext,
+  { clickhouseContainer, task }: { clickhouseContainer: StartedClickHouseContainer } & TestContext,
   use: Use<ClickHouseClient>
 ) => {
   const testName = task.name;
@@ -268,7 +268,7 @@ export const containerWithElectricAndRedisTest = test.extend<ContainerWithElectr
 });
 
 const minioContainer = async (
-  { network, task }: { network: StartedNetwork } & TaskContext,
+  { network, task }: { network: StartedNetwork } & TestContext,
   use: Use<StartedMinIOContainer>
 ) => {
   const { container, metadata } = await withContainerSetup({

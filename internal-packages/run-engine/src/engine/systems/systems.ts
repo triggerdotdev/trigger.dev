@@ -4,6 +4,7 @@ import { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
 import { RunQueue } from "../../run-queue/index.js";
 import { EventBus } from "../eventBus.js";
 import { RunLocker } from "../locking.js";
+import { PendingVersionRunIdLookup } from "../services/pendingVersionLookup.js";
 import { EngineWorker } from "../types.js";
 import { RaceSimulationSystem } from "./raceSimulationSystem.js";
 
@@ -18,4 +19,5 @@ export type SystemResources = {
   runLock: RunLocker;
   runQueue: RunQueue;
   raceSimulationSystem: RaceSimulationSystem;
+  pendingVersionRunIdLookup: PendingVersionRunIdLookup;
 };

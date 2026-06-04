@@ -2,17 +2,17 @@ import type { TriggerTaskRequestBody } from "@trigger.dev/core/v3";
 import type { TriggerTaskServiceOptions } from "~/v3/services/triggerTask.server";
 
 // Canonical payload shape written to the mollifier buffer when the gate
-// decides to mollify a trigger. Phase 1 ALSO calls engine.trigger directly
-// (dual-write) so this is currently an audit/preview record. Phase 2 will
-// make the buffer the primary write path: the drainer's handler will read
-// this payload and replay it through engine.trigger to create the run in
-// Postgres, and read-fallback endpoints will synthesise a Run view from it
-// while it is still QUEUED.
+// decides to mollify a trigger. At this stage the call site ALSO calls
+// engine.trigger directly (dual-write), so this is currently an
+// audit/preview record. A later change makes the buffer the primary write
+// path: the drainer's handler reads this payload and replays it through
+// engine.trigger to create the run in Postgres, and read-fallback
+// endpoints synthesise a Run view from it while it is still QUEUED.
 //
-// CONTRACT: this shape must contain everything needed for Phase 2's
-// drainer-replay to reconstruct an equivalent engine.trigger call. Phase 1
-// emits it to logs; Phase 2 will serialise it into Redis and rebuild it on
-// the drain side. Keep it serialisable — no functions, no class instances.
+// CONTRACT: this shape must contain everything the drainer-replay needs to
+// reconstruct an equivalent engine.trigger call. Today it is emitted to
+// logs; later it is serialised into Redis and rebuilt on the drain side.
+// Keep it serialisable — no functions, no class instances.
 export type BufferedTriggerPayload = {
   runFriendlyId: string;
 

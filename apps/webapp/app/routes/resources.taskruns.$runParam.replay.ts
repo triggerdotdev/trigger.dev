@@ -11,6 +11,12 @@ import { requireUser } from "~/services/session.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
+import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
+import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
+import {
+  buildSyntheticReplayTaskRun,
+  type SyntheticReplayTaskRun,
+} from "~/v3/mollifier/syntheticReplayTaskRun.server";
 import parseDuration from "parse-duration";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
 import { queueTypeFromType } from "~/presenters/v3/QueueRetrievePresenter.server";
@@ -33,7 +39,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     Object.fromEntries(new URL(request.url).searchParams)
   );
 
-  const run = await $replica.taskRun.findFirst({
+  let run = await $replica.taskRun.findFirst({
     select: {
       payload: true,
       payloadType: true,
@@ -87,6 +93,83 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     },
     where: { friendlyId: runParam, project: { organization: { members: { some: { userId } } } } },
   });
+
+  let synthetic:
+    | (Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>> & { __synth: true })
+    | undefined;
+  if (!run) {
+    // Buffered fallback: read the snapshot and look up the env list via
+    // the snapshot's organizationId. Without this the Replay dialog
+    // 404s for runs queued in the mollifier buffer, which dumps the
+    // user back to the task list.
+    const buffer = getMollifierBuffer();
+    const entry = buffer ? await buffer.getEntry(runParam) : null;
+    if (!entry) throw new Response("Not Found", { status: 404 });
+    const member = await prisma.orgMember.findFirst({
+      where: { userId, organizationId: entry.orgId },
+      select: { id: true },
+    });
+    if (!member) throw new Response("Not Found", { status: 404 });
+    const buffered = await findRunByIdWithMollifierFallback({
+      runId: runParam,
+      environmentId: entry.envId,
+      organizationId: entry.orgId,
+    });
+    if (!buffered) throw new Response("Not Found", { status: 404 });
+    synthetic = Object.assign(buffered, { __synth: true as const });
+    // Scope the project lookup to the buffer entry's org as well as the
+    // env id. The prior `orgMember.findFirst` above confirms the user
+    // belongs to `entry.orgId`; pinning `organizationId` here means a
+    // malformed entry whose envId resolves to a different org can't leak
+    // that project's data through this loader. Mirrors the PG path's
+    // `project.organization.members.some.userId` scoping (lines 42-95)
+    // — the env filter and select shape are kept identical so the Replay
+    // dialog renders the same dropdown either way.
+    const orgProject = await $replica.project.findFirst({
+      where: {
+        organizationId: entry.orgId,
+        environments: { some: { id: entry.envId } },
+      },
+      select: {
+        slug: true,
+        environments: {
+          select: {
+            id: true,
+            type: true,
+            slug: true,
+            branchName: true,
+            orgMember: { select: { user: true } },
+          },
+          where: {
+            archivedAt: null,
+            OR: [
+              { type: { in: ["PREVIEW", "STAGING", "PRODUCTION"] } },
+              { type: "DEVELOPMENT", orgMember: { userId } },
+            ],
+          },
+        },
+      },
+    });
+    if (!orgProject) throw new Response("Not Found", { status: 404 });
+    run = {
+      payload: buffered.payload,
+      payloadType: buffered.payloadType ?? "application/json",
+      seedMetadata: buffered.seedMetadata ?? null,
+      seedMetadataType: buffered.seedMetadataType ?? null,
+      runtimeEnvironmentId: entry.envId,
+      concurrencyKey: buffered.concurrencyKey ?? null,
+      maxAttempts: buffered.maxAttempts ?? null,
+      maxDurationInSeconds: buffered.maxDurationInSeconds ?? null,
+      machinePreset: buffered.machinePreset ?? null,
+      workerQueue: buffered.workerQueue ?? null,
+      ttl: buffered.ttl ?? null,
+      idempotencyKey: buffered.idempotencyKey ?? null,
+      runTags: buffered.runTags,
+      queue: buffered.queue ?? "task/",
+      taskIdentifier: buffered.taskIdentifier ?? "",
+      project: orgProject,
+    } as unknown as typeof run;
+  }
 
   if (!run) {
     throw new Response("Not Found", { status: 404 });
@@ -164,6 +247,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 }
 
 export const action: ActionFunction = async ({ request, params }) => {
+  // Dashboard auth: identical pattern to resources.taskruns.$runParam.cancel.ts.
+  // The loader above this action already gates with `requireUser`, but
+  // Remix's action runs independently — without this call any request
+  // with a valid runParam could submit a replay. The PG findFirst below
+  // also adds the org-membership filter so a PAT can't replay another
+  // org's run, and the buffered fallback verifies org membership via
+  // orgMember.findFirst against the snapshot's orgId.
+  const user = await requireUser(request);
+  const userId = user.id;
   const { runParam } = ParamSchema.parse(params);
 
   const formData = await request.formData();
@@ -174,9 +266,18 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   try {
-    const taskRun = await prisma.taskRun.findFirst({
+    const pgRun = await prisma.taskRun.findFirst({
       where: {
         friendlyId: runParam,
+        project: {
+          organization: {
+            members: {
+              some: {
+                userId,
+              },
+            },
+          },
+        },
       },
       include: {
         runtimeEnvironment: {
@@ -191,6 +292,50 @@ export const action: ActionFunction = async ({ request, params }) => {
         },
       },
     });
+
+    // Mollifier read-fallback: if the original isn't in PG yet,
+    // synthesise a TaskRun from the buffered snapshot. The B4-extended
+    // SyntheticRun carries every field ReplayTaskRunService reads. We
+    // also need projectSlug + orgSlug + envSlug for the redirect path,
+    // so look those up via the snapshot's runtimeEnvironmentId.
+    let taskRun: SyntheticReplayTaskRun | null = pgRun ?? null;
+    if (!taskRun) {
+      const buffer = getMollifierBuffer();
+      const entry = buffer ? await buffer.getEntry(runParam) : null;
+      if (entry) {
+        // Same org-membership gate as the PG path above. Without this
+        // any authenticated user who knows a runId could replay the
+        // buffered run across orgs.
+        const member = await prisma.orgMember.findFirst({
+          where: { userId, organizationId: entry.orgId },
+          select: { id: true },
+        });
+        if (!member) {
+          return redirectWithErrorMessage(
+            submission.value.failedRedirect,
+            request,
+            "Run not found"
+          );
+        }
+        const synthetic = await findRunByIdWithMollifierFallback({
+          runId: runParam,
+          environmentId: entry.envId,
+          organizationId: entry.orgId,
+        });
+        if (synthetic) {
+          const envRow = await prisma.runtimeEnvironment.findFirst({
+            where: { id: entry.envId },
+            select: {
+              slug: true,
+              project: { select: { slug: true, organization: { select: { slug: true } } } },
+            },
+          });
+          if (envRow) {
+            taskRun = buildSyntheticReplayTaskRun({ synthetic, envRow });
+          }
+        }
+      }
+    }
 
     if (!taskRun) {
       return redirectWithErrorMessage(submission.value.failedRedirect, request, "Run not found");

@@ -2,9 +2,11 @@ import { SpanKind } from "@opentelemetry/api";
 import { SerializableJson } from "@trigger.dev/core";
 import {
   accessoryAttributes,
+  ApiClient,
   ApiError,
   apiClientManager,
   ApiRequestOptions,
+  conditionallyExportPacket,
   conditionallyImportPacket,
   convertToolParametersToSchema,
   createErrorTaskError,
@@ -22,8 +24,10 @@ import {
   RateLimitError,
   resourceCatalog,
   runtime,
+  sdkScope,
   SemanticInternalAttributes,
   stringifyIO,
+  type IOPacket,
   SubtaskUnwrapError,
   taskContext,
   TaskFromIdentifier,
@@ -128,6 +132,12 @@ export type {
 export { SubtaskUnwrapError, TaskRunPromise };
 
 export type Context = TaskRunContext;
+
+function scopedEnvVar(name: string): string | undefined {
+  const scope = sdkScope.getStore();
+  if (scope && !scope.inheritContext) return undefined;
+  return getEnvVar(name);
+}
 
 export function queue(options: QueueOptions): Queue {
   resourceCatalog.registerQueueMetadata(options);
@@ -740,7 +750,7 @@ export async function batchTriggerById<TTask extends AnyTask>(
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
-            lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
+            lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
             debounce: item.options?.debounce,
           },
         };
@@ -1256,7 +1266,7 @@ export async function batchTriggerTasks<TTasks extends readonly AnyTask[]>(
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
-            lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
+            lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
             debounce: item.options?.debounce,
           },
         };
@@ -1920,7 +1930,7 @@ async function* transformBatchItemsStream<TTask extends AnyTask>(
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
-        lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
+        lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
         debounce: item.options?.debounce,
       },
     };
@@ -2023,7 +2033,7 @@ async function* transformBatchByTaskItemsStream<TTasks extends readonly AnyTask[
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
-        lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
+        lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
         debounce: item.options?.debounce,
       },
     };
@@ -2127,7 +2137,7 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
         machine: item.options?.machine,
         priority: item.options?.priority,
         region: item.options?.region,
-        lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
+        lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
         debounce: item.options?.debounce,
       },
     };
@@ -2205,8 +2215,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
   const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
-
-  const payloadPacket = await stringifyIO(parsedPayload);
+  const triggerPayloadPacket = await prepareTriggerPayload(parsedPayload, apiClient, id);
 
   // Process idempotency key and extract options for storage
   const processedIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
@@ -2217,12 +2226,12 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
   const handle = await apiClient.triggerTask(
     id,
     {
-      payload: payloadPacket.data,
+      payload: triggerPayloadPacket.data,
       options: {
         queue: options?.queue ? { name: options.queue } : undefined,
         concurrencyKey: options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
-        payloadType: payloadPacket.dataType,
+        payloadType: triggerPayloadPacket.dataType,
         idempotencyKey: processedIdempotencyKey?.toString(),
         idempotencyKeyTTL: options?.idempotencyKeyTTL,
         idempotencyKeyOptions,
@@ -2236,7 +2245,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
         machine: options?.machine,
         priority: options?.priority,
         region: options?.region,
-        lockToVersion: options?.version ?? getEnvVar("TRIGGER_VERSION"),
+        lockToVersion: options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
         debounce: options?.debounce,
       },
     },
@@ -2322,7 +2331,7 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
             machine: item.options?.machine,
             priority: item.options?.priority,
             region: item.options?.region,
-            lockToVersion: item.options?.version ?? getEnvVar("TRIGGER_VERSION"),
+            lockToVersion: item.options?.version ?? scopedEnvVar("TRIGGER_VERSION"),
           },
         };
       })
@@ -2461,8 +2470,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
   const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
-
-  const payloadPacket = await stringifyIO(parsedPayload);
+  const triggerPayloadPacket = await prepareTriggerPayload(parsedPayload, apiClient, id);
 
   // Process idempotency key and extract options for storage
   const processedIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
@@ -2476,13 +2484,13 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
       const response = await apiClient.triggerTask(
         id,
         {
-          payload: payloadPacket.data,
+          payload: triggerPayloadPacket.data,
           options: {
             lockToVersion: taskContext.worker?.version, // Lock to current version because we're waiting for it to finish
             queue: options?.queue ? { name: options.queue } : undefined,
             concurrencyKey: options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
-            payloadType: payloadPacket.dataType,
+            payloadType: triggerPayloadPacket.dataType,
             delay: options?.delay,
             ttl: options?.ttl,
             tags: options?.tags,
@@ -2548,7 +2556,7 @@ async function triggerAndSubscribe_internal<TIdentifier extends string, TPayload
   const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
-  const payloadPacket = await stringifyIO(parsedPayload);
+  const triggerPayloadPacket = await prepareTriggerPayload(parsedPayload, apiClient, id);
 
   const processedIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
   const idempotencyKeyOptions = processedIdempotencyKey
@@ -2561,13 +2569,13 @@ async function triggerAndSubscribe_internal<TIdentifier extends string, TPayload
       const response = await apiClient.triggerTask(
         id,
         {
-          payload: payloadPacket.data,
+          payload: triggerPayloadPacket.data,
           options: {
             lockToVersion: taskContext.worker?.version,
             queue: options?.queue ? { name: options.queue } : undefined,
             concurrencyKey: options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
-            payloadType: payloadPacket.dataType,
+            payloadType: triggerPayloadPacket.dataType,
             delay: options?.delay,
             ttl: options?.ttl,
             tags: options?.tags,
@@ -3066,4 +3074,23 @@ function registerTaskLifecycleHooks<
       fn: params.onCancel as AnyOnCancelHookFunction,
     });
   }
+}
+
+async function prepareTriggerPayload(
+  payload: unknown,
+  apiClient: ApiClient,
+  taskId: string
+): Promise<IOPacket> {
+  const payloadPacket = await stringifyIO(payload);
+  return await conditionallyExportPacket(
+    payloadPacket,
+    createTriggerPayloadPathPrefix(taskId),
+    undefined,
+    apiClient
+  );
+}
+
+function createTriggerPayloadPathPrefix(taskId: string): string {
+  const safeTaskId = encodeURIComponent(taskId);
+  return `trigger/${safeTaskId}/${Date.now()}-${Math.random().toString(36).slice(2)}/payload`;
 }

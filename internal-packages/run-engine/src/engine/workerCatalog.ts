@@ -41,6 +41,14 @@ export const workerCatalog = {
   queueRunsPendingVersion: {
     schema: z.object({
       backgroundWorkerId: z.string(),
+      /**
+       * Bounded retry counter used by {@link PendingVersionSystem} to cover
+       * ClickHouse replication lag. The first scheduling has no attempt;
+       * if the lookup returns zero candidates, the system reschedules
+       * itself once with `attempt = 1`. Capped by
+       * `pendingVersionLagMaxRetries` on `RunEngineOptions`.
+       */
+      attempt: z.number().int().nonnegative().optional(),
     }),
     visibilityTimeoutMs: 60_000,
   },

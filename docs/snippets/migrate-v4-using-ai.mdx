@@ -56,7 +56,7 @@ const myTask = task({
   },
 });
 
-We’ve deprecated the `toolTask` function and replaced it with the `ai.tool` function, which creates an AI tool from an existing `schemaTask`. This is the old version:
+We’ve deprecated the `toolTask` function. Use `schemaTask` plus AI SDK `tool()` with `execute: ai.toolExecute(task)` (the `ai.tool()` wrapper is deprecated). This is the old version:
 
 import { toolTask, schemaTask } from "@trigger.dev/sdk";
 import { z } from "zod";
@@ -85,9 +85,11 @@ export const myAiTask = schemaTask({
 
 This is the new version:
 
-import { schemaTask, ai } from "@trigger.dev/sdk";
+import { schemaTask } from "@trigger.dev/sdk";
+import { ai } from "@trigger.dev/sdk/ai";
 import { z } from "zod";
-import { generateText } from "ai";
+import { generateText, tool } from "ai";
+import { openai } from "@ai-sdk/openai";
 
 // Convert toolTask to schemaTask with a schema
 const myToolTask = schemaTask({
@@ -99,8 +101,11 @@ const myToolTask = schemaTask({
   run: async (payload, { ctx }) => {},
 });
 
-// Create an AI tool from the schemaTask
-const myTool = ai.tool(myToolTask);
+const myTool = tool({
+  description: myToolTask.description ?? "",
+  inputSchema: myToolTask.schema!,
+  execute: ai.toolExecute(myToolTask),
+});
 
 export const myAiTask = schemaTask({
   id: "my-ai-task",
@@ -112,7 +117,7 @@ export const myAiTask = schemaTask({
       prompt: payload.text,
       model: openai("gpt-4o"),
       tools: {
-        myTool, // Use the ai.tool created from schemaTask
+        myTool,
       },
     });
   },

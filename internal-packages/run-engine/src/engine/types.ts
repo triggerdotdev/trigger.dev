@@ -19,6 +19,7 @@ import { LockRetryConfig } from "./locking.js";
 import { workerCatalog } from "./workerCatalog.js";
 import { type BillingPlan } from "./billingCache.js";
 import type { DRRConfig } from "../batch-queue/types.js";
+import type { PendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
 
 export type RunEngineOptions = {
   prisma: PrismaClient;
@@ -178,6 +179,27 @@ export type RunEngineOptions = {
     factor?: number;
   };
   queueRunsWaitingForWorkerBatchSize?: number;
+  /**
+   * Lookup used by {@link PendingVersionSystem} to discover candidate
+   * `PENDING_VERSION` run ids without scanning the Postgres status index.
+   * Defaults to a noop lookup that returns an empty result, which causes
+   * the pending-version resolver to short-circuit. Production callers
+   * should inject a ClickHouse-backed implementation.
+   */
+  pendingVersionRunIdLookup?: PendingVersionRunIdLookup;
+  /**
+   * When the pending-version lookup returns zero candidates, schedule
+   * one more attempt after this delay to cover ClickHouse replication
+   * lag. Defaults to 5_000ms.
+   */
+  pendingVersionLagRetryDelayMs?: number;
+  /**
+   * Maximum number of lag-aware retries. Each call beyond the first
+   * counts against this cap. Defaults to 1 — so a deploy will fire at
+   * most two queries spaced by `pendingVersionLagRetryDelayMs`. Set to 0
+   * to disable lag-aware retries entirely.
+   */
+  pendingVersionLagMaxRetries?: number;
   /** Optional maximum TTL for all runs (e.g. "14d"). If set, runs without an explicit TTL
    *  will use this as their TTL, and runs with a TTL larger than this will be clamped. */
   defaultMaxTtl?: string;

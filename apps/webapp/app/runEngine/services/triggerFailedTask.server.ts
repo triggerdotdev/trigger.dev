@@ -6,6 +6,7 @@ import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { getEventRepository } from "~/v3/eventRepository/index.server";
+import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRunAlerts.server";
 import { DefaultQueueManager } from "../concerns/queues.server";
 import type { TriggerTaskRequest } from "../types";
 
@@ -74,6 +75,7 @@ export class TriggerFailedTaskService {
 
     try {
       const { repository, store } = await getEventRepository(
+        request.environment.organization.id,
         request.environment.organization.featureFlags as Record<string, unknown>,
         undefined
       );
@@ -81,11 +83,11 @@ export class TriggerFailedTaskService {
       // Resolve parent run for rootTaskRunId and depth (same as triggerTask.server.ts)
       const parentRun = request.parentRunId
         ? await this.prisma.taskRun.findFirst({
-          where: {
-            id: RunId.fromFriendlyId(request.parentRunId),
-            runtimeEnvironmentId: request.environment.id,
-          },
-        })
+            where: {
+              id: RunId.fromFriendlyId(request.parentRunId),
+              runtimeEnvironmentId: request.environment.id,
+            },
+          })
         : undefined;
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
@@ -116,18 +118,18 @@ export class TriggerFailedTaskService {
         // resolveQueueProperties requires the worker to be passed when lockToVersion is present.
         const lockedToBackgroundWorker = bodyOptions?.lockToVersion
           ? await this.prisma.backgroundWorker.findFirst({
-            where: {
-              projectId: request.environment.projectId,
-              runtimeEnvironmentId: request.environment.id,
-              version: bodyOptions.lockToVersion,
-            },
-            select: {
-              id: true,
-              version: true,
-              sdkVersion: true,
-              cliVersion: true,
-            },
-          })
+              where: {
+                projectId: request.environment.projectId,
+                runtimeEnvironmentId: request.environment.id,
+                version: bodyOptions.lockToVersion,
+              },
+              select: {
+                id: true,
+                version: true,
+                sdkVersion: true,
+                cliVersion: true,
+              },
+            })
           : undefined;
 
         const resolved = await queueConcern.resolveQueueProperties(
@@ -175,6 +177,14 @@ export class TriggerFailedTaskService {
           event.setAttribute("runId", failedRunFriendlyId);
           event.failWithError(taskRunError);
 
+          // `emitRunFailedEvent: false` because this call site owns the
+          // trace-event lifecycle via the outer `traceEvent({
+          // incomplete: false, isError: true })`. Letting the engine
+          // emit `runFailed` here would race the
+          // `completeFailedRunEvent` listener against the outer trace
+          // event's own completion write for the same (traceId, spanId).
+          // We re-trigger the alerts side directly after the trace
+          // event closes, below.
           return await this.engine.createFailedTaskRun({
             friendlyId: failedRunFriendlyId,
             environment: {
@@ -199,11 +209,29 @@ export class TriggerFailedTaskService {
             spanId: event.spanId,
             traceContext: traceContext as Record<string, unknown>,
             taskEventStore: store,
+            emitRunFailedEvent: false,
             ...(queueName !== undefined && { queue: queueName }),
             ...(lockedQueueId !== undefined && { lockedQueueId }),
           });
         }
       );
+
+      // Alerts side of `runFailed` — the engine emit was suppressed
+      // above so the trace-event completion isn't double-written; we
+      // still need the alert pipeline to fire so customers' ERROR
+      // channels see the failure. Best-effort: a failed enqueue logs
+      // but doesn't block returning the friendlyId, mirroring the
+      // engine handler's behaviour at runEngineHandlers.server.ts:81.
+      try {
+        await PerformTaskRunAlertsService.enqueue(failedRun.id);
+      } catch (alertsError) {
+        logger.warn("TriggerFailedTaskService: alert enqueue failed", {
+          taskId: request.taskId,
+          friendlyId: failedRun.friendlyId,
+          error:
+            alertsError instanceof Error ? alertsError.message : String(alertsError),
+        });
+      }
 
       return failedRun.friendlyId;
     } catch (createError) {
@@ -263,7 +291,7 @@ export class TriggerFailedTaskService {
         }
       }
 
-      await this.engine.createFailedTaskRun({
+      const failedRun = await this.engine.createFailedTaskRun({
         friendlyId: failedRunFriendlyId,
         environment: {
           id: opts.environmentId,
@@ -273,9 +301,7 @@ export class TriggerFailedTaskService {
         },
         taskIdentifier: opts.taskId,
         payload:
-          typeof opts.payload === "string"
-            ? opts.payload
-            : JSON.stringify(opts.payload ?? ""),
+          typeof opts.payload === "string" ? opts.payload : JSON.stringify(opts.payload ?? ""),
         payloadType: opts.payloadType ?? "application/json",
         error: {
           type: "INTERNAL_ERROR" as const,
@@ -287,7 +313,31 @@ export class TriggerFailedTaskService {
         depth,
         resumeParentOnCompletion: opts.resumeParentOnCompletion,
         batch: opts.batch,
+        // Suppress the engine's `runFailed` bus emit — the listener
+        // (`runEngineHandlers.server.ts` `runFailed`) calls
+        // `completeFailedRunEvent`, which writes a ClickHouse trace event
+        // row keyed on (traceId, spanId). This caller has no trace
+        // context (the method name is literally `callWithoutTraceEvents`)
+        // so the emit would write a row with empty traceId/spanId —
+        // orphan event in the store. We still want alert coverage,
+        // though, so enqueue directly below.
+        emitRunFailedEvent: false,
       });
+
+      // Alerts side of `runFailed` — the engine emit was suppressed
+      // above so we don't create an orphan trace event; enqueue the
+      // alert directly so customers' ERROR channels still see the
+      // failure. Best-effort, mirroring the `call()` path.
+      try {
+        await PerformTaskRunAlertsService.enqueue(failedRun.id);
+      } catch (alertsError) {
+        logger.warn("TriggerFailedTaskService.callWithoutTraceEvents: alert enqueue failed", {
+          taskId: opts.taskId,
+          friendlyId: failedRun.friendlyId,
+          error:
+            alertsError instanceof Error ? alertsError.message : String(alertsError),
+        });
+      }
 
       return failedRunFriendlyId;
     } catch (createError) {

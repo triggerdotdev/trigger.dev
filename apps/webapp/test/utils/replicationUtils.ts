@@ -2,6 +2,7 @@ import { ClickHouse } from "@internal/clickhouse";
 import { RedisOptions } from "@internal/redis";
 import { PrismaClient } from "~/db.server";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
+import { TestReplicationClickhouseFactory } from "./testReplicationClickhouseFactory";
 import { afterEach } from "vitest";
 
 export async function setupClickhouseReplication({
@@ -26,7 +27,7 @@ export async function setupClickhouseReplication({
   });
 
   const runsReplicationService = new RunsReplicationService({
-    clickhouse,
+    clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
     pgConnectionUrl: databaseUrl,
     serviceName: "runs-replication",
     slotName: "task_runs_to_clickhouse_v1",

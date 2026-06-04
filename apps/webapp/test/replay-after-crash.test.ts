@@ -33,6 +33,7 @@ import {
 import type { UIMessageChunk } from "ai";
 import { afterEach, describe, expect, vi } from "vitest";
 import { env } from "~/env.server";
+import { chatSnapshotStoragePathForSession } from "~/services/realtime/chatSnapshot.server";
 import { generatePresignedUrl } from "~/v3/objectStore.server";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -77,13 +78,15 @@ function stubApiClient(opts: {
     })
   );
   vi.spyOn(apiClientManager, "clientOrThrow").mockReturnValue({
-    async getPayloadUrl(filename: string) {
-      const result = await generatePresignedUrl(opts.projectRef, opts.envSlug, filename, "GET");
+    async getChatSnapshotUrl(sessionId: string) {
+      const key = chatSnapshotStoragePathForSession(sessionId);
+      const result = await generatePresignedUrl(opts.projectRef, opts.envSlug, key, "GET");
       if (!result.success) throw new Error(result.error);
       return { presignedUrl: result.url };
     },
-    async createUploadPayloadUrl(filename: string) {
-      const result = await generatePresignedUrl(opts.projectRef, opts.envSlug, filename, "PUT");
+    async createChatSnapshotUploadUrl(sessionId: string) {
+      const key = chatSnapshotStoragePathForSession(sessionId);
+      const result = await generatePresignedUrl(opts.projectRef, opts.envSlug, key, "PUT");
       if (!result.success) throw new Error(result.error);
       return { presignedUrl: result.url };
     },

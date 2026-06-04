@@ -1,12 +1,15 @@
 import { createReadableStreamFromReadable, type EntryContext } from "@remix-run/node"; // or cloudflare/deno
 import { RemixServer } from "@remix-run/react";
+import * as Sentry from "@sentry/remix";
 import { wrapHandleErrorWithSentry } from "@sentry/remix";
+import { addTenantContextToEvent } from "~/utils/sentryTenantContext.server";
 import { parseAcceptLanguage } from "intl-parse-accept-language";
 import isbot from "isbot";
 import { renderToPipeableStream } from "react-dom/server";
 import { PassThrough } from "stream";
 import * as Worker from "~/services/worker.server";
 import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
+import { initMollifierStaleSweepWorker } from "~/v3/mollifierStaleSweepWorker.server";
 import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 import {
@@ -24,44 +27,21 @@ import {
   registerRunEngineEventBusHandlers,
   setupBatchQueueCallbacks,
 } from "./v3/runEngineHandlers.server";
+// Touch the sessions replication singleton at entry so it boots deterministically
+// on webapp startup. The singleton's initializer wires start (gated on
+// `clickhouseFactory.isReady()`) and SIGTERM/SIGINT shutdown — mirrors
+// runsReplicationInstance.
+//
+// IMPORTANT: do NOT replace this with `void sessionsReplicationInstance;`.
+// `apps/webapp/package.json` declares `"sideEffects": false`, so esbuild
+// treats `void <identifier>;` as a pure expression statement and tree-shakes
+// the entire import — the singleton's initializer never fires and the
+// sessions→ClickHouse logical replication slot stops being consumed. Assigning
+// to globalThis is an unambiguous side effect the bundler must preserve. See
+// TRI-9864 for the incident write-up.
 import { sessionsReplicationInstance } from "./services/sessionsReplicationInstance.server";
-import { signalsEmitter } from "./services/signals.server";
-
-// Start the sessions replication service (subscribes to the logical replication
-// slot, runs leader election, flushes to ClickHouse). Done at entry level so it
-// runs deterministically on webapp boot rather than lazily via a singleton
-// reference elsewhere in the module graph.
-if (sessionsReplicationInstance && env.SESSION_REPLICATION_ENABLED === "1") {
-  // Capture a non-nullable reference so the shutdown closure below
-  // doesn't need to re-null-check (TS narrowing doesn't follow through
-  // an inner function scope).
-  const replicator = sessionsReplicationInstance;
-  replicator
-    .start()
-    .then(() => {
-      console.log("🗃️ Sessions replication service started");
-    })
-    .catch((error) => {
-      console.error("🗃️ Sessions replication service failed to start", {
-        error,
-      });
-    });
-
-  // Wrap the async shutdown in a sync handler that catches rejections —
-  // SIGTERM/SIGINT fire during process teardown, and an unhandled
-  // promise rejection from `_replicationClient.stop()` there would
-  // bubble up past the process exit. Matches the pattern in
-  // dynamicFlushScheduler.server.ts.
-  const shutdownSessionsReplication = () => {
-    replicator.shutdown().catch((error) => {
-      console.error("🗃️ Sessions replication service shutdown error", {
-        error,
-      });
-    });
-  };
-  signalsEmitter.on("SIGTERM", shutdownSessionsReplication);
-  signalsEmitter.on("SIGINT", shutdownSessionsReplication);
-}
+(globalThis as Record<string, unknown>).__sessionsReplicationInstance =
+  sessionsReplicationInstance;
 
 const ABORT_DELAY = 30000;
 
@@ -249,6 +229,7 @@ Worker.init().catch((error) => {
 });
 
 initMollifierDrainerWorker();
+initMollifierStaleSweepWorker();
 
 bootstrap().catch((error) => {
   logError(error);
@@ -289,9 +270,24 @@ process.on("uncaughtException", (error, origin) => {
 singleton("RunEngineEventBusHandlers", registerRunEngineEventBusHandlers);
 singleton("SetupBatchQueueCallbacks", setupBatchQueueCallbacks);
 
+// Wrapped in singleton() so Remix's dev-mode CJS reloads don't append
+// duplicate copies of the processor — Sentry's processor list lives in
+// node_modules and persists across module reloads. Idempotent at runtime
+// (the processor is a pure read+stamp), but the pattern matches the rest
+// of this file.
+singleton("SentryTenantContextProcessor", () => {
+  if (env.SENTRY_DSN) {
+    Sentry.addEventProcessor(addTenantContextToEvent);
+  }
+  // Return a truthy value — `singleton()` uses `??=` so a `void`
+  // callback would re-execute (and re-register) on every dev reload.
+  return true;
+});
+
 export { apiRateLimiter } from "./services/apiRateLimit.server";
 export { engineRateLimiter } from "./services/engineRateLimit.server";
 export { runWithHttpContext } from "./services/httpAsyncStorage.server";
+export { tenantContextMiddleware } from "./services/tenantContextResolver.server";
 export { socketIo } from "./v3/handleSocketIo.server";
 export { wss } from "./v3/handleWebsockets.server";
 

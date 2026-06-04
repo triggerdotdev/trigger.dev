@@ -4,6 +4,7 @@ import {
   RealtimeRunSkipColumns,
 } from "@trigger.dev/core/v3";
 import { generateJWT as internal_generateJWT } from "@trigger.dev/core/v3";
+import "@trigger.dev/core/v3/sdk-scope-storage";
 
 /**
  * Register the global API client configuration. Alternatively, you can set the `TRIGGER_SECRET_KEY` and `TRIGGER_API_URL` environment variables.

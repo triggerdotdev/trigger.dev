@@ -24,10 +24,12 @@ const ParamsSchema = z.object({
   io: z.enum(["out", "in"]),
 });
 
-// S2 record body cap. Mirrors the public /realtime/v1/sessions/:s/:io/append
-// route — keep it well under S2's 1 MiB per-record limit so JSON wrapping,
-// string escaping, and any future per-record headers stay safe.
-const MAX_APPEND_BODY_BYTES = 1024 * 512;
+// HTTP body cap. Mirrors the public /realtime/v1/sessions/:s/:io/append
+// route — DoS pre-guard only. The actual S2 per-record limit is
+// enforced precisely by `S2RealtimeStreams.#appendPartByName`
+// (throws `S2RecordTooLargeError` with status 413 when the metered
+// record size would exceed S2's 1 MiB ceiling after JSON wrapping).
+const MAX_APPEND_BODY_BYTES = 1024 * 1024;
 
 // POST: Append a single record to a Session channel from the dashboard
 // playground. Mirrors the public `POST /realtime/v1/sessions/:session/:io/append`

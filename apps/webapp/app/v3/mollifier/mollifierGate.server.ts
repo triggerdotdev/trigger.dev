@@ -46,6 +46,17 @@ export type GateInputs = {
   // the pattern used by `canAccessAi`, `canAccessPrivateConnections`, and the
   // compute-template beta gate.
   orgFeatureFlags: Record<string, unknown> | null;
+  // Trigger options that drive the debounce / OTU / triggerAndWait
+  // bypasses. The mollify path can't
+  // serialise stateful callbacks (debounce), can't safely break OTU's
+  // synchronous-rejection contract, and shouldn't intercept single
+  // triggerAndWait (batchTriggerAndWait still funnels through per item).
+  options?: {
+    debounce?: unknown;
+    oneTimeUseToken?: string;
+    parentTaskRunId?: string;
+    resumeParentOnCompletion?: boolean;
+  };
 };
 
 export type TripEvaluator = (inputs: GateInputs) => Promise<TripDecision>;
@@ -73,7 +84,7 @@ export type GateDependencies = {
 };
 
 // `options` is a thunk so env reads happen per-evaluation, not at module load.
-// Don't "simplify" to a plain object — Phase 2 dynamic config relies on the
+// Don't "simplify" to a plain object — dynamic config relies on the
 // gate observing whichever env values are live at trigger time.
 const defaultEvaluator = createRealTripEvaluator({
   getBuffer: () => getMollifierBuffer(),
@@ -140,6 +151,28 @@ export async function evaluateGate(
   deps: Partial<GateDependencies> = {},
 ): Promise<GateOutcome> {
   const d = { ...defaultGateDependencies, ...deps };
+
+  // Debounce bypass. onDebounced is a closure over webapp state and
+  // can't be snapshotted into the buffer for drainer replay. Skip before the
+  // trip evaluator so debounce traffic is never counted against the rate.
+  if (inputs.options?.debounce) {
+    d.recordDecision("pass_through");
+    return { action: "pass_through" };
+  }
+  // OneTimeUseToken bypass. OTU is a security feature on the PUBLIC_JWT
+  // auth path; its synchronous-rejection contract is materially worse to
+  // break than the idempotency-key contract.
+  if (inputs.options?.oneTimeUseToken) {
+    d.recordDecision("pass_through");
+    return { action: "pass_through" };
+  }
+  // Single triggerAndWait bypass. batchTriggerAndWait still funnels
+  // through TriggerTaskService.call per item so the dominant burst pattern
+  // remains covered.
+  if (inputs.options?.parentTaskRunId && inputs.options?.resumeParentOnCompletion) {
+    d.recordDecision("pass_through");
+    return { action: "pass_through" };
+  }
 
   if (!d.isMollifierEnabled()) {
     d.recordDecision("pass_through");

@@ -10,12 +10,14 @@ export class NullMailTransport implements MailTransport {
   }
 
   async send({to, subject, react}: MailMessage): Promise<void> {
+    const plainText = await render(react, {
+      plainText: true,
+    });
+
     console.log(`
 ##### sendEmail to ${to}, subject: ${subject}
 
-${render(react, {
-      plainText: true,
-    })}
+${plainText}
     `);
   }
 

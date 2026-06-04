@@ -67,5 +67,6 @@ export * as queues from "./queues.js";
 export type { ImportEnvironmentVariablesParams } from "./envvars.js";
 
 export { configure, auth } from "./auth.js";
+export { TriggerClient, type TriggerClientConfig } from "./triggerClient.js";
 export * as prompts from "./prompts.js";
 export * as skills from "./skills.js";

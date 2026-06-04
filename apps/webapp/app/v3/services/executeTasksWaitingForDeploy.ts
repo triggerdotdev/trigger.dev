@@ -7,6 +7,12 @@ import { BaseService } from "./baseService.server";
 
 export class ExecuteTasksWaitingForDeployService extends BaseService {
   public async call(backgroundWorkerId: string) {
+    // Kill-switch for the legacy V1 WAITING_FOR_DEPLOY drain. Set to "1" to
+    // neuter any jobs already enqueued (V2 has its own PENDING_VERSION path).
+    if (env.LEGACY_RUN_ENGINE_WAITING_FOR_DEPLOY_DISABLED === "1") {
+      return;
+    }
+
     const backgroundWorker = await this._prisma.backgroundWorker.findFirst({
       where: {
         id: backgroundWorkerId,

@@ -18,7 +18,15 @@ import {
   useRevalidator,
 } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { useEffect, useMemo, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -61,6 +69,7 @@ import {
   type EnvironmentVariableWithSetValues,
   EnvironmentVariablesPresenter,
 } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
+import { type EnvironmentVariablesEnvironment } from "~/presenters/v3/environmentVariablesEnvironments.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
@@ -93,6 +102,20 @@ export const meta: MetaFunction = () => {
     },
   ];
 };
+
+type PageVercelIntegration = NonNullable<
+  Awaited<ReturnType<EnvironmentVariablesPresenter["call"]>>["vercelIntegration"]
+>;
+
+export type EnvironmentVariablesPageLoaderData = {
+  environmentVariables: EnvironmentVariableWithSetValues[];
+  environments: EnvironmentVariablesEnvironment[];
+  hasStaging: boolean;
+  vercelIntegration: PageVercelIntegration | null;
+};
+
+export const environmentVariablesRouteId =
+  "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -258,27 +281,45 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 };
 
+const SSR_ROW_WINDOW = 50;
+const ROW_ESTIMATE_HEIGHT = 44;
+const VIRTUAL_OVERSCAN = 10;
+
+type GroupedEnvironmentVariable = EnvironmentVariableWithSetValues & {
+  isFirstTime: boolean;
+  isLastTime: boolean;
+  occurences: number;
+};
+
 export default function Page() {
+  const loaderData = useTypedLoaderData<EnvironmentVariablesPageLoaderData>();
+
+  return <EnvironmentVariablesListPage loaderData={loaderData} />;
+}
+
+function EnvironmentVariablesListPage({
+  loaderData,
+}: {
+  loaderData: EnvironmentVariablesPageLoaderData;
+}) {
   const [revealAll, setRevealAll] = useState(false);
-  const { environmentVariables, environments, vercelIntegration } =
-    useTypedLoaderData<typeof loader>();
+  const { environmentVariables, vercelIntegration } = loaderData;
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
   const { value } = useSearchParams();
   const urlSearch = value("search") ?? "";
-  const { setFilterText, filteredItems } = useFuzzyFilter<EnvironmentVariableWithSetValues>({
+  const { filteredItems } = useFuzzyFilter<EnvironmentVariableWithSetValues>({
     items: environmentVariables,
     keys: ["key", "value", "environment.type", "environment.branchName"],
+    filterText: urlSearch,
   });
 
-  useEffect(() => {
-    setFilterText(urlSearch);
-  }, [urlSearch, setFilterText]);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
 
   // Add isFirst and isLast to each environment variable
   // They're set based on if they're the first or last time that `key` has been seen in the list
-  const groupedEnvironmentVariables = useMemo(() => {
+  const groupedEnvironmentVariables = useMemo((): GroupedEnvironmentVariable[] => {
     // Create a map to track occurrences of each key
     const keyOccurrences = new Map<string, number>();
 
@@ -313,6 +354,22 @@ export default function Page() {
     });
   }, [filteredItems]);
 
+  const shouldVirtualize = groupedEnvironmentVariables.length > SSR_ROW_WINDOW;
+  const [isVirtualized, setIsVirtualized] = useState(false);
+
+  useLayoutEffect(() => {
+    setIsVirtualized(shouldVirtualize);
+  }, [shouldVirtualize]);
+
+  const staticRows = useMemo(() => {
+    if (shouldVirtualize) {
+      return groupedEnvironmentVariables.slice(0, SSR_ROW_WINDOW);
+    }
+    return groupedEnvironmentVariables;
+  }, [groupedEnvironmentVariables, shouldVirtualize]);
+
+  const vercelColumnCount = vercelIntegration?.enabled ? 6 : 5;
+
   return (
     <PageContainer>
       <NavBar>
@@ -328,7 +385,7 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div className={cn("flex h-full flex-col")}>
+        <div className={cn("flex h-full min-h-0 flex-col")}>
           {environmentVariables.length > 0 && (
             <div className="flex items-center justify-between gap-2 px-2 py-2">
               <SearchInput placeholder="Search variables…" autoFocus />
@@ -350,193 +407,282 @@ export default function Page() {
               </div>
             </div>
           )}
-          <Table containerClassName={cn(filteredItems.length === 0 && "border-t-0")}>
-            <TableHeader>
-              <TableRow>
-                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[22%]" : "w-[25%]"}>
-                  Key
-                </TableHeaderCell>
-                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[32%]" : "w-[37%]"}>
-                  Value
-                </TableHeaderCell>
-                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[13%]" : "w-[15%]"}>
-                  <SimpleTooltip
-                    button={
-                      <span className="flex items-center gap-1">
-                        Environment
-                        <InformationCircleIcon className="size-4 text-text-dimmed" />
-                      </span>
-                    }
-                    content="Dev environment variables specified here will be overridden by ones in your .env file when running locally."
-                    className="max-w-60"
-                  />
-                </TableHeaderCell>
-                {vercelIntegration?.enabled && (
-                  <TableHeaderCell className="w-[8%]">
+          <div
+            ref={tableScrollRef}
+            className="min-h-0 flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          >
+            <Table
+              containerClassName={cn(
+                filteredItems.length === 0 && "border-t-0",
+                "overflow-visible"
+              )}
+            >
+              <TableHeader>
+                <TableRow>
+                  <TableHeaderCell className={vercelIntegration?.enabled ? "w-[22%]" : "w-[25%]"}>
+                    Key
+                  </TableHeaderCell>
+                  <TableHeaderCell className={vercelIntegration?.enabled ? "w-[32%]" : "w-[37%]"}>
+                    Value
+                  </TableHeaderCell>
+                  <TableHeaderCell className={vercelIntegration?.enabled ? "w-[13%]" : "w-[15%]"}>
                     <SimpleTooltip
                       button={
                         <span className="flex items-center gap-1">
-                          Sync
+                          Environment
                           <InformationCircleIcon className="size-4 text-text-dimmed" />
                         </span>
                       }
-                      content="When enabled, this variable will be pulled from Vercel during builds. Requires 'Pull env vars before build' to be enabled in settings."
+                      content="Dev environment variables specified here will be overridden by ones in your .env file when running locally."
+                      className="max-w-60"
                     />
                   </TableHeaderCell>
-                )}
-                <TableHeaderCell className={vercelIntegration?.enabled ? "w-[24%]" : "w-[22%]"}>
-                  Updated
-                </TableHeaderCell>
-                <TableHeaderCell hiddenLabel className="w-0">
-                  Actions
-                </TableHeaderCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {groupedEnvironmentVariables.length > 0 ? (
-                groupedEnvironmentVariables.map((variable) => {
-                  const cellClassName = "py-2";
-                  let borderedCellClassName = "";
-
-                  if (variable.occurences > 1) {
-                    borderedCellClassName =
-                      "relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright group-hover/table-row:after:bg-grid-bright group-hover/table-row:before:bg-grid-bright";
-                    if (variable.isLastTime) {
-                      borderedCellClassName = "";
-                    } else if (variable.isFirstTime) {
-                    }
-                  } else {
-                  }
-
-                  return (
-                    <TableRow
-                      key={`${variable.id}-${variable.environment.id}`}
-                      className={
-                        variable.isLastTime ? "after:bg-charcoal-600" : "after:bg-transparent"
-                      }
-                    >
-                      <TableCell className={cellClassName}>
-                        {variable.isFirstTime ? (
-                          <CopyableText value={variable.key} className="font-mono" />
-                        ) : null}
-                      </TableCell>
-                      <TableCell
-                        className={cn(cellClassName, borderedCellClassName, "after:left-3")}
-                      >
-                        {variable.isSecret ? (
-                          <SimpleTooltip
-                            button={
-                              <div className="flex items-center gap-x-1">
-                                <LockClosedIcon className="size-3 text-text-dimmed" />
-                                <span className="text-xs text-text-dimmed">Secret</span>
-                              </div>
-                            }
-                            content="This variable is secret and cannot be revealed."
-                          />
-                        ) : (
-                          <ClipboardField
-                            secure={!revealAll}
-                            value={variable.value}
-                            variant={"secondary/small"}
-                            fullWidth={true}
-                          />
-                        )}
-                      </TableCell>
-
-                      <TableCell className={cn(cellClassName, borderedCellClassName)}>
-                        <EnvironmentCombo environment={variable.environment} className="text-sm" />
-                      </TableCell>
-                      {vercelIntegration?.enabled && (
-                        <TableCell className={cn(cellClassName, borderedCellClassName)}>
-                          {variable.environment.type !== "DEVELOPMENT" && (
-                            <VercelSyncCheckbox
-                              envVarKey={variable.key}
-                              environmentType={variable.environment.type as TriggerEnvironmentType}
-                              syncEnabled={shouldSyncEnvVar(
-                                vercelIntegration.syncEnvVarsMapping,
-                                variable.key,
-                                variable.environment.type as TriggerEnvironmentType
-                              )}
-                              pullEnvVarsEnabledForEnv={isPullEnvVarsEnabledForEnvironment(
-                                vercelIntegration.pullEnvVarsBeforeBuild,
-                                variable.environment.type as TriggerEnvironmentType
-                              )}
-                            />
-                          )}
-                        </TableCell>
-                      )}
-                      <TableCell className={cn(cellClassName, borderedCellClassName)}>
-                        <div className="flex items-center gap-3">
-                          {variable.updatedByUser ? (
-                            <div className="flex items-center gap-2">
-                              <UserAvatar
-                                avatarUrl={variable.updatedByUser.avatarUrl}
-                                name={variable.updatedByUser.name}
-                                className="size-5"
-                              />
-                              <span className="text-sm">{variable.updatedByUser.name}</span>
-                            </div>
-                          ) : variable.lastUpdatedBy?.type === "integration" &&
-                            variable.lastUpdatedBy?.integration === "vercel" ? (
-                            <div className="flex items-center gap-2">
-                              <VercelLogo className="size-4 text-text-dimmed transition-colors group-hover/table-row:text-text-bright" />
-                              <span className="text-sm capitalize text-text-dimmed transition-colors group-hover/table-row:text-text-bright">
-                                {variable.lastUpdatedBy.integration}
-                              </span>
-                            </div>
-                          ) : null}
-                          {variable.updatedAt ? (
-                            <span className="text-sm text-text-dimmed">
-                              <DateTime date={variable.updatedAt} includeSeconds={false} />
-                            </span>
-                          ) : null}
-                        </div>
-                      </TableCell>
-                      <TableCellMenu
-                        isSticky
-                        className="[&:has(.group-hover/table-row:block)]:w-auto w-0"
-                        hiddenButtons={
-                          <>
-                            <EditEnvironmentVariablePanel
-                              variable={variable}
-                              revealAll={revealAll}
-                            />
-                            <DeleteEnvironmentVariableButton variable={variable} />
-                          </>
+                  {vercelIntegration?.enabled && (
+                    <TableHeaderCell className="w-[8%]">
+                      <SimpleTooltip
+                        button={
+                          <span className="flex items-center gap-1">
+                            Sync
+                            <InformationCircleIcon className="size-4 text-text-dimmed" />
+                          </span>
                         }
+                        content="When enabled, this variable will be pulled from Vercel during builds. Requires 'Pull env vars before build' to be enabled in settings."
                       />
-                    </TableRow>
-                  );
-                })
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={vercelIntegration?.enabled ? 6 : 5}>
-                    {environmentVariables.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center gap-y-4 py-8">
-                        <Header2>You haven't set any environment variables yet.</Header2>
-                        <LinkButton
-                          to={v3NewEnvironmentVariablesPath(organization, project, environment)}
-                          variant="primary/medium"
-                          LeadingIcon={PlusIcon}
-                          shortcut={{ key: "n" }}
-                        >
-                          Add new
-                        </LinkButton>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center gap-y-4 py-8">
-                        <Paragraph>No variables match your search.</Paragraph>
-                      </div>
-                    )}
-                  </TableCell>
+                    </TableHeaderCell>
+                  )}
+                  <TableHeaderCell className={vercelIntegration?.enabled ? "w-[24%]" : "w-[22%]"}>
+                    Updated
+                  </TableHeaderCell>
+                  <TableHeaderCell hiddenLabel className="w-0">
+                    Actions
+                  </TableHeaderCell>
                 </TableRow>
+              </TableHeader>
+              {groupedEnvironmentVariables.length > 0 ? (
+                isVirtualized && shouldVirtualize ? (
+                  <EnvironmentVariablesVirtualTableBody
+                    groupedEnvironmentVariables={groupedEnvironmentVariables}
+                    scrollRef={tableScrollRef}
+                    revealAll={revealAll}
+                    vercelIntegration={vercelIntegration}
+                    columnCount={vercelColumnCount}
+                  />
+                ) : (
+                  <TableBody>
+                    {staticRows.map((variable) => (
+                      <EnvironmentVariableTableRow
+                        key={`${variable.id}-${variable.environment.id}`}
+                        variable={variable}
+                        revealAll={revealAll}
+                        vercelIntegration={vercelIntegration}
+                      />
+                    ))}
+                  </TableBody>
+                )
+              ) : (
+                <TableBody>
+                  <TableRow>
+                    <TableCell colSpan={vercelColumnCount}>
+                      {environmentVariables.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center gap-y-4 py-8">
+                          <Header2>You haven't set any environment variables yet.</Header2>
+                          <LinkButton
+                            to={v3NewEnvironmentVariablesPath(organization, project, environment)}
+                            variant="primary/medium"
+                            LeadingIcon={PlusIcon}
+                            shortcut={{ key: "n" }}
+                          >
+                            Add new
+                          </LinkButton>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center gap-y-4 py-8">
+                          <Paragraph>No variables match your search.</Paragraph>
+                        </div>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
               )}
-            </TableBody>
-          </Table>
+            </Table>
+          </div>
         </div>
-        <Outlet />
       </PageBody>
+      <Outlet />
     </PageContainer>
+  );
+}
+
+function getBorderedCellClassName(variable: GroupedEnvironmentVariable) {
+  if (variable.occurences <= 1) {
+    return "";
+  }
+
+  if (variable.isLastTime) {
+    return "";
+  }
+
+  return "relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright group-hover/table-row:after:bg-grid-bright group-hover/table-row:before:bg-grid-bright";
+}
+
+function EnvironmentVariableTableRow({
+  variable,
+  revealAll,
+  vercelIntegration,
+}: {
+  variable: GroupedEnvironmentVariable;
+  revealAll: boolean;
+  vercelIntegration: PageVercelIntegration | null;
+}) {
+  const cellClassName = "py-2";
+  const borderedCellClassName = getBorderedCellClassName(variable);
+
+  return (
+    <TableRow
+      className={variable.isLastTime ? "after:bg-charcoal-600" : "after:bg-transparent"}
+    >
+      <TableCell className={cellClassName}>
+        {variable.isFirstTime ? (
+          <CopyableText value={variable.key} className="font-mono" />
+        ) : null}
+      </TableCell>
+      <TableCell className={cn(cellClassName, borderedCellClassName, "after:left-3")}>
+        {variable.isSecret ? (
+          <SimpleTooltip
+            button={
+              <div className="flex items-center gap-x-1">
+                <LockClosedIcon className="size-3 text-text-dimmed" />
+                <span className="text-xs text-text-dimmed">Secret</span>
+              </div>
+            }
+            content="This variable is secret and cannot be revealed."
+          />
+        ) : (
+          <ClipboardField
+            secure={!revealAll}
+            value={variable.value}
+            variant={"secondary/small"}
+            fullWidth={true}
+          />
+        )}
+      </TableCell>
+
+      <TableCell className={cn(cellClassName, borderedCellClassName)}>
+        <EnvironmentCombo environment={variable.environment} className="text-sm" />
+      </TableCell>
+      {vercelIntegration?.enabled && (
+        <TableCell className={cn(cellClassName, borderedCellClassName)}>
+          {variable.environment.type !== "DEVELOPMENT" && (
+            <VercelSyncCheckbox
+              envVarKey={variable.key}
+              environmentType={variable.environment.type as TriggerEnvironmentType}
+              syncEnabled={shouldSyncEnvVar(
+                vercelIntegration.syncEnvVarsMapping,
+                variable.key,
+                variable.environment.type as TriggerEnvironmentType
+              )}
+              pullEnvVarsEnabledForEnv={isPullEnvVarsEnabledForEnvironment(
+                vercelIntegration.pullEnvVarsBeforeBuild,
+                variable.environment.type as TriggerEnvironmentType
+              )}
+            />
+          )}
+        </TableCell>
+      )}
+      <TableCell className={cn(cellClassName, borderedCellClassName)}>
+        <div className="flex items-center gap-3">
+          {variable.updatedAt ? (
+            <span className="shrink-0 text-sm tabular-nums text-text-dimmed">
+              <DateTime date={variable.updatedAt} includeSeconds={false} />
+            </span>
+          ) : null}
+          {variable.updatedByUser ? (
+            <div className="flex min-w-0 items-center gap-2">
+              <UserAvatar
+                avatarUrl={variable.updatedByUser.avatarUrl}
+                name={variable.updatedByUser.name}
+                className="size-5 shrink-0"
+              />
+              <span className="truncate text-sm">{variable.updatedByUser.name}</span>
+            </div>
+          ) : variable.lastUpdatedBy?.type === "integration" &&
+            variable.lastUpdatedBy?.integration === "vercel" ? (
+            <div className="flex min-w-0 items-center gap-2">
+              <VercelLogo className="size-4 shrink-0 text-text-dimmed transition-colors group-hover/table-row:text-text-bright" />
+              <span className="truncate text-sm capitalize text-text-dimmed transition-colors group-hover/table-row:text-text-bright">
+                {variable.lastUpdatedBy.integration}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      </TableCell>
+      <TableCellMenu
+        isSticky
+        className="[&:has(.group-hover/table-row:block)]:w-auto w-0"
+        hiddenButtons={
+          <>
+            <EditEnvironmentVariablePanel variable={variable} revealAll={revealAll} />
+            <DeleteEnvironmentVariableButton variable={variable} />
+          </>
+        }
+      />
+    </TableRow>
+  );
+}
+
+function EnvironmentVariablesVirtualTableBody({
+  groupedEnvironmentVariables,
+  scrollRef,
+  revealAll,
+  vercelIntegration,
+  columnCount,
+}: {
+  groupedEnvironmentVariables: GroupedEnvironmentVariable[];
+  scrollRef: RefObject<HTMLDivElement | null>;
+  revealAll: boolean;
+  vercelIntegration: PageVercelIntegration | null;
+  columnCount: number;
+}) {
+  const rowVirtualizer = useVirtualizer({
+    count: groupedEnvironmentVariables.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_ESTIMATE_HEIGHT,
+    overscan: VIRTUAL_OVERSCAN,
+  });
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const topSpacerHeight = virtualItems[0]?.start ?? 0;
+  const bottomSpacerHeight =
+    rowVirtualizer.getTotalSize() - (virtualItems.at(-1)?.end ?? 0);
+
+  return (
+    <TableBody>
+      {topSpacerHeight > 0 && (
+        <tr aria-hidden style={{ height: topSpacerHeight }}>
+          <td colSpan={columnCount} />
+        </tr>
+      )}
+      {virtualItems.map((virtualRow) => {
+        const variable = groupedEnvironmentVariables[virtualRow.index];
+        if (!variable) {
+          return null;
+        }
+
+        return (
+          <EnvironmentVariableTableRow
+            key={`${variable.id}-${variable.environment.id}`}
+            variable={variable}
+            revealAll={revealAll}
+            vercelIntegration={vercelIntegration}
+          />
+        );
+      })}
+      {bottomSpacerHeight > 0 && (
+        <tr aria-hidden style={{ height: bottomSpacerHeight }}>
+          <td colSpan={columnCount} />
+        </tr>
+      )}
+    </TableBody>
   );
 }
 

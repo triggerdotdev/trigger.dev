@@ -1,6 +1,5 @@
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
+import { isAbsolute, join, resolve as resolvePath } from "node:path";
 import type { BuildManifest, SkillManifest } from "@trigger.dev/core/v3/schemas";
 import { copyDirectoryRecursive } from "@trigger.dev/build/internal";
 import { indexWorkerManifest } from "../indexing/indexWorkerManifest.js";
@@ -21,12 +20,83 @@ export type BundleSkillsResult = {
   skills: SkillManifest[];
 };
 
+export type CopySkillFoldersOptions = {
+  skills: SkillManifest[];
+  /** Root where `{destinationRoot}/{id}/` folders will be created. */
+  destinationRoot: string;
+  /** Used to resolve relative `filePath` references in skill manifests. */
+  workingDir: string;
+  /** Only `debug` is used. `BuildLogger` and the cli `logger` both satisfy this shape. */
+  logger: { debug: (...args: unknown[]) => void };
+};
+
+/**
+ * Copy each skill's source folder to `{destinationRoot}/{id}/`. Validates
+ * that `SKILL.md` exists and has the required frontmatter. Pure file IO —
+ * no indexer subprocess, no env handling.
+ *
+ * Used by the dev path (driven by the main worker indexer's skills list)
+ * and indirectly by the deploy path (via `bundleSkills` which discovers
+ * skills via its own indexer pass first, then delegates here).
+ */
+export async function copySkillFolders(
+  options: CopySkillFoldersOptions
+): Promise<SkillManifest[]> {
+  const { skills, destinationRoot, workingDir, logger } = options;
+
+  if (skills.length === 0) {
+    return [];
+  }
+
+  for (const skill of skills) {
+    const callerDir = skill.filePath
+      ? resolvePath(workingDir, skill.filePath, "..")
+      : workingDir;
+    const sourcePath = isAbsolute(skill.sourcePath)
+      ? skill.sourcePath
+      : resolvePath(callerDir, skill.sourcePath);
+    const skillMdPath = join(sourcePath, "SKILL.md");
+
+    let skillMd: string;
+    try {
+      skillMd = await readFile(skillMdPath, "utf8");
+    } catch {
+      throw new Error(
+        `Skill "${skill.id}": SKILL.md not found at ${skillMdPath}. ` +
+          `Registered via skills.define({ id: "${skill.id}", path: "${skill.sourcePath}" }) ` +
+          `at ${skill.filePath}.`
+      );
+    }
+
+    if (!/^---\r?\n[\s\S]*?\r?\n---/.test(skillMd)) {
+      throw new Error(
+        `Skill "${skill.id}": SKILL.md at ${skillMdPath} is missing a frontmatter block.`
+      );
+    }
+    if (!/\bname:\s*\S/.test(skillMd) || !/\bdescription:\s*\S/.test(skillMd)) {
+      throw new Error(
+        `Skill "${skill.id}": SKILL.md at ${skillMdPath} frontmatter must include both \`name\` and \`description\`.`
+      );
+    }
+
+    const skillDest = join(destinationRoot, skill.id);
+    logger.debug(`[copySkillFolders] Copying ${sourcePath} → ${skillDest}`);
+    await copyDirectoryRecursive(sourcePath, skillDest);
+  }
+
+  return [...skills].sort((a, b) => a.id.localeCompare(b.id));
+}
+
 /**
  * Built-in skill bundler — not an extension. Runs the indexer locally
- * against the bundled worker output to discover `ai.defineSkill(...)`
+ * against the bundled worker output to discover `skills.define(...)`
  * registrations, validates each skill's `SKILL.md`, and copies the
  * folder into `{outputPath}/.trigger/skills/{id}/` so the deploy image
  * picks it up via the existing Dockerfile `COPY`.
+ *
+ * Used by the deploy path. The dev path uses `copySkillFolders` directly,
+ * driven by the main worker indexer that already runs in `BackgroundWorker.initialize` —
+ * no duplicate indexer pass needed there.
  *
  * No `trigger.config.ts` changes required — discovery is side-effect
  * based, same mechanism as task/prompt registration.
@@ -71,65 +141,20 @@ export async function bundleSkills(
     return { buildManifest, skills: [] };
   }
 
-  // Destination layout differs between dev and deploy:
-  // - Dev:    the worker runs with cwd = workingDir, so skills must live at
-  //           {workingDir}/.trigger/skills/{id}/ for skill.local() to find them.
-  // - Deploy: the Dockerfile COPY picks up everything under outputPath into
-  //           /app, so we target {outputPath}/.trigger/skills/{id}/ and the
-  //           container's cwd (/app) resolves correctly.
-  const destinationRoot =
-    buildManifest.target === "dev"
-      ? join(workingDir, ".trigger", "skills")
-      : join(buildManifest.outputPath, ".trigger", "skills");
+  // Deploy target: the Dockerfile COPY picks up everything under outputPath
+  // into /app, so we target {outputPath}/.trigger/skills/{id}/ and the
+  // container's cwd (/app) resolves correctly.
+  const destinationRoot = join(buildManifest.outputPath, ".trigger", "skills");
 
-  for (const skill of skills) {
-    // Resolve the skill's source folder relative to the file that called
-    // `skills.define(...)`. Absolute paths are honored as-is.
-    const callerDir = skill.filePath
-      ? dirname(resolvePath(workingDir, skill.filePath))
-      : workingDir;
-    const sourcePath = isAbsolute(skill.sourcePath)
-      ? skill.sourcePath
-      : resolvePath(callerDir, skill.sourcePath);
-    const skillMdPath = join(sourcePath, "SKILL.md");
-
-    let skillMd: string;
-    try {
-      skillMd = await readFile(skillMdPath, "utf8");
-    } catch {
-      throw new Error(
-        `Skill "${skill.id}": SKILL.md not found at ${skillMdPath}. ` +
-          `Registered via ai.defineSkill({ id: "${skill.id}", path: "${skill.sourcePath}" }) ` +
-          `at ${skill.filePath}.`
-      );
-    }
-
-    if (!/^---\r?\n[\s\S]*?\r?\n---/.test(skillMd)) {
-      throw new Error(
-        `Skill "${skill.id}": SKILL.md at ${skillMdPath} is missing a frontmatter block.`
-      );
-    }
-    if (!/\bname:\s*\S/.test(skillMd) || !/\bdescription:\s*\S/.test(skillMd)) {
-      throw new Error(
-        `Skill "${skill.id}": SKILL.md at ${skillMdPath} frontmatter must include both \`name\` and \`description\`.`
-      );
-    }
-
-    const skillDest = join(destinationRoot, skill.id);
-    logger.debug(`[bundleSkills] Copying ${sourcePath} → ${skillDest}`);
-    await copyDirectoryRecursive(sourcePath, skillDest);
-  }
-
-  // Sort by id for deterministic manifest output
-  skills = [...skills].sort((a, b) => a.id.localeCompare(b.id));
-
-  // Content hash is derived from each SKILL.md's content for cache invalidation
-  // downstream (dashboard persistence in Phase 2). Not used in Phase 1.
-  void createHash;
-  void dirname;
+  const sortedSkills = await copySkillFolders({
+    skills,
+    destinationRoot,
+    workingDir,
+    logger,
+  });
 
   return {
-    buildManifest: { ...buildManifest, skills },
-    skills,
+    buildManifest: { ...buildManifest, skills: sortedSkills },
+    skills: sortedSkills,
   };
 }

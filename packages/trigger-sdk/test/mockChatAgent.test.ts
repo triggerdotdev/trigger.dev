@@ -5,9 +5,10 @@ import { mockChatAgent } from "../src/v3/test/index.js";
 import { describe, expect, it, vi } from "vitest";
 import { chat } from "../src/v3/ai.js";
 import { locals } from "@trigger.dev/core/v3";
-import { simulateReadableStream, streamText } from "ai";
+import { simulateReadableStream, streamText, tool, validateUIMessages } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
+import { z } from "zod";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -178,6 +179,64 @@ describe("mockChatAgent", () => {
     }
   });
 
+  it("hydrate path: fresh user message lands in onTurnComplete.newUIMessages", async () => {
+    // The dedup that suppresses HITL-continuation pushes to
+    // `turnNewUIMessages` must compare against the PRE-hydration
+    // accumulator, not the post-hydration chain. A `hydrateMessages`
+    // hook that pushes the incoming user message into its persisted
+    // chain (the canonical pattern documented in
+    // /ai-chat/lifecycle-hooks#hydratemessages and the
+    // `upsertIncomingMessage` helper) would otherwise see the new
+    // user message in the returned `hydrated` array for every fresh
+    // turn, causing the dedup to wrongly fire and drop the user
+    // message from `newUIMessages` / `newMessages`.
+    const stored: any[] = [];
+
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("hi") }),
+    });
+
+    let capturedNewUIMessages: any[] | undefined;
+    const agent = chat.agent({
+      id: "mockChatAgent.hydrate-newui-fresh-user",
+      hydrateMessages: async ({ trigger, incomingMessages }) => {
+        // Canonical pattern: push the incoming user message into the
+        // persisted chain and return the chain. Mirrors what
+        // `upsertIncomingMessage` does.
+        if (trigger === "submit-message" && incomingMessages.length > 0) {
+          const newMsg = incomingMessages[incomingMessages.length - 1]!;
+          const exists = newMsg.id
+            ? stored.some((m) => m.id === newMsg.id)
+            : false;
+          if (!exists) stored.push(newMsg);
+        }
+        return [...stored];
+      },
+      onTurnComplete: async ({ newUIMessages }) => {
+        capturedNewUIMessages = newUIMessages;
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({ model, messages, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-hydrate-newui-fresh-user" });
+    try {
+      await harness.sendMessage(userMessage("hello", "u-fresh"));
+      await new Promise((r) => setTimeout(r, 50));
+
+      // `newUIMessages` for a fresh user turn must contain BOTH the
+      // user message and the assistant response. The bug surfaces as
+      // length=1 (assistant only — user dropped by the wrong dedup).
+      expect(capturedNewUIMessages).toBeDefined();
+      const roles = capturedNewUIMessages!.map((m: any) => m.role);
+      expect(roles).toEqual(["user", "assistant"]);
+      expect(capturedNewUIMessages![0]!.id).toBe("u-fresh");
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("merges HITL tool answer onto head assistant when AI SDK regenerates the id", async () => {
     // Regression for TRI-9137: customers (Arena AI) report that the AI SDK
     // intermittently mints a fresh id on `addToolOutput` resume, breaking
@@ -185,8 +244,6 @@ describe("mockChatAgent", () => {
     // an assistant with tool parts lands in the accumulator and uses that
     // map as a fallback in the merge so a fresh-id incoming still attaches
     // to the right head.
-    const { z } = await import("zod");
-    const { tool } = await import("ai");
 
     const askUserTool = tool({
       description: "Ask the user a question.",
@@ -306,6 +363,503 @@ describe("mockChatAgent", () => {
     }
   });
 
+  it("merges a slim wire copy onto a hydrated message — keeps hydrated `input`, overlays wire `output`", async () => {
+    // HITL continuations on reasoning-heavy turns ship a slim assistant
+    // message (resolved tool parts only, no `input`, no reasoning, no
+    // text) so the payload fits the `.in/append` cap. `hydrateMessages`
+    // returns the full DB-backed copy. The per-turn merge has to keep
+    // the hydrated `input` and overlay only the wire's `state` +
+    // `output` — otherwise the next LLM call ships a tool call with no
+    // `arguments` and the provider 400s.
+    const searchTool = tool({
+      description: "Search.",
+      inputSchema: z.object({ query: z.string() }),
+    });
+
+    const TC = "tc_slim_merge";
+    const HEAD_ID = "a-head-slim";
+
+    // The customer's DB-backed copy. Tool part has the original `input`
+    // intact and is sitting in `input-available` (HITL waiting).
+    const dbAssistant = {
+      id: HEAD_ID,
+      role: "assistant" as const,
+      parts: [
+        {
+          type: "tool-search" as const,
+          toolCallId: TC,
+          state: "input-available" as const,
+          input: { query: "trigger.dev pricing" },
+        },
+      ],
+    };
+
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("ok") }),
+    });
+
+    let mergedToolPart: any;
+    const agent = chat.agent({
+      id: "mockChatAgent.slim-wire-merge",
+      hydrateMessages: async () => [dbAssistant as any],
+      onTurnComplete: async ({ uiMessages }) => {
+        const head = uiMessages.find((m: any) => m.id === HEAD_ID);
+        mergedToolPart = (head?.parts ?? []).find(
+          (p: any) => p?.toolCallId === TC
+        );
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({
+          model,
+          messages,
+          tools: { search: searchTool },
+          abortSignal: signal,
+        });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-slim-wire" });
+    try {
+      // Slim wire — only the resolved tool part, no `input`.
+      const slim = {
+        id: HEAD_ID,
+        role: "assistant" as const,
+        parts: [
+          {
+            type: "tool-search" as const,
+            toolCallId: TC,
+            state: "output-available" as const,
+            output: { hits: 7 },
+          },
+        ],
+      };
+      await harness.sendMessage(slim as any);
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(mergedToolPart?.state).toBe("output-available");
+      expect(mergedToolPart?.output).toEqual({ hits: 7 });
+      expect(mergedToolPart?.input).toEqual({ query: "trigger.dev pricing" });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("merges a slim approval-responded wire onto a hydrated approval-requested message", async () => {
+    // Approval-flow counterpart to the HITL slim-merge test. The wire
+    // copy carries `state: "approval-responded"` + `approval: { id,
+    // approved }`. Hydrated has the same tool part in
+    // `approval-requested`. Merge has to overlay state + approval onto
+    // hydrated while keeping `input` intact so the agent can resume.
+    const deleteTool = tool({
+      description: "Delete.",
+      inputSchema: z.object({ resource: z.string() }),
+    });
+
+    const TC = "tc_approval_merge";
+    const HEAD_ID = "a-head-approval";
+
+    const dbAssistant = {
+      id: HEAD_ID,
+      role: "assistant" as const,
+      parts: [
+        {
+          type: "tool-delete" as const,
+          toolCallId: TC,
+          state: "approval-requested" as const,
+          input: { resource: "/critical/data" },
+          approval: { id: "appr_1" },
+        },
+      ],
+    };
+
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("ok") }),
+    });
+
+    let mergedToolPart: any;
+    const agent = chat.agent({
+      id: "mockChatAgent.approval-slim-merge",
+      hydrateMessages: async () => [dbAssistant as any],
+      onTurnComplete: async ({ uiMessages }) => {
+        const head = uiMessages.find((m: any) => m.id === HEAD_ID);
+        mergedToolPart = (head?.parts ?? []).find(
+          (p: any) => p?.toolCallId === TC
+        );
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({
+          model,
+          messages,
+          tools: { delete: deleteTool },
+          abortSignal: signal,
+        });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-approval-slim" });
+    try {
+      // Slim wire — only the approval-responded tool part, no `input`.
+      const slim = {
+        id: HEAD_ID,
+        role: "assistant" as const,
+        parts: [
+          {
+            type: "tool-delete" as const,
+            toolCallId: TC,
+            state: "approval-responded" as const,
+            approval: { id: "appr_1", approved: true },
+          },
+        ],
+      };
+      await harness.sendMessage(slim as any);
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(mergedToolPart?.state).toBe("approval-responded");
+      expect(mergedToolPart?.approval).toEqual({ id: "appr_1", approved: true });
+      expect(mergedToolPart?.input).toEqual({ resource: "/critical/data" });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("does not downgrade a hydrated `output-denied` when a stale `approval-responded` arrives", async () => {
+    // Terminal hydrated states (`output-available` / `output-error` /
+    // `output-denied`) are authoritative. A wire copy that re-ships a
+    // prior `approval-responded` (replay, retry, out-of-order arrival)
+    // must NOT regress the terminal denial back to a pre-resolution
+    // state — the agent would then re-run the tool.
+    const deleteTool = tool({
+      description: "Delete.",
+      inputSchema: z.object({ resource: z.string() }),
+    });
+
+    const TC = "tc_denied_no_regress";
+    const HEAD_ID = "a-head-denied";
+
+    const dbAssistant = {
+      id: HEAD_ID,
+      role: "assistant" as const,
+      parts: [
+        {
+          type: "tool-delete" as const,
+          toolCallId: TC,
+          state: "output-denied" as const,
+          input: { resource: "/critical/data" },
+          approval: { id: "appr_1", approved: false, reason: "no" },
+        },
+      ],
+    };
+
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("ok") }),
+    });
+
+    let mergedToolPart: any;
+    const agent = chat.agent({
+      id: "mockChatAgent.denied-no-regress",
+      hydrateMessages: async () => [dbAssistant as any],
+      onTurnComplete: async ({ uiMessages }) => {
+        const head = uiMessages.find((m: any) => m.id === HEAD_ID);
+        mergedToolPart = (head?.parts ?? []).find(
+          (p: any) => p?.toolCallId === TC
+        );
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({
+          model,
+          messages,
+          tools: { delete: deleteTool },
+          abortSignal: signal,
+        });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-denied-no-regress" });
+    try {
+      // Stale wire arrival — `approval-responded` for a tool that
+      // hydrated already shows as `output-denied`.
+      const stale = {
+        id: HEAD_ID,
+        role: "assistant" as const,
+        parts: [
+          {
+            type: "tool-delete" as const,
+            toolCallId: TC,
+            state: "approval-responded" as const,
+            approval: { id: "appr_1", approved: true },
+          },
+        ],
+      };
+      await harness.sendMessage(stale as any);
+      await new Promise((r) => setTimeout(r, 50));
+
+      // The hydrated terminal state survives the merge.
+      expect(mergedToolPart?.state).toBe("output-denied");
+      expect(mergedToolPart?.approval).toEqual({
+        id: "appr_1",
+        approved: false,
+        reason: "no",
+      });
+      expect(mergedToolPart?.input).toEqual({ resource: "/critical/data" });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("onValidateMessages sees the slim wire on HITL continuations — fresh-user filter still works", async () => {
+    // Slim wire is the wire shape on HITL `addToolOutput` continuations.
+    // Existing customers calling `validateUIMessages` from `ai` on the
+    // whole `messages` array would throw because the AI SDK schema
+    // requires `input` on resolved tool parts. The recommended pattern
+    // is to filter to user messages (or skip on HITL turns).
+    //
+    // This test pins both behaviors: (1) the slim assistant does arrive
+    // in the validate hook on the HITL turn, (2) a fresh-user-only
+    // filter still works (the user message turn is unaffected).
+    const askUser = tool({
+      description: "Ask the user.",
+      inputSchema: z.object({ q: z.string() }),
+    });
+    const TC = "tc_validate_slim";
+
+    let callIdx = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({
+        stream:
+          callIdx++ === 0
+            ? simulateReadableStream({
+                chunks: [
+                  { type: "tool-input-start", id: TC, toolName: "askUser" },
+                  {
+                    type: "tool-input-delta",
+                    id: TC,
+                    delta: JSON.stringify({ q: "what color?" }),
+                  },
+                  { type: "tool-input-end", id: TC },
+                  {
+                    type: "tool-call",
+                    toolCallId: TC,
+                    toolName: "askUser",
+                    input: JSON.stringify({ q: "what color?" }),
+                  },
+                  {
+                    type: "finish",
+                    finishReason: { unified: "tool-calls", raw: "tool_calls" },
+                    usage: {
+                      inputTokens: {
+                        total: 5,
+                        noCache: 5,
+                        cacheRead: undefined,
+                        cacheWrite: undefined,
+                      },
+                      outputTokens: { total: 5, text: 0, reasoning: undefined },
+                    },
+                  },
+                ] as LanguageModelV3StreamPart[],
+              })
+            : textStream("got it"),
+      }),
+    });
+
+    const validateCalls: any[] = [];
+    const agent = chat.agent({
+      id: "mockChatAgent.validate-slim",
+      onValidateMessages: async ({ messages, trigger }) => {
+        validateCalls.push({
+          trigger,
+          messages: messages.map((m: any) => ({
+            id: m.id,
+            role: m.role,
+            partCount: m.parts?.length,
+          })),
+        });
+        // Recommended pattern: validate only user messages, since HITL
+        // continuations carry slim assistants the AI SDK schema rejects.
+        const userMessages = messages.filter(
+          (m: any) => m.role === "user"
+        );
+        if (userMessages.length > 0) {
+          await validateUIMessages({
+            messages: userMessages,
+            // `validateUIMessages` is stricter than `streamText` about
+            // tool input/output variance — cast to satisfy the wider
+            // `Tool<unknown, unknown>` it expects.
+            tools: { askUser } as any,
+          });
+        }
+        return messages;
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({
+          model,
+          messages,
+          tools: { askUser },
+          abortSignal: signal,
+        });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-validate-slim" });
+    try {
+      // Turn 1: user message. Validator sees a user message; validate passes.
+      await harness.sendMessage(userMessage("hi"));
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(validateCalls).toHaveLength(1);
+      expect(validateCalls[0].messages[0].role).toBe("user");
+
+      // Turn 2: slim wire HITL continuation. Validator sees a slim
+      // assistant with no `input`. The fresh-user-filter skips it, so
+      // validateUIMessages isn't called against the slim shape.
+      const turn1Assistant = (await import("vitest")).expect.any(Object);
+      void turn1Assistant; // appease unused-binding lints
+
+      // Build a slim assistant that mirrors what the transport would ship.
+      const slim = {
+        id: "slim-id-doesnt-matter-for-validate",
+        role: "assistant" as const,
+        parts: [
+          {
+            type: "tool-askUser" as const,
+            toolCallId: TC,
+            state: "output-available" as const,
+            output: { color: "blue" },
+          },
+        ],
+      };
+      await harness.sendMessage(slim as any);
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(validateCalls).toHaveLength(2);
+      expect(validateCalls[1].trigger).toBe("submit-message");
+      // The slim assistant arrived in validate — no user messages.
+      expect(validateCalls[1].messages[0].role).toBe("assistant");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("merges a slim wire copy in the default (no-hydrate) branch — keeps snapshot `input`", async () => {
+    // Mirror of the hydrated slim-merge test, but exercising the
+    // default accumulator branch (no `hydrateMessages` registered).
+    // The agent's own turn-1 output seeds the accumulator with the
+    // full assistant + tool `input`; a slim turn-2 wire copy has to
+    // merge onto that without clobbering the snapshot's `input`.
+    const askUser = tool({
+      description: "Ask the user.",
+      inputSchema: z.object({ q: z.string() }),
+    });
+    const TC = "tc_default_slim";
+
+    let callIdx = 0;
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({
+        stream:
+          callIdx++ === 0
+            ? simulateReadableStream({
+                chunks: [
+                  { type: "tool-input-start", id: TC, toolName: "askUser" },
+                  {
+                    type: "tool-input-delta",
+                    id: TC,
+                    delta: JSON.stringify({ q: "what color?" }),
+                  },
+                  { type: "tool-input-end", id: TC },
+                  {
+                    type: "tool-call",
+                    toolCallId: TC,
+                    toolName: "askUser",
+                    input: JSON.stringify({ q: "what color?" }),
+                  },
+                  {
+                    type: "finish",
+                    finishReason: { unified: "tool-calls", raw: "tool_calls" },
+                    usage: {
+                      inputTokens: {
+                        total: 5,
+                        noCache: 5,
+                        cacheRead: undefined,
+                        cacheWrite: undefined,
+                      },
+                      outputTokens: { total: 5, text: 0, reasoning: undefined },
+                    },
+                  },
+                ] as LanguageModelV3StreamPart[],
+              })
+            : textStream("got it"),
+      }),
+    });
+
+    const turnsSeen: { uiMessages: any[] }[] = [];
+    const agent = chat.agent({
+      id: "mockChatAgent.default-slim-merge",
+      onTurnComplete: async ({ uiMessages }) => {
+        turnsSeen.push({
+          uiMessages: uiMessages.map((m: any) => ({
+            id: m.id,
+            role: m.role,
+            parts: (m.parts ?? []).map((p: any) => ({
+              type: p.type,
+              toolCallId: p.toolCallId,
+              state: p.state,
+              hasInput: p.input !== undefined,
+              output: p.output,
+            })),
+          })),
+        });
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({
+          model,
+          messages,
+          tools: { askUser },
+          abortSignal: signal,
+        });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-default-slim" });
+    try {
+      // Turn 1: user message → agent emits tool call (state=input-available, has input).
+      await harness.sendMessage(userMessage("hi"));
+      await new Promise((r) => setTimeout(r, 50));
+
+      const turn1Assistant = turnsSeen.at(-1)?.uiMessages.find(
+        (m: any) => m.role === "assistant"
+      );
+      expect(turn1Assistant).toBeTruthy();
+      const HEAD_ID = turn1Assistant!.id;
+
+      // Turn 2: slim wire — only the resolved tool part with output. No input.
+      const slim = {
+        id: HEAD_ID,
+        role: "assistant" as const,
+        parts: [
+          {
+            type: "tool-askUser" as const,
+            toolCallId: TC,
+            state: "output-available" as const,
+            output: { color: "blue" },
+          },
+        ],
+      };
+      await harness.sendMessage(slim as any);
+      await new Promise((r) => setTimeout(r, 50));
+
+      const turn2 = turnsSeen.at(-1);
+      const head = turn2!.uiMessages.find((m: any) => m.id === HEAD_ID);
+      const toolPart = (head?.parts ?? []).find(
+        (p: any) => p?.toolCallId === TC
+      );
+      expect(toolPart?.state).toBe("output-available");
+      expect(toolPart?.output).toEqual({ color: "blue" });
+      // Snapshot's `input` survived the merge.
+      expect(toolPart?.hasInput).toBe(true);
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("routes custom actions through actionSchema + onAction", async () => {
     const model = new MockLanguageModelV3({
       doStream: async () => ({ stream: textStream("ok") }),
@@ -313,7 +867,6 @@ describe("mockChatAgent", () => {
 
     const onActionSpy = vi.fn();
 
-    const { z } = await import("zod");
     const agent = chat.agent({
       id: "mockChatAgent.actions",
       actionSchema: z.object({
@@ -352,7 +905,6 @@ describe("mockChatAgent", () => {
       },
     });
 
-    const { z } = await import("zod");
     const agent = chat.agent({
       id: "mockChatAgent.actions.void",
       actionSchema: z.object({ type: z.literal("undo") }),
@@ -420,7 +972,6 @@ describe("mockChatAgent", () => {
       doStream: async () => ({ stream: textStream("normal-response") }),
     });
 
-    const { z } = await import("zod");
     const agent = chat.agent({
       id: "mockChatAgent.actions.stream",
       actionSchema: z.object({ type: z.literal("regenerate") }),
@@ -469,7 +1020,6 @@ describe("mockChatAgent", () => {
       },
     });
 
-    const { z } = await import("zod");
     const agent = chat.agent({
       id: "mockChatAgent.actions.no-handler",
       actionSchema: z.object({ type: z.literal("undo") }),
@@ -660,8 +1210,6 @@ describe("mockChatAgent", () => {
     }
 
     it("getPendingToolCalls returns input-available parts on the leaf assistant", async () => {
-      const { z } = await import("zod");
-      const { tool } = await import("ai");
       const askUser = tool({
         description: "Ask the user.",
         inputSchema: z.object({ q: z.string() }),
@@ -723,8 +1271,6 @@ describe("mockChatAgent", () => {
     });
 
     it("getResolvedToolCalls walks all messages after a HITL answer lands", async () => {
-      const { z } = await import("zod");
-      const { tool } = await import("ai");
       const askUser = tool({
         description: "Ask the user.",
         inputSchema: z.object({ q: z.string() }),
@@ -904,8 +1450,6 @@ describe("mockChatAgent", () => {
     it("extractNewToolResults dedups against a real-stream-built chain", async () => {
       // Build the chain through real model streams (no chat.history.set seed)
       // and assert extractNewToolResults compares against the post-merge state.
-      const { z } = await import("zod");
-      const { tool } = await import("ai");
       const askUser = tool({
         description: "Ask the user.",
         inputSchema: z.object({ q: z.string() }),
@@ -990,8 +1534,6 @@ describe("mockChatAgent", () => {
       // assistant via the toolCallId map. Here we send an answer in
       // `output-error` state and verify (a) getResolvedToolCalls reports
       // it, and (b) extractNewToolResults emits it with errorText set.
-      const { z } = await import("zod");
-      const { tool } = await import("ai");
       const search = tool({
         description: "Search.",
         inputSchema: z.object({ q: z.string() }),
@@ -1538,5 +2080,141 @@ describe("mockChatAgent", () => {
         await harness.close();
       }
     });
+  });
+});
+
+describe("mockChatAgent tools / toModelOutput (TRI-10149)", () => {
+  // A tool whose raw `execute`/output never contains the marker; the marker
+  // lives ONLY in `toModelOutput`. If the SDK re-converts prior-turn history
+  // without threading tools, `toModelOutput` is skipped and the marker is lost.
+  const makeVault = () =>
+    tool({
+      description: "Vault.",
+      inputSchema: z.object({}),
+      toModelOutput: () => ({ type: "text" as const, value: "MARKER-XYZ" }),
+    });
+
+  // Seed a prior assistant turn that already carries a resolved vault tool
+  // result whose raw output has NO marker.
+  const seedAssistantWithToolResult = {
+    id: "a-vault",
+    role: "assistant" as const,
+    parts: [
+      {
+        type: "tool-vault" as const,
+        toolCallId: "tc_vault",
+        state: "output-available" as const,
+        input: {},
+        output: { bytes: "raw-no-marker" },
+      },
+    ],
+  };
+
+  it("re-applies tool.toModelOutput when re-converting prior-turn history (static tools)", async () => {
+    const vault = makeVault();
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("ok") }),
+    });
+
+    const seenToolResults: string[] = [];
+    const agent = chat.agent({
+      id: "mockChatAgent.toModelOutput-static",
+      tools: { vault },
+      run: async ({ messages, tools, signal }) => {
+        // REUSE A: `tools` is threaded onto the run payload (typed concretely,
+        // not the broad `ToolSet`). The static-form type inference is validated
+        // end-to-end by the references/ai-chat typecheck; here we exercise the
+        // runtime behavior. (test/ is not part of the package's tsc pass.)
+        for (const m of messages) {
+          if (m.role === "tool") seenToolResults.push(JSON.stringify(m.content));
+        }
+        return streamText({ model, messages, tools, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-tmo-static" });
+    try {
+      // Turn 1 seeds the tool result; turn 2 forces a re-conversion of history.
+      await harness.sendMessage(seedAssistantWithToolResult as any);
+      await harness.sendMessage(userMessage("recall"));
+      await new Promise((r) => setTimeout(r, 20));
+
+      const all = seenToolResults.join("|");
+      // toModelOutput ran → transformed value present, raw output gone.
+      expect(all).toContain("MARKER-XYZ");
+      expect(all).not.toContain("raw-no-marker");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("resolves the per-turn function form of tools and re-applies toModelOutput", async () => {
+    const vault = makeVault();
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("ok") }),
+    });
+
+    const seenToolResults: string[] = [];
+    let resolverCalls = 0;
+    const agent = chat.agent({
+      id: "mockChatAgent.toModelOutput-fn",
+      tools: () => {
+        resolverCalls++;
+        return { vault };
+      },
+      run: async ({ messages, tools, signal }) => {
+        for (const m of messages) {
+          if (m.role === "tool") seenToolResults.push(JSON.stringify(m.content));
+        }
+        return streamText({ model, messages, tools, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-tmo-fn" });
+    try {
+      await harness.sendMessage(seedAssistantWithToolResult as any);
+      await harness.sendMessage(userMessage("recall"));
+      await new Promise((r) => setTimeout(r, 20));
+
+      const all = seenToolResults.join("|");
+      expect(all).toContain("MARKER-XYZ");
+      expect(all).not.toContain("raw-no-marker");
+      // The resolver runs per turn (once each), not per conversion call.
+      expect(resolverCalls).toBeGreaterThanOrEqual(2);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("leaves conversion unchanged when no tools are declared (raw output passes through)", async () => {
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("ok") }),
+    });
+
+    const seenToolResults: string[] = [];
+    const agent = chat.agent({
+      id: "mockChatAgent.toModelOutput-none",
+      run: async ({ messages, signal }) => {
+        for (const m of messages) {
+          if (m.role === "tool") seenToolResults.push(JSON.stringify(m.content));
+        }
+        return streamText({ model, messages, abortSignal: signal });
+      },
+    });
+
+    const harness = mockChatAgent(agent, { chatId: "test-tmo-none" });
+    try {
+      await harness.sendMessage(seedAssistantWithToolResult as any);
+      await harness.sendMessage(userMessage("recall"));
+      await new Promise((r) => setTimeout(r, 20));
+
+      // No tools declared → no toModelOutput lookup → raw output stringified
+      // (the pre-feature behavior, preserved for backward compatibility).
+      const all = seenToolResults.join("|");
+      expect(all).toContain("raw-no-marker");
+      expect(all).not.toContain("MARKER-XYZ");
+    } finally {
+      await harness.close();
+    }
   });
 });

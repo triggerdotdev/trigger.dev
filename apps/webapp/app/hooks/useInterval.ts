@@ -6,6 +6,8 @@ type UseIntervalOptions = {
   onLoad?: boolean;
   onFocus?: boolean;
   disabled?: boolean;
+  /** Skip interval ticks while the document tab is hidden */
+  pauseWhenHidden?: boolean;
   callback: () => void;
 };
 
@@ -14,6 +16,7 @@ export function useInterval({
   onLoad = true,
   onFocus = true,
   disabled = false,
+  pauseWhenHidden = false,
   callback,
 }: UseIntervalOptions) {
   // Always keep the latest callback in a ref so the effects below
@@ -28,11 +31,14 @@ export function useInterval({
     if (!interval || interval <= 0 || disabled) return;
 
     const intervalId = setInterval(() => {
+      if (pauseWhenHidden && document.visibilityState !== "visible") {
+        return;
+      }
       latestCallback.current();
     }, interval);
 
     return () => clearInterval(intervalId);
-  }, [interval, disabled]);
+  }, [interval, disabled, pauseWhenHidden]);
 
   // On focus
   useEffect(() => {

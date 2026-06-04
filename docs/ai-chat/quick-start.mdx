@@ -1,0 +1,159 @@
+---
+title: "Quick Start"
+sidebarTitle: "Quick Start"
+description: "Get a working AI agent in 3 steps — define an agent, generate a token, and wire up the frontend."
+---
+
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
+These steps assume you already have a Trigger.dev project with the SDK installed and the CLI authenticated — if you don't, follow [Manual setup](/manual-setup) (or `npx trigger.dev@latest init` in an existing project) first. You should be able to run `pnpm exec trigger dev` from your project root before continuing.
+
+<Steps>
+  <Step title="Define a chat agent">
+    Use `chat.agent` from `@trigger.dev/sdk/ai` to define an agent that handles chat messages. The `run` function receives `ModelMessage[]` (already converted from the frontend's `UIMessage[]`) — pass them directly to `streamText`.
+
+    If you return a `StreamTextResult`, it's **automatically piped** to the frontend.
+
+    ```ts trigger/chat.ts
+    import { chat } from "@trigger.dev/sdk/ai";
+    import { streamText, stepCountIs } from "ai";
+    import { anthropic } from "@ai-sdk/anthropic";
+
+    export const myChat = chat.agent({
+      id: "my-chat",
+      run: async ({ messages, signal }) => {
+        return streamText({
+          // Spread chat.toStreamTextOptions() FIRST — it wires up
+          // prepareStep (compaction, steering, background injection),
+          // the system prompt set via chat.prompt(), and telemetry.
+          // Skipping this is the single most common cause of subtle
+          // bugs (silent broken compaction, missing steering, etc.).
+          ...chat.toStreamTextOptions(),
+          model: anthropic("claude-sonnet-4-5"),
+          messages,
+          abortSignal: signal,
+          stopWhen: stepCountIs(15),
+        });
+      },
+    });
+    ```
+
+    <Warning>
+      **Always spread `chat.toStreamTextOptions()` into your `streamText` call.** It wires up the `prepareStep` callback that drives compaction, mid-turn steering, and background injection — features that silently no-op if the spread is missing. Spread it **first** so any explicit overrides (e.g. a custom `prepareStep`) win.
+    </Warning>
+
+    <Tip>
+      For a **custom** [`UIMessage`](https://sdk.vercel.ai/docs/reference/ai-sdk-core/ui-message) subtype (typed `data-*` parts, tool map, etc.), define the agent with [`chat.withUIMessage<...>().agent({...})`](/ai-chat/types) instead of `chat.agent`.
+    </Tip>
+
+  </Step>
+
+  <Step title="Add two server actions">
+    On your server (e.g. as Next.js server actions), expose two helpers the transport will call: one that creates the chat session, and one that mints a fresh session-scoped access token for refresh.
+
+    ```ts app/actions.ts
+    "use server";
+
+    import { auth } from "@trigger.dev/sdk";
+    import { chat } from "@trigger.dev/sdk/ai";
+
+    // Creates the Session row + triggers the first run, returns the
+    // session PAT. Idempotent on (env, chatId) so concurrent calls
+    // converge to the same session.
+    export const startChatSession = chat.createStartSessionAction("my-chat");
+
+    // Pure mint — fresh session-scoped PAT for an existing session.
+    // The transport calls this on 401/403 to refresh.
+    export async function mintChatAccessToken(chatId: string) {
+      return auth.createPublicToken({
+        scopes: {
+          read: { sessions: chatId },
+          write: { sessions: chatId },
+        },
+        expirationTime: "1h",
+      });
+    }
+    ```
+
+    The browser never holds your environment's secret key — both helpers run on your server, where customer-side authorization (per-user, per-plan, etc.) lives alongside any DB writes you want to pair with session creation.
+
+  </Step>
+
+  <Step title="Use in the frontend">
+    Use the `useTriggerChatTransport` hook from `@trigger.dev/sdk/chat/react` to create a memoized transport instance, then pass it to `useChat`. Wire both server actions into the transport's `accessToken` and `startSession` callbacks.
+
+    The example below uses the Next.js `@/*` path alias for imports from `@/trigger/chat` and `@/app/actions`. If you're not using Next.js (or haven't configured the alias), swap them for relative imports.
+
+    ```tsx app/components/chat.tsx
+    "use client";
+
+    import { useState } from "react";
+    import { useChat } from "@ai-sdk/react";
+    import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+    import type { myChat } from "@/trigger/chat";
+    import { mintChatAccessToken, startChatSession } from "@/app/actions";
+
+    export function Chat() {
+      const transport = useTriggerChatTransport<typeof myChat>({
+        task: "my-chat",
+        accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+        startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
+      });
+
+      const { messages, sendMessage, stop, status } = useChat({ transport });
+      const [input, setInput] = useState("");
+
+      return (
+        <div>
+          {messages.map((m) => (
+            <div key={m.id}>
+              <strong>{m.role}:</strong>
+              {m.parts.map((part, i) =>
+                part.type === "text" ? <span key={i}>{part.text}</span> : null
+              )}
+            </div>
+          ))}
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (input.trim()) {
+                sendMessage({ text: input });
+                setInput("");
+              }
+            }}
+          >
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Type a message..."
+            />
+            <button type="submit" disabled={status === "streaming"}>
+              Send
+            </button>
+            {status === "streaming" && (
+              <button type="button" onClick={stop}>
+                Stop
+              </button>
+            )}
+          </form>
+        </div>
+      );
+    }
+    ```
+
+  </Step>
+</Steps>
+
+## Next steps
+
+- [Backend](/ai-chat/backend) — Lifecycle hooks, persistence, session iterator, raw task primitives
+- [Tools](/ai-chat/tools): Declare tools so `toModelOutput` survives across turns, typed in `run()`
+- [Frontend](/ai-chat/frontend) — Session management, client data, reconnection
+- [Types](/ai-chat/types) — `chat.withUIMessage`, `InferChatUIMessage`, and related typing
+- [`chat.local`](/ai-chat/chat-local) — Per-run typed state across hooks, run, tools, subtasks
+- [Sub-agents pattern](/ai-chat/patterns/sub-agents) — Subtask-as-tool, `target: "root"` streaming, `ai.toolExecute` helpers
+- [Background injection](/ai-chat/background-injection) — `chat.inject()` and `chat.defer()` for between-turn work

@@ -116,19 +116,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
         for await (const part of result.fullStream) {
           switch (part.type) {
             case "text-delta": {
-              sendEvent({ type: "thinking", content: part.textDelta });
+              sendEvent({ type: "thinking", content: part.text });
               break;
             }
             case "tool-call": {
               sendEvent({
                 type: "tool_call",
                 tool: part.toolName,
-                args: part.args,
+                args: part.input,
               });
 
               // If it's a setTimeFilter call, emit the time_filter event immediately
               if (part.toolName === "setTimeFilter") {
-                const args = part.args as { period?: string; from?: string; to?: string };
+                const args = part.input as { period?: string; from?: string; to?: string };
                 sendEvent({
                   type: "time_filter",
                   filter: {

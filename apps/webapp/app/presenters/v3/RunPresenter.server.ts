@@ -3,11 +3,11 @@ import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/Tr
 import { prisma, type PrismaClient } from "~/db.server";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import { getUsername } from "~/utils/username";
-import { resolveEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { SpanSummary } from "~/v3/eventRepository/eventRepository.types";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 import { env } from "~/env.server";
+import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
 export type Run = Result["run"];
@@ -17,6 +17,20 @@ export class RunEnvironmentMismatchError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "RunEnvironmentMismatchError";
+  }
+}
+
+// Thrown by `call()` when the run isn't in PG. The route loader catches
+// this and falls back to the mollifier buffer via `tryMollifiedRunFallback`.
+// Using a typed error (rather than Prisma's `findFirstOrThrow` exception)
+// keeps the buffered case off the PrismaClient error path — that path
+// emits a `PrismaClient error` log every time it fires, which on the
+// run-detail page polls becomes per-tick log spam and Sentry noise for
+// any run that legitimately lives in the buffer.
+export class RunNotInPgError extends Error {
+  constructor(public readonly runFriendlyId: string) {
+    super(`Run ${runFriendlyId} not in PG`);
+    this.name = "RunNotInPgError";
   }
 }
 
@@ -42,7 +56,13 @@ export class RunPresenter {
     showDeletedLogs: boolean;
     showDebug: boolean;
   }) {
-    const run = await this.#prismaClient.taskRun.findFirstOrThrow({
+    // `findFirst` + explicit null check (not `findFirstOrThrow`) because
+    // a missing PG row is the *expected* path for buffered runs — the
+    // route catches `RunNotInPgError` and falls back to the synthesised
+    // buffer view. `findFirstOrThrow` would log a `PrismaClient error`
+    // every tick of the page poll, masking real DB issues with synthetic
+    // not-found noise.
+    const run = await this.#prismaClient.taskRun.findFirst({
       select: {
         id: true,
         createdAt: true,
@@ -107,6 +127,10 @@ export class RunPresenter {
       },
     });
 
+    if (!run) {
+      throw new RunNotInPgError(runFriendlyId);
+    }
+
     if (environmentSlug !== run.runtimeEnvironment.slug) {
       throw new RunEnvironmentMismatchError(
         `Run ${runFriendlyId} is not in environment ${environmentSlug}`
@@ -146,10 +170,13 @@ export class RunPresenter {
       };
     }
 
-    const eventRepository = resolveEventRepositoryForStore(run.taskEventStore);
+    const repository = await getEventRepositoryForStore(
+      run.taskEventStore,
+      run.runtimeEnvironment.organizationId
+    );
 
     // get the events
-    let traceSummary = await eventRepository.getTraceSummary(
+    let traceSummary = await repository.getTraceSummary(
       getTaskEventStoreTableForRun(run),
       run.runtimeEnvironment.id,
       run.traceId,
@@ -279,7 +306,7 @@ export class RunPresenter {
         overridesBySpanId: traceSummary.overridesBySpanId,
         linkedRunIdBySpanId,
       },
-      maximumLiveReloadingSetting: eventRepository.maximumLiveReloadingSetting,
+      maximumLiveReloadingSetting: repository.maximumLiveReloadingSetting,
     };
   }
 }

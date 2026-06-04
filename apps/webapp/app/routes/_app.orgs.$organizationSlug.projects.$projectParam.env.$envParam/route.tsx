@@ -5,6 +5,7 @@ import { redirectWithErrorMessage } from "~/models/message.server";
 import { updateCurrentProjectEnvironmentId } from "~/services/dashboardPreferences.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
+import { tenantContext } from "~/services/tenantContext.server";
 import { EnvironmentParamSchema, v3ProjectPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -26,6 +27,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     },
     select: {
       id: true,
+      externalRef: true,
+      organization: { select: { id: true } },
       environments: {
         select: {
           id: true,
@@ -52,6 +55,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   let environmentId: string | undefined = undefined;
+  let environmentType: "DEVELOPMENT" | "PREVIEW" | "STAGING" | "PRODUCTION" | undefined;
 
   if (environments.length > 1) {
     const bestEnvironment = environments.find((env) => env.orgMember?.userId === user.id);
@@ -63,9 +67,20 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     }
 
     environmentId = bestEnvironment.id;
+    environmentType = bestEnvironment.type;
   } else {
     environmentId = environments[0].id;
+    environmentType = environments[0].type;
   }
+
+  // userId is enriched higher up in `_app/route.tsx`; only stamp tenant fields here.
+  tenantContext.enrich({
+    orgId: project.organization.id,
+    projectId: project.id,
+    projectRef: project.externalRef,
+    envId: environmentId,
+    envType: environmentType,
+  });
 
   await updateCurrentProjectEnvironmentId({ user: user, projectId: project.id, environmentId });
 

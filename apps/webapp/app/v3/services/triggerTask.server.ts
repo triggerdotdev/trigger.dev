@@ -46,6 +46,14 @@ export class OutOfEntitlementError extends Error {
 export type TriggerTaskServiceResult = {
   run: TaskRun;
   isCached: boolean;
+  // True when the mollifier gate diverted the trigger to the Redis
+  // buffer and `run` is a synthesised record (no PG row exists yet).
+  // The trigger route reads this to skip `saveRequestIdempotency` —
+  // caching the synth runId would mean a lost-response SDK retry hits
+  // a PG-miss in `handleRequestIdempotency` and falls through to a
+  // fresh trigger, producing a duplicate buffer entry for trigger
+  // calls that don't carry a task-level idempotency key.
+  isMollified?: boolean;
 };
 
 export const MAX_ATTEMPTS = 2;

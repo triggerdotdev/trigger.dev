@@ -47,6 +47,7 @@ import {
   OtelTaskLogger,
   populateEnv,
   ProdUsageManager,
+  NO_FILE_CONTEXT,
   StandardLifecycleHooksManager,
   StandardLocalsManager,
   StandardMetadataManager,
@@ -490,8 +491,8 @@ const zodIpc = new ZodIpcConnection({
               async () => {
                 const beforeImport = performance.now();
                 resourceCatalog.setCurrentFileContext(
-                  taskManifest.entryPoint,
-                  taskManifest.filePath
+                  taskManifest.filePath,
+                  taskManifest.entryPoint
                 );
 
                 // Load init file if it exists
@@ -595,6 +596,12 @@ const zodIpc = new ZodIpcConnection({
 
           const signal = AbortSignal.any([_cancelController.signal, timeoutController.signal]);
 
+          // Sentinel context so `task()` calls firing during run / lifecycle
+          // hooks (e.g. via `await import(...)` of a module containing a task
+          // definition) register normally instead of being silently dropped.
+          // Cleared in the surrounding finally below.
+          resourceCatalog.setCurrentFileContext(NO_FILE_CONTEXT, NO_FILE_CONTEXT);
+
           const { result } = await executor.execute(execution, ctx, signal);
 
           if (_isRunning && !_isCancelled) {
@@ -613,6 +620,7 @@ const zodIpc = new ZodIpcConnection({
           }
         } finally {
           standardHeartbeatsManager.stopHeartbeat();
+          resourceCatalog.clearCurrentFileContext();
 
           _execution = undefined;
           _isRunning = false;

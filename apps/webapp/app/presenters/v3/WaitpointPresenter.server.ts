@@ -1,5 +1,5 @@
 import { isWaitpointOutputTimeout, prettyPrintPacket } from "@trigger.dev/core/v3";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import { logger } from "~/services/logger.server";
 import { BasePresenter } from "./basePresenter.server";
@@ -79,7 +79,8 @@ export class WaitpointPresenter extends BasePresenter {
     const connectedRuns: NextRunListItem[] = [];
 
     if (connectedRunIds.length > 0) {
-      const runPresenter = new NextRunListPresenter(this._prisma, clickhouseClient);
+      const clickhouse = await clickhouseFactory.getClickhouseForOrganization(waitpoint.environment.organizationId, "standard");
+      const runPresenter = new NextRunListPresenter(this._prisma, clickhouse);
       const { runs } = await runPresenter.call(
         waitpoint.environment.organizationId,
         environmentId,

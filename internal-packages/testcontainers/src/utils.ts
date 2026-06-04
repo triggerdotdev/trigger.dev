@@ -7,7 +7,7 @@ import path from "path";
 import { isDebug } from "std-env";
 import { GenericContainer, StartedNetwork, StartedTestContainer, Wait } from "testcontainers";
 import { x } from "tinyexec";
-import type { TaskContext } from "vitest";
+import type { TestContext } from "vitest";
 import { ClickHouseContainer, runClickhouseMigrations } from "./clickhouse";
 import { MinIOContainer } from "./minio";
 import { getContainerMetadata, getTaskMetadata, logCleanup, logSetup } from "./logs";
@@ -209,7 +209,7 @@ export async function withContainerSetup<T>({
   setup,
 }: {
   name: string;
-  task: TaskContext["task"];
+  task: TestContext["task"];
   setup: Promise<T extends { container: StartedTestContainer } ? T : never>;
 }): Promise<T & { metadata: Record<string, unknown> }> {
   const testName = task.name;
@@ -236,7 +236,7 @@ export async function useContainer<TContainer extends StartedTestContainer>(
     container,
     task,
     use,
-  }: { container: TContainer; task: TaskContext["task"]; use: () => Promise<void> }
+  }: { container: TContainer; task: TestContext["task"]; use: () => Promise<void> }
 ) {
   const metadata = {
     ...getTaskMetadata(task),

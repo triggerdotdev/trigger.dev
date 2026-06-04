@@ -33,6 +33,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
+import { slimSubmitMessageForWire } from "./ai-shared.js";
 
 const DEFAULT_BASE_URL = "https://api.trigger.dev";
 const DEFAULT_STREAM_TIMEOUT_SECONDS = 120;
@@ -82,6 +83,19 @@ function isAuthError(error: unknown): boolean {
   if (error === null || typeof error !== "object") return false;
   const e = error as { name?: string; status?: number };
   return e.name === "TriggerApiError" && (e.status === 401 || e.status === 403);
+}
+
+/**
+ * Detect a 404 from a session-PAT-authed call — i.e. the session doesn't
+ * exist in the current environment. Happens when hydrated session state
+ * (the `sessions` option / a customer's persisted record) was created in a
+ * different trigger environment, or predates the upgrade to the sessions
+ * model, so there's no real Session row behind the cached PAT.
+ */
+function isSessionNotFoundError(error: unknown): boolean {
+  if (error === null || typeof error !== "object") return false;
+  const e = error as { name?: string; status?: number };
+  return e.name === "TriggerApiError" && e.status === 404;
 }
 
 /**
@@ -572,10 +586,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     // Slim wire — at most ONE message per record. The agent rebuilds prior
     // history from its durable S3 snapshot + session.out replay at run boot
-    // (or `hydrateMessages`, if registered). See plan vivid-humming-bonbon.
+    // (or `hydrateMessages`, if registered).
     //
     //   - "submit-message": ship the latest message (new user message OR a
     //     tool-approval-responded assistant message). Throw if absent.
+    //     Assistant messages with already-resolved tool parts are slimmed
+    //     to just their resolution payload — reasoning blobs, prior text,
+    //     and tool `input` stay on the agent side (rebuilt from snapshot
+    //     or `hydrateMessages`). Keeps continuation payloads under the
+    //     `.in/append` cap on reasoning-heavy turns.
     //   - "regenerate-message": omit `message`; the agent slices its own
     //     history (drops the trailing assistant) and re-runs.
     if (trigger === "submit-message" && messages.length === 0) {
@@ -585,7 +604,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     }
     const wirePayload: ChatTaskWirePayload = {
       ...((body as Record<string, unknown>) ?? {}),
-      ...(trigger === "submit-message" ? { message: messages.at(-1) } : {}),
+      ...(trigger === "submit-message"
+        ? { message: slimSubmitMessageForWire(messages.at(-1)) }
+        : {}),
       chatId,
       trigger,
       messageId,
@@ -1091,17 +1112,66 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state: ChatSessionState,
     op: (token: string) => Promise<void>
   ): Promise<void> {
+    // 1) Try with the current PAT.
     try {
       await op(state.publicAccessToken);
       return;
     } catch (err) {
+      if (isSessionNotFoundError(err)) {
+        // The cached PAT authenticated but the session doesn't exist here —
+        // recreate it and retry.
+        await this.recreateSession(chatId, state);
+        await op(state.publicAccessToken);
+        return;
+      }
       if (!isAuthError(err)) throw err;
     }
 
+    // 2) Auth error — refresh the PAT and retry. (A cross-environment cached
+    //    PAT fails auth here because it was signed by another env's keys.)
     const fresh = await this.resolveAccessToken({ chatId });
     state.publicAccessToken = fresh;
     this.notifySessionChange(chatId, state);
-    await op(fresh);
+    try {
+      await op(fresh);
+      return;
+    } catch (err) {
+      if (!isSessionNotFoundError(err)) throw err;
+    }
+
+    // 3) PAT is now valid but the session still 404s — the hydrated session
+    //    state is stale (created in a different environment, or before the
+    //    sessions upgrade). Recreate the session and retry once.
+    await this.recreateSession(chatId, state);
+    await op(state.publicAccessToken);
+  }
+
+  /**
+   * Repair a stale/phantom hydrated session. The cached state pointed at a
+   * session that doesn't exist in the current environment (404) — typically
+   * because it was persisted against a different trigger environment, or
+   * predates the upgrade to the sessions model. Recreate the session via
+   * `startSession` and overwrite the cached state **in place** so callers
+   * holding a reference (e.g. `sendMessages` before it opens the SSE) pick
+   * up the new PAT. The stale `lastEventId` resume cursor is dropped — it
+   * pointed at a different environment's stream.
+   */
+  private async recreateSession(chatId: string, state: ChatSessionState): Promise<void> {
+    if (!this.resolveStartSession) {
+      throw new Error(
+        "TriggerChatTransport: session not found and no `startSession` configured to recreate it. The stored session state for this chat may be stale (e.g. created in a different environment) — provide `startSession` or clear the stored session so a fresh one can be created."
+      );
+    }
+    const { publicAccessToken } = await this.resolveStartSession({
+      taskId: this.taskId,
+      chatId,
+      clientData: (this.defaultMetadata ?? {}) as Record<string, unknown>,
+    });
+    state.publicAccessToken = publicAccessToken;
+    state.lastEventId = undefined;
+    state.isStreaming = false;
+    this.sessions.set(chatId, state);
+    this.notifySessionChange(chatId, state);
   }
 
   /**

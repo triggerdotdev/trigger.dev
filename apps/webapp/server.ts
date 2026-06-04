@@ -19,6 +19,10 @@ const ENABLE_CLUSTER = process.env.ENABLE_CLUSTER === "1";
 const cpuCount = os.availableParallelism();
 const WORKERS =
   Number.parseInt(process.env.WEB_CONCURRENCY || process.env.CLUSTER_WORKERS || "", 10) || cpuCount;
+// Must be greater than the upstream load balancer's idle timeout to avoid the
+// LB pipelining a request onto a connection Node has already closed (→ 502).
+const HTTP_KEEPALIVE_TIMEOUT_MS =
+  Number.parseInt(process.env.HTTP_KEEPALIVE_TIMEOUT_MS || "", 10) || 65 * 1000;
 
 function forkWorkers() {
   for (let i = 0; i < WORKERS; i++) {
@@ -104,7 +108,16 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
   // more aggressive with this caching.
   app.use(express.static("public", { maxAge: "1h" }));
 
-  app.use(morgan("tiny"));
+  // On high-volume machine-ingest services (e.g. otel) the per-request access
+  // log dominates log volume. HTTP_ACCESS_LOG_DISABLED suppresses successful
+  // (2xx) access logs; non-2xx responses are always logged so errors stay visible.
+  const suppressSuccessfulAccessLogs = process.env.HTTP_ACCESS_LOG_DISABLED === "1";
+  app.use(
+    morgan("tiny", {
+      skip: (_req, res) =>
+        suppressSuccessfulAccessLogs && res.statusCode >= 200 && res.statusCode < 300,
+    })
+  );
 
   process.title = ENABLE_CLUSTER
     ? `node webapp-worker-${cluster.isWorker ? cluster.worker?.id : "solo"}`
@@ -122,6 +135,8 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
     const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
     const engineRateLimiter: RateLimitMiddleware = build.entry.module.engineRateLimiter;
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
+    const tenantContextMiddleware: import("express").RequestHandler =
+      build.entry.module.tenantContextMiddleware;
 
     app.use((req, res, next) => {
       // helpful headers:
@@ -171,6 +186,8 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
       app.use(apiRateLimiter);
       app.use(engineRateLimiter);
 
+      app.use(tenantContextMiddleware);
+
       app.all(
         "*",
         // @ts-ignore
@@ -200,7 +217,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
       }
     });
 
-    server.keepAliveTimeout = 65 * 1000;
+    server.keepAliveTimeout = HTTP_KEEPALIVE_TIMEOUT_MS;
     // Mitigate against https://github.com/triggerdotdev/trigger.dev/security/dependabot/128
     // by not allowing 2000+ headers to be sent and causing a DoS
     // headers will instead be limited by the maxHeaderSize

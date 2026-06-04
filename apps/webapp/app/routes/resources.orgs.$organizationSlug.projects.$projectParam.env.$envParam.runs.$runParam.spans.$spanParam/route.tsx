@@ -120,6 +120,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   try {
     const result = await presenter.call({
       projectSlug: projectParam,
+      envSlug: envParam,
       spanId: spanParam,
       runFriendlyId: runParam,
       userId,
@@ -1027,6 +1028,10 @@ function RunBody({
                       Admin only
                     </Paragraph>
                     <Property.Item>
+                      <Property.Label>Buffered</Property.Label>
+                      <Property.Value>{run.isBuffered ? "Yes" : "No"}</Property.Value>
+                    </Property.Item>
+                    <Property.Item>
                       <Property.Label>Worker queue</Property.Label>
                       <Property.Value>{run.workerQueue}</Property.Value>
                     </Property.Item>
@@ -1101,7 +1106,7 @@ function RunBody({
               {run.isCached ? "Jump to original run" : "Focus on run"}
             </LinkButton>
           )}
-          <AdminDebugRun friendlyId={run.friendlyId} />
+          {!run.isBuffered && <AdminDebugRun friendlyId={run.friendlyId} />}
         </div>
         <div className="flex items-center">
           {run.logsDeletedAt === null ? (

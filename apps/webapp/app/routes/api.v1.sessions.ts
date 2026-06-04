@@ -10,13 +10,14 @@ import {
 import { SessionId } from "@trigger.dev/core/v3/isomorphic";
 import type { Prisma, Session } from "@trigger.dev/database";
 import { $replica, prisma, type PrismaClient } from "~/db.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
 import { mintSessionToken } from "~/services/realtime/mintSessionToken.server";
 import {
   ensureRunForSession,
   type SessionTriggerConfig,
 } from "~/services/realtime/sessionRunManager.server";
+import { chatSnapshotStoragePathForSession } from "~/services/realtime/chatSnapshot.server";
 import { serializeSession } from "~/services/realtime/sessions.server";
 import { SessionsRepository } from "~/services/sessionsRepository/sessionsRepository.server";
 import {
@@ -57,8 +58,12 @@ export const loader = createLoaderApiRoute(
     findResource: async () => 1,
   },
   async ({ searchParams, authentication }) => {
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      authentication.environment.organizationId,
+      "standard"
+    );
     const repository = new SessionsRepository({
-      clickhouse: clickhouseClient,
+      clickhouse,
       prisma: $replica as PrismaClient,
     });
 
@@ -181,6 +186,7 @@ const { action } = createActionApiRoute(
             environmentType: authentication.environment.type,
             organizationId: authentication.environment.organizationId,
             streamBasinName: authentication.environment.organization.streamBasinName,
+            chatSnapshotStoragePath: chatSnapshotStoragePathForSession(friendlyId),
           },
           update: { triggerConfig: triggerConfigJson },
         });
@@ -201,6 +207,7 @@ const { action } = createActionApiRoute(
             environmentType: authentication.environment.type,
             organizationId: authentication.environment.organizationId,
             streamBasinName: authentication.environment.organization.streamBasinName,
+            chatSnapshotStoragePath: chatSnapshotStoragePathForSession(friendlyId),
           },
         });
       }

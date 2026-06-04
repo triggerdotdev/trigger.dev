@@ -830,6 +830,11 @@ model Session {
   /// (OSS, or pre-backfill); reads fall back to the global basin.
   streamBasinName String?
 
+  /// Storage URI (with protocol prefix) for this session's chat.agent
+  /// snapshot blob. Set on first snapshot write. Null = pre-column session,
+  /// fall back to computed default path.
+  chatSnapshotStoragePath String?
+
   runs SessionRun[]
 
   /// Idempotency: `(env, externalId)` uniquely identifies a session.
@@ -1079,14 +1084,11 @@ model TaskRun {
   // Run page inspector
   @@index([spanId])
   @@index([parentSpanId])
-  // Schedule list page
-  @@index([scheduleId, createdAt(sort: Desc)])
   // Finding runs in a batch
   @@index([runTags(ops: ArrayOps)], type: Gin)
   @@index([runtimeEnvironmentId, batchId])
   @@index([runtimeEnvironmentId, createdAt(sort: Desc)])
   @@index([createdAt], type: Brin)
-  @@index([status, runtimeEnvironmentId, createdAt, id(sort: Desc)])
 }
 
 model TaskRunTemplate {
@@ -2020,6 +2022,7 @@ model EnvironmentVariableValue {
   lastUpdatedBy Json?
 
   @@unique([variableId, environmentId])
+  @@index([environmentId])
 }
 
 model Checkpoint {
@@ -2906,6 +2909,8 @@ model LlmModel {
   capabilities    String[] @default([]) @map("capabilities")
   isHidden        Boolean  @default(false) @map("is_hidden")
   baseModelName   String?  @map("base_model_name")
+  // "tokens", "images", "characters", "minutes", "requests", "free", "not_findable"; null until researched
+  pricingUnit     String?  @map("pricing_unit")
 
   pricingTiers LlmPricingTier[]
   prices       LlmPrice[]
@@ -3147,4 +3152,25 @@ model TaskIdentifier {
 
   @@unique([runtimeEnvironmentId, slug])
   @@index([runtimeEnvironmentId, isInLatestDeployment])
+}
+
+enum DataStoreKind {
+  CLICKHOUSE
+}
+
+/// Defines org-scoped data store overrides (e.g. dedicated ClickHouse for HIPAA orgs).
+/// Multiple organizations can share a single data store row via organizationIds.
+model OrganizationDataStore {
+  id              String        @id @default(cuid())
+  /// Human-readable unique key (e.g. "hipaa-clickhouse-us-east")
+  key             String        @unique
+  /// Organization IDs that use this data store
+  organizationIds String[]
+  kind            DataStoreKind
+  /// Versioned config JSON. Structure is discriminated by the top-level `version` field.
+  config          Json
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([kind])
 }

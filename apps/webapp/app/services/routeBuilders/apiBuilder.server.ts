@@ -19,6 +19,10 @@ import { API_VERSIONS, getApiVersion } from "~/api/versions";
 import { WORKER_HEADERS } from "@trigger.dev/core/v3/runEngineWorker";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { EngineServiceValidationError } from "@internal/run-engine";
+import {
+  tenantContext,
+  tenantContextFromAuthEnvironment,
+} from "~/services/tenantContext.server";
 
 // Client aborts and service-level validation errors aren't bugs — they're
 // expected at API boundaries. Log them at `warn` so they stay in stdout
@@ -357,15 +361,19 @@ export function createLoaderApiRoute<
 
       const apiVersion = getApiVersion(request);
 
-      const result = await handler({
-        params: parsedParams,
-        searchParams: parsedSearchParams,
-        headers: parsedHeaders,
-        authentication: authenticationResult,
-        request,
-        resource,
-        apiVersion,
-      });
+      const result = await tenantContext.run(
+        tenantContextFromAuthEnvironment(authenticationResult.environment),
+        () =>
+          handler({
+            params: parsedParams,
+            searchParams: parsedSearchParams,
+            headers: parsedHeaders,
+            authentication: authenticationResult,
+            request,
+            resource,
+            apiVersion,
+          })
+      );
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
       try {
@@ -586,6 +594,11 @@ export function createLoaderPATApiRoute<
         }
       }
 
+      // PAT auth carries `userId` but no environment — enrich the scope
+      // the Express middleware established with the authenticated user so
+      // Sentry events from this handler get user-level attribution.
+      tenantContext.enrich({ userId: authenticationResult.userId });
+
       const result = await handler({
         params: parsedParams,
         searchParams: parsedSearchParams,
@@ -764,7 +777,11 @@ export function createActionApiRoute<
         const contentLength = request.headers.get("content-length");
 
         if (!contentLength || parseInt(contentLength) > maxContentLength) {
-          return json({ error: "Request body too large" }, { status: 413 });
+          return await wrapResponse(
+            request,
+            json({ error: "Request body too large" }, { status: 413 }),
+            corsStrategy !== "none"
+          );
         }
       }
 
@@ -903,15 +920,19 @@ export function createActionApiRoute<
         );
       }
 
-      const result = await handler({
-        params: parsedParams,
-        searchParams: parsedSearchParams,
-        headers: parsedHeaders,
-        body: parsedBody,
-        authentication: authenticationResult,
-        request,
-        resource,
-      });
+      const result = await tenantContext.run(
+        tenantContextFromAuthEnvironment(authenticationResult.environment),
+        () =>
+          handler({
+            params: parsedParams,
+            searchParams: parsedSearchParams,
+            headers: parsedHeaders,
+            body: parsedBody,
+            authentication: authenticationResult,
+            request,
+            resource,
+          })
+      );
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
       try {
@@ -1156,14 +1177,18 @@ export function createMultiMethodApiRoute<
       }
 
       // Dispatch to method handler
-      const result = await methodConfig.handler({
-        params: parsedParams,
-        searchParams: parsedSearchParams,
-        headers: parsedHeaders,
-        body: parsedBody,
-        authentication: authenticationResult,
-        request,
-      });
+      const result = await tenantContext.run(
+        tenantContextFromAuthEnvironment(authenticationResult.environment),
+        () =>
+          methodConfig.handler({
+            params: parsedParams,
+            searchParams: parsedSearchParams,
+            headers: parsedHeaders,
+            body: parsedBody,
+            authentication: authenticationResult,
+            request,
+          })
+      );
       return await wrapResponse(request, result, corsStrategy !== "none");
     } catch (error) {
       try {

@@ -27,12 +27,18 @@ const ParamsSchema = z.object({
 // POST: server-side append of a single record to a session channel. Mirrors
 // the existing /realtime/v1/streams/:runId/:target/:streamId/append route,
 // scoped to a Session primitive.
-// S2 enforces a 1 MiB per-record limit (metered as
-// `8 + 2*H + Σ(header name+value) + body`). We cap the raw HTTP body at
-// 512 KiB so the JSON wrapper (`{"data":"...","id":"..."}`), string
-// escaping, and any future per-record header additions all stay comfortably
-// below S2's ceiling. See https://s2.dev/docs/limits.
-const MAX_APPEND_BODY_BYTES = 1024 * 512;
+//
+// The HTTP body cap here is just a DoS pre-guard — set generously at
+// 1 MiB so we don't buffer arbitrarily large inputs before we can
+// compute the wrapped size. The actual S2 per-record limit (verified
+// empirically against cloud S2) is enforced precisely inside
+// `S2RealtimeStreams.#appendPartByName` — it throws
+// `S2RecordTooLargeError` (a `ServiceValidationError` with status
+// 413) when the metered record size would exceed S2's 1 MiB ceiling
+// after JSON wrapping. That lets legitimate bodies up to ~1023 KiB
+// raw through (ASCII or low-escape content) while still rejecting
+// pathological all-quote content that would double on wrap.
+const MAX_APPEND_BODY_BYTES = 1024 * 1024;
 
 const { action, loader } = createActionApiRoute(
   {

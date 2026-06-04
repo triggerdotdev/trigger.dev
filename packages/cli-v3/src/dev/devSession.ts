@@ -9,7 +9,6 @@ import {
   logBuildFailure,
   logBuildWarnings,
 } from "../build/bundle.js";
-import { bundleSkills } from "../build/bundleSkills.js";
 import {
   createBuildContext,
   notifyExtensionOnBuildComplete,
@@ -119,25 +118,12 @@ export async function startDevSession({
       bundle.metafile
     );
 
-    // Built-in skill bundling — copies registered skill folders into
-    // `.trigger/skills/{id}/` so `skill.local()` works at dev runtime.
-    try {
-      const buildManifestPath = join(
-        workerDir?.path ?? destination.path,
-        "build.json"
-      );
-      await writeJSONFile(buildManifestPath, buildManifest);
-      const skillsResult = await bundleSkills({
-        buildManifest,
-        buildManifestPath,
-        workingDir: rawConfig.workingDir,
-        env: process.env,
-        logger: buildContext.logger,
-      });
-      buildManifest = skillsResult.buildManifest;
-    } catch (err) {
-      logger.warn("Skill bundling failed during dev rebuild", err);
-    }
+    // Skill folder copying happens after the main worker indexer runs in
+    // `BackgroundWorker.initialize` — that pass already discovers skills
+    // via the resource catalog and reports them on `workerManifest.skills`,
+    // so we don't need a duplicate indexer here (which historically ran
+    // with a bare `process.env` and silently dropped skills on projects
+    // whose task files read CLI-injected vars at module top level).
 
     buildManifest = await notifyExtensionOnBuildComplete(buildContext, buildManifest);
 

@@ -57,6 +57,7 @@ import {
   filterableTaskRunStatuses,
   TaskRunStatusCombo,
 } from "./TaskRunStatus";
+import { RunStatusCellTooltip } from "./RunStatusCellTooltip";
 import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
@@ -76,6 +77,7 @@ type RunsTableProps = {
   disableAdjacentRows?: boolean;
   additionalTableState?: Record<string, string>;
   showTopBorder?: boolean;
+  childrenStatusesBasePath?: string;
 };
 
 export function TaskRunsTable({
@@ -90,6 +92,7 @@ export function TaskRunsTable({
   variant = "dimmed",
   additionalTableState,
   showTopBorder = true,
+  childrenStatusesBasePath,
 }: RunsTableProps) {
   const regions = useRegions();
   const regionByMasterQueue = new Map(regions.map((r) => [r.masterQueue, r] as const));
@@ -374,11 +377,20 @@ export function TaskRunsTable({
                 </TableCell>
                 <TableCell to={path}>{run.version ?? "–"}</TableCell>
                 <TableCell to={path}>
-                  <SimpleTooltip
-                    content={descriptionForTaskRunStatus(run.status)}
-                    disableHoverableContent
-                    button={<TaskRunStatusCombo status={run.status} />}
-                  />
+                  {run.rootTaskRunId === null && childrenStatusesBasePath ? (
+                    <RunStatusCellTooltip
+                      friendlyId={run.friendlyId}
+                      status={run.status}
+                      hasFinished={run.hasFinished}
+                      childrenStatusesBasePath={childrenStatusesBasePath}
+                    />
+                  ) : (
+                    <SimpleTooltip
+                      content={descriptionForTaskRunStatus(run.status)}
+                      disableHoverableContent
+                      button={<TaskRunStatusCombo status={run.status} />}
+                    />
+                  )}
                 </TableCell>
                 <TableCell to={path}>
                   {run.startedAt ? <DateTime date={run.startedAt} /> : "–"}

@@ -11,6 +11,7 @@ export * from "./runtime-api.js";
 export * from "./task-context-api.js";
 export * from "./trace-context-api.js";
 export * from "./apiClientManager-api.js";
+export * from "./sdkScope-api.js";
 export * from "./usage-api.js";
 export * from "./run-metadata-api.js";
 export * from "./wait-until-api.js";

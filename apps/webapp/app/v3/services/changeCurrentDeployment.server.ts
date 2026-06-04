@@ -175,7 +175,17 @@ export class ChangeCurrentDeploymentService extends BaseService {
       });
     }
 
-    await ExecuteTasksWaitingForDeployService.enqueue(deployment.workerId);
+    // Only V1 engine workers need the WAITING_FOR_DEPLOY drain — V2 runs sit
+    // in PENDING_VERSION and are handled out of band, so enqueuing here for V2
+    // just produces empty scans of the TaskRun status index.
+    const worker = await this._prisma.backgroundWorker.findFirst({
+      where: { id: deployment.workerId },
+      select: { engine: true },
+    });
+
+    if (worker?.engine === "V1") {
+      await ExecuteTasksWaitingForDeployService.enqueue(deployment.workerId);
+    }
   }
 
   async #syncSchedulesForDeployment(deployment: WorkerDeployment) {

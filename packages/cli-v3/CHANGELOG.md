@@ -1,5 +1,66 @@
 # trigger.dev
 
+## 4.5.0-rc.4
+
+### Patch Changes
+
+- Bump `@s2-dev/streamstore` to `0.22.10` to fix a `TASK_RUN_UNCAUGHT_EXCEPTION` ("Invalid state: Unable to enqueue") when a `chat.agent` turn is aborted mid-stream. ([#3792](https://github.com/triggerdotdev/trigger.dev/pull/3792))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.4`
+  - `@trigger.dev/build@4.5.0-rc.4`
+  - `@trigger.dev/schema-to-json@4.5.0-rc.4`
+
+## 4.5.0-rc.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.3`
+  - `@trigger.dev/build@4.5.0-rc.3`
+  - `@trigger.dev/schema-to-json@4.5.0-rc.3`
+
+## 4.5.0-rc.2
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/build@4.5.0-rc.2`
+  - `@trigger.dev/core@4.5.0-rc.2`
+  - `@trigger.dev/schema-to-json@4.5.0-rc.2`
+
+## 4.5.0-rc.1
+
+### Patch Changes
+
+- Fix `chat.agent` skills silently missing in `trigger dev` for projects whose task files read `process.env` at module top level (e.g. a third-party SDK client initialized at import). Skill folders now bundle into `.trigger/skills/` reliably regardless of which env vars are set when the CLI launches. ([#3690](https://github.com/triggerdotdev/trigger.dev/pull/3690))
+- Fix `COULD_NOT_FIND_EXECUTOR` when a task's definition is loaded via `await import(...)` from inside another task's `run()`. The runtime workers now register such tasks with a sentinel file context, and the catalog logs a one-time warning per task id. ([#3688](https://github.com/triggerdotdev/trigger.dev/pull/3688))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.1`
+  - `@trigger.dev/build@4.5.0-rc.1`
+  - `@trigger.dev/schema-to-json@4.5.0-rc.1`
+
+## 4.5.0-rc.0
+
+### Patch Changes
+
+- Add Agent Skills for `chat.agent`. Drop a folder with a `SKILL.md` and any helper scripts/references next to your task code, register it with `skills.define({ id, path })`, and the CLI bundles it into the deploy image automatically — no `trigger.config.ts` changes. The agent gets a one-line summary in its system prompt and discovers full instructions on demand via `loadSkill`, with `bash` and `readFile` tools scoped per-skill (path-traversal guards, output caps, abort-signal propagation). ([#3543](https://github.com/triggerdotdev/trigger.dev/pull/3543))
+
+  ```ts
+  const pdfSkill = skills.define({ id: "pdf-extract", path: "./skills/pdf-extract" });
+
+  chat.skills.set([await pdfSkill.local()]);
+  ```
+
+  Built on the [AI SDK cookbook pattern](https://ai-sdk.dev/cookbook/guides/agent-skills) — portable across providers. SDK + CLI only for now; dashboard-editable `SKILL.md` text is on the roadmap.
+
+- Add `TRIGGER_BUILD_SKIP_REWRITE_TIMESTAMP=1` escape hatch for local self-hosted builds whose buildx driver doesn't support `rewrite-timestamp` alongside push (e.g. orbstack's default `docker` driver). ([#3618](https://github.com/triggerdotdev/trigger.dev/pull/3618))
+- The CLI MCP server's agent-chat tools (`start_agent_chat`, `send_agent_message`, `close_agent_chat`) now run on the new Sessions primitive, so AI assistants driving a `chat.agent` get the same idempotent-by-`chatId`, durable-across-runs behavior the browser transport gets. Required PAT scopes go from `write:inputStreams` to `read:sessions` + `write:sessions`. ([#3546](https://github.com/triggerdotdev/trigger.dev/pull/3546))
+- MCP `list_runs` tool: add a `region` filter input and surface each run's executing region in the formatted summary. ([#3612](https://github.com/triggerdotdev/trigger.dev/pull/3612))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.0`
+  - `@trigger.dev/build@4.5.0-rc.0`
+  - `@trigger.dev/schema-to-json@4.5.0-rc.0`
+
 ## 4.4.6
 
 ### Patch Changes
