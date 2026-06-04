@@ -1,8 +1,8 @@
 import { type Span } from "@opentelemetry/api";
-import { chatSnapshotKeySuffix } from "@trigger.dev/core/v3";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { env } from "~/env.server";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
+import { chatSnapshotStorageKey } from "~/services/realtime/chatSnapshot.server";
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
 import { logger } from "~/services/logger.server";
 import { generatePresignedUrl } from "~/v3/objectStore.server";
@@ -132,10 +132,11 @@ export class SessionPresenter {
     // and the dashboard falls back to seq=0 SSE (which, post-trim,
     // shows only the most recent turn — accepted, those customers
     // have their own DB-backed dashboards).
-    // The agent writes snapshots keyed on the session's friendlyId (the
-    // `session_*` form), which matches what the SDK's `chat.agent` payload
-    // carries as `sessionId`. Use the same key shape here so the dashboard
-    // hits the same S3 object.
+    // Resolve the snapshot key via the SAME helper the SDK write + boot read
+    // use (`chatSnapshotStorageKey`), so the dashboard GET hits the exact
+    // object (and object store) the snapshot was written to. Recomputing a
+    // bare key here was the bug: an unqualified key reads the base store while
+    // the write applied OBJECT_STORE_DEFAULT_PROTOCOL, so they could diverge.
     let snapshotPresignedUrl: string | undefined;
     try {
       const signed = await startActiveSpan(
@@ -144,7 +145,7 @@ export class SessionPresenter {
           generatePresignedUrl(
             projectExternalRef,
             environmentSlug,
-            chatSnapshotKeySuffix(session.friendlyId),
+            chatSnapshotStorageKey(session),
             "GET"
           )
       );

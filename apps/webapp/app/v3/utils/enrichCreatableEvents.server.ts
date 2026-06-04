@@ -157,12 +157,10 @@ function enrichLlmMetrics(event: CreateEventInput): void {
     }
   }
 
-  // Extract new performance/behavioral fields
-  const finishReason = typeof props["ai.response.finishReason"] === "string"
-    ? props["ai.response.finishReason"]
-    : typeof props["gen_ai.response.finish_reasons"] === "string"
-      ? props["gen_ai.response.finish_reasons"]
-      : "";
+  // Extract new performance/behavioral fields.
+  // v6 emits ai.response.finishReason (plain string); v7 (@ai-sdk/otel) emits
+  // gen_ai.response.finish_reasons as a JSON array string (e.g. `["stop"]`).
+  const finishReason = readFinishReason(props);
   const operationId = typeof props["ai.operationId"] === "string"
     ? props["ai.operationId"]
     : typeof props["gen_ai.operation.name"] === "string"
@@ -181,7 +179,12 @@ function enrichLlmMetrics(event: CreateEventInput): void {
 
   // Set _llmMetrics side-channel for dual-write to llm_metrics_v1
   const llmMetrics: LlmMetricsData = {
-    genAiSystem: typeof props["gen_ai.system"] === "string" ? props["gen_ai.system"] : "unknown",
+    genAiSystem:
+      typeof props["gen_ai.system"] === "string"
+        ? props["gen_ai.system"]
+        : typeof props["gen_ai.provider.name"] === "string"
+          ? props["gen_ai.provider.name"]
+          : "unknown",
     requestModel: typeof props["gen_ai.request.model"] === "string" ? props["gen_ai.request.model"] : responseModel,
     responseModel,
     baseResponseModel: modelCatalog[responseModel]?.baseModelName ?? responseModel,
@@ -224,8 +227,11 @@ function extractUsageDetails(props: Record<string, unknown>): Record<string, num
     "gen_ai.usage.total_tokens": "total",
     "gen_ai.usage.cache_read_input_tokens": "input_cached_tokens",
     "gen_ai.usage.input_tokens_cache_read": "input_cached_tokens",
+    // AI SDK 7 (@ai-sdk/otel) nests cache token counts: gen_ai.usage.cache_read.input_tokens
+    "gen_ai.usage.cache_read.input_tokens": "input_cached_tokens",
     "gen_ai.usage.cache_creation_input_tokens": "cache_creation_input_tokens",
     "gen_ai.usage.input_tokens_cache_write": "cache_creation_input_tokens",
+    "gen_ai.usage.cache_creation.input_tokens": "cache_creation_input_tokens",
     "gen_ai.usage.reasoning_tokens": "reasoning_tokens",
   };
 
@@ -242,6 +248,35 @@ function extractUsageDetails(props: Record<string, unknown>): Record<string, num
   return details;
 }
 
+/**
+ * Resolve the finish reason across AI SDK majors. v6 emits
+ * `ai.response.finishReason` as a plain string; v7 (@ai-sdk/otel) emits
+ * `gen_ai.response.finish_reasons` as a JSON array string (e.g. `["stop"]`).
+ */
+function readFinishReason(props: Record<string, unknown>): string {
+  const v6 = props["ai.response.finishReason"];
+  if (typeof v6 === "string" && v6) return v6;
+
+  const v7 = props["gen_ai.response.finish_reasons"];
+  if (typeof v7 === "string" && v7) {
+    const trimmed = v7.trim();
+    if (trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          const first = parsed.find((r) => typeof r === "string");
+          if (typeof first === "string") return first;
+        }
+      } catch {
+        // fall through to the raw value
+      }
+    }
+    return v7;
+  }
+
+  return "";
+}
+
 function enrichStyle(event: CreateEventInput) {
   const baseStyle = event.style ?? {};
   const props = event.properties;
@@ -250,7 +285,7 @@ function enrichStyle(event: CreateEventInput) {
     return baseStyle;
   }
 
-  const system = props["gen_ai.system"];
+  const system = props["gen_ai.system"] ?? props["gen_ai.provider.name"];
   const modelId = props["gen_ai.request.model"] ?? props["ai.model.id"];
 
   const provider = resolveAiProvider(
