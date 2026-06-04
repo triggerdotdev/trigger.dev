@@ -1201,7 +1201,7 @@ const EnvironmentSchema = z
     TRIGGER_MOLLIFIER_MUTATE_SAFETY_NET_MS: z.coerce.number().int().positive().default(2_000),
     TRIGGER_MOLLIFIER_MUTATE_POLL_STEP_MS: z.coerce.number().int().positive().default(20),
     TRIGGER_MOLLIFIER_MUTATE_MAX_POLL_STEP_MS: z.coerce.number().int().positive().default(250),
-    TRIGGER_MOLLIFIER_MUTATE_BACKOFF_FACTOR: z.coerce.number().positive().default(1.7),
+    TRIGGER_MOLLIFIER_MUTATE_BACKOFF_FACTOR: z.coerce.number().gt(1).default(1.7),
 
     // --- Buffered-run metadata CAS retry loop (applyMetadataMutation.server.ts). ---
     // Retry budget for concurrent metadata writers, and the jittered
