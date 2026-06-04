@@ -2,10 +2,10 @@ import {
   type PrismaClientOrTransaction,
   type RuntimeEnvironmentType,
 } from "@trigger.dev/database";
-import { ClickHouse } from "@internal/clickhouse";
+import { type ClickHouse } from "@internal/clickhouse";
 import { z } from "zod";
 import { $replica } from "~/db.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { singleton } from "~/utils/singleton";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 
@@ -33,15 +33,14 @@ export type TasksDashboardResult = {
 };
 
 export class TasksDashboardPresenter {
-  constructor(
-    private readonly clickhouse: ClickHouse,
-    private readonly _replica: PrismaClientOrTransaction
-  ) {}
+  constructor(private readonly _replica: PrismaClientOrTransaction) {}
 
   public async call({
+    organizationId,
     environmentId,
     environmentType,
   }: {
+    organizationId: string;
     environmentId: string;
     environmentType: RuntimeEnvironmentType;
   }): Promise<TasksDashboardResult> {
@@ -69,14 +68,19 @@ export class TasksDashboardPresenter {
       else counts.standard++;
     }
 
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      organizationId,
+      "standard"
+    );
+
     return {
       counts,
-      series: this.#getDailySeries(environmentId),
+      series: this.#getDailySeries(clickhouse, environmentId),
     };
   }
 
-  async #getDailySeries(environmentId: string) {
-    const queryFn = this.clickhouse.reader.query({
+  async #getDailySeries(clickhouse: ClickHouse, environmentId: string) {
+    const queryFn = clickhouse.reader.query({
       name: "tasksDashboardDailySeries",
       query: `SELECT
           task_kind,
@@ -132,5 +136,5 @@ export class TasksDashboardPresenter {
 
 export const tasksDashboardPresenter = singleton(
   "tasksDashboardPresenter",
-  () => new TasksDashboardPresenter(clickhouseClient, $replica)
+  () => new TasksDashboardPresenter($replica)
 );

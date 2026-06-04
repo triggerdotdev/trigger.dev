@@ -49,6 +49,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   const result = await tasksDashboardPresenter.call({
+    organizationId: project.organizationId,
     environmentId: environment.id,
     environmentType: environment.type,
   });

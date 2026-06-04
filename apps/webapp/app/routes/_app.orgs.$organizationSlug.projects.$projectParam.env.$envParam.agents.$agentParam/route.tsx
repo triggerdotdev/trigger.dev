@@ -38,7 +38,7 @@ import {
 } from "~/presenters/v3/AgentDetailPresenter.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { SessionListPresenter } from "~/presenters/v3/SessionListPresenter.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema, v3AgentsPath, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
 
@@ -76,7 +76,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const directionRaw = url.searchParams.get("direction") ?? undefined;
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
 
-  const presenter = new AgentDetailPresenter($replica, clickhouseClient);
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
+
+  const presenter = new AgentDetailPresenter($replica, clickhouse);
   const agent = await presenter.findAgent({
     environmentId: environment.id,
     environmentType: environment.type,
@@ -98,7 +103,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     })
     .catch(() => ({ data: [], statuses: [] } satisfies AgentActivity));
 
-  const runList = new NextRunListPresenter($replica, clickhouseClient)
+  const runList = new NextRunListPresenter($replica, clickhouse)
     .call(project.organizationId, environment.id, {
       userId,
       projectId: project.id,
@@ -111,7 +116,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     })
     .catch(() => null);
 
-  const sessionList = new SessionListPresenter($replica, clickhouseClient)
+  const sessionList = new SessionListPresenter($replica, clickhouse)
     .call(project.organizationId, environment.id, {
       userId,
       projectId: project.id,

@@ -35,7 +35,7 @@ import {
   type TaskActivity,
   type TaskDetail,
 } from "~/presenters/v3/TaskDetailPresenter.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema, v3EnvironmentPath, v3TestTaskPath } from "~/utils/pathBuilder";
 
@@ -70,7 +70,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
   const versions = url.searchParams.getAll("versions").filter((v) => v.length > 0);
 
-  const presenter = new TaskDetailPresenter($replica, clickhouseClient);
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
+
+  const presenter = new TaskDetailPresenter($replica, clickhouse);
   const task = await presenter.findTask({
     environmentId: environment.id,
     environmentType: environment.type,
@@ -91,7 +96,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     })
     .catch(() => ({ data: [], statuses: [] } satisfies TaskActivity));
 
-  const runList = new NextRunListPresenter($replica, clickhouseClient)
+  const runList = new NextRunListPresenter($replica, clickhouse)
     .call(project.organizationId, environment.id, {
       userId,
       projectId: project.id,

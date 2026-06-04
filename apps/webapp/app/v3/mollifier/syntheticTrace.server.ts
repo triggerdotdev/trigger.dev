@@ -1,7 +1,7 @@
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
-import type { SpanSummary } from "~/v3/eventRepository/eventRepository.types";
+import type { SpanOverride, SpanSummary } from "~/v3/eventRepository/eventRepository.types";
 import type { SyntheticRun } from "./readFallback.server";
 
 // Build a single-span trace for a buffered run so the run-detail page
@@ -52,6 +52,13 @@ export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
             duration: n.data.isPartial ? null : n.data.duration,
             offset,
             isRoot: n.id === spanId,
+            // Synthetic traces represent buffered/queued/canceled runs that
+            // haven't executed yet — they can't be agent runs. Keeping this
+            // field present (instead of omitting it) keeps the trace shape
+            // structurally identical to `RunPresenter`'s, which downstream
+            // consumers like the agent-icon check in runs/$runParam/route
+            // require to typecheck against the JsonifyObject union.
+            isAgentRun: false,
           },
         };
       })
@@ -69,8 +76,13 @@ export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
     duration: totalDuration,
     rootStartedAt: tree?.data.startTime,
     startedAt: null,
-    queuedDuration: undefined,
-    overridesBySpanId: undefined,
+    // Typed as `number | undefined` (not the literal `undefined`) so the
+    // field survives `typedjson`'s `JsonifyObject` and stays in the route
+    // loader's serialized trace shape — matches `RunPresenter`'s shape.
+    // Buffered runs have no startedAt yet, so the runtime value stays
+    // undefined.
+    queuedDuration: undefined as number | undefined,
+    overridesBySpanId: {} as Record<string, SpanOverride>,
     linkedRunIdBySpanId: {} as Record<string, string>,
   };
 }

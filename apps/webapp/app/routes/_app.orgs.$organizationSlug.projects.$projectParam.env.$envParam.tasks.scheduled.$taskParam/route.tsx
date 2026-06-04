@@ -48,7 +48,7 @@ import {
   TaskDetailPresenter,
   type TaskDetail,
 } from "~/presenters/v3/TaskDetailPresenter.server";
-import { clickhouseClient } from "~/services/clickhouseInstance.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser } from "~/services/session.server";
 import {
   EnvironmentParamSchema,
@@ -89,7 +89,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const directionRaw = url.searchParams.get("direction") ?? undefined;
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
 
-  const taskPresenter = new TaskDetailPresenter($replica, clickhouseClient);
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
+
+  const taskPresenter = new TaskDetailPresenter($replica, clickhouse);
   const task = await taskPresenter.findTask({
     environmentId: environment.id,
     environmentType: environment.type,
@@ -112,7 +117,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     })
     .catch(() => null);
 
-  const runList = new NextRunListPresenter($replica, clickhouseClient)
+  const runList = new NextRunListPresenter($replica, clickhouse)
     .call(project.organizationId, environment.id, {
       userId,
       projectId: project.id,
