@@ -25,8 +25,6 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
-import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
-import { ClockRotateLeftIcon } from "~/assets/icons/ClockRotateLeftIcon";
 import type { PlaygroundConversation } from "~/presenters/v3/PlaygroundPresenter.server";
 import { DateTime } from "~/components/primitives/DateTime";
 import { cn } from "~/utils/cn";
@@ -463,10 +461,6 @@ function PlaygroundChat() {
                   Copy raw
                 </CopyButton>
               )}
-              <RecentConversationsPopover
-                conversations={recentConversations}
-                actionPath={actionPath}
-              />
               {conversationId && (
                 <Button
                   variant="tertiary/small"
@@ -636,6 +630,9 @@ function PlaygroundChat() {
           messageCount={messages.length}
           isStreaming={isStreaming}
           status={status}
+          recentConversations={recentConversations}
+          currentConversationId={conversationId}
+          actionPath={actionPath}
         />
       </ResizablePanel>
     </ResizablePanelGroup>
@@ -687,6 +684,9 @@ function PlaygroundSidebar({
   messageCount,
   isStreaming,
   status,
+  recentConversations,
+  currentConversationId,
+  actionPath,
 }: {
   clientDataJson: string;
   onClientDataChange: (val: string) => void;
@@ -725,6 +725,9 @@ function PlaygroundSidebar({
   messageCount: number;
   isStreaming: boolean;
   status: string;
+  recentConversations: PlaygroundConversation[];
+  currentConversationId: string | null;
+  actionPath: string;
 }) {
   const regionItems = regions.map((r) => ({
     value: r.name,
@@ -761,6 +764,14 @@ function PlaygroundSidebar({
               className="shrink-0"
             >
               Session
+            </ClientTabsTrigger>
+            <ClientTabsTrigger
+              value="history"
+              variant="underline"
+              layoutId="playground-sidebar-tabs"
+              className="shrink-0"
+            >
+              History
             </ClientTabsTrigger>
           </ClientTabsList>
         </div>
@@ -992,6 +1003,18 @@ function PlaygroundSidebar({
             )}
           </div>
         </ClientTabsContent>
+
+        {/* History tab */}
+        <ClientTabsContent
+          value="history"
+          className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        >
+          <HistoryTabContent
+            conversations={recentConversations}
+            currentConversationId={currentConversationId}
+            actionPath={actionPath}
+          />
+        </ClientTabsContent>
       </ClientTabs>
     </div>
   );
@@ -1104,15 +1127,17 @@ function usePlaygroundPendingMessages({
   return { pending, steer };
 }
 
-function RecentConversationsPopover({
+function HistoryTabContent({
   conversations,
+  currentConversationId,
   actionPath,
 }: {
   conversations: PlaygroundConversation[];
+  currentConversationId: string | null;
   actionPath: string;
 }) {
   const fetcher = useFetcher();
-  const [isOpen, setIsOpen] = useState(false);
+  const navigate = useNavigate();
 
   const deletingId =
     fetcher.state !== "idle" ? (fetcher.formData?.get("deleteConversationId") as string) : null;
@@ -1130,64 +1155,69 @@ function RecentConversationsPopover({
         },
         { method: "POST", action: actionPath }
       );
-      setIsOpen(false);
+
+      // Deleting the active conversation: navigate away from ?conversation=
+      // so the chat panel resets instead of pointing at a now-missing id.
+      if (conv.id === currentConversationId) {
+        navigate(window.location.pathname);
+      }
     },
-    [actionPath, fetcher]
+    [actionPath, currentConversationId, fetcher, navigate]
   );
 
+  if (conversations.length === 0) {
+    return (
+      <div className="p-3">
+        <p className="text-xs text-text-dimmed">
+          No previous conversations yet. Send a message to start one.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="tertiary/small"
-          LeadingIcon={ClockRotateLeftIcon}
-          disabled={conversations.length === 0}
-        >
-          Recent
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="min-w-[320px] p-0" align="end" sideOffset={6}>
-        <div className="max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-          <div className="p-1">
-            {conversations.map((conv) => (
-              <div
-                key={conv.id}
-                className={cn(
-                  "group flex items-center gap-1 rounded-sm px-2 py-2 transition-colors hover:bg-charcoal-900",
-                  deletingId === conv.id && "pointer-events-none opacity-50"
-                )}
+    <ol className="space-y-0.5 p-2">
+      {conversations.map((conv, index) => {
+        const isActive = conv.id === currentConversationId;
+        return (
+          <li key={conv.id}>
+            <div
+              className={cn(
+                "group flex items-center gap-1 rounded-sm px-2 py-1.5 transition-colors hover:bg-charcoal-800",
+                isActive && "bg-charcoal-750 hover:bg-charcoal-750",
+                deletingId === conv.id && "pointer-events-none opacity-50"
+              )}
+            >
+              <span className="w-5 shrink-0 text-right text-[10px] tabular-nums text-text-dimmed">
+                {index + 1}
+              </span>
+              <Link
+                to={`?conversation=${conv.id}`}
+                className="flex min-w-0 flex-1 flex-col items-start gap-0.5 outline-none focus-custom"
               >
-                <Link
-                  to={`?conversation=${conv.id}`}
-                  onClick={() => setIsOpen(false)}
-                  className="flex min-w-0 flex-1 flex-col items-start gap-0.5 outline-none focus-custom"
+                <Paragraph
+                  variant="small/bright"
+                  className={cn("line-clamp-1 text-left", isActive && "text-indigo-400")}
                 >
-                  <Paragraph variant="small/bright" className="line-clamp-1 text-left">
-                    {conv.title}
-                  </Paragraph>
-                  <div className="text-xs text-text-dimmed">
-                    <DateTime date={conv.updatedAt} showTooltip={false} />
-                  </div>
-                </Link>
-                <button
-                  type="button"
-                  onClick={(e) => handleDelete(e, conv)}
-                  className="shrink-0 rounded p-1 text-text-dimmed opacity-0 transition-opacity group-hover:opacity-100 hover:text-error"
-                >
-                  <TrashIcon className="size-3.5" />
-                </button>
-              </div>
-            ))}
-            {conversations.length === 0 && (
-              <div className="px-2 py-3 text-center text-xs text-text-dimmed">
-                No recent conversations
-              </div>
-            )}
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
+                  {conv.title}
+                </Paragraph>
+                <div className="text-[10px] text-text-dimmed">
+                  <DateTime date={conv.updatedAt} showTooltip={false} />
+                </div>
+              </Link>
+              <button
+                type="button"
+                onClick={(e) => handleDelete(e, conv)}
+                aria-label="Delete conversation"
+                className="shrink-0 rounded p-1 text-text-dimmed opacity-0 transition-opacity group-hover:opacity-100 hover:text-error"
+              >
+                <TrashIcon className="size-3.5" />
+              </button>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
