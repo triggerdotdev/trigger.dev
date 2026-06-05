@@ -102,9 +102,14 @@ export class BackpressureMonitor {
       return false;
     }
 
+    // When staleness enforcement is on, an engaged verdict must carry a fresh
+    // timestamp. A missing or stale ts can't be trusted (a dead producer could
+    // otherwise pin the brake forever), so fail open.
     const maxAge = this.opts.maxVerdictAgeMs;
-    if (maxAge !== undefined && verdict.ts !== undefined && Date.now() - verdict.ts > maxAge) {
-      return false;
+    if (maxAge !== undefined) {
+      if (verdict.ts === undefined || Date.now() - verdict.ts > maxAge) {
+        return false;
+      }
     }
 
     return true;

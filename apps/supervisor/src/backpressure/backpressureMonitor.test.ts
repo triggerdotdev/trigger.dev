@@ -246,6 +246,27 @@ describe("BackpressureMonitor", () => {
     monitor.stop();
   });
 
+  it("fails open on an engaged verdict with no timestamp when staleness is enforced", async () => {
+    // A verdict claiming engaged but carrying no ts can't be checked for freshness;
+    // when maxVerdictAgeMs is set we must not trust it (else a dead producer could
+    // pin the brake forever).
+    const { source } = countingSource({ engaged: true }); // no ts
+    const monitor = new BackpressureMonitor({
+      enabled: true,
+      source,
+      refreshIntervalMs: 1000,
+      maxVerdictAgeMs: 15_000,
+    });
+
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(monitor.computeEngaged()).toBe(false);
+    expect(monitor.shouldSkipDequeue()).toBe(false);
+
+    monitor.stop();
+  });
+
   it("in dry-run, the gates are inert but computeEngaged still reflects the real signal", async () => {
     const { source } = countingSource({ engaged: true });
     const monitor = new BackpressureMonitor({
