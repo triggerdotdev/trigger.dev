@@ -78,6 +78,7 @@ class ManagedSupervisor {
       TRIGGER_WORKER_TOKEN,
       MANAGED_WORKER_SECRET,
       COMPUTE_GATEWAY_AUTH_TOKEN,
+      DOCKER_REGISTRY_PASSWORD,
       TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PASSWORD,
       ...envWithoutSecrets
     } = env;
