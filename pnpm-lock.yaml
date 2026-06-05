@@ -1133,13 +1133,13 @@ importers:
       decimal.js:
         specifier: ^10.6.0
         version: 10.6.0
+      prisma:
+        specifier: 6.14.0
+        version: 6.14.0(magicast@0.3.5)(typescript@5.5.4)
     devDependencies:
       '@types/decimal.js':
         specifier: ^7.4.3
         version: 7.4.3
-      prisma:
-        specifier: 6.14.0
-        version: 6.14.0(magicast@0.3.5)(typescript@5.5.4)
       rimraf:
         specifier: 6.0.1
         version: 6.0.1
