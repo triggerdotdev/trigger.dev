@@ -6,6 +6,10 @@
   // file-direct rationale.
   "extends": "./tsconfig.src.json",
   "compilerOptions": {
+    // noEmit-only gate: disable composite/incremental so this pass never writes or
+    // reads a .tsbuildinfo and can't replay stale module resolution across runs.
+    "composite": false,
+    "incremental": false,
     "baseUrl": ".",
     "paths": {
       "ai": ["./node_modules/ai-v7/dist/index.d.ts"]
