@@ -9,7 +9,6 @@ import {
   createElectricContainer,
   createPostgresContainer,
   createRedisContainer,
-  createMinIOContainer,
   postgresUriWithDatabase,
   pushDatabaseSchema,
   useContainer,
@@ -23,7 +22,7 @@ import {
   runClickhouseMigrations,
   truncateClickhouseTables,
 } from "./clickhouse";
-import { StartedMinIOContainer, type MinIOConnectionConfig } from "./minio";
+import { MinIOContainer, StartedMinIOContainer, type MinIOConnectionConfig } from "./minio";
 import { ClickHouseClient, createClient } from "@clickhouse/client";
 
 export { assertNonNullable, createPostgresContainer } from "./utils";
@@ -141,26 +140,32 @@ type PostgresTestContext = {
 // clone, redis = FLUSHALL, clickhouse = TRUNCATE) instead of re-booting. Reset fixtures are `auto`
 // so they run for every test even if it doesn't destructure them.
 
-// Boot postgres once + push the schema into a dedicated template db that nothing else connects to
-// (so CREATE DATABASE ... TEMPLATE never trips on an active session).
-const bootWorkerPostgres = async ({}, use: Use<StartedPostgreSqlContainer>) => {
-  const container = await new PostgreSqlContainer("docker.io/postgres:14")
-    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
-    .start();
-  await pushDatabaseSchema(postgresUriWithDatabase(container.getConnectionUri(), POSTGRES_TEMPLATE_DB));
-  try {
-    await use(container);
-  } finally {
-    await container.stop({ timeout: 0 });
+// Boot postgres ONCE per worker (module singleton, reaped by Ryuk on worker exit) and push the
+// schema into a dedicated template db that nothing else connects to (so CREATE DATABASE ... TEMPLATE
+// never trips on an active session).
+let workerPostgresContainer: Promise<StartedPostgreSqlContainer> | undefined;
+const getWorkerPostgresContainer = () => {
+  if (!workerPostgresContainer) {
+    workerPostgresContainer = (async () => {
+      const container = await new PostgreSqlContainer("docker.io/postgres:14")
+        .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
+        .start();
+      await pushDatabaseSchema(
+        postgresUriWithDatabase(container.getConnectionUri(), POSTGRES_TEMPLATE_DB)
+      );
+      return container;
+    })();
   }
+  return workerPostgresContainer;
 };
 
-// Per test: clone a fresh database from the template (fast filesystem copy) - isolated AND parallel-ready.
-const templateClonePrisma = async (
-  { postgresContainer }: { postgresContainer: StartedPostgreSqlContainer },
-  use: Use<PrismaClient>
-) => {
-  const baseUri = postgresContainer.getConnectionUri();
+// Per test: clone a fresh database from the template (fast filesystem copy), then hand back a view
+// of the shared container whose connection points at the clone. This keeps prisma AND any code that
+// reads postgresContainer.getConnectionUri()/getDatabase() (e.g. logical replication) on the SAME
+// isolated database - and it's parallel-ready (each test owns its db).
+const clonedPostgresContainer = async ({}, use: Use<StartedPostgreSqlContainer>) => {
+  const container = await getWorkerPostgresContainer();
+  const baseUri = container.getConnectionUri();
   const cloneDb = `test_${pgCloneCounter++}`;
 
   const admin = new PrismaClient({
@@ -169,8 +174,25 @@ const templateClonePrisma = async (
   await admin.$executeRawUnsafe(`CREATE DATABASE "${cloneDb}" TEMPLATE "${POSTGRES_TEMPLATE_DB}"`);
   await admin.$disconnect();
 
+  const cloneUri = postgresUriWithDatabase(baseUri, cloneDb);
+  const view = new Proxy(container, {
+    get(target, prop, receiver) {
+      if (prop === "getConnectionUri") return () => cloneUri;
+      if (prop === "getDatabase") return () => cloneDb;
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+
+  await use(view);
+};
+
+const prismaFromContainer = async (
+  { postgresContainer }: { postgresContainer: StartedPostgreSqlContainer },
+  use: Use<PrismaClient>
+) => {
   const prisma = new PrismaClient({
-    datasources: { db: { url: postgresUriWithDatabase(baseUri, cloneDb) } },
+    datasources: { db: { url: postgresContainer.getConnectionUri() } },
   });
   try {
     await use(prisma);
@@ -180,8 +202,8 @@ const templateClonePrisma = async (
 };
 
 export const postgresTest = test.extend<PostgresTestContext>({
-  postgresContainer: [bootWorkerPostgres, { scope: "worker" }],
-  prisma: templateClonePrisma,
+  postgresContainer: clonedPostgresContainer,
+  prisma: prismaFromContainer,
 });
 
 export const redisContainer = async (
@@ -377,6 +399,9 @@ export const clickhouseTest = test.extend<ClickhouseTestContext>({
   clickhouseClient: scopedClickhouseClient,
 });
 
+// NOTE: per-test containers (not worker-scoped) - the replication package does logical replication
+// (slots/publications/REPLICA IDENTITY), which doesn't play nicely with a shared container +
+// template-clone. A dedicated container per test is the correct, isolated choice here.
 export const postgresAndRedisTest = test.extend<PostgresAndRedisContext>({
   network,
   postgresContainer,
@@ -400,14 +425,28 @@ type ContainerTestContext = {
 // per test (postgres template-clone, redis FLUSHALL, clickhouse TRUNCATE) - no per-test boots, no
 // shared docker network needed.
 export const containerTest = test.extend<ContainerTestContext>({
-  postgresContainer: [bootWorkerPostgres, { scope: "worker" }],
-  prisma: templateClonePrisma,
+  postgresContainer: clonedPostgresContainer,
+  prisma: prismaFromContainer,
   redisContainer: [bootWorkerRedis, { scope: "worker" }],
   resetRedis: [flushRedis, { auto: true }],
   redisOptions,
   clickhouseContainer: [bootWorkerClickhouse, { scope: "worker" }],
   resetClickhouse: [truncateClickhouseFixture, { auto: true }],
   clickhouseClient: scopedClickhouseClient,
+});
+
+// For tests that exercise the Postgres -> ClickHouse logical-replication pipeline (WAL slots,
+// publications, REPLICA IDENTITY). These need a dedicated Postgres per test - the worker-scoped +
+// template-clone model used by containerTest doesn't carry logical replication across cloned dbs.
+// Everything is per-test here (fully isolated, same as the pre-scoping containerTest).
+export const replicationContainerTest = test.extend<ContainerContext>({
+  network,
+  postgresContainer,
+  prisma,
+  redisContainer,
+  redisOptions,
+  clickhouseContainer,
+  clickhouseClient,
 });
 
 export const containerWithElectricTest = test.extend<ContainerWithElectricContext>({
@@ -428,17 +467,22 @@ export const containerWithElectricAndRedisTest = test.extend<ContainerWithElectr
   clickhouseClient,
 });
 
-const minioContainer = async (
-  { network, task }: { network: StartedNetwork } & TestContext,
-  use: Use<StartedMinIOContainer>
-) => {
-  const { container, metadata } = await withContainerSetup({
-    name: "minioContainer",
-    task,
-    setup: createMinIOContainer(network),
-  });
+// Boot minio once per worker; reset the bucket per test (auto fixture).
+const bootWorkerMinio = async ({}, use: Use<StartedMinIOContainer>) => {
+  const container = await new MinIOContainer().start();
+  try {
+    await use(container);
+  } finally {
+    await container.stop({ timeout: 0 });
+  }
+};
 
-  await useContainer("minioContainer", { container, task, use: () => use(container) });
+const minioReset = async (
+  { minioContainer }: { minioContainer: StartedMinIOContainer },
+  use: Use<void>
+) => {
+  await minioContainer.resetBucket();
+  await use();
 };
 
 const minioConfig = async (
@@ -448,18 +492,30 @@ const minioConfig = async (
   await use(minioContainer.getConnectionConfig());
 };
 
-export const minioTest = test.extend<MinIOContext>({
-  network,
-  minioContainer,
+type MinioTestContext = {
+  minioContainer: StartedMinIOContainer;
+  resetMinio: void;
+  minioConfig: MinIOConnectionConfig;
+};
+
+export const minioTest = test.extend<MinioTestContext>({
+  minioContainer: [bootWorkerMinio, { scope: "worker" }],
+  resetMinio: [minioReset, { auto: true }],
   minioConfig,
 });
 
-type PostgresAndMinIOContext = NetworkContext & PostgresContext & MinIOContext;
+type PostgresAndMinioTestContext = {
+  postgresContainer: StartedPostgreSqlContainer;
+  prisma: PrismaClient;
+  minioContainer: StartedMinIOContainer;
+  resetMinio: void;
+  minioConfig: MinIOConnectionConfig;
+};
 
-export const postgresAndMinioTest = test.extend<PostgresAndMinIOContext>({
-  network,
-  postgresContainer,
-  prisma,
-  minioContainer,
+export const postgresAndMinioTest = test.extend<PostgresAndMinioTestContext>({
+  postgresContainer: clonedPostgresContainer,
+  prisma: prismaFromContainer,
+  minioContainer: [bootWorkerMinio, { scope: "worker" }],
+  resetMinio: [minioReset, { auto: true }],
   minioConfig,
 });

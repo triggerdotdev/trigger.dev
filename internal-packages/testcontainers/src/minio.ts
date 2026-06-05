@@ -121,6 +121,19 @@ export class StartedMinIOContainer extends AbstractStartedContainer {
   }
 
   /**
+   * Empties the bucket between tests on a reused container (the "local" mc alias and the bucket are
+   * created at boot). Recreates the bucket so each test starts from the same empty state.
+   */
+  public async resetBucket(bucket = "packets"): Promise<void> {
+    await x("docker", ["exec", this.getId(), "mc", "rm", "--recursive", "--force", `local/${bucket}`], {
+      throwOnError: false,
+    });
+    await x("docker", ["exec", this.getId(), "mc", "mb", "--ignore-existing", `local/${bucket}`], {
+      throwOnError: true,
+    });
+  }
+
+  /**
    * Gets connection configuration suitable for object storage clients.
    */
   public getConnectionConfig(): MinIOConnectionConfig {
