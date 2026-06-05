@@ -14,6 +14,13 @@ on:
         type: string
         required: false
         default: ""
+    outputs:
+      version:
+        description: The published image tag
+        value: ${{ jobs.publish.outputs.version }}
+      short_sha:
+        description: Short commit SHA of the published build
+        value: ${{ jobs.publish.outputs.short_sha }}
     secrets:
       SENTRY_AUTH_TOKEN:
         required: false
