@@ -40,14 +40,17 @@ import {
 } from "@trigger.dev/core/v3";
 import type {
   FinishReason,
+  LanguageModelUsage,
   ModelMessage,
+  Tool,
   ToolSet,
   UIMessage,
   UIMessageChunk,
   UIMessageStreamOptions,
-  LanguageModelUsage,
 } from "ai";
 import type { ChatSnapshotV1, StreamWriteResult } from "@trigger.dev/core/v3";
+// Runtime VALUES go through the ESM/CJS shim so the CJS build can `require`
+// ESM-only `ai@7` (see ../imports/ai-runtime.ts).
 import {
   convertToModelMessages,
   dynamicTool,
@@ -55,14 +58,24 @@ import {
   getToolName,
   isToolUIPart,
   jsonSchema,
-  JSONSchema7,
   readUIMessageStream,
-  Schema,
   tool as aiTool,
-  Tool,
-  ToolCallOptions,
   zodSchema,
-} from "ai";
+} from "../imports/ai-runtime.js";
+import type { JSONSchema7, Schema } from "ai";
+
+// `ToolCallOptions` is defined locally rather than imported from `ai`: v7
+// renamed/removed that export (it's `ToolExecutionOptions<CONTEXT>` now), so a
+// direct import breaks on v7. This structural shape is wider than both majors'
+// and reads the user-context field under both names (`experimental_context` on
+// v6, `context` on v7).
+type ToolCallOptions = {
+  toolCallId: string;
+  messages?: ModelMessage[];
+  abortSignal?: AbortSignal;
+  experimental_context?: unknown;
+  context?: unknown;
+};
 import { type Attributes, trace } from "@opentelemetry/api";
 import { auth } from "./auth.js";
 import { locals } from "./locals.js";
@@ -88,6 +101,7 @@ import {
   type SessionSubscribeOptions,
 } from "./sessions.js";
 import { createTask } from "./shared.js";
+import { ensureAiSdkTelemetry } from "./aiAutoTelemetry.js";
 import { resourceCatalog, type SessionTriggerConfig } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 
@@ -117,6 +131,8 @@ function toModelMessages(messages: UIMessage[]): Promise<ModelMessage[]> {
 export type ToolCallExecutionOptions = {
   toolCallId: string;
   experimental_context?: unknown;
+  /** v7 name for the user context (`experimental_context` on v6). */
+  context?: unknown;
   /** Chat context — only present when the tool runs inside a chat.agent turn. */
   chatId?: string;
   turn?: number;
@@ -893,9 +909,14 @@ function createTaskToolExecuteHandler<
     const toolMeta: ToolCallExecutionOptions = {
       toolCallId: toolOpts?.toolCallId ?? "",
     };
-    if (toolOpts?.experimental_context !== undefined) {
+    // v6 passes user context as `experimental_context`, v7 as `context`. Read
+    // whichever is set and stamp both so subtasks reading either name work.
+    const toolContext = toolOpts?.context ?? toolOpts?.experimental_context;
+    if (toolContext !== undefined) {
       try {
-        toolMeta.experimental_context = JSON.parse(JSON.stringify(toolOpts.experimental_context));
+        const serialized = JSON.parse(JSON.stringify(toolContext));
+        toolMeta.experimental_context = serialized;
+        toolMeta.context = serialized;
       } catch {
         /* non-serializable */
       }
@@ -5146,6 +5167,12 @@ function chatAgent<
       { signal: runSignal, ctx }
     ) => {
       locals.set(chatAgentRunContextKey, ctx);
+
+      // On AI SDK 7, register the `@ai-sdk/otel` integration (once per process)
+      // so `experimental_telemetry` spans flow into the run trace. Awaited here
+      // at run boot — before any `streamText` — and a no-op on v5/v6 or when the
+      // optional `@ai-sdk/otel` peer isn't installed. See ./aiAutoTelemetry.ts.
+      await ensureAiSdkTelemetry();
 
       // Bind the run to its backing Session so every module-level helper
       // (chat.stream, chat.messages, chat.stopSignal) resolves to this

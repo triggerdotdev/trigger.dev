@@ -182,7 +182,7 @@
     "bundle-vendor": "node scripts/bundle-superjson.mjs",
     "build": "pnpm run bundle-vendor && tshy && node scripts/bundle-superjson.mjs --copy && pnpm run update-version",
     "dev": "pnpm run bundle-vendor && tshy --watch",
-    "typecheck": "pnpm run bundle-vendor && tsc --noEmit -p tsconfig.src.json",
+    "typecheck": "pnpm run bundle-vendor && tsc --noEmit -p tsconfig.src.json && tsc --noEmit -p tsconfig.ai-v7.json",
     "pretest": "pnpm run bundle-vendor",
     "test": "vitest",
     "check-exports": "attw --pack ."
@@ -233,6 +233,7 @@
     "@types/lodash.get": "^4.4.9",
     "@types/readable-stream": "^4.0.14",
     "ai": "^6.0.0",
+    "ai-v7": "npm:ai@7.0.0-canary.159",
     "defu": "^6.1.4",
     "esbuild": "^0.23.0",
     "rimraf": "^6.0.1",

@@ -65,7 +65,7 @@
     "clean": "rimraf dist .tshy .tshy-build .turbo",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.ai-v7.json",
     "test": "vitest",
     "update-version": "tsx ../../scripts/updateVersion.ts",
     "check-exports": "attw --pack ."
@@ -91,6 +91,7 @@
     "@types/slug": "^5.0.3",
     "@types/ws": "^8.5.3",
     "ai": "^6.0.116",
+    "ai-v7": "npm:ai@7.0.0-canary.159",
     "encoding": "^0.1.13",
     "rimraf": "^6.0.1",
     "tshy": "^3.0.2",
@@ -99,11 +100,15 @@
     "zod": "3.25.76"
   },
   "peerDependencies": {
-    "ai": "^5.0.0 || ^6.0.0",
+    "@ai-sdk/otel": ">=1.0.0-0 <2",
+    "ai": "^5.0.0 || ^6.0.0 || >=7.0.0-canary <8",
     "react": "^18.0 || ^19.0",
     "zod": "^3.0.0 || ^4.0.0"
   },
   "peerDependenciesMeta": {
+    "@ai-sdk/otel": {
+      "optional": true
+    },
     "ai": {
       "optional": true
     },

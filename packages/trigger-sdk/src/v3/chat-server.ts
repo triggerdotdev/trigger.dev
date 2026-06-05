@@ -60,21 +60,46 @@ import {
   TRIGGER_CONTROL_SUBTYPE,
   apiClientManager,
 } from "@trigger.dev/core/v3";
+// Runtime VALUES via the ESM/CJS shim so the CJS build can `require` ESM-only
+// `ai@7` (see ../imports/ai-runtime.ts).
 import {
   convertToModelMessages,
   generateId as generateAssistantMessageId,
   stepCountIs,
-  type ModelMessage,
-  type StreamTextResult,
-  type Tool,
-  type UIMessage,
-  type UIMessageChunk,
-} from "ai";
+} from "../imports/ai-runtime.js";
+import type { FinishReason, ModelMessage, Tool, UIMessage, UIMessageChunk } from "ai";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
+
+// `StreamTextResult` is defined locally rather than imported from `ai`: its
+// generic arity diverged (v6 `StreamTextResult<TOOLS, OUTPUT>`, v7
+// `StreamTextResult<TOOLS, RUNTIME_CONTEXT, OUTPUT>`), so a fixed-arity import
+// can't satisfy both majors. We only read these members off the customer's
+// result; a real `StreamTextResult` (any version) is assignable to this.
+type AnyStreamTextResult = {
+  readonly finishReason: PromiseLike<FinishReason>;
+  readonly response: PromiseLike<{ messages: ModelMessage[] }>;
+  toUIMessageStream: (...args: any[]) => any;
+  toUIMessageStreamResponse: (...args: any[]) => Response;
+};
 
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
+
+/**
+ * The options `toStreamTextOptions()` hands back to spread into `streamText`.
+ * Typed concretely (rather than `Record<string, unknown>`) so the `messages`
+ * AI SDK 7 requires is statically present, and so `streamText` infers its tools
+ * from the call (rather than collapsing to `never` off a loose spread).
+ *
+ * `tools` and `stopWhen` are deliberately omitted: they're wired in at runtime,
+ * but `streamText` reads them from the runtime value, and leaving them off the
+ * type keeps it version-agnostic and avoids constraining the tool inference.
+ */
+export type HeadStartStreamTextOptions = {
+  messages: ModelMessage[];
+  abortSignal: AbortSignal;
+};
 
 export type HeadStartRunArgs<TTools extends Record<string, Tool>> = {
   /** User messages parsed from the incoming request. */
@@ -106,9 +131,7 @@ export type HeadStartChatHelper<TTools extends Record<string, Tool>> = {
    * `abortSignal` will break the handover protocol. The intent is
    * that customers spread first, then add only their own keys.
    */
-  toStreamTextOptions<TOpts extends Record<string, unknown> = Record<string, unknown>>(opts?: {
-    tools?: TTools;
-  }): TOpts;
+  toStreamTextOptions(opts?: { tools?: TTools }): HeadStartStreamTextOptions;
   /** Lower-level escape hatch with manual `out` / `in` / dispatch primitives. */
   session: HeadStartSession;
 };
@@ -127,13 +150,13 @@ export type HeadStartSession = {
    * Awaits `result.finishReason` and dispatches `handover` (with the
    * partial assistant ModelMessages) or `handover-skip`.
    */
-  handoverWhenDone(result: StreamTextResult<any, any>): Promise<void>;
+  handoverWhenDone(result: AnyStreamTextResult): Promise<void>;
   /**
    * Sugar over `tee` + `handoverWhenDone` + standard SSE response.
    * Returns a `Response` with `Content-Type: text/event-stream` whose
    * body is the teed stream.
    */
-  handoverResponse(result: StreamTextResult<any, any>): Response;
+  handoverResponse(result: AnyStreamTextResult): Response;
   /**
    * Manually dispatch the `handover` signal on `session.in`.
    *
@@ -166,7 +189,7 @@ export type HeadStartHandlerOptions<TTools extends Record<string, Tool>> = {
    * `...chat.toStreamTextOptions({ tools })` and return the
    * `StreamTextResult`.
    */
-  run: (args: HeadStartRunArgs<TTools>) => Promise<StreamTextResult<any, any>>;
+  run: (args: HeadStartRunArgs<TTools>) => Promise<AnyStreamTextResult>;
   /**
    * Seconds the agent run waits for the handover signal before
    * exiting. Defaults to 60.
@@ -443,7 +466,7 @@ async function openHandoverSession(opts: {
     resolveDecision = resolve;
   });
 
-  const handoverWhenDone = async (result: StreamTextResult<any, any>) => {
+  const handoverWhenDone = async (result: AnyStreamTextResult) => {
     // Owns idle-timer cleanup via the finally below, so both the
     // sugar (`handoverResponse`) and the escape-hatch
     // (`chat.openSession()` → `handle.handoverWhenDone(...)`) clean up
@@ -643,7 +666,7 @@ async function openHandoverSession(opts: {
     });
   };
 
-  const handoverResponse = (result: StreamTextResult<any, any>): Response => {
+  const handoverResponse = (result: AnyStreamTextResult): Response => {
     // `generateMessageId` makes the customer's `start` chunk carry
     // `turnMessageId`, so the browser-side AI SDK keys the assistant
     // message by it. The agent's post-handover stream emits chunks

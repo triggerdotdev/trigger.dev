@@ -1,0 +1,17 @@
+{
+  // Typechecks the SDK source against AI SDK 7 (the `ai-v7` aliased devDep)
+  // instead of the v6 build devDep, so CI catches any internal source that only
+  // compiles against one major. The published dist is still built once against
+  // v6 — `ai` types in the `.d.ts` resolve to each consumer's own version.
+  //
+  // `paths` points at the `.d.ts` file directly (not the package dir): under
+  // `moduleResolution: NodeNext` the package-dir form silently falls back to the
+  // real installed `ai`, which would make this pass a no-op.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "ai": ["./node_modules/ai-v7/dist/index.d.ts"]
+    }
+  }
+}
