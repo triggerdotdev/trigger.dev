@@ -734,7 +734,7 @@ function PlaygroundSidebar({
     label: r.description ? `${r.name} — ${r.description}` : r.name,
   }));
   return (
-    <div className="flex h-full flex-col border-l border-grid-bright">
+    <div className="flex h-full flex-col">
       <ClientTabs
         defaultValue="clientData"
         className="flex h-full min-h-0 flex-col overflow-hidden pt-1"
