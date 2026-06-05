@@ -136,46 +136,52 @@ type PostgresTestContext = {
   prisma: PrismaClient;
 };
 
-// Standalone Postgres tests boot the container ONCE per worker and push the schema into a template
-// database once. Each test then gets its OWN database cloned from that template (CREATE DATABASE ...
-// TEMPLATE - a fast filesystem copy), so isolation is per-test AND parallel-friendly (no shared db,
-// no reset needed). containerTest keeps its own per-test Postgres (shares a network with electric).
+// --- Worker-scoped + per-test-isolated fixtures (shared by the standalone *Test and containerTest) ---
+// The pattern: boot each container ONCE per worker; isolate per test cheaply (postgres = template
+// clone, redis = FLUSHALL, clickhouse = TRUNCATE) instead of re-booting. Reset fixtures are `auto`
+// so they run for every test even if it doesn't destructure them.
+
+// Boot postgres once + push the schema into a dedicated template db that nothing else connects to
+// (so CREATE DATABASE ... TEMPLATE never trips on an active session).
+const bootWorkerPostgres = async ({}, use: Use<StartedPostgreSqlContainer>) => {
+  const container = await new PostgreSqlContainer("docker.io/postgres:14")
+    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
+    .start();
+  await pushDatabaseSchema(postgresUriWithDatabase(container.getConnectionUri(), POSTGRES_TEMPLATE_DB));
+  try {
+    await use(container);
+  } finally {
+    await container.stop({ timeout: 0 });
+  }
+};
+
+// Per test: clone a fresh database from the template (fast filesystem copy) - isolated AND parallel-ready.
+const templateClonePrisma = async (
+  { postgresContainer }: { postgresContainer: StartedPostgreSqlContainer },
+  use: Use<PrismaClient>
+) => {
+  const baseUri = postgresContainer.getConnectionUri();
+  const cloneDb = `test_${pgCloneCounter++}`;
+
+  const admin = new PrismaClient({
+    datasources: { db: { url: postgresUriWithDatabase(baseUri, "postgres") } },
+  });
+  await admin.$executeRawUnsafe(`CREATE DATABASE "${cloneDb}" TEMPLATE "${POSTGRES_TEMPLATE_DB}"`);
+  await admin.$disconnect();
+
+  const prisma = new PrismaClient({
+    datasources: { db: { url: postgresUriWithDatabase(baseUri, cloneDb) } },
+  });
+  try {
+    await use(prisma);
+  } finally {
+    await logCleanup("prisma", prisma.$disconnect());
+  }
+};
+
 export const postgresTest = test.extend<PostgresTestContext>({
-  postgresContainer: [
-    async ({}, use: (value: StartedPostgreSqlContainer) => Promise<void>) => {
-      const container = await new PostgreSqlContainer("docker.io/postgres:14")
-        .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
-        .start();
-      // Push the schema once into a dedicated template db that nothing else connects to (so
-      // CREATE DATABASE ... TEMPLATE never trips on an active session).
-      await pushDatabaseSchema(postgresUriWithDatabase(container.getConnectionUri(), POSTGRES_TEMPLATE_DB));
-      try {
-        await use(container);
-      } finally {
-        await container.stop({ timeout: 0 });
-      }
-    },
-    { scope: "worker" },
-  ],
-  prisma: async ({ postgresContainer }, use) => {
-    const baseUri = postgresContainer.getConnectionUri();
-    const cloneDb = `test_${pgCloneCounter++}`;
-
-    const admin = new PrismaClient({
-      datasources: { db: { url: postgresUriWithDatabase(baseUri, "postgres") } },
-    });
-    await admin.$executeRawUnsafe(`CREATE DATABASE "${cloneDb}" TEMPLATE "${POSTGRES_TEMPLATE_DB}"`);
-    await admin.$disconnect();
-
-    const prisma = new PrismaClient({
-      datasources: { db: { url: postgresUriWithDatabase(baseUri, cloneDb) } },
-    });
-    try {
-      await use(prisma);
-    } finally {
-      await logCleanup("prisma", prisma.$disconnect());
-    }
-  },
+  postgresContainer: [bootWorkerPostgres, { scope: "worker" }],
+  prisma: templateClonePrisma,
 });
 
 export const redisContainer = async (
@@ -235,39 +241,38 @@ type RedisTestContext = {
   redisOptions: RedisOptions;
 };
 
-// Standalone Redis tests boot the container ONCE per worker (reused across files) and isolate per
-// test by FLUSHALL in an `auto` fixture (runs for every test even if it only takes redisOptions).
-// containerTest keeps its own per-test Redis (shares a docker network with postgres/clickhouse).
+// Boot redis once per worker.
+const bootWorkerRedis = async ({}, use: Use<StartedRedisContainer>) => {
+  const { container } = await createRedisContainer({ port: 6379 });
+  try {
+    await use(container);
+  } finally {
+    await container.stop({ timeout: 0 });
+  }
+};
+
+// Per test: FLUSHALL the shared redis (auto fixture so it runs for every test).
+const flushRedis = async (
+  { redisContainer }: { redisContainer: StartedRedisContainer },
+  use: Use<void>
+) => {
+  const redis = new Redis({
+    host: redisContainer.getHost(),
+    port: redisContainer.getPort(),
+    password: redisContainer.getPassword(),
+    maxRetriesPerRequest: 3,
+  });
+  try {
+    await redis.flushall();
+  } finally {
+    redis.disconnect();
+  }
+  await use();
+};
+
 export const redisTest = test.extend<RedisTestContext>({
-  redisContainer: [
-    async ({}, use: (value: StartedRedisContainer) => Promise<void>) => {
-      const { container } = await createRedisContainer({ port: 6379 });
-      try {
-        await use(container);
-      } finally {
-        await container.stop({ timeout: 0 });
-      }
-    },
-    { scope: "worker" },
-  ],
-  // auto: runs for every test regardless of whether it destructures this fixture
-  resetRedis: [
-    async ({ redisContainer }, use) => {
-      const redis = new Redis({
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-        maxRetriesPerRequest: 3,
-      });
-      try {
-        await redis.flushall();
-      } finally {
-        redis.disconnect();
-      }
-      await use();
-    },
-    { auto: true },
-  ],
+  redisContainer: [bootWorkerRedis, { scope: "worker" }],
+  resetRedis: [flushRedis, { auto: true }],
   redisOptions,
 });
 
@@ -329,44 +334,47 @@ type ClickhouseTestContext = {
   clickhouseClient: ClickHouseClient;
 };
 
-// Standalone ClickHouse tests boot + migrate the container ONCE per worker (reused across files),
-// and isolate per test by truncating tables (an `auto` fixture, so it runs for EVERY test even if
-// the test only destructures clickhouseContainer). containerTest keeps its own per-test ClickHouse
-// (it shares a docker network with postgres/redis), so this scoping is narrow.
+// Boot + migrate clickhouse once per worker.
+const bootWorkerClickhouse = async ({}, use: Use<StartedClickHouseContainer>) => {
+  const container = await new ClickHouseContainer().start();
+  const client = createClient({ url: container.getConnectionUrl() });
+  await client.ping();
+  await runClickhouseMigrations(client, clickhouseMigrationsPath);
+  await client.close();
+  try {
+    await use(container);
+  } finally {
+    await container.stop({ timeout: 0 });
+  }
+};
+
+// Per test: truncate all tables on the shared clickhouse (auto fixture so it runs for every test).
+const truncateClickhouseFixture = async (
+  { clickhouseContainer }: { clickhouseContainer: StartedClickHouseContainer },
+  use: Use<void>
+) => {
+  const client = createClient({ url: clickhouseContainer.getConnectionUrl() });
+  await truncateClickhouseTables(client);
+  await client.close();
+  await use();
+};
+
+const scopedClickhouseClient = async (
+  { clickhouseContainer }: { clickhouseContainer: StartedClickHouseContainer },
+  use: Use<ClickHouseClient>
+) => {
+  const client = createClient({ url: clickhouseContainer.getConnectionUrl() });
+  try {
+    await use(client);
+  } finally {
+    await logCleanup("clickhouseClient", client.close());
+  }
+};
+
 export const clickhouseTest = test.extend<ClickhouseTestContext>({
-  clickhouseContainer: [
-    async ({}, use: Use<StartedClickHouseContainer>) => {
-      const container = await new ClickHouseContainer().start();
-      const client = createClient({ url: container.getConnectionUrl() });
-      await client.ping();
-      await runClickhouseMigrations(client, clickhouseMigrationsPath);
-      await client.close();
-      try {
-        await use(container);
-      } finally {
-        await container.stop({ timeout: 0 });
-      }
-    },
-    { scope: "worker" },
-  ],
-  // auto: runs for every test regardless of whether it destructures this fixture
-  resetClickhouse: [
-    async ({ clickhouseContainer }, use) => {
-      const client = createClient({ url: clickhouseContainer.getConnectionUrl() });
-      await truncateClickhouseTables(client);
-      await client.close();
-      await use();
-    },
-    { auto: true },
-  ],
-  clickhouseClient: async ({ clickhouseContainer }, use) => {
-    const client = createClient({ url: clickhouseContainer.getConnectionUrl() });
-    try {
-      await use(client);
-    } finally {
-      await logCleanup("clickhouseClient", client.close());
-    }
-  },
+  clickhouseContainer: [bootWorkerClickhouse, { scope: "worker" }],
+  resetClickhouse: [truncateClickhouseFixture, { auto: true }],
+  clickhouseClient: scopedClickhouseClient,
 });
 
 export const postgresAndRedisTest = test.extend<PostgresAndRedisContext>({
@@ -377,14 +385,29 @@ export const postgresAndRedisTest = test.extend<PostgresAndRedisContext>({
   redisOptions,
 });
 
-export const containerTest = test.extend<ContainerContext>({
-  network,
-  postgresContainer,
-  prisma,
-  redisContainer,
+type ContainerTestContext = {
+  postgresContainer: StartedPostgreSqlContainer;
+  prisma: PrismaClient;
+  redisContainer: StartedRedisContainer;
+  resetRedis: void;
+  redisOptions: RedisOptions;
+  clickhouseContainer: StartedClickHouseContainer;
+  resetClickhouse: void;
+  clickhouseClient: ClickHouseClient;
+};
+
+// The workhorse fixture (~36 files). Boots postgres+redis+clickhouse ONCE per worker and isolates
+// per test (postgres template-clone, redis FLUSHALL, clickhouse TRUNCATE) - no per-test boots, no
+// shared docker network needed.
+export const containerTest = test.extend<ContainerTestContext>({
+  postgresContainer: [bootWorkerPostgres, { scope: "worker" }],
+  prisma: templateClonePrisma,
+  redisContainer: [bootWorkerRedis, { scope: "worker" }],
+  resetRedis: [flushRedis, { auto: true }],
   redisOptions,
-  clickhouseContainer,
-  clickhouseClient,
+  clickhouseContainer: [bootWorkerClickhouse, { scope: "worker" }],
+  resetClickhouse: [truncateClickhouseFixture, { auto: true }],
+  clickhouseClient: scopedClickhouseClient,
 });
 
 export const containerWithElectricTest = test.extend<ContainerWithElectricContext>({
