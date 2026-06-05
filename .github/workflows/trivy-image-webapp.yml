@@ -38,6 +38,16 @@ jobs:
       contents: read
       packages: read # pull the image from GHCR
     steps:
+      # Authenticate to GHCR so the scan also works for private images
+      # (GITHUB_TOKEN isn't forwarded to Docker automatically). Harmless for
+      # public images. Pairs with the packages: read permission above.
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Run Trivy image scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
