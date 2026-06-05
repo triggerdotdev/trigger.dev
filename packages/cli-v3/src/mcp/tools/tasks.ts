@@ -128,7 +128,7 @@ export const triggerTaskTool = {
     const contents = [
       `Task ${input.taskId} triggered and run with ID created: ${result.id}.`,
       `View the run in the dashboard: ${taskRunUrl}`,
-      `Use the ${toolsMetadata.wait_for_run_to_complete.name} tool to wait for the run to complete and the ${toolsMetadata.get_run_details.name} tool to get the details of the run.`,
+      `The run is now executing in the background. Do not wait for it to complete unless the user asked you to. If they did, use the ${toolsMetadata.wait_for_run_to_complete.name} tool. Otherwise, use the ${toolsMetadata.get_run_details.name} tool to check on it when needed.`,
     ];
 
     if (input.environment === "dev") {
