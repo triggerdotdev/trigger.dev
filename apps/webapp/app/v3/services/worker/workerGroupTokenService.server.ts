@@ -10,7 +10,7 @@ import {
   TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
 import { fromFriendlyId } from "@trigger.dev/core/v3/isomorphic";
-import { WORKER_HEADERS } from "@trigger.dev/core/v3/workers";
+import { WORKER_HEADERS, type WorkerQueueClass } from "@trigger.dev/core/v3/workers";
 import {
   Prisma,
   RuntimeEnvironment,
@@ -27,6 +27,7 @@ import { defaultMachine } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
+import { workerQueueForClass } from "~/runEngine/concerns/workerQueueSplit.server";
 import { WithRunEngine, WithRunEngineOptions } from "../baseService.server";
 
 const authenticatedWorkerInstanceCache = singleton(
@@ -369,10 +370,18 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     });
   }
 
-  async dequeue({ runnerId }: { runnerId?: string }): Promise<DequeuedMessage[]> {
+  async dequeue({
+    runnerId,
+    queueClass,
+  }: {
+    runnerId?: string;
+    queueClass?: WorkerQueueClass;
+  }): Promise<DequeuedMessage[]> {
+    // Derive the actual queue from this worker's own masterQueue + class, so a
+    // token can only ever reach its own region's queues (default or :scheduled).
     return await this._engine.dequeueFromWorkerQueue({
       consumerId: this.workerInstanceId,
-      workerQueue: this.masterQueue,
+      workerQueue: workerQueueForClass(this.masterQueue, queueClass),
       workerId: this.workerInstanceId,
       runnerId,
     });
