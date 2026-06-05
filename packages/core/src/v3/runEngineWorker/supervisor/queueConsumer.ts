@@ -1,6 +1,6 @@
 import { SimpleStructuredLogger } from "../../utils/structuredLogger.js";
 import { SupervisorHttpClient } from "./http.js";
-import { WorkerApiDequeueResponseBody } from "./schemas.js";
+import { WorkerApiDequeueResponseBody, WorkerQueueClass } from "./schemas.js";
 import { PreDequeueFn, PreSkipFn } from "./types.js";
 
 export interface QueueConsumer {
@@ -15,6 +15,8 @@ export type RunQueueConsumerOptions = {
   preDequeue?: PreDequeueFn;
   preSkip?: PreSkipFn;
   maxRunCount?: number;
+  /** Which worker-queue class this consumer pulls from. Defaults to the worker's region queue. */
+  queueClass?: WorkerQueueClass;
   onDequeue: (messages: WorkerApiDequeueResponseBody, timing?: { dequeueResponseMs: number; pollingIntervalMs: number }) => Promise<void>;
 };
 
@@ -23,6 +25,7 @@ export class RunQueueConsumer implements QueueConsumer {
   private readonly preDequeue?: PreDequeueFn;
   private readonly preSkip?: PreSkipFn;
   private readonly maxRunCount?: number;
+  private readonly queueClass?: WorkerQueueClass;
   private readonly onDequeue: (messages: WorkerApiDequeueResponseBody, timing?: { dequeueResponseMs: number; pollingIntervalMs: number }) => Promise<void>;
 
   private readonly logger = new SimpleStructuredLogger("queue-consumer");
@@ -39,6 +42,7 @@ export class RunQueueConsumer implements QueueConsumer {
     this.preDequeue = opts.preDequeue;
     this.preSkip = opts.preSkip;
     this.maxRunCount = opts.maxRunCount;
+    this.queueClass = opts.queueClass;
     this.lastScheduledIntervalMs = opts.idleIntervalMs;
     this.onDequeue = opts.onDequeue;
     this.client = opts.client;
@@ -117,6 +121,7 @@ export class RunQueueConsumer implements QueueConsumer {
       const response = await this.client.dequeue({
         maxResources: preDequeueResult?.maxResources,
         maxRunCount: this.maxRunCount,
+        queueClass: this.queueClass,
       });
       const dequeueResponseMs = Math.round(performance.now() - dequeueStart);
 

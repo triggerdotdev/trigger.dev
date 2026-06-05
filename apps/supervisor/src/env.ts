@@ -34,6 +34,10 @@ const Env = z
 
     // Dequeue settings (provider mode)
     TRIGGER_DEQUEUE_ENABLED: BoolEnv.default(true),
+    // Which worker-queue class this supervisor fleet serves. "default" pulls the
+    // region queue (standard/agent runs); "scheduled" pulls the dedicated
+    // scheduled-lineage queue. Run a separate fleet per class for isolation.
+    TRIGGER_WORKER_QUEUE_CLASS: z.enum(["default", "scheduled"]).default("default"),
     TRIGGER_DEQUEUE_INTERVAL_MS: z.coerce.number().int().default(250),
     TRIGGER_DEQUEUE_IDLE_INTERVAL_MS: z.coerce.number().int().default(1000),
     TRIGGER_DEQUEUE_MAX_RUN_COUNT: z.coerce.number().int().default(1),
