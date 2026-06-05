@@ -976,12 +976,13 @@ describe("RunEngine ttl", () => {
         assertNonNullable(executionData2);
         expect(executionData2.run.status).toBe("PENDING");
 
-        // Now wait for the TTL consumer to poll and expire the run
-        // (pollIntervalMs is 5000 for TTL scan + up to 5000ms batch maxWaitMs + processing)
-        await setTimeout(13_000);
-
-        // The TTL consumer should have found and expired the run
-        expect(expiredEvents.length).toBe(1);
+        // Wait (event-driven) for the TTL consumer to poll and expire the run. pollIntervalMs is
+        // 5000ms here so the consumer fires only after the dequeue-skip assertions above; waitFor
+        // resolves as soon as the event lands instead of a fixed worst-case sleep.
+        await vi.waitFor(() => expect(expiredEvents.length).toBe(1), {
+          timeout: 15_000,
+          interval: 100,
+        });
         expect(expiredEvents[0]?.run.id).toBe(run.id);
 
         // Check the run status directly from the database (the batch TTL path
@@ -1093,14 +1094,18 @@ describe("RunEngine ttl", () => {
           authenticatedEnvironment.id,
           10
         );
-        // Wait for TTL scan (5000ms) + batch maxWaitMs (5000ms) + processing buffer
-        await setTimeout(13_000);
-
-        const expiredRun = await prisma.taskRun.findUnique({
-          where: { id: run.id },
-          select: { status: true },
-        });
-        expect(expiredRun?.status).toBe("EXPIRED");
+        // Wait (event-driven) for the TTL consumer to expire the run; resolves as soon as the DB
+        // reflects EXPIRED instead of a fixed worst-case sleep (pollIntervalMs is 5000ms here).
+        await vi.waitFor(
+          async () => {
+            const expiredRun = await prisma.taskRun.findUnique({
+              where: { id: run.id },
+              select: { status: true },
+            });
+            expect(expiredRun?.status).toBe("EXPIRED");
+          },
+          { timeout: 15_000, interval: 200 }
+        );
 
         const concurrencyAfter = await engine.runQueue.getCurrentConcurrencyOfEnvironment(
           authenticatedEnvironment
