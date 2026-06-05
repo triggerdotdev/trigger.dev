@@ -122,14 +122,16 @@ export async function inviteMembers({
       } satisfies Prisma.OrgMemberInviteCreateManyInput)
   );
 
+  // Re-inviting an already-invited email is treated as a resend: skip the
+  // conflicting insert and return the existing invite below.
   await prisma.orgMemberInvite.createMany({
     data: invites,
+    skipDuplicates: true,
   });
 
   return await prisma.orgMemberInvite.findMany({
     where: {
       organizationId: org.id,
-      inviterId: userId,
       email: {
         in: emails,
       },
@@ -212,7 +214,16 @@ export async function acceptInvite({
       });
     }
 
-    // 4. Check for other invites
+    // 4. Consume any case-variant duplicate invites for this org (rows
+    // created before invite emails were lowercased)
+    await tx.orgMemberInvite.deleteMany({
+      where: {
+        organizationId: invite.organizationId,
+        email: { equals: user.email, mode: "insensitive" },
+      },
+    });
+
+    // 5. Check for other invites
     const remainingInvites = await tx.orgMemberInvite.findMany({
       where: {
         email: { equals: user.email, mode: "insensitive" },
