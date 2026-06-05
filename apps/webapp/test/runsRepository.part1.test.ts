@@ -6,7 +6,7 @@ vi.mock("~/db.server", () => ({
   $replica: {},
 }));
 
-import { containerTest } from "@internal/testcontainers";
+import { replicationContainerTest } from "@internal/testcontainers";
 import { setTimeout } from "node:timers/promises";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { setupClickhouseReplication } from "./utils/replicationUtils";
@@ -14,7 +14,7 @@ import { setupClickhouseReplication } from "./utils/replicationUtils";
 vi.setConfig({ testTimeout: 60_000 });
 
 describe("RunsRepository (part 1/2)", () => {
-  containerTest(
+  replicationContainerTest(
     "should list runs, using clickhouse as the source",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
@@ -90,7 +90,7 @@ describe("RunsRepository (part 1/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should filter runs by task identifiers",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
@@ -198,7 +198,7 @@ describe("RunsRepository (part 1/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should filter runs by task versions",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
@@ -309,7 +309,7 @@ describe("RunsRepository (part 1/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should filter runs by status",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
@@ -420,7 +420,7 @@ describe("RunsRepository (part 1/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should filter runs by tags",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
@@ -531,7 +531,7 @@ describe("RunsRepository (part 1/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should filter runs by scheduleId",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
@@ -641,7 +641,7 @@ describe("RunsRepository (part 1/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should filter runs by isTest flag",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({

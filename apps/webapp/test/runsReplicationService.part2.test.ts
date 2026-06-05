@@ -1,5 +1,5 @@
 import { ClickHouse, getTaskRunField, getPayloadField } from "@internal/clickhouse";
-import { containerTest } from "@internal/testcontainers";
+import { replicationContainerTest } from "@internal/testcontainers";
 import { Logger } from "@trigger.dev/core/logger";
 import { readFile } from "node:fs/promises";
 import { setTimeout } from "node:timers/promises";
@@ -11,7 +11,7 @@ import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickho
 vi.setConfig({ testTimeout: 60_000 });
 
 describe("RunsReplicationService (part 2/2)", () => {
-  containerTest(
+  replicationContainerTest(
     "should handover leadership to a second service, and the second service should be able to extend the leader lock",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -141,7 +141,7 @@ describe("RunsReplicationService (part 2/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should replicate all 1,000 TaskRuns inserted in bulk to ClickHouse",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -256,7 +256,7 @@ describe("RunsReplicationService (part 2/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should replicate all 1,000 TaskRuns inserted in bulk to ClickHouse with updates",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -377,7 +377,7 @@ describe("RunsReplicationService (part 2/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should replicate all events in a single transaction (insert, update)",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -511,7 +511,7 @@ describe("RunsReplicationService (part 2/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should be able to handle processing transactions for a long period of time",
     { timeout: 60_000 * 5 },
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
@@ -618,7 +618,7 @@ describe("RunsReplicationService (part 2/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should insert TaskRuns even if there are incomplete Unicode escape sequences in the JSON",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -787,7 +787,7 @@ describe("RunsReplicationService (part 2/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should merge duplicate event+run.id combinations keeping the latest version",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public.\"TaskRun\" REPLICA IDENTITY FULL;`);
@@ -912,7 +912,7 @@ describe("RunsReplicationService (part 2/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should sort batch inserts according to table schema ordering for optimal performance",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public.\"TaskRun\" REPLICA IDENTITY FULL;`);
@@ -1125,7 +1125,7 @@ describe("RunsReplicationService (part 2/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should exhaustively replicate all TaskRun columns to ClickHouse",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);

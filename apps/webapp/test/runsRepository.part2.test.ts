@@ -6,7 +6,7 @@ vi.mock("~/db.server", () => ({
   $replica: {},
 }));
 
-import { containerTest } from "@internal/testcontainers";
+import { replicationContainerTest } from "@internal/testcontainers";
 import { setTimeout } from "node:timers/promises";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { setupClickhouseReplication } from "./utils/replicationUtils";
@@ -14,7 +14,7 @@ import { setupClickhouseReplication } from "./utils/replicationUtils";
 vi.setConfig({ testTimeout: 60_000 });
 
 describe("RunsRepository (part 2/2)", () => {
-  containerTest(
+  replicationContainerTest(
     "should filter runs by rootOnly flag",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
@@ -108,7 +108,7 @@ describe("RunsRepository (part 2/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should filter runs by batchId",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
@@ -238,7 +238,7 @@ describe("RunsRepository (part 2/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should filter runs by runFriendlyIds",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
@@ -346,7 +346,7 @@ describe("RunsRepository (part 2/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should filter runs by runIds",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
@@ -454,7 +454,7 @@ describe("RunsRepository (part 2/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should filter runs by date range (from/to)",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
@@ -570,7 +570,7 @@ describe("RunsRepository (part 2/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should handle multiple filters combined",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
@@ -694,7 +694,7 @@ describe("RunsRepository (part 2/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should handle pagination correctly",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
@@ -790,7 +790,7 @@ describe("RunsRepository (part 2/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should count new runs with listRunIds",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({

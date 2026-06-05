@@ -1,5 +1,5 @@
 import { ClickHouse } from "@internal/clickhouse";
-import { containerTest } from "@internal/testcontainers";
+import { replicationContainerTest } from "@internal/testcontainers";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 import { TaskRunStatus } from "~/database-types";
@@ -11,7 +11,7 @@ import superjson from "superjson";
 vi.setConfig({ testTimeout: 60_000 });
 
 describe("RunsReplicationService (part 1/2)", () => {
-  containerTest(
+  replicationContainerTest(
     "should replicate runs to clickhouse",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -135,7 +135,7 @@ describe("RunsReplicationService (part 1/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should replicate runs with super json payloads to clickhouse",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -276,7 +276,7 @@ describe("RunsReplicationService (part 1/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should not produce any flush spans when no TaskRun events are produced",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -348,7 +348,7 @@ describe("RunsReplicationService (part 1/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should replicate a new TaskRun to ClickHouse using batching insert strategy",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -452,7 +452,7 @@ describe("RunsReplicationService (part 1/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should insert the payload into ClickHouse when a TaskRun is created",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -553,7 +553,7 @@ describe("RunsReplicationService (part 1/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should insert the payload even if it's very large into ClickHouse when a TaskRun is created",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -659,7 +659,7 @@ describe("RunsReplicationService (part 1/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should replicate updates to an existing TaskRun to ClickHouse",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -766,7 +766,7 @@ describe("RunsReplicationService (part 1/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should replicate deletions of a TaskRun to ClickHouse and mark as deleted",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -866,7 +866,7 @@ describe("RunsReplicationService (part 1/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should gracefully shutdown and allow a new service to pick up from the correct LSN (handover)",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -1017,7 +1017,7 @@ describe("RunsReplicationService (part 1/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should not re-process already handled data if shutdown is called after all transactions are processed",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
@@ -1160,7 +1160,7 @@ describe("RunsReplicationService (part 1/2)", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "should record metrics with correct values when replicating runs",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
