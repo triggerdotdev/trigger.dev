@@ -19,7 +19,7 @@ export const reasoningAgent = chat.agent({
   run: async ({ messages, tools, stopSignal }) => {
     return streamText({
       ...chat.toStreamTextOptions({ tools }),
-      model: openai("gpt-4.1"),
+      model: openai("gpt-5.4"),
       messages,
       abortSignal: stopSignal,
       stopWhen: stepCountIs(8),

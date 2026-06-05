@@ -6,7 +6,7 @@ import { z } from "zod";
 // and the data-query agent (executeTrql/listDashboards).
 export const routerSystemPrompt = prompts.define({
   id: "dashboard-assistant-system",
-  model: "openai:gpt-4.1-mini",
+  model: "openai:gpt-5.4-mini",
   config: { temperature: 0.7 },
   variables: z.object({
     projectSlug: z.string(),

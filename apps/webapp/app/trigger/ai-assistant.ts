@@ -114,7 +114,7 @@ export const dashboardAssistant = chat
           id: chatId,
           title: "New chat",
           userId: clientData?.userId ?? "",
-          model: "gpt-4.1-mini",
+          model: "gpt-5.4-mini",
           messages,
         },
         update: { messages },
@@ -151,7 +151,7 @@ export const dashboardAssistant = chat
     run: async ({ messages, tools, stopSignal }) => {
       return streamText({
         ...chat.toStreamTextOptions({ tools }),
-        model: openai("gpt-4.1-mini"),
+        model: openai("gpt-5.4-mini"),
         messages,
         abortSignal: stopSignal,
         // Allow multi-step tool chains with room for self-correcting retries:
