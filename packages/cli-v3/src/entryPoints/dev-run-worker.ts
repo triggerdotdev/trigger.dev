@@ -679,6 +679,7 @@ const zodIpc = new ZodIpcConnection({
       }
     },
     RESOLVE_WAITPOINT: async ({ waitpoint }) => {
+      taskContext.enable();
       _sharedWorkerRuntime?.resolveWaitpoints([waitpoint]);
     },
   },

@@ -132,6 +132,10 @@ export class TaskContextAPI {
     this._runDisabled = true;
   }
 
+  public enable() {
+    this._runDisabled = false;
+  }
+
   public setGlobalTaskContext(taskContext: TaskContext): boolean {
     this._runDisabled = false;
     // Each run boot re-registers the global; clear any conversation id

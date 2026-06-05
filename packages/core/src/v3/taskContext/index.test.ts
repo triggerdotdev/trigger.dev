@@ -83,4 +83,19 @@ describe("TaskContextAPI conversation id", () => {
 
     expect(api.attributes[SemanticInternalAttributes.GEN_AI_CONVERSATION_ID]).toBeUndefined();
   });
+
+  it("can re-enable run attribution after a waitpoint flush disabled it", () => {
+    const api = TaskContextAPI.getInstance();
+    api.setGlobalTaskContext({ ctx: FAKE_CTX, worker: FAKE_WORKER });
+
+    api.disable();
+    expect(api.isRunDisabled).toBe(true);
+
+    api.enable();
+
+    expect(api.isRunDisabled).toBe(false);
+    expect(api.attributes[SemanticInternalAttributes.RUN_ID]).toBe("run_1");
+    expect(api.attributes[SemanticInternalAttributes.TASK_SLUG]).toBe("my-task");
+    expect(api.attributes[SemanticInternalAttributes.ATTEMPT_NUMBER]).toBe(1);
+  });
 });
