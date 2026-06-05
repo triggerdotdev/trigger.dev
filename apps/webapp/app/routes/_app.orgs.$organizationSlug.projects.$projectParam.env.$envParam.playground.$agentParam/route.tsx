@@ -1,11 +1,5 @@
-import {
-  ArrowUpIcon,
-  BoltIcon,
-  CpuChipIcon,
-  StopIcon,
-  ArrowPathIcon,
-  TrashIcon,
-} from "@heroicons/react/20/solid";
+import { ArrowUpIcon, BoltIcon, CpuChipIcon, StopIcon } from "@heroicons/react/20/solid";
+import { ClipboardIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { type MetaFunction } from "@remix-run/node";
 import { Link, useFetcher, useNavigate, useRouteLoaderData } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -14,9 +8,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { TriggerChatTransport } from "@trigger.dev/sdk/chat";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
-import { Badge } from "~/components/primitives/Badge";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { CopyButton } from "~/components/primitives/CopyButton";
+import { PlusIcon } from "~/assets/icons/PlusIcon";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { Button } from "~/components/primitives/Buttons";
+import {
+  Popover,
+  PopoverContent,
+  PopoverMenuItem,
+  PopoverVerticalEllipseTrigger,
+} from "~/components/primitives/Popover";
 import { DurationPicker } from "~/components/primitives/DurationPicker";
 import { Header3 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
@@ -219,40 +219,37 @@ function PlaygroundChat() {
   // backing Session for `chatId` and triggers the first run, returns
   // the session-scoped PAT. Idempotent: called on initial use AND on
   // 401, so the same code path serves both first-run and PAT renewal.
-  const startSession = useCallback(
-    async (): Promise<string> => {
-      const formData = new FormData();
-      formData.set("intent", "start");
-      formData.set("agentSlug", agent.slug);
-      formData.set("chatId", chatId);
-      formData.set("clientData", clientDataJsonRef.current);
-      if (tags.length > 0) formData.set("tags", tags.join(","));
-      if (machine) formData.set("machine", machine);
-      if (maxAttempts) formData.set("maxAttempts", String(maxAttempts));
-      if (maxDuration) formData.set("maxDuration", String(maxDuration));
-      if (version) formData.set("version", version);
-      if (region) formData.set("region", region);
+  const startSession = useCallback(async (): Promise<string> => {
+    const formData = new FormData();
+    formData.set("intent", "start");
+    formData.set("agentSlug", agent.slug);
+    formData.set("chatId", chatId);
+    formData.set("clientData", clientDataJsonRef.current);
+    if (tags.length > 0) formData.set("tags", tags.join(","));
+    if (machine) formData.set("machine", machine);
+    if (maxAttempts) formData.set("maxAttempts", String(maxAttempts));
+    if (maxDuration) formData.set("maxDuration", String(maxDuration));
+    if (version) formData.set("version", version);
+    if (region) formData.set("region", region);
 
-      const response = await fetch(actionPath, { method: "POST", body: formData });
-      const data = (await response.json()) as {
-        runId?: string;
-        publicAccessToken?: string;
-        conversationId?: string;
-        error?: string;
-      };
+    const response = await fetch(actionPath, { method: "POST", body: formData });
+    const data = (await response.json()) as {
+      runId?: string;
+      publicAccessToken?: string;
+      conversationId?: string;
+      error?: string;
+    };
 
-      if (!response.ok || !data.publicAccessToken) {
-        throw new Error(data.error ?? "Failed to start chat session");
-      }
+    if (!response.ok || !data.publicAccessToken) {
+      throw new Error(data.error ?? "Failed to start chat session");
+    }
 
-      if (data.conversationId) {
-        setConversationId(data.conversationId);
-      }
+    if (data.conversationId) {
+      setConversationId(data.conversationId);
+    }
 
-      return data.publicAccessToken;
-    },
-    [actionPath, agent.slug, chatId, tags, machine, maxAttempts, maxDuration, version, region]
-  );
+    return data.publicAccessToken;
+  }, [actionPath, agent.slug, chatId, tags, machine, maxAttempts, maxDuration, version, region]);
 
   // Resource route prefix — all realtime traffic goes through session-authed routes
   const playgroundBaseURL = `${apiOrigin}/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/playground`;
@@ -438,44 +435,15 @@ function PlaygroundChat() {
       <ResizablePanel id="playground-chat" min="300px">
         <div className="flex h-full flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-grid-bright px-4 py-2">
-            <div className="flex items-center gap-2">
-              <Badge variant="extra-small">{formatAgentType(agent.type)}</Badge>
-            </div>
-            <div className="flex items-center gap-2">
-              {activeConversation?.runFriendlyId && (
-                <LinkButton
-                  to={`/runs/${activeConversation.runFriendlyId}`}
-                  variant="tertiary/small"
-                >
-                  View run
-                </LinkButton>
-              )}
-              {messages.length > 0 && (
-                <CopyButton
-                  value={JSON.stringify(messages, null, 2)}
-                  variant="button"
-                  size="extra-small"
-                  showTooltip={false}
-                >
-                  Copy raw
-                </CopyButton>
-              )}
-              {conversationId && (
-                <Button
-                  variant="tertiary/small"
-                  LeadingIcon={TrashIcon}
-                  onClick={handleDeleteConversation}
-                />
-              )}
-              <Button
-                variant="tertiary/small"
-                LeadingIcon={ArrowPathIcon}
-                onClick={handleNewConversation}
-              >
-                New conversation
-              </Button>
-            </div>
+          <div className="flex items-center justify-end px-2 py-2">
+            <ConversationMenu
+              runFriendlyId={activeConversation?.runFriendlyId ?? null}
+              hasMessages={messages.length > 0}
+              hasConversation={conversationId !== null}
+              messages={messages}
+              onDeleteConversation={handleDeleteConversation}
+              onNewConversation={handleNewConversation}
+            />
           </div>
 
           {/* Messages */}
@@ -491,7 +459,10 @@ function PlaygroundChat() {
                       <>
                         <BoltIcon className="size-10 text-success/50" />
                         <Header3 className="text-text-dimmed">Preloaded</Header3>
-                        <Paragraph variant="small" className="max-w-sm text-center text-text-dimmed">
+                        <Paragraph
+                          variant="small"
+                          className="max-w-sm text-center text-text-dimmed"
+                        >
                           Agent is warmed up and waiting. Type a message below to start.
                         </Paragraph>
                       </>
@@ -499,7 +470,10 @@ function PlaygroundChat() {
                       <>
                         <CpuChipIcon className="size-10 text-indigo-500/50" />
                         <Header3 className="text-text-dimmed">Start a conversation</Header3>
-                        <Paragraph variant="small" className="max-w-sm text-center text-text-dimmed">
+                        <Paragraph
+                          variant="small"
+                          className="max-w-sm text-center text-text-dimmed"
+                        >
                           Type a message below to start testing{" "}
                           <code className="text-text-bright">{agent.slug}</code>
                         </Paragraph>
@@ -526,7 +500,7 @@ function PlaygroundChat() {
                     <div className="flex justify-start">
                       <div className="flex items-center gap-2 rounded-lg bg-charcoal-750 px-4 py-2.5">
                         <Spinner className="size-3" />
-                        <span className="text-sm text-text-dimmed">Thinking...</span>
+                        <span className="text-sm text-text-dimmed">Thinking…</span>
                       </div>
                     </div>
                   )}
@@ -637,15 +611,6 @@ function PlaygroundChat() {
       </ResizablePanel>
     </ResizablePanelGroup>
   );
-}
-
-function formatAgentType(type: string): string {
-  switch (type) {
-    case "ai-sdk-chat":
-      return "AI SDK Chat";
-    default:
-      return type;
-  }
 }
 
 // Message rendering — `MessageBubble` is imported from
@@ -892,11 +857,7 @@ function PlaygroundSidebar({
               <Label variant="small" required={false}>
                 Max duration
               </Label>
-              <DurationPicker
-                value={maxDuration}
-                onChange={onMaxDurationChange}
-                variant="small"
-              />
+              <DurationPicker value={maxDuration} onChange={onMaxDurationChange} variant="small" />
               <Hint>Overrides the maximum compute time limit for the run.</Hint>
             </InputGroup>
 
@@ -947,9 +908,7 @@ function PlaygroundSidebar({
                   variant="tertiary/small"
                   disabled={isDev}
                   items={regionItems}
-                  filter={(item, search) =>
-                    item.label.toLowerCase().includes(search.toLowerCase())
-                  }
+                  filter={(item, search) => item.label.toLowerCase().includes(search.toLowerCase())}
                 >
                   {(matches) =>
                     matches.map((r) => (
@@ -977,9 +936,7 @@ function PlaygroundSidebar({
           <div className="min-w-64 space-y-3 p-3">
             {session ? (
               <>
-                {runFriendlyId && (
-                  <SessionField label="Run ID" value={runFriendlyId} />
-                )}
+                {runFriendlyId && <SessionField label="Run ID" value={runFriendlyId} />}
                 <SessionField label="Messages" value={String(messageCount)} />
                 <div>
                   <label className="mb-0.5 block text-[10px] font-medium uppercase tracking-wider text-text-dimmed">
@@ -1125,6 +1082,79 @@ function usePlaygroundPendingMessages({
   }));
 
   return { pending, steer };
+}
+
+function ConversationMenu({
+  runFriendlyId,
+  hasMessages,
+  hasConversation,
+  messages,
+  onDeleteConversation,
+  onNewConversation,
+}: {
+  runFriendlyId: string | null;
+  hasMessages: boolean;
+  hasConversation: boolean;
+  messages: UIMessage[];
+  onDeleteConversation: () => void;
+  onNewConversation: () => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const handleCopyRaw = useCallback(() => {
+    void navigator.clipboard.writeText(JSON.stringify(messages, null, 2));
+    setIsOpen(false);
+  }, [messages]);
+
+  const wrap = useCallback(
+    (fn: () => void) => () => {
+      setIsOpen(false);
+      fn();
+    },
+    []
+  );
+
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverVerticalEllipseTrigger variant="minimal" />
+      <PopoverContent className="w-fit min-w-[12rem] p-1" align="end">
+        <div className="flex flex-col gap-1">
+          <PopoverMenuItem
+            icon={PlusIcon}
+            leadingIconClassName="text-green-500 -mx-0.5"
+            title="New conversation"
+            onClick={wrap(onNewConversation)}
+          />
+          {runFriendlyId && (
+            <PopoverMenuItem
+              to={`/runs/${runFriendlyId}`}
+              icon={RunsIcon}
+              leadingIconClassName="text-runs -mx-0.5"
+              title="View runs"
+              onClick={() => setIsOpen(false)}
+            />
+          )}
+          {hasMessages && (
+            <PopoverMenuItem
+              icon={ClipboardIcon}
+              leadingIconClassName="text-yellow-500"
+              title="Copy raw"
+              onClick={handleCopyRaw}
+            />
+          )}
+          {hasConversation && (
+            <PopoverMenuItem
+              icon={TrashIcon}
+              leadingIconClassName="text-error"
+              title="Delete conversation"
+              danger
+              onClick={wrap(onDeleteConversation)}
+            />
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 function HistoryTabContent({

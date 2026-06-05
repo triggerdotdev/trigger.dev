@@ -1,4 +1,4 @@
-import { BookOpenIcon, CpuChipIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon, ChevronUpDownIcon, CpuChipIcon } from "@heroicons/react/20/solid";
 import { json, type MetaFunction } from "@remix-run/node";
 import { Outlet, useNavigate, useParams, useLoaderData } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -6,6 +6,7 @@ import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { InlineCode } from "~/components/code/InlineCode";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
@@ -81,6 +82,12 @@ export default function PlaygroundPage() {
   const params = useParams();
   const navigate = useNavigate();
   const selectedAgent = params.agentParam ?? "";
+  const selectedAgentType = (() => {
+    if (!selectedAgent) return null;
+    const agent = agents.find((a) => a.slug === selectedAgent);
+    const config = (agent?.config ?? null) as { type?: string } | null;
+    return config?.type ?? null;
+  })();
 
   if (agents.length === 0) {
     return (
@@ -106,8 +113,8 @@ export default function PlaygroundPage() {
               }
             >
               <Paragraph spacing variant="small">
-                Test lets you exercise your AI agents with an interactive chat interface,
-                realtime streaming, and conversation history.
+                Test lets you exercise your AI agents with an interactive chat interface, realtime
+                streaming, and conversation history.
               </Paragraph>
               <Paragraph spacing variant="small">
                 Define a chat agent using <InlineCode variant="small">chat.agent()</InlineCode>:
@@ -150,31 +157,39 @@ export const myAgent = chat.agent({
               text: "Test",
             }}
             title={
-              <Select
-                value={selectedAgent}
-                setValue={(slug) => {
-                  if (slug && typeof slug === "string" && slug !== selectedAgent) {
-                    navigate(v3PlaygroundAgentPath(organization, project, environment, slug));
+              <div className="flex items-center gap-2">
+                <Select
+                  value={selectedAgent}
+                  setValue={(slug) => {
+                    if (slug && typeof slug === "string" && slug !== selectedAgent) {
+                      navigate(v3PlaygroundAgentPath(organization, project, environment, slug));
+                    }
+                  }}
+                  icon={<CubeSparkleIcon className="mr-1 size-4 text-agents" />}
+                  text={(val) => val || undefined}
+                  variant="minimal/small"
+                  items={agents}
+                  filter={(item, search) => item.slug.toLowerCase().includes(search.toLowerCase())}
+                  className="-ml-2"
+                  dropdownIcon={
+                    <ChevronUpDownIcon className="size-4 flex-none text-text-dimmed transition group-hover:text-text-bright group-focus:text-text-bright" />
                   }
-                }}
-                icon={<CubeSparkleIcon className="mr-1 size-4 text-agents" />}
-                text={(val) => val || undefined}
-                variant="minimal/small"
-                items={agents}
-                filter={(item, search) => item.slug.toLowerCase().includes(search.toLowerCase())}
-                className="-ml-2"
-              >
-                {(matches) =>
-                  matches.map((a) => (
-                    <SelectItem key={a.slug} value={a.slug}>
-                      <div className="flex items-center gap-2">
-                        <CubeSparkleIcon className="size-4 text-agents" />
-                        <span>{a.slug}</span>
-                      </div>
-                    </SelectItem>
-                  ))
-                }
-              </Select>
+                >
+                  {(matches) =>
+                    matches.map((a) => (
+                      <SelectItem key={a.slug} value={a.slug}>
+                        <div className="flex items-center gap-2">
+                          <CubeSparkleIcon className="size-4 text-agents" />
+                          <span className="text-text-bright">{a.slug}</span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  }
+                </Select>
+                {selectedAgentType && (
+                  <Badge variant="extra-small">{formatAgentType(selectedAgentType)}</Badge>
+                )}
+              </div>
             }
           />
         ) : (
@@ -216,4 +231,13 @@ export const myAgent = chat.agent({
       </PageBody>
     </PageContainer>
   );
+}
+
+function formatAgentType(type: string): string {
+  switch (type) {
+    case "ai-sdk-chat":
+      return "AI SDK Chat";
+    default:
+      return type;
+  }
 }
