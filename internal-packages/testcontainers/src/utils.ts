@@ -12,14 +12,15 @@ import { ClickHouseContainer, runClickhouseMigrations } from "./clickhouse";
 import { MinIOContainer } from "./minio";
 import { getContainerMetadata, getTaskMetadata, logCleanup, logSetup } from "./logs";
 
-export async function createPostgresContainer(network: StartedNetwork) {
-  const container = await new PostgreSqlContainer("docker.io/postgres:14")
-    .withNetwork(network)
-    .withNetworkAliases("database")
-    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
-    .start();
+/** Returns the container's connection URI with the database path swapped to `database`. */
+export function postgresUriWithDatabase(uri: string, database: string): string {
+  const url = new URL(uri);
+  url.pathname = `/${database}`;
+  return url.toString();
+}
 
-  // Run migrations
+/** Pushes the Prisma schema into the database at `databaseUrl` (creating it if missing). */
+export async function pushDatabaseSchema(databaseUrl: string) {
   const databasePath = path.resolve(__dirname, "../../database");
 
   await x(
@@ -37,12 +38,22 @@ export async function createPostgresContainer(network: StartedNetwork) {
       nodeOptions: {
         env: {
           ...process.env,
-          DATABASE_URL: container.getConnectionUri(),
-          DIRECT_URL: container.getConnectionUri(),
+          DATABASE_URL: databaseUrl,
+          DIRECT_URL: databaseUrl,
         },
       },
     }
   );
+}
+
+export async function createPostgresContainer(network: StartedNetwork) {
+  const container = await new PostgreSqlContainer("docker.io/postgres:14")
+    .withNetwork(network)
+    .withNetworkAliases("database")
+    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
+    .start();
+
+  await pushDatabaseSchema(container.getConnectionUri());
 
   return { url: container.getConnectionUri(), container, network };
 }
@@ -250,8 +261,9 @@ export async function useContainer<TContainer extends StartedTestContainer>(
     const useDurationMs = Date.now() - start;
     metadata.useDurationMs = useDurationMs;
   } finally {
-    // WARNING: Testcontainers by default will not wait until the container has stopped. It will simply issue the stop command and return immediately.
-    // If you need to wait for the container to be stopped, you can provide a timeout. The unit of timeout option here is milliseconds (changed from seconds in testcontainers v11)
-    await logCleanup(name, container.stop({ timeout: 10_000 }), metadata);
+    // Containers are throwaway, so we force-kill (SIGKILL) instead of waiting for a graceful
+    // shutdown - ClickHouse alone spends ~5s/test gracefully stopping. timeout: 0 = immediate kill.
+    // We still await it (no pileup); logCleanup swallows any teardown-time connection errors.
+    await logCleanup(name, container.stop({ timeout: 0 }), metadata);
   }
 }
