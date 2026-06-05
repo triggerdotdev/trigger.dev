@@ -4,6 +4,7 @@ import { ActionFunctionArgs, json, LoaderFunctionArgs } from "@remix-run/server-
 import { fromZodError } from "zod-validation-error";
 import { apiCors } from "~/utils/apiCors";
 import { logger } from "../logger.server";
+import { sanitizeAuthFailure } from "./publicAuthError";
 import { rbac } from "../rbac.server";
 import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
 import {
@@ -64,7 +65,14 @@ async function authenticateRequestForApiBuilder(
     // Plugin auth distinguishes 401 (who are you?) from 403 (you're not
     // allowed) — e.g. a suspended account or IP block returns 403.
     // Forwarding the status preserves that semantic for client retry logic.
-    return { ok: false, status: result.status, error: result.error };
+    //
+    // Never forward the controller's `error` string: a controller can
+    // conflate an infra failure with an auth rejection (e.g. an
+    // unreachable DB throws a Prisma error carrying the prod RDS hostname,
+    // which the plugin returns as the auth error). Log it server-side and
+    // return a fixed status-derived message instead. See sanitizeAuthFailure.
+    logger.warn("API bearer auth failed", { status: result.status, error: result.error });
+    return { ok: false, ...sanitizeAuthFailure(result) };
   }
 
   // Plugins return the full AuthenticatedEnvironment shape directly — no
@@ -554,9 +562,14 @@ export function createLoaderPATApiRoute<
       const ctx = contextFn ? await contextFn(parsedParams, request) : {};
       const patAuth = await rbac.authenticatePat(request, ctx);
       if (!patAuth.ok) {
+        // Same provenance rule as bearer auth: never forward the
+        // controller's raw `error` string to the client. Log it
+        // server-side, return a fixed status-derived message.
+        logger.warn("API PAT auth failed", { status: patAuth.status, error: patAuth.error });
+        const safe = sanitizeAuthFailure(patAuth);
         return await wrapResponse(
           request,
-          json({ error: patAuth.error }, { status: patAuth.status }),
+          json({ error: safe.error }, { status: safe.status }),
           corsStrategy !== "none"
         );
       }

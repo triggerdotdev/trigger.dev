@@ -68,6 +68,21 @@ describe("API bearer auth — baseline behavior", () => {
     const body = await res.json();
     expect(body).toHaveProperty("error");
   });
+
+  it("401 body carries only a fixed status-derived message, not the controller's string", async () => {
+    // The auth controller's own `error` string must never reach the client —
+    // a controller can conflate an infra failure with an auth rejection and
+    // leak internal detail (e.g. a Prisma "Can't reach database server" error
+    // carrying the prod RDS hostname). The body is derived purely from status.
+    // `/api/v1/runs` uses the apiBuilder/RBAC bridge (createLoaderApiRoute),
+    // which is the path that surfaced the prod leak via trigger().
+    const res = await server.webapp.fetch("/api/v1/runs", {
+      headers: { Authorization: "Bearer tr_dev_completely_invalid_key_xyz_not_real" },
+    });
+    const body = (await res.json()) as { error?: string };
+    expect(res.status).toBe(401);
+    expect(body.error).toBe("Invalid credentials");
+  });
 });
 
 describe("JWT bearer auth — baseline behavior", () => {
