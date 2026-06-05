@@ -1,9 +1,15 @@
+import { json } from "@remix-run/server-runtime";
 import { type IOPacket } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { ServiceValidationError } from "~/v3/services/common.server";
 import { singleton } from "~/utils/singleton";
-import { ObjectStoreClient, type ObjectStoreClientConfig } from "./objectStoreClient.server";
+import {
+  normalizeObjectStoreLogicalKeyPathname,
+  ObjectStoreClient,
+  type ObjectStoreClientConfig,
+} from "./objectStoreClient.server";
 
 /**
  * Parsed storage URI with optional protocol prefix
@@ -45,6 +51,115 @@ export function formatStorageUri(path: string, protocol?: string): string {
     return `${protocol}://${path}`;
   }
   return path;
+}
+
+export const INVALID_PACKET_STORAGE_PATH = "Invalid packet storage path";
+
+export type PacketPresignFailure = {
+  success: false;
+  error: string;
+  status?: number;
+};
+
+const PACKET_RELATIVE_PATH_BASE = "/__packet_base__";
+
+function throwInvalidPacketStoragePath(): never {
+  throw new ServiceValidationError(INVALID_PACKET_STORAGE_PATH, 400);
+}
+
+function assertRawPacketRelativePathSegments(path: string): void {
+  if (!path || path.includes("\\") || path.startsWith("/")) {
+    throwInvalidPacketStoragePath();
+  }
+
+  for (const segment of path.split("/")) {
+    if (segment === "" || segment === "." || segment === "..") {
+      throwInvalidPacketStoragePath();
+    }
+
+    if (segment.includes("%")) {
+      let decoded: string;
+      try {
+        decoded = decodeURIComponent(segment);
+      } catch {
+        throwInvalidPacketStoragePath();
+      }
+
+      if (decoded === "." || decoded === ".." || decoded.includes("/")) {
+        throwInvalidPacketStoragePath();
+      }
+    }
+  }
+}
+
+/**
+ * Normalize a packet-relative path using the same URL pathname resolution as object-store clients.
+ */
+export function normalizePacketRelativePath(path: string): string {
+  const url = new URL("https://trigger.invalid");
+  url.pathname = `${PACKET_RELATIVE_PATH_BASE}/${path.replace(/^\/+/, "")}`;
+
+  const prefix = `${PACKET_RELATIVE_PATH_BASE}/`;
+  if (!url.pathname.startsWith(prefix)) {
+    throwInvalidPacketStoragePath();
+  }
+
+  return url.pathname.slice(prefix.length);
+}
+
+/**
+ * Ensure a full logical object-store key resolves under the packet prefix after URL normalization.
+ */
+export function assertPacketObjectStoreKeyUnderPrefix(key: string, packetPrefix: string): void {
+  const normalizedKeyPath = normalizeObjectStoreLogicalKeyPathname(key);
+  const normalizedPrefixPath = normalizeObjectStoreLogicalKeyPathname(packetPrefix);
+
+  if (
+    normalizedKeyPath !== normalizedPrefixPath &&
+    !normalizedKeyPath.startsWith(`${normalizedPrefixPath}/`)
+  ) {
+    throwInvalidPacketStoragePath();
+  }
+}
+
+/**
+ * Validate a packet-relative path and return the canonical form used for object-store keys.
+ */
+export function resolveSafePacketRelativePath(path: string): string {
+  assertRawPacketRelativePathSegments(path);
+  const normalized = normalizePacketRelativePath(path);
+  assertRawPacketRelativePathSegments(normalized);
+  return normalized;
+}
+
+/**
+ * Reject path traversal and other unsafe packet-relative storage paths before
+ * building object-store keys or presigned URLs.
+ */
+export function assertSafePacketRelativePath(path: string): void {
+  resolveSafePacketRelativePath(path);
+}
+
+function buildPacketObjectStoreKey(
+  projectRef: string,
+  envSlug: string,
+  relativePath: string
+): string {
+  const safeRelativePath = resolveSafePacketRelativePath(relativePath);
+  const prefix = `packets/${projectRef}/${envSlug}`;
+  const key = `${prefix}/${safeRelativePath}`;
+  assertPacketObjectStoreKeyUnderPrefix(key, prefix);
+  return key;
+}
+
+/** JSON response for packet presign failures (400 client error vs 500 internal). */
+export function jsonPacketPresignFailure(failure: PacketPresignFailure) {
+  const status = failure.status ?? 500;
+  if (status === 400) {
+    return json({ error: failure.error }, { status: 400 });
+  }
+
+  return json({ error: `Failed to generate presigned URL: ${failure.error}` }, { status: 500 });
 }
 
 /**
@@ -134,14 +249,20 @@ export async function uploadPacketToObjectStore(
     throw new Error(`Object store is not configured for protocol: ${protocol || "default"}`);
   }
 
-  const key = `packets/${environment.project.externalRef}/${environment.slug}/${filename}`;
+  const { path } = parseStorageUri(filename);
+  const safePath = resolveSafePacketRelativePath(path);
+  const key = buildPacketObjectStoreKey(
+    environment.project.externalRef,
+    environment.slug,
+    safePath
+  );
 
   logger.debug("Uploading to object store", { key, protocol: protocol || "default" });
 
   await client.putObject(key, data, contentType);
 
-  // Return filename with protocol prefix if specified
-  return formatStorageUri(filename, protocol);
+  // Return canonical storage URI (path only in the key; protocol prefix applied here)
+  return formatStorageUri(safePath, protocol);
 }
 
 export async function downloadPacketFromObjectStore(
@@ -162,13 +283,17 @@ export async function downloadPacketFromObjectStore(
   }
 
   const { protocol, path } = parseStorageUri(packet.data);
+  const key = buildPacketObjectStoreKey(
+    environment.project.externalRef,
+    environment.slug,
+    path
+  );
+
   const client = getObjectStoreClient(protocol);
 
   if (!client) {
     throw new Error(`Object store is not configured for protocol: ${protocol || "default"}`);
   }
-
-  const key = `packets/${environment.project.externalRef}/${environment.slug}/${path}`;
 
   logger.debug("Downloading from object store", { key, protocol: protocol || "default" });
 
@@ -220,10 +345,7 @@ export async function generatePresignedRequest(
   method: "PUT" | "GET" = "PUT",
   options?: GeneratePacketPresignOptions
 ): Promise<
-  | {
-      success: false;
-      error: string;
-    }
+  | PacketPresignFailure
   | {
       success: true;
       request: Request;
@@ -236,6 +358,21 @@ export async function generatePresignedRequest(
     method,
     options?.forceNoPrefix
   );
+
+  let safePath: string;
+  try {
+    safePath = resolveSafePacketRelativePath(path);
+  } catch (error) {
+    if (error instanceof ServiceValidationError) {
+      return {
+        success: false,
+        error: error.message,
+        status: error.status ?? 400,
+      };
+    }
+
+    throw error;
+  }
 
   const config = getObjectStoreConfig(storeProtocol);
   if (!config?.baseUrl) {
@@ -253,7 +390,7 @@ export async function generatePresignedRequest(
     };
   }
 
-  const key = `packets/${projectRef}/${envSlug}/${path}`;
+  const key = buildPacketObjectStoreKey(projectRef, envSlug, safePath);
 
   try {
     const url = await client.presign(key, method, 300); // 5 minutes
@@ -266,7 +403,7 @@ export async function generatePresignedRequest(
       protocol: storeProtocol || "default",
     });
 
-    const storagePath = method === "PUT" ? formatStorageUri(path, storeProtocol) : undefined;
+    const storagePath = method === "PUT" ? formatStorageUri(safePath, storeProtocol) : undefined;
 
     return {
       success: true,
@@ -276,9 +413,7 @@ export async function generatePresignedRequest(
   } catch (error) {
     return {
       success: false,
-      error: `Failed to generate presigned URL: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 }
@@ -289,23 +424,14 @@ export async function generatePresignedUrl(
   filename: string,
   method: "PUT" | "GET" = "PUT",
   options?: GeneratePacketPresignOptions
-): Promise<
-  | {
-      success: false;
-      error: string;
-    }
-  | {
-      success: true;
-      url: string;
-      storagePath?: string;
-    }
-> {
+): Promise<PacketPresignFailure | { success: true; url: string; storagePath?: string }> {
   const signed = await generatePresignedRequest(projectRef, envSlug, filename, method, options);
 
   if (!signed.success) {
     return {
       success: false,
       error: signed.error,
+      status: signed.status,
     };
   }
 
