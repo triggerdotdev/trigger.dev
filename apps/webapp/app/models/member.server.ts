@@ -156,7 +156,7 @@ export async function getInviteFromToken({ token }: { token: string }) {
 export async function getUsersInvites({ email }: { email: string }) {
   return await prisma.orgMemberInvite.findMany({
     where: {
-      email,
+      email: { equals: email, mode: "insensitive" },
       organization: {
         deletedAt: null,
       },
@@ -180,7 +180,7 @@ export async function acceptInvite({
     const invite = await tx.orgMemberInvite.delete({
       where: {
         id: inviteId,
-        email: user.email,
+        email: { equals: user.email, mode: "insensitive" },
       },
       include: {
         organization: {
@@ -215,7 +215,7 @@ export async function acceptInvite({
     // 4. Check for other invites
     const remainingInvites = await tx.orgMemberInvite.findMany({
       where: {
-        email: user.email,
+        email: { equals: user.email, mode: "insensitive" },
       },
     });
 
@@ -259,7 +259,7 @@ export async function declineInvite({
     const declinedInvite = await prisma.orgMemberInvite.delete({
       where: {
         id: inviteId,
-        email: user.email,
+        email: { equals: user.email, mode: "insensitive" },
       },
       include: {
         organization: true,
@@ -269,7 +269,7 @@ export async function declineInvite({
     //2. check for other invites
     const remainingInvites = await prisma.orgMemberInvite.findMany({
       where: {
-        email: user.email,
+        email: { equals: user.email, mode: "insensitive" },
       },
     });
 
