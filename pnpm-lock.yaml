@@ -224,6 +224,9 @@ importers:
       dockerode:
         specifier: ^4.0.6
         version: 4.0.6
+      ioredis:
+        specifier: ^5.3.2
+        version: 5.3.2
       p-limit:
         specifier: ^6.2.0
         version: 6.2.0
@@ -240,6 +243,9 @@ importers:
         specifier: 3.25.76
         version: 3.25.76
     devDependencies:
+      '@internal/testcontainers':
+        specifier: workspace:*
+        version: link:../../internal-packages/testcontainers
       '@types/dockerode':
         specifier: ^3.3.33
         version: 3.3.35
