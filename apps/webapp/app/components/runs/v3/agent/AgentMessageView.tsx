@@ -121,6 +121,22 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
         typeof p.output === "string" ? p.output : JSON.stringify(p.output, null, 2);
     }
 
+    // Status label for the tool row. AI SDK 7 HITL adds the
+    // approval-requested / approval-responded states between input-available
+    // and output-available, so surface those alongside the existing states.
+    let resultSummary: string | undefined;
+    if (p.state === "input-streaming" || p.state === "input-available") {
+      resultSummary = "calling...";
+    } else if (p.state === "approval-requested") {
+      resultSummary = "awaiting approval";
+    } else if (p.state === "approval-responded" || p.state === "output-denied") {
+      resultSummary = p.approval?.approved
+        ? "approved"
+        : `denied${p.approval?.reason ? `: ${p.approval.reason}` : ""}`;
+    } else if (p.state === "output-error") {
+      resultSummary = `error: ${p.errorText ?? "unknown"}`;
+    }
+
     return (
       <ToolUseRow
         key={i}
@@ -129,12 +145,7 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
           toolName,
           inputJson: JSON.stringify(p.input ?? {}, null, 2),
           resultOutput,
-          resultSummary:
-            p.state === "input-streaming" || p.state === "input-available"
-              ? "calling..."
-              : p.state === "output-error"
-              ? `error: ${p.errorText ?? "unknown"}`
-              : undefined,
+          resultSummary,
           subAgent: isSubAgent
             ? {
                 parts: p.output.parts,
