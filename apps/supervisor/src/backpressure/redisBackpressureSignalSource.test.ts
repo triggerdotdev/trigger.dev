@@ -1,5 +1,5 @@
 import { redisTest } from "@internal/testcontainers";
-import { Redis } from "@internal/redis";
+import { Redis } from "ioredis";
 import { describe, expect } from "vitest";
 import { RedisBackpressureSignalSource } from "./redisBackpressureSignalSource.js";
 

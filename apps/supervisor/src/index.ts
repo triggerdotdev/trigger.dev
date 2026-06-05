@@ -28,7 +28,7 @@ import { FailedPodHandler } from "./services/failedPodHandler.js";
 import { getWorkerToken } from "./workerToken.js";
 import { OtlpTraceService } from "./services/otlpTraceService.js";
 import { extractTraceparent, getRestoreRunnerId } from "./util.js";
-import { createRedisClient, type Redis } from "@internal/redis";
+import { Redis } from "ioredis";
 import { BackpressureMonitor } from "./backpressure/backpressureMonitor.js";
 import { RedisBackpressureSignalSource } from "./backpressure/redisBackpressureSignalSource.js";
 import { BackpressureMetrics } from "./backpressure/backpressureMetrics.js";
@@ -191,18 +191,16 @@ class ManagedSupervisor {
     }
 
     if (env.TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED) {
-      this.backpressureRedis = createRedisClient(
-        {
-          host: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST,
-          port: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PORT,
-          username: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_USERNAME,
-          password: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PASSWORD,
-          ...(env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_TLS_DISABLED ? {} : { tls: {} }),
-        },
-        {
-          onError: (error) =>
-            this.logger.error("Backpressure redis error", { error: error.message }),
-        }
+      this.backpressureRedis = new Redis({
+        host: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST,
+        port: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PORT,
+        username: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_USERNAME,
+        password: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PASSWORD,
+        ...(env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_TLS_DISABLED ? {} : { tls: {} }),
+        maxRetriesPerRequest: null,
+      });
+      this.backpressureRedis.on("error", (error) =>
+        this.logger.error("Backpressure redis error", { error: error.message })
       );
 
       this.backpressureMonitor = new BackpressureMonitor({

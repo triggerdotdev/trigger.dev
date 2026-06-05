@@ -1,4 +1,4 @@
-import type { Redis } from "@internal/redis";
+import type { Redis } from "ioredis";
 import { z } from "zod";
 import type { BackpressureSignalSource, BackpressureVerdict } from "./backpressureMonitor.js";
 

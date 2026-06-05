@@ -215,9 +215,6 @@ importers:
       '@internal/compute':
         specifier: workspace:*
         version: link:../../internal-packages/compute
-      '@internal/redis':
-        specifier: workspace:*
-        version: link:../../internal-packages/redis
       '@kubernetes/client-node':
         specifier: ^1.0.0
         version: 1.0.0(patch_hash=ba1a06f46256cdb8d6faf7167246692c0de2e7cd846a9dc0f13be0137e1c3745)(bufferutil@4.0.9)(encoding@0.1.13)
@@ -227,6 +224,9 @@ importers:
       dockerode:
         specifier: ^4.0.6
         version: 4.0.6
+      ioredis:
+        specifier: ^5.3.2
+        version: 5.3.2
       p-limit:
         specifier: ^6.2.0
         version: 6.2.0
