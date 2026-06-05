@@ -76,6 +76,7 @@ export async function removeTeamMember({
   return prisma.orgMember.delete({
     where: {
       id: memberId,
+      organizationId: org.id,
     },
     include: {
       organization: true,
