@@ -126,6 +126,175 @@ describe("MollifierBuffer construction", () => {
   });
 });
 
+describe("MollifierBuffer.evaluateTripGlobal", () => {
+  redisTest(
+    "trips once the global counter exceeds the threshold, ignoring env",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        // Long window so the fixed-window counter doesn't expire mid-test.
+        const opts = { windowMs: 60_000, threshold: 3, holdMs: 5_000 };
+
+        // Calls 1..threshold stay under the line (count > threshold is false).
+        for (let i = 1; i <= 3; i++) {
+          const res = await buffer.evaluateTripGlobal(opts);
+          expect(res.count).toBe(i);
+          expect(res.tripped).toBe(false);
+        }
+
+        // The (threshold + 1)th tick crosses it and trips.
+        const tripping = await buffer.evaluateTripGlobal(opts);
+        expect(tripping.count).toBe(4);
+        expect(tripping.tripped).toBe(true);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "catches aggregate load spread across envs that per-env tripping misses",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        const opts = { windowMs: 60_000, threshold: 5, holdMs: 5_000 };
+        const envs = ["env_a", "env_b", "env_c", "env_d", "env_e", "env_f"];
+
+        // Per-env: each env triggers exactly once -> each per-env counter is 1,
+        // well under the threshold, so the per-env gate NEVER trips.
+        for (const envId of envs) {
+          const perEnv = await buffer.evaluateTrip(envId, opts);
+          expect(perEnv.tripped).toBe(false);
+        }
+
+        // Global: the same six triggers accumulate into one counter and trip,
+        // because the global gate does not consider per-env contributions.
+        let last = { tripped: false, count: 0 };
+        for (const _envId of envs) {
+          last = await buffer.evaluateTripGlobal(opts);
+        }
+        expect(last.count).toBe(envs.length);
+        expect(last.tripped).toBe(true);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "global window expires and the shared counter resets when no traffic",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        // The fixed-window TTL is only (re)armed when count hits 1. Verify the
+        // GLOBAL key still resets after a full window of silence — i.e. the
+        // gate is not permanently latched once it has seen traffic.
+        const fastWindow = { windowMs: 100, threshold: 100, holdMs: 100 };
+        await buffer.evaluateTripGlobal(fastWindow);
+        await buffer.evaluateTripGlobal(fastWindow);
+
+        await new Promise((r) => setTimeout(r, 150));
+        const fresh = await buffer.evaluateTripGlobal(fastWindow);
+        expect(fresh.count).toBe(1);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "global tripped marker outlives the rate counter window (holdMs > windowMs)",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        // This is the production-default shape (holdMs 500 > windowMs 200): the
+        // tripped marker must keep the gate diverted across rate-window resets.
+        const opts = { windowMs: 50, threshold: 2, holdMs: 1000 };
+        await buffer.evaluateTripGlobal(opts);
+        await buffer.evaluateTripGlobal(opts);
+        const tripped = await buffer.evaluateTripGlobal(opts);
+        expect(tripped.tripped).toBe(true);
+
+        // Past windowMs (rate counter expires) but well inside holdMs.
+        await new Promise((r) => setTimeout(r, 120));
+
+        const after = await buffer.evaluateTripGlobal(opts);
+        expect(after.tripped).toBe(true);
+        expect(after.count).toBeLessThanOrEqual(2);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+
+  redisTest(
+    "global INCR is atomic under 100 concurrent calls (no lost increments)",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        // The global key is the one counter every webapp replica hammers, so
+        // atomicity matters more here than per-env. Wide window + huge threshold
+        // isolate the count assertion from window/trip semantics.
+        const opts = { windowMs: 5000, threshold: 1_000_000, holdMs: 100 };
+        const results = await Promise.all(
+          Array.from({ length: 100 }, () => buffer.evaluateTripGlobal(opts)),
+        );
+
+        const counts = results.map((r) => r.count).sort((a, b) => a - b);
+        expect(counts).toEqual(Array.from({ length: 100 }, (_, i) => i + 1));
+        expect(results.every((r) => !r.tripped)).toBe(true);
+      } finally {
+        await buffer.close();
+      }
+    },
+  );
+});
+
 describe("MollifierBuffer.accept", () => {
   redisTest("accept writes entry, enqueues, and tracks env", { timeout: 20_000 }, async ({ redisContainer }) => {
     const buffer = new MollifierBuffer({

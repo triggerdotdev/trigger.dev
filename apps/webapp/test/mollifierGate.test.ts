@@ -182,6 +182,51 @@ describe("evaluateGate cascade — exhaustive truth table", () => {
   });
 });
 
+// Global-mode trips surface `reason: "global_rate"` (vs "per_env_rate"). The
+// gate is reason-agnostic — it forwards `decision.reason` straight to
+// `recordDecision` — but `reason` is the metric label we alert/dashboard on, so
+// pin the contract end-to-end for both the shadow-log and mollify outcomes.
+const globalTrippedDecision = {
+  divert: true as const,
+  reason: "global_rate" as const,
+  count: 1200,
+  threshold: 1000,
+  windowMs: 200,
+  holdMs: 500,
+};
+
+describe("evaluateGate — global_rate reason propagates to the metric", () => {
+  it("shadow path records shadow_log with reason global_rate", async () => {
+    const { deps, spies } = makeDeps({
+      enabled: true,
+      shadow: true,
+      flag: false,
+      decision: globalTrippedDecision,
+    });
+
+    const outcome = await evaluateGate(inputs, deps);
+
+    expect(outcome.action).toBe("shadow_log");
+    expect(spies.recordDecisionCalls).toEqual([{ outcome: "shadow_log", reason: "global_rate" }]);
+    expect(spies.logShadowCalls).toEqual([{ inputs, decision: globalTrippedDecision }]);
+  });
+
+  it("mollify path records mollify with reason global_rate", async () => {
+    const { deps, spies } = makeDeps({
+      enabled: true,
+      shadow: false,
+      flag: true,
+      decision: globalTrippedDecision,
+    });
+
+    const outcome = await evaluateGate(inputs, deps);
+
+    expect(outcome.action).toBe("mollify");
+    expect(spies.recordDecisionCalls).toEqual([{ outcome: "mollify", reason: "global_rate" }]);
+    expect(spies.logMollifiedCalls).toEqual([{ inputs, decision: globalTrippedDecision }]);
+  });
+});
+
 // Hot-path guard: `triggerTask.server.ts` calls `evaluateGate` on every
 // trigger when `TRIGGER_MOLLIFIER_ENABLED=1`. The per-org override path must resolve
 // without a Prisma round-trip — otherwise the gate adds a DB query to the

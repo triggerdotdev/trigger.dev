@@ -3,6 +3,11 @@ import { logger } from "~/services/logger.server";
 import type { GateInputs, TripDecision, TripEvaluator } from "./mollifierGate.server";
 
 export type TripEvaluatorOptions = {
+  // "per_env" (default) rate-limits each env independently. "global" rate-limits
+  // the aggregate fleet-wide trigger.run rate via a single shared counter and
+  // ignores per-env contributions — it protects shared infra (the primary DB)
+  // from the aggregate rate that per-env tripping structurally cannot bound.
+  mode?: "per_env" | "global";
   windowMs: number;
   threshold: number;
   holdMs: number;
@@ -21,12 +26,15 @@ export function createRealTripEvaluator(deps: CreateRealTripEvaluatorDeps): Trip
     const opts = deps.options();
 
     try {
-      const { tripped, count } = await buffer.evaluateTrip(inputs.envId, opts);
+      const { tripped, count } =
+        opts.mode === "global"
+          ? await buffer.evaluateTripGlobal(opts)
+          : await buffer.evaluateTrip(inputs.envId, opts);
       if (!tripped) return { divert: false };
 
       return {
         divert: true,
-        reason: "per_env_rate",
+        reason: opts.mode === "global" ? "global_rate" : "per_env_rate",
         count,
         threshold: opts.threshold,
         windowMs: opts.windowMs,
