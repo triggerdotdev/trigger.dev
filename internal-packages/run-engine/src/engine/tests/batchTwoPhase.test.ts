@@ -1,4 +1,4 @@
-import { assertNonNullable, containerTest } from "@internal/testcontainers";
+import { assertNonNullable, containerTestWithIsolatedRedis as containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect, describe, vi } from "vitest";
 import { RunEngine } from "../index.js";

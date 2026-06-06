@@ -260,13 +260,9 @@ export const redisOptions = async (
   await use(options);
 };
 
-type RedisTestContext = {
-  redisContainer: StartedRedisContainer;
-  resetRedis: void;
-  redisOptions: RedisOptions;
-};
-
-// Boot redis once per worker.
+// Worker-scoped redis: booted once per worker, FLUSHALL per test. Big win for redis-heavy files
+// (buffer.test.ts: 88 boots -> 1). Safe ONLY for tests that don't leave background redis work
+// (a Worker loop, BatchQueue) running past the test body - use isolatedRedisTest for those.
 const bootWorkerRedis = async ({}, use: Use<StartedRedisContainer>) => {
   const { container } = await createRedisContainer({ port: 6379 });
   try {
@@ -276,7 +272,6 @@ const bootWorkerRedis = async ({}, use: Use<StartedRedisContainer>) => {
   }
 };
 
-// Per test: FLUSHALL the shared redis (auto fixture so it runs for every test).
 const flushRedis = async (
   { redisContainer }: { redisContainer: StartedRedisContainer },
   use: Use<void>
@@ -295,11 +290,22 @@ const flushRedis = async (
   await use();
 };
 
+type RedisTestContext = {
+  redisContainer: StartedRedisContainer;
+  resetRedis: void;
+  redisOptions: RedisOptions;
+};
+
 export const redisTest = test.extend<RedisTestContext>({
   redisContainer: [bootWorkerRedis, { scope: "worker" }],
   resetRedis: [flushRedis, { auto: true }],
   redisOptions,
 });
+
+// Per-test redis for tests with background redis work (redis-worker Workers, BatchQueue) that can
+// outlive the test body - a shared redis would let leaked work hit a closed connection / next test
+// ("Connection is closed"). Boot is kept fast (see createRedisContainer).
+export const isolatedRedisTest = test.extend<RedisContext>({ network, redisContainer, redisOptions });
 
 const electricOrigin = async (
   {
@@ -424,9 +430,9 @@ type ContainerTestContext = {
   clickhouseClient: ClickHouseClient;
 };
 
-// The workhorse fixture (~36 files). Boots postgres+redis+clickhouse ONCE per worker and isolates
-// per test (postgres template-clone, redis FLUSHALL, clickhouse TRUNCATE) - no per-test boots, no
-// shared docker network needed.
+// The workhorse fixture (~36 files). Postgres (template-clone), Redis (FLUSHALL) and ClickHouse
+// (truncate) all boot once per worker - no per-test container boots. Use containerTestWithIsolatedRedis
+// for tests that run background redis work (BatchQueue, redis-worker Workers) past the test body.
 export const containerTest = test.extend<ContainerTestContext>({
   postgresContainer: clonedPostgresContainer,
   prisma: prismaFromContainer,
@@ -438,18 +444,41 @@ export const containerTest = test.extend<ContainerTestContext>({
   clickhouseClient: scopedClickhouseClient,
 });
 
+type ContainerWithIsolatedRedisContext = {
+  network: StartedNetwork;
+  postgresContainer: StartedPostgreSqlContainer;
+  prisma: PrismaClient;
+  redisContainer: StartedRedisContainer;
+  redisOptions: RedisOptions;
+  clickhouseContainer: StartedClickHouseContainer;
+  resetClickhouse: void;
+  clickhouseClient: ClickHouseClient;
+};
+
+// Same as containerTest but Redis is PER-TEST - for tests whose background redis work (BatchQueue,
+// Workers) outlives the test body and would otherwise hit a closed/shared connection.
+export const containerTestWithIsolatedRedis = test.extend<ContainerWithIsolatedRedisContext>({
+  network,
+  postgresContainer: clonedPostgresContainer,
+  prisma: prismaFromContainer,
+  redisContainer,
+  redisOptions,
+  clickhouseContainer: [bootWorkerClickhouse, { scope: "worker" }],
+  resetClickhouse: [truncateClickhouseFixture, { auto: true }],
+  clickhouseClient: scopedClickhouseClient,
+});
+
 // For tests that exercise the Postgres -> ClickHouse logical-replication pipeline (WAL slots,
 // publications, REPLICA IDENTITY). These need a dedicated Postgres per test - the worker-scoped +
 // template-clone model used by containerTest doesn't carry logical replication across cloned dbs.
-// ONLY postgres needs to be per-test (the WAL slot/publication lives in the db it writes to). Redis
-// and ClickHouse are still worker-scoped + reset per test - the pipeline writes pg->clickhouse and a
-// shared+truncated clickhouse is fine - so we only pay a postgres boot per test, not all three.
+// Postgres is per-test (the WAL slot/publication lives in the db it writes to); ClickHouse is
+// worker-scoped + truncated (the pipeline writes pg->clickhouse and a shared+truncated clickhouse is
+// fine). Redis is per-test too (background work safety, same as containerTest).
 type ReplicationContainerTestContext = {
   network: StartedNetwork;
   postgresContainer: StartedPostgreSqlContainer;
   prisma: PrismaClient;
   redisContainer: StartedRedisContainer;
-  resetRedis: void;
   redisOptions: RedisOptions;
   clickhouseContainer: StartedClickHouseContainer;
   resetClickhouse: void;
@@ -460,8 +489,7 @@ export const replicationContainerTest = test.extend<ReplicationContainerTestCont
   network,
   postgresContainer,
   prisma,
-  redisContainer: [bootWorkerRedis, { scope: "worker" }],
-  resetRedis: [flushRedis, { auto: true }],
+  redisContainer,
   redisOptions,
   clickhouseContainer: [bootWorkerClickhouse, { scope: "worker" }],
   resetClickhouse: [truncateClickhouseFixture, { auto: true }],

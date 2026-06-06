@@ -114,16 +114,11 @@ export async function createRedisContainer({
     container = container.withNetwork(network).withNetworkAliases("redis");
   }
 
+  // Wait only on the readiness log (RedisContainer's default) - the previous Docker healthcheck added
+  // a full poll-cycle of latency per boot, which dominates per-test redis. verifyRedisConnection
+  // below still confirms the container actually accepts connections before we hand it to the test.
   const startedContainer = await container
-    .withHealthCheck({
-      test: ["CMD", "redis-cli", "ping"],
-      interval: 1000,
-      timeout: 3000,
-      retries: 5,
-    })
-    .withWaitStrategy(
-      Wait.forAll([Wait.forHealthCheck(), Wait.forLogMessage("Ready to accept connections")])
-    )
+    .withWaitStrategy(Wait.forLogMessage("Ready to accept connections"))
     .start();
 
   // Add a verification step
