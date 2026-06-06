@@ -50,6 +50,24 @@ function median(nums) {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+// Stable per-package offset (derived from the package dir) so each package's heaviest file - which
+// LPT always drops into bin 0 - maps to a DIFFERENT shard. Without it, a serial multi-package job
+// (`turbo --concurrency=1 --filter "@internal/*"`) stacks every package's heaviest file into shard 1.
+// It's a rotation of the bin->shard mapping, so coverage stays exact (each file runs once).
+function packageOffset(specs, count) {
+  if (specs.length === 0) return 0;
+  const rel = path.relative(REPO_ROOT, specs[0].moduleId);
+  const key = rel.split(path.sep).slice(0, 2).join("/");
+  // FNV-1a - spreads similar sibling package names (e.g. internal-packages/*) far better than a
+  // simple polynomial hash mod count, which collided run-engine + schedule-engine onto one shard.
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) % count;
+}
+
 /**
  * Duration-weighted interpretation of `--shard=i/N`. Instead of vitest's default file-count split,
  * this greedily bin-packs test files by recorded duration (test-timings.json at the repo root;
@@ -103,7 +121,8 @@ class DurationShardingSequencer {
       lightest.specs.push(spec);
     }
 
-    return bins[shard.index - 1].specs;
+    const offset = packageOffset(specs, shard.count);
+    return bins[(shard.index - 1 + offset) % shard.count].specs;
   }
 }
 
