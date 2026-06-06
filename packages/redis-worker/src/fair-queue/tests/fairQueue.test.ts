@@ -1372,4 +1372,160 @@ describe("FairQueue", () => {
     );
   });
 
+  describe("rate limiting", () => {
+    redisTest(
+      "should delay task processing until resetAt when a rate limit is hit",
+      { timeout: 15000 },
+      async ({ redisOptions }) => {
+        const processed: string[] = [];
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 50,
+          visibilityTimeoutMs: 5000,
+          startConsumers: false,
+        });
+
+        queue.onMessage(async (ctx) => {
+          processed.push(ctx.message.payload.value);
+          await ctx.complete();
+        });
+
+        // Enqueue message with a rate limit of 1
+        await queue.enqueue({
+          queueId: "tenant:t1:queue:q1",
+          tenantId: "t1",
+          payload: { value: "first-allowed" },
+          rateLimits: [
+            {
+              key: "test-limit-delay",
+              limit: 1,
+              windowMs: 2000,
+              units: 1,
+            },
+          ],
+        });
+
+        // Enqueue second message which should hit the limit
+        await queue.enqueue({
+          queueId: "tenant:t1:queue:q1",
+          tenantId: "t1",
+          payload: { value: "second-delayed" },
+          rateLimits: [
+            {
+              key: "test-limit-delay",
+              limit: 1,
+              windowMs: 2000,
+              units: 1,
+            },
+          ],
+        });
+
+        // Start processing
+        queue.start();
+
+        // Wait for first message to be processed
+        await vi.waitFor(
+          () => {
+            expect(processed).toContain("first-allowed");
+          },
+          { timeout: 5000 }
+        );
+
+        // Second message should NOT be processed yet
+        expect(processed).not.toContain("second-delayed");
+
+        // Wait for the window to expire (2000ms)
+        await vi.waitFor(
+          () => {
+            expect(processed).toContain("second-delayed");
+          },
+          { timeout: 5000 }
+        );
+
+        await queue.close();
+      }
+    );
+
+    redisTest(
+      "should not block other tenants when one tenant hits a rate limit",
+      { timeout: 15000 },
+      async ({ redisOptions }) => {
+        const processed: string[] = [];
+        keys = new DefaultFairQueueKeyProducer({ prefix: "test" });
+
+        const scheduler = new DRRScheduler({
+          redis: redisOptions,
+          keys,
+          quantum: 10,
+          maxDeficit: 100,
+        });
+
+        const queue = new TestFairQueueHelper(redisOptions, keys, {
+          scheduler,
+          payloadSchema: TestPayloadSchema,
+          shardCount: 1,
+          consumerCount: 1,
+          consumerIntervalMs: 50,
+          visibilityTimeoutMs: 5000,
+          startConsumers: false,
+        });
+
+        queue.onMessage(async (ctx) => {
+          processed.push(ctx.message.payload.value);
+          await ctx.complete();
+        });
+
+        // Tenant 1 hits rate limit
+        await queue.enqueue({
+          queueId: "tenant:t1:queue:q1",
+          tenantId: "t1",
+          payload: { value: "t1-limited" },
+          rateLimits: [
+            {
+              key: "t1-limit",
+              limit: 0,
+              windowMs: 5000,
+              units: 1,
+            },
+          ],
+        });
+
+        // Tenant 2 has no rate limit
+        await queue.enqueue({
+          queueId: "tenant:t2:queue:q1",
+          tenantId: "t2",
+          payload: { value: "t2-allowed" },
+        });
+
+        // Start processing
+        queue.start();
+
+        // Wait for t2 to be processed
+        await vi.waitFor(
+          () => {
+            expect(processed).toContain("t2-allowed");
+          },
+          { timeout: 5000 }
+        );
+
+        // t1 should still not be processed
+        expect(processed).not.toContain("t1-limited");
+
+        await queue.close();
+      }
+    );
+  });
+
 });
