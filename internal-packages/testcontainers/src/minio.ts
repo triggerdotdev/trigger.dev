@@ -68,11 +68,9 @@ export class MinIOContainer extends GenericContainer {
       { throwOnError: true }
     );
 
-    await x(
-      "docker",
-      ["exec", startedContainer.getId(), "mc", "mb", "local/packets"],
-      { throwOnError: true }
-    );
+    await x("docker", ["exec", startedContainer.getId(), "mc", "mb", "local/packets"], {
+      throwOnError: true,
+    });
 
     return new StartedMinIOContainer(
       startedContainer,
@@ -125,9 +123,13 @@ export class StartedMinIOContainer extends AbstractStartedContainer {
    * created at boot). Recreates the bucket so each test starts from the same empty state.
    */
   public async resetBucket(bucket = "packets"): Promise<void> {
-    await x("docker", ["exec", this.getId(), "mc", "rm", "--recursive", "--force", `local/${bucket}`], {
-      throwOnError: false,
-    });
+    await x(
+      "docker",
+      ["exec", this.getId(), "mc", "rm", "--recursive", "--force", `local/${bucket}`],
+      {
+        throwOnError: false,
+      }
+    );
     await x("docker", ["exec", this.getId(), "mc", "mb", "--ignore-existing", `local/${bucket}`], {
       throwOnError: true,
     });

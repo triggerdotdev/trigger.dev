@@ -26,11 +26,10 @@ if (!testFile) {
 
 function runOnce() {
   return new Promise((resolve) => {
-    const child = spawn(
-      "pnpm",
-      ["exec", "vitest", "run", testFile, "--disableConsoleIntercept"],
-      { cwd, env: { ...process.env, TESTCONTAINERS_TIMING: "1" } }
-    );
+    const child = spawn("pnpm", ["exec", "vitest", "run", testFile, "--disableConsoleIntercept"], {
+      cwd,
+      env: { ...process.env, TESTCONTAINERS_TIMING: "1" },
+    });
 
     let out = "";
     const collect = (buf) => (out += buf.toString());
@@ -66,7 +65,11 @@ for (let i = 0; i < runs; i++) {
     byResource[key].count += 1;
   }
   const teardownMs = Object.values(byResource).reduce((a, r) => a + r.totalMs, 0);
-  console.log(`\nrun ${i + 1}/${runs}  passed=${passed}  wall=${duration}s  teardown=${(teardownMs / 1000).toFixed(2)}s`);
+  console.log(
+    `\nrun ${i + 1}/${runs}  passed=${passed}  wall=${duration}s  teardown=${(
+      teardownMs / 1000
+    ).toFixed(2)}s`
+  );
   for (const [res, r] of Object.entries(byResource)) {
     console.log(`  teardown ${res}: ${(r.totalMs / 1000).toFixed(2)}s over ${r.count}`);
   }

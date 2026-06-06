@@ -144,5 +144,4 @@ describe("RunsReplicationService (part 5/7)", () => {
       await runsReplicationService.stop();
     }
   );
-
 });

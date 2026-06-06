@@ -142,177 +142,177 @@ describe("RunEngine ttl", () => {
     }
   });
 
-  containerTest("First enqueue from trigger includes ttlExpiresAt in message", async ({
-    prisma,
-    redisOptions,
-  }) => {
-    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+  containerTest(
+    "First enqueue from trigger includes ttlExpiresAt in message",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-    const engine = new RunEngine({
-      prisma,
-      worker: {
-        redis: redisOptions,
-        workers: 1,
-        tasksPerWorker: 10,
-        pollIntervalMs: 100,
-      },
-      queue: {
-        redis: redisOptions,
-        processWorkerQueueDebounceMs: 50,
-        masterQueueConsumersDisabled: true,
-        ttlSystem: {
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
           pollIntervalMs: 100,
-          batchSize: 10,
-          batchMaxWaitMs: 100,
         },
-      },
-      runLock: {
-        redis: redisOptions,
-      },
-      machines: {
-        defaultMachine: "small-1x",
-        machines: {
-          "small-1x": {
-            name: "small-1x" as const,
-            cpu: 0.5,
-            memory: 0.5,
-            centsPerMs: 0.0001,
+        queue: {
+          redis: redisOptions,
+          processWorkerQueueDebounceMs: 50,
+          masterQueueConsumersDisabled: true,
+          ttlSystem: {
+            pollIntervalMs: 100,
+            batchSize: 10,
+            batchMaxWaitMs: 100,
           },
         },
-        baseCostInCents: 0.0001,
-      },
-      tracer: trace.getTracer("test", "0.0.0"),
-    });
-
-    try {
-      const taskIdentifier = "test-task";
-      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
-
-      const run = await engine.trigger(
-        {
-          number: 1,
-          friendlyId: "run_ttlmsg1",
-          environment: authenticatedEnvironment,
-          taskIdentifier,
-          payload: "{}",
-          payloadType: "application/json",
-          context: {},
-          traceContext: {},
-          traceId: "t_ttl",
-          spanId: "s_ttl",
-          workerQueue: "main",
-          queue: "task/test-task",
-          isTest: false,
-          tags: [],
-          ttl: "1s",
+        runLock: {
+          redis: redisOptions,
         },
-        prisma
-      );
-
-      const message = await engine.runQueue.readMessage(
-        authenticatedEnvironment.organization.id,
-        run.id
-      );
-      assertNonNullable(message);
-      expect(message.ttlExpiresAt).toBeDefined();
-      expect(typeof message.ttlExpiresAt).toBe("number");
-    } finally {
-      await engine.quit();
-    }
-  });
-
-  containerTest("Re-enqueue with includeTtl false does not set ttlExpiresAt", async ({
-    prisma,
-    redisOptions,
-  }) => {
-    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-
-    const engine = new RunEngine({
-      prisma,
-      worker: {
-        redis: redisOptions,
-        workers: 1,
-        tasksPerWorker: 10,
-        pollIntervalMs: 100,
-      },
-      queue: {
-        redis: redisOptions,
-        processWorkerQueueDebounceMs: 50,
-        masterQueueConsumersDisabled: true,
-        ttlSystem: {
-          pollIntervalMs: 100,
-          batchSize: 10,
-          batchMaxWaitMs: 100,
-        },
-      },
-      runLock: {
-        redis: redisOptions,
-      },
-      machines: {
-        defaultMachine: "small-1x",
         machines: {
-          "small-1x": {
-            name: "small-1x" as const,
-            cpu: 0.5,
-            memory: 0.5,
-            centsPerMs: 0.0001,
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
           },
+          baseCostInCents: 0.0001,
         },
-        baseCostInCents: 0.0001,
-      },
-      tracer: trace.getTracer("test", "0.0.0"),
-    });
-
-    try {
-      const taskIdentifier = "test-task";
-      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
-
-      const run = await engine.trigger(
-        {
-          number: 1,
-          friendlyId: "run_reenq01",
-          environment: authenticatedEnvironment,
-          taskIdentifier,
-          payload: "{}",
-          payloadType: "application/json",
-          context: {},
-          traceContext: {},
-          traceId: "t_re",
-          spanId: "s_re",
-          workerQueue: "main",
-          queue: "task/test-task",
-          isTest: false,
-          tags: [],
-          ttl: "1s",
-        },
-        prisma
-      );
-
-      const messageAfterTrigger = await engine.runQueue.readMessage(
-        authenticatedEnvironment.organization.id,
-        run.id
-      );
-      assertNonNullable(messageAfterTrigger);
-      expect(messageAfterTrigger.ttlExpiresAt).toBeDefined();
-
-      await engine.enqueueSystem.enqueueRun({
-        run,
-        env: authenticatedEnvironment,
-        tx: prisma,
-        skipRunLock: true,
-        includeTtl: false,
+        tracer: trace.getTracer("test", "0.0.0"),
       });
 
-      const messageAfterReenqueue = await engine.runQueue.readMessage(
-        authenticatedEnvironment.organization.id,
-        run.id
-      );
-      assertNonNullable(messageAfterReenqueue);
-      expect(messageAfterReenqueue.ttlExpiresAt).toBeUndefined();
-    } finally {
-      await engine.quit();
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_ttlmsg1",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_ttl",
+            spanId: "s_ttl",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            ttl: "1s",
+          },
+          prisma
+        );
+
+        const message = await engine.runQueue.readMessage(
+          authenticatedEnvironment.organization.id,
+          run.id
+        );
+        assertNonNullable(message);
+        expect(message.ttlExpiresAt).toBeDefined();
+        expect(typeof message.ttlExpiresAt).toBe("number");
+      } finally {
+        await engine.quit();
+      }
     }
-  });
+  );
+
+  containerTest(
+    "Re-enqueue with includeTtl false does not set ttlExpiresAt",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          processWorkerQueueDebounceMs: 50,
+          masterQueueConsumersDisabled: true,
+          ttlSystem: {
+            pollIntervalMs: 100,
+            batchSize: 10,
+            batchMaxWaitMs: 100,
+          },
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: "run_reenq01",
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_re",
+            spanId: "s_re",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+            ttl: "1s",
+          },
+          prisma
+        );
+
+        const messageAfterTrigger = await engine.runQueue.readMessage(
+          authenticatedEnvironment.organization.id,
+          run.id
+        );
+        assertNonNullable(messageAfterTrigger);
+        expect(messageAfterTrigger.ttlExpiresAt).toBeDefined();
+
+        await engine.enqueueSystem.enqueueRun({
+          run,
+          env: authenticatedEnvironment,
+          tx: prisma,
+          skipRunLock: true,
+          includeTtl: false,
+        });
+
+        const messageAfterReenqueue = await engine.runQueue.readMessage(
+          authenticatedEnvironment.organization.id,
+          run.id
+        );
+        assertNonNullable(messageAfterReenqueue);
+        expect(messageAfterReenqueue.ttlExpiresAt).toBeUndefined();
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
 
   containerTest(
     "Re-enqueued runs are not expired by TTL once they have started",
@@ -392,10 +392,7 @@ describe("RunEngine ttl", () => {
 
         // Dequeue the run — this simulates the run starting to execute, which
         // ZREMs its TTL set entry.
-        await engine.runQueue.processMasterQueueForEnvironment(
-          authenticatedEnvironment.id,
-          10
-        );
+        await engine.runQueue.processMasterQueueForEnvironment(authenticatedEnvironment.id, 10);
         const dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test-consumer",
           workerQueue: "main",
@@ -854,11 +851,9 @@ describe("RunEngine ttl", () => {
           consumerId: "test-consumer",
           workerQueue: "main",
           maxRunCount: 1,
-          backgroundWorkerId: (
-            await prisma.backgroundWorker.findFirst({
-              where: { runtimeEnvironmentId: authenticatedEnvironment.id },
-            })
-          )!.id,
+          backgroundWorkerId: (await prisma.backgroundWorker.findFirst({
+            where: { runtimeEnvironmentId: authenticatedEnvironment.id },
+          }))!.id,
         });
 
         expect(dequeued.length).toBe(0);
@@ -957,10 +952,7 @@ describe("RunEngine ttl", () => {
         // Manually process the master queue - the dequeue Lua script should
         // encounter the expired message and skip it (removing from queue sorted
         // sets but leaving messageKey and ttlQueueKey for TTL consumer)
-        await engine.runQueue.processMasterQueueForEnvironment(
-          authenticatedEnvironment.id,
-          10
-        );
+        await engine.runQueue.processMasterQueueForEnvironment(authenticatedEnvironment.id, 10);
 
         // Try to dequeue from worker queue - nothing should be there since
         // the expired message was skipped by the Lua script
@@ -1007,8 +999,7 @@ describe("RunEngine ttl", () => {
   containerTest(
     "TTL expiration clears env concurrency keys with proj segment",
     async ({ prisma, redisOptions }) => {
-      const authenticatedEnvironment =
-        await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       const engine = new RunEngine({
         prisma,
@@ -1072,14 +1063,9 @@ describe("RunEngine ttl", () => {
           prisma
         );
 
-        const queue = engine.runQueue.keys.queueKey(
-          authenticatedEnvironment,
-          "task/test-task"
-        );
-        const envConcurrencyKey =
-          engine.runQueue.keys.envCurrentConcurrencyKeyFromQueue(queue);
-        const envDequeuedKey =
-          engine.runQueue.keys.envCurrentDequeuedKeyFromQueue(queue);
+        const queue = engine.runQueue.keys.queueKey(authenticatedEnvironment, "task/test-task");
+        const envConcurrencyKey = engine.runQueue.keys.envCurrentConcurrencyKeyFromQueue(queue);
+        const envDequeuedKey = engine.runQueue.keys.envCurrentDequeuedKeyFromQueue(queue);
 
         await engine.runQueue.redis.sadd(envConcurrencyKey, run.id);
         await engine.runQueue.redis.sadd(envDequeuedKey, run.id);
@@ -1090,10 +1076,7 @@ describe("RunEngine ttl", () => {
         expect(concurrencyBefore).toContain(run.id);
 
         await setTimeout(1_500);
-        await engine.runQueue.processMasterQueueForEnvironment(
-          authenticatedEnvironment.id,
-          10
-        );
+        await engine.runQueue.processMasterQueueForEnvironment(authenticatedEnvironment.id, 10);
         // Wait (event-driven) for the TTL consumer to expire the run; resolves as soon as the DB
         // reflects EXPIRED instead of a fixed worst-case sleep (pollIntervalMs is 5000ms here).
         await vi.waitFor(
@@ -1112,10 +1095,7 @@ describe("RunEngine ttl", () => {
         );
         expect(concurrencyAfter).not.toContain(run.id);
 
-        const stillInDequeued = await engine.runQueue.redis.sismember(
-          envDequeuedKey,
-          run.id
-        );
+        const stillInDequeued = await engine.runQueue.redis.sismember(envDequeuedKey, run.id);
         expect(stillInDequeued).toBe(0);
       } finally {
         await engine.quit();
@@ -1220,10 +1200,7 @@ describe("RunEngine ttl", () => {
 
         // Manually process the master queue - the Lua script should skip the
         // expired message and dequeue only the non-expired one to the worker queue
-        await engine.runQueue.processMasterQueueForEnvironment(
-          authenticatedEnvironment.id,
-          10
-        );
+        await engine.runQueue.processMasterQueueForEnvironment(authenticatedEnvironment.id, 10);
 
         // Dequeue from worker queue - only the non-expired run should be there
         const dequeued = await engine.dequeueFromWorkerQueue({
@@ -1243,95 +1220,92 @@ describe("RunEngine ttl", () => {
     }
   );
 
-  containerTest(
-    "expireRunsBatch skips runs that are locked",
-    async ({ prisma, redisOptions }) => {
-      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+  containerTest("expireRunsBatch skips runs that are locked", async ({ prisma, redisOptions }) => {
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
-        prisma,
-        worker: {
-          redis: redisOptions,
-          workers: 1,
-          tasksPerWorker: 10,
-          pollIntervalMs: 100,
+    const engine = new RunEngine({
+      prisma,
+      worker: {
+        redis: redisOptions,
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+        processWorkerQueueDebounceMs: 50,
+        masterQueueConsumersDisabled: true,
+        ttlSystem: {
+          disabled: true, // We'll manually test the batch function
         },
-        queue: {
-          redis: redisOptions,
-          processWorkerQueueDebounceMs: 50,
-          masterQueueConsumersDisabled: true,
-          ttlSystem: {
-            disabled: true, // We'll manually test the batch function
-          },
-        },
-        runLock: {
-          redis: redisOptions,
-        },
+      },
+      runLock: {
+        redis: redisOptions,
+      },
+      machines: {
+        defaultMachine: "small-1x",
         machines: {
-          defaultMachine: "small-1x",
-          machines: {
-            "small-1x": {
-              name: "small-1x" as const,
-              cpu: 0.5,
-              memory: 0.5,
-              centsPerMs: 0.0001,
-            },
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
           },
-          baseCostInCents: 0.0001,
         },
-        tracer: trace.getTracer("test", "0.0.0"),
+        baseCostInCents: 0.0001,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
+
+    try {
+      const taskIdentifier = "test-task";
+
+      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      // Trigger a run with TTL
+      const run = await engine.trigger(
+        {
+          number: 1,
+          friendlyId: "run_l1234",
+          environment: authenticatedEnvironment,
+          taskIdentifier,
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "t1",
+          spanId: "s1",
+          workerQueue: "main",
+          queue: "task/test-task",
+          isTest: false,
+          tags: [],
+          ttl: "1s",
+        },
+        prisma
+      );
+
+      // Manually lock the run (simulating it being about to execute)
+      await prisma.taskRun.update({
+        where: { id: run.id },
+        data: { lockedAt: new Date() },
       });
 
-      try {
-        const taskIdentifier = "test-task";
+      // Try to expire the run via batch
+      const result = await engine.ttlSystem.expireRunsBatch([run.id]);
 
-        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+      // Should be skipped because it's locked
+      expect(result.expired.length).toBe(0);
+      expect(result.skipped.length).toBe(1);
+      expect(result.skipped[0]?.reason).toBe("locked");
 
-        // Trigger a run with TTL
-        const run = await engine.trigger(
-          {
-            number: 1,
-            friendlyId: "run_l1234",
-            environment: authenticatedEnvironment,
-            taskIdentifier,
-            payload: "{}",
-            payloadType: "application/json",
-            context: {},
-            traceContext: {},
-            traceId: "t1",
-            spanId: "s1",
-            workerQueue: "main",
-            queue: "task/test-task",
-            isTest: false,
-            tags: [],
-            ttl: "1s",
-          },
-          prisma
-        );
-
-        // Manually lock the run (simulating it being about to execute)
-        await prisma.taskRun.update({
-          where: { id: run.id },
-          data: { lockedAt: new Date() },
-        });
-
-        // Try to expire the run via batch
-        const result = await engine.ttlSystem.expireRunsBatch([run.id]);
-
-        // Should be skipped because it's locked
-        expect(result.expired.length).toBe(0);
-        expect(result.skipped.length).toBe(1);
-        expect(result.skipped[0]?.reason).toBe("locked");
-
-        // Run should still be PENDING
-        const executionData = await engine.getRunExecutionData({ runId: run.id });
-        assertNonNullable(executionData);
-        expect(executionData.run.status).toBe("PENDING");
-      } finally {
-        await engine.quit();
-      }
+      // Run should still be PENDING
+      const executionData = await engine.getRunExecutionData({ runId: run.id });
+      assertNonNullable(executionData);
+      expect(executionData.run.status).toBe("PENDING");
+    } finally {
+      await engine.quit();
     }
-  );
+  });
 
   containerTest(
     "expireRunsBatch skips runs with non-PENDING status",
@@ -1422,58 +1396,55 @@ describe("RunEngine ttl", () => {
     }
   );
 
-  containerTest(
-    "expireRunsBatch handles non-existent runs",
-    async ({ prisma, redisOptions }) => {
-      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+  containerTest("expireRunsBatch handles non-existent runs", async ({ prisma, redisOptions }) => {
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
-        prisma,
-        worker: {
-          redis: redisOptions,
-          workers: 1,
-          tasksPerWorker: 10,
-          pollIntervalMs: 100,
+    const engine = new RunEngine({
+      prisma,
+      worker: {
+        redis: redisOptions,
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+        processWorkerQueueDebounceMs: 50,
+        masterQueueConsumersDisabled: true,
+        ttlSystem: {
+          disabled: true,
         },
-        queue: {
-          redis: redisOptions,
-          processWorkerQueueDebounceMs: 50,
-          masterQueueConsumersDisabled: true,
-          ttlSystem: {
-            disabled: true,
-          },
-        },
-        runLock: {
-          redis: redisOptions,
-        },
+      },
+      runLock: {
+        redis: redisOptions,
+      },
+      machines: {
+        defaultMachine: "small-1x",
         machines: {
-          defaultMachine: "small-1x",
-          machines: {
-            "small-1x": {
-              name: "small-1x" as const,
-              cpu: 0.5,
-              memory: 0.5,
-              centsPerMs: 0.0001,
-            },
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
           },
-          baseCostInCents: 0.0001,
         },
-        tracer: trace.getTracer("test", "0.0.0"),
-      });
+        baseCostInCents: 0.0001,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
 
-      try {
-        // Try to expire a non-existent run
-        const result = await engine.ttlSystem.expireRunsBatch(["non_existent_run_id"]);
+    try {
+      // Try to expire a non-existent run
+      const result = await engine.ttlSystem.expireRunsBatch(["non_existent_run_id"]);
 
-        // Should be skipped as not found
-        expect(result.expired.length).toBe(0);
-        expect(result.skipped.length).toBe(1);
-        expect(result.skipped[0]?.reason).toBe("not_found");
-      } finally {
-        await engine.quit();
-      }
+      // Should be skipped as not found
+      expect(result.expired.length).toBe(0);
+      expect(result.skipped.length).toBe(1);
+      expect(result.skipped[0]?.reason).toBe("not_found");
+    } finally {
+      await engine.quit();
     }
-  );
+  });
 
   containerTest(
     "TTL-expired child run completes waitpoint and resumes parent",
@@ -1644,54 +1615,51 @@ describe("RunEngine ttl", () => {
     }
   );
 
-  containerTest(
-    "expireRunsBatch handles empty array",
-    async ({ prisma, redisOptions }) => {
-      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+  containerTest("expireRunsBatch handles empty array", async ({ prisma, redisOptions }) => {
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
-      const engine = new RunEngine({
-        prisma,
-        worker: {
-          redis: redisOptions,
-          workers: 1,
-          tasksPerWorker: 10,
-          pollIntervalMs: 100,
+    const engine = new RunEngine({
+      prisma,
+      worker: {
+        redis: redisOptions,
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+        processWorkerQueueDebounceMs: 50,
+        masterQueueConsumersDisabled: true,
+        ttlSystem: {
+          disabled: true,
         },
-        queue: {
-          redis: redisOptions,
-          processWorkerQueueDebounceMs: 50,
-          masterQueueConsumersDisabled: true,
-          ttlSystem: {
-            disabled: true,
-          },
-        },
-        runLock: {
-          redis: redisOptions,
-        },
+      },
+      runLock: {
+        redis: redisOptions,
+      },
+      machines: {
+        defaultMachine: "small-1x",
         machines: {
-          defaultMachine: "small-1x",
-          machines: {
-            "small-1x": {
-              name: "small-1x" as const,
-              cpu: 0.5,
-              memory: 0.5,
-              centsPerMs: 0.0001,
-            },
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
           },
-          baseCostInCents: 0.0001,
         },
-        tracer: trace.getTracer("test", "0.0.0"),
-      });
+        baseCostInCents: 0.0001,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
 
-      try {
-        // Try to expire an empty array
-        const result = await engine.ttlSystem.expireRunsBatch([]);
+    try {
+      // Try to expire an empty array
+      const result = await engine.ttlSystem.expireRunsBatch([]);
 
-        expect(result.expired.length).toBe(0);
-        expect(result.skipped.length).toBe(0);
-      } finally {
-        await engine.quit();
-      }
+      expect(result.expired.length).toBe(0);
+      expect(result.skipped.length).toBe(0);
+    } finally {
+      await engine.quit();
     }
-  );
+  });
 });

@@ -46,7 +46,7 @@ TESTCONTAINERS_CPU=2 TESTCONTAINERS_MEMORY_GB=2 taskset -c 0,1 pnpm exec vitest 
 ```
 
 Note: in practice the scoped tests here are latency/IO/sleep-bound, not CPU-bound, so this changes
-timings little - the original CI slowness was per-test container *boots*, which worker-scoping removed.
+timings little - the original CI slowness was per-test container _boots_, which worker-scoping removed.
 Keep it for the cases that genuinely starve on CPU (e.g. timing races against a worker poll).
 
 ## Timing harness

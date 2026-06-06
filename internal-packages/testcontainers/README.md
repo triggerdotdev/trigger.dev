@@ -9,14 +9,14 @@ splitting slow suites across CI shards.
 Most tests share one set of containers per vitest worker (booted once, reset between tests) - this is
 much faster than a container per test. Reach for an isolated variant only when a test needs it.
 
-| Fixture | Postgres | Redis | ClickHouse | Use for |
-| --- | --- | --- | --- | --- |
-| `redisTest` | - | shared | - | redis-only tests |
-| `postgresTest` | shared (clone) | - | - | db-only tests |
-| `containerTest` | shared (clone) | shared | shared | the default - needs all three |
-| `isolatedRedisTest` | - | per-test | - | background redis work (see below) |
-| `containerTestWithIsolatedRedis` | shared (clone) | per-test | shared | background redis work + db/clickhouse |
-| `replicationContainerTest` | per-test | per-test | shared | Postgres→ClickHouse logical replication |
+| Fixture                          | Postgres       | Redis    | ClickHouse | Use for                                 |
+| -------------------------------- | -------------- | -------- | ---------- | --------------------------------------- |
+| `redisTest`                      | -              | shared   | -          | redis-only tests                        |
+| `postgresTest`                   | shared (clone) | -        | -          | db-only tests                           |
+| `containerTest`                  | shared (clone) | shared   | shared     | the default - needs all three           |
+| `isolatedRedisTest`              | -              | per-test | -          | background redis work (see below)       |
+| `containerTestWithIsolatedRedis` | shared (clone) | per-test | shared     | background redis work + db/clickhouse   |
+| `replicationContainerTest`       | per-test       | per-test | shared     | Postgres→ClickHouse logical replication |
 
 "shared (clone)" = one Postgres per worker with a template database; each test gets a fast `CREATE
 DATABASE ... TEMPLATE` clone, so schema isn't re-pushed per test.
@@ -38,7 +38,7 @@ db/redis test with no lingering background work is fine on the shared fixtures.
 CI splits the slow suites with `vitest --shard=i/N`. `DurationShardingSequencer` replaces vitest's
 default file-count split with a duration-weighted one: it reads `test-timings.json` at the repo root
 (`{ "<repo-relative path>": <ms> }`) and greedily bin-packs files so each shard does roughly equal
-*work*, not an equal *number of files*. The packing is deterministic, so every shard computes the same
+_work_, not an equal _number of files_. The packing is deterministic, so every shard computes the same
 bins and runs each file exactly once.
 
 Configs opt in via:
@@ -46,7 +46,11 @@ Configs opt in via:
 ```ts
 import { DurationShardingSequencer } from "@internal/testcontainers/sequencer";
 // in defineConfig:
-test: { sequence: { sequencer: DurationShardingSequencer } }
+test: {
+  sequence: {
+    sequencer: DurationShardingSequencer;
+  }
+}
 ```
 
 ### Adding tests - nothing to do

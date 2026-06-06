@@ -419,5 +419,4 @@ describe("RunsRepository (part 1/4)", () => {
       expect(runs.map((r) => r.status).sort()).toEqual(["COMPLETED_SUCCESSFULLY", "PENDING"]);
     }
   );
-
 });

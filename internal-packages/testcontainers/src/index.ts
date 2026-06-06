@@ -148,9 +148,7 @@ let workerPostgresContainer: Promise<StartedPostgreSqlContainer> | undefined;
 const getWorkerPostgresContainer = () => {
   if (!workerPostgresContainer) {
     workerPostgresContainer = (async () => {
-      const container = await withCiResourceLimits(
-        new PostgreSqlContainer("docker.io/postgres:14")
-      )
+      const container = await withCiResourceLimits(new PostgreSqlContainer("docker.io/postgres:14"))
         .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
         .start();
       await pushDatabaseSchema(
@@ -307,7 +305,11 @@ export const redisTest = test.extend<RedisTestContext>({
 // Per-test redis for tests with background redis work (redis-worker Workers, BatchQueue) that can
 // outlive the test body - a shared redis would let leaked work hit a closed connection / next test
 // ("Connection is closed"). Boot is kept fast (see createRedisContainer).
-export const isolatedRedisTest = test.extend<RedisContext>({ network, redisContainer, redisOptions });
+export const isolatedRedisTest = test.extend<RedisContext>({
+  network,
+  redisContainer,
+  redisOptions,
+});
 
 const electricOrigin = async (
   {
