@@ -83,12 +83,22 @@ jobs:
       - name: 🐳 Pre-pull testcontainer images
         if: ${{ env.DOCKERHUB_USERNAME }}
         run: |
+          # Retry each pull - DockerHub registry timeouts are a recurring transient CI flake.
+          pull() {
+            for attempt in 1 2 3; do
+              docker pull "$1" && return 0
+              echo "::warning::docker pull $1 failed (attempt ${attempt}/3); retrying in 10s"
+              sleep 10
+            done
+            echo "::error::docker pull $1 failed after 3 attempts"
+            return 1
+          }
           echo "Pre-pulling Docker images with authenticated session..."
-          docker pull postgres:14
-          docker pull clickhouse/clickhouse-server:25.4-alpine
-          docker pull redis:7.2
-          docker pull testcontainers/ryuk:0.14.0
-          docker pull electricsql/electric:1.2.4
+          pull postgres:14
+          pull clickhouse/clickhouse-server:25.4-alpine
+          pull redis:7.2
+          pull testcontainers/ryuk:0.14.0
+          pull electricsql/electric:1.2.4
           echo "Image pre-pull complete"
 
       - name: 📥 Download deps
