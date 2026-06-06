@@ -226,6 +226,39 @@ type CommonTaskOptions<
     name?: string;
     concurrencyLimit?: number;
   };
+
+  /**
+   * Rate limits for the task.
+   *
+   * @example
+   * ```ts
+   * export const myTask = task({
+   *   id: "my-task",
+   *   rateLimits: [
+   *     {
+   *       staticKey: "my-api",
+   *       units: 1,
+   *     },
+   *     {
+   *       dynamicKey: "payload.userId",
+   *       limit: 10,
+   *       window: "1m",
+   *     }
+   *   ],
+   *   run: async ({ payload, ctx }) => {
+   *     //...
+   *   },
+   * });
+   * ```
+   */
+  rateLimits?: Array<{
+    staticKey?: string;
+    dynamicKey?: string;
+    limit?: number;
+    window?: string | number;
+    units?: number;
+  }>;
+
   /** Configure the spec of the [machine](https://trigger.dev/docs/machines) you want your task to run on.
    *
    * @example
