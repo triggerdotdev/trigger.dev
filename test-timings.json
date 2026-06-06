@@ -53,8 +53,8 @@
   "apps/webapp/test/replay-after-crash.test.ts": 2233,
   "apps/webapp/test/runsBackfiller.test.ts": 15478,
   "apps/webapp/test/runsReplicationBenchmark.test.ts": 0,
-  "apps/webapp/test/runsRepository.part1.test.ts": 80330,
-  "apps/webapp/test/runsRepository.part2.test.ts": 92949,
+  "apps/webapp/test/runsRepository.part1.test.ts": 46000,
+  "apps/webapp/test/runsRepository.part2.test.ts": 46000,
   "apps/webapp/test/sanitizeRowsOnParseError.test.ts": 8,
   "apps/webapp/test/sentryTenantContext.test.ts": 5,
   "apps/webapp/test/sentryTraceContext.server.test.ts": 12,
@@ -214,5 +214,7 @@
   "apps/webapp/test/runsReplicationService.part3.test.ts": 43000,
   "apps/webapp/test/runsReplicationService.part4.test.ts": 61000,
   "apps/webapp/test/runsReplicationService.part5.test.ts": 43000,
-  "apps/webapp/test/runsReplicationService.part6.test.ts": 43000
+  "apps/webapp/test/runsReplicationService.part6.test.ts": 43000,
+  "apps/webapp/test/runsRepository.part3.test.ts": 34000,
+  "apps/webapp/test/runsRepository.part4.test.ts": 46000
 }

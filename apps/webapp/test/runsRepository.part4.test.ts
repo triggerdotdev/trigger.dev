@@ -13,9 +13,9 @@ import { setupClickhouseReplication } from "./utils/replicationUtils";
 
 vi.setConfig({ testTimeout: 60_000 });
 
-describe("RunsRepository (part 1/4)", () => {
+describe("RunsRepository (part 4/4)", () => {
   replicationContainerTest(
-    "should list runs, using clickhouse as the source",
+    "should filter runs by date range (from/to)",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
         prisma,
@@ -52,14 +52,53 @@ describe("RunsRepository (part 1/4)", () => {
         },
       });
 
-      // Now we insert a row into the table
-      const taskRun = await prisma.taskRun.create({
+      const now = new Date();
+      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+      // Create runs with different creation dates
+      await prisma.taskRun.create({
         data: {
-          friendlyId: "run_1234",
+          friendlyId: "run_yesterday",
           taskIdentifier: "my-task",
+          createdAt: yesterday,
           payload: JSON.stringify({ foo: "bar" }),
           traceId: "1234",
           spanId: "1234",
+          queue: "test",
+          runtimeEnvironmentId: runtimeEnvironment.id,
+          projectId: project.id,
+          organizationId: organization.id,
+          environmentType: "DEVELOPMENT",
+          engine: "V2",
+        },
+      });
+
+      await prisma.taskRun.create({
+        data: {
+          friendlyId: "run_today",
+          taskIdentifier: "my-task",
+          createdAt: now,
+          payload: JSON.stringify({ foo: "bar" }),
+          traceId: "1235",
+          spanId: "1235",
+          queue: "test",
+          runtimeEnvironmentId: runtimeEnvironment.id,
+          projectId: project.id,
+          organizationId: organization.id,
+          environmentType: "DEVELOPMENT",
+          engine: "V2",
+        },
+      });
+
+      await prisma.taskRun.create({
+        data: {
+          friendlyId: "run_tomorrow",
+          taskIdentifier: "my-task",
+          createdAt: tomorrow,
+          payload: JSON.stringify({ foo: "bar" }),
+          traceId: "1236",
+          spanId: "1236",
           queue: "test",
           runtimeEnvironmentId: runtimeEnvironment.id,
           projectId: project.id,
@@ -76,22 +115,147 @@ describe("RunsRepository (part 1/4)", () => {
         clickhouse,
       });
 
-      const { runs, pagination } = await runsRepository.listRuns({
+      // Test filtering by date range (from yesterday to today)
+      const { runs } = await runsRepository.listRuns({
         page: { size: 10 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
         organizationId: organization.id,
+        from: yesterday.getTime(),
+        to: now.getTime(),
+      });
+
+      expect(runs).toHaveLength(2);
+      expect(runs.map((r) => r.friendlyId).sort()).toEqual(["run_today", "run_yesterday"]);
+    }
+  );
+
+  replicationContainerTest(
+    "should handle multiple filters combined",
+    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
+      const { clickhouse } = await setupClickhouseReplication({
+        prisma,
+        databaseUrl: postgresContainer.getConnectionUri(),
+        clickhouseUrl: clickhouseContainer.getConnectionUrl(),
+        redisOptions,
+      });
+
+      const organization = await prisma.organization.create({
+        data: {
+          title: "test",
+          slug: "test",
+        },
+      });
+
+      const project = await prisma.project.create({
+        data: {
+          name: "test",
+          slug: "test",
+          organizationId: organization.id,
+          externalRef: "test",
+        },
+      });
+
+      const runtimeEnvironment = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "test",
+          type: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "test",
+          pkApiKey: "test",
+          shortcode: "test",
+        },
+      });
+
+      // Create runs with different combinations of properties
+      await prisma.taskRun.create({
+        data: {
+          friendlyId: "run_match",
+          taskIdentifier: "task-1",
+          taskVersion: "1.0.0",
+          status: "COMPLETED_SUCCESSFULLY",
+          isTest: false,
+          runTags: ["urgent"],
+          payload: JSON.stringify({ foo: "bar" }),
+          traceId: "1234",
+          spanId: "1234",
+          queue: "test",
+          runtimeEnvironmentId: runtimeEnvironment.id,
+          projectId: project.id,
+          organizationId: organization.id,
+          environmentType: "DEVELOPMENT",
+          engine: "V2",
+        },
+      });
+
+      await prisma.taskRun.create({
+        data: {
+          friendlyId: "run_no_match_task",
+          taskIdentifier: "task-2", // Different task
+          taskVersion: "1.0.0",
+          status: "COMPLETED_SUCCESSFULLY",
+          isTest: false,
+          runTags: ["urgent"],
+          payload: JSON.stringify({ foo: "bar" }),
+          traceId: "1235",
+          spanId: "1235",
+          queue: "test",
+          runtimeEnvironmentId: runtimeEnvironment.id,
+          projectId: project.id,
+          organizationId: organization.id,
+          environmentType: "DEVELOPMENT",
+          engine: "V2",
+        },
+      });
+
+      await prisma.taskRun.create({
+        data: {
+          friendlyId: "run_no_match_status",
+          taskIdentifier: "task-1",
+          taskVersion: "1.0.0",
+          status: "PENDING", // Different status
+          isTest: false,
+          runTags: ["urgent"],
+          payload: JSON.stringify({ foo: "bar" }),
+          traceId: "1236",
+          spanId: "1236",
+          queue: "test",
+          runtimeEnvironmentId: runtimeEnvironment.id,
+          projectId: project.id,
+          organizationId: organization.id,
+          environmentType: "DEVELOPMENT",
+          engine: "V2",
+        },
+      });
+
+      await setTimeout(1000);
+
+      const runsRepository = new RunsRepository({
+        prisma,
+        clickhouse,
+      });
+
+      // Test combining multiple filters
+      const { runs } = await runsRepository.listRuns({
+        page: { size: 10 },
+        projectId: project.id,
+        environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
+        tasks: ["task-1"],
+        versions: ["1.0.0"],
+        statuses: ["COMPLETED_SUCCESSFULLY"],
+        isTest: false,
+        tags: ["urgent"],
       });
 
       expect(runs).toHaveLength(1);
-      expect(runs[0].id).toBe(taskRun.id);
-      expect(pagination.nextCursor).toBe(null);
-      expect(pagination.previousCursor).toBe(null);
+      expect(runs[0].friendlyId).toBe("run_match");
     }
   );
 
   replicationContainerTest(
-    "should filter runs by task identifiers",
+    "should handle pagination correctly",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
         prisma,
@@ -128,54 +292,26 @@ describe("RunsRepository (part 1/4)", () => {
         },
       });
 
-      // Create runs with different task identifiers
-      const taskRun1 = await prisma.taskRun.create({
-        data: {
-          friendlyId: "run_task1",
-          taskIdentifier: "task-1",
-          payload: JSON.stringify({ foo: "bar" }),
-          traceId: "1234",
-          spanId: "1234",
-          queue: "test",
-          runtimeEnvironmentId: runtimeEnvironment.id,
-          projectId: project.id,
-          organizationId: organization.id,
-          environmentType: "DEVELOPMENT",
-          engine: "V2",
-        },
-      });
-
-      const taskRun2 = await prisma.taskRun.create({
-        data: {
-          friendlyId: "run_task2",
-          taskIdentifier: "task-2",
-          payload: JSON.stringify({ foo: "bar" }),
-          traceId: "1235",
-          spanId: "1235",
-          queue: "test",
-          runtimeEnvironmentId: runtimeEnvironment.id,
-          projectId: project.id,
-          organizationId: organization.id,
-          environmentType: "DEVELOPMENT",
-          engine: "V2",
-        },
-      });
-
-      const taskRun3 = await prisma.taskRun.create({
-        data: {
-          friendlyId: "run_task3",
-          taskIdentifier: "task-3",
-          payload: JSON.stringify({ foo: "bar" }),
-          traceId: "1236",
-          spanId: "1236",
-          queue: "test",
-          runtimeEnvironmentId: runtimeEnvironment.id,
-          projectId: project.id,
-          organizationId: organization.id,
-          environmentType: "DEVELOPMENT",
-          engine: "V2",
-        },
-      });
+      // Create multiple runs for pagination testing
+      const runs = [];
+      for (let i = 1; i <= 5; i++) {
+        const run = await prisma.taskRun.create({
+          data: {
+            friendlyId: `run_${i}`,
+            taskIdentifier: "my-task",
+            payload: JSON.stringify({ foo: "bar" }),
+            traceId: `123${i}`,
+            spanId: `123${i}`,
+            queue: "test",
+            runtimeEnvironmentId: runtimeEnvironment.id,
+            projectId: project.id,
+            organizationId: organization.id,
+            environmentType: "DEVELOPMENT",
+            engine: "V2",
+          },
+        });
+        runs.push(run);
+      }
 
       await setTimeout(1000);
 
@@ -184,22 +320,38 @@ describe("RunsRepository (part 1/4)", () => {
         clickhouse,
       });
 
-      // Test filtering by specific tasks
-      const { runs } = await runsRepository.listRuns({
-        page: { size: 10 },
+      // Test first page
+      const firstPage = await runsRepository.listRuns({
+        page: { size: 2 },
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
         organizationId: organization.id,
-        tasks: ["task-1", "task-2"],
       });
 
-      expect(runs).toHaveLength(2);
-      expect(runs.map((r) => r.taskIdentifier).sort()).toEqual(["task-1", "task-2"]);
+      expect(firstPage.runs).toHaveLength(2);
+      expect(firstPage.pagination.nextCursor).toBeTruthy();
+      expect(firstPage.pagination.previousCursor).toBe(null);
+
+      // Test next page using cursor
+      const secondPage = await runsRepository.listRuns({
+        page: {
+          size: 2,
+          cursor: firstPage.pagination.nextCursor!,
+          direction: "forward",
+        },
+        projectId: project.id,
+        environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
+      });
+
+      expect(secondPage.runs).toHaveLength(2);
+      expect(secondPage.pagination.nextCursor).toBeTruthy();
+      expect(secondPage.pagination.previousCursor).toBeTruthy();
     }
   );
 
   replicationContainerTest(
-    "should filter runs by task versions",
+    "should count new runs with listRunIds",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
         prisma,
@@ -236,49 +388,13 @@ describe("RunsRepository (part 1/4)", () => {
         },
       });
 
-      // Create runs with different task versions
-      await prisma.taskRun.create({
+      const taskRun = await prisma.taskRun.create({
         data: {
-          friendlyId: "run_v1",
+          friendlyId: "run_has_new",
           taskIdentifier: "my-task",
-          taskVersion: "1.0.0",
           payload: JSON.stringify({ foo: "bar" }),
           traceId: "1234",
           spanId: "1234",
-          queue: "test",
-          runtimeEnvironmentId: runtimeEnvironment.id,
-          projectId: project.id,
-          organizationId: organization.id,
-          environmentType: "DEVELOPMENT",
-          engine: "V2",
-        },
-      });
-
-      await prisma.taskRun.create({
-        data: {
-          friendlyId: "run_v2",
-          taskIdentifier: "my-task",
-          taskVersion: "2.0.0",
-          payload: JSON.stringify({ foo: "bar" }),
-          traceId: "1235",
-          spanId: "1235",
-          queue: "test",
-          runtimeEnvironmentId: runtimeEnvironment.id,
-          projectId: project.id,
-          organizationId: organization.id,
-          environmentType: "DEVELOPMENT",
-          engine: "V2",
-        },
-      });
-
-      await prisma.taskRun.create({
-        data: {
-          friendlyId: "run_v3",
-          taskIdentifier: "my-task",
-          taskVersion: "3.0.0",
-          payload: JSON.stringify({ foo: "bar" }),
-          traceId: "1236",
-          spanId: "1236",
           queue: "test",
           runtimeEnvironmentId: runtimeEnvironment.id,
           projectId: project.id,
@@ -295,129 +411,45 @@ describe("RunsRepository (part 1/4)", () => {
         clickhouse,
       });
 
-      // Test filtering by specific versions
-      const { runs } = await runsRepository.listRuns({
-        page: { size: 10 },
+      const baseOptions = {
         projectId: project.id,
         environmentId: runtimeEnvironment.id,
         organizationId: organization.id,
-        versions: ["1.0.0", "3.0.0"],
-      });
+      };
 
-      expect(runs).toHaveLength(2);
-      expect(runs.map((r) => r.taskVersion).sort()).toEqual(["1.0.0", "3.0.0"]);
+      const createdAtMs = taskRun.createdAt.getTime();
+
+      const newRunIdsBefore = await runsRepository.listRunIds({
+        ...baseOptions,
+        from: createdAtMs - 1,
+        page: { size: 100 },
+      });
+      expect(newRunIdsBefore.length).toBeGreaterThanOrEqual(1);
+
+      const newRunIdsAfter = await runsRepository.listRunIds({
+        ...baseOptions,
+        from: createdAtMs + 60_000,
+        page: { size: 100 },
+      });
+      expect(newRunIdsAfter).toHaveLength(0);
+
+      const fromBeforeRun = createdAtMs - 1;
+
+      const matchingTaskIds = await runsRepository.listRunIds({
+        ...baseOptions,
+        from: fromBeforeRun,
+        tasks: ["my-task"],
+        page: { size: 100 },
+      });
+      expect(matchingTaskIds.length).toBeGreaterThanOrEqual(1);
+
+      const otherTaskIds = await runsRepository.listRunIds({
+        ...baseOptions,
+        from: fromBeforeRun,
+        tasks: ["other-task"],
+        page: { size: 100 },
+      });
+      expect(otherTaskIds).toHaveLength(0);
     }
   );
-
-  replicationContainerTest(
-    "should filter runs by status",
-    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
-      const { clickhouse } = await setupClickhouseReplication({
-        prisma,
-        databaseUrl: postgresContainer.getConnectionUri(),
-        clickhouseUrl: clickhouseContainer.getConnectionUrl(),
-        redisOptions,
-      });
-
-      const organization = await prisma.organization.create({
-        data: {
-          title: "test",
-          slug: "test",
-        },
-      });
-
-      const project = await prisma.project.create({
-        data: {
-          name: "test",
-          slug: "test",
-          organizationId: organization.id,
-          externalRef: "test",
-        },
-      });
-
-      const runtimeEnvironment = await prisma.runtimeEnvironment.create({
-        data: {
-          slug: "test",
-          type: "DEVELOPMENT",
-          projectId: project.id,
-          organizationId: organization.id,
-          apiKey: "test",
-          pkApiKey: "test",
-          shortcode: "test",
-        },
-      });
-
-      // Create runs with different statuses
-      await prisma.taskRun.create({
-        data: {
-          friendlyId: "run_pending",
-          taskIdentifier: "my-task",
-          status: "PENDING",
-          payload: JSON.stringify({ foo: "bar" }),
-          traceId: "1234",
-          spanId: "1234",
-          queue: "test",
-          runtimeEnvironmentId: runtimeEnvironment.id,
-          projectId: project.id,
-          organizationId: organization.id,
-          environmentType: "DEVELOPMENT",
-          engine: "V2",
-        },
-      });
-
-      await prisma.taskRun.create({
-        data: {
-          friendlyId: "run_executing",
-          taskIdentifier: "my-task",
-          status: "EXECUTING",
-          payload: JSON.stringify({ foo: "bar" }),
-          traceId: "1235",
-          spanId: "1235",
-          queue: "test",
-          runtimeEnvironmentId: runtimeEnvironment.id,
-          projectId: project.id,
-          organizationId: organization.id,
-          environmentType: "DEVELOPMENT",
-          engine: "V2",
-        },
-      });
-
-      await prisma.taskRun.create({
-        data: {
-          friendlyId: "run_completed",
-          taskIdentifier: "my-task",
-          status: "COMPLETED_SUCCESSFULLY",
-          payload: JSON.stringify({ foo: "bar" }),
-          traceId: "1236",
-          spanId: "1236",
-          queue: "test",
-          runtimeEnvironmentId: runtimeEnvironment.id,
-          projectId: project.id,
-          organizationId: organization.id,
-          environmentType: "DEVELOPMENT",
-          engine: "V2",
-        },
-      });
-
-      await setTimeout(1000);
-
-      const runsRepository = new RunsRepository({
-        prisma,
-        clickhouse,
-      });
-
-      // Test filtering by specific statuses
-      const { runs } = await runsRepository.listRuns({
-        page: { size: 10 },
-        projectId: project.id,
-        environmentId: runtimeEnvironment.id,
-        organizationId: organization.id,
-        statuses: ["PENDING", "COMPLETED_SUCCESSFULLY"],
-      });
-
-      expect(runs).toHaveLength(2);
-      expect(runs.map((r) => r.status).sort()).toEqual(["COMPLETED_SUCCESSFULLY", "PENDING"]);
-    }
-  );
-
 });
