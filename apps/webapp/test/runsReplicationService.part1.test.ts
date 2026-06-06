@@ -10,7 +10,7 @@ import superjson from "superjson";
 
 vi.setConfig({ testTimeout: 60_000 });
 
-describe("RunsReplicationService (part 1/6)", () => {
+describe("RunsReplicationService (part 1/7)", () => {
   replicationContainerTest(
     "should replicate runs to clickhouse",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {

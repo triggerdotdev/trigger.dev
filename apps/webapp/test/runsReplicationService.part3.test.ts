@@ -10,7 +10,7 @@ import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickho
 
 vi.setConfig({ testTimeout: 60_000 });
 
-describe("RunsReplicationService (part 3/6)", () => {
+describe("RunsReplicationService (part 3/7)", () => {
   replicationContainerTest(
     "should insert TaskRuns even if there are incomplete Unicode escape sequences in the JSON",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {

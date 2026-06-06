@@ -10,7 +10,7 @@ import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickho
 
 vi.setConfig({ testTimeout: 60_000 });
 
-describe("RunsReplicationService (part 2/6)", () => {
+describe("RunsReplicationService (part 2/7)", () => {
   replicationContainerTest(
     "should handover leadership to a second service, and the second service should be able to extend the leader lock",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {

@@ -10,7 +10,7 @@ import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickho
 
 vi.setConfig({ testTimeout: 60_000 });
 
-describe("RunsReplicationService (part 6/6)", () => {
+describe("RunsReplicationService (part 6/7)", () => {
   replicationContainerTest(
     "should sort batch inserts according to table schema ordering for optimal performance",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
