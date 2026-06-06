@@ -2040,6 +2040,11 @@ export class ClickhouseEventRepository implements IEventRepository {
       { spanEventKind: "SPAN_EVENT", internalPrefix: "trigger.dev/" }
     );
 
+    // ANCESTOR_OVERRIDE rows duplicate a descendant's error onto an ancestor span
+    // to colour the tree; they carry no event of their own. The tree path drops
+    // them, so the export does too (otherwise the same error shows up twice).
+    queryBuilder.where("kind != {ancestorKind: String}", { ancestorKind: "ANCESTOR_OVERRIDE" });
+
     queryBuilder.orderBy("start_time ASC");
     // Deliberately no LIMIT: streaming never materialises the result set, so the
     // detailed-summary memory cap doesn't apply to the export.
