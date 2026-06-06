@@ -58,15 +58,26 @@ export async function pushDatabaseSchema(databaseUrl: string) {
  * No-op when neither is set. (testcontainers v11 has no cpuset pinning, only this quota cap.)
  */
 export function withCiResourceLimits<T extends GenericContainer>(container: T): T {
-  const cpu = process.env.TESTCONTAINERS_CPU;
-  const memory = process.env.TESTCONTAINERS_MEMORY_GB;
-  if (!cpu && !memory) {
+  const cpu = parsePositiveNumberEnv("TESTCONTAINERS_CPU");
+  const memory = parsePositiveNumberEnv("TESTCONTAINERS_MEMORY_GB");
+  if (cpu === undefined && memory === undefined) {
     return container;
   }
   return container.withResourcesQuota({
-    ...(cpu ? { cpu: Number(cpu) } : {}),
-    ...(memory ? { memory: Number(memory) } : {}),
+    ...(cpu !== undefined ? { cpu } : {}),
+    ...(memory !== undefined ? { memory } : {}),
   });
+}
+
+// Fail fast on a malformed value rather than letting NaN reach the container runtime as a cryptic error.
+function parsePositiveNumberEnv(name: string): number | undefined {
+  const raw = process.env[name];
+  if (!raw) return undefined;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be a positive number, got "${raw}"`);
+  }
+  return value;
 }
 
 export async function createPostgresContainer(network: StartedNetwork) {

@@ -27,7 +27,18 @@ let cachedTimings;
 
 function loadTimings() {
   if (!cachedTimings) {
-    cachedTimings = existsSync(TIMINGS_PATH) ? JSON.parse(readFileSync(TIMINGS_PATH, "utf-8")) : {};
+    // A MISSING file is a legitimate state (no timings configured yet => count-based split). But a
+    // file that EXISTS and won't parse is a real problem with a committed artifact we control - fail
+    // loud rather than silently degrading sharding (silent fallbacks are what hid earlier bugs).
+    if (!existsSync(TIMINGS_PATH)) {
+      cachedTimings = {};
+      return cachedTimings;
+    }
+    try {
+      cachedTimings = JSON.parse(readFileSync(TIMINGS_PATH, "utf-8"));
+    } catch (error) {
+      throw new Error(`Failed to parse ${TIMINGS_PATH}: ${error?.message ?? error}`);
+    }
   }
   return cachedTimings;
 }

@@ -197,7 +197,23 @@ const clonedPostgresContainer = async ({}, use: Use<StartedPostgreSqlContainer>)
     },
   });
 
-  await use(view);
+  try {
+    await use(view);
+  } finally {
+    // Best-effort drop so clones don't pile up in the worker's pg over a long suite. WITH (FORCE)
+    // terminates any lingering backends (pg 13+). A failed drop is harmless - the whole container is
+    // reaped on worker exit - so we never let cleanup fail the test.
+    const cleanup = new PrismaClient({
+      datasources: { db: { url: postgresUriWithDatabase(baseUri, "postgres") } },
+    });
+    try {
+      await cleanup.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${cloneDb}" WITH (FORCE)`);
+    } catch {
+      // ignore - reaped with the container anyway
+    } finally {
+      await cleanup.$disconnect();
+    }
+  }
 };
 
 const prismaFromContainer = async (

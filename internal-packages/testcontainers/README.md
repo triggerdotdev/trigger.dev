@@ -48,8 +48,8 @@ import { DurationShardingSequencer } from "@internal/testcontainers/sequencer";
 // in defineConfig:
 test: {
   sequence: {
-    sequencer: DurationShardingSequencer;
-  }
+    sequencer: DurationShardingSequencer,
+  },
 }
 ```
 
