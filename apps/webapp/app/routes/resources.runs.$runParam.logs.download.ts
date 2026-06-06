@@ -20,9 +20,10 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const url = new URL(request.url);
   // ?format=log|jsonl|markdown (default log). ?showDebug=true includes internal
-  // engine debug events (off by default, matching the trace view's Debug toggle).
+  // engine debug events; these stay admin-only (matching the admin-gated Debug
+  // toggle in the trace view) and are off by default.
   const format = getTraceExportFormat(url.searchParams.get("format"));
-  const showDebug = url.searchParams.get("showDebug") === "true";
+  const showDebug = url.searchParams.get("showDebug") === "true" && user.admin;
   const filename = `${parsedParams.runParam}.${format.extension}`;
 
   const run = await prisma.taskRun.findFirst({

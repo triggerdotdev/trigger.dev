@@ -1134,11 +1134,21 @@ function TraceExportMenuItems({ runParam }: { runParam: string }) {
 
   const copyForAI = async () => {
     try {
-      const response = await fetch(`${downloadPath}?format=markdown`, { credentials: "include" });
-      if (!response.ok) {
-        throw new Error(`Request failed with ${response.status}`);
-      }
-      await navigator.clipboard.writeText(await response.text());
+      // Hand the clipboard a ClipboardItem backed by a promise so access is
+      // reserved synchronously during the click. The fetch can then take as long
+      // as a large trace needs without the browser revoking the transient user
+      // activation, which a fetch-then-writeText sequence trips (notably Safari
+      // and Firefox).
+      const text = fetch(`${downloadPath}?format=markdown`, { credentials: "include" }).then(
+        async (response) => {
+          if (!response.ok) {
+            throw new Error(`Request failed with ${response.status}`);
+          }
+          return new Blob([await response.text()], { type: "text/plain" });
+        }
+      );
+
+      await navigator.clipboard.write([new ClipboardItem({ "text/plain": text })]);
       toast.custom((t) => (
         <ToastUI variant="success" message="Copied trace as Markdown" t={t as string} />
       ));
