@@ -18,6 +18,7 @@ import type {
   ClickhouseQueryBuilderFastFunction,
   ClickhouseQueryBuilderFunction,
   ClickhouseQueryFunction,
+  ClickhouseQueryStreamFunction,
   ClickhouseQueryWithStatsFunction,
   ClickhouseReader,
   ClickhouseWriter,
@@ -514,6 +515,60 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
         return [null, resultRows];
       });
+    };
+  }
+
+  public queryFastStream<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
+    name: string;
+    query: string;
+    columns: Array<string | ColumnExpression>;
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryStreamFunction<TParams, TOut> {
+    const self = this;
+
+    return async function* (params, options) {
+      const queryId = randomUUID();
+
+      self.logger.debug("Streaming clickhouse fast", {
+        name: req.name,
+        query: req.query.replace(/\s+/g, " "),
+        params,
+        settings: req.settings,
+        queryId,
+      });
+
+      const resultSet = await self.client.query({
+        query: req.query,
+        query_params: params,
+        format: "JSONCompactEachRow",
+        query_id: queryId,
+        ...options?.params,
+        clickhouse_settings: {
+          ...req.settings,
+          ...options?.params?.clickhouse_settings,
+        },
+      });
+
+      // Stream rows off the socket and hydrate each one on the fly. The full
+      // result set is never materialised into an array — bounded memory for
+      // arbitrarily large queries.
+      for await (const rows of resultSet.stream()) {
+        for (const row of rows) {
+          const rowData = row.json() as any[];
+
+          const hydratedRow: Record<string, any> = {};
+          for (let i = 0; i < req.columns.length; i++) {
+            const column = req.columns[i];
+            if (typeof column === "string") {
+              hydratedRow[column] = rowData[i];
+            } else {
+              hydratedRow[column.name] = rowData[i];
+            }
+          }
+
+          yield hydratedRow as TOut;
+        }
+      }
     };
   }
 

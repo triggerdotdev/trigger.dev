@@ -14,6 +14,20 @@ export type ClickhouseQueryFunction<TInput, TOutput> = (
 ) => Promise<Result<TOutput[], QueryError>>;
 
 /**
+ * Like {@link ClickhouseQueryFunction} but yields rows as they stream off the
+ * socket instead of buffering them into an array. The whole result set is never
+ * held in memory at once. Errors are thrown (the async iterable rejects) rather
+ * than returned as a Result tuple.
+ */
+export type ClickhouseQueryStreamFunction<TInput, TOutput> = (
+  params: TInput,
+  options?: {
+    attributes?: Record<string, string | number | boolean>;
+    params?: BaseQueryParams;
+  }
+) => AsyncIterable<TOutput>;
+
+/**
  * Query statistics returned by ClickHouse
  */
 export interface QueryStats {
@@ -145,6 +159,18 @@ export interface ClickhouseReader {
      */
     settings?: ClickHouseSettings;
   }): ClickhouseQueryFunction<TParams, TOut>;
+
+  /**
+   * Like {@link queryFast} but streams rows instead of buffering them. Returns an
+   * async iterable so the caller can process arbitrarily large result sets with
+   * bounded memory.
+   */
+  queryFastStream<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
+    name: string;
+    query: string;
+    columns: Array<string | ColumnExpression>;
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryStreamFunction<TParams, TOut>;
 
   queryBuilder<TOut extends z.ZodSchema<any>>(req: {
     /**

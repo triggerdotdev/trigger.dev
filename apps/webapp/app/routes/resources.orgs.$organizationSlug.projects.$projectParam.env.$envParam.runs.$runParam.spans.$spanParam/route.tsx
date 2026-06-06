@@ -1,9 +1,9 @@
 import {
   ArrowPathIcon,
-  ArrowRightIcon,
   BookOpenIcon,
   CheckIcon,
   ChevronUpIcon,
+  ClipboardDocumentIcon,
   ClockIcon,
   CloudArrowDownIcon,
   EnvelopeIcon,
@@ -42,6 +42,8 @@ import {
   PopoverMenuItem,
   PopoverTrigger,
 } from "~/components/primitives/Popover";
+import { ToastUI } from "~/components/primitives/Toast";
+import { toast } from "sonner";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
@@ -79,7 +81,6 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useHasAdminAccess } from "~/hooks/useUser";
-import { useCanViewLogsPage } from "~/hooks/useCanViewLogsPage";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
 import { logger } from "~/services/logger.server";
@@ -91,7 +92,6 @@ import {
   v3BatchPath,
   v3SessionPath,
   v3DeploymentVersionPath,
-  v3LogsPath,
   v3RunDownloadLogsPath,
   v3RunIdempotencyKeyResetPath,
   v3RunPath,
@@ -386,7 +386,6 @@ function RunBody({
   const { value, replace } = useSearchParams();
   const tab = value("tab");
   const resetFetcher = useTypedFetcher<typeof resetIdempotencyKeyAction>();
-  const canViewLogsPage = useCanViewLogsPage();
 
   return (
     <div className="grid h-full max-h-full grid-rows-[2.5rem_2rem_1fr_minmax(3.25rem,auto)] overflow-hidden bg-background-bright">
@@ -1105,61 +1104,81 @@ function RunBody({
         </div>
         <div className="flex items-center">
           {run.logsDeletedAt === null ? (
-            canViewLogsPage ? (
-              <div className="flex">
-                <LinkButton
-                  to={`${v3LogsPath(organization, project, environment)}?runId=${runParam}&from=${
-                    new Date(run.createdAt).getTime() - 60000
-                  }`}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
                   variant="secondary/medium"
-                  className="rounded-r-none border-r-0"
+                  LeadingIcon={CloudArrowDownIcon}
+                  leadingIconClassName="text-indigo-400"
+                  TrailingIcon={ChevronUpIcon}
                 >
-                  View logs
-                </LinkButton>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="secondary/medium"
-                      className="rounded-l-none border-l-charcoal-700 px-1.5"
-                    >
-                      <ChevronUpIcon className="size-4 transition group-hover/button:text-text-bright" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="min-w-[140px] p-1" align="end">
-                    <PopoverMenuItem
-                      to={`${v3LogsPath(
-                        organization,
-                        project,
-                        environment
-                      )}?runId=${runParam}&from=${new Date(run.createdAt).getTime() - 60000}`}
-                      title="View logs"
-                      icon={ArrowRightIcon}
-                      leadingIconClassName="text-blue-500"
-                    />
-                    <PopoverMenuItem
-                      to={v3RunDownloadLogsPath({ friendlyId: runParam })}
-                      title="Download logs"
-                      icon={CloudArrowDownIcon}
-                      leadingIconClassName="text-indigo-500"
-                      openInNewTab
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-            ) : (
-              <LinkButton
-                to={v3RunDownloadLogsPath({ friendlyId: runParam })}
-                LeadingIcon={CloudArrowDownIcon}
-                leadingIconClassName="text-indigo-400"
-                variant="secondary/medium"
-              >
-                Download logs
-              </LinkButton>
-            )
+                  Export trace
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="min-w-[180px] p-1" align="end">
+                <TraceExportMenuItems runParam={runParam} />
+              </PopoverContent>
+            </Popover>
           ) : null}
         </div>
       </div>
     </div>
+  );
+}
+
+// Trace export menu items: copy the trace as Markdown (for pasting into an AI
+// assistant) plus a download per format. The export route streams `?format=`
+// server-side.
+function TraceExportMenuItems({ runParam }: { runParam: string }) {
+  const downloadPath = v3RunDownloadLogsPath({ friendlyId: runParam });
+
+  const copyForAI = async () => {
+    try {
+      const response = await fetch(`${downloadPath}?format=markdown`, { credentials: "include" });
+      if (!response.ok) {
+        throw new Error(`Request failed with ${response.status}`);
+      }
+      await navigator.clipboard.writeText(await response.text());
+      toast.custom((t) => (
+        <ToastUI variant="success" message="Copied trace as Markdown" t={t as string} />
+      ));
+    } catch {
+      toast.custom((t) => (
+        <ToastUI variant="error" message="Couldn't copy the trace" t={t as string} />
+      ));
+    }
+  };
+
+  return (
+    <>
+      <PopoverMenuItem
+        title="Copy for AI"
+        icon={ClipboardDocumentIcon}
+        leadingIconClassName="text-emerald-500"
+        onClick={copyForAI}
+      />
+      <PopoverMenuItem
+        to={`${downloadPath}?format=markdown`}
+        title="Download · Markdown"
+        icon={CloudArrowDownIcon}
+        leadingIconClassName="text-indigo-500"
+        openInNewTab
+      />
+      <PopoverMenuItem
+        to={`${downloadPath}?format=log`}
+        title="Download · Log"
+        icon={CloudArrowDownIcon}
+        leadingIconClassName="text-indigo-500"
+        openInNewTab
+      />
+      <PopoverMenuItem
+        to={`${downloadPath}?format=jsonl`}
+        title="Download · JSON Lines"
+        icon={CloudArrowDownIcon}
+        leadingIconClassName="text-indigo-500"
+        openInNewTab
+      />
+    </>
   );
 }
 
