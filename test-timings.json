@@ -186,7 +186,7 @@
   "internal-packages/run-engine/src/run-queue/tests/releaseConcurrency.test.ts": 3018,
   "internal-packages/run-engine/src/run-queue/tests/workerQueueResolver.test.ts": 38,
   "internal-packages/cache/src/stores/lruMemory.test.ts": 44,
-  "internal-packages/schedule-engine/test/scheduleEngine.test.ts": 86309,
+  "internal-packages/schedule-engine/test/scheduleEngine.test.ts": 43000,
   "internal-packages/schedule-engine/test/scheduleRecovery.test.ts": 17396,
   "internal-packages/replication/src/client.test.ts": 31306,
   "internal-packages/tsql/src/index.test.ts": 246,
@@ -217,5 +217,6 @@
   "apps/webapp/test/runsReplicationService.part6.test.ts": 32000,
   "apps/webapp/test/runsRepository.part3.test.ts": 43000,
   "apps/webapp/test/runsRepository.part4.test.ts": 57000,
-  "apps/webapp/test/runsReplicationService.part7.test.ts": 43000
+  "apps/webapp/test/runsReplicationService.part7.test.ts": 43000,
+  "internal-packages/schedule-engine/test/scheduleEngine2.test.ts": 43000
 }
