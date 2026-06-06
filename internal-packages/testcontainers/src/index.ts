@@ -441,15 +441,31 @@ export const containerTest = test.extend<ContainerTestContext>({
 // For tests that exercise the Postgres -> ClickHouse logical-replication pipeline (WAL slots,
 // publications, REPLICA IDENTITY). These need a dedicated Postgres per test - the worker-scoped +
 // template-clone model used by containerTest doesn't carry logical replication across cloned dbs.
-// Everything is per-test here (fully isolated, same as the pre-scoping containerTest).
-export const replicationContainerTest = test.extend<ContainerContext>({
+// ONLY postgres needs to be per-test (the WAL slot/publication lives in the db it writes to). Redis
+// and ClickHouse are still worker-scoped + reset per test - the pipeline writes pg->clickhouse and a
+// shared+truncated clickhouse is fine - so we only pay a postgres boot per test, not all three.
+type ReplicationContainerTestContext = {
+  network: StartedNetwork;
+  postgresContainer: StartedPostgreSqlContainer;
+  prisma: PrismaClient;
+  redisContainer: StartedRedisContainer;
+  resetRedis: void;
+  redisOptions: RedisOptions;
+  clickhouseContainer: StartedClickHouseContainer;
+  resetClickhouse: void;
+  clickhouseClient: ClickHouseClient;
+};
+
+export const replicationContainerTest = test.extend<ReplicationContainerTestContext>({
   network,
   postgresContainer,
   prisma,
-  redisContainer,
+  redisContainer: [bootWorkerRedis, { scope: "worker" }],
+  resetRedis: [flushRedis, { auto: true }],
   redisOptions,
-  clickhouseContainer,
-  clickhouseClient,
+  clickhouseContainer: [bootWorkerClickhouse, { scope: "worker" }],
+  resetClickhouse: [truncateClickhouseFixture, { auto: true }],
+  clickhouseClient: scopedClickhouseClient,
 });
 
 export const containerWithElectricTest = test.extend<ContainerWithElectricContext>({
