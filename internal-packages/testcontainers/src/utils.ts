@@ -19,11 +19,13 @@ export function postgresUriWithDatabase(uri: string, database: string): string {
   return url.toString();
 }
 
-/** Pushes the Prisma schema into the database at `databaseUrl` (creating it if missing). */
+/** Pushes the Prisma schema into the database at `databaseUrl` (which must already exist). */
 export async function pushDatabaseSchema(databaseUrl: string) {
   const databasePath = path.resolve(__dirname, "../../database");
 
-  await x(
+  // throwOnError is essential: without it tinyexec swallows a non-zero `prisma db push`, so a failed
+  // push looks like success and only surfaces much later as a confusing downstream error.
+  const result = await x(
     `${databasePath}/node_modules/.bin/prisma`,
     [
       "db",
@@ -35,6 +37,7 @@ export async function pushDatabaseSchema(databaseUrl: string) {
       `${databasePath}/prisma/schema.prisma`,
     ],
     {
+      throwOnError: true,
       nodeOptions: {
         env: {
           ...process.env,
@@ -44,6 +47,8 @@ export async function pushDatabaseSchema(databaseUrl: string) {
       },
     }
   );
+
+  return result;
 }
 
 /**

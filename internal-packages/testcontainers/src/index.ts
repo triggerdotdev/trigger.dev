@@ -151,6 +151,18 @@ const getWorkerPostgresContainer = () => {
       const container = await withCiResourceLimits(new PostgreSqlContainer("docker.io/postgres:14"))
         .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
         .start();
+      // Create the template db explicitly via an admin connection (the same primitive the per-test
+      // clone uses) instead of relying on `prisma db push` to create a missing database. That
+      // create-if-missing path behaves differently on CI and - because push errors were swallowed -
+      // surfaced only later as a confusing "template database template_db does not exist" at clone
+      // time. Pushing into an already-existing db is the path the pre-worker-scope code always used.
+      const admin = new PrismaClient({
+        datasources: {
+          db: { url: postgresUriWithDatabase(container.getConnectionUri(), "postgres") },
+        },
+      });
+      await admin.$executeRawUnsafe(`CREATE DATABASE "${POSTGRES_TEMPLATE_DB}"`);
+      await admin.$disconnect();
       await pushDatabaseSchema(
         postgresUriWithDatabase(container.getConnectionUri(), POSTGRES_TEMPLATE_DB)
       );
