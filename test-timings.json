@@ -53,8 +53,6 @@
   "apps/webapp/test/replay-after-crash.test.ts": 2233,
   "apps/webapp/test/runsBackfiller.test.ts": 15478,
   "apps/webapp/test/runsReplicationBenchmark.test.ts": 0,
-  "apps/webapp/test/runsReplicationService.part1.test.ts": 134754,
-  "apps/webapp/test/runsReplicationService.part2.test.ts": 191947,
   "apps/webapp/test/runsRepository.part1.test.ts": 80330,
   "apps/webapp/test/runsRepository.part2.test.ts": 92949,
   "apps/webapp/test/sanitizeRowsOnParseError.test.ts": 8,
@@ -210,5 +208,11 @@
   "internal-packages/clickhouse/src/tsqlFunctions.test.ts": 12971,
   "internal-packages/clickhouse/src/client/client.test.ts": 9138,
   "internal-packages/sdk-compat-tests/src/tests/bundler.test.ts": 348,
-  "internal-packages/sdk-compat-tests/src/tests/import.test.ts": 4742
+  "internal-packages/sdk-compat-tests/src/tests/import.test.ts": 4742,
+  "apps/webapp/test/runsReplicationService.part1.test.ts": 73000,
+  "apps/webapp/test/runsReplicationService.part2.test.ts": 64000,
+  "apps/webapp/test/runsReplicationService.part3.test.ts": 43000,
+  "apps/webapp/test/runsReplicationService.part4.test.ts": 61000,
+  "apps/webapp/test/runsReplicationService.part5.test.ts": 43000,
+  "apps/webapp/test/runsReplicationService.part6.test.ts": 43000
 }
