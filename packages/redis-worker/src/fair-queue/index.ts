@@ -5,6 +5,7 @@ import { nanoid } from "nanoid";
 import { setInterval } from "node:timers/promises";
 import { type z } from "zod";
 import { ConcurrencyManager } from "./concurrency.js";
+import { RateLimitManager } from "./rateLimit.js";
 import { MasterQueue } from "./masterQueue.js";
 import { TenantDispatch } from "./tenantDispatch.js";
 import { type RetryStrategy, ExponentialBackoffRetry } from "./retry.js";
@@ -38,6 +39,7 @@ export * from "./types.js";
 export * from "./keyProducer.js";
 export * from "./masterQueue.js";
 export * from "./concurrency.js";
+export * from "./rateLimit.js";
 export * from "./visibility.js";
 export * from "./workerQueue.js";
 export * from "./scheduler.js";
@@ -70,6 +72,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
   private scheduler: FairScheduler;
   private masterQueue: MasterQueue;
   private concurrencyManager?: ConcurrencyManager;
+  private rateLimitManager: RateLimitManager;
   private visibilityManager: VisibilityManager;
   private workerQueueManager: WorkerQueueManager;
   private telemetry: FairQueueTelemetry;
@@ -201,6 +204,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       });
     }
 
+    this.rateLimitManager = new RateLimitManager({
+      redis: options.redis,
+      keys: options.keys,
+    });
+
     this.visibilityManager = new VisibilityManager({
       redis: options.redis,
       keys: options.keys,
@@ -311,9 +319,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
                 timestamp,
                 attempt: 1,
                 metadata: options.metadata,
+                rateLimits: options.rateLimits,
               })
             : undefined,
           metadata: options.metadata,
+          rateLimits: options.rateLimits,
         };
 
         // Use atomic Lua script to enqueue and update tenant dispatch indexes
@@ -410,9 +420,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
                   timestamp,
                   attempt: 1,
                   metadata: options.metadata,
+                  rateLimits: message.rateLimits,
                 })
               : undefined,
             metadata: options.metadata,
+            rateLimits: message.rateLimits,
           };
 
           messageIds.push(messageId);
@@ -698,6 +710,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       this.masterQueue.close(),
       this.tenantDispatch.close(),
       this.concurrencyManager?.close(),
+      this.rateLimitManager.close(),
       this.visibilityManager.close(),
       this.workerQueueManager.close(),
       this.scheduler.close?.(),
@@ -1142,6 +1155,36 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     // Reserve concurrency and push each message to worker queue
     for (let i = 0; i < claimedMessages.length; i++) {
       const message = claimedMessages[i]!;
+
+      // Check rate limits
+      if (message.payload.rateLimits && message.payload.rateLimits.length > 0) {
+        const rateLimitResult = await this.rateLimitManager.checkAndConsume(
+          message.payload.rateLimits
+        );
+
+        if (!rateLimitResult.allowed) {
+          // Rate limit exceeded, delay the message
+          const resetAt = rateLimitResult.resetAt ?? Date.now() + 1000; // Fallback to 1s delay
+          
+          // Release this message back to the queue with a delayed timestamp
+          const tenantQueueIndexKey = this.keys.tenantQueueIndexKey(tenantId);
+          const dispatchKey = this.keys.dispatchKey(dispatchShardId);
+          
+          await this.visibilityManager.releaseBatch(
+            [message],
+            queueId,
+            queueKey,
+            queueItemsKey,
+            tenantQueueIndexKey,
+            dispatchKey,
+            tenantId,
+            resetAt
+          );
+          
+          // Continue processing other messages in the batch, as they might have different dynamic keys
+          continue;
+        }
+      }
 
       // Reserve concurrency slot
       if (this.concurrencyManager) {
