@@ -76,6 +76,8 @@ export interface StoredMessage<TPayload = unknown> {
   workerQueue?: string;
   /** Additional metadata */
   metadata?: Record<string, unknown>;
+  /** Rate limits to enforce before processing */
+  rateLimits?: RateLimitRequest[];
 }
 
 /**
@@ -131,6 +133,36 @@ export interface ConcurrencyCheckResult {
   allowed: boolean;
   /** If not allowed, which group is blocking */
   blockedBy?: ConcurrencyState;
+}
+
+// ============================================================================
+// Rate Limiting Types
+// ============================================================================
+
+/**
+ * Request to consume units from a rate limit.
+ */
+export interface RateLimitRequest {
+  /** The unique key for this rate limit (e.g., "api-service" or "user-123") */
+  key: string;
+  /** The maximum number of units allowed in the window. Optional for static limits. */
+  limit?: number;
+  /** The duration of the window in milliseconds. Optional for static limits. */
+  windowMs?: number;
+  /** The number of units to consume (default: 1) */
+  units: number;
+  /** Whether this is a static rate limit that requires fetching config from Redis */
+  isStatic?: boolean;
+}
+
+/**
+ * Result of a rate limit check.
+ */
+export interface RateLimitCheckResult {
+  /** Whether the request is allowed */
+  allowed: boolean;
+  /** If not allowed, the timestamp (ms since epoch) when the limit resets */
+  resetAt?: number;
 }
 
 // ============================================================================
@@ -553,6 +585,8 @@ export interface EnqueueOptions<TPayload = unknown> {
   timestamp?: number;
   /** Optional metadata for concurrency group extraction */
   metadata?: Record<string, string>;
+  /** Rate limits to enforce before processing */
+  rateLimits?: RateLimitRequest[];
 }
 
 /**
@@ -568,6 +602,7 @@ export interface EnqueueBatchOptions<TPayload = unknown> {
     payload: TPayload;
     messageId?: string;
     timestamp?: number;
+    rateLimits?: RateLimitRequest[];
   }>;
   /** Optional metadata for concurrency group extraction */
   metadata?: Record<string, string>;
