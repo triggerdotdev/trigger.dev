@@ -296,6 +296,8 @@ type RedisTestContext = {
   redisOptions: RedisOptions;
 };
 
+// Worker-scoped redis (boots once, FLUSHALL between tests). Use isolatedRedisTest for tests that run
+// background redis work (redis-worker Workers, BatchQueue) past the test body - see its note + README.
 export const redisTest = test.extend<RedisTestContext>({
   redisContainer: [bootWorkerRedis, { scope: "worker" }],
   resetRedis: [flushRedis, { auto: true }],
