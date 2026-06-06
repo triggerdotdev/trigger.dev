@@ -6,7 +6,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./webapp": "./src/webapp.ts"
+    "./webapp": "./src/webapp.ts",
+    "./sequencer": "./src/sequencer.ts"
   },
   "dependencies": {
     "@clickhouse/client": "^1.11.1",

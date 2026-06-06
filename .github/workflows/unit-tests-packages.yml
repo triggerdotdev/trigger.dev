@@ -16,9 +16,11 @@ jobs:
     name: "🧪 Unit Tests: Packages"
     runs-on: ubuntu-latest
     strategy:
+      # one flaky shard shouldn't cancel its siblings - lets us re-run only the failed shard
+      fail-fast: false
       matrix:
-        shardIndex: [1]
-        shardTotal: [1]
+        shardIndex: [1, 2, 3]
+        shardTotal: [3]
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       SHARD_INDEX: ${{ matrix.shardIndex }}
