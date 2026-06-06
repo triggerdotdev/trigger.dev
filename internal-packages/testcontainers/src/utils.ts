@@ -46,8 +46,26 @@ export async function pushDatabaseSchema(databaseUrl: string) {
   );
 }
 
+/**
+ * Caps each container's CPU/memory to approximate the 2-core CI runner locally (for timing + flake
+ * reproduction). Set TESTCONTAINERS_CPU (cores per container, e.g. "2") and/or
+ * TESTCONTAINERS_MEMORY_GB (GB per container). Pair with running the runner under `taskset -c 0,1`.
+ * No-op when neither is set. (testcontainers v11 has no cpuset pinning, only this quota cap.)
+ */
+export function withCiResourceLimits<T extends GenericContainer>(container: T): T {
+  const cpu = process.env.TESTCONTAINERS_CPU;
+  const memory = process.env.TESTCONTAINERS_MEMORY_GB;
+  if (!cpu && !memory) {
+    return container;
+  }
+  return container.withResourcesQuota({
+    ...(cpu ? { cpu: Number(cpu) } : {}),
+    ...(memory ? { memory: Number(memory) } : {}),
+  });
+}
+
 export async function createPostgresContainer(network: StartedNetwork) {
-  const container = await new PostgreSqlContainer("docker.io/postgres:14")
+  const container = await withCiResourceLimits(new PostgreSqlContainer("docker.io/postgres:14"))
     .withNetwork(network)
     .withNetworkAliases("database")
     .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
@@ -59,7 +77,9 @@ export async function createPostgresContainer(network: StartedNetwork) {
 }
 
 export async function createClickHouseContainer(network: StartedNetwork) {
-  const container = await new ClickHouseContainer().withNetwork(network).start();
+  const container = await withCiResourceLimits(new ClickHouseContainer())
+    .withNetwork(network)
+    .start();
 
   const client = createClient({
     url: container.getConnectionUrl(),
@@ -86,7 +106,7 @@ export async function createRedisContainer({
   port?: number;
   network?: StartedNetwork;
 }) {
-  let container = new RedisContainer("redis:7.2")
+  let container = withCiResourceLimits(new RedisContainer("redis:7.2"))
     .withExposedPorts(port ?? 6379)
     .withStartupTimeout(120_000); // 2 minutes
 
@@ -167,8 +187,10 @@ export async function createElectricContainer(
     network.getName()
   )}:5432/${postgresContainer.getDatabase()}?sslmode=disable`;
 
-  const container = await new GenericContainer(
-    "electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36"
+  const container = await withCiResourceLimits(
+    new GenericContainer(
+      "electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36"
+    )
   )
     .withExposedPorts(3000)
     .withNetwork(network)
@@ -185,7 +207,7 @@ export async function createElectricContainer(
 }
 
 export async function createMinIOContainer(network: StartedNetwork) {
-  const container = await new MinIOContainer()
+  const container = await withCiResourceLimits(new MinIOContainer())
     .withNetwork(network)
     .withNetworkAliases("minio")
     .start();

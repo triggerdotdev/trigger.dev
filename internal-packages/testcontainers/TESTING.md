@@ -34,6 +34,23 @@ Container lifecycle (boot + migrate + teardown) dominates these suites. To see t
 TESTCONTAINERS_TIMING=1 pnpm exec vitest run <file> --disableConsoleIntercept
 ```
 
+## Approximating the 2-core CI runner locally (flake repro)
+
+To reproduce CI-like CPU pressure on a beefy local machine - useful when a test only flakes under
+the 2-core CI runner:
+
+```bash
+# cap each testcontainer's CPU/mem (TESTCONTAINERS_CPU = cores, TESTCONTAINERS_MEMORY_GB = GB),
+# and pin the test runner to 2 cores. Off unless the env vars are set.
+TESTCONTAINERS_CPU=2 TESTCONTAINERS_MEMORY_GB=2 taskset -c 0,1 pnpm exec vitest run <file>
+```
+
+Note: in practice the scoped tests here are latency/IO/sleep-bound, not CPU-bound, so this changes
+timings little - the original CI slowness was per-test container *boots*, which worker-scoping removed.
+Keep it for the cases that genuinely starve on CPU (e.g. timing races against a worker poll).
+
+## Timing harness
+
 Or use the harness, which aggregates the split for you:
 
 ```bash

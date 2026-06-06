@@ -12,6 +12,7 @@ import {
   postgresUriWithDatabase,
   pushDatabaseSchema,
   useContainer,
+  withCiResourceLimits,
   withContainerSetup,
 } from "./utils";
 import { getTaskMetadata, logCleanup, logSetup } from "./logs";
@@ -147,7 +148,9 @@ let workerPostgresContainer: Promise<StartedPostgreSqlContainer> | undefined;
 const getWorkerPostgresContainer = () => {
   if (!workerPostgresContainer) {
     workerPostgresContainer = (async () => {
-      const container = await new PostgreSqlContainer("docker.io/postgres:14")
+      const container = await withCiResourceLimits(
+        new PostgreSqlContainer("docker.io/postgres:14")
+      )
         .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
         .start();
       await pushDatabaseSchema(
@@ -358,7 +361,7 @@ type ClickhouseTestContext = {
 
 // Boot + migrate clickhouse once per worker.
 const bootWorkerClickhouse = async ({}, use: Use<StartedClickHouseContainer>) => {
-  const container = await new ClickHouseContainer().start();
+  const container = await withCiResourceLimits(new ClickHouseContainer()).start();
   const client = createClient({ url: container.getConnectionUrl() });
   await client.ping();
   await runClickhouseMigrations(client, clickhouseMigrationsPath);
@@ -469,7 +472,7 @@ export const containerWithElectricAndRedisTest = test.extend<ContainerWithElectr
 
 // Boot minio once per worker; reset the bucket per test (auto fixture).
 const bootWorkerMinio = async ({}, use: Use<StartedMinIOContainer>) => {
-  const container = await new MinIOContainer().start();
+  const container = await withCiResourceLimits(new MinIOContainer()).start();
   try {
     await use(container);
   } finally {
