@@ -654,6 +654,103 @@ describe("TriggerChatTransport", () => {
       expect(subscribe!.url.startsWith("https://stream.example.com/")).toBe(true);
     });
 
+    it("defaults realtime endpoints to realtime.trigger.dev on Trigger.dev Cloud", async () => {
+      const requests: string[] = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        requests.push(urlStr);
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      // No baseURL -> defaults to https://api.trigger.dev (Cloud). The realtime
+      // session endpoints should be routed to the dedicated realtime host.
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        sessions: { "chat-cloud": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-cloud",
+        messageId: undefined,
+        messages: [createUserMessage("Hi")],
+        abortSignal: undefined,
+      });
+      await drainChunks(stream);
+
+      const append = requests.find(isSessionStreamAppendUrl);
+      const subscribe = requests.find(isSessionOutSubscribeUrl);
+      expect(append!.startsWith("https://realtime.trigger.dev/")).toBe(true);
+      expect(subscribe!.startsWith("https://realtime.trigger.dev/")).toBe(true);
+    });
+
+    it("leaves a custom/self-hosted baseURL untouched for realtime endpoints", async () => {
+      const requests: string[] = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        requests.push(urlStr);
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        baseURL: "https://trigger.acme.internal",
+        sessions: { "chat-self": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-self",
+        messageId: undefined,
+        messages: [createUserMessage("Hi")],
+        abortSignal: undefined,
+      });
+      await drainChunks(stream);
+
+      const append = requests.find(isSessionStreamAppendUrl);
+      const subscribe = requests.find(isSessionOutSubscribeUrl);
+      expect(append!.startsWith("https://trigger.acme.internal/")).toBe(true);
+      expect(subscribe!.startsWith("https://trigger.acme.internal/")).toBe(true);
+    });
+
+    it("does not remap non-prod cloud hosts (mapping is prod-only)", async () => {
+      const requests: string[] = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        requests.push(urlStr);
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        baseURL: "https://test-api.trigger.dev",
+        sessions: { "chat-test": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-test",
+        messageId: undefined,
+        messages: [createUserMessage("Hi")],
+        abortSignal: undefined,
+      });
+      await drainChunks(stream);
+
+      const append = requests.find(isSessionStreamAppendUrl);
+      const subscribe = requests.find(isSessionOutSubscribeUrl);
+      expect(append!.startsWith("https://test-api.trigger.dev/")).toBe(true);
+      expect(subscribe!.startsWith("https://test-api.trigger.dev/")).toBe(true);
+    });
+
     it("fetch override is invoked for both .in/append and .out SSE with endpoint ctx", async () => {
       const fetchCalls: Array<{ url: string; endpoint: string; chatId: string }> = [];
 

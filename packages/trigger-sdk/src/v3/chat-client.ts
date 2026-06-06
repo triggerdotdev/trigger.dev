@@ -28,7 +28,11 @@ import {
   TRIGGER_CONTROL_SUBTYPE,
 } from "@trigger.dev/core/v3";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
-import { slimSubmitMessageForWire } from "./ai-shared.js";
+import {
+  CLOUD_API_BASE_URL,
+  resolveChatStreamBaseURL,
+  slimSubmitMessageForWire,
+} from "./ai-shared.js";
 import { sessions } from "./sessions.js";
 
 // ─── Type inference ────────────────────────────────────────────────
@@ -328,9 +332,18 @@ export class AgentChat<TAgent = unknown> {
     this.onTriggered = options.onTriggered;
     this.onTurnComplete = options.onTurnComplete;
     const baseURLOption = options.baseURL;
-    this.baseURLResolver = typeof baseURLOption === "function"
-      ? baseURLOption
-      : () => baseURLOption ?? apiClientManager.baseURL ?? "https://api.trigger.dev";
+    // `AgentChat` only addresses realtime session endpoints (`in`/`out`). For a
+    // string base URL pointing at Trigger.dev Cloud, route those to the
+    // dedicated realtime host so the SSE reads and input appends don't load the
+    // api service. Custom/self-hosted base URLs pass through unchanged, and a
+    // resolver function is honored verbatim.
+    this.baseURLResolver =
+      typeof baseURLOption === "function"
+        ? baseURLOption
+        : () =>
+            resolveChatStreamBaseURL(
+              baseURLOption ?? apiClientManager.baseURL ?? CLOUD_API_BASE_URL
+            );
     this.fetchOverride = options.fetch;
 
     // Hydration: a non-empty `session` means the caller knows the
