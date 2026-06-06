@@ -184,10 +184,21 @@ const AgentConfig = z.object({
   type: z.string(),
 });
 
+export const RateLimitConfig = z.object({
+  staticKey: z.string().optional(),
+  dynamicKey: z.string().optional(),
+  limit: z.number().int().positive().optional(),
+  window: z.union([z.string(), z.number().int().positive()]).optional(),
+  units: z.number().int().positive().optional(),
+});
+
+export type RateLimitConfig = z.infer<typeof RateLimitConfig>;
+
 const taskMetadata = {
   id: z.string(),
   description: z.string().optional(),
   queue: QueueManifest.extend({ name: z.string().optional() }).optional(),
+  rateLimits: z.array(RateLimitConfig).optional(),
   retry: RetryOptions.optional(),
   machine: MachineConfig.optional(),
   triggerSource: z.string().optional(),
