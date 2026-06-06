@@ -1,4 +1,4 @@
-import { type Prisma, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { createEnvironment } from "./organization.server";
 import { customAlphabet } from "nanoid";
 import { logger } from "~/services/logger.server";
@@ -110,37 +110,38 @@ export async function inviteMembers({
     throw new Error("User does not have access to this organization");
   }
 
-  const invites = [...new Set(emails)].map(
-    (email) =>
-      ({
-        email,
-        token: tokenGenerator(),
-        organizationId: org.id,
-        inviterId: userId,
-        role: "MEMBER",
-        rbacRoleId: rbacRoleId ?? null,
-      } satisfies Prisma.OrgMemberInviteCreateManyInput)
+  // Re-inviting an already-invited email is treated as a resend with
+  // last-write-wins semantics: the role and inviter are refreshed, the
+  // token is kept so previously-emailed links remain valid.
+  return await Promise.all(
+    [...new Set(emails)].map((email) =>
+      prisma.orgMemberInvite.upsert({
+        where: {
+          organizationId_email: {
+            organizationId: org.id,
+            email,
+          },
+        },
+        create: {
+          email,
+          token: tokenGenerator(),
+          organizationId: org.id,
+          inviterId: userId,
+          role: "MEMBER",
+          rbacRoleId: rbacRoleId ?? null,
+        },
+        update: {
+          inviterId: userId,
+          role: "MEMBER",
+          rbacRoleId: rbacRoleId ?? null,
+        },
+        include: {
+          organization: true,
+          inviter: true,
+        },
+      })
+    )
   );
-
-  // Re-inviting an already-invited email is treated as a resend: skip the
-  // conflicting insert and return the existing invite below.
-  await prisma.orgMemberInvite.createMany({
-    data: invites,
-    skipDuplicates: true,
-  });
-
-  return await prisma.orgMemberInvite.findMany({
-    where: {
-      organizationId: org.id,
-      email: {
-        in: emails,
-      },
-    },
-    include: {
-      organization: true,
-      inviter: true,
-    },
-  });
 }
 
 export async function getInviteFromToken({ token }: { token: string }) {
