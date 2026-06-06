@@ -74,7 +74,7 @@
   "apps/webapp/test/workerQueueSplit.test.ts": 3,
   "apps/webapp/test/components/DateTime.test.ts": 24,
   "apps/webapp/test/engine/batchPayloads.test.ts": 5018,
-  "apps/webapp/test/engine/streamBatchItems.test.ts": 27262,
+  "apps/webapp/test/engine/streamBatchItems.test.ts": 47000,
   "apps/webapp/test/engine/taskIdentifierRegistry.test.ts": 13152,
   "apps/webapp/test/engine/triggerTask.test.ts": 31630,
   "apps/webapp/test/presenters/mapRunToLiveFields.test.ts": 3,
