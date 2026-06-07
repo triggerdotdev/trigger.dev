@@ -424,14 +424,14 @@ describe("RunsRepository (part 4/4)", () => {
         from: createdAtMs - 1,
         page: { size: 100 },
       });
-      expect(newRunIdsBefore.length).toBeGreaterThanOrEqual(1);
+      expect(newRunIdsBefore.runIds.length).toBeGreaterThanOrEqual(1);
 
       const newRunIdsAfter = await runsRepository.listRunIds({
         ...baseOptions,
         from: createdAtMs + 60_000,
         page: { size: 100 },
       });
-      expect(newRunIdsAfter).toHaveLength(0);
+      expect(newRunIdsAfter.runIds).toHaveLength(0);
 
       const fromBeforeRun = createdAtMs - 1;
 
@@ -441,7 +441,7 @@ describe("RunsRepository (part 4/4)", () => {
         tasks: ["my-task"],
         page: { size: 100 },
       });
-      expect(matchingTaskIds.length).toBeGreaterThanOrEqual(1);
+      expect(matchingTaskIds.runIds.length).toBeGreaterThanOrEqual(1);
 
       const otherTaskIds = await runsRepository.listRunIds({
         ...baseOptions,
@@ -449,7 +449,7 @@ describe("RunsRepository (part 4/4)", () => {
         tasks: ["other-task"],
         page: { size: 100 },
       });
-      expect(otherTaskIds).toHaveLength(0);
+      expect(otherTaskIds.runIds).toHaveLength(0);
     }
   );
 });
