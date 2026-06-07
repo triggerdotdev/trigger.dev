@@ -6,7 +6,11 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./webapp": "./src/webapp.ts"
+    "./webapp": "./src/webapp.ts",
+    "./sequencer": {
+      "types": "./src/sequencer.d.cts",
+      "default": "./src/sequencer.cjs"
+    }
   },
   "dependencies": {
     "@clickhouse/client": "^1.11.1",
