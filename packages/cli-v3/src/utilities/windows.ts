@@ -19,6 +19,11 @@ function getVisibleLength(str: string): number {
 }
 
 function truncateMessage(msg: string, maxLength?: number): string {
+  // If not a TTY and no explicit length provided, don't truncate
+  if (!process.stdout.isTTY && maxLength === undefined) {
+    return msg;
+  }
+
   const terminalWidth = maxLength ?? process.stdout.columns ?? 80;
   const availableWidth = terminalWidth - 5; // Reserve some space for the spinner and padding
   const visibleLength = getVisibleLength(msg);
@@ -28,13 +33,45 @@ function truncateMessage(msg: string, maxLength?: number): string {
   }
 
   // We need to truncate based on visible characters, but preserve ANSI sequences
-  // Simple approach: truncate character by character until we fit
-  let truncated = msg;
-  while (getVisibleLength(truncated) > availableWidth - 3) {
-    truncated = truncated.slice(0, -1);
+  const targetLength = availableWidth - 3;
+  let visibleCount = 0;
+  let result = "";
+
+  const ansiRegex = /\x1b\]8;;[^\x07]*\x07|\x1b\[[0-9;]*[a-zA-Z]/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = ansiRegex.exec(msg)) !== null) {
+    const textPart = msg.slice(lastIndex, match.index);
+    const textPartVisibleLength = textPart.length;
+
+    if (visibleCount + textPartVisibleLength > targetLength) {
+      if (visibleCount <= targetLength) {
+        result += textPart.slice(0, targetLength - visibleCount) + "...";
+        visibleCount = targetLength + 1; // Mark as done
+      }
+      result += match[0];
+    } else {
+      if (visibleCount <= targetLength) {
+        result += textPart + match[0];
+        visibleCount += textPartVisibleLength;
+      } else {
+        result += match[0];
+      }
+    }
+    lastIndex = ansiRegex.lastIndex;
   }
 
-  return truncated + "...";
+  if (visibleCount <= targetLength) {
+    const remainingText = msg.slice(lastIndex);
+    if (visibleCount + remainingText.length > targetLength) {
+      result += remainingText.slice(0, targetLength - visibleCount) + "...";
+    } else {
+      result += remainingText;
+    }
+  }
+
+  return result;
 }
 
 const wrappedClackSpinner = () => {
