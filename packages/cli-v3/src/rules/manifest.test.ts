@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BundledSkillsLoader, loadRulesManifest } from "./manifest.js";
 
-async function makeSkillsDir(opts: { withSkill: boolean }): Promise<string> {
+async function makeSkillsDir(opts: {
+  withSkill: boolean;
+}): Promise<{ root: string; skillsDir: string }> {
   const root = await mkdtemp(join(tmpdir(), "bundled-skills-"));
   const skillsDir = join(root, "skills");
   await mkdir(skillsDir, { recursive: true });
@@ -32,19 +34,19 @@ async function makeSkillsDir(opts: { withSkill: boolean }): Promise<string> {
     );
   }
 
-  return skillsDir;
+  return { root, skillsDir };
 }
 
 describe("BundledSkillsLoader", () => {
-  const dirs: string[] = [];
+  const roots: string[] = [];
 
   afterAll(async () => {
-    await Promise.all(dirs.map((d) => rm(d, { recursive: true, force: true })));
+    await Promise.all(roots.map((d) => rm(d, { recursive: true, force: true })));
   });
 
   it("synthesizes a manifest at the given version and stamps it into contents", async () => {
-    const skillsDir = await makeSkillsDir({ withSkill: true });
-    dirs.push(skillsDir);
+    const { root, skillsDir } = await makeSkillsDir({ withSkill: true });
+    roots.push(root);
 
     const loader = new BundledSkillsLoader(skillsDir, "9.9.9-test.1");
     const manifest = await loadRulesManifest(loader);
@@ -65,8 +67,8 @@ describe("BundledSkillsLoader", () => {
   });
 
   it("throws when the skills dir has no skills (caller treats as 'nothing to install')", async () => {
-    const skillsDir = await makeSkillsDir({ withSkill: false });
-    dirs.push(skillsDir);
+    const { root, skillsDir } = await makeSkillsDir({ withSkill: false });
+    roots.push(root);
 
     const loader = new BundledSkillsLoader(skillsDir, "9.9.9-test.1");
 
