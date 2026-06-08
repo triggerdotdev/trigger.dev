@@ -21,6 +21,9 @@ on:
       short_sha:
         description: Short commit SHA of the published build
         value: ${{ jobs.publish.outputs.short_sha }}
+      image_repo:
+        description: The image repository the build was published to (without tag)
+        value: ${{ jobs.publish.outputs.image_repo }}
     secrets:
       SENTRY_AUTH_TOKEN:
         required: false
@@ -33,6 +36,7 @@ jobs:
     outputs:
       version: ${{ steps.get_tag.outputs.tag }}
       short_sha: ${{ steps.get_commit.outputs.sha_short }}
+      image_repo: ${{ steps.set_tags.outputs.image_repo }}
     steps:
       - name: 🏭 Setup Depot CLI
         uses: depot/setup-action@15c09a5f77a0840ad4bce955686522a257853461 # v1.7.1
@@ -57,17 +61,22 @@ jobs:
       - name: 📛 Set the tags
         id: set_tags
         run: |
-          ref_without_tag=ghcr.io/triggerdotdev/trigger.dev
-          image_tags=$ref_without_tag:${STEPS_GET_TAG_OUTPUTS_TAG}
+          # The image repo defaults to ghcr.io/<owner>/<repo>, so a fork publishes
+          # to its own package automatically with no extra config. Set the
+          # WEBAPP_IMAGE_REPO repository variable to override it with any
+          # registry/path.
+          image_tags=$REF_WITHOUT_TAG:${STEPS_GET_TAG_OUTPUTS_TAG}
 
           # when pushing the mutable main tag, also push an immutable-by-convention
           # full-commit-sha tag so a commit can be resolved to a specific digest
           if [[ "${STEPS_GET_TAG_OUTPUTS_TAG}" == "main" ]]; then
-            image_tags=$image_tags,$ref_without_tag:${GITHUB_SHA}
+            image_tags=$image_tags,$REF_WITHOUT_TAG:${GITHUB_SHA}
           fi
 
           echo "image_tags=${image_tags}" >> "$GITHUB_OUTPUT"
+          echo "image_repo=${REF_WITHOUT_TAG}" >> "$GITHUB_OUTPUT"
         env:
+          REF_WITHOUT_TAG: ${{ vars.WEBAPP_IMAGE_REPO || format('ghcr.io/{0}', github.repository) }}
           STEPS_GET_TAG_OUTPUTS_TAG: ${{ steps.get_tag.outputs.tag }}
           STEPS_GET_TAG_OUTPUTS_IS_SEMVER: ${{ steps.get_tag.outputs.is_semver }}
 
@@ -122,6 +131,6 @@ jobs:
         continue-on-error: true
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
-          subject-name: ghcr.io/triggerdotdev/trigger.dev
+          subject-name: ${{ steps.set_tags.outputs.image_repo }}
           subject-digest: ${{ steps.build_push.outputs.digest }}
           push-to-registry: true

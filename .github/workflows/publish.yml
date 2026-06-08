@@ -106,4 +106,4 @@ jobs:
       packages: read # pull the just-published image from GHCR
     uses: ./.github/workflows/trivy-image-webapp.yml
     with:
-      image-ref: ghcr.io/triggerdotdev/trigger.dev:${{ needs.publish-webapp.outputs.version }}
+      image-ref: ${{ needs.publish-webapp.outputs.image_repo }}:${{ needs.publish-webapp.outputs.version }}
