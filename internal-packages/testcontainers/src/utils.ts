@@ -12,17 +12,20 @@ import { ClickHouseContainer, runClickhouseMigrations } from "./clickhouse";
 import { MinIOContainer } from "./minio";
 import { getContainerMetadata, getTaskMetadata, logCleanup, logSetup } from "./logs";
 
-export async function createPostgresContainer(network: StartedNetwork) {
-  const container = await new PostgreSqlContainer("docker.io/postgres:14")
-    .withNetwork(network)
-    .withNetworkAliases("database")
-    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
-    .start();
+/** Returns the container's connection URI with the database path swapped to `database`. */
+export function postgresUriWithDatabase(uri: string, database: string): string {
+  const url = new URL(uri);
+  url.pathname = `/${database}`;
+  return url.toString();
+}
 
-  // Run migrations
+/** Pushes the Prisma schema into the database at `databaseUrl` (which must already exist). */
+export async function pushDatabaseSchema(databaseUrl: string) {
   const databasePath = path.resolve(__dirname, "../../database");
 
-  await x(
+  // throwOnError is essential: without it tinyexec swallows a non-zero `prisma db push`, so a failed
+  // push looks like success and only surfaces much later as a confusing downstream error.
+  const result = await x(
     `${databasePath}/node_modules/.bin/prisma`,
     [
       "db",
@@ -34,21 +37,65 @@ export async function createPostgresContainer(network: StartedNetwork) {
       `${databasePath}/prisma/schema.prisma`,
     ],
     {
+      throwOnError: true,
       nodeOptions: {
         env: {
           ...process.env,
-          DATABASE_URL: container.getConnectionUri(),
-          DIRECT_URL: container.getConnectionUri(),
+          DATABASE_URL: databaseUrl,
+          DIRECT_URL: databaseUrl,
         },
       },
     }
   );
 
+  return result;
+}
+
+/**
+ * Caps each container's CPU/memory to approximate the 2-core CI runner locally (for timing + flake
+ * reproduction). Set TESTCONTAINERS_CPU (cores per container, e.g. "2") and/or
+ * TESTCONTAINERS_MEMORY_GB (GB per container). Pair with running the runner under `taskset -c 0,1`.
+ * No-op when neither is set. (testcontainers v11 has no cpuset pinning, only this quota cap.)
+ */
+export function withCiResourceLimits<T extends GenericContainer>(container: T): T {
+  const cpu = parsePositiveNumberEnv("TESTCONTAINERS_CPU");
+  const memory = parsePositiveNumberEnv("TESTCONTAINERS_MEMORY_GB");
+  if (cpu === undefined && memory === undefined) {
+    return container;
+  }
+  return container.withResourcesQuota({
+    ...(cpu !== undefined ? { cpu } : {}),
+    ...(memory !== undefined ? { memory } : {}),
+  });
+}
+
+// Fail fast on a malformed value rather than letting NaN reach the container runtime as a cryptic error.
+function parsePositiveNumberEnv(name: string): number | undefined {
+  const raw = process.env[name];
+  if (!raw) return undefined;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be a positive number, got "${raw}"`);
+  }
+  return value;
+}
+
+export async function createPostgresContainer(network: StartedNetwork) {
+  const container = await withCiResourceLimits(new PostgreSqlContainer("docker.io/postgres:14"))
+    .withNetwork(network)
+    .withNetworkAliases("database")
+    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
+    .start();
+
+  await pushDatabaseSchema(container.getConnectionUri());
+
   return { url: container.getConnectionUri(), container, network };
 }
 
 export async function createClickHouseContainer(network: StartedNetwork) {
-  const container = await new ClickHouseContainer().withNetwork(network).start();
+  const container = await withCiResourceLimits(new ClickHouseContainer())
+    .withNetwork(network)
+    .start();
 
   const client = createClient({
     url: container.getConnectionUrl(),
@@ -75,7 +122,7 @@ export async function createRedisContainer({
   port?: number;
   network?: StartedNetwork;
 }) {
-  let container = new RedisContainer("redis:7.2")
+  let container = withCiResourceLimits(new RedisContainer("redis:7.2"))
     .withExposedPorts(port ?? 6379)
     .withStartupTimeout(120_000); // 2 minutes
 
@@ -83,16 +130,11 @@ export async function createRedisContainer({
     container = container.withNetwork(network).withNetworkAliases("redis");
   }
 
+  // Wait only on the readiness log (RedisContainer's default) - the previous Docker healthcheck added
+  // a full poll-cycle of latency per boot, which dominates per-test redis. verifyRedisConnection
+  // below still confirms the container actually accepts connections before we hand it to the test.
   const startedContainer = await container
-    .withHealthCheck({
-      test: ["CMD", "redis-cli", "ping"],
-      interval: 1000,
-      timeout: 3000,
-      retries: 5,
-    })
-    .withWaitStrategy(
-      Wait.forAll([Wait.forHealthCheck(), Wait.forLogMessage("Ready to accept connections")])
-    )
+    .withWaitStrategy(Wait.forLogMessage("Ready to accept connections"))
     .start();
 
   // Add a verification step
@@ -156,8 +198,10 @@ export async function createElectricContainer(
     network.getName()
   )}:5432/${postgresContainer.getDatabase()}?sslmode=disable`;
 
-  const container = await new GenericContainer(
-    "electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36"
+  const container = await withCiResourceLimits(
+    new GenericContainer(
+      "electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36"
+    )
   )
     .withExposedPorts(3000)
     .withNetwork(network)
@@ -174,7 +218,7 @@ export async function createElectricContainer(
 }
 
 export async function createMinIOContainer(network: StartedNetwork) {
-  const container = await new MinIOContainer()
+  const container = await withCiResourceLimits(new MinIOContainer())
     .withNetwork(network)
     .withNetworkAliases("minio")
     .start();
@@ -250,8 +294,9 @@ export async function useContainer<TContainer extends StartedTestContainer>(
     const useDurationMs = Date.now() - start;
     metadata.useDurationMs = useDurationMs;
   } finally {
-    // WARNING: Testcontainers by default will not wait until the container has stopped. It will simply issue the stop command and return immediately.
-    // If you need to wait for the container to be stopped, you can provide a timeout. The unit of timeout option here is milliseconds (changed from seconds in testcontainers v11)
-    await logCleanup(name, container.stop({ timeout: 10_000 }), metadata);
+    // Containers are throwaway, so we force-kill (SIGKILL) instead of waiting for a graceful
+    // shutdown - ClickHouse alone spends ~5s/test gracefully stopping. timeout: 0 = immediate kill.
+    // We still await it (no pileup); logCleanup swallows any teardown-time connection errors.
+    await logCleanup(name, container.stop({ timeout: 0 }), metadata);
   }
 }

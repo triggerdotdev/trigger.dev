@@ -22,6 +22,12 @@ export type ScalingOptions = {
   batchWindowMs?: number;
   disableJitter?: boolean;
   dampingFactor?: number;
+  /**
+   * When this returns true, scale-up is frozen (scale-down still allowed). Used to
+   * stop the pool from adding consumers to drain a queue that backpressure is
+   * deliberately holding. Synchronous and hot-path-safe.
+   */
+  shouldPauseScaling?: () => boolean;
 };
 
 export type ConsumerPoolOptions = {
@@ -49,6 +55,7 @@ export class RunQueueConsumerPool {
   private readonly maxConsumerCount: number;
   private readonly scalingStrategy: ScalingStrategy;
   private readonly disableJitter: boolean;
+  private readonly shouldPauseScaling?: () => boolean;
 
   private consumers: Map<string, QueueConsumer> = new Map();
   private readonly consumerFactory: QueueConsumerFactory;
@@ -79,6 +86,7 @@ export class RunQueueConsumerPool {
     this.scaleUpCooldownMs = opts.scaling.scaleUpCooldownMs ?? 10000; // 10 seconds default
     this.scaleDownCooldownMs = opts.scaling.scaleDownCooldownMs ?? 60000; // 60 seconds default
     this.disableJitter = opts.scaling.disableJitter ?? false;
+    this.shouldPauseScaling = opts.scaling.shouldPauseScaling;
 
     // Configure EWMA parameters from options
     this.ewmaAlpha = opts.scaling.ewmaAlpha ?? 0.3;
@@ -259,6 +267,16 @@ export class RunQueueConsumerPool {
 
     // Check cooldown periods with jitter
     if (targetCount > this.consumers.size) {
+      // Freeze scale-up while backpressure is engaged - don't add consumers to
+      // drain a queue we're deliberately holding. Scale-down stays allowed.
+      if (this.shouldPauseScaling?.()) {
+        this.logger.debug("Scale up frozen by backpressure", {
+          currentCount: this.consumers.size,
+          targetCount,
+        });
+        return;
+      }
+
       // Scale up
       const effectiveCooldown = this.scaleUpCooldownMs + jitterMs;
       if (timeSinceLastScale < effectiveCooldown) {

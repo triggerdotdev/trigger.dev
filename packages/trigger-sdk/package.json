@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sdk",
-  "version": "4.5.0-rc.4",
+  "version": "4.5.0-rc.5",
   "description": "trigger.dev Node.JS SDK",
   "license": "MIT",
   "publishConfig": {
@@ -65,7 +65,8 @@
     "clean": "rimraf dist .tshy .tshy-build .turbo",
     "build": "tshy && pnpm run update-version",
     "dev": "tshy --watch",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.ai-v7.json",
+    "typecheck": "tsc --noEmit",
+    "typecheck:ai-v7": "tsc --noEmit -p tsconfig.ai-v7.json",
     "test": "vitest",
     "update-version": "tsx ../../scripts/updateVersion.ts",
     "check-exports": "attw --pack ."
@@ -73,7 +74,7 @@
   "dependencies": {
     "@opentelemetry/api": "1.9.1",
     "@opentelemetry/semantic-conventions": "1.41.1",
-    "@trigger.dev/core": "workspace:4.5.0-rc.4",
+    "@trigger.dev/core": "workspace:4.5.0-rc.5",
     "chalk": "^5.2.0",
     "cronstrue": "^2.21.0",
     "debug": "^4.3.4",

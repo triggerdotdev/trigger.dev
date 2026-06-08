@@ -7,12 +7,13 @@ import { createActionWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.
 
 export const action = createActionWorkerApiRoute(
   {
-    body: WorkerApiDequeueRequestBody, // Even though we don't use it, we need to keep it for backwards compatibility
+    body: WorkerApiDequeueRequestBody,
   },
   async ({
     authenticatedWorker,
     runnerId,
+    body,
   }): Promise<TypedResponse<WorkerApiDequeueResponseBody>> => {
-    return json(await authenticatedWorker.dequeue({ runnerId }));
+    return json(await authenticatedWorker.dequeue({ runnerId, queueClass: body.queueClass }));
   }
 );

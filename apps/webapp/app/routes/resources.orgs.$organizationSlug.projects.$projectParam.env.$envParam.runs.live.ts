@@ -58,7 +58,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
             return { count: 0, since: newRunsSince };
           }
 
-          const newRunIds = await runsRepository.listRunIds({
+          const { runIds: newRunIds } = await runsRepository.listRunIds({
             organizationId: project.organizationId,
             projectId: project.id,
             environmentId: environment.id,

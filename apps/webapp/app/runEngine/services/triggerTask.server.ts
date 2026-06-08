@@ -35,6 +35,10 @@ import {
   type ClaimedIdempotency,
 } from "../concerns/idempotencyKeys.server";
 import {
+  resolveScheduledQueueSplitEnabled,
+  workerQueueForRun,
+} from "../concerns/workerQueueSplit.server";
+import {
   publishClaim as publishMollifierClaim,
   releaseClaim as releaseMollifierClaim,
 } from "~/v3/mollifier/idempotencyClaim.server";
@@ -351,7 +355,7 @@ export class RunEngineTriggerTaskService {
             environment,
             body.options?.region
           );
-          const workerQueue = workerQueueResult?.masterQueue;
+          const baseWorkerQueue = workerQueueResult?.masterQueue;
           const enableFastPath = workerQueueResult?.enableFastPath ?? false;
 
           // Build annotations for this run
@@ -365,6 +369,30 @@ export class RunEngineTriggerTaskService {
             rootScheduleId: parentAnnotations?.rootScheduleId || options.scheduleId || undefined,
             taskKind: taskKind ?? "STANDARD",
           };
+
+          // Route runs in a scheduled lineage (the scheduled run itself and every
+          // descendant, via the propagated rootTriggerSource) to a dedicated
+          // `<region>:scheduled` worker queue so a separate consumer fleet can
+          // dequeue them independently of standard/agent runs. Gated per-org with
+          // a global default, never applied to dev. Reads only the in-memory org
+          // flags already on the environment — no DB query on the hot path.
+          const scheduledQueueSplitEnabled =
+            environment.type !== "DEVELOPMENT" &&
+            resolveScheduledQueueSplitEnabled({
+              orgFeatureFlags: environment.organization.featureFlags as Record<
+                string,
+                unknown
+              > | null,
+              globalDefault: env.TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED === "1",
+            });
+          const workerQueue =
+            baseWorkerQueue !== undefined
+              ? workerQueueForRun({
+                  workerQueue: baseWorkerQueue,
+                  rootTriggerSource: annotations.rootTriggerSource,
+                  splitEnabled: scheduledQueueSplitEnabled,
+                })
+              : baseWorkerQueue;
 
           try {
             return await this.traceEventConcern.traceRun(

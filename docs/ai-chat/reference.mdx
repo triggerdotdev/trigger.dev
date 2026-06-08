@@ -13,13 +13,26 @@ import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
 | Dependency | Supported | Notes |
 |---|---|---|
 | `@trigger.dev/sdk` | `>=4.5.0-rc.0` | The chat agent surface lives in this SDK release. Install with `@trigger.dev/sdk@rc`. |
-| `ai` (Vercel AI SDK) | `^5.0.0 \|\| ^6.0.0` | Declared as a peer. v6 is what we develop against day to day. |
+| `ai` (Vercel AI SDK) | `^5.0.0 \|\| ^6.0.0 \|\| >=7.0.0-canary <8` | Declared as a peer. v6 is what we develop against day to day; v5 and v7 work too (v7 is in canary/beta upstream). Your installed `ai` major drives the chat surface's types. |
+| `@ai-sdk/otel` | `1.x` (v7 only) | Optional. AI SDK 7 moved model-call span emission out of `ai` core into this adapter. Install it alongside `ai@7` and the SDK auto-registers it, so your model calls show up as spans in the run trace. Not needed on v5/v6, where `ai` core emits spans. See [AI SDK 7 telemetry](#ai-sdk-7-telemetry) below. |
 | `@ai-sdk/react` | matches your `ai` major | Pulled in by `useChat`. The transport works with whichever React hook ships in the same major as your `ai` version. |
 | `react` | `^18.0 \|\| ^19.0` | Required only if you use `@trigger.dev/sdk/chat/react` (the frontend transport). Server-only consumers can skip React entirely. |
 | Node.js | `>=18.20.0` | The SDK's engine constraint. The chat agent itself works on any version the SDK supports. |
 | Provider packages (`@ai-sdk/openai`, `@ai-sdk/anthropic`, etc.) | versions that target your `ai` major | Pick a provider package whose `ai` peer matches yours. The chat agent doesn't depend on any specific provider — pass whatever model you want into `streamText`. |
 
 The `ai` peer is **optional** — server-only setups that don't call `streamText` (raw `task()` with chat primitives) can skip the AI SDK entirely.
+
+### AI SDK 7 telemetry
+
+On **AI SDK 7**, model-call spans are emitted by `@ai-sdk/otel` rather than `ai` core. Install it alongside `ai@7`:
+
+```bash
+npm install @ai-sdk/otel
+```
+
+The SDK registers it once per worker at chat agent boot, so the `experimental_telemetry` config wired up by `chat.toStreamTextOptions()` keeps producing spans in your run trace with no extra setup. On v5 and v6 nothing changes: `ai` core emits the spans and `@ai-sdk/otel` isn't needed.
+
+If you (or a library you import) already register `@ai-sdk/otel` yourself, the SDK detects the existing integration and skips its own registration, so you won't get duplicate spans. To opt out of the auto-registration entirely, set `TRIGGER_AI_SDK_OTEL_AUTOREGISTER=0`.
 
 ## ChatAgentOptions
 
