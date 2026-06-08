@@ -8,6 +8,11 @@ on:
         type: string
         required: false
         default: ""
+      image_registry:
+        description: The registry namespace to publish under (e.g. ghcr.io/<owner>)
+        type: string
+        required: false
+        default: ""
   push:
     tags:
       - "re2-test-*"
@@ -65,15 +70,15 @@ jobs:
       - name: 📛 Set tags to push
         id: set_tags
         run: |
-          # Defaults to ghcr.io/<owner>, so a fork publishes to its own namespace
-          # automatically. Set the IMAGE_REGISTRY repository variable to publish
-          # under a different ghcr.io namespace instead.
+          # Resolved by the caller when invoked from publish.yml; falls back to the
+          # IMAGE_REGISTRY repository variable (or ghcr.io/<owner>) for the direct
+          # push triggers above, so a fork publishes to its own namespace.
           ref_without_tag=${IMAGE_REGISTRY}/${STEPS_GET_REPOSITORY_OUTPUTS_REPO}
           image_tags=$ref_without_tag:${STEPS_GET_TAG_OUTPUTS_TAG}
 
           echo "image_tags=${image_tags}" >> "$GITHUB_OUTPUT"
         env:
-          IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
+          IMAGE_REGISTRY: ${{ inputs.image_registry || vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
           STEPS_GET_REPOSITORY_OUTPUTS_REPO: ${{ steps.get_repository.outputs.repo }}
           STEPS_GET_TAG_OUTPUTS_TAG: ${{ steps.get_tag.outputs.tag }}
           STEPS_GET_TAG_OUTPUTS_IS_SEMVER: ${{ steps.get_tag.outputs.is_semver }}
