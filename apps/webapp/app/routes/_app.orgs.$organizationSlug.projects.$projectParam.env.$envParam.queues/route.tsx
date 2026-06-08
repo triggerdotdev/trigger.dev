@@ -5,7 +5,9 @@ import {
   ChatBubbleLeftEllipsisIcon,
   PauseIcon,
   PlayIcon,
+  PlusIcon,
   RectangleStackIcon,
+  XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useNavigation, useSearchParams, type MetaFunction } from "@remix-run/react";
@@ -28,9 +30,12 @@ import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton, type ButtonVariant } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
+import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
+import { InputGroup } from "~/components/primitives/InputGroup";
+import { Label } from "~/components/primitives/Label";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
@@ -944,7 +949,7 @@ function QueueOverrideLimitsButton({
     queue.concurrencyLimit?.toString() ?? environmentConcurrencyLimit.toString()
   );
   const [rateLimits, setRateLimits] = useState<Array<{ limit: number; window: number }>>(
-    queue.rateLimit ?? []
+    queue.rateLimit && queue.rateLimit.length > 0 ? queue.rateLimit : [{ limit: 0, window: 0 }]
   );
 
   const isOverridden = !!queue.concurrency?.overriddenAt || (queue.rateLimit && queue.rateLimit.length > 0);
@@ -969,35 +974,35 @@ function QueueOverrideLimitsButton({
           title={isOverridden ? "Edit override…" : "Override limit…"}
         />
       </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
+      <DialogContent className="p-0 pt-2.5 md:max-w-lg">
+        <DialogHeader className="px-4">
           {isOverridden ? "Edit limits override" : "Override limits"}
         </DialogHeader>
-        <div className="flex flex-col gap-3 pt-3">
-          {isOverridden ? (
-            <Paragraph>
-              This queue's limits are currently overridden.
-              {typeof queue.concurrency?.base === "number" &&
-                ` The original concurrency limit set in code was ${queue.concurrency.base}.`}{" "}
-              You can update the override or remove it to restore the{" "}
-              {typeof queue.concurrency?.base === "number"
-                ? "limit set in code"
-                : "environment concurrency limit"}
-              .
-            </Paragraph>
-          ) : (
-            <Paragraph>
-              Override this queue's limits. The current concurrency limit is {currentLimit}, which is
-              set {queue.concurrencyLimit !== null ? "in code" : "by the environment"}.
-            </Paragraph>
-          )}
-          <Form method="post" onSubmit={() => setIsOpen(false)} className="space-y-3">
-            <input type="hidden" name="friendlyId" value={queue.id} />
-            <input type="hidden" name="rateLimits" value={JSON.stringify(rateLimits)} />
-            <div className="space-y-2">
-              <label htmlFor="concurrencyLimit" className="text-sm text-text-bright">
-                Concurrency limit
-              </label>
+        <Form method="post" onSubmit={() => setIsOpen(false)}>
+          <input type="hidden" name="friendlyId" value={queue.id} />
+          <input type="hidden" name="rateLimits" value={JSON.stringify(rateLimits.filter(rl => rl.limit > 0 && rl.window > 0))} />
+          
+          <Fieldset className="max-h-[70vh] overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 space-y-4">
+            {isOverridden ? (
+              <Paragraph>
+                This queue's limits are currently overridden.
+                {typeof queue.concurrency?.base === "number" &&
+                  ` The original concurrency limit set in code was ${queue.concurrency.base}.`}{" "}
+                You can update the override or remove it to restore the{" "}
+                {typeof queue.concurrency?.base === "number"
+                  ? "limit set in code"
+                  : "environment concurrency limit"}
+                .
+              </Paragraph>
+            ) : (
+              <Paragraph>
+                Override this queue's limits. The current concurrency limit is {currentLimit}, which is
+                set {queue.concurrencyLimit !== null ? "in code" : "by the environment"}.
+              </Paragraph>
+            )}
+
+            <InputGroup fullWidth>
+              <Label htmlFor="concurrencyLimit">Concurrency limit</Label>
               <Input
                 type="number"
                 name="concurrencyLimit"
@@ -1009,100 +1014,114 @@ function QueueOverrideLimitsButton({
                 placeholder={currentLimit.toString()}
                 autoFocus
               />
-            </div>
+            </InputGroup>
 
-            <div className="space-y-2">
-              <label className="text-sm text-text-bright">Rate limits</label>
+            <InputGroup fullWidth>
+              <div className="grid w-full grid-cols-[1fr_1fr] gap-1.5">
+                <Label>Rate limit</Label>
+                <Label>Window (seconds)</Label>
+              </div>
               {rateLimits.map((rl, index) => (
-                <div key={index} className="flex items-center gap-2">
+                <div key={index} className="grid w-full grid-cols-[1fr_1fr] gap-1.5">
                   <Input
                     type="number"
                     min="1"
-                    value={rl.limit}
+                    value={rl.limit || ""}
                     onChange={(e) => {
                       const newLimits = [...rateLimits];
-                      newLimits[index].limit = parseInt(e.target.value, 10);
+                      newLimits[index].limit = parseInt(e.target.value, 10) || 0;
                       setRateLimits(newLimits);
                     }}
-                    placeholder="Limit"
+                    placeholder="e.g. 10"
                   />
-                  <span className="text-text-dimmed">per</span>
-                  <Input
-                    type="number"
-                    min="1"
-                    value={rl.window}
-                    onChange={(e) => {
-                      const newLimits = [...rateLimits];
-                      newLimits[index].window = parseInt(e.target.value, 10);
-                      setRateLimits(newLimits);
-                    }}
-                    placeholder="Window (s)"
-                  />
-                  <span className="text-text-dimmed">seconds</span>
-                  <Button
-                    type="button"
-                    variant="tertiary/small"
-                    onClick={() => {
-                      const newLimits = [...rateLimits];
-                      newLimits.splice(index, 1);
-                      setRateLimits(newLimits);
-                    }}
-                  >
-                    Remove
-                  </Button>
+                  <div className="flex items-start gap-1">
+                    <div className="grow">
+                      <Input
+                        type="number"
+                        min="1"
+                        value={rl.window || ""}
+                        onChange={(e) => {
+                          const newLimits = [...rateLimits];
+                          newLimits[index].window = parseInt(e.target.value, 10) || 0;
+                          setRateLimits(newLimits);
+                        }}
+                        placeholder="e.g. 60"
+                      />
+                    </div>
+                    {rateLimits.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="minimal/medium"
+                        onClick={() => {
+                          const newLimits = [...rateLimits];
+                          newLimits.splice(index, 1);
+                          setRateLimits(newLimits);
+                        }}
+                        LeadingIcon={XMarkIcon}
+                      />
+                    )}
+                  </div>
                 </div>
               ))}
-              <Button
-                type="button"
-                variant="secondary/small"
-                onClick={() => setRateLimits([...rateLimits, { limit: 10, window: 60 }])}
-              >
-                Add rate limit
-              </Button>
-            </div>
-
-            <FormButtons
-              defaultAction={{
-                name: "action",
-                value: "queue-override",
-                disabled: isLoading || !concurrencyLimit,
-              }}
-              confirmButton={
+              <div className="flex items-center justify-between gap-4">
+                <Paragraph variant="extra-small">
+                  Tip: You can also set dynamic rate limits in your code.
+                </Paragraph>
                 <Button
-                  type="submit"
-                  name="action"
-                  value="queue-override"
-                  disabled={isLoading || !concurrencyLimit}
-                  variant="primary/medium"
-                  LeadingIcon={isLoading && <Spinner color="white" />}
-                  shortcut={{ modifiers: ["mod"], key: "enter" }}
+                  type="button"
+                  variant="tertiary/medium"
+                  className="w-fit"
+                  onClick={() => setRateLimits([...rateLimits, { limit: 0, window: 0 }])}
+                  LeadingIcon={PlusIcon}
                 >
-                  {isOverridden ? "Update override" : "Override limit"}
+                  Add another
                 </Button>
-              }
-              cancelButton={
-                <div className="flex items-center justify-between gap-2">
-                  {isOverridden && (
-                    <Button
-                      type="submit"
-                      name="action"
-                      value="queue-remove-override"
-                      disabled={isLoading}
-                      variant="danger/medium"
-                    >
-                      Remove override
-                    </Button>
-                  )}
-                  <DialogClose asChild>
-                    <Button type="button" variant="tertiary/medium">
-                      Cancel
-                    </Button>
-                  </DialogClose>
-                </div>
-              }
-            />
-          </Form>
-        </div>
+              </div>
+            </InputGroup>
+          </Fieldset>
+
+          <FormButtons
+            className="px-4 pb-4"
+            defaultAction={{
+              name: "action",
+              value: "queue-override",
+              disabled: isLoading || !concurrencyLimit,
+            }}
+            confirmButton={
+              <Button
+                type="submit"
+                name="action"
+                value="queue-override"
+                disabled={isLoading || !concurrencyLimit}
+                variant="primary/medium"
+                LeadingIcon={isLoading && <Spinner color="white" />}
+                shortcut={{ modifiers: ["mod"], key: "enter" }}
+              >
+                {isOverridden ? "Update override" : "Override limit"}
+              </Button>
+            }
+            cancelButton={
+              <div className="flex items-center justify-between gap-2">
+                {isOverridden && (
+                  <Button
+                    type="submit"
+                    name="action"
+                    value="queue-remove-override"
+                    disabled={isLoading}
+                    variant="danger/medium"
+                  >
+                    Remove override
+                  </Button>
+                )}
+                <DialogClose asChild>
+                  <Button type="button" variant="tertiary/medium">
+                    Cancel
+                  </Button>
+                </DialogClose>
+              </div>
+            }
+          />
+        </Form>
       </DialogContent>
     </Dialog>
   );
