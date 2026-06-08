@@ -376,6 +376,7 @@ class ManagedSupervisor {
                     envId: message.environment.id,
                     orgId: message.organization.id,
                     projectId: message.project.id,
+                    hasPrivateLink: message.organization.hasPrivateLink,
                     dequeuedAt: message.dequeuedAt,
                   });
                   recordPhaseSince("restore", restoreStart, undefined);
