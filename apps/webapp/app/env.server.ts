@@ -1740,6 +1740,20 @@ const EnvironmentSchema = z
     REALTIME_STREAMS_S2_FLUSH_INTERVAL_MS: z.coerce.number().int().default(100),
     REALTIME_STREAMS_S2_MAX_RETRIES: z.coerce.number().int().default(10),
     REALTIME_STREAMS_S2_WAIT_SECONDS: z.coerce.number().int().default(60),
+    // When "true", `POST /api/v1/sessions` hands the client a read-scoped S2
+    // token + endpoint so the browser reads the session's `.out` stream
+    // straight from S2 instead of proxying through the realtime host. Off
+    // keeps every read on the proxy. Requires real S2 (not s2-lite / a custom
+    // endpoint, which don't issue scoped tokens).
+    REALTIME_STREAMS_SESSIONS_DIRECT_READ_ENABLED: z.enum(["true", "false"]).default("false"),
+    // TTL for the browser-held read token (read-only, scoped to one stream).
+    // Long by default so a token rarely expires mid-session; the client also
+    // proactively refreshes it on turn-complete as it nears expiry, and falls
+    // back to the proxy if a refresh ever can't be obtained in time.
+    REALTIME_STREAMS_S2_READ_TOKEN_EXPIRATION_IN_MS: z.coerce
+      .number()
+      .int()
+      .default(60_000 * 60 * 24), // 24 hours
     // When "true", provision a dedicated S2 basin per org and stamp
     // `streamBasinName` on new rows. Off keeps everything on the single
     // basin defined by `REALTIME_STREAMS_S2_BASIN`.

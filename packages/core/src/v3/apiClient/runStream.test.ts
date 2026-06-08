@@ -596,3 +596,127 @@ describe("SSEStreamSubscription v2 batch parsing — record kinds", () => {
     expect((parts[1]!.chunk as any).delta).toBe("x");
   });
 });
+
+describe("SSEStreamSubscription s2Direct mode", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  // Batch SSE WITHOUT the proxy's `X-Stream-Version` header — direct S2
+  // reads must still be parsed as v2.
+  function makeRawBatchResponse(
+    records: Array<{ body: string; seq_num: number; timestamp: number; headers?: Array<[string, string]> }>
+  ) {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(`event: batch\ndata: ${JSON.stringify({ records })}\n\n`)
+        );
+        controller.close();
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  }
+
+  async function drain(stream: ReadableStream<{ id: string; chunk: unknown }>) {
+    const reader = stream.getReader();
+    const parts: Array<{ id: string; chunk: unknown }> = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        reader.releaseLock();
+        return parts;
+      }
+      parts.push(value);
+    }
+  }
+
+  it("builds the S2 query + headers and parses batch SSE without X-Stream-Version", async () => {
+    let seenUrl: string | undefined;
+    let seenHeaders: Record<string, string> | undefined;
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      seenUrl = url;
+      seenHeaders = init?.headers as Record<string, string>;
+      return makeRawBatchResponse([
+        {
+          body: JSON.stringify({ data: { type: "text-delta", delta: "hi" }, id: "p1" }),
+          seq_num: 5,
+          timestamp: 1700000000000,
+          headers: [],
+        },
+      ]);
+    });
+
+    const sub = new SSEStreamSubscription(
+      "https://my-basin.b.aws.s2.dev/v1/streams/env%2Fdev%2Fsessions%2Fabc%2Fout/records",
+      { maxRetries: 0, timeoutInSeconds: 90, s2Direct: { basin: "my-basin" } }
+    );
+    const parts = await sub.subscribe().then(drain);
+
+    // No cursor → seq_num=0, clamp=true, wait=timeout. S2 headers present.
+    const parsed = new URL(seenUrl!);
+    expect(parsed.searchParams.get("seq_num")).toBe("0");
+    expect(parsed.searchParams.get("clamp")).toBe("true");
+    expect(parsed.searchParams.get("wait")).toBe("90");
+    expect(seenHeaders?.["S2-Format"]).toBe("raw");
+    expect(seenHeaders?.["S2-Basin"]).toBe("my-basin");
+    // Parsed as v2 even though the response had no X-Stream-Version header.
+    expect(parts).toHaveLength(1);
+    expect(parts[0]!.chunk).toEqual({ type: "text-delta", delta: "hi" });
+  });
+
+  it("resumes from seq_num = lastEventId + 1", async () => {
+    let seenUrl: string | undefined;
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      seenUrl = url;
+      return makeRawBatchResponse([]);
+    });
+
+    const sub = new SSEStreamSubscription("https://b.b.aws.s2.dev/v1/streams/s/records", {
+      maxRetries: 0,
+      lastEventId: "41",
+      s2Direct: { basin: "b" },
+    });
+    await sub.subscribe().then(drain);
+
+    expect(new URL(seenUrl!).searchParams.get("seq_num")).toBe("42");
+  });
+
+  it("treats 401 as non-retryable in s2Direct mode", async () => {
+    let attempts = 0;
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      attempts++;
+      return new Response("unauthorized", { status: 401 });
+    });
+
+    const sub = new SSEStreamSubscription("https://b.b.aws.s2.dev/v1/streams/s/records", {
+      retryDelayMs: 1,
+      maxRetryDelayMs: 5,
+      s2Direct: { basin: "b" },
+    });
+
+    const reader = sub.subscribe().then(async (stream) => {
+      const r = stream.getReader();
+      try {
+        while (true) {
+          const { done } = await r.read();
+          if (done) return { error: undefined as Error | undefined };
+        }
+      } catch (e) {
+        return { error: e as Error };
+      }
+    });
+    const result = await reader;
+
+    // Expired/unauthorized read token is permanent — fail fast (one attempt)
+    // so the caller can fall back to the proxy.
+    expect(attempts).toBe(1);
+    expect(result.error).toBeDefined();
+  });
+});

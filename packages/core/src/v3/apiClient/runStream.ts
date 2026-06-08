@@ -192,6 +192,8 @@ export class SSEStreamSubscription implements StreamSubscription {
   private lastEventId: string | undefined;
   private retryCount = 0;
   private maxRetries: number;
+  private firstConnectMaxRetries: number;
+  private hasConnectedOnce = false;
   private retryDelayMs: number;
   private maxRetryDelayMs: number;
   private retryJitter: number;
@@ -216,6 +218,13 @@ export class SSEStreamSubscription implements StreamSubscription {
       // and prevents thundering-herd when many clients reconnect after
       // a brief server blip.
       maxRetries?: number;
+      // Cap on retries *until the first successful connection only*. Once a
+      // connect succeeds, `maxRetries` (unbounded by default) takes over, so
+      // an established stream stays resilient to mid-stream drops. Use a small
+      // value (e.g. `0`) to fail fast on a first-connect error — lets a caller
+      // fall back to another transport instead of looping forever on a host
+      // the client can't reach. Defaults to `maxRetries` (no special bound).
+      firstConnectMaxRetries?: number;
       retryDelayMs?: number;
       maxRetryDelayMs?: number;
       retryJitter?: number;
@@ -242,17 +251,28 @@ export class SSEStreamSubscription implements StreamSubscription {
       // the SSE connect through a custom path (proxy, custom headers,
       // tracing). Defaults to global `fetch`.
       fetchClient?: typeof fetch;
+      // Read directly from an S2 basin's records endpoint instead of the
+      // Trigger realtime proxy. When set, `url` must be the S2 records URL
+      // (`{baseUrl}/streams/{name}/records`); the subscription builds S2's
+      // `seq_num`/`clamp`/`wait` query from `lastEventId`/`timeoutInSeconds`,
+      // sends the S2 `S2-Format`/`S2-Basin` headers, and parses the batch
+      // SSE shape without depending on the proxy's `X-Stream-Version`
+      // header. An expired read token is permanent, so `401`/`403` join the
+      // non-retryable set in this mode (callers fall back to the proxy).
+      s2Direct?: { basin: string };
     }
   ) {
     this.lastEventId = options.lastEventId;
     this.maxRetries = options.maxRetries ?? Infinity;
+    this.firstConnectMaxRetries = options.firstConnectMaxRetries ?? this.maxRetries;
     this.retryDelayMs = options.retryDelayMs ?? 100;
     this.maxRetryDelayMs = options.maxRetryDelayMs ?? 5000;
     this.retryJitter = options.retryJitter ?? 0.5;
     this.fetchTimeoutMs = options.fetchTimeoutMs ?? 30_000;
     this.stallTimeoutMs = options.stallTimeoutMs ?? 0;
     this.nonRetryableStatuses = new Set(
-      options.nonRetryableStatuses ?? [400, 404, 409, 410, 422]
+      options.nonRetryableStatuses ??
+        (options.s2Direct ? [400, 401, 403, 404, 409, 410, 422] : [400, 404, 409, 410, 422])
     );
   }
 
@@ -334,13 +354,28 @@ export class SSEStreamSubscription implements StreamSubscription {
         Accept: "text/event-stream",
         ...this.options.headers,
       };
-      if (this.lastEventId) headers["Last-Event-ID"] = this.lastEventId;
-      if (this.options.timeoutInSeconds) {
-        headers["Timeout-Seconds"] = this.options.timeoutInSeconds.toString();
+      // Direct-S2 reads carry the resume cursor + long-poll window as
+      // query params (S2's contract) and identify the basin/format via S2
+      // headers; the proxy path uses Trigger's `Last-Event-ID` /
+      // `Timeout-Seconds` request headers instead.
+      let requestUrl = this.url;
+      if (this.options.s2Direct) {
+        const url = new URL(this.url);
+        url.searchParams.set("seq_num", s2SeqNumFromLastEventId(this.lastEventId).toString());
+        url.searchParams.set("clamp", "true");
+        url.searchParams.set("wait", (this.options.timeoutInSeconds ?? 60).toString());
+        requestUrl = url.toString();
+        headers["S2-Format"] = "raw";
+        headers["S2-Basin"] = this.options.s2Direct.basin;
+      } else {
+        if (this.lastEventId) headers["Last-Event-ID"] = this.lastEventId;
+        if (this.options.timeoutInSeconds) {
+          headers["Timeout-Seconds"] = this.options.timeoutInSeconds.toString();
+        }
       }
 
       const fetchClient = this.options.fetchClient ?? fetch;
-      const response = await fetchClient(this.url, {
+      const response = await fetchClient(requestUrl, {
         headers,
         signal: this.internalAbort.signal,
       });
@@ -367,8 +402,13 @@ export class SSEStreamSubscription implements StreamSubscription {
         throw error;
       }
 
-      const streamVersion = response.headers.get("X-Stream-Version") ?? "v1";
+      // Direct-S2 reads are always the v2 batch shape; the `X-Stream-Version`
+      // header is only set by the proxy, so force it here.
+      const streamVersion = this.options.s2Direct
+        ? "v2"
+        : response.headers.get("X-Stream-Version") ?? "v1";
       this.retryCount = 0; // reset on success
+      this.hasConnectedOnce = true; // first-connect bound no longer applies
       armStall();
 
       const seenIds = new Set<string>();
@@ -502,7 +542,14 @@ export class SSEStreamSubscription implements StreamSubscription {
       return;
     }
 
-    if (this.retryCount >= this.maxRetries) {
+    // Until the first successful connect, honor the (possibly tighter)
+    // first-connect cap so a caller can fail fast and fall back to another
+    // transport. After that, the normal `maxRetries` keeps the established
+    // stream reconnecting through transient drops.
+    const effectiveMaxRetries = this.hasConnectedOnce
+      ? this.maxRetries
+      : this.firstConnectMaxRetries;
+    if (this.retryCount >= effectiveMaxRetries) {
       const finalError = error || new Error("Max retries reached");
       controller.error(finalError);
       this.options.onError?.(finalError);
@@ -547,6 +594,20 @@ export class SSEStreamSubscription implements StreamSubscription {
     // Reconnect
     await this.connectStream(controller);
   }
+}
+
+/**
+ * S2 reads resume by `seq_num` query param. The v2 SSE parser stores the
+ * last seen `seq_num` as `lastEventId`, so the next read starts one past it.
+ * With no cursor, start at 0 and let `clamp=true` snap to the earliest
+ * available record (the agent trims `.out` after every turn, so this is the
+ * start of the current turn, not the whole history).
+ */
+function s2SeqNumFromLastEventId(lastEventId: string | undefined): number {
+  if (!lastEventId) return 0;
+  const digits = lastEventId.split("-")[0];
+  const n = Number(digits);
+  return Number.isFinite(n) && n >= 0 ? n + 1 : 0;
 }
 
 /**

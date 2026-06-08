@@ -219,6 +219,12 @@ Browser-only deployments also need CORS on the worker — echo `Access-Control-R
 
 The SDK's `baseURL` accepts a function (see [Browser transport configuration](#browser-transport-configuration)), so the recommended setup routes `.in/append` and session-create through the worker but lets `.out` SSE go direct to `api.trigger.dev`. Body-mutation only happens on the POST paths; the SSE stream is read-only, doesn't need rewriting, and routing it direct saves an edge hop on every reconnect.
 
+On deployments that enable it (Trigger.dev Cloud, or a self-hosted instance backed by real S2), the SDK can read the response stream straight from the realtime stream store instead of relaying it through Trigger.dev, removing a hop on the latency-sensitive path. Reading `.out` directly does not affect this pattern's trust model: `.out` carries no injected signal, so it stays read-only and can't bypass the `.in`/session-create injection the worker performs.
+
+<Note>
+Because this pattern sets a custom `baseURL`, the direct read is **off by default** here — `.out` follows your routing (to Trigger in the split, or through your worker in the all-through variant), exactly as before and with no extra config, so nothing changes when you update the SDK. To opt the split's `.out` into the faster direct-from-stream-store path, set `directStreamReads: true` on the transport; reads then go straight to the stream store (read-only, so the trust model is unaffected) and fall back to the relayed route on reconnect or token expiry. The `fetch` override still wraps the direct request if you'd rather funnel it through your own edge.
+</Note>
+
 If you do route `.out` through the proxy (e.g. you want a single origin in front of `api.trigger.dev` and don't care about the extra hop), the template above handles it correctly because the worker returns `response.body` as a `ReadableStream`. **Do not replace that with `await response.text()`** anywhere in your fork; doing so converts the streaming SSE response into a buffered read and breaks per-chunk delivery.
 
 [Cloudflare Workers HTTP requests](https://developers.cloudflare.com/workers/platform/limits/) have no wall-clock duration limit while the client stays connected — the 60-second long-poll runs to completion on every plan, including Free. CPU-time limits (10 ms on Free, 30 s default on Paid) only apply to active computation; relaying bytes through `fetch` doesn't burn CPU. The two body-rewrite paths use sub-millisecond CPU for typical message sizes, well under either ceiling.

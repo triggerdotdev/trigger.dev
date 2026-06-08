@@ -48,7 +48,7 @@ import type {
   UIMessageChunk,
   UIMessageStreamOptions,
 } from "ai";
-import type { ChatSnapshotV1, StreamWriteResult } from "@trigger.dev/core/v3";
+import type { ChatSnapshotV1, SessionDirectReadGrant, StreamWriteResult } from "@trigger.dev/core/v3";
 // Runtime VALUES go through the ESM/CJS shim so the CJS build can `require`
 // ESM-only `ai@7` (see ../imports/ai-runtime.ts).
 import {
@@ -9458,6 +9458,13 @@ export type ChatStartSessionResult = {
   runId: string;
   /** Session friendlyId — informational. */
   sessionId: string;
+  /**
+   * Direct-read coordinates for the session's `.out` stream, when the
+   * deployment enables direct session reads. Forward this to the browser
+   * transport so it reads the response stream straight from S2 instead of
+   * the realtime proxy. Absent → the transport uses the proxy.
+   */
+  directReadOut?: SessionDirectReadGrant;
 };
 
 /**
@@ -9568,7 +9575,12 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     const fetchOverride = options?.fetch;
     const hasOverride = baseURLOption !== undefined || fetchOverride !== undefined;
 
-    const created: { id: string; runId: string; publicAccessToken: string } = hasOverride
+    const created: {
+      id: string;
+      runId: string;
+      publicAccessToken: string;
+      directReadOut?: SessionDirectReadGrant;
+    } = hasOverride
       ? await callSessionsCreateWithOverride({
           chatId: params.chatId,
           body: startBody,
@@ -9603,6 +9615,7 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
       publicAccessToken,
       runId: created.runId,
       sessionId: created.id,
+      directReadOut: created.directReadOut,
     };
   };
 }
@@ -9641,7 +9654,12 @@ async function callSessionsCreateWithOverride(args: {
   body: { type: "chat.agent"; externalId: string; taskIdentifier: string; triggerConfig: SessionTriggerConfig; metadata?: Record<string, unknown> };
   baseURLOption: string | ChatStartSessionBaseURLResolver | undefined;
   fetchOverride: ChatStartSessionFetchOverride | undefined;
-}): Promise<{ id: string; runId: string; publicAccessToken: string }> {
+}): Promise<{
+  id: string;
+  runId: string;
+  publicAccessToken: string;
+  directReadOut?: SessionDirectReadGrant;
+}> {
   const accessToken = apiClientManager.accessToken;
   if (!accessToken) {
     throw new Error(
@@ -9662,7 +9680,12 @@ async function callSessionsCreateWithOverride(args: {
     const text = await response.text().catch(() => "");
     throw new Error(`sessions.start failed: ${response.status} ${text}`);
   }
-  const json = (await response.json()) as { id: string; runId: string; publicAccessToken: string };
+  const json = (await response.json()) as {
+    id: string;
+    runId: string;
+    publicAccessToken: string;
+    directReadOut?: SessionDirectReadGrant;
+  };
   return json;
 }
 

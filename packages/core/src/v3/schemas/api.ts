@@ -1631,6 +1631,34 @@ export const SessionItem = z.object({
 });
 export type SessionItem = z.infer<typeof SessionItem>;
 
+/**
+ * Coordinates for reading a session's `.out` stream directly from the
+ * realtime storage backend (S2), bypassing the realtime proxy. Present on
+ * `POST /sessions` only when the deployment enables direct session reads
+ * and the session's basin is backed by real S2 (not s2-lite / a custom
+ * endpoint). Absent → clients read `.out` through the proxy route as before.
+ *
+ * The token is read-scoped (`ops: ["read"]`) to this session's stream and
+ * short-lived; clients fall back to the proxy once it expires.
+ */
+export const SessionDirectReadGrant = z.object({
+  provider: z.literal("s2"),
+  /**
+   * Stream-records API base, e.g. `https://{basin}.b.aws.s2.dev/v1`. The
+   * client appends `/streams/{streamName}/records`.
+   */
+  baseUrl: z.string(),
+  /** S2 basin — sent as the `S2-Basin` header on the read. */
+  basin: z.string(),
+  /** Fully-qualified S2 stream name for the `.out` channel. */
+  streamName: z.string(),
+  /** Read-scoped S2 access token. */
+  token: z.string(),
+  /** ISO-8601 expiry of `token`. */
+  expiresAt: z.string(),
+});
+export type SessionDirectReadGrant = z.infer<typeof SessionDirectReadGrant>;
+
 export const CreatedSessionResponseBody = SessionItem.extend({
   /** Friendly id of the first run triggered alongside session create. */
   runId: z.string(),
@@ -1638,6 +1666,12 @@ export const CreatedSessionResponseBody = SessionItem.extend({
   publicAccessToken: z.string(),
   /** True if the session existed already (idempotent upsert), false if newly created. */
   isCached: z.boolean(),
+  /**
+   * Direct-read coordinates for the `.out` stream. Present only when the
+   * deployment enables direct session reads and the basin is real S2;
+   * absent → read `.out` via the proxy.
+   */
+  directReadOut: SessionDirectReadGrant.optional(),
 });
 export type CreatedSessionResponseBody = z.infer<typeof CreatedSessionResponseBody>;
 

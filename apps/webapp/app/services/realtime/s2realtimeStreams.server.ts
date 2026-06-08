@@ -58,6 +58,9 @@ export type S2RealtimeStreamsOptions = {
 
   accessTokenExpirationInMs?: number;
 
+  // TTL for read-only tokens handed to clients for direct `.out` reads.
+  readTokenExpirationInMs?: number;
+
   cache?: UnkeyCache<{
     accessToken: string;
   }>;
@@ -72,6 +75,11 @@ export type S2RealtimeStreamsOptions = {
 // scope change auto-invalidates pre-deploy cached tokens.
 const S2_TOKEN_OPS = ["append", "create-stream", "trim"] as const;
 const S2_TOKEN_OPS_FINGERPRINT = [...S2_TOKEN_OPS].sort().join(",");
+
+// Ops for the read-only token handed to clients reading a session's `.out`
+// stream directly from S2. Scoped to the exact `.out` stream so a leaked
+// token can read that one stream and nothing else.
+const S2_READ_TOKEN_OPS = ["read"] as const;
 
 type S2IssueAccessTokenResponse = { access_token: string };
 type S2AppendInput = { records: { body: string }[] };
@@ -99,6 +107,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   private readonly level: LogLevel;
 
   private readonly accessTokenExpirationInMs: number;
+  private readonly readTokenExpirationInMs: number;
 
   private readonly cache?: UnkeyCache<{
     accessToken: string;
@@ -123,6 +132,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
     this.cache = opts.cache;
     this.accessTokenExpirationInMs = opts.accessTokenExpirationInMs ?? 60_000 * 60 * 24; // 1 day
+    this.readTokenExpirationInMs = opts.readTokenExpirationInMs ?? 60_000 * 60 * 24; // 24 hours
   }
 
   private toStreamName(runId: string, streamId: string): string {
@@ -160,6 +170,39 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       this.toSessionStreamName(friendlyId, io),
       `/sessions/${friendlyId}/${io}`
     );
+  }
+
+  /**
+   * Mint a read-only, single-stream S2 access token + the coordinates a
+   * client needs to read a session's `.out` stream directly from S2,
+   * skipping this proxy. Returns `null` when direct reads aren't possible
+   * for this backend (s2-lite / custom endpoint don't issue scoped tokens
+   * or guarantee browser CORS) — callers fall back to the proxy.
+   */
+  async issueSessionOutReadGrant(
+    addressingKey: string
+  ): Promise<
+    | { baseUrl: string; basin: string; streamName: string; token: string; expiresAt: string }
+    | null
+  > {
+    if (this.skipAccessTokens || this.endpoint) {
+      return null;
+    }
+
+    // `addressingKey` is the canonical session key (externalId if set, else
+    // friendlyId) — the same key the worker writes `.out` with and the `.out`
+    // SSE route reads with. Must match, or the grant points at an empty stream.
+    const streamName = this.toSessionStreamName(addressingKey, "out");
+    const expiresAtMs = Date.now() + this.readTokenExpirationInMs;
+    const token = await this.s2IssueReadToken(streamName, expiresAtMs);
+
+    return {
+      baseUrl: this.baseUrl,
+      basin: this.basin,
+      streamName,
+      token,
+      expiresAt: new Date(expiresAtMs).toISOString(),
+    };
   }
 
   async #initializeStreamByName(
@@ -399,7 +442,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     // races the newly-triggered turn's first chunk and the SSE closes
     // before records land.
     if (io === "out" && options?.peekSettled) {
-      settled = await this.#peekIsSettled(s2Stream);
+      settled = (await this.#peekTail(s2Stream)).settled;
       if (settled) {
         waitSeconds = 0;
       }
@@ -422,14 +465,30 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   }
 
   /**
-   * Peek the tail of `.out` and return whether the stream is "settled" —
-   * i.e. the most recent non-command record is a `turn-complete` control
-   * record. The agent appends an S2 `trim` command record immediately
-   * after every turn-complete to keep the stream bounded, so we read two
-   * tail records and walk past any trim command to find the
-   * turn-complete underneath.
+   * Public peek for the `/out/grant` reconnect handshake. Given a session's
+   * canonical addressing key, report whether its `.out` turn has settled and
+   * the current tail seq, so the reconnecting client can choose direct-drain
+   * vs direct-stream (and skip a read entirely when caught up) without making
+   * its own client→S2 peek round-trip. Returns `{ settled: false }` when
+   * direct reads aren't backed by real S2 (no scoped tokens / custom endpoint).
    */
-  async #peekIsSettled(s2Stream: string): Promise<boolean> {
+  async peekSessionOutSettled(
+    addressingKey: string
+  ): Promise<{ settled: boolean; tailSeq?: number }> {
+    if (this.skipAccessTokens || this.endpoint) {
+      return { settled: false };
+    }
+    return this.#peekTail(this.toSessionStreamName(addressingKey, "out"));
+  }
+
+  /**
+   * Peek the tail of an `.out` stream: whether it's "settled" (the most recent
+   * non-command record is a `turn-complete` control record) plus the tail seq.
+   * The agent appends an S2 `trim` command record immediately after every
+   * turn-complete to keep the stream bounded, so we read two tail records and
+   * walk past any trim command to find the turn-complete underneath.
+   */
+  async #peekTail(s2Stream: string): Promise<{ settled: boolean; tailSeq?: number }> {
     const qs = new URLSearchParams();
     // `tail_offset=2` rewinds two seq positions; `count=2` caps it to
     // those two records. At steady state these are `[turn-complete, trim]`.
@@ -454,13 +513,13 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       );
     } catch (err) {
       this.logger.warn("S2 peek last record: fetch failed", { err, stream: s2Stream });
-      return false;
+      return { settled: false };
     }
 
     if (!res.ok) {
       // 404: stream has never been written to. 416: range not
       // satisfiable (empty stream). Both mean "nothing to peek."
-      if (res.status === 404 || res.status === 416) return false;
+      if (res.status === 404 || res.status === 416) return { settled: false };
       const text = await res.text().catch(() => "");
       this.logger.warn("S2 peek last record failed", {
         status: res.status,
@@ -468,7 +527,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
         text,
         stream: s2Stream,
       });
-      return false;
+      return { settled: false };
     }
 
     let records: Array<{
@@ -489,8 +548,12 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
       records = json.records ?? [];
     } catch (err) {
       this.logger.warn("S2 peek last record: parse failed", { err, stream: s2Stream });
-      return false;
+      return { settled: false };
     }
+
+    // S2 returns the window in ascending seq order, so the last element is the
+    // stream tail.
+    const tailSeq = records.length > 0 ? records[records.length - 1]!.seq_num : undefined;
 
     // Walk from most-recent backward, skipping S2 command records
     // (`headers[0][0] === ""`). The first non-command record is the
@@ -502,9 +565,9 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
         continue;
       }
       const controlValue = headerValue(record.headers, "trigger-control");
-      return controlValue === "turn-complete";
+      return { settled: controlValue === "turn-complete", tailSeq };
     }
-    return false;
+    return { settled: false, tailSeq };
   }
 
   async #streamResponseByName(
@@ -652,6 +715,36 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       throw new Error(`S2 issue access token failed: ${res.status} ${res.statusText} ${text}`);
+    }
+    const data = (await res.json()) as S2IssueAccessTokenResponse;
+    return data.access_token;
+  }
+
+  // Mint a read-only token scoped to a single exact stream. Unlike the
+  // write-side token this is not cached — it's per-session, short-lived,
+  // and handed straight to a client. No `auto_prefix_streams`: the client
+  // addresses the fully-qualified stream name.
+  private async s2IssueReadToken(streamExact: string, expiresAtMs: number): Promise<string> {
+    const res = await fetch(`${this.accountUrl}/access-tokens`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: randomUUID(),
+        scope: {
+          basins: { exact: this.basin },
+          ops: [...S2_READ_TOKEN_OPS],
+          streams: { exact: streamExact },
+        },
+        expires_at: new Date(expiresAtMs).toISOString(),
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`S2 issue read token failed: ${res.status} ${res.statusText} ${text}`);
     }
     const data = (await res.json()) as S2IssueAccessTokenResponse;
     return data.access_token;

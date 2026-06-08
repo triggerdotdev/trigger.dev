@@ -577,4 +577,6 @@ baseURL: ({ endpoint }) =>
   endpoint === "out" ? "https://api.trigger.dev" : "https://chat-proxy.example.com",
 ```
 
+When the deployment enables direct reads (Cloud, or self-hosted backed by real S2), the SDK reads the active turn's `.out` directly from the stream store, removing a hop on the streaming path. It's automatic and falls back to the proxied read on reconnect or once the read token expires. Setting a custom `baseURL` (above) automatically turns the direct read off so your `.out` routing is honored — no extra config needed. Pass `directStreamReads: true` to force it back on, or `false` to force the proxied route.
+
 For per-request control beyond URL routing (header injection, custom retries, tracing), pass a `fetch` override. See [Trusted edge signals](/ai-chat/patterns/trusted-edge-signals) for a full proxy walkthrough.

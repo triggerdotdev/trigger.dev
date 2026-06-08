@@ -77,6 +77,8 @@ Here is a typical cold turn — user opens the page, types "What's the weather?"
   </Step>
   <Step title="Browser: transport opens an SSE subscription to .out">
     In parallel with the send, the transport opens `GET /realtime/v1/sessions/:chatId/out` (server-sent events). It passes its `lastEventId` if it has one cached; on a brand-new chat it does not. Any chunks the agent writes from now on will be delivered to this stream.
+
+    When the deployment enables direct reads (Trigger.dev Cloud, or a self-hosted instance backed by real S2), the transport reads the active turn straight from the S2 `.out` stream instead of through this route, using a read-only token scoped to that one stream. That removes the Trigger.dev hop from the response path. The SDK obtains the token on its own (from the session-start response, or a lightweight grant endpoint if it wasn't forwarded) and refreshes it on turn-complete as it nears expiry, so it doesn't lapse mid-session. It is transparent and falls back to the route above on reconnect, in watch mode, when `directStreamReads: false`, or any time a token can't be obtained.
   </Step>
   <Step title="Task: agent run boots">
     The newly-triggered run starts. `onBoot` fires once per worker process. Because this is a fresh chat, no snapshot is read.

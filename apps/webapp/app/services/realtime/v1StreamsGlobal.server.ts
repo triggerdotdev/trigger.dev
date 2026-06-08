@@ -77,6 +77,7 @@ export function getRealtimeStreamInstance(
       maxRetries: env.REALTIME_STREAMS_S2_MAX_RETRIES,
       s2WaitSeconds: env.REALTIME_STREAMS_S2_WAIT_SECONDS,
       accessTokenExpirationInMs: env.REALTIME_STREAMS_S2_ACCESS_TOKEN_EXPIRATION_IN_MS,
+      readTokenExpirationInMs: env.REALTIME_STREAMS_S2_READ_TOKEN_EXPIRATION_IN_MS,
       cache: s2RealtimeStreamsCache,
     });
   }

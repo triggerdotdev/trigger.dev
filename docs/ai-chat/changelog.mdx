@@ -4,6 +4,16 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="June 8, 2026" description="4.5.0-rc.6" tags={["SDK"]}>
+
+## Direct chat response streaming
+
+When the deployment enables it (Trigger.dev Cloud, or a self-hosted instance backed by real S2), `useTriggerChatTransport` and `AgentChat` now read a chat session's response stream (`.out`) directly from the realtime stream store instead of relaying every chunk through Trigger.dev, removing a hop on the latency-sensitive path. It applies to the active streaming turn automatically and needs no code changes: the SDK obtains the read grant on its own (from the session-start response, or a lightweight grant endpoint if your `startSession` doesn't forward it), refreshes it on turn-complete as it nears expiry, and falls back to the relayed read whenever a grant can't be obtained or used (reconnect after a reload, watch mode). Failing to obtain a grant never breaks the chat.
+
+It turns on by default only when you haven't customized `.out` routing. If you set a custom `baseURL`/`streamBaseURL` (e.g. you front chat traffic with your own edge proxy), the direct read stays off and `.out` follows your routing, so updating the SDK changes nothing for those setups. Set `directStreamReads: true` to opt a customized setup into the direct read, or `false` to force the proxied route. See [Trusted edge signals](/ai-chat/patterns/trusted-edge-signals#streaming-and-latency).
+
+</Update>
+
 <Update label="June 5, 2026" description="4.5.0-rc.5" tags={["SDK", "Bug fix"]}>
 
 ## AI SDK 7 support

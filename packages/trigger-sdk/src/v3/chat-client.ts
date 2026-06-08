@@ -27,6 +27,7 @@ import {
   SSEStreamSubscription,
   TRIGGER_CONTROL_SUBTYPE,
 } from "@trigger.dev/core/v3";
+import type { SessionDirectReadGrant } from "@trigger.dev/core/v3";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import { slimSubmitMessageForWire } from "./ai-shared.js";
 import { sessions } from "./sessions.js";
@@ -106,6 +107,17 @@ export type AgentChatOptions<TAgent = unknown> = {
   }) => void | Promise<void>;
   /** SSE timeout in seconds. @default 120 */
   streamTimeoutSeconds?: number;
+  /**
+   * When the server hands back a read grant at session start (Cloud, or a
+   * self-hosted instance backed by real S2), read the response stream
+   * directly from the stream store instead of relaying it through
+   * Trigger.dev.
+   *
+   * Defaults to on, EXCEPT when you set a custom `baseURL` (then `.out`
+   * follows your routing and the direct read stays off). Set `false` to
+   * force the proxied route, or `true` to force the direct read.
+   */
+  directStreamReads?: boolean;
   /**
    * Default trigger config used when starting a new session for this
    * chat. Folded into `sessions.start({...triggerConfig})` body.
@@ -277,11 +289,22 @@ export class ChatStream {
 
 // ─── Internal ──────────────────────────────────────────────────────
 
+/** Don't open a direct-S2 read with a token this close to expiry. */
+const DIRECT_READ_EXPIRY_MARGIN_MS = 60_000;
+/** On turn-complete, refresh the grant once it has less than this long left. */
+const DIRECT_READ_REFRESH_THRESHOLD_MS = 2 * 60 * 60 * 1000;
+
 type SessionState = {
   lastEventId?: string;
   skipToTurnComplete?: boolean;
   /** True after the session has been started (sessions.start). */
   started: boolean;
+  /**
+   * Direct-read grant for `.out` from `sessions.start`, when the deployment
+   * enables direct reads. In-memory only — a hydrated chat has no grant and
+   * reads via the proxy.
+   */
+  directReadOut?: SessionDirectReadGrant;
 };
 
 // ─── AgentChat ─────────────────────────────────────────────────────
@@ -310,6 +333,7 @@ export class AgentChat<TAgent = unknown> {
   private readonly taskId: string;
   private readonly chatId: string;
   private readonly streamTimeoutSeconds: number;
+  private readonly directStreamReads: boolean;
   private readonly clientData: Record<string, unknown> | undefined;
   private readonly triggerConfigDefault: SessionTriggerConfig | undefined;
   private readonly onTriggered: AgentChatOptions["onTriggered"];
@@ -323,6 +347,9 @@ export class AgentChat<TAgent = unknown> {
     this.taskId = options.agent;
     this.chatId = options.id ?? crypto.randomUUID();
     this.streamTimeoutSeconds = options.streamTimeoutSeconds ?? 120;
+    // Default: direct read UNLESS the caller customized `.out` routing via
+    // `baseURL` (then honor their routing). `directStreamReads` overrides.
+    this.directStreamReads = options.directStreamReads ?? options.baseURL === undefined;
     this.clientData = options.clientData as Record<string, unknown> | undefined;
     this.triggerConfigDefault = options.triggerConfig;
     this.onTriggered = options.onTriggered;
@@ -608,6 +635,45 @@ export class AgentChat<TAgent = unknown> {
     return this.fetchOverride ? this.fetchOverride(url, init, ctx) : fetch(url, init);
   }
 
+  /**
+   * Best-effort obtain-or-refresh of the `.out` direct-read grant. Fetches a
+   * grant from the grant endpoint when there is none yet (e.g. it wasn't
+   * carried by `sessions.start`) or when the current one nears expiry, so a
+   * session keeps reading direct from the stream store. Never throws and never
+   * blocks: on failure the grant is left as-is and the read falls back to the
+   * proxy. No-op unless direct reads are enabled or the grant has plenty of
+   * life left.
+   */
+  private async ensureDirectReadGrant(): Promise<void> {
+    if (!this.directStreamReads) return;
+    const grant = this.state.directReadOut;
+    if (grant && Date.parse(grant.expiresAt) - Date.now() > DIRECT_READ_REFRESH_THRESHOLD_MS) {
+      return;
+    }
+
+    const accessToken = apiClientManager.accessToken ?? "";
+    const ctx: AgentChatEndpointContext = { endpoint: "out", chatId: this.chatId };
+    const url = `${this.resolveBaseURL("out")}/realtime/v1/sessions/${encodeURIComponent(this.chatId)}/out/grant`;
+    try {
+      const response = await this.doFetch(ctx, url, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) {
+        return;
+      }
+      const body = (await response.json()) as {
+        directReadOut?: SessionDirectReadGrant | null;
+      };
+      if (body.directReadOut) {
+        this.state.directReadOut = body.directReadOut;
+      } else {
+      }
+    } catch (e) {
+      // best-effort — keep the existing grant
+    }
+  }
+
   private async appendInputChunk(body: string): Promise<void> {
     const accessToken = apiClientManager.accessToken ?? "";
     const ctx: AgentChatEndpointContext = { endpoint: "in", chatId: this.chatId };
@@ -684,6 +750,7 @@ export class AgentChat<TAgent = unknown> {
     });
 
     this.state.started = true;
+    this.state.directReadOut = created.directReadOut;
     await this.onTriggered?.({
       runId: created.runId,
       chatId: this.chatId,
@@ -742,29 +809,139 @@ export class AgentChat<TAgent = unknown> {
       );
     }
 
-    const streamUrl = `${this.resolveBaseURL("out")}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out`;
+    const outBaseUrl = this.resolveBaseURL("out");
+    const streamUrl = `${outBaseUrl}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out`;
 
     return new ReadableStream<UIMessageChunk>({
       start: async (controller) => {
         try {
-          const subscription = new SSEStreamSubscription(streamUrl, {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-            signal: combinedSignal,
-            timeoutInSeconds: this.streamTimeoutSeconds,
-            lastEventId: state.lastEventId,
-            fetchClient: sseFetchClient,
-          });
-          const sseStream = await subscription.subscribe();
-          const reader = sseStream.getReader();
+          // Read `.out` straight from S2 with the read-scoped grant when an
+          // unexpired one is present; otherwise (or on any direct failure)
+          // fall back to the proxy, which always works.
+          const buildProxySubscription = () =>
+            new SSEStreamSubscription(streamUrl, {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
+              signal: combinedSignal,
+              timeoutInSeconds: this.streamTimeoutSeconds,
+              lastEventId: state.lastEventId,
+              fetchClient: sseFetchClient,
+            });
+          // `firstConnect` bounds the initial connect so a host the client
+          // can't reach (firewall, blocked domain) fails fast and falls back
+          // to the proxy instead of retrying forever; once connected it
+          // retries unbounded like any established stream.
+          const buildDirectSubscription = (
+            g: SessionDirectReadGrant,
+            opts?: { firstConnect?: boolean }
+          ) =>
+            new SSEStreamSubscription(
+              `${g.baseUrl.replace(/\/$/, "")}/streams/${encodeURIComponent(g.streamName)}/records`,
+              {
+                headers: { Authorization: `Bearer ${g.token}` },
+                s2Direct: { basin: g.basin },
+                signal: combinedSignal,
+                timeoutInSeconds: this.streamTimeoutSeconds,
+                lastEventId: state.lastEventId,
+                fetchClient: sseFetchClient,
+                ...(opts?.firstConnect ? { firstConnectMaxRetries: 0 } : {}),
+              }
+            );
+          const openOnce = async (subscription: SSEStreamSubscription) => {
+            const sseStream = await subscription.subscribe();
+            const r = sseStream.getReader();
+            try {
+              const first = await r.read();
+              if (first.done) {
+                r.releaseLock();
+                return null;
+              }
+              return { reader: r, primed: first.value };
+            } catch (readErr) {
+              r.releaseLock();
+              throw readErr;
+            }
+          };
+
+          // Make sure we have a usable grant: obtain one from the grant
+          // endpoint if `sessions.start` didn't carry it, or refresh it if it
+          // nears expiry. Best-effort — on failure we read via the proxy.
+          await this.ensureDirectReadGrant();
+
+          // Use the direct read whenever a grant is available (Cloud or a
+          // self-hosted instance backed by real S2). `this.directStreamReads`
+          // is already resolved: false when the caller customized `.out`
+          // routing via `baseURL` or set the option false, so their routing is
+          // honored. Also skipped once the read token nears expiry. The
+          // `fetch` override still wraps the direct request.
+          const grant = state.directReadOut;
+          const useDirectRead =
+            !!grant &&
+            grant.provider === "s2" &&
+            this.directStreamReads &&
+            Date.parse(grant.expiresAt) - Date.now() > DIRECT_READ_EXPIRY_MARGIN_MS;
+
+          // Direct first, failing fast on the initial connect so an
+          // unreachable S2 host falls through to the proxy rather than
+          // retrying forever (an expired 401/403 token is already
+          // non-retryable). `directFailed` records the attempt so we can
+          // return to direct if the proxy escape hatch also fails.
+          let opened: Awaited<ReturnType<typeof openOnce>> = null;
+          let directFailed = false;
+          if (useDirectRead && grant) {
+            try {
+              opened = await openOnce(buildDirectSubscription(grant, { firstConnect: true }));
+            } catch (e) {
+              if (combinedSignal.aborted) throw e;
+              opened = null;
+              directFailed = true;
+            }
+          }
+          // Proxy escape hatch (single attempt). If it fails after a direct
+          // attempt, don't surface the error — fall back to direct below and
+          // keep retrying it (the only S2-backed path); the proxy host may
+          // just be transiently unreachable.
+          let proxyFailed = false;
+          if (opened === null && !combinedSignal.aborted) {
+            try {
+              opened = await openOnce(buildProxySubscription());
+            } catch (e) {
+              if (combinedSignal.aborted || !directFailed) throw e;
+              proxyFailed = true;
+            }
+          }
+          // Proxy also failed: return to the direct read with unbounded retry
+          // so the session keeps trying instead of erroring out.
+          if (opened === null && proxyFailed && grant && !combinedSignal.aborted) {
+            opened = await openOnce(buildDirectSubscription(grant));
+          }
+          if (opened === null) {
+            controller.close();
+            return;
+          }
+          const reader = opened.reader;
+          type SsePart = {
+            id: string;
+            chunk: unknown;
+            timestamp: number;
+            headers?: ReadonlyArray<readonly [string, string]>;
+          };
+          let primed: SsePart | undefined = opened.primed;
 
           try {
             while (true) {
-              const next = await reader.read();
-              if (next.done) {
-                controller.close();
-                return;
+              let value: SsePart;
+              if (primed !== undefined) {
+                value = primed;
+                primed = undefined;
+              } else {
+                const next = await reader.read();
+                if (next.done) {
+                  controller.close();
+                  return;
+                }
+                value = next.value;
               }
 
               if (combinedSignal.aborted) {
@@ -773,8 +950,6 @@ export class AgentChat<TAgent = unknown> {
                 controller.close();
                 return;
               }
-
-              const value = next.value;
 
               if (value.id) state.lastEventId = value.id;
 
@@ -828,6 +1003,9 @@ export class AgentChat<TAgent = unknown> {
                     lastEventId: state.lastEventId,
                   })
                 ).catch(() => {});
+                // Best-effort refresh of the direct-read grant as it nears
+                // expiry so long sessions keep reading direct from S2.
+                void this.ensureDirectReadGrant();
                 internalAbort.abort();
                 try {
                   controller.close();

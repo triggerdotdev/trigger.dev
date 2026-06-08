@@ -31,12 +31,23 @@ import {
   SSEStreamSubscription,
   TRIGGER_CONTROL_SUBTYPE,
 } from "@trigger.dev/core/v3";
+import type { SessionDirectReadGrant } from "@trigger.dev/core/v3";
 import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
 import { slimSubmitMessageForWire } from "./ai-shared.js";
 
 const DEFAULT_BASE_URL = "https://api.trigger.dev";
 const DEFAULT_STREAM_TIMEOUT_SECONDS = 120;
+// Don't open a direct-S2 read with a token this close to (or past) expiry —
+// fall back to the proxy instead so a turn never dies mid-stream on an
+// expiring token.
+const DIRECT_READ_EXPIRY_MARGIN_MS = 60_000;
+// On turn-complete, refresh the direct-read grant once it has less than this
+// long left, so it (almost) never expires mid-session and reads stay direct
+// instead of falling back to the proxy. With the default 24h token this fires
+// at most once per ~22h of continuous use; a shorter configured TTL refreshes
+// more often.
+const DIRECT_READ_REFRESH_THRESHOLD_MS = 2 * 60 * 60 * 1000;
 
 /**
  * Discriminator passed to per-endpoint `baseURL` and `fetch` callbacks.
@@ -209,6 +220,13 @@ export type StartSessionParams<TClientData = unknown> = {
 export type StartSessionResult = {
   /** Session-scoped PAT — `read:sessions:{chatId} + write:sessions:{chatId}`. */
   publicAccessToken: string;
+  /**
+   * Direct-read coordinates for `.out`, when the deployment enables direct
+   * session reads (forwarded from `chat.createStartSessionAction`). When
+   * present and unexpired, the transport reads the active response stream
+   * straight from S2 instead of the realtime proxy. Absent → proxy.
+   */
+  directReadOut?: SessionDirectReadGrant;
 };
 
 /**
@@ -366,6 +384,20 @@ export type TriggerChatTransportOptions<TClientData = unknown> = {
   watch?: boolean;
 
   /**
+   * On Trigger.dev Cloud (and self-hosted instances backed by real S2),
+   * read the active turn's response stream directly from the stream store
+   * instead of relaying it through Trigger.dev, when the server hands back
+   * a read grant at session start.
+   *
+   * Defaults to on, EXCEPT when you set a custom `baseURL` / `streamBaseURL`
+   * — that signals you're routing `.out` yourself (e.g. through your own
+   * edge proxy), so the direct read stays off and `.out` follows your
+   * routing. Set explicitly to `false` to force the proxied route, or
+   * `true` to force the direct read even with a custom `baseURL`.
+   */
+  directStreamReads?: boolean;
+
+  /**
    * Opt-in URL that gives a brand-new chat a head start: instead of
    * waiting for the trigger.dev agent run to dequeue + boot before
    * the first LLM call, the transport POSTs the first user message
@@ -411,6 +443,12 @@ type ChatSessionState = {
   skipToTurnComplete?: boolean;
   /** Whether the agent is currently streaming a response. Set on first chunk, cleared on turn-complete. */
   isStreaming?: boolean;
+  /**
+   * Direct-read grant for `.out` from this session's start, when enabled.
+   * Held in memory only (not persisted): a hydrated/reloaded session has no
+   * grant and reads via the proxy until it starts a fresh session.
+   */
+  directReadOut?: SessionDirectReadGrant;
 };
 
 /**
@@ -444,6 +482,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   private readonly streamTimeoutSeconds: number;
   private defaultMetadata: Record<string, unknown> | undefined;
   private readonly watchMode: boolean;
+  private readonly directStreamReads: boolean;
   private readonly headStart: string | undefined;
   private coordinator: ChatTabCoordinator | null = null;
   private _onSessionChange:
@@ -471,6 +510,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     this.defaultMetadata = options.clientData;
     this._onSessionChange = options.onSessionChange;
     this.watchMode = options.watch ?? false;
+    // Default: read `.out` directly from the stream store UNLESS the caller
+    // customized `.out` routing (a `baseURL`/`streamBaseURL`), which signals
+    // they're routing `.out` themselves (e.g. through their own edge) and we
+    // should honor it. `directStreamReads` overrides either way.
+    this.directStreamReads =
+      options.directStreamReads ??
+      (options.baseURL === undefined && options.streamBaseURL === undefined);
     this.headStart = options.headStart;
 
     if (options.multiTab && !this.watchMode) {
@@ -1053,7 +1099,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       );
     }
 
-    const { publicAccessToken } = await this.resolveStartSession({
+    const { publicAccessToken, directReadOut } = await this.resolveStartSession({
       taskId: this.taskId,
       chatId,
       clientData: (this.defaultMetadata ?? {}) as Record<string, unknown>,
@@ -1062,6 +1108,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     const state: ChatSessionState = {
       publicAccessToken,
       isStreaming: false,
+      directReadOut,
     };
     this.sessions.set(chatId, state);
     this.notifySessionChange(chatId, state);
@@ -1083,6 +1130,121 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     init: RequestInit
   ): Promise<Response> {
     return this.fetchOverride ? this.fetchOverride(url, init, ctx) : fetch(url, init);
+  }
+
+  /**
+   * Best-effort obtain-or-refresh of the in-memory `.out` direct-read grant.
+   * Fetches a grant from the lightweight grant endpoint when there is none yet
+   * (e.g. the customer's `startSession` didn't forward `directReadOut`) or when
+   * the current one is nearing expiry, and updates `state.directReadOut` in
+   * place. Never throws and never blocks the chat: on any failure the grant is
+   * left as-is and the read falls back to the proxy. No-op unless direct reads
+   * are enabled or when the grant already has comfortable life left.
+   */
+  private async ensureDirectReadGrant(
+    chatId: string,
+    state: ChatSessionState,
+    opts?: { withSettledVerdict?: boolean }
+  ): Promise<{ settled: boolean; tailSeq?: number } | undefined> {
+    if (!this.directStreamReads) return;
+    const grant = state.directReadOut;
+    // Already have a grant with plenty of life left — nothing to fetch (and so
+    // no server settled-verdict; a reconnect on a cached grant peeks directly).
+    if (grant && Date.parse(grant.expiresAt) - Date.now() > DIRECT_READ_REFRESH_THRESHOLD_MS) {
+      return;
+    }
+
+    const ctx: ChatTransportEndpointContext = { endpoint: "out", chatId };
+    // On the reconnect handshake, ask the server to also run the settled-peek
+    // (`?peek=1`) — it's next to S2, so it returns the verdict on this same
+    // round-trip and the client avoids a separate client→S2 peek.
+    const url = `${this.resolveBaseURL(ctx)}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out/grant${
+      opts?.withSettledVerdict ? "?peek=1" : ""
+    }`;
+    try {
+      const response = await this.doFetch(ctx, url, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${state.publicAccessToken}`, ...this.extraHeaders },
+      });
+      if (!response.ok) {
+        return;
+      }
+      const body = (await response.json()) as {
+        directReadOut?: SessionDirectReadGrant | null;
+        settled?: boolean;
+        tailSeq?: number;
+      };
+      if (body.directReadOut) {
+        state.directReadOut = body.directReadOut;
+      } else {
+      }
+      // The server only includes `settled` when it actually peeked (`?peek=1`
+      // + a grant was minted). Its absence means "do your own peek".
+      if (typeof body.settled === "boolean") {
+        return { settled: body.settled, tailSeq: body.tailSeq };
+      }
+      return;
+    } catch (e) {
+      // best-effort — keep whatever grant we have (or none); read via proxy
+      return;
+    }
+  }
+
+  /**
+   * Reconnect/reload settled-peek, done directly against S2 with the grant —
+   * the client-side mirror of the server's `#peekIsSettled`. Reads the two
+   * tail records (`tail_offset=2&count=2&wait=0`) and walks past the S2 `trim`
+   * command the agent appends after every turn to find the real tail:
+   *
+   *  - `"settled"`  — tail is a `turn-complete` control record; the turn is
+   *    done, so a blind long-poll would just hang. Caller drains with wait=0.
+   *  - `"active"`   — tail is a data chunk; the turn is mid-flight, read direct.
+   *  - `"unknown"`  — peek failed / empty / unreachable; caller uses the proxy
+   *    settled-peek instead. Never throws.
+   */
+  private async directPeekIsSettled(
+    grant: SessionDirectReadGrant,
+    fetchClient: typeof fetch | undefined,
+    signal: AbortSignal
+  ): Promise<"settled" | "active" | "unknown"> {
+    const url = new URL(
+      `${grant.baseUrl.replace(/\/$/, "")}/streams/${encodeURIComponent(grant.streamName)}/records`
+    );
+    url.searchParams.set("tail_offset", "2");
+    url.searchParams.set("count", "2");
+    url.searchParams.set("wait", "0");
+    try {
+      const f = fetchClient ?? fetch;
+      const res = await f(url.toString(), {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${grant.token}`,
+          Accept: "application/json",
+          "S2-Format": "raw",
+          "S2-Basin": grant.basin,
+          ...this.extraHeaders,
+        },
+        signal,
+      });
+      if (!res.ok) return "unknown";
+      const json = (await res.json()) as {
+        records?: Array<{ headers?: Array<[string, string]> }>;
+      };
+      const records = json.records ?? [];
+      // Walk newest→oldest, skipping S2 command records (`headers[0][0] === ""`,
+      // e.g. the trim). The first real record's `trigger-control` header tells
+      // us whether the turn settled.
+      for (let i = records.length - 1; i >= 0; i--) {
+        const record = records[i]!;
+        if (record.headers?.[0]?.[0] === "") continue;
+        return headerValue(record.headers, "trigger-control") === "turn-complete"
+          ? "settled"
+          : "active";
+      }
+      return "unknown";
+    } catch {
+      return "unknown";
+    }
   }
 
   private async appendInputChunk(chatId: string, token: string, body: string): Promise<void> {
@@ -1162,7 +1324,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         "TriggerChatTransport: session not found and no `startSession` configured to recreate it. The stored session state for this chat may be stale (e.g. created in a different environment) — provide `startSession` or clear the stored session so a fresh one can be created."
       );
     }
-    const { publicAccessToken } = await this.resolveStartSession({
+    const { publicAccessToken, directReadOut } = await this.resolveStartSession({
       taskId: this.taskId,
       chatId,
       clientData: (this.defaultMetadata ?? {}) as Record<string, unknown>,
@@ -1170,6 +1332,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state.publicAccessToken = publicAccessToken;
     state.lastEventId = undefined;
     state.isStreaming = false;
+    state.directReadOut = directReadOut;
     this.sessions.set(chatId, state);
     this.notifySessionChange(chatId, state);
   }
@@ -1216,7 +1379,8 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       );
     }
 
-    const streamUrl = `${this.resolveBaseURL({ endpoint: "out", chatId })}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out`;
+    const outBaseUrl = this.resolveBaseURL({ endpoint: "out", chatId });
+    const streamUrl = `${outBaseUrl}/realtime/v1/sessions/${encodeURIComponent(chatId)}/out`;
 
     return new ReadableStream<UIMessageChunk>({
       start: async (controller) => {
@@ -1299,8 +1463,9 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               );
             }) as typeof fetch
           : undefined;
-        const connectSseOnce = async (token: string) => {
-          const subscription = new SSEStreamSubscription(streamUrl, {
+        // Subscribe through the realtime proxy with the session PAT.
+        const buildProxySubscription = (token: string) =>
+          new SSEStreamSubscription(streamUrl, {
             headers: {
               Authorization: `Bearer ${token}`,
               ...this.extraHeaders,
@@ -1315,6 +1480,31 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             stallTimeoutMs: 60_000,
             fetchClient: sseFetchClient,
           });
+
+        // Read `.out` straight from S2 with the read-scoped grant token.
+        // `firstConnect` bounds the initial connect so a client that can't
+        // reach the S2 host (firewall, blocked domain, regional DNS) fails
+        // fast and falls back to the proxy instead of looping forever; once
+        // connected it retries unbounded like any established stream.
+        const buildDirectSubscription = (
+          g: SessionDirectReadGrant,
+          opts?: { firstConnect?: boolean; timeoutInSeconds?: number }
+        ) =>
+          new SSEStreamSubscription(
+            `${g.baseUrl.replace(/\/$/, "")}/streams/${encodeURIComponent(g.streamName)}/records`,
+            {
+              headers: { Authorization: `Bearer ${g.token}`, ...this.extraHeaders },
+              s2Direct: { basin: g.basin },
+              signal: combinedSignal,
+              timeoutInSeconds: opts?.timeoutInSeconds ?? this.streamTimeoutSeconds,
+              stallTimeoutMs: 60_000,
+              lastEventId: state.lastEventId,
+              fetchClient: sseFetchClient,
+              ...(opts?.firstConnect ? { firstConnectMaxRetries: 0 } : {}),
+            }
+          );
+
+        const connectSseOnce = async (subscription: SSEStreamSubscription) => {
           currentSubscription = subscription;
           const sseStream = await subscription.subscribe();
           const reader = sseStream.getReader();
@@ -1331,7 +1521,94 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           }
         };
 
+        // Make sure we have a usable grant: obtain one from the grant endpoint
+        // if `startSession` didn't forward it, or refresh it near expiry.
+        // Best-effort — on failure we read via the proxy. Runs for both the
+        // active send path AND the reconnect/reload path (the latter needs the
+        // grant to peek + read direct too); skipped only in watch mode.
+        //
+        // On reconnect we ask the grant fetch to also carry the settled-peek
+        // verdict (server-side, next to S2), so we don't pay a separate
+        // client→S2 peek. `serverVerdict` is undefined when we didn't fetch
+        // (cached grant) or the server didn't peek — then we peek client-side.
+        let serverVerdict: { settled: boolean; tailSeq?: number } | undefined;
+        if (this.directStreamReads && !this.watchMode) {
+          serverVerdict = await this.ensureDirectReadGrant(chatId, state, {
+            withSettledVerdict: !!options?.peekSettled,
+          });
+        }
+
+        // Direct-S2 read is used whenever a grant is available (Cloud or a
+        // self-hosted instance backed by real S2 — the server only mints one
+        // when direct reads are possible). `this.directStreamReads` is already
+        // resolved: false when the caller customized `.out` routing (a
+        // `baseURL`/`streamBaseURL`) or set the option false, so their routing
+        // is honored. A hydrated session whose grant fetch fails reads via the
+        // proxy. Callers can reroute the direct read in the `fetch` override.
+        const grant = state.directReadOut;
+        const grantUsable =
+          !!grant &&
+          grant.provider === "s2" &&
+          this.directStreamReads &&
+          !this.watchMode &&
+          Date.parse(grant.expiresAt) - Date.now() > DIRECT_READ_EXPIRY_MARGIN_MS;
+
+        // Resolve the read path:
+        //  - Active send (peekSettled=false): read direct whenever usable.
+        //  - Reconnect/reload (peekSettled=true): a blind long-poll hangs the
+        //    full wait window when the turn already settled. Rather than fall
+        //    back to the proxy's server-side settled-peek, do the same tail
+        //    peek straight against S2 with the grant so a resumed mid-turn
+        //    stream keeps reading direct. Settled → drain with wait=0 and
+        //    close; active → normal direct long-poll; peek unavailable (or no
+        //    grant) → proxy settled-peek.
+        let useDirectRead = false;
+        let directWaitOverride: number | undefined;
+        let reconnectCaughtUp = false;
+        if (grantUsable && grant) {
+          if (!options?.peekSettled) {
+            useDirectRead = true;
+          } else {
+            // Prefer the server verdict (free, rode along on the grant fetch).
+            // Only peek client-side when we don't have it (cached grant, or the
+            // server didn't peek).
+            let verdict: "settled" | "active" | "unknown";
+            if (serverVerdict) {
+              verdict = serverVerdict.settled ? "settled" : "active";
+            } else {
+              verdict = await this.directPeekIsSettled(grant, sseFetchClient, combinedSignal);
+            }
+            if (verdict === "settled") {
+              useDirectRead = true;
+              directWaitOverride = 0;
+              // Already hold the tail (server told us `tailSeq` and we're at or
+              // past it) → nothing to drain, close without any read.
+              const lastSeen = state.lastEventId
+                ? Number(state.lastEventId.split("-")[0])
+                : -1;
+              if (
+                serverVerdict?.tailSeq !== undefined &&
+                Number.isFinite(lastSeen) &&
+                serverVerdict.tailSeq <= lastSeen
+              ) {
+                reconnectCaughtUp = true;
+              }
+            } else if (verdict === "active") {
+              useDirectRead = true;
+            }
+            // "unknown" → useDirectRead stays false → proxy settled-peek
+          }
+        }
+        const settledDrain = directWaitOverride === 0;
+
         try {
+          // Reconnect where the server's settled-peek says we already hold the
+          // tail: nothing to read, so close without opening any subscription.
+          if (reconnectCaughtUp) {
+            controller.close();
+            return;
+          }
+
           let reader: ReadableStreamDefaultReader<{
             id: string;
             chunk: unknown;
@@ -1339,30 +1616,82 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
           }>;
           let primed: { id: string; chunk: unknown; timestamp: number } | undefined;
 
-          try {
-            const opened = await connectSseOnce(state.publicAccessToken);
-            if (opened === null) {
-              controller.close();
-              return;
-            }
-            reader = opened.reader;
-            primed = opened.primed;
-          } catch (e) {
-            if (isAuthError(e)) {
-              const fresh = await this.resolveAccessToken({ chatId });
-              state.publicAccessToken = fresh;
-              this.notifySessionChange(chatId, state);
-              const opened = await connectSseOnce(fresh);
-              if (opened === null) {
-                controller.close();
-                return;
-              }
-              reader = opened.reader;
-              primed = opened.primed;
-            } else {
-              throw e;
+          let opened: Awaited<ReturnType<typeof connectSseOnce>> = null;
+
+          // Try the direct-S2 read first on the active path, failing fast on
+          // the initial connect (`firstConnect`) so an unreachable S2 host
+          // falls through to the proxy rather than retrying forever. An
+          // expired token (401/403) is already non-retryable. `directFailed`
+          // records that we attempted direct so we can return to it if the
+          // proxy escape hatch also fails.
+          let directFailed = false;
+          if (useDirectRead && grant) {
+            try {
+              opened = await connectSseOnce(
+                buildDirectSubscription(grant, {
+                  firstConnect: true,
+                  timeoutInSeconds: directWaitOverride,
+                })
+              );
+            } catch (e) {
+              if (combinedSignal.aborted) throw e;
+              opened = null;
+              directFailed = true;
             }
           }
+
+          // Settled reconnect drain (wait=0) that came back empty: the turn is
+          // already complete and there's nothing left on `.out`, so close
+          // rather than opening a proxy long-poll that would just settle too.
+          if (settledDrain && opened === null && !directFailed && !combinedSignal.aborted) {
+            controller.close();
+            return;
+          }
+
+          // Proxy escape hatch: a single attempt (with PAT refresh on auth
+          // error). Reached when direct is off, has no grant, or its
+          // first-connect failed. If the proxy itself fails after a direct
+          // attempt, we don't surface the error — we return to the direct
+          // read below and keep retrying it (it's the only S2-backed path,
+          // and the client may just have lost the proxy host transiently).
+          let proxyFailed = false;
+          if (opened === null && !combinedSignal.aborted) {
+            try {
+              opened = await connectSseOnce(buildProxySubscription(state.publicAccessToken));
+            } catch (e) {
+              if (combinedSignal.aborted) throw e;
+              if (isAuthError(e)) {
+                const fresh = await this.resolveAccessToken({ chatId });
+                state.publicAccessToken = fresh;
+                this.notifySessionChange(chatId, state);
+                try {
+                  opened = await connectSseOnce(buildProxySubscription(fresh));
+                } catch (e2) {
+                  if (combinedSignal.aborted) throw e2;
+                  if (!directFailed) throw e2;
+                  proxyFailed = true;
+                }
+              } else if (directFailed) {
+                proxyFailed = true;
+              } else {
+                throw e;
+              }
+            }
+          }
+
+          // Proxy escape hatch also failed: return to the direct read, now
+          // with unbounded retry, so the session keeps trying its only
+          // S2-backed path instead of erroring out.
+          if (opened === null && proxyFailed && grant && !combinedSignal.aborted) {
+            opened = await connectSseOnce(buildDirectSubscription(grant));
+          }
+
+          if (opened === null) {
+            controller.close();
+            return;
+          }
+          reader = opened.reader;
+          primed = opened.primed;
 
           while (true) {
             let value: {
@@ -1451,6 +1780,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
               this.coordinator?.broadcastSession(chatId, {
                 lastEventId: state.lastEventId,
               });
+
+              // Proactively refresh the direct-read grant as it nears expiry
+              // so long-lived sessions keep reading direct from S2 rather than
+              // falling back to the proxy. Fire-and-forget: the current grant
+              // stays valid for the next turn, and a failed refresh is
+              // non-fatal (kept, or proxied later).
+              void this.ensureDirectReadGrant(chatId, state);
 
               if (this.watchMode) continue;
 

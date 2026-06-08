@@ -4,15 +4,19 @@ import {
   type CreatedSessionResponseBody,
   ListSessionsQueryParams,
   type ListSessionsResponseBody,
+  type SessionDirectReadGrant,
   type SessionItem,
   type SessionStatus,
 } from "@trigger.dev/core/v3";
 import { SessionId } from "@trigger.dev/core/v3/isomorphic";
 import type { Prisma, Session } from "@trigger.dev/database";
 import { $replica, prisma, type PrismaClient } from "~/db.server";
+import { env } from "~/env.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
 import { mintSessionToken } from "~/services/realtime/mintSessionToken.server";
+import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
+import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import {
   ensureRunForSession,
   type SessionTriggerConfig,
@@ -257,6 +261,35 @@ const { action } = createActionApiRoute(
         addressingKey
       );
 
+      // When direct session reads are enabled, hand the client a read-scoped
+      // S2 token + endpoint so it reads `.out` straight from S2 instead of
+      // proxying through the realtime host. Best-effort: a failure here only
+      // means the client falls back to the proxy, so it must never fail the
+      // create.
+      let directReadOut: SessionDirectReadGrant | undefined;
+      if (env.REALTIME_STREAMS_SESSIONS_DIRECT_READ_ENABLED === "true") {
+        try {
+          const realtimeStream = getRealtimeStreamInstance(authentication.environment, "v2", {
+            session,
+          });
+          if (realtimeStream instanceof S2RealtimeStreams) {
+            // The `.out` stream is keyed by the canonical addressing key
+            // (externalId if set, else friendlyId) — the same key the worker
+            // writes with and the `.out` SSE route reads with. Mint the grant
+            // against that, NOT the friendlyId, or it points at an empty stream.
+            const grant = await realtimeStream.issueSessionOutReadGrant(addressingKey);
+            if (grant) {
+              directReadOut = { provider: "s2", ...grant };
+            }
+          }
+        } catch (error) {
+          logger.warn("Failed to mint session direct-read grant; client will use the proxy", {
+            sessionId: session.id,
+            error,
+          });
+        }
+      }
+
       const sessionItem: SessionItem = {
         ...serializeSession(session),
         triggerConfig: session.triggerConfig as unknown as SessionTriggerConfig,
@@ -268,6 +301,7 @@ const { action } = createActionApiRoute(
         runId: run.friendlyId,
         publicAccessToken,
         isCached,
+        ...(directReadOut ? { directReadOut } : {}),
       };
 
       return json<CreatedSessionResponseBody>(responseBody, {

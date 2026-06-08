@@ -609,6 +609,190 @@ describe("TriggerChatTransport", () => {
       expect(subscribe!).toContain("/realtime/v1/sessions/chat-by-chatid/out");
     });
 
+    it("reads .out directly from S2 when a grant is present and directStreamReads is on", async () => {
+      const requests: string[] = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        requests.push(urlStr);
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (urlStr.includes("/streams/") && urlStr.includes("/records")) return defaultSseResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const grant = {
+        provider: "s2" as const,
+        baseUrl: "https://my-basin.b.aws.s2.dev/v1",
+        basin: "my-basin",
+        streamName: "env/dev/env_1/sessions/chat-direct/out",
+        token: "s2-read-token",
+        // far from expiry so the turn-complete refresh path stays inert
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      };
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        // custom baseURL would auto-opt-out; directStreamReads:true forces it on
+        baseURL: "https://api.test.trigger.dev",
+        directStreamReads: true,
+        startSession: async () => ({ publicAccessToken: "p", directReadOut: grant }),
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-direct",
+        messageId: "m1",
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+      const chunks = await drainChunks(stream);
+
+      // Same chunks arrive, but the read came straight from the S2 records
+      // endpoint (with the resume cursor), not the proxy `.out` route.
+      expect(chunks).toHaveLength(sampleChunks.length);
+      const directRead = requests.find(
+        (u) => u.includes("/streams/") && u.includes("/records")
+      );
+      expect(directRead).toBeDefined();
+      expect(directRead!).toContain("my-basin.b.aws.s2.dev");
+      expect(directRead!).toContain("seq_num=");
+      expect(requests.find(isSessionOutSubscribeUrl)).toBeUndefined();
+    });
+
+    it("stays on the proxy when a grant is present but directStreamReads is off", async () => {
+      const requests: string[] = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        requests.push(urlStr);
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (urlStr.includes("/streams/") && urlStr.includes("/records")) return defaultSseResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const grant = {
+        provider: "s2" as const,
+        baseUrl: "https://my-basin.b.aws.s2.dev/v1",
+        basin: "my-basin",
+        streamName: "env/dev/env_1/sessions/chat-proxy/out",
+        token: "s2-read-token",
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      };
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        baseURL: "https://api.test.trigger.dev",
+        directStreamReads: false,
+        startSession: async () => ({ publicAccessToken: "p", directReadOut: grant }),
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-proxy",
+        messageId: "m1",
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+      await drainChunks(stream);
+
+      // Proxy `.out` used; S2 records endpoint never hit.
+      expect(requests.find(isSessionOutSubscribeUrl)).toBeDefined();
+      expect(
+        requests.find((u) => u.includes("/streams/") && u.includes("/records"))
+      ).toBeUndefined();
+    });
+
+    it("obtains the grant from the grant endpoint when startSession didn't return one", async () => {
+      const requests: string[] = [];
+      const grant = {
+        provider: "s2" as const,
+        baseUrl: "https://my-basin.b.aws.s2.dev/v1",
+        basin: "my-basin",
+        streamName: "env/dev/env_1/sessions/chat-fetch/out",
+        token: "s2-read-token",
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      };
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        requests.push(urlStr);
+        if (urlStr.includes("/out/grant"))
+          return new Response(JSON.stringify({ directReadOut: grant }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (urlStr.includes("/streams/") && urlStr.includes("/records")) return defaultSseResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        baseURL: "https://api.test.trigger.dev",
+        directStreamReads: true,
+        // Mimics a wrapper that returns only the PAT and drops `directReadOut`.
+        startSession: async () => ({ publicAccessToken: "p" }),
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-fetch",
+        messageId: "m1",
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+      const chunks = await drainChunks(stream);
+
+      expect(chunks).toHaveLength(sampleChunks.length);
+      // The transport fetched the grant itself, then read direct from S2.
+      expect(requests.find((u) => u.includes("/out/grant"))).toBeDefined();
+      expect(
+        requests.find((u) => u.includes("/streams/") && u.includes("/records"))
+      ).toBeDefined();
+      expect(requests.find(isSessionOutSubscribeUrl)).toBeUndefined();
+    });
+
+    it("falls back to the proxy (without breaking) when the grant fetch fails", async () => {
+      const requests: string[] = [];
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        requests.push(urlStr);
+        if (urlStr.includes("/out/grant")) return new Response("boom", { status: 500 });
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (urlStr.includes("/streams/") && urlStr.includes("/records")) return defaultSseResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        baseURL: "https://api.test.trigger.dev",
+        directStreamReads: true,
+        startSession: async () => ({ publicAccessToken: "p" }),
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-fallback",
+        messageId: "m1",
+        messages: [createUserMessage("Hello")],
+        abortSignal: undefined,
+      });
+      const chunks = await drainChunks(stream);
+
+      // Grant fetch failed → no grant → proxy read; chunks still arrive (nothing broke).
+      expect(chunks).toHaveLength(sampleChunks.length);
+      expect(requests.find((u) => u.includes("/out/grant"))).toBeDefined();
+      expect(requests.find(isSessionOutSubscribeUrl)).toBeDefined();
+      expect(
+        requests.find((u) => u.includes("/streams/") && u.includes("/records"))
+      ).toBeUndefined();
+    });
+
     it("functional baseURL dispatches per endpoint (in vs out)", async () => {
       const requests: Array<{ url: string; ctxEndpoint: string | undefined }> = [];
       global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
