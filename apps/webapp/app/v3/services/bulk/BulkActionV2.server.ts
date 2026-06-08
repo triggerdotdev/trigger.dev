@@ -159,8 +159,13 @@ export class BulkActionService extends BaseService {
       throw new Error(`Bulk action group has invalid query name: ${group.queryName}`);
     }
 
-    // 2. Get the runs to process in this batch
-    const runIds = await runsRepository.listRunIds({
+    // 2. Get the runs to process in this batch, plus the cursor for the next
+    // batch. The cursor is a composite (created_at, run_id) keyset cursor so the
+    // next batch can't re-include or skip runs.
+    const {
+      runIds: runIdsToProcess,
+      pagination: { nextCursor },
+    } = await runsRepository.listRunIds({
       ...filters,
       page: {
         size: env.BULK_ACTION_BATCH_SIZE,
@@ -172,8 +177,6 @@ export class BulkActionService extends BaseService {
     // 3. Process the runs
     let successCount = 0;
     let failureCount = 0;
-    // Slice because we fetch an extra for the cursor
-    const runIdsToProcess = runIds.slice(0, env.BULK_ACTION_BATCH_SIZE);
 
     switch (group.type) {
       case BulkActionType.CANCEL: {
@@ -274,7 +277,10 @@ export class BulkActionService extends BaseService {
       }
     }
 
-    const isFinished = runIdsToProcess.length === 0;
+    // A null nextCursor means there is no further page — this batch was the
+    // last (or there were no runs at all), so the action is complete. (An empty
+    // batch also yields a null cursor.)
+    const isFinished = nextCursor === null;
 
     logger.debug("Bulk action group processed batch", {
       bulkActionId,
@@ -292,7 +298,8 @@ export class BulkActionService extends BaseService {
     const updatedGroup = await this._prisma.bulkActionGroup.update({
       where: { id: bulkActionId },
       data: {
-        cursor: runIdsToProcess.at(runIdsToProcess.length - 1),
+        // Json column: leave unchanged when there's no next cursor (finished).
+        cursor: nextCursor ?? undefined,
         successCount: {
           increment: successCount,
         },

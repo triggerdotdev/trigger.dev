@@ -203,7 +203,7 @@ export class TestTaskPresenter {
       prisma: this.replica as PrismaClient,
     });
 
-    const runIds = await runsRepository.listRunIds({
+    const { runIds } = await runsRepository.listRunIds({
       organizationId: environment.organizationId,
       environmentId: environment.id,
       projectId: environment.projectId,
