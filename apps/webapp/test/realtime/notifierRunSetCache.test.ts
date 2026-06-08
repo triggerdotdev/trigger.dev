@@ -157,6 +157,13 @@ describe("NotifierRealtimeClient tag-list createdAt bucketing", () => {
     expect(resolveSpy).toHaveBeenCalledTimes(2);
   });
 
+  it("does not collide a comma-containing tag with two separate tags", async () => {
+    const { client, resolveSpy } = makeClient({ runSetCreatedAtBucketMs: 60 * 60_000 });
+    await snapshotTag(client, ["a,b"]); // one tag "a,b"
+    await snapshotTag(client, ["a", "b"]); // two tags a OR b — a different filter
+    expect(resolveSpy).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps each feed's exact lower bound when bucketing is disabled (0)", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-06-07T10:00:30.500Z"));

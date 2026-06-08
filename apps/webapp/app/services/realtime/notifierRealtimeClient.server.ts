@@ -529,8 +529,11 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
   /** Stable cache key for the resolve+hydrate cache. Same key => same id-set and the
    * same projected columns, so cached rows always match the requesting feed. */
   #runSetCacheKey(environmentId: string, filter: RunSetFilter, skipColumns: string[]): string {
-    const tags = filter.tags && filter.tags.length > 0 ? [...filter.tags].sort().join(",") : "";
-    const cols = skipColumns.length > 0 ? [...skipColumns].sort().join(",") : "";
+    // JSON-encode the arrays (not a join) so a value containing the separators —
+    // e.g. a tag with a comma — can't collide: ["a,b"] must not key the same as
+    // ["a","b"], which are different ClickHouse filters.
+    const tags = filter.tags && filter.tags.length > 0 ? JSON.stringify([...filter.tags].sort()) : "";
+    const cols = skipColumns.length > 0 ? JSON.stringify([...skipColumns].sort()) : "";
     const maxListResults = this.options.maxListResults ?? DEFAULT_MAX_LIST_RESULTS;
     return `${environmentId}|${tags}|${filter.batchId ?? ""}|${
       filter.createdAtAfter?.getTime() ?? ""
