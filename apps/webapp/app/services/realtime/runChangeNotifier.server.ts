@@ -78,11 +78,17 @@ export class RunChangeNotifier {
       const result = publisher.publish(channel, payload);
       if (typeof (result as Promise<number>)?.catch === "function") {
         (result as Promise<number>).catch((error) => {
-          logger.debug("[runChangeNotifier] publish failed", { error, channel });
+          logger.error("[runChangeNotifier] Failed to publish run-changed notification", {
+            error,
+            channel,
+          });
         });
       }
     } catch (error) {
-      logger.debug("[runChangeNotifier] publish threw", { error, channel });
+      logger.error("[runChangeNotifier] Failed to publish run-changed notification", {
+        error,
+        channel,
+      });
     }
   }
 
@@ -125,7 +131,10 @@ export class RunChangeNotifier {
       listeners = new Set();
       this.#listeners.set(channel, listeners);
       subscriber.subscribe(channel).catch((error) => {
-        logger.debug("[runChangeNotifier] subscribe failed", { error, channel });
+        logger.error("[runChangeNotifier] Failed to subscribe to run-change channel", {
+          error,
+          channel,
+        });
       });
     }
     listeners.add(resolveChanged);
@@ -161,7 +170,10 @@ export class RunChangeNotifier {
               // now unsubscribed in Redis but has live waiters. Re-subscribe so they
               // still receive messages (the long-poll backstop covers the gap).
               subscriber.subscribe(channel).catch((error) => {
-                logger.debug("[runChangeNotifier] resubscribe failed", { error, channel });
+                logger.error("[runChangeNotifier] Failed to re-subscribe to run-change channel", {
+                  error,
+                  channel,
+                });
               });
             }
           })
@@ -169,7 +181,10 @@ export class RunChangeNotifier {
             // UNSUBSCRIBE failed: the channel is likely still subscribed in Redis.
             // Keep the (empty) map entry so a future subscriber reuses it without a
             // duplicate SUBSCRIBE and #onMessage stays consistent with Redis state.
-            logger.debug("[runChangeNotifier] unsubscribe failed", { error, channel });
+            logger.error("[runChangeNotifier] Failed to unsubscribe from run-change channel", {
+              error,
+              channel,
+            });
           });
       }
     };
