@@ -83,10 +83,10 @@ jobs:
           docker tag infra_image "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
           docker push "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
         env:
-          # Defaults to the public namespace. Set the IMAGE_REGISTRY repository
-          # variable to publish worker images under a different namespace (e.g.
-          # in a fork) instead of the default packages.
-          REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io/triggerdotdev' }}
+          # Defaults to ghcr.io/<owner>, so a fork publishes worker images to its
+          # own namespace automatically. Set the IMAGE_REGISTRY repository variable
+          # to publish under a different ghcr.io namespace instead.
+          REGISTRY: ${{ vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
           REPOSITORY: ${{ steps.get_repository.outputs.repo }}
           IMAGE_TAG: ${{ steps.get_tag.outputs.tag }}
 
