@@ -26,7 +26,7 @@ function initializeShadowRealtimeClient(): ShadowRealtimeClient {
     runReader: new RunHydrator({ replica: $replica }),
     runListResolver: new ClickHouseRunListResolver({
       getClickhouse: (organizationId) =>
-        clickhouseFactory.getClickhouseForOrganization(organizationId, "standard"),
+        clickhouseFactory.getClickhouseForOrganization(organizationId, "realtime"),
       prisma: $replica,
     }),
   });
