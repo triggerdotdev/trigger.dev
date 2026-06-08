@@ -9,11 +9,39 @@ export const mollifierDecisionsCounter = meter.createCounter("mollifier.decision
 export type DecisionOutcome = "pass_through" | "shadow_log" | "mollify";
 export type DecisionReason = "per_env_rate";
 
-export function recordDecision(outcome: DecisionOutcome, reason?: DecisionReason): void {
-  mollifierDecisionsCounter.add(1, {
+export type RecordDecisionOptions = {
+  reason?: DecisionReason;
+  // Whether the org has the per-org mollifier flag enabled. Emitted as the
+  // bounded `enrolled` label so we can see how often enrolled orgs pass
+  // through instead of mollifying — the whole point of this instrumentation.
+  enrolled: boolean;
+  // Org id, attached as the `org` label ONLY when `enrolled` is true. The
+  // enrolled cohort is capped operationally (<= 10 orgs), so this stays
+  // low-cardinality. It must NEVER be attached for non-enrolled orgs — that
+  // would fan the metric out across every org id in production (unbounded;
+  // the same high-cardinality ban that keeps envId/orgId off the other
+  // mollifier metrics). The guard lives in `decisionLabels`, so callers can
+  // pass orgId unconditionally.
+  orgId?: string;
+};
+
+// Pure: builds the metric label set for a gate decision. Extracted from
+// `recordDecision` so the org-only-when-enrolled cardinality guard is
+// unit-testable without standing up an OTel meter.
+export function decisionLabels(
+  outcome: DecisionOutcome,
+  opts: RecordDecisionOptions,
+): Record<string, string> {
+  return {
     outcome,
-    ...(reason ? { reason } : {}),
-  });
+    enrolled: opts.enrolled ? "true" : "false",
+    ...(opts.reason ? { reason: opts.reason } : {}),
+    ...(opts.enrolled && opts.orgId ? { org: opts.orgId } : {}),
+  };
+}
+
+export function recordDecision(outcome: DecisionOutcome, opts: RecordDecisionOptions): void {
+  mollifierDecisionsCounter.add(1, decisionLabels(outcome, opts));
 }
 
 // Counts subscriptions hitting `/realtime/v1/runs/<id>` for a run that
