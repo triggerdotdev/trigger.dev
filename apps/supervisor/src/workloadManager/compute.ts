@@ -133,12 +133,12 @@ export class ComputeWorkloadManager implements WorkloadManager {
     // Strip image digest - resolve by tag, not digest
     const imageRef = stripImageDigest(opts.image);
 
-    // Per-VM network endpoint labels, applied to the VM's network endpoint so
-    // network policy can select it. Mirrors the label the Kubernetes workload
-    // manager sets on the run pod.
-    const networkLabels: Record<string, string> = {};
+    // Labels forwarded to the compute provider for network-policy selection;
+    // the provider promotes a configured subset to its network layer. Mirrors
+    // the privatelink label the Kubernetes workload manager sets on the run pod.
+    const labels: Record<string, string> = {};
     if (opts.hasPrivateLink) {
-      networkLabels.privatelink = opts.orgId;
+      labels.privatelink = opts.orgId;
     }
 
     // Wide event: single canonical log line emitted in finally
@@ -181,9 +181,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
             deploymentVersion: opts.deploymentVersion,
             machine: opts.machine.name,
           },
-          ...(Object.keys(networkLabels).length > 0
-            ? { network_labels: networkLabels }
-            : {}),
+          ...(Object.keys(labels).length > 0 ? { labels } : {}),
         })
       );
 
@@ -321,12 +319,12 @@ export class ComputeWorkloadManager implements WorkloadManager {
       TRIGGER_WORKER_INSTANCE_NAME: this.opts.runner.instanceName,
     };
 
-    // Carry the same network endpoint labels onto the restored VM (mirror of
-    // the create path) so network policy keeps matching after a restore —
-    // without them a restored run would lose its policy-based egress.
-    const networkLabels: Record<string, string> = {};
+    // Resupply the same labels on restore (mirror of the create path); the
+    // provider doesn't persist them across a snapshot, so without this a
+    // restored run would lose its policy-based network selection.
+    const labels: Record<string, string> = {};
     if (opts.hasPrivateLink && opts.orgId) {
-      networkLabels.privatelink = opts.orgId;
+      labels.privatelink = opts.orgId;
     }
 
     this.logger.verbose("restore request body", {
@@ -342,9 +340,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
         metadata,
         cpu: opts.machine.cpu,
         memory_gb: opts.machine.memory,
-        ...(Object.keys(networkLabels).length > 0
-          ? { network_labels: networkLabels }
-          : {}),
+        ...(Object.keys(labels).length > 0 ? { labels } : {}),
       })
     );
 

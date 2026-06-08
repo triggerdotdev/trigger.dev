@@ -3,4 +3,4 @@ area: supervisor
 type: feature
 ---
 
-Forward per-VM network endpoint labels to compute runs on create and restore.
+Forward per-run identity labels to the compute provider on create and restore, letting network policy select runs (e.g. private link).

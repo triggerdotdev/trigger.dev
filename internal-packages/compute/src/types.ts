@@ -42,10 +42,10 @@ export const InstanceCreateRequestSchema = z.object({
   cpu: z.number(),
   memory_gb: z.number(),
   metadata: z.record(z.unknown()).optional(),
-  // Per-VM endpoint labels applied to the VM's network endpoint for
-  // network-policy selection. Distinct from metadata, which is
-  // observability-only.
-  network_labels: z.record(z.string()).optional(),
+  // Per-instance identity labels; the provider promotes a configured subset
+  // to network-policy selection. Distinct from metadata, which is
+  // observability-only and never selected on.
+  labels: z.record(z.string()).optional(),
 });
 export type InstanceCreateRequest = z.infer<typeof InstanceCreateRequestSchema>;
 
@@ -70,10 +70,10 @@ export const SnapshotRestoreRequestSchema = z.object({
   metadata: z.record(z.string()),
   cpu: z.number(),
   memory_gb: z.number(),
-  // Per-VM endpoint labels applied to the restored endpoint for network-policy
-  // selection. A restored VM must carry the same policy labels as a
-  // freshly-booted one or its egress allows are lost.
-  network_labels: z.record(z.string()).optional(),
+  // Per-instance identity labels; the caller must resupply the same set as on
+  // create. The provider doesn't persist them across a snapshot, so omitting
+  // them drops the restored run's policy-based network selection.
+  labels: z.record(z.string()).optional(),
 });
 export type SnapshotRestoreRequest = z.infer<typeof SnapshotRestoreRequestSchema>;
 
