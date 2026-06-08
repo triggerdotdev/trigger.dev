@@ -2,6 +2,7 @@ import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import {
   createTaskMetadataFailedErrorStack,
+  DuplicateTaskIdsError,
   TaskIndexingImportError,
   TaskMetadataParseError,
 } from "@trigger.dev/core/v3/errors";
@@ -129,6 +130,27 @@ export function startDevOutput(options: DevOutputOptions) {
         dashboardUrl,
         project: config.project,
         query: `Could not parse task metadata:\n ${errorStack}`,
+      });
+    } else if (error instanceof DuplicateTaskIdsError) {
+      const body = error.collisions
+        .map(({ id, filePaths }) => {
+          const distinct = Array.from(new Set(filePaths));
+
+          return distinct.length === 1
+            ? `${chalkTask(id)} was defined more than once in ${distinct[0]}`
+            : `${chalkTask(id)} was defined in:\n${distinct.map((f) => `  ${f}`).join("\n")}`;
+        })
+        .join("\n\n");
+
+      prettyError(
+        "Duplicate task ids detected",
+        `${body}\n\nTask ids must be unique across your project (including scheduled tasks). Please rename one of them.`,
+        cliLink("View the task docs", "https://trigger.dev/docs/tasks/overview")
+      );
+      aiHelpLink({
+        dashboardUrl,
+        project: config.project,
+        query: `Duplicate task ids: ${error.collisions.map((c) => c.id).join(", ")}`,
       });
     } else {
       const errorText = error instanceof Error ? error.message : "Unknown error";

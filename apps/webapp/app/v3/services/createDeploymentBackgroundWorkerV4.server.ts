@@ -160,6 +160,17 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       );
 
       if (resourcesError) {
+        if (resourcesError instanceof ServiceValidationError) {
+          // Customer-facing config error (e.g. duplicate task ids). Surface the
+          // real message to the client via the rethrow.
+          logger.warn("Error creating background worker resources", {
+            error: resourcesError.message,
+          });
+
+          await this.#failBackgroundWorkerDeployment(deployment, resourcesError);
+          throw resourcesError;
+        }
+
         logger.error("Error creating background worker resources", {
           error: resourcesError,
         });
