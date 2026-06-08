@@ -46,6 +46,7 @@ export async function seedLlmPricing(prisma: PrismaClient): Promise<{
           capabilities: catalog?.capabilities ?? [],
           isHidden: catalog?.isHidden ?? false,
           baseModelName: catalog?.baseModelName ?? null,
+          pricingUnit: "tokens",
         },
       });
 

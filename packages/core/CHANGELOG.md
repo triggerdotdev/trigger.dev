@@ -1,5 +1,26 @@
 # internal-platform
 
+## 4.5.0-rc.5
+
+### Patch Changes
+
+- Add optional `shouldPauseScaling` to the supervisor consumer pool scaling options to freeze scale-up while it returns true (scale-down stays allowed). ([#3836](https://github.com/triggerdotdev/trigger.dev/pull/3836))
+- Fix `@trigger.dev/core` build: cast the underlying log record exporter when calling `forceFlush` so it typechecks against the updated OpenTelemetry `LogRecordExporter` type (which no longer declares `forceFlush`). ([#3829](https://github.com/triggerdotdev/trigger.dev/pull/3829))
+- `envvars.upload` now accepts an optional `isSecret` flag, letting you create the imported variables as secret (redacted) environment variables. When omitted, variables default to non-secret. ([#3809](https://github.com/triggerdotdev/trigger.dev/pull/3809))
+
+  ```ts
+  await envvars.upload("proj_1234", "prod", {
+    variables: { STRIPE_SECRET_KEY: "sk_live_..." },
+    isSecret: true,
+  });
+  ```
+
+- Offload large trigger payloads to object storage before sending the trigger API request. The SDK uploads packets at or above the existing 128KB limit and sends an `application/store` pointer instead of embedding large JSON in the request body. `TriggerTaskRequestBody` now validates that `application/store` payloads are non-empty storage paths. ([#3785](https://github.com/triggerdotdev/trigger.dev/pull/3785))
+
+  Payload uploads use the same resolved `ApiClient` as the trigger call (including `requestOptions.clientConfig`), not only the global `apiClientManager.client` — so custom `baseURL`, access token, and preview branch apply to both presign and trigger.
+
+- Update the bundled OpenTelemetry packages to their latest releases (`@opentelemetry/sdk-node` 0.218.0, `@opentelemetry/core` 2.7.1, `@opentelemetry/host-metrics` 0.38.3). ([#3810](https://github.com/triggerdotdev/trigger.dev/pull/3810))
+
 ## 4.5.0-rc.4
 
 ### Patch Changes

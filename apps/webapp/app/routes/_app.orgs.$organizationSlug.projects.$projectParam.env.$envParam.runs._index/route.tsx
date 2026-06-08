@@ -1,7 +1,7 @@
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction, useNavigation } from "@remix-run/react";
+import { type MetaFunction, useLocation, useNavigation, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import {
   TypedAwait,
   typeddefer,
@@ -14,11 +14,12 @@ import { DevDisconnectedBanner, useDevPresence } from "~/components/DevPresence"
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header1 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { PulsingDot } from "~/components/primitives/PulsingDot";
 import {
   RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
@@ -55,7 +56,6 @@ import { cn } from "~/utils/cn";
 import {
   docsPath,
   EnvironmentParamSchema,
-  v3CreateBulkActionPath,
   v3ProjectPath,
   v3TestPath,
   v3TestTaskPath,
@@ -64,6 +64,10 @@ import { throwNotFound } from "~/utils/httpErrors";
 import { ListPagination } from "../../components/ListPagination";
 import { CreateBulkActionInspector } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
 import { Callout } from "~/components/primitives/Callout";
+import { isRunsListLoading, RUNS_BULK_INSPECTOR_OPEN_VALUE, shouldRevalidateRunsList } from "./shouldRevalidateRunsList";
+import { useRunsLiveReload } from "./useRunsLiveReload";
+
+export { shouldRevalidateRunsList as shouldRevalidate };
 
 export const meta: MetaFunction = () => {
   return [
@@ -89,7 +93,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const filters = await getRunFiltersFromRequest(request);
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
   const presenter = new NextRunListPresenter($replica, clickhouse);
   const list = presenter.call(project.organizationId, environment.id, {
     userId,
@@ -203,19 +210,44 @@ function RunsList({
   rootOnlyDefault: boolean;
   filters: TaskRunListSearchFilters;
 }) {
+  const revalidator = useRevalidator();
+  const location = useLocation();
   const navigation = useNavigation();
-  const isLoading = navigation.state !== "idle";
+  const isLoading = isRunsListLoading(navigation, location.search);
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
   const { has, replace } = useSearchParams();
+  const { visibleRuns, showNewRunsBanner, newRunsCount, dismissNewRuns, childrenStatusesBasePath } =
+    useRunsLiveReload({
+      runs: list.runs,
+      hasAnyRuns: list.hasAnyRuns,
+      isLoading,
+      organizationSlug: organization.slug,
+      projectSlug: project.slug,
+      environmentSlug: environment.slug,
+    });
+
+  const onClickShowNewRuns = () => {
+    const isPaginated = has("cursor") || has("direction");
+    dismissNewRuns();
+    if (isPaginated) {
+      replace({
+        cursor: undefined,
+        direction: undefined,
+      });
+      return;
+    }
+
+    revalidator.revalidate();
+  };
 
   // Shortcut keys for bulk actions
   useShortcutKeys({
     shortcut: { key: "r" },
     action: (e) => {
       replace({
-        bulkInspector: "true",
+        bulkInspector: RUNS_BULK_INSPECTOR_OPEN_VALUE,
         action: "replay",
         mode: selectedItems.size > 0 ? "selected" : undefined,
       });
@@ -225,7 +257,7 @@ function RunsList({
     shortcut: { key: "c" },
     action: (e) => {
       replace({
-        bulkInspector: "true",
+        bulkInspector: RUNS_BULK_INSPECTOR_OPEN_VALUE,
         action: "cancel",
         mode: selectedItems.size > 0 ? "selected" : undefined,
       });
@@ -233,6 +265,13 @@ function RunsList({
   });
 
   const isShowingBulkActionInspector = has("bulkInspector") && list.hasAnyRuns;
+  const [isBulkInspectorPanelCollapsed, setIsBulkInspectorPanelCollapsed] = useState(
+    !isShowingBulkActionInspector
+  );
+  // Keep content mounted until onCollapseChange reports the panel is fully collapsed.
+  const showBulkInspectorContent =
+    isShowingBulkActionInspector || !isBulkInspectorPanelCollapsed;
+
   return (
     <ResizablePanelGroup orientation="horizontal" className="max-h-full">
       <ResizablePanel id="runs-main" min={"100px"}>
@@ -265,48 +304,67 @@ function RunsList({
                     rootOnlyDefault={rootOnlyDefault}
                   />
                   <div className="flex items-center justify-end gap-x-2">
-                    {!isShowingBulkActionInspector && (
-                      <LinkButton
-                        variant="secondary/small"
-                        to={v3CreateBulkActionPath(
-                          organization,
-                          project,
-                          environment,
-                          filters,
-                          selectedItems.size > 0 ? "selected" : undefined
-                        )}
-                        LeadingIcon={ListCheckedIcon}
-                        className={selectedItems.size > 0 ? "pr-1" : undefined}
-                        tooltip={
-                          <div className="-mr-1 flex items-center gap-3 text-xs text-text-dimmed">
-                            <div className="flex items-center gap-0.5">
-                              <span>Replay</span>
-                              <ShortcutKey shortcut={{ key: "r" }} variant={"small"} />
-                            </div>
-                            <div className="flex items-center gap-0.5">
-                              <span>Cancel</span>
-                              <ShortcutKey shortcut={{ key: "c" }} variant={"small"} />
-                            </div>
-                          </div>
-                        }
-                      >
-                        <span className="flex items-center gap-x-1 whitespace-nowrap text-text-bright">
-                          <span>Bulk action</span>
-                          {selectedItems.size > 0 && (
-                            <Badge variant="rounded">{selectedItems.size}</Badge>
-                          )}
-                        </span>
-                      </LinkButton>
+                    {showNewRunsBanner && (
+                      <span className="flex duration-150 animate-in fade-in-0">
+                        <Button
+                          variant="secondary/small"
+                          className="text-text-bright"
+                          onClick={onClickShowNewRuns}
+                          LeadingIcon={<PulsingDot className="h-2 w-2" />}
+                          tooltip="Refresh to see new runs"
+                          aria-label="New runs created. Refresh to see new runs."
+                        >
+                          {newRunsCount >= 100
+                            ? "99+ new runs"
+                            : `${newRunsCount} new ${newRunsCount === 1 ? "run" : "runs"}`}
+                        </Button>
+                      </span>
                     )}
+                    {/* Stay mounted while the inspector is open to avoid toolbar layout shift. */}
+                    <Button
+                      variant="secondary/small"
+                      disabled={isShowingBulkActionInspector}
+                      onClick={() =>
+                        replace({
+                          bulkInspector: RUNS_BULK_INSPECTOR_OPEN_VALUE,
+                          mode: selectedItems.size > 0 ? "selected" : undefined,
+                        })
+                      }
+                      LeadingIcon={ListCheckedIcon}
+                      className={cn(
+                        selectedItems.size > 0 ? "pr-1" : undefined,
+                        isShowingBulkActionInspector && "pointer-events-none invisible"
+                      )}
+                      tooltip={
+                        <div className="-mr-1 flex items-center gap-3 text-xs text-text-dimmed">
+                          <div className="flex items-center gap-0.5">
+                            <span>Replay</span>
+                            <ShortcutKey shortcut={{ key: "r" }} variant={"small"} />
+                          </div>
+                          <div className="flex items-center gap-0.5">
+                            <span>Cancel</span>
+                            <ShortcutKey shortcut={{ key: "c" }} variant={"small"} />
+                          </div>
+                        </div>
+                      }
+                    >
+                      <span className="flex items-center gap-x-1 whitespace-nowrap text-text-bright">
+                        <span>Bulk action</span>
+                        {selectedItems.size > 0 && (
+                          <Badge variant="rounded">{selectedItems.size}</Badge>
+                        )}
+                      </span>
+                    </Button>
                     <ListPagination list={list} />
                   </div>
                 </div>
 
                 <TaskRunsTable
-                  total={list.runs.length}
+                  total={visibleRuns.length}
                   hasFilters={list.hasFilters}
                   filters={list.filters}
-                  runs={list.runs}
+                  runs={visibleRuns}
+                  childrenStatusesBasePath={childrenStatusesBasePath}
                   isLoading={isLoading}
                   allowSelection
                   rootOnlyDefault={rootOnlyDefault}
@@ -328,12 +386,12 @@ function RunsList({
         className="overflow-hidden"
         collapsible
         collapsed={!isShowingBulkActionInspector}
-        onCollapseChange={() => {}}
+        onCollapseChange={setIsBulkInspectorPanelCollapsed}
         collapsedSize="0px"
         collapseAnimation={RESIZABLE_PANEL_ANIMATION}
       >
         <div className="h-full" style={{ minWidth: 400 }}>
-          {isShowingBulkActionInspector && (
+          {showBulkInspectorContent && (
             <CreateBulkActionInspector
               filters={filters}
               selectedItems={selectedItems}

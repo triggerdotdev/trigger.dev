@@ -28,7 +28,7 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
         event: "import",
         duration: 67,
         entryPoint:
-          "/Users/eric/code/triggerdotdev/trigger.dev/references/d3-chat/.trigger/tmp/build-AL7zTl/references/d3-chat/src/trigger/chat.mjs",
+          "/project/.trigger/tmp/build-AL7zTl/src/trigger/chat.mjs",
       },
     },
   ];
@@ -53,7 +53,7 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
         event: "import",
         duration: 67,
         entryPoint:
-          "/Users/eric/code/triggerdotdev/trigger.dev/references/d3-chat/.trigger/tmp/build-AL7zTl/references/d3-chat/src/trigger/chat.mjs",
+          "/project/.trigger/tmp/build-AL7zTl/src/trigger/chat.mjs",
       },
     },
   ];

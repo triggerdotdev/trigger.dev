@@ -59,6 +59,9 @@ export async function applyMetadataMutationToBufferedRun(input: {
   body: Pick<FlushedRunMetadata, "metadata" | "operations">;
   buffer?: MollifierBuffer | null;
   maxRetries?: number;
+  // Jittered conflict-backoff envelope: random in [0, base + attempt * step) ms.
+  backoffBaseMs?: number;
+  backoffStepMs?: number;
 }): Promise<ApplyMetadataMutationOutcome> {
   const buffer = input.buffer ?? getMollifierBuffer();
   if (!buffer) return { kind: "not_found" };
@@ -71,6 +74,8 @@ export async function applyMetadataMutationToBufferedRun(input: {
   // with sub-percent failure probability; the cost is bounded (each
   // retry is one Redis Lua call ~1ms).
   const maxRetries = input.maxRetries ?? 12;
+  const backoffBaseMs = input.backoffBaseMs ?? 5;
+  const backoffStepMs = input.backoffStepMs ?? 5;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const entry = await buffer.getEntry(input.runId);
     if (!entry) return { kind: "not_found" };
@@ -192,7 +197,7 @@ export async function applyMetadataMutationToBufferedRun(input: {
       observedVersion: entry.metadataVersion,
       currentVersion: cas.currentVersion,
     });
-    const backoffMs = Math.floor(Math.random() * (5 + attempt * 5));
+    const backoffMs = Math.floor(Math.random() * (backoffBaseMs + attempt * backoffStepMs));
     await new Promise((resolve) => setTimeout(resolve, backoffMs));
   }
 

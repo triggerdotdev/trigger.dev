@@ -54,7 +54,7 @@ const setup = async () => {
     await prisma.runtimeEnvironment.create({
       data: {
         slug: "dev",
-        // Defined in @references/nextjs-test
+        // Fixed e2e test API key
         apiKey: "tr_dev_test-api-key",
         pkApiKey: "tr_dev_pk_test-api-key",
         autoEnableInternalSources: false,
@@ -77,7 +77,7 @@ const setup = async () => {
     await prisma.runtimeEnvironment.create({
       data: {
         slug: "prod",
-        // Defined in @references/nextjs-test
+        // Fixed e2e test API key
         apiKey: "tr_prod_test-api-key",
         pkApiKey: "tr_prod_pk_test-api-key",
         autoEnableInternalSources: false,

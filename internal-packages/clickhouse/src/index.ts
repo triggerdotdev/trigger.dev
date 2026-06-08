@@ -9,6 +9,7 @@ import {
   getTaskRunsQueryBuilder,
   getTaskActivityQueryBuilder,
   getCurrentRunningStats,
+  getChildRunStatusCounts,
   getAverageDurations,
   getTaskUsageByOrganization,
   getTaskRunsCountQueryBuilder,
@@ -20,6 +21,8 @@ import {
   getSpanDetailsQueryBuilderV2,
   getTraceDetailedSummaryQueryBuilder,
   getTraceDetailedSummaryQueryBuilderV2,
+  getTraceEventsForExportQueryBuilder,
+  getTraceEventsForExportQueryBuilderV2,
   getTraceSummaryQueryBuilder,
   getTraceSummaryQueryBuilderV2,
   insertTaskEvents,
@@ -228,6 +231,7 @@ export class ClickHouse {
       pendingVersionIdsQueryBuilder: getPendingVersionIdsQueryBuilder(this.reader),
       getTaskActivity: getTaskActivityQueryBuilder(this.reader),
       getCurrentRunningStats: getCurrentRunningStats(this.reader),
+      getChildRunStatusCounts: getChildRunStatusCounts(this.reader),
       getAverageDurations: getAverageDurations(this.reader),
       getTaskUsageByOrganization: getTaskUsageByOrganization(this.reader),
     };
@@ -238,6 +242,7 @@ export class ClickHouse {
       insert: insertTaskEvents(this.writer),
       traceSummaryQueryBuilder: getTraceSummaryQueryBuilder(this.reader),
       traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilder(this.reader),
+      traceEventsForExportQueryBuilder: getTraceEventsForExportQueryBuilder(this.reader),
       spanDetailsQueryBuilder: getSpanDetailsQueryBuilder(this.reader),
     };
   }
@@ -276,6 +281,7 @@ export class ClickHouse {
       insert: insertTaskEventsV2(this.writer),
       traceSummaryQueryBuilder: getTraceSummaryQueryBuilderV2(this.reader),
       traceDetailedSummaryQueryBuilder: getTraceDetailedSummaryQueryBuilderV2(this.reader),
+      traceEventsForExportQueryBuilder: getTraceEventsForExportQueryBuilderV2(this.reader),
       spanDetailsQueryBuilder: getSpanDetailsQueryBuilderV2(this.reader),
       logDetailQueryBuilder: getLogDetailQueryBuilderV2(this.reader),
     };

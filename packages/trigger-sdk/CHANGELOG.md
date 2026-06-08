@@ -1,5 +1,19 @@
 # @trigger.dev/sdk
 
+## 4.5.0-rc.5
+
+### Patch Changes
+
+- Adds AI SDK 7 support. The `ai` peer range now includes v7, and the `chat.agent` / chat surfaces work against v7's ESM-only build. On v7, install `@ai-sdk/otel` alongside `ai` and the SDK registers it for you so `experimental_telemetry` spans keep flowing into your run traces (v7 stopped emitting them from `ai` core). v5 and v6 keep working unchanged. ([#3833](https://github.com/triggerdotdev/trigger.dev/pull/3833))
+- `useTriggerChatTransport` now recovers when restored session state points at a session that no longer exists in the current environment ([#3816](https://github.com/triggerdotdev/trigger.dev/pull/3816))
+- Offload large trigger payloads to object storage before sending the trigger API request. The SDK uploads packets at or above the existing 128KB limit and sends an `application/store` pointer instead of embedding large JSON in the request body. `TriggerTaskRequestBody` now validates that `application/store` payloads are non-empty storage paths. ([#3785](https://github.com/triggerdotdev/trigger.dev/pull/3785))
+
+  Payload uploads use the same resolved `ApiClient` as the trigger call (including `requestOptions.clientConfig`), not only the global `apiClientManager.client` — so custom `baseURL`, access token, and preview branch apply to both presign and trigger.
+
+- Update the bundled OpenTelemetry packages to their latest releases (`@opentelemetry/sdk-node` 0.218.0, `@opentelemetry/core` 2.7.1, `@opentelemetry/host-metrics` 0.38.3). ([#3810](https://github.com/triggerdotdev/trigger.dev/pull/3810))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.5`
+
 ## 4.5.0-rc.4
 
 ### Patch Changes

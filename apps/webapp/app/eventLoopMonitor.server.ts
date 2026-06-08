@@ -124,7 +124,7 @@ function startEventLoopUtilizationMonitoring() {
     const utilization = Number.isFinite(diff.utilization) ? diff.utilization : 0;
 
     if (Math.random() < env.EVENT_LOOP_MONITOR_UTILIZATION_SAMPLE_RATE) {
-      logger.info("nodejs.event_loop.utilization", { utilization });
+      logger.debug("nodejs.event_loop.utilization", { utilization });
     }
 
     lastEventLoopUtilization = currentEventLoopUtilization;

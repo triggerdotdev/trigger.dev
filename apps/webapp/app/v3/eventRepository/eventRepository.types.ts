@@ -330,6 +330,24 @@ export type SpanDetailedSummary = {
   children: Array<SpanDetailedSummary>;
 };
 
+// A single trace event for the streaming export path (the "Download trace"
+// feature). Deliberately flat and self-contained: it carries its own parent ref
+// so hierarchy is reconstructable downstream without ever building a tree. Used
+// by `streamTraceEvents`, which yields these one at a time so an arbitrarily
+// large trace is never fully resident in memory.
+export type StreamedTraceEvent = {
+  spanId: string;
+  parentSpanId: string;
+  startTime: Date;
+  durationNs: number;
+  level: string;
+  message: string;
+  isError: boolean;
+  // Span attributes/properties as a raw JSON string, emitted verbatim (the
+  // ClickHouse store already materialises it as text — no per-row parse).
+  propertiesText: string;
+};
+
 export type TraceDetailedSummary = {
   traceId: string;
   rootSpan: SpanDetailedSummary;
@@ -406,6 +424,18 @@ export interface IEventRepository {
     endCreatedAt?: Date,
     options?: { includeDebugLogs?: boolean }
   ): Promise<TraceDetailedSummary | undefined>;
+
+  // Streams a trace's events in start_time order, one at a time, without ever
+  // materialising the full result set or a tree. Powers the streaming trace
+  // export so arbitrarily large traces download with bounded memory.
+  streamTraceEvents(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
+  ): AsyncIterable<StreamedTraceEvent>;
 
   getRunEvents(
     storeTable: TaskEventStoreTable,

@@ -109,6 +109,44 @@ export function getTraceDetailedSummaryQueryBuilder(
   });
 }
 
+// Row shape for streaming a whole trace out for export (the "Download trace"
+// feature). Unlike the detailed-summary builders this keeps the FULL message
+// (not LEFT(message, 256)) since the export is the source of truth, and it's
+// consumed via executeStream() so the trace is never fully materialised.
+export type TaskEventExportRow = {
+  span_id: string;
+  parent_span_id: string;
+  start_time: string;
+  duration: number | string;
+  status: string;
+  kind: string;
+  message: string;
+  attributes_text: string;
+};
+
+const TASK_EVENT_EXPORT_COLUMNS = [
+  "span_id",
+  "parent_span_id",
+  "start_time",
+  "duration",
+  "status",
+  "kind",
+  "message",
+  "attributes_text",
+] as const;
+
+export function getTraceEventsForExportQueryBuilder(
+  ch: ClickhouseReader,
+  settings?: ClickHouseSettings
+) {
+  return ch.queryBuilderFast<TaskEventExportRow>({
+    name: "getTraceEventsForExport",
+    table: "trigger_dev.task_events_v1",
+    columns: [...TASK_EVENT_EXPORT_COLUMNS],
+    settings,
+  });
+}
+
 export const TaskEventDetailsV1Result = z.object({
   span_id: z.string(),
   parent_span_id: z.string(),
@@ -229,6 +267,18 @@ export function getSpanDetailsQueryBuilderV2(
     baseQuery:
       "SELECT span_id, parent_span_id, start_time, duration, status, kind, metadata, message, attributes_text FROM trigger_dev.task_events_v2",
     schema: TaskEventDetailsV1Result,
+    settings,
+  });
+}
+
+export function getTraceEventsForExportQueryBuilderV2(
+  ch: ClickhouseReader,
+  settings?: ClickHouseSettings
+) {
+  return ch.queryBuilderFast<TaskEventExportRow>({
+    name: "getTraceEventsForExportV2",
+    table: "trigger_dev.task_events_v2",
+    columns: [...TASK_EVENT_EXPORT_COLUMNS],
     settings,
   });
 }

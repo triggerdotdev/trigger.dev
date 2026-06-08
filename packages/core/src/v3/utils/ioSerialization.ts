@@ -100,22 +100,33 @@ export async function stringifyIO(value: any): Promise<IOPacket> {
   }
 }
 
+/**
+ * Offloads a packet to object storage when it exceeds the size limit.
+ *
+ * @param client - Optional API client to use for the upload presign request. When
+ * omitted, falls back to the global `apiClientManager.client`. Pass an explicit client
+ * (e.g. one built from a custom `clientConfig`) to ensure the payload is uploaded using
+ * the same configuration as the accompanying trigger API call.
+ */
 export async function conditionallyExportPacket(
   packet: IOPacket,
   pathPrefix: string,
-  tracer?: TriggerTracer
+  tracer?: TriggerTracer,
+  client?: ApiClient
 ): Promise<IOPacket> {
-  if (apiClientManager.client) {
+  const $client = client ?? apiClientManager.client;
+
+  if ($client) {
     const { needsOffloading, size } = packetRequiresOffloading(packet);
 
     if (needsOffloading) {
       if (!tracer) {
-        return await exportPacket(packet, pathPrefix);
+        return await exportPacket(packet, pathPrefix, $client);
       } else {
         const result = await tracer.startActiveSpan(
           "store.uploadOutput",
           async (span) => {
-            return await exportPacket(packet, pathPrefix);
+            return await exportPacket(packet, pathPrefix, $client);
           },
           {
             attributes: {
@@ -163,11 +174,15 @@ const ioRetryOptions = {
   randomize: true,
 } satisfies RetryOptions;
 
-async function exportPacket(packet: IOPacket, pathPrefix: string): Promise<IOPacket> {
+async function exportPacket(
+  packet: IOPacket,
+  pathPrefix: string,
+  client: ApiClient
+): Promise<IOPacket> {
   // Offload the output
   const filename = `${pathPrefix}.${getPacketExtension(packet.dataType)}`;
 
-  const presignedResponse = await apiClientManager.client!.createUploadPayloadUrl(filename);
+  const presignedResponse = await client.createUploadPayloadUrl(filename);
 
   if (!presignedResponse.storagePath) {
     throw new Error(

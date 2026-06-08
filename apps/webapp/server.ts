@@ -108,7 +108,16 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
   // more aggressive with this caching.
   app.use(express.static("public", { maxAge: "1h" }));
 
-  app.use(morgan("tiny"));
+  // On high-volume machine-ingest services (e.g. otel) the per-request access
+  // log dominates log volume. HTTP_ACCESS_LOG_DISABLED suppresses successful
+  // (2xx) access logs; non-2xx responses are always logged so errors stay visible.
+  const suppressSuccessfulAccessLogs = process.env.HTTP_ACCESS_LOG_DISABLED === "1";
+  app.use(
+    morgan("tiny", {
+      skip: (_req, res) =>
+        suppressSuccessfulAccessLogs && res.statusCode >= 200 && res.statusCode < 300,
+    })
+  );
 
   process.title = ENABLE_CLUSTER
     ? `node webapp-worker-${cluster.isWorker ? cluster.worker?.id : "solo"}`

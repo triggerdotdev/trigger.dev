@@ -50,12 +50,15 @@ export function initMollifierStaleSweepWorker(): void {
       enableAutoPipelining: true,
       ...(env.TRIGGER_MOLLIFIER_REDIS_TLS_DISABLED === "true" ? {} : { tls: {} }),
     },
+    maxRetriesPerRequest: env.TRIGGER_MOLLIFIER_REDIS_MAX_RETRIES_PER_REQUEST,
   });
 
   const handle = startStaleSweepInterval(
     {
       intervalMs: env.TRIGGER_MOLLIFIER_STALE_SWEEP_INTERVAL_MS,
       staleThresholdMs: env.TRIGGER_MOLLIFIER_STALE_SWEEP_THRESHOLD_MS,
+      maxEntriesPerEnv: env.TRIGGER_MOLLIFIER_STALE_SWEEP_MAX_ENTRIES_PER_ENV,
+      maxOrgsPerPass: env.TRIGGER_MOLLIFIER_STALE_SWEEP_MAX_ORGS_PER_PASS,
     },
     { state },
   );

@@ -1,6 +1,10 @@
 import { SupervisorHttpClient } from "./http.js";
 import { PreDequeueFn, PreSkipFn, SupervisorClientCommonOptions } from "./types.js";
-import { WorkerApiDequeueResponseBody, WorkerApiHeartbeatRequestBody } from "./schemas.js";
+import {
+  WorkerApiDequeueResponseBody,
+  WorkerApiHeartbeatRequestBody,
+  WorkerQueueClass,
+} from "./schemas.js";
 import { RunQueueConsumerPool, ScalingOptions } from "./consumerPool.js";
 import { WorkerEvents } from "./events.js";
 import EventEmitter from "events";
@@ -21,6 +25,8 @@ type SupervisorSessionOptions = SupervisorClientCommonOptions & {
   preDequeue?: PreDequeueFn;
   preSkip?: PreSkipFn;
   maxRunCount?: number;
+  /** Which worker-queue class this supervisor's consumers pull from. Defaults to the region queue. */
+  queueClass?: WorkerQueueClass;
   sendRunDebugLogs?: boolean;
   scaling: ScalingOptions;
   metricsRegistry?: Registry;
@@ -56,6 +62,7 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
         intervalMs: opts.dequeueIntervalMs,
         idleIntervalMs: opts.dequeueIdleIntervalMs,
         maxRunCount: opts.maxRunCount,
+        queueClass: opts.queueClass,
       },
       scaling: opts.scaling,
       metricsRegistry: opts.metricsRegistry,

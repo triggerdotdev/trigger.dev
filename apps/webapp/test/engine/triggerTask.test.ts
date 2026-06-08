@@ -267,6 +267,124 @@ describe("RunEngineTriggerTaskService", () => {
     await engine.quit();
   });
 
+  containerTest(
+    "routes scheduled-lineage runs to a separate worker queue that dequeues independently",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          // Disable the background master-queue consumers so our manual
+          // processMasterQueueForEnvironment + dequeue calls are deterministic.
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
+        },
+        runLock: { redis: redisOptions },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0005,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+        // Turn the per-org split flag on in-memory — the resolver reads this
+        // object directly (no DB round-trip on the trigger hot path).
+        (authenticatedEnvironment.organization as { featureFlags?: unknown }).featureFlags = {
+          workerQueueScheduledSplitEnabled: true,
+        };
+
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const triggerTaskService = new RunEngineTriggerTaskService({
+          engine,
+          prisma,
+          payloadProcessor: new MockPayloadProcessor(),
+          queueConcern: new DefaultQueueManager(prisma, engine),
+          idempotencyKeyConcern: new IdempotencyKeyConcern(
+            prisma,
+            engine,
+            new MockTraceEventConcern()
+          ),
+          validator: new MockTriggerTaskValidator(),
+          traceEventConcern: new MockTraceEventConcern(),
+          tracer: trace.getTracer("test", "0.0.0"),
+          metadataMaximumSize: 1024 * 1024 * 1,
+        });
+
+        // A standard run (default triggerSource) stays on the region queue.
+        const standardResult = await triggerTaskService.call({
+          taskId: taskIdentifier,
+          environment: authenticatedEnvironment,
+          body: { payload: { kind: "standard" } },
+        });
+        assertNonNullable(standardResult);
+
+        // A scheduled run routes to the `<region>:scheduled` queue. Descendants
+        // would too, via rootTriggerSource propagation.
+        const scheduledResult = await triggerTaskService.call({
+          taskId: taskIdentifier,
+          environment: authenticatedEnvironment,
+          body: { payload: { kind: "scheduled" } },
+          options: { triggerSource: "schedule" },
+        });
+        assertNonNullable(scheduledResult);
+
+        const standardRun = await prisma.taskRun.findUniqueOrThrow({
+          where: { id: standardResult.run.id },
+        });
+        const scheduledRun = await prisma.taskRun.findUniqueOrThrow({
+          where: { id: scheduledResult.run.id },
+        });
+
+        // Producer routing: the persisted worker queue carries the class.
+        const baseWorkerQueue = standardRun.workerQueue;
+        expect(scheduledRun.workerQueue).toBe(`${baseWorkerQueue}:scheduled`);
+
+        // Move both runs from the env queue onto their respective worker queues.
+        await engine.runQueue.processMasterQueueForEnvironment(authenticatedEnvironment.id, 10);
+        await setTimeout(500);
+
+        // Dequeue isolation: the scheduled queue yields only the scheduled run...
+        const dequeuedScheduled = await engine.dequeueFromWorkerQueue({
+          consumerId: "test-scheduled-consumer",
+          workerQueue: `${baseWorkerQueue}:scheduled`,
+        });
+        expect(dequeuedScheduled.length).toBe(1);
+        assertNonNullable(dequeuedScheduled[0]);
+        expect(dequeuedScheduled[0].run.id).toBe(scheduledResult.run.id);
+
+        // ...and the base queue yields only the standard run.
+        const dequeuedStandard = await engine.dequeueFromWorkerQueue({
+          consumerId: "test-standard-consumer",
+          workerQueue: baseWorkerQueue,
+        });
+        expect(dequeuedStandard.length).toBe(1);
+        assertNonNullable(dequeuedStandard[0]);
+        expect(dequeuedStandard[0].run.id).toBe(standardResult.run.id);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
   // The BatchQueue worker rebuilds body.options from Redis-stored items
   // (Record<string, unknown>), so the Phase-2 schema coercion doesn't apply
   // to in-flight items enqueued before the schema fix. The defensive

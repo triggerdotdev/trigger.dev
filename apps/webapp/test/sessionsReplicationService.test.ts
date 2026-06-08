@@ -1,5 +1,5 @@
 import { ClickHouse } from "@internal/clickhouse";
-import { containerTest } from "@internal/testcontainers";
+import { replicationContainerTest } from "@internal/testcontainers";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 import { SessionsReplicationService } from "~/services/sessionsReplicationService.server";
@@ -8,7 +8,7 @@ import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickho
 vi.setConfig({ testTimeout: 60_000 });
 
 describe("SessionsReplicationService", () => {
-  containerTest(
+  replicationContainerTest(
     "replicates an insert from Postgres Session → ClickHouse sessions_v1",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       // Logical replication needs full-row images for DELETE events.
@@ -116,7 +116,7 @@ describe("SessionsReplicationService", () => {
     }
   );
 
-  containerTest(
+  replicationContainerTest(
     "replicates an update (close) from Postgres → ClickHouse",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       await prisma.$executeRawUnsafe(`ALTER TABLE public."Session" REPLICA IDENTITY FULL;`);

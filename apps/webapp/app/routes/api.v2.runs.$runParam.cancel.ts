@@ -1,5 +1,6 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
+import { env as appEnv } from "~/env.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
@@ -62,6 +63,10 @@ const { action } = createActionApiRoute(
       },
       synthesisedResponse: () => json({ id: runId }, { status: 200 }),
       abortSignal: getRequestAbortSignal(),
+      safetyNetMs: appEnv.TRIGGER_MOLLIFIER_MUTATE_SAFETY_NET_MS,
+      pollStepMs: appEnv.TRIGGER_MOLLIFIER_MUTATE_POLL_STEP_MS,
+      maxPollStepMs: appEnv.TRIGGER_MOLLIFIER_MUTATE_MAX_POLL_STEP_MS,
+      backoffFactor: appEnv.TRIGGER_MOLLIFIER_MUTATE_BACKOFF_FACTOR,
     });
 
     if (outcome.kind === "not_found") {

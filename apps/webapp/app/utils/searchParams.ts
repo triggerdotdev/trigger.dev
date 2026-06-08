@@ -1,5 +1,22 @@
-import { ZodType } from "zod";
+import { z, ZodType } from "zod";
 import { fromZodError } from "zod-validation-error";
+
+/**
+ * Parses a comma-separated `runIds` query param into a trimmed, de-duplicated
+ * list of run friendly IDs, capped at 100. Shared by the runs `/live` and
+ * `/children-statuses` resource routes.
+ */
+export const runIdsQueryParam = z
+  .string()
+  .optional()
+  .transform((value) => {
+    const ids =
+      value
+        ?.split(",")
+        .map((id) => id.trim())
+        .filter(Boolean) ?? [];
+    return [...new Set(ids)].slice(0, 100);
+  });
 
 export function objectToSearchParams(
   obj:
