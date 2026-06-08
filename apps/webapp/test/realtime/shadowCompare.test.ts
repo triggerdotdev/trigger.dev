@@ -49,7 +49,11 @@ function makeComparator(
   resolvedIds: string[] = []
 ) {
   return new RealtimeShadowComparator({
-    runReader: { getRunById: async (_env: string, id: string) => rowsById[id] ?? null } as any,
+    runReader: {
+      getRunById: async (_env: string, id: string) => rowsById[id] ?? null,
+      hydrateByIds: async (_env: string, ids: string[]) =>
+        ids.map((id) => rowsById[id]).filter((row): row is RealtimeRunRow => Boolean(row)),
+    } as any,
     runListResolver: { resolveMatchingRunIds: async (_f: RunListFilter) => resolvedIds } as any,
   });
 }

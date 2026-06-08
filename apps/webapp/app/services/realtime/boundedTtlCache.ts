@@ -34,7 +34,9 @@ export class BoundedTtlCache<V> {
   }
 
   set(key: string, value: V): void {
-    if (this.#entries.size >= this.maxEntries) {
+    // Only run capacity eviction when inserting a NEW key — updating an existing key
+    // doesn't grow the map, so it must never drop an unrelated live entry.
+    if (!this.#entries.has(key) && this.#entries.size >= this.maxEntries) {
       const now = Date.now();
       for (const [key, entry] of this.#entries) {
         if (entry.expiresAt <= now) {

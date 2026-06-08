@@ -95,13 +95,21 @@ export class RealtimeShadowComparator {
       diffs: [],
     };
 
+    // Bulk-hydrate every emitted run in one query rather than a per-message round
+    // trip, so shadow mode doesn't inflate the very replica load it's measuring.
+    const emittedIds = changes
+      .map((m) => m.value.id)
+      .filter((id): id is string => typeof id === "string");
+    const hydrated = await this.options.runReader.hydrateByIds(input.environment.id, emittedIds);
+    const rowsById = new Map(hydrated.map((row) => [row.id, row]));
+
     for (const message of changes) {
       const runId = message.value.id ?? undefined;
       if (!runId) {
         continue;
       }
 
-      const row = await this.options.runReader.getRunById(input.environment.id, runId);
+      const row = rowsById.get(runId);
       if (!row) {
         // Run no longer readable (deleted / replica miss). Not a serialization divergence.
         outcome.serializationSkew++;

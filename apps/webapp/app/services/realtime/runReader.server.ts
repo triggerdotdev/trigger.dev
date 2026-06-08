@@ -1,6 +1,6 @@
 import { type Prisma, type PrismaClient } from "@trigger.dev/database";
 import { BoundedTtlCache } from "./boundedTtlCache";
-import { type RealtimeRunRow } from "./electricStreamProtocol.server";
+import { RESERVED_COLUMNS, type RealtimeRunRow } from "./electricStreamProtocol.server";
 
 /**
  * RunReader — the pluggable read half of the notifier-backed realtime feed.
@@ -52,7 +52,7 @@ export const RUN_HYDRATOR_SELECT = {
  * `buildHydratorSelect`), so the replica doesn't ship large `payload`/`output`/
  * `metadata`/`error` columns the response will drop anyway.
  */
-const ALWAYS_HYDRATED_COLUMNS = new Set<string>(["id", "updatedAt"]);
+const ALWAYS_HYDRATED_COLUMNS = new Set<string>(["id", "updatedAt", ...RESERVED_COLUMNS]);
 
 /** Project `RUN_HYDRATOR_SELECT` down to the columns the client didn't skip (plus
  * the always-needed ones). An empty skip set returns the full select unchanged. */

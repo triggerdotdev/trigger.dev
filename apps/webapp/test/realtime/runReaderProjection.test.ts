@@ -11,6 +11,24 @@ describe("buildHydratorSelect", () => {
     expect(select.error).toBe(true);
   });
 
+  it("keeps protocol-reserved columns even when asked to skip them", () => {
+    // Reserved columns are always emitted by the serializer, so hydration must keep
+    // them regardless of skipColumns or the output is null/incorrect.
+    const select = buildHydratorSelect([
+      "status",
+      "taskIdentifier",
+      "createdAt",
+      "friendlyId",
+      "payload",
+    ]);
+    expect(select.status).toBe(true);
+    expect(select.taskIdentifier).toBe(true);
+    expect(select.createdAt).toBe(true);
+    expect(select.friendlyId).toBe(true);
+    // A non-reserved skipped column is still dropped.
+    expect(select.payload).toBeUndefined();
+  });
+
   it("drops skipped columns but always keeps id + updatedAt", () => {
     const select = buildHydratorSelect(["payload", "output", "metadata", "error"]);
     expect(select.payload).toBeUndefined();

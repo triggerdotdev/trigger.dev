@@ -171,3 +171,57 @@ describe("NotifierRealtimeClient tag-list createdAt bucketing", () => {
     }
   });
 });
+
+describe("NotifierRealtimeClient review fixes", () => {
+  const ready = { changed: Promise.resolve(), unsubscribe() {} };
+  const liveNotifier = { subscribeToRunChanges: () => ready, subscribeToEnvChanges: () => ready };
+
+  it("clamps a stale/crafted handle's createdAt up to the max-age floor", async () => {
+    const maxAge = 24 * 60 * 60 * 1000;
+    const { client, resolveSpy } = makeClient({
+      notifier: liveNotifier,
+      maximumCreatedAtFilterAgeMs: maxAge,
+      runSetCreatedAtBucketMs: 0,
+      livePollTimeoutMs: 50,
+    });
+    const before = Date.now();
+    // Handle encodes createdAt = 1ms epoch, far older than the 24h ceiling.
+    await client.streamRuns(
+      "http://localhost:3030/realtime/v1/runs?offset=123_1&live=true&handle=runs_1_7",
+      ENV,
+      { tags: ["t"] },
+      CURRENT_API_VERSION,
+      undefined,
+      "1.0.0"
+    );
+    const passed = resolveSpy.mock.calls[0][0].createdAtAfter as Date;
+    // Clamped to ~now - maxAge, not the epoch value encoded in the handle.
+    expect(passed.getTime()).toBeGreaterThan(before - maxAge - 1_000);
+  });
+
+  it("enforces a concurrency limit of 0 instead of failing with a 500", async () => {
+    let limitCheckedWith: number | undefined;
+    const { client } = makeClient({
+      notifier: liveNotifier,
+      cachedLimitProvider: { getCachedLimit: async () => 0 },
+      limiter: {
+        incrementAndCheck: async (_env: string, _id: string, limit: number) => {
+          limitCheckedWith = limit;
+          return true;
+        },
+        decrement: async () => {},
+      },
+      livePollTimeoutMs: 50,
+    });
+    const res = await client.streamBatch(
+      "http://localhost:3030/realtime/v1/batches/batch_1?offset=123_1&live=true",
+      ENV,
+      "batch_1",
+      CURRENT_API_VERSION,
+      undefined,
+      "1.0.0"
+    );
+    expect(res.status).toBe(200);
+    expect(limitCheckedWith).toBe(0);
+  });
+});

@@ -238,10 +238,15 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
     }
 
     // Recover the pinned window from the handle so the lower bound never drifts.
+    // Re-clamp the recovered value to the max-age floor so a stale or crafted handle
+    // can't widen the lookback past the configured ceiling.
+    const recoveredMs = this.#filterMsFromHandle(handle);
     const filter: RunSetFilter = {
       tags,
       createdAtAfter: new Date(
-        this.#filterMsFromHandle(handle) ?? this.#computeCreatedAtFilter(params.createdAt).getTime()
+        recoveredMs !== undefined
+          ? this.#clampCreatedAtFloor(recoveredMs)
+          : this.#computeCreatedAtFilter(params.createdAt).getTime()
       ),
     };
 
@@ -573,6 +578,13 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
     return bucket > 0 ? Math.floor(ms / bucket) * bucket : ms;
   }
 
+  /** Clamp a handle-recovered createdAt lower bound up to the max-age floor (so a
+   * stale or crafted handle can't widen the window past the ceiling), then re-bucket. */
+  #clampCreatedAtFloor(ms: number): number {
+    const floorMs = Date.now() - this.options.maximumCreatedAtFilterAgeMs;
+    return this.#bucketCreatedAtMs(Math.max(ms, floorMs));
+  }
+
   #mintListHandle(createdAtFilterMs: number): string {
     // Pins the createdAt threshold in the opaque handle so live polls reuse the
     // same lower bound even on a working-set cache miss.
@@ -615,7 +627,7 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
       DEFAULT_CONCURRENCY_LIMIT
     );
 
-    if (!concurrencyLimit) {
+    if (concurrencyLimit == null) {
       logger.error("[notifierRealtimeClient] Failed to get concurrency limit", {
         organizationId: environment.organizationId,
       });

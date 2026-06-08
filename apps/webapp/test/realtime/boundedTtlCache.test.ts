@@ -28,6 +28,17 @@ describe("BoundedTtlCache", () => {
     expect(cache.size).toBe(0);
   });
 
+  it("does not evict another entry when updating an existing key at capacity", () => {
+    const cache = new BoundedTtlCache<number>(60_000, 2);
+    cache.set("a", 1);
+    cache.set("b", 2);
+    // Updating an existing key doesn't grow the map, so it must not drop "b".
+    cache.set("a", 11);
+    expect(cache.get("a")).toBe(11);
+    expect(cache.get("b")).toBe(2);
+    expect(cache.size).toBe(2);
+  });
+
   it("drops the oldest entry when full of still-live entries", () => {
     const cache = new BoundedTtlCache<number>(60_000, 2);
     cache.set("a", 1);

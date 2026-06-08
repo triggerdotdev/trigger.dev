@@ -69,5 +69,8 @@ export function publishManyRunChanged(inputs: RunChangeInput[]): void {
 
 /** Subscribe to the next change for a run via the shared subscriber. */
 export function subscribeToRunChanges(runId: string): RunChangeSubscription {
+  if (!notifierEnabled) {
+    throw new Error("Run change notifier is disabled");
+  }
   return getRunChangeNotifier().subscribeToRunChanges(runId);
 }

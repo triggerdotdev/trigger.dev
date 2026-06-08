@@ -180,7 +180,9 @@ export class ShadowRealtimeClient implements RealtimeStreamClient {
         membershipMatch: outcome.membershipMatch,
         missingInNotifier: outcome.missingInNotifier?.slice(0, 20),
         extraInNotifier: outcome.extraInNotifier?.slice(0, 20),
-        diffs: outcome.diffs,
+        // Log only which run/column diverged, never the raw cell values — they can
+        // include run payload/output/metadata and must not leak into logs.
+        diffs: outcome.diffs.map(({ runId, column }) => ({ runId, column })),
       });
     }
   }
