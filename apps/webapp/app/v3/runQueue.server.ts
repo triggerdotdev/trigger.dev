@@ -42,3 +42,26 @@ export async function removeQueueConcurrencyLimits(
     engine.runQueue.removeQueueConcurrencyLimits(environment, queueName),
   ]);
 }
+
+/** Updates MARQS and the RunQueue rate limits for a queue */
+export async function updateQueueRateLimits(
+  environment: AuthenticatedEnvironment,
+  queueName: string,
+  rateLimits: Array<{ limit: number; window: number }>
+) {
+  await Promise.allSettled([
+    marqs?.updateQueueRateLimits?.(environment, queueName, rateLimits),
+    engine.runQueue.updateQueueRateLimits?.(environment, queueName, rateLimits),
+  ]);
+}
+
+/** Removes MARQS and the RunQueue rate limits for a queue */
+export async function removeQueueRateLimits(
+  environment: AuthenticatedEnvironment,
+  queueName: string
+) {
+  await Promise.allSettled([
+    marqs?.removeQueueRateLimits?.(environment, queueName),
+    engine.runQueue.removeQueueRateLimits?.(environment, queueName),
+  ]);
+}
