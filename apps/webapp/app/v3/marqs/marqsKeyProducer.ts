@@ -42,6 +42,10 @@ export class MarQSShortKeyProducer implements MarQSKeyProducer {
     return [this.queueKey(env, queue), constants.CONCURRENCY_LIMIT_PART].join(":");
   }
 
+  queueRateLimitKey(env: MarQSKeyProducerEnv, queue: string) {
+    return [this.queueKey(env, queue), "rateLimit"].join(":");
+  }
+
   envConcurrencyLimitKey(envId: string): string;
   envConcurrencyLimitKey(env: MarQSKeyProducerEnv): string;
   envConcurrencyLimitKey(envOrId: MarQSKeyProducerEnv | string): string {

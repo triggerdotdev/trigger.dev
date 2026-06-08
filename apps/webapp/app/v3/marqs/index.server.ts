@@ -186,6 +186,20 @@ export class MarQS {
     return this.redis.del(this.keys.queueConcurrencyLimitKey(env, queue));
   }
 
+  public async updateQueueRateLimits(
+    env: AuthenticatedEnvironment,
+    queue: string,
+    rateLimits: Array<{ limit: number; window: number }>
+  ) {
+    // For now, we just store it in redis as JSON. The engine will need to read it.
+    // We need a key for rate limits. Let's assume `queueRateLimitKey` exists or we create it.
+    return this.redis.set(this.keys.queueRateLimitKey(env, queue), JSON.stringify(rateLimits));
+  }
+
+  public async removeQueueRateLimits(env: AuthenticatedEnvironment, queue: string) {
+    return this.redis.del(this.keys.queueRateLimitKey(env, queue));
+  }
+
   public async updateEnvConcurrencyLimits(env: AuthenticatedEnvironment) {
     const envConcurrencyLimitKey = this.keys.envConcurrencyLimitKey(env);
 

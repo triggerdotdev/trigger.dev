@@ -18,6 +18,7 @@ export type MarQSKeyProducerEnv = {
 
 export interface MarQSKeyProducer {
   queueConcurrencyLimitKey(env: MarQSKeyProducerEnv, queue: string): string;
+  queueRateLimitKey(env: MarQSKeyProducerEnv, queue: string): string;
 
   envConcurrencyLimitKey(envId: string): string;
   envConcurrencyLimitKey(env: MarQSKeyProducerEnv): string;
