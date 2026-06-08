@@ -133,6 +133,14 @@ export class ComputeWorkloadManager implements WorkloadManager {
     // Strip image digest - resolve by tag, not digest
     const imageRef = stripImageDigest(opts.image);
 
+    // Labels forwarded to the compute provider for network-policy selection;
+    // the provider promotes a configured subset to its network layer. Mirrors
+    // the privatelink label the Kubernetes workload manager sets on the run pod.
+    const labels: Record<string, string> = {};
+    if (opts.hasPrivateLink) {
+      labels.privatelink = opts.orgId;
+    }
+
     // Wide event: single canonical log line emitted in finally
     const event: Record<string, unknown> = {
       // High-cardinality identifiers
@@ -173,6 +181,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
             deploymentVersion: opts.deploymentVersion,
             machine: opts.machine.name,
           },
+          ...(Object.keys(labels).length > 0 ? { labels } : {}),
         })
       );
 
@@ -297,6 +306,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
     envId?: string;
     orgId?: string;
     projectId?: string;
+    hasPrivateLink?: boolean;
     dequeuedAt?: Date;
   }): Promise<boolean> {
     const metadata: Record<string, string> = {
@@ -308,6 +318,14 @@ export class ComputeWorkloadManager implements WorkloadManager {
       TRIGGER_SUPERVISOR_API_DOMAIN: this.opts.workloadApiDomain ?? "",
       TRIGGER_WORKER_INSTANCE_NAME: this.opts.runner.instanceName,
     };
+
+    // Resupply the same labels on restore (mirror of the create path); the
+    // provider doesn't persist them across a snapshot, so without this a
+    // restored run would lose its policy-based network selection.
+    const labels: Record<string, string> = {};
+    if (opts.hasPrivateLink && opts.orgId) {
+      labels.privatelink = opts.orgId;
+    }
 
     this.logger.verbose("restore request body", {
       snapshotId: opts.snapshotId,
@@ -322,6 +340,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
         metadata,
         cpu: opts.machine.cpu,
         memory_gb: opts.machine.memory,
+        ...(Object.keys(labels).length > 0 ? { labels } : {}),
       })
     );
 
