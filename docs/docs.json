@@ -82,6 +82,7 @@
                 ]
               },
               "queue-concurrency",
+              "rate-limiting",
               "versioning",
               "machines",
               "idempotency",

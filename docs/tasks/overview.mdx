@@ -100,7 +100,7 @@ It's also worth mentioning that you can [retry a block of code](/errors-retrying
 
 ### `queue` options
 
-Queues allow you to control the concurrency of your tasks. This allows you to have one-at-a-time execution and parallel executions. There are also more advanced techniques like having different concurrencies for different sets of your users. For more information read [the concurrency & queues guide](/queue-concurrency).
+Queues allow you to control the concurrency of your tasks. This allows you to have one-at-a-time execution and parallel executions. There are also more advanced techniques like having different concurrencies for different sets of your users. For more information read [the concurrency, queues & rate limiting guide](/queue-concurrency).
 
 ```ts /trigger/one-at-a-time.ts
 export const oneAtATime = task({
@@ -108,6 +108,31 @@ export const oneAtATime = task({
   queue: {
     concurrencyLimit: 1,
   },
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
+
+### `rateLimits` options
+
+Rate limits allow you to control how many runs can execute within a specific time window. You can define both static and dynamic rate limits. For more information read [the rate limiting guide](/rate-limiting).
+
+```ts /trigger/rate-limited.ts
+export const rateLimitedTask = task({
+  id: "rate-limited-task",
+  rateLimits: [
+    {
+      staticKey: "my-api",
+      limit: 100,
+      window: 60, // 100 runs per 60 seconds
+    },
+    {
+      dynamicKey: "payload.userId",
+      limit: 10,
+      window: 60, // 10 runs per 60 seconds per user
+    }
+  ],
   run: async (payload: any, { ctx }) => {
     //...
   },
