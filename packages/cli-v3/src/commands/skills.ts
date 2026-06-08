@@ -208,6 +208,46 @@ export async function initiateSkillsInstallWizard(options: SkillsWizardOptions) 
   }
 }
 
+/**
+ * Mark the agent-skills install prompt as already seen at the current skills version.
+ * `trigger init` calls this after offering skills in its AI-tooling step (whether or not
+ * the user installs them) so `trigger dev` doesn't ask about skills again. Returns false
+ * if the CLI ships without bundled skills.
+ */
+export async function markSkillsPromptSeen(): Promise<boolean> {
+  const manifest = await loadSkillsManifest();
+
+  if (!manifest) {
+    return false;
+  }
+
+  writeConfigHasSeenRulesInstallPrompt(true);
+  writeConfigLastRulesInstallPromptVersion(manifest.currentVersion);
+
+  return true;
+}
+
+/**
+ * Install skills as part of `trigger init`. The user already opted in via init's AI-tooling
+ * prompt, so this skips the extra confirm and goes straight to target/skill selection, then
+ * marks the prompt seen so `trigger dev` won't re-prompt. Returns false if the CLI ships
+ * without bundled skills.
+ */
+export async function installSkillsFromInit(opts: SkillsWizardOptions = {}): Promise<boolean> {
+  const manifest = await loadSkillsManifest();
+
+  if (!manifest) {
+    return false;
+  }
+
+  writeConfigHasSeenRulesInstallPrompt(true);
+  writeConfigLastRulesInstallPromptVersion(manifest.currentVersion);
+
+  await installSkills(manifest, opts);
+
+  return true;
+}
+
 async function installSkills(manifest: RulesManifest, opts: SkillsWizardOptions) {
   const currentVersion = await manifest.getCurrentVersion();
 
