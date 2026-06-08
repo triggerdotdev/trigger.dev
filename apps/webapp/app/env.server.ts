@@ -357,6 +357,37 @@ const EnvironmentSchema = z
     PUBSUB_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
     PUBSUB_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+    // Dedicated pub/sub Redis for the realtime runs feed's run-changed notifier, so
+    // its publish/subscribe traffic can run on its own instance. Each value falls
+    // back to the shared PUBSUB_REDIS_* (then REDIS_*) when unset, so the default is
+    // unchanged until explicitly pointed at a dedicated instance.
+    REALTIME_RUNS_PUBSUB_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.PUBSUB_REDIS_HOST ?? process.env.REDIS_HOST),
+    REALTIME_RUNS_PUBSUB_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform((v) => {
+        if (v !== undefined) return v;
+        const raw = process.env.PUBSUB_REDIS_PORT ?? process.env.REDIS_PORT;
+        return raw ? parseInt(raw) : undefined;
+      }),
+    REALTIME_RUNS_PUBSUB_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.PUBSUB_REDIS_USERNAME ?? process.env.REDIS_USERNAME),
+    REALTIME_RUNS_PUBSUB_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.PUBSUB_REDIS_PASSWORD ?? process.env.REDIS_PASSWORD),
+    REALTIME_RUNS_PUBSUB_REDIS_TLS_DISABLED: z
+      .string()
+      .default(process.env.PUBSUB_REDIS_TLS_DISABLED ?? process.env.REDIS_TLS_DISABLED ?? "false"),
+    REALTIME_RUNS_PUBSUB_REDIS_CLUSTER_MODE_ENABLED: z
+      .string()
+      .default(process.env.PUBSUB_REDIS_CLUSTER_MODE_ENABLED ?? "0"),
+
     DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
     DEFAULT_ENV_EXECUTION_CONCURRENCY_BURST_FACTOR: z.coerce.number().default(1.0),
     DEFAULT_ORG_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(300),

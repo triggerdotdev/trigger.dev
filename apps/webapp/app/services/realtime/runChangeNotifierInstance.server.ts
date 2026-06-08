@@ -21,12 +21,12 @@ const notifierEnabled = env.REALTIME_NOTIFIER_ENABLED === "1";
 function initializeRunChangeNotifier(): RunChangeNotifier {
   const notifier = new RunChangeNotifier({
     redis: {
-      host: env.PUBSUB_REDIS_HOST,
-      port: env.PUBSUB_REDIS_PORT,
-      username: env.PUBSUB_REDIS_USERNAME,
-      password: env.PUBSUB_REDIS_PASSWORD,
-      tlsDisabled: env.PUBSUB_REDIS_TLS_DISABLED === "true",
-      clusterMode: env.PUBSUB_REDIS_CLUSTER_MODE_ENABLED === "1",
+      host: env.REALTIME_RUNS_PUBSUB_REDIS_HOST,
+      port: env.REALTIME_RUNS_PUBSUB_REDIS_PORT,
+      username: env.REALTIME_RUNS_PUBSUB_REDIS_USERNAME,
+      password: env.REALTIME_RUNS_PUBSUB_REDIS_PASSWORD,
+      tlsDisabled: env.REALTIME_RUNS_PUBSUB_REDIS_TLS_DISABLED === "true",
+      clusterMode: env.REALTIME_RUNS_PUBSUB_REDIS_CLUSTER_MODE_ENABLED === "1",
     },
   });
 
