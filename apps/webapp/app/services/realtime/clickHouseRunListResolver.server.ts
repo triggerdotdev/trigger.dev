@@ -27,7 +27,7 @@ export class ClickHouseRunListResolver implements RunListResolver {
     const clickhouse = await this.options.getClickhouse(filter.organizationId);
     const repository = new RunsRepository({ clickhouse, prisma: this.options.prisma });
 
-    return repository.listRunIds({
+    const ids = await repository.listRunIds({
       organizationId: filter.organizationId,
       projectId: filter.projectId,
       environmentId: filter.environmentId,
@@ -36,5 +36,9 @@ export class ClickHouseRunListResolver implements RunListResolver {
       from: filter.createdAtAfter?.getTime(),
       page: { size: filter.limit },
     });
+
+    // listRunIds overfetches by one (size + 1) for has-more detection and doesn't
+    // trim, so enforce the caller's cap here.
+    return ids.slice(0, filter.limit);
   }
 }
