@@ -63,6 +63,7 @@ import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/m
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getUserById } from "~/models/user.server";
+import { prisma } from "~/db.server";
 import { EnvironmentQueuePresenter } from "~/presenters/v3/EnvironmentQueuePresenter.server";
 import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
 import { requireUserId } from "~/services/session.server";
@@ -75,6 +76,7 @@ import {
   v3RunsPath,
 } from "~/utils/pathBuilder";
 import { concurrencySystem } from "~/v3/services/concurrencySystemInstance.server";
+import { rateLimitSystem } from "~/v3/services/rateLimitSystemInstance.server";
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
@@ -221,6 +223,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     case "queue-override": {
       const friendlyId = formData.get("friendlyId");
       const concurrencyLimit = formData.get("concurrencyLimit");
+      const rateLimitsJson = formData.get("rateLimits");
 
       if (!friendlyId) {
         return redirectWithErrorMessage(redirectPath, request, "Queue ID is required");
@@ -259,10 +262,31 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         );
       }
 
+      if (rateLimitsJson) {
+        try {
+          const rateLimits = JSON.parse(rateLimitsJson.toString()) as Array<{ limit: number; window: number }>;
+          const queue = await prisma.taskQueue.findFirst({
+            where: { friendlyId: friendlyId.toString(), runtimeEnvironmentId: environment.id },
+          });
+          if (queue) {
+            await rateLimitSystem.overrideQueueRateLimit(environment, queue.name, rateLimits);
+          }
+        } catch (e) {
+          return redirectWithErrorMessage(redirectPath, request, "Invalid rate limits format");
+        }
+      } else {
+        const queue = await prisma.taskQueue.findFirst({
+          where: { friendlyId: friendlyId.toString(), runtimeEnvironmentId: environment.id },
+        });
+        if (queue) {
+          await rateLimitSystem.resetQueueRateLimit(environment, queue.name);
+        }
+      }
+
       return redirectWithSuccessMessage(
         redirectPath,
         request,
-        "Queue concurrency limit overridden"
+        "Queue limits overridden"
       );
     }
     case "queue-remove-override": {
@@ -285,7 +309,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         );
       }
 
-      return redirectWithSuccessMessage(redirectPath, request, "Queue concurrency limit reset");
+      const queue = await prisma.taskQueue.findFirst({
+        where: { friendlyId: friendlyId.toString(), runtimeEnvironmentId: environment.id },
+      });
+      if (queue) {
+        await rateLimitSystem.resetQueueRateLimit(environment, queue.name);
+      }
+
+      return redirectWithSuccessMessage(redirectPath, request, "Queue limits reset");
     }
     default:
       return redirectWithErrorMessage(redirectPath, request, "Something went wrong");
@@ -451,6 +482,7 @@ export default function Page() {
                     <TableHeaderCell alignment="right">Queued</TableHeaderCell>
                     <TableHeaderCell alignment="right">Running</TableHeaderCell>
                     <TableHeaderCell alignment="right">Limit</TableHeaderCell>
+                    <TableHeaderCell alignment="right">Rate Limit</TableHeaderCell>
                     <TableHeaderCell
                       alignment="right"
                       tooltip={
@@ -576,6 +608,25 @@ export default function Page() {
                           <TableCell
                             alignment="right"
                             className={cn(
+                              "w-[1%] pl-16 tabular-nums",
+                              queue.paused ? "opacity-50" : undefined
+                            )}
+                          >
+                            {queue.rateLimit && queue.rateLimit.length > 0 ? (
+                              <div className="flex flex-col items-end">
+                                {queue.rateLimit.map((rl: any, i: number) => (
+                                  <span key={i} className="text-xs text-text-dimmed">
+                                    {rl.limit} / {rl.window}s
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-text-dimmed">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell
+                            alignment="right"
+                            className={cn(
                               "w-[1%] pl-16",
                               queue.paused ? "opacity-50" : undefined,
                               isAtConcurrencyLimit && "text-warning",
@@ -648,7 +699,7 @@ export default function Page() {
                                     rootOnly: false,
                                   })}
                                 />
-                                <QueueOverrideConcurrencyButton
+                                <QueueOverrideLimitsButton
                                   queue={queue}
                                   environmentConcurrencyLimit={environment.concurrencyLimit}
                                 />
@@ -880,7 +931,7 @@ function QueuePauseResumeButton({
   );
 }
 
-function QueueOverrideConcurrencyButton({
+function QueueOverrideLimitsButton({
   queue,
   environmentConcurrencyLimit,
 }: {
@@ -892,8 +943,11 @@ function QueueOverrideConcurrencyButton({
   const [concurrencyLimit, setConcurrencyLimit] = useState<string>(
     queue.concurrencyLimit?.toString() ?? environmentConcurrencyLimit.toString()
   );
+  const [rateLimits, setRateLimits] = useState<Array<{ limit: number; window: number }>>(
+    queue.rateLimit ?? []
+  );
 
-  const isOverridden = !!queue.concurrency?.overriddenAt;
+  const isOverridden = !!queue.concurrency?.overriddenAt || (queue.rateLimit && queue.rateLimit.length > 0);
   const currentLimit = queue.concurrencyLimit ?? environmentConcurrencyLimit;
 
   useEffect(() => {
@@ -917,14 +971,14 @@ function QueueOverrideConcurrencyButton({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          {isOverridden ? "Edit concurrency override" : "Override concurrency limit"}
+          {isOverridden ? "Edit limits override" : "Override limits"}
         </DialogHeader>
         <div className="flex flex-col gap-3 pt-3">
           {isOverridden ? (
             <Paragraph>
-              This queue's concurrency limit is currently overridden to {currentLimit}.
+              This queue's limits are currently overridden.
               {typeof queue.concurrency?.base === "number" &&
-                ` The original limit set in code was ${queue.concurrency.base}.`}{" "}
+                ` The original concurrency limit set in code was ${queue.concurrency.base}.`}{" "}
               You can update the override or remove it to restore the{" "}
               {typeof queue.concurrency?.base === "number"
                 ? "limit set in code"
@@ -933,12 +987,13 @@ function QueueOverrideConcurrencyButton({
             </Paragraph>
           ) : (
             <Paragraph>
-              Override this queue's concurrency limit. The current limit is {currentLimit}, which is
+              Override this queue's limits. The current concurrency limit is {currentLimit}, which is
               set {queue.concurrencyLimit !== null ? "in code" : "by the environment"}.
             </Paragraph>
           )}
           <Form method="post" onSubmit={() => setIsOpen(false)} className="space-y-3">
             <input type="hidden" name="friendlyId" value={queue.id} />
+            <input type="hidden" name="rateLimits" value={JSON.stringify(rateLimits)} />
             <div className="space-y-2">
               <label htmlFor="concurrencyLimit" className="text-sm text-text-bright">
                 Concurrency limit
@@ -954,6 +1009,56 @@ function QueueOverrideConcurrencyButton({
                 placeholder={currentLimit.toString()}
                 autoFocus
               />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm text-text-bright">Rate limits</label>
+              {rateLimits.map((rl, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min="1"
+                    value={rl.limit}
+                    onChange={(e) => {
+                      const newLimits = [...rateLimits];
+                      newLimits[index].limit = parseInt(e.target.value, 10);
+                      setRateLimits(newLimits);
+                    }}
+                    placeholder="Limit"
+                  />
+                  <span className="text-text-dimmed">per</span>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={rl.window}
+                    onChange={(e) => {
+                      const newLimits = [...rateLimits];
+                      newLimits[index].window = parseInt(e.target.value, 10);
+                      setRateLimits(newLimits);
+                    }}
+                    placeholder="Window (s)"
+                  />
+                  <span className="text-text-dimmed">seconds</span>
+                  <Button
+                    type="button"
+                    variant="tertiary/small"
+                    onClick={() => {
+                      const newLimits = [...rateLimits];
+                      newLimits.splice(index, 1);
+                      setRateLimits(newLimits);
+                    }}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="secondary/small"
+                onClick={() => setRateLimits([...rateLimits, { limit: 10, window: 60 }])}
+              >
+                Add rate limit
+              </Button>
             </div>
 
             <FormButtons
