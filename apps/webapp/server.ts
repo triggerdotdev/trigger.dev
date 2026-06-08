@@ -197,10 +197,18 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
         })
       );
     } else {
-      // we need to do the health check here at /healthcheck
-      app.get("/healthcheck", (req, res) => {
-        res.status(200).send("OK");
-      });
+      // we need to do the health check here at /healthcheck — forward
+      // to the Remix handler so the loader's readiness checks (DB ping,
+      // REQUIRE_PLUGINS-gated plugin load) run in this mode too. A
+      // static 200 here would silently mask a failed plugin load.
+      app.get(
+        "/healthcheck",
+        // @ts-ignore
+        createRequestHandler({
+          build,
+          mode: MODE,
+        })
+      );
     }
 
     const server = app.listen(port, () => {
