@@ -16,8 +16,11 @@ import { publishRunChanged } from "./runChangeNotifierInstance.server";
  * high-value, env-cheap transitions here.
  */
 export function registerRunChangeNotifierHandlers() {
+  // Return a truthy value in every path so the singleton() wrapper (which uses
+  // ??=) caches the result and never re-runs this factory — re-running would
+  // attach duplicate engine-bus listeners on each Remix dev-mode reload.
   if (env.REALTIME_NOTIFIER_ENABLED !== "1") {
-    return;
+    return true;
   }
 
   // Status transitions (checkpoint suspend/resume, pending version, dequeue) —
@@ -70,4 +73,6 @@ export function registerRunChangeNotifierHandlers() {
   });
 
   logger.info("[runChangeNotifier] realtime run-change notifier handlers registered");
+
+  return true;
 }
