@@ -18,6 +18,7 @@ import type {
   ClickhouseQueryBuilderFastFunction,
   ClickhouseQueryBuilderFunction,
   ClickhouseQueryFunction,
+  ClickhouseQueryStreamFunction,
   ClickhouseQueryWithStatsFunction,
   ClickhouseReader,
   ClickhouseWriter,
@@ -514,6 +515,103 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
 
         return [null, resultRows];
       });
+    };
+  }
+
+  public queryFastStream<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
+    name: string;
+    query: string;
+    columns: Array<string | ColumnExpression>;
+    settings?: ClickHouseSettings;
+  }): ClickhouseQueryStreamFunction<TParams, TOut> {
+    const self = this;
+
+    return async function* (params, options) {
+      const queryId = randomUUID();
+
+      // A generator yields across the await boundary, so we can't use the
+      // callback-style `startSpan` helper here. We start the span manually and
+      // end it in `finally` so the span covers the whole stream lifetime and is
+      // closed even if the consumer abandons the generator early. Errors are
+      // re-thrown (no Result tuple) since they can surface mid-stream after the
+      // response headers have already been sent, but they're still recorded on
+      // the span and logged for parity with `queryFast`.
+      const span = self.tracer.startSpan("queryFastStream");
+      span.setAttributes({
+        "clickhouse.clientName": self.name,
+        "clickhouse.operationName": req.name,
+        "clickhouse.queryId": queryId,
+        ...flattenAttributes(req.settings, "clickhouse.settings"),
+        ...flattenAttributes(options?.attributes),
+      });
+
+      self.logger.debug("Streaming clickhouse fast", {
+        name: req.name,
+        query: req.query.replace(/\s+/g, " "),
+        params,
+        settings: req.settings,
+        queryId,
+      });
+
+      try {
+        const resultSet = await self.client.query({
+          query: req.query,
+          query_params: params,
+          format: "JSONCompactEachRow",
+          query_id: queryId,
+          ...options?.params,
+          clickhouse_settings: {
+            ...req.settings,
+            ...options?.params?.clickhouse_settings,
+          },
+        });
+
+        span.setAttributes({
+          "clickhouse.query_id": resultSet.query_id,
+          ...flattenAttributes(resultSet.response_headers, "clickhouse.response_headers"),
+        });
+
+        // Stream rows off the socket and hydrate each one on the fly. The full
+        // result set is never materialised into an array — bounded memory for
+        // arbitrarily large queries.
+        let rowCount = 0;
+        for await (const rows of resultSet.stream()) {
+          for (const row of rows) {
+            const rowData = row.json() as any[];
+
+            const hydratedRow: Record<string, any> = {};
+            for (let i = 0; i < req.columns.length; i++) {
+              const column = req.columns[i];
+              if (typeof column === "string") {
+                hydratedRow[column] = rowData[i];
+              } else {
+                hydratedRow[column.name] = rowData[i];
+              }
+            }
+
+            rowCount++;
+            yield hydratedRow as TOut;
+          }
+        }
+
+        span.setAttributes({ "clickhouse.rows": rowCount });
+      } catch (error) {
+        self.logger.error("Error streaming clickhouse", {
+          name: req.name,
+          error,
+          query: req.query,
+          params,
+          queryId,
+        });
+
+        if (error instanceof Error) {
+          recordClickhouseError(span, error);
+        }
+
+        throw error;
+      } finally {
+        span.end();
+      }
     };
   }
 
