@@ -55,6 +55,7 @@ export class TaskPresenter {
             },
           },
         },
+        queueConfig: true,
       },
       where: {
         friendlyId: taskFriendlyId,

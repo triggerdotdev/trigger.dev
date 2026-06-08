@@ -117,6 +117,7 @@ export class QueueListPresenter extends BasePresenter {
         concurrencyLimitBase: true,
         concurrencyLimitOverriddenAt: true,
         concurrencyLimitOverriddenBy: true,
+        rateLimit: true,
         type: true,
         paused: true,
       },
@@ -163,6 +164,7 @@ export class QueueListPresenter extends BasePresenter {
         concurrencyLimitOverriddenBy: queue.concurrencyLimitOverriddenBy
           ? overriddenByMap.get(queue.concurrencyLimitOverriddenBy) ?? null
           : null,
+        rateLimit: queue.rateLimit,
         paused: queue.paused,
       })
     );

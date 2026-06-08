@@ -112,6 +112,7 @@ export class QueueRetrievePresenter extends BasePresenter {
         concurrencyLimitBase: queue.concurrencyLimitBase ?? null,
         concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt ?? null,
         concurrencyLimitOverriddenBy: queue.concurrencyLimitOverriddenBy ?? null,
+        rateLimit: queue.rateLimit,
         paused: queue.paused,
       }),
     };
@@ -144,6 +145,7 @@ export function toQueueItem(data: {
   concurrencyLimitBase: number | null;
   concurrencyLimitOverriddenAt: Date | null;
   concurrencyLimitOverriddenBy: User | null;
+  rateLimit: any;
   paused: boolean;
 }): QueueItem & { releaseConcurrencyOnWaitpoint: boolean } {
   return {
@@ -162,6 +164,7 @@ export function toQueueItem(data: {
       overriddenBy: toQueueConcurrencyOverriddenBy(data.concurrencyLimitOverriddenBy),
       overriddenAt: data.concurrencyLimitOverriddenAt,
     },
+    rateLimit: data.rateLimit as any,
     // TODO: This needs to be removed but keeping this here for now to avoid breaking existing clients
     releaseConcurrencyOnWaitpoint: true,
   };
