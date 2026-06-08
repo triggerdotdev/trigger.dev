@@ -217,7 +217,7 @@ frontend, narrow `useChat` with `InferChatUIMessage<typeof myChat>` from `@trigg
 
 `chat.agent` accepts hooks that fire in a fixed per-turn order:
 
-```
+```text
 onValidateMessages -> hydrateMessages -> onChatStart (chat's first message only)
   -> onTurnStart -> run() -> onBeforeTurnComplete -> onTurnComplete
 ```

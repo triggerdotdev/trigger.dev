@@ -25,18 +25,10 @@ import { pathExists, readFile, safeWriteFile } from "../utilities/fileSystem.js"
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 
-const targets = [
-  "claude-code",
-  "cursor",
-  "vscode",
-  "windsurf",
-  "gemini-cli",
-  "cline",
-  "agents.md",
-  "amp",
-  "kilo",
-  "ruler",
-] as const;
+// Only tools with a native agent-skills directory. Rules-file-only tools (windsurf,
+// gemini-cli, cline, amp, kilo, ruler) don't support the Agent Skills format yet, so
+// they fall under the "Unsupported target" manual path rather than silently no-op.
+const targets = ["claude-code", "cursor", "vscode", "agents.md"] as const;
 
 type TargetLabels = {
   [key in (typeof targets)[number]]: string;
@@ -45,14 +37,8 @@ type TargetLabels = {
 const targetLabels: TargetLabels = {
   "claude-code": "Claude Code",
   cursor: "Cursor",
-  vscode: "VSCode",
-  windsurf: "Windsurf",
-  "gemini-cli": "Gemini CLI",
-  cline: "Cline",
+  vscode: "VSCode (Copilot)",
   "agents.md": "AGENTS.md (OpenAI Codex CLI, Jules, OpenCode)",
-  amp: "Sourcegraph AMP",
-  kilo: "Kilo Code",
-  ruler: "Ruler",
 };
 
 type SupportedTargets = (typeof targets)[number];
@@ -74,7 +60,7 @@ export function configureSkillsCommand(program: Command) {
     .description("Install the Trigger.dev agent skills into your coding agent")
     .option(
       "--target <targets...>",
-      "Choose the target (or targets) to install the Trigger.dev skills into. We currently support: " +
+      "Choose the target (or targets) to install the Trigger.dev skills into. Native install is supported for: " +
         targets.join(", ")
     )
     .option(
@@ -242,7 +228,7 @@ async function installSkills(manifest: RulesManifest, opts: SkillsWizardOptions)
     }
   }
 
-  if (results.length > 0) {
+  if (results.some((r) => r.installations.length > 0 || r.pointer)) {
     log.step("Installed the following skills:");
 
     for (const r of results) {

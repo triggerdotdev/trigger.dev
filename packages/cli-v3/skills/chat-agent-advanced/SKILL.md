@@ -348,7 +348,7 @@ TS helpers `SSEStreamSubscription` and `controlSubtype(headers)` (documented in
 > Note on docs vocabulary: agent-side examples in some docs still use the legacy
 > `trigger:turn-complete` chunk type. That is the agent-emit vocabulary. A custom **reader** must
 > filter on the `trigger-control` header, not on `chunk.type`.
-
+>
 > MCP-driven agent chats (`list_agents`, `start_agent_chat`, `send_agent_message`,
 > `close_agent_chat`) are MCP server tools used from Claude Code / Cursor, not importable SDK
 > functions. See `/mcp-tools#agent-chat-tools`.
