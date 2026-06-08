@@ -47,6 +47,16 @@ export const QueueItem = z.object({
       overriddenBy: z.string().nullable(),
     })
     .optional(),
+  /** The rate limits of the queue */
+  rateLimit: z
+    .array(
+      z.object({
+        limit: z.number(),
+        window: z.number(),
+      })
+    )
+    .nullable()
+    .optional(),
 });
 
 export type QueueItem = z.infer<typeof QueueItem>;
