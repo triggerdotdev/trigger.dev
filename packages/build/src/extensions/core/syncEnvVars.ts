@@ -2,7 +2,7 @@ import { BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 
 export type SyncEnvVarsBody =
   | Record<string, string>
-  | Array<{ name: string; value: string; isParentEnv?: boolean }>;
+  | Array<{ name: string; value: string; isParentEnv?: boolean; isSecret?: boolean }>;
 
 export type SyncEnvVarsResult =
   | SyncEnvVarsBody
@@ -151,9 +151,19 @@ async function callSyncEnvVarsFn(
   environment: string,
   branch: string | undefined,
   context: BuildContext
-): Promise<{ env: Record<string, string>; parentEnv?: Record<string, string> } | undefined> {
+): Promise<{
+  env: Record<string, string>;
+  secrets?: Record<string, boolean>;
+  parentEnv?: Record<string, string>;
+  parentSecrets?: Record<string, boolean>;
+} | undefined> {
   if (syncEnvVarsFn && typeof syncEnvVarsFn === "function") {
-    let resolvedEnvVars: { env: Record<string, string>; parentEnv?: Record<string, string> } = {
+    let resolvedEnvVars: {
+      env: Record<string, string>;
+      secrets?: Record<string, boolean>;
+      parentEnv?: Record<string, string>;
+      parentSecrets?: Record<string, boolean>;
+    } = {
       env: {},
     };
     let result;
@@ -186,10 +196,20 @@ async function callSyncEnvVarsFn(
           if (item.isParentEnv) {
             if (!resolvedEnvVars.parentEnv) {
               resolvedEnvVars.parentEnv = {};
+              resolvedEnvVars.parentSecrets = {};
             }
             resolvedEnvVars.parentEnv[item.name] = item.value;
+            if (item.isSecret && resolvedEnvVars.parentSecrets) {
+              resolvedEnvVars.parentSecrets[item.name] = true;
+            }
           } else {
             resolvedEnvVars.env[item.name] = item.value;
+            if (item.isSecret) {
+              if (!resolvedEnvVars.secrets) {
+                resolvedEnvVars.secrets = {};
+              }
+              resolvedEnvVars.secrets[item.name] = true;
+            }
           }
         }
       }
