@@ -103,18 +103,17 @@ export class ScheduleListPresenter extends BasePresenter {
       projectId,
     });
 
-    const baseLimit = await getLimit(project.organizationId, "schedules", 100_000_000);
+    const limit = await getLimit(project.organizationId, "schedules", 100_000_000);
     const [currentPlan, plans] = await Promise.all([
       getCurrentPlan(project.organizationId),
       getPlans(),
     ]);
 
     const extraSchedules = currentPlan?.v3Subscription?.addOns?.schedules?.purchased ?? 0;
-    const limit = baseLimit + extraSchedules;
     const canPurchaseSchedules =
       currentPlan?.v3Subscription?.plan?.limits.schedules.canExceed === true;
     const maxScheduleQuota = currentPlan?.v3Subscription?.addOns?.schedules?.quota ?? 0;
-    const planScheduleLimit = currentPlan?.v3Subscription?.plan?.limits.schedules.number ?? 0;
+    const planScheduleLimit = limit - extraSchedules;
     const schedulePricing = plans?.addOnPricing.schedules ?? null;
 
     const purchaseInfo = {

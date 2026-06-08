@@ -1,7 +1,7 @@
 import { ZodError } from "zod";
 import { CronPattern } from "../schedules";
 import { BaseService, ServiceValidationError } from "./baseService.server";
-import { getCurrentPlan, getLimit } from "~/services/platform.v3.server";
+import { getLimit } from "~/services/platform.v3.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { env } from "~/env.server";
 import { type PrismaClientOrTransaction, type RuntimeEnvironmentType } from "@trigger.dev/database";
@@ -89,11 +89,7 @@ export class CheckScheduleService extends BaseService {
 
     //if creating a schedule, check they're under the limits
     if (!schedule.friendlyId) {
-      const baseLimit = await getLimit(project.organizationId, "schedules", 100_000_000);
-      const currentPlan = await getCurrentPlan(project.organizationId);
-      const purchasedSchedules =
-        currentPlan?.v3Subscription?.addOns?.schedules?.purchased ?? 0;
-      const limit = baseLimit + purchasedSchedules;
+      const limit = await getLimit(project.organizationId, "schedules", 100_000_000);
       const schedulesCount = await CheckScheduleService.getUsedSchedulesCount({
         prisma: this._prisma,
         projectId,
