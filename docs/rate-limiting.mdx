@@ -1,0 +1,77 @@
+---
+title: "Rate Limiting"
+description: "Control how many runs can execute within a specific time window."
+---
+
+While concurrency limits how many runs can execute at the exact same time, rate limiting allows you to control how many runs can execute within a specific time window. This is useful for interacting with external APIs that have strict rate limits (e.g., "100 requests per minute").
+
+You can set rate limits on a task by using the `rateLimits` property. It accepts an array of rate limit configurations, where each configuration specifies a `limit` and a `window` (in seconds or as a string like `"1m"`). You can define both static and dynamic rate limits.
+
+## Static rate limits
+
+A static rate limit applies globally to the task. You define it using a `staticKey`.
+
+```ts /trigger/rate-limited.ts
+export const rateLimitedTask = task({
+  id: "rate-limited-task",
+  rateLimits: [
+    {
+      staticKey: "my-api",
+      limit: 100,
+      window: 60, // 100 runs per 60 seconds
+    },
+  ],
+  run: async (payload: any, { ctx }) => {
+    //...
+  },
+});
+```
+
+## Dynamic rate limits
+
+A dynamic rate limit applies per-tenant or per-user, based on the payload. You define it using a `dynamicKey` which is a JSON path to a value in your payload.
+
+```ts /trigger/dynamic-rate-limited.ts
+export const dynamicRateLimitedTask = task({
+  id: "dynamic-rate-limited-task",
+  rateLimits: [
+    {
+      dynamicKey: "payload.userId",
+      limit: 10,
+      window: "1m", // 10 runs per minute per user
+    }
+  ],
+  run: async (payload: { userId: string }, { ctx }) => {
+    //...
+  },
+});
+```
+
+## Custom queues
+
+You can also apply rate limits to custom queues, which allows multiple tasks to share the same rate limit:
+
+```ts /trigger/rate-limited-queue.ts
+export const apiQueue = queue({
+  name: "api-queue",
+});
+
+export const task1 = task({
+  id: "task-1",
+  queue: apiQueue,
+  rateLimits: [
+    {
+      staticKey: "shared-api",
+      limit: 50,
+      window: 10, // 50 runs per 10 seconds
+    },
+  ],
+  run: async (payload) => {
+    // ...
+  },
+});
+```
+
+## Overriding rate limits
+
+You can override queue rate limits dynamically from the Trigger.dev dashboard. Navigate to the **Queues** page in your project, select a queue, and use the UI to add, modify, or remove rate limits.
