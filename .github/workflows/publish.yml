@@ -74,10 +74,10 @@ jobs:
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
     with:
       image_tag: ${{ inputs.image_tag }}
-      # Target registry namespace, resolved once here and passed to every publish
-      # job. Defaults to ghcr.io/<owner> so a fork publishes to its own namespace;
-      # set the IMAGE_REGISTRY repository variable to override.
-      image_registry: ${{ vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
+      # Target registry namespace, defined once here (via a YAML anchor) and reused
+      # by every publish job. Defaults to ghcr.io/<owner> so a fork publishes to its
+      # own namespace; set the IMAGE_REGISTRY repository variable to override.
+      image_registry: &image_registry ${{ vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
 
   publish-worker:
     needs: [typecheck]
@@ -90,7 +90,7 @@ jobs:
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     with:
       image_tag: ${{ inputs.image_tag }}
-      image_registry: ${{ vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
+      image_registry: *image_registry
 
   publish-worker-v4:
     needs: [typecheck]
@@ -101,7 +101,7 @@ jobs:
     uses: ./.github/workflows/publish-worker-v4.yml
     with:
       image_tag: ${{ inputs.image_tag }}
-      image_registry: ${{ vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
+      image_registry: *image_registry
 
   # OS-level CVE scan of the image just published above. Report-only (writes to
   # the run summary); runs alongside the worker publishes and never blocks them.
