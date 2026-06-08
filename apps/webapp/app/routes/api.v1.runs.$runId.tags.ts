@@ -7,6 +7,7 @@ import { MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { logger } from "~/services/logger.server";
+import { publishRunChanged } from "~/services/realtime/runChangeNotifierInstance.server";
 import { mutateWithFallback } from "~/v3/mollifier/mutateWithFallback.server";
 
 // Pull the existing tags out of a buffer entry's serialised payload so
@@ -90,6 +91,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
           },
           data: { runTags: { push: newTags } },
         });
+        // Delegate a run-changed notify (no-op unless enabled).
+        publishRunChanged({ runId: taskRun.id, environmentId: env.id });
         return json({ message: `Successfully set ${newTags.length} new tags.` }, { status: 200 });
       },
       // Buffer-applied patch path. The mutateSnapshot Lua deduplicates

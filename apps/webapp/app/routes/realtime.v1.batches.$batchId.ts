@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
-import { realtimeClient } from "~/services/realtimeClientGlobal.server";
+import { resolveRealtimeStreamClient } from "~/services/realtime/resolveRealtimeStreamClient.server";
 import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
@@ -33,7 +33,11 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ authentication, request, resource: batchRun, apiVersion }) => {
-    return realtimeClient.streamBatch(
+    // Pick the Electric proxy or the notifier-backed batch feed
+    // per org (defaults to Electric). Both implement streamBatch.
+    const client = await resolveRealtimeStreamClient(authentication.environment);
+
+    return client.streamBatch(
       request.url,
       authentication.environment,
       batchRun.id,

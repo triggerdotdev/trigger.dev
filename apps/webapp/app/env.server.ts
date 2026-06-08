@@ -300,6 +300,31 @@ const EnvironmentSchema = z
       .int()
       .default(24 * 60 * 60 * 1000), // 1 day in milliseconds
 
+    // Master switch for the notifier-backed realtime feed.
+    // "0" (default) = the existing realtime path serves everything, publishes are
+    // no-ops, and no notifier Redis connections are opened (zero-overhead off).
+    // "1" = run-changed signals are published and the per-org `realtimeBackend`
+    // feature flag selects the backend per request.
+    REALTIME_NOTIFIER_ENABLED: z.string().default("0"),
+    // Backstop wait before a live notifier request refetches the run (ms).
+    REALTIME_NOTIFIER_LIVE_POLL_TIMEOUT_MS: z.coerce.number().int().default(5_000),
+    // Hard cap on the tag-list snapshot size served by the notifier feed.
+    REALTIME_NOTIFIER_MAX_LIST_RESULTS: z.coerce.number().int().default(1_000),
+    // Short-TTL coalescing cache for the multi-run (tag-list/batch) resolve+hydrate.
+    // Concurrent same-filter feeds share one ClickHouse resolve + Postgres hydrate
+    // within this window, so an env-wide wake doesn't fan out into per-feed queries.
+    // Staleness budget: a newly-matching run is visible within ~ttl + poll interval.
+    REALTIME_NOTIFIER_RUNSET_CACHE_TTL_MS: z.coerce.number().int().default(1_000),
+    REALTIME_NOTIFIER_RUNSET_CACHE_MAX_ENTRIES: z.coerce.number().int().default(5_000),
+    // Cap on the per-handle working-set cache (runId -> updatedAt) the notifier keeps
+    // for diffing multi-run live polls.
+    REALTIME_NOTIFIER_WORKING_SET_MAX_ENTRIES: z.coerce.number().int().default(10_000),
+    // Quantize the tag-list createdAt lower bound to this epoch-aligned bucket (ms) so
+    // same-tag feeds that pin their window within the same bucket share one resolve+
+    // hydrate cache entry. Floored, so the window only ever widens by < bucket. 0
+    // disables bucketing (each feed keeps its exact lower bound).
+    REALTIME_NOTIFIER_RUNSET_CREATED_AT_BUCKET_MS: z.coerce.number().int().default(60_000),
+
     PUBSUB_REDIS_HOST: z
       .string()
       .optional()

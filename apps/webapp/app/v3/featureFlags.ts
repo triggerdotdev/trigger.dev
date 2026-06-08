@@ -10,6 +10,7 @@ export const FEATURE_FLAG = {
   hasPrivateConnections: "hasPrivateConnections",
   mollifierEnabled: "mollifierEnabled",
   workerQueueScheduledSplitEnabled: "workerQueueScheduledSplitEnabled",
+  realtimeBackend: "realtimeBackend",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -22,6 +23,10 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasPrivateConnections]: z.coerce.boolean(),
   [FEATURE_FLAG.mollifierEnabled]: z.coerce.boolean(),
   [FEATURE_FLAG.workerQueueScheduledSplitEnabled]: z.coerce.boolean(),
+  // Which backend serves the realtime run feed. Controllable
+  // globally and per-org (org wins). Defaults to "electric" when unset.
+  // "shadow" serves Electric but diffs the notifier path in the background.
+  [FEATURE_FLAG.realtimeBackend]: z.enum(["electric", "notifier", "shadow"]),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

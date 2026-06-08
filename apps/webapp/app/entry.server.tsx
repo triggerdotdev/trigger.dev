@@ -27,6 +27,7 @@ import {
   registerRunEngineEventBusHandlers,
   setupBatchQueueCallbacks,
 } from "./v3/runEngineHandlers.server";
+import { registerRunChangeNotifierHandlers } from "./services/realtime/runChangeNotifierHandlers.server";
 // Touch the sessions replication singleton at entry so it boots deterministically
 // on webapp startup. The singleton's initializer wires start (gated on
 // `clickhouseFactory.isReady()`) and SIGTERM/SIGINT shutdown — mirrors
@@ -269,6 +270,9 @@ process.on("uncaughtException", (error, origin) => {
 
 singleton("RunEngineEventBusHandlers", registerRunEngineEventBusHandlers);
 singleton("SetupBatchQueueCallbacks", setupBatchQueueCallbacks);
+// Attach the run-changed notifier delegations to the engine event bus.
+// No-ops (registers nothing) unless REALTIME_NOTIFIER_ENABLED=1.
+singleton("RunChangeNotifierHandlers", registerRunChangeNotifierHandlers);
 
 // Wrapped in singleton() so Remix's dev-mode CJS reloads don't append
 // duplicate copies of the processor — Sentry's processor list lives in

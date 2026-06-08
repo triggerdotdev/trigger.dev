@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
-import { realtimeClient } from "~/services/realtimeClientGlobal.server";
+import { resolveRealtimeStreamClient } from "~/services/realtime/resolveRealtimeStreamClient.server";
 import {
   anyResource,
   createLoaderApiRoute,
@@ -39,7 +39,11 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ searchParams, authentication, request, apiVersion }) => {
-    return realtimeClient.streamRuns(
+    // Pick the Electric proxy or the notifier-backed tag-list feed per org
+    // (defaults to Electric). Both implement streamRuns.
+    const client = await resolveRealtimeStreamClient(authentication.environment);
+
+    return client.streamRuns(
       request.url,
       authentication.environment,
       searchParams,

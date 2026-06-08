@@ -2,7 +2,7 @@ import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
-import { realtimeClient } from "~/services/realtimeClientGlobal.server";
+import { resolveRealtimeStreamClient } from "~/services/realtime/resolveRealtimeStreamClient.server";
 import {
   anyResource,
   createLoaderApiRoute,
@@ -48,7 +48,12 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ authentication, request, resource: run, apiVersion }) => {
-    return realtimeClient.streamRun(
+    // Pick the Electric proxy or the notifier-backed shim per org (defaults to
+    // Electric; controlled by REALTIME_NOTIFIER_ENABLED + the realtimeBackend
+    // feature flag). Both implement the same streamRun contract.
+    const client = await resolveRealtimeStreamClient(authentication.environment);
+
+    return client.streamRun(
       request.url,
       authentication.environment,
       run.id,
