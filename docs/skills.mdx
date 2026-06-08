@@ -1,89 +1,88 @@
 ---
 title: "Skills"
-description: "Install Trigger.dev skills to teach any AI coding assistant best practices for writing tasks, agents, and workflows."
+description: "Install Trigger.dev agent skills to teach any AI coding assistant how to write tasks, realtime frontends, and chat.agent AI agents."
 sidebarTitle: "Skills"
 ---
 
 ## What are agent skills?
 
-Skills are portable instruction sets that teach AI coding assistants how to use Trigger.dev effectively. Unlike vendor-specific config files (`.cursor/rules`, `CLAUDE.md`), skills use an open standard that works across all major AI assistants. For example, Cursor users and Claude Code users can get the same knowledge from a single install.
+Skills are portable instruction sets that teach AI coding assistants how to use Trigger.dev effectively. Unlike vendor-specific config files (`.cursor/rules`, `CLAUDE.md`), skills use an open standard that works across all major AI assistants, so Cursor users and Claude Code users get the same knowledge from a single install.
+
+Each skill is a directory containing a `SKILL.md` file: YAML frontmatter (name, description) plus markdown instructions with patterns, examples, and common mistakes that AI assistants discover on demand and follow.
 
 <Note>
-  Skills are one of three AI tools we provide. You can also install [Agent Rules](/mcp-agent-rules)
-  for client-specific rule sets or the [MCP Server](/mcp-introduction) for live project interaction.
-  See the [comparison table](/building-with-ai#skills-vs-agent-rules-vs-mcp) for details.
+  Skills are one of two AI tools we provide. You can also install the [MCP Server](/mcp-introduction)
+  to give your assistant live access to your project (deploy, trigger, monitor). See the
+  [comparison](/building-with-ai#skills-vs-mcp) for details.
 </Note>
-
-Skills are installed as directories containing a `SKILL.md` file. Each `SKILL.md` includes YAML frontmatter (name, description) and markdown instructions with patterns, examples, and best practices that AI assistants automatically discover and follow.
 
 ## Installation
 
-When you run `npx skills add triggerdotdev/skills`, the CLI detects your installed AI tools and copies the appropriate files to each tool's expected location. For example, `.claude/skills/`, `.cursor/skills/`, `.github/skills/`, etc.
+The skills ship inside the `trigger.dev` CLI, version-matched to the SDK you have installed. Run:
 
 ```bash
-npx skills add triggerdotdev/skills
+npx trigger.dev@latest skills
 ```
 
-<Note>`skills` is an open-source CLI by Vercel. Learn more at [skills.sh](https://skills.sh).</Note>
+The CLI detects your installed AI tools, lets you pick which skills to install, and copies each one into that tool's native skills directory (`.claude/skills/`, `.cursor/skills/`, `.github/skills/`, `.agents/skills/`). It also writes a one-line pointer into your primary instructions file (`CLAUDE.md`, `.cursor/rules`, etc.) so your assistant always knows the skills are there and loads the right one on demand.
 
-The result: your AI assistant understands Trigger.dev's specific patterns for exports, schema validation, error handling, retries, and more.
+When you run `trigger dev` for the first time, the CLI offers to install the skills for you.
+
+<Note>
+  Because the skills are bundled with the CLI, the guidance your assistant gets is pinned to the
+  Trigger.dev version you are actually building against, instead of always being the latest from the
+  internet.
+</Note>
+
+### Non-interactive install
+
+Pass `--target` to choose tools and `-y` to install every skill without prompting (useful in scripts and CI):
+
+```bash
+npx trigger.dev@latest skills --target claude-code --target cursor -y
+```
 
 ## Available skills
 
-Install all skills at once, or pick the ones relevant to your current work:
+| Skill                  | Use for                                                        | Covers                                                                       |
+| ---------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `authoring-tasks`      | Writing background and scheduled tasks                         | `task`/`schemaTask`, retries, queues, waits, idempotency, metadata, triggering, cron, `trigger.config.ts` |
+| `realtime-and-frontend`| Live run updates and triggering from the browser               | `runs.subscribeToRun`, `@trigger.dev/react-hooks`, public access tokens, streams |
+| `authoring-chat-agent` | Building durable AI chat agents                                | `chat.agent` run loop, `toStreamTextOptions`, server actions, `useChat` transport, tools, lifecycle hooks |
+| `chat-agent-advanced`  | Advanced chat.agent patterns                                   | sessions, human-in-the-loop, sub-agents, compaction, fast starts, resilience, version upgrades |
 
-```bash
-# Install all Trigger.dev skills
-npx skills add triggerdotdev/skills
-
-# Or install individual skills
-npx skills add triggerdotdev/skills --skill trigger-tasks
-npx skills add triggerdotdev/skills --skill trigger-agents
-npx skills add triggerdotdev/skills --skill trigger-config
-npx skills add triggerdotdev/skills --skill trigger-realtime
-npx skills add triggerdotdev/skills --skill trigger-setup
-npx skills add triggerdotdev/skills --skill trigger-cost-savings
-
-```
-
-| Skill                  | Use for                                                     | Covers                                                           |
-| ---------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------- |
-| `trigger-setup`        | First time setup, new projects                              | SDK install, `npx trigger init`, project structure               |
-| `trigger-tasks`        | Writing background tasks, async workflows, scheduled tasks  | Triggering, waits, queues, retries, cron, metadata               |
-| `trigger-agents`       | LLM workflows, orchestration, multi-step AI agents          | Prompt chaining, routing, parallelization, human-in-the-loop     |
-| `trigger-realtime`     | Live updates, progress indicators, streaming                | React hooks, progress bars, streaming AI responses               |
-| `trigger-config`       | Project setup, build configuration                          | `trigger.config.ts`, extensions (Prisma, FFmpeg, Playwright)     |
-| `trigger-cost-savings` | Cost savings, performance optimization, resource management | Cost optimization, performance optimization, resource management |
-
-Not sure which skill to install? Install `trigger-tasks`; it covers the most common patterns for writing Trigger.dev tasks.
+Not sure which to install? Pick `authoring-tasks`; it covers the most common patterns for writing Trigger.dev tasks.
 
 ## Supported AI assistants
 
-Skills work with any AI coding assistant that supports the [Agent Skills standard](https://agentskills.io), including:
+Skills use the open [Agent Skills standard](https://agentskills.io). The CLI installs natively into the tools that support a skills directory today:
 
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
-- [Cursor](https://cursor.com)
-- [Windsurf](https://codeium.com/windsurf)
-- [GitHub Copilot](https://github.com/features/copilot)
-- [Cline](https://github.com/cline/cline)
-- [Codex CLI](https://github.com/openai/codex)
-- [Gemini CLI](https://github.com/google-gemini/gemini-cli)
-- [OpenCode](https://opencode.ai)
-- [View all →](https://skills.sh)
+| Assistant | Installs to |
+| --- | --- |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `.claude/skills/` |
+| [Cursor](https://cursor.com) | `.cursor/skills/` |
+| [GitHub Copilot (VS Code)](https://github.com/features/copilot) | `.github/skills/` |
+| [Codex CLI](https://github.com/openai/codex), Jules, OpenCode | `.agents/skills/` |
+
+Using a tool that does not support skills yet? Select "Unsupported target" in the installer for manual setup instructions.
+
+## Keeping skills updated
+
+Skills are pinned to your installed CLI version. To refresh them after upgrading Trigger.dev, run `npx trigger.dev@latest skills` again, or accept the prompt that `trigger dev` shows when a newer version is available. Re-running overwrites the installed skill files in place without creating duplicates.
 
 ## Next steps
 
 <CardGroup cols={2}>
-  <Card title="Agent Rules" icon="scroll" href="/mcp-agent-rules">
-    Install comprehensive rule sets directly into your AI client.
-  </Card>
   <Card title="MCP Server" icon="sparkles" href="/mcp-introduction">
     Give your AI assistant direct access to Trigger.dev tools and APIs.
+  </Card>
+  <Card title="Building with AI" icon="layer-group" href="/building-with-ai">
+    See how skills and the MCP server compare, plus a copy-paste context snippet.
   </Card>
   <Card title="Writing tasks" icon="code" href="/tasks/overview">
     Learn the task patterns that skills teach your AI assistant.
   </Card>
-  <Card title="skills.sh" icon="box" href="https://skills.sh">
-    Browse the full Agent Skills ecosystem.
+  <Card title="AI agents" icon="robot" href="/ai-chat/overview">
+    Build durable chat agents with chat.agent, the focus of two of the skills.
   </Card>
 </CardGroup>
