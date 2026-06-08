@@ -107,7 +107,16 @@ describe("RunEngine Waitpoints", () => {
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       expect(executionData?.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
 
-      await setTimeout(2_000);
+      // Event-driven wait: the run resumes once the datetime waitpoint (~1s out) completes and the
+      // worker unblocks it. Gate on the final state the test asserts (run EXECUTING), not just the
+      // waitpoint status, which flips slightly earlier.
+      await vi.waitFor(
+        async () => {
+          const ed = await engine.getRunExecutionData({ runId: run.id });
+          expect(ed?.snapshot.executionStatus).toBe("EXECUTING");
+        },
+        { timeout: 10_000, interval: 100 }
+      );
 
       const waitpoint2 = await prisma.waitpoint.findFirst({
         where: {
@@ -497,7 +506,14 @@ describe("RunEngine Waitpoints", () => {
       const executionData = await engine.getRunExecutionData({ runId: run.id });
       expect(executionData?.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
 
-      await setTimeout(750);
+      // Event-driven wait: resume as soon as the waitpoint completes, no fixed margin.
+      await vi.waitFor(
+        async () => {
+          const ed = await engine.getRunExecutionData({ runId: run.id });
+          expect(ed?.snapshot.executionStatus).toBe("EXECUTING");
+        },
+        { timeout: 10_000, interval: 100 }
+      );
 
       const executionData2 = await engine.getRunExecutionData({ runId: run.id });
       expect(executionData2?.snapshot.executionStatus).toBe("EXECUTING");
@@ -781,7 +797,16 @@ describe("RunEngine Waitpoints", () => {
           event = result;
         });
 
-        await setTimeout(1_250);
+        // Event-driven wait: resume as soon as the timeout fires and the worker notifies, instead
+        // of a fixed 1250ms margin against the ~1s worker poll (the original flaky race).
+        await vi.waitFor(
+          async () => {
+            const ed = await engine.getRunExecutionData({ runId: run.id });
+            expect(ed?.snapshot.executionStatus).toBe("EXECUTING");
+            assertNonNullable(event);
+          },
+          { timeout: 10_000, interval: 100 }
+        );
 
         const executionData2 = await engine.getRunExecutionData({ runId: run.id });
         expect(executionData2?.snapshot.executionStatus).toBe("EXECUTING");

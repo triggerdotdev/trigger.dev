@@ -303,4 +303,83 @@ export class TaskEventStore {
       `;
     }
   }
+
+  // Streams a trace's detailed events in (startTime, spanId) order via keyset
+  // pagination. Holds at most one page at a time — no overall cap, no full
+  // materialisation — so an arbitrarily large trace can be exported with bounded
+  // memory. Powers the streaming "Download trace" export.
+  async *streamDetailedTraceEvents(
+    table: TaskEventStoreTable,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean; pageSize?: number }
+  ): AsyncGenerator<DetailedTraceEvent> {
+    const filterDebug =
+      options?.includeDebugLogs === false || options?.includeDebugLogs === undefined;
+    const pageSize = options?.pageSize ?? 5_000;
+    const debugFilter = filterDebug
+      ? Prisma.sql`AND \"kind\" <> CAST('LOG'::text AS "public"."TaskEventKind")`
+      : Prisma.empty;
+    // Spans are written as a partial start-marker plus a completed row; keep
+    // only the completed row so the export has one line per span (mirrors the
+    // tree path's merge, but without holding state).
+    const partialFilter = Prisma.sql`AND "isPartial" = false`;
+
+    const createdAtBufferInMillis = env.TASK_EVENT_PARTITIONED_WINDOW_IN_SECONDS * 1000;
+    const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - createdAtBufferInMillis);
+    const $endCreatedAt = endCreatedAt ?? new Date();
+    const endCreatedAtWithBuffer = new Date($endCreatedAt.getTime() + createdAtBufferInMillis);
+
+    let afterStartTime: bigint | null = null;
+    let afterSpanId: string | null = null;
+
+    while (true) {
+      const keyset: Prisma.Sql =
+        afterStartTime === null
+          ? Prisma.empty
+          : Prisma.sql`AND ("startTime" > ${afterStartTime} OR ("startTime" = ${afterStartTime} AND "spanId" > ${afterSpanId}))`;
+
+      const rows: DetailedTraceEvent[] =
+        table === "taskEventPartitioned"
+          ? await this.readReplica.$queryRaw<DetailedTraceEvent[]>`
+              SELECT "spanId","parentId","runId",message,style,"startTime",duration,"isError","isPartial","isCancelled",level,events,"kind","taskSlug",properties,"attemptNumber"
+              FROM "TaskEventPartitioned"
+              WHERE "traceId" = ${traceId}
+                AND "createdAt" >= ${startCreatedAtWithBuffer.toISOString()}::timestamp
+                AND "createdAt" < ${endCreatedAtWithBuffer.toISOString()}::timestamp
+                ${debugFilter}
+                ${partialFilter}
+                ${keyset}
+              ORDER BY "startTime" ASC, "spanId" ASC
+              LIMIT ${pageSize}
+            `
+          : await this.readReplica.$queryRaw<DetailedTraceEvent[]>`
+              SELECT "spanId","parentId","runId",message,style,"startTime",duration,"isError","isPartial","isCancelled",level,events,"kind","taskSlug",properties,"attemptNumber"
+              FROM "TaskEvent"
+              WHERE "traceId" = ${traceId}
+                ${debugFilter}
+                ${partialFilter}
+                ${keyset}
+              ORDER BY "startTime" ASC, "spanId" ASC
+              LIMIT ${pageSize}
+            `;
+
+      if (rows.length === 0) {
+        break;
+      }
+
+      for (const row of rows) {
+        yield row;
+      }
+
+      if (rows.length < pageSize) {
+        break;
+      }
+
+      const last: DetailedTraceEvent = rows[rows.length - 1];
+      afterStartTime = typeof last.startTime === "bigint" ? last.startTime : BigInt(last.startTime);
+      afterSpanId = last.spanId;
+    }
+  }
 }

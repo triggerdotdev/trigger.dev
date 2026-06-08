@@ -66,6 +66,14 @@ export type MollifierDrainerOptions<TPayload> = {
   // handler can process per tick just queues entries in JS waiting on
   // pLimit.
   drainBatchSize?: number;
+  // Cap on the exponential backoff applied after consecutive `runOnce`
+  // errors. Defaults to 5000ms. The backoff base is `max(pollIntervalMs,
+  // backoffFloorMs)` and doubles per consecutive error up to this cap.
+  maxBackoffMs?: number;
+  // Floor for the exponential-backoff base, so a tiny `pollIntervalMs`
+  // doesn't collapse the backoff to near-zero on a sustained outage.
+  // Defaults to 100ms.
+  backoffFloorMs?: number;
   logger?: Logger;
 };
 
@@ -84,6 +92,8 @@ export class MollifierDrainer<TPayload = unknown> {
   private readonly maxOrgsPerTick: number;
   private readonly drainBatchSize: number;
   private readonly concurrency: number;
+  private readonly maxBackoffMs: number;
+  private readonly backoffFloorMs: number;
   private readonly logger: Logger;
   // Rotation state. `orgCursor` advances through the active-orgs list.
   // Each org has its own internal cursor in `perOrgEnvCursors` for
@@ -104,6 +114,8 @@ export class MollifierDrainer<TPayload = unknown> {
     this.maxOrgsPerTick = options.maxOrgsPerTick ?? 500;
     this.drainBatchSize = Math.max(1, options.drainBatchSize ?? 1);
     this.concurrency = Math.max(1, options.concurrency);
+    this.maxBackoffMs = options.maxBackoffMs ?? 5_000;
+    this.backoffFloorMs = Math.max(1, options.backoffFloorMs ?? 100);
     this.logger = options.logger ?? new Logger("MollifierDrainer", "debug");
   }
 
@@ -320,8 +332,8 @@ export class MollifierDrainer<TPayload = unknown> {
   // brief blip while preventing a tight retry loop during a long Redis
   // outage. 1 → 200ms, 2 → 400ms, 3 → 800ms, 4 → 1.6s, 5 → 3.2s, 6+ → 5s.
   private backoffMs(consecutiveErrors: number): number {
-    const base = Math.max(this.pollIntervalMs, 100);
-    const capped = Math.min(base * 2 ** (consecutiveErrors - 1), 5_000);
+    const base = Math.max(this.pollIntervalMs, this.backoffFloorMs);
+    const capped = Math.min(base * 2 ** (consecutiveErrors - 1), this.maxBackoffMs);
     return capped;
   }
 

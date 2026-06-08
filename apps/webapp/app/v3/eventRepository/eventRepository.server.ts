@@ -60,6 +60,7 @@ import type {
   SpanDetail,
   SpanDetailedSummary,
   SpanSummary,
+  StreamedTraceEvent,
   TraceAttributes,
   TraceDetailedSummary,
   TraceEventOptions,
@@ -681,6 +682,38 @@ export class EventRepository implements IEventRepository {
         rootSpan,
       };
     });
+  }
+
+  public async *streamTraceEvents(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
+  ): AsyncIterable<StreamedTraceEvent> {
+    for await (const event of this.taskEventStore.streamDetailedTraceEvents(
+      storeTable,
+      traceId,
+      startCreatedAt,
+      endCreatedAt,
+      { includeDebugLogs: options?.includeDebugLogs }
+    )) {
+      const properties = event.properties
+        ? removePrivateProperties(event.properties as Attributes) ?? {}
+        : {};
+
+      yield {
+        spanId: event.spanId,
+        parentSpanId: event.parentId ?? "",
+        startTime: getDateFromNanoseconds(event.startTime),
+        durationNs: Number(event.duration),
+        level: event.level,
+        message: event.message,
+        isError: event.isError,
+        propertiesText: JSON.stringify(properties),
+      };
+    }
   }
 
   public async getRunEvents(

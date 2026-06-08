@@ -41,6 +41,7 @@ const CreateModelSchema = z.object({
   maxOutputTokens: z.number().int().optional(),
   capabilities: z.array(z.string()).optional(),
   isHidden: z.boolean().optional(),
+  pricingUnit: z.string().optional(),
   pricingTiers: z.array(
     z.object({
       name: z.string().min(1),
@@ -80,7 +81,7 @@ export async function action({ request }: ActionFunctionArgs) {
     return json({ error: "Invalid request body", details: parsed.error.issues }, { status: 400 });
   }
 
-  const { modelName, matchPattern, startDate, source, pricingTiers, provider, description, contextWindow, maxOutputTokens, capabilities, isHidden } = parsed.data;
+  const { modelName, matchPattern, startDate, source, pricingTiers, provider, description, contextWindow, maxOutputTokens, capabilities, isHidden, pricingUnit } = parsed.data;
 
   // Validate regex pattern — strip (?i) POSIX flag since our registry handles it
   try {
@@ -105,6 +106,7 @@ export async function action({ request }: ActionFunctionArgs) {
         maxOutputTokens: maxOutputTokens ?? null,
         capabilities: capabilities ?? [],
         isHidden: isHidden ?? false,
+        pricingUnit: pricingUnit ?? null,
       },
     });
 

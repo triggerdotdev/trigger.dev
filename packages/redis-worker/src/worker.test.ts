@@ -1,4 +1,4 @@
-import { redisTest } from "@internal/testcontainers";
+import { isolatedRedisTest as redisTest } from "@internal/testcontainers";
 import { Logger } from "@trigger.dev/core/logger";
 import { describe } from "node:test";
 import { expect } from "vitest";

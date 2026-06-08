@@ -1,5 +1,6 @@
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction, TaskRun } from "@trigger.dev/database";
+import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
@@ -311,7 +312,7 @@ export class IdempotencyKeyConcern {
       const ttlSeconds = Math.max(
         1,
         Math.min(
-          30,
+          env.TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS,
           Math.ceil((idempotencyKeyExpiresAt.getTime() - Date.now()) / 1000),
         ),
       );
@@ -320,6 +321,8 @@ export class IdempotencyKeyConcern {
         taskIdentifier: request.taskId,
         idempotencyKey,
         ttlSeconds,
+        safetyNetMs: env.TRIGGER_MOLLIFIER_CLAIM_WAIT_MS,
+        pollStepMs: env.TRIGGER_MOLLIFIER_CLAIM_POLL_MS,
       });
       if (outcome.kind === "resolved") {
         // Another concurrent trigger committed first. Re-resolve via the

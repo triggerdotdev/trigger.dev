@@ -130,12 +130,13 @@ export const TableHeader = forwardRef<HTMLTableSectionElement, TableHeaderProps>
 type TableBodyProps = {
   className?: string;
   children?: ReactNode;
+  style?: React.CSSProperties;
 };
 
 export const TableBody = forwardRef<HTMLTableSectionElement, TableBodyProps>(
-  ({ className, children }, ref) => {
+  ({ className, children, style }, ref) => {
     return (
-      <tbody ref={ref} className={cn("relative overflow-y-auto", className)}>
+      <tbody ref={ref} className={cn("relative overflow-y-auto", className)} style={style}>
         {children}
       </tbody>
     );

@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/core",
-  "version": "4.5.0-rc.4",
+  "version": "4.5.0-rc.5",
   "description": "Core code used across the Trigger.dev SDK and platform",
   "license": "MIT",
   "publishConfig": {
@@ -183,6 +183,7 @@
     "build": "pnpm run bundle-vendor && tshy && node scripts/bundle-superjson.mjs --copy && pnpm run update-version",
     "dev": "pnpm run bundle-vendor && tshy --watch",
     "typecheck": "pnpm run bundle-vendor && tsc --noEmit -p tsconfig.src.json",
+    "typecheck:ai-v7": "pnpm run bundle-vendor && tsc --noEmit -p tsconfig.ai-v7.json",
     "pretest": "pnpm run bundle-vendor",
     "test": "vitest",
     "check-exports": "attw --pack ."
@@ -233,6 +234,7 @@
     "@types/lodash.get": "^4.4.9",
     "@types/readable-stream": "^4.0.14",
     "ai": "^6.0.0",
+    "ai-v7": "npm:ai@7.0.0-canary.159",
     "defu": "^6.1.4",
     "esbuild": "^0.23.0",
     "rimraf": "^6.0.1",

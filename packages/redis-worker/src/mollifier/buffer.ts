@@ -11,12 +11,25 @@ import { BufferEntry, BufferEntrySchema } from "./schemas.js";
 export type MollifierBufferOptions = {
   redisOptions: RedisOptions;
   logger?: Logger;
+  // Grace TTL applied to the entry hash on drainer ack. The entry survives
+  // this long after materialisation so direct reads (retrieve, trace, etc.)
+  // have a safety net while PG replica lag settles. Defaults to 30s.
+  ackGraceTtlSeconds?: number;
+  // ioredis per-request retry limit on the buffer's Redis client. Defaults to 20.
+  maxRetriesPerRequest?: number;
+  // Reconnect backoff envelope (see `mollifierReconnectDelayMs`). Defaults
+  // to 50ms per attempt capped at 1000ms.
+  reconnectStepMs?: number;
+  reconnectMaxMs?: number;
 };
 
-// Grace TTL applied to the entry hash on drainer ack. The entry survives
-// this long after materialisation so direct reads (retrieve, trace, etc.)
-// have a safety net while PG replica lag settles.
-const ACK_GRACE_TTL_SECONDS = 30;
+// Default grace TTL applied to the entry hash on drainer ack.
+const DEFAULT_ACK_GRACE_TTL_SECONDS = 30;
+// Default ioredis reconnect backoff envelope for the buffer client.
+const DEFAULT_RECONNECT_STEP_MS = 50;
+const DEFAULT_RECONNECT_MAX_MS = 1000;
+// Default ioredis per-request retry limit.
+const DEFAULT_MAX_RETRIES_PER_REQUEST = 20;
 
 // Observability-only sorted set of entries currently in DRAINING state
 // (popped by the drainer, not yet acked/failed/requeued). Score is the
@@ -41,8 +54,10 @@ export const DRAINING_SET_KEY = "mollifier:draining";
 export function mollifierReconnectDelayMs(
   times: number,
   random: () => number = Math.random,
+  stepMs: number = DEFAULT_RECONNECT_STEP_MS,
+  maxMs: number = DEFAULT_RECONNECT_MAX_MS,
 ): number {
-  const base = Math.min(times * 50, 1000);
+  const base = Math.min(times * stepMs, maxMs);
   const half = Math.floor(base / 2);
   return half + Math.round(random() * (base - half));
 }
@@ -125,17 +140,21 @@ export type IdempotencyClaimResult =
 export class MollifierBuffer {
   private readonly redis: Redis;
   private readonly logger: Logger;
+  private readonly ackGraceTtlSeconds: number;
 
   constructor(options: MollifierBufferOptions) {
     this.logger = options.logger ?? new Logger("MollifierBuffer", "debug");
+    this.ackGraceTtlSeconds = options.ackGraceTtlSeconds ?? DEFAULT_ACK_GRACE_TTL_SECONDS;
+    const reconnectStepMs = options.reconnectStepMs ?? DEFAULT_RECONNECT_STEP_MS;
+    const reconnectMaxMs = options.reconnectMaxMs ?? DEFAULT_RECONNECT_MAX_MS;
 
     this.redis = createRedisClient(
       {
         ...options.redisOptions,
         retryStrategy(times) {
-          return mollifierReconnectDelayMs(times);
+          return mollifierReconnectDelayMs(times, Math.random, reconnectStepMs, reconnectMaxMs);
         },
-        maxRetriesPerRequest: 20,
+        maxRetriesPerRequest: options.maxRetriesPerRequest ?? DEFAULT_MAX_RETRIES_PER_REQUEST,
       },
       {
         onError: (error) => {
@@ -506,7 +525,7 @@ export class MollifierBuffer {
     await this.redis.ackMollifierEntry(
       `mollifier:entries:${runId}`,
       DRAINING_SET_KEY,
-      String(ACK_GRACE_TTL_SECONDS),
+      String(this.ackGraceTtlSeconds),
       runId,
     );
   }

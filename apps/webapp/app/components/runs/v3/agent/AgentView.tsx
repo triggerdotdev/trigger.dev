@@ -262,6 +262,13 @@ function useAgentSessionMessages({
   // outside the UIMessage so React doesn't see it as a renderable prop.
   const orchestrationRef = useRef<Map<string, MessageOrchestrationState>>(new Map());
 
+  // Buffered HITL resolutions keyed by toolCallId. `addToolApprovalResponse` /
+  // `addToolOutput` send a slim assistant message on the `.in` channel carrying
+  // just the resolved tool part; the agent never echoes these on `.out`. We
+  // stash them here and overlay onto the matching tool part once it exists, so
+  // a denial/approval lands regardless of which stream arrives first.
+  const pendingResolutionsRef = useRef<Map<string, Record<string, unknown>>>(new Map());
+
   // React state snapshot of pendingRef. Only updated via the throttled
   // `scheduleFlush`. The Map *reference* changes on every flush so React
   // detects the state update and the downstream `useMemo` recomputes.
@@ -289,6 +296,48 @@ function useAgentSessionMessages({
 
   useEffect(() => {
     const abort = new AbortController();
+
+    // Overlay a buffered HITL resolution (approval/output delivered on `.in`)
+    // onto the matching tool part. Returns true if a part changed. Safe to call
+    // repeatedly — after each `.out` tool chunk and whenever a `.in` resolution
+    // arrives — so the resolution lands regardless of cross-stream ordering.
+    // Never downgrades a part that already reached a terminal output state (so
+    // an approved-then-executed tool keeps its `output-available` + output).
+    const applyToolResolution = (toolCallId: string): boolean => {
+      const res = pendingResolutionsRef.current.get(toolCallId);
+      if (!res) return false;
+      for (const [mid, msg] of pendingRef.current) {
+        const parts = (msg.parts ?? []) as Array<Record<string, unknown>>;
+        const idx = parts.findIndex((p) => (p as { toolCallId?: string }).toolCallId === toolCallId);
+        if (idx < 0) continue;
+        const cur = parts[idx]!;
+        const terminal =
+          cur.state === "output-available" ||
+          cur.state === "output-error" ||
+          cur.state === "output-denied";
+        const nextState = res.state != null && !terminal ? res.state : cur.state;
+        const sameApproval = JSON.stringify(cur.approval) === JSON.stringify(res.approval);
+        if (
+          nextState === cur.state &&
+          sameApproval &&
+          res.output === undefined &&
+          res.errorText === undefined
+        ) {
+          return false; // already applied
+        }
+        const next = parts.slice();
+        next[idx] = {
+          ...cur,
+          ...(res.approval != null ? { approval: res.approval } : {}),
+          ...(res.output !== undefined ? { output: res.output } : {}),
+          ...(res.errorText !== undefined ? { errorText: res.errorText } : {}),
+          state: nextState,
+        };
+        pendingRef.current.set(mid, { ...msg, parts: next } as UIMessage);
+        return true;
+      }
+      return false;
+    };
 
     const encodedSession = encodeURIComponent(sessionId);
     // Always use the page's own origin to avoid CORS preflight failures
@@ -468,6 +517,15 @@ function useAgentSessionMessages({
               pendingRef.current.set(currentMessageId, updated);
               scheduleFlush.current();
             }
+
+            // A `.out` chunk just established/updated a tool part — (re)apply any
+            // buffered `.in` resolution for it. Covers the `.in`-before-`.out`
+            // order and corrects a `.out` chunk that downgraded the state (e.g.
+            // a replayed `tool-approval-request` arriving after the denial).
+            const outToolCallId = (chunk as { toolCallId?: string }).toolCallId;
+            if (typeof outToolCallId === "string" && applyToolResolution(outToolCallId)) {
+              scheduleFlush.current();
+            }
           }
         } finally {
           try {
@@ -513,19 +571,38 @@ function useAgentSessionMessages({
               : payload.message
                 ? [payload.message]
                 : [];
-            const incomingUsers = candidates.filter(
-              (m): m is UIMessage =>
-                m != null && (m as { role?: string }).role === "user" && typeof m.id === "string"
-            );
-            if (incomingUsers.length === 0) continue;
 
             let changed = false;
-            for (const msg of incomingUsers) {
-              if (pendingRef.current.has(msg.id)) continue;
-              pendingRef.current.set(msg.id, msg);
-              timestampsRef.current.set(msg.id, value.timestamp);
+
+            // New user turns — merge in (dedupe by id).
+            for (const m of candidates) {
+              if (m == null || (m as { role?: string }).role !== "user" || typeof m.id !== "string") {
+                continue;
+              }
+              if (pendingRef.current.has(m.id)) continue;
+              pendingRef.current.set(m.id, m as UIMessage);
+              timestampsRef.current.set(m.id, value.timestamp);
               changed = true;
             }
+
+            // HITL resolutions ride on `.in` as a slim *assistant* message
+            // carrying just the resolved tool part (state + approval/output).
+            // Buffer each by toolCallId and overlay onto the matching tool part
+            // (which usually arrived on `.out` as `tool-approval-request`).
+            for (const m of candidates) {
+              if (m == null || (m as { role?: string }).role !== "assistant") continue;
+              const parts = (m as { parts?: unknown[] }).parts;
+              if (!Array.isArray(parts)) continue;
+              for (const sp of parts) {
+                const part = sp as Record<string, unknown>;
+                if (typeof part.type !== "string" || !part.type.startsWith("tool-")) continue;
+                const tcId = (part as { toolCallId?: string }).toolCallId;
+                if (typeof tcId !== "string") continue;
+                pendingResolutionsRef.current.set(tcId, part);
+                if (applyToolResolution(tcId)) changed = true;
+              }
+            }
+
             if (changed) scheduleFlush.current();
           }
         } finally {
@@ -731,6 +808,46 @@ function applyOutputChunk(
         ? { ...p, state: "output-error", errorText: chunk.errorText }
         : null
     );
+  }
+
+  // HITL approval (AI SDK 7) -------------------------------------------------
+  //
+  // v7 added human-in-the-loop tool approval. A `needsApproval` tool emits a
+  // `tool-approval-request` after its input is available; the tool then waits
+  // for a `tool-approval-response` (approve/deny) before executing. Mirror AI
+  // SDK 7's `processUIMessageStream`: the request marks the matching part
+  // `approval-requested` and records `approval.id`; the response (matched by
+  // that id) marks it `approval-responded` with the verdict. An approved tool
+  // then proceeds to `tool-output-available` as usual.
+  if (type === "tool-approval-request") {
+    return updatePart(msg, (p) =>
+      (p as { toolCallId?: string }).toolCallId === chunk.toolCallId
+        ? {
+            ...p,
+            state: "approval-requested",
+            approval: {
+              id: chunk.approvalId,
+              ...(chunk.isAutomatic === true ? { isAutomatic: true } : {}),
+            },
+          }
+        : null
+    );
+  }
+  if (type === "tool-approval-response") {
+    return updatePart(msg, (p) => {
+      const approval = (p as { approval?: { id?: string; isAutomatic?: boolean } }).approval;
+      if (!approval || approval.id !== chunk.approvalId) return null;
+      return {
+        ...p,
+        state: "approval-responded",
+        approval: {
+          ...approval,
+          id: chunk.approvalId,
+          approved: chunk.approved,
+          ...(chunk.reason != null ? { reason: chunk.reason } : {}),
+        },
+      };
+    });
   }
 
   // Source / file / step / data parts — pass through as a whole -------------

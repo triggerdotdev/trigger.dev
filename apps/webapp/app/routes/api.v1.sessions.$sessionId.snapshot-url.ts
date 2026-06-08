@@ -1,7 +1,7 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
-import { chatSnapshotStoragePathForSession } from "~/services/realtime/chatSnapshot.server";
+import { chatSnapshotStorageKey } from "~/services/realtime/chatSnapshot.server";
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
 import {
   createActionApiRoute,
@@ -12,14 +12,6 @@ import { generatePresignedUrl } from "~/v3/objectStore.server";
 const ParamsSchema = z.object({
   sessionId: z.string(),
 });
-
-// `chatSnapshotStoragePath` is stamped on every new Session at row creation
-// (see api.v1.sessions.ts). The fallback handles sessions created before
-// the column existed — read against the currently-configured default
-// protocol and compute the same path the SDK uploaded under.
-function snapshotKey(session: { friendlyId: string; chatSnapshotStoragePath: string | null }) {
-  return session.chatSnapshotStoragePath ?? chatSnapshotStoragePathForSession(session.friendlyId);
-}
 
 const routeConfig = {
   params: ParamsSchema,
@@ -39,7 +31,7 @@ export const { action } = createActionApiRoute(
     const signed = await generatePresignedUrl(
       authentication.environment.project.externalRef,
       authentication.environment.slug,
-      snapshotKey(session),
+      chatSnapshotStorageKey(session),
       "PUT"
     );
     if (!signed.success) {
@@ -58,7 +50,7 @@ export const loader = createLoaderApiRoute(routeConfig, async ({ authentication,
   const signed = await generatePresignedUrl(
     authentication.environment.project.externalRef,
     authentication.environment.slug,
-    snapshotKey(session),
+    chatSnapshotStorageKey(session),
     "GET"
   );
   if (!signed.success) {

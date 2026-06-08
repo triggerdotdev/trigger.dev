@@ -1,5 +1,16 @@
 # trigger.dev
 
+## 4.5.0-rc.5
+
+### Patch Changes
+
+- The MCP server no longer tells the AI agent to wait for a run to complete after every `trigger_task` call. Waiting is now opt-in: the agent only waits when you ask it to (for example "trigger and then wait for it to finish"). This avoids burning tokens polling runs you didn't need to block on and keeps responses clearer. ([#3838](https://github.com/triggerdotdev/trigger.dev/pull/3838))
+- Update the bundled OpenTelemetry packages to their latest releases (`@opentelemetry/sdk-node` 0.218.0, `@opentelemetry/core` 2.7.1, `@opentelemetry/host-metrics` 0.38.3). ([#3810](https://github.com/triggerdotdev/trigger.dev/pull/3810))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.5`
+  - `@trigger.dev/build@4.5.0-rc.5`
+  - `@trigger.dev/schema-to-json@4.5.0-rc.5`
+
 ## 4.5.0-rc.4
 
 ### Patch Changes

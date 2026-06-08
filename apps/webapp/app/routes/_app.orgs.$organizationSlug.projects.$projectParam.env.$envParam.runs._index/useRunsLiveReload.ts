@@ -4,8 +4,9 @@ import { useTypedFetcher } from "remix-typedjson";
 import { useInterval } from "~/hooks/useInterval";
 import type { NextRunListItem } from "~/presenters/v3/NextRunListPresenter.server";
 import type { loader as liveRunsLoader } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.live";
+import { stripBulkInspectorUiParams } from "./shouldRevalidateRunsList";
 
-const RUNS_SEARCH_PARAMS_TO_REMOVE = ["cursor", "direction", "bulkInspector", "action", "mode"];
+const RUNS_PAGINATION_SEARCH_PARAMS = ["cursor", "direction"] as const;
 const RUNS_POLL_INTERVAL_MS = 3000;
 /** Check for new runs every N poll ticks (~6s at 3s interval). */
 const NEW_RUNS_EVERY_N_POLL_TICKS = 2;
@@ -30,8 +31,8 @@ function maxCreatedAtMs(runs: ListedRun[]): number | undefined {
 }
 
 function filterParamsWithoutPagination(search: string) {
-  const params = new URLSearchParams(search);
-  for (const key of RUNS_SEARCH_PARAMS_TO_REMOVE) {
+  const params = stripBulkInspectorUiParams(new URLSearchParams(search));
+  for (const key of RUNS_PAGINATION_SEARCH_PARAMS) {
     params.delete(key);
   }
   return params;

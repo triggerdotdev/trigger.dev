@@ -2909,6 +2909,8 @@ model LlmModel {
   capabilities    String[] @default([]) @map("capabilities")
   isHidden        Boolean  @default(false) @map("is_hidden")
   baseModelName   String?  @map("base_model_name")
+  // "tokens", "images", "characters", "minutes", "requests", "free", "not_findable"; null until researched
+  pricingUnit     String?  @map("pricing_unit")
 
   pricingTiers LlmPricingTier[]
   prices       LlmPrice[]

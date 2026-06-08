@@ -9,6 +9,7 @@ export const FEATURE_FLAG = {
   hasComputeAccess: "hasComputeAccess",
   hasPrivateConnections: "hasPrivateConnections",
   mollifierEnabled: "mollifierEnabled",
+  workerQueueScheduledSplitEnabled: "workerQueueScheduledSplitEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -20,6 +21,7 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasComputeAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasPrivateConnections]: z.coerce.boolean(),
   [FEATURE_FLAG.mollifierEnabled]: z.coerce.boolean(),
+  [FEATURE_FLAG.workerQueueScheduledSplitEnabled]: z.coerce.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
