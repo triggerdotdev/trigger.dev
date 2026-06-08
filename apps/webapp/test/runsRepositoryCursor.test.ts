@@ -296,4 +296,126 @@ describe("RunsRepository cursor pagination", () => {
       ]);
     }
   );
+
+  replicationContainerTest(
+    "backward pagination across multiple pages returns each page intact (no straddling)",
+    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
+      const { clickhouse } = await setupClickhouseReplication({
+        prisma,
+        databaseUrl: postgresContainer.getConnectionUri(),
+        clickhouseUrl: clickhouseContainer.getConnectionUrl(),
+        redisOptions,
+      });
+
+      const organization = await prisma.organization.create({
+        data: { title: "test", slug: "test" },
+      });
+      const project = await prisma.project.create({
+        data: {
+          name: "test",
+          slug: "test",
+          organizationId: organization.id,
+          externalRef: "test",
+        },
+      });
+      const runtimeEnvironment = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "test",
+          type: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "test",
+          pkApiKey: "test",
+          shortcode: "test",
+        },
+      });
+
+      // Five runs so a backward page has more rows before it (hasMore === true),
+      // which is the case the off-by-one in the backward slice corrupts.
+      const ids = [
+        "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbb",
+        "cccccccccccccccccccccccc",
+        "dddddddddddddddddddddddd",
+        "eeeeeeeeeeeeeeeeeeeeeeee",
+      ];
+      const base = new Date("2026-06-04T16:55:07.000Z").getTime();
+      for (let i = 0; i < ids.length; i++) {
+        await prisma.taskRun.create({
+          data: {
+            id: ids[i],
+            createdAt: new Date(base + (ids.length - 1 - i) * 1000),
+            friendlyId: `run_${ids[i]}`,
+            taskIdentifier: "my-task",
+            payload: JSON.stringify({ foo: "bar" }),
+            traceId: `trace_${i}`,
+            spanId: `span_${i}`,
+            queue: "test",
+            runtimeEnvironmentId: runtimeEnvironment.id,
+            projectId: project.id,
+            organizationId: organization.id,
+            environmentType: "DEVELOPMENT",
+            engine: "V2",
+          },
+        });
+      }
+
+      await setTimeout(1000);
+
+      const runsRepository = new RunsRepository({ prisma, clickhouse });
+      const baseOptions = {
+        projectId: project.id,
+        environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
+      };
+
+      const sortIds = (page: string[]) => page.slice().sort();
+
+      // Walk every forward page, capturing the run ids and the previousCursor.
+      const forwardPages: Array<{ ids: string[]; previousCursor: string | null }> = [];
+      let cursor: string | undefined = undefined;
+      for (let guard = 0; guard < 20; guard++) {
+        const page = await runsRepository.listRuns({
+          ...baseOptions,
+          page: { size: 2, cursor, direction: cursor ? "forward" : undefined },
+        });
+        forwardPages.push({
+          ids: page.runs.map((r) => r.id),
+          previousCursor: page.pagination.previousCursor,
+        });
+        if (!page.pagination.nextCursor) break;
+        cursor = page.pagination.nextCursor;
+      }
+
+      // Forward pagination itself must cover every run exactly once, in 3 pages.
+      expect(forwardPages.flatMap((p) => p.ids).sort()).toEqual(ids.slice().sort());
+      expect(forwardPages).toHaveLength(3);
+
+      // Walk backward from the last page. Each backward page must equal the
+      // corresponding forward page exactly — no row from an adjacent page
+      // bleeding in (the straddle bug returned e.g. {b,c} instead of {c,d}).
+      const backwardPages: string[][] = [];
+      let backCursor: string | null = forwardPages[forwardPages.length - 1].previousCursor;
+      for (let guard = 0; guard < 20 && backCursor; guard++) {
+        const page = await runsRepository.listRuns({
+          ...baseOptions,
+          page: { size: 2, cursor: backCursor, direction: "backward" },
+        });
+        backwardPages.push(page.runs.map((r) => r.id));
+        backCursor = page.pagination.previousCursor;
+      }
+
+      const expectedBackward = forwardPages
+        .slice(0, -1)
+        .reverse()
+        .map((p) => sortIds(p.ids));
+      expect(backwardPages.map(sortIds)).toEqual(expectedBackward);
+
+      // And the full backward traversal (last page + everything walked back to
+      // the start) covers every run exactly once.
+      const seen = [...forwardPages[forwardPages.length - 1].ids, ...backwardPages.flat()];
+      expect(seen.slice().sort()).toEqual(ids.slice().sort());
+      expect(new Set(seen).size).toBe(ids.length);
+    }
+  );
 });
