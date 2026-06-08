@@ -2,9 +2,11 @@ import { SpanKind } from "@opentelemetry/api";
 import { SerializableJson } from "@trigger.dev/core";
 import {
   accessoryAttributes,
+  ApiClient,
   ApiError,
   apiClientManager,
   ApiRequestOptions,
+  conditionallyExportPacket,
   conditionallyImportPacket,
   convertToolParametersToSchema,
   createErrorTaskError,
@@ -25,6 +27,7 @@ import {
   sdkScope,
   SemanticInternalAttributes,
   stringifyIO,
+  type IOPacket,
   SubtaskUnwrapError,
   taskContext,
   TaskFromIdentifier,
@@ -2212,8 +2215,7 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
   const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
-
-  const payloadPacket = await stringifyIO(parsedPayload);
+  const triggerPayloadPacket = await prepareTriggerPayload(parsedPayload, apiClient, id);
 
   // Process idempotency key and extract options for storage
   const processedIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
@@ -2224,12 +2226,12 @@ async function trigger_internal<TRunTypes extends AnyRunTypes>(
   const handle = await apiClient.triggerTask(
     id,
     {
-      payload: payloadPacket.data,
+      payload: triggerPayloadPacket.data,
       options: {
         queue: options?.queue ? { name: options.queue } : undefined,
         concurrencyKey: options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
-        payloadType: payloadPacket.dataType,
+        payloadType: triggerPayloadPacket.dataType,
         idempotencyKey: processedIdempotencyKey?.toString(),
         idempotencyKeyTTL: options?.idempotencyKeyTTL,
         idempotencyKeyOptions,
@@ -2468,8 +2470,7 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
   const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
-
-  const payloadPacket = await stringifyIO(parsedPayload);
+  const triggerPayloadPacket = await prepareTriggerPayload(parsedPayload, apiClient, id);
 
   // Process idempotency key and extract options for storage
   const processedIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
@@ -2483,13 +2484,13 @@ async function triggerAndWait_internal<TIdentifier extends string, TPayload, TOu
       const response = await apiClient.triggerTask(
         id,
         {
-          payload: payloadPacket.data,
+          payload: triggerPayloadPacket.data,
           options: {
             lockToVersion: taskContext.worker?.version, // Lock to current version because we're waiting for it to finish
             queue: options?.queue ? { name: options.queue } : undefined,
             concurrencyKey: options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
-            payloadType: payloadPacket.dataType,
+            payloadType: triggerPayloadPacket.dataType,
             delay: options?.delay,
             ttl: options?.ttl,
             tags: options?.tags,
@@ -2555,7 +2556,7 @@ async function triggerAndSubscribe_internal<TIdentifier extends string, TPayload
   const apiClient = apiClientManager.clientOrThrow(requestOptions?.clientConfig);
 
   const parsedPayload = parsePayload ? await parsePayload(payload) : payload;
-  const payloadPacket = await stringifyIO(parsedPayload);
+  const triggerPayloadPacket = await prepareTriggerPayload(parsedPayload, apiClient, id);
 
   const processedIdempotencyKey = await makeIdempotencyKey(options?.idempotencyKey);
   const idempotencyKeyOptions = processedIdempotencyKey
@@ -2568,13 +2569,13 @@ async function triggerAndSubscribe_internal<TIdentifier extends string, TPayload
       const response = await apiClient.triggerTask(
         id,
         {
-          payload: payloadPacket.data,
+          payload: triggerPayloadPacket.data,
           options: {
             lockToVersion: taskContext.worker?.version,
             queue: options?.queue ? { name: options.queue } : undefined,
             concurrencyKey: options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
-            payloadType: payloadPacket.dataType,
+            payloadType: triggerPayloadPacket.dataType,
             delay: options?.delay,
             ttl: options?.ttl,
             tags: options?.tags,
@@ -3073,4 +3074,23 @@ function registerTaskLifecycleHooks<
       fn: params.onCancel as AnyOnCancelHookFunction,
     });
   }
+}
+
+async function prepareTriggerPayload(
+  payload: unknown,
+  apiClient: ApiClient,
+  taskId: string
+): Promise<IOPacket> {
+  const payloadPacket = await stringifyIO(payload);
+  return await conditionallyExportPacket(
+    payloadPacket,
+    createTriggerPayloadPathPrefix(taskId),
+    undefined,
+    apiClient
+  );
+}
+
+function createTriggerPayloadPathPrefix(taskId: string): string {
+  const safeTaskId = encodeURIComponent(taskId);
+  return `trigger/${safeTaskId}/${Date.now()}-${Math.random().toString(36).slice(2)}/payload`;
 }

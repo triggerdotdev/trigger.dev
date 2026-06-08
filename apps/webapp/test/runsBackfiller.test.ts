@@ -7,7 +7,7 @@ vi.mock("~/db.server", () => ({
 }));
 
 import { ClickHouse } from "@internal/clickhouse";
-import { containerTest } from "@internal/testcontainers";
+import { replicationContainerTest } from "@internal/testcontainers";
 import { z } from "zod";
 import { RunsBackfillerService } from "~/services/runsBackfiller.server";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
@@ -17,7 +17,7 @@ import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickho
 vi.setConfig({ testTimeout: 60_000 });
 
 describe("RunsBackfillerService", () => {
-  containerTest(
+  replicationContainerTest(
     "should backfill completed runs to clickhouse",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const clickhouse = new ClickHouse({

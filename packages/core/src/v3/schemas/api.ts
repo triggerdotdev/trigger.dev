@@ -161,83 +161,95 @@ export type IdempotencyKeyOptionsSchema = z.infer<typeof IdempotencyKeyOptionsSc
 // column is String?, so passing a number (a common foot-gun when callers do
 // `concurrencyKey: payload.userId`) used to fail at `prisma.taskRun.create`
 // with PrismaClientValidationError. Accept the intent and stringify here.
-const ConcurrencyKeySchema = z
-  .union([z.string(), z.number()])
-  .transform((value) => String(value));
+const ConcurrencyKeySchema = z.union([z.string(), z.number()]).transform((value) => String(value));
 
-export const TriggerTaskRequestBody = z.object({
-  payload: z.any(),
-  context: z.any(),
-  options: z
-    .object({
-      /** @deprecated engine v1 only */
-      dependentAttempt: z.string().optional(),
-      /** @deprecated engine v1 only */
-      parentAttempt: z.string().optional(),
-      /** @deprecated engine v1 only */
-      dependentBatch: z.string().optional(),
-      /**
-       * If triggered in a batch, this is the BatchTaskRun id
-       */
-      parentBatch: z.string().optional(),
-      /**
-       * RunEngine v2
-       * If triggered inside another run, the parentRunId is the friendly ID of the parent run.
-       */
-      parentRunId: z.string().optional(),
-      /**
-       * RunEngine v2
-       * Should be `true` if `triggerAndWait` or `batchTriggerAndWait`
-       */
-      resumeParentOnCompletion: z.boolean().optional(),
-      /**
-       * Locks the version to the passed value.
-       * Automatically set when using `triggerAndWait` or `batchTriggerAndWait`
-       */
-      lockToVersion: z.string().optional(),
+export const TriggerTaskRequestBody = z
+  .object({
+    payload: z.any(),
+    context: z.any(),
+    options: z
+      .object({
+        /** @deprecated engine v1 only */
+        dependentAttempt: z.string().optional(),
+        /** @deprecated engine v1 only */
+        parentAttempt: z.string().optional(),
+        /** @deprecated engine v1 only */
+        dependentBatch: z.string().optional(),
+        /**
+         * If triggered in a batch, this is the BatchTaskRun id
+         */
+        parentBatch: z.string().optional(),
+        /**
+         * RunEngine v2
+         * If triggered inside another run, the parentRunId is the friendly ID of the parent run.
+         */
+        parentRunId: z.string().optional(),
+        /**
+         * RunEngine v2
+         * Should be `true` if `triggerAndWait` or `batchTriggerAndWait`
+         */
+        resumeParentOnCompletion: z.boolean().optional(),
+        /**
+         * Locks the version to the passed value.
+         * Automatically set when using `triggerAndWait` or `batchTriggerAndWait`
+         */
+        lockToVersion: z.string().optional(),
 
-      queue: z
-        .object({
-          name: z.string(),
-          // @deprecated, this is now specified on the queue
-          concurrencyLimit: z.number().int().optional(),
-        })
-        .optional(),
-      concurrencyKey: ConcurrencyKeySchema.optional(),
-      delay: z.string().or(z.coerce.date()).optional(),
-      idempotencyKey: z
-        .string()
-        // Caps user-supplied keys before they reach the unique idempotency index
-        // on the underlying table — values past this fail at the database layer
-        // rather than returning a clean 400.
-        .max(2048, "idempotencyKey must be 2048 characters or less")
-        .optional(),
-      idempotencyKeyTTL: z.string().optional(),
-      /** The original user-provided idempotency key and scope */
-      idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
-      machine: MachinePresetName.optional(),
-      maxAttempts: z.number().int().optional(),
-      maxDuration: z.number().optional(),
-      metadata: z.any(),
-      metadataType: z.string().optional(),
-      payloadType: z.string().optional(),
-      tags: RunTags.optional(),
-      test: z.boolean().optional(),
-      ttl: z.string().or(z.number().nonnegative().int()).optional(),
-      priority: z.number().optional(),
-      bulkActionId: z.string().optional(),
-      region: z.string().optional(),
-      debounce: z
-        .object({
-          key: z.string().max(512),
-          delay: z.string(),
-          mode: z.enum(["leading", "trailing"]).optional(),
-          maxDelay: z.string().optional(),
-        })
-        .optional(),
-    })
-    .optional(),
-});
+        queue: z
+          .object({
+            name: z.string(),
+            // @deprecated, this is now specified on the queue
+            concurrencyLimit: z.number().int().optional(),
+          })
+          .optional(),
+        concurrencyKey: ConcurrencyKeySchema.optional(),
+        delay: z.string().or(z.coerce.date()).optional(),
+        idempotencyKey: z
+          .string()
+          // Caps user-supplied keys before they reach the unique idempotency index
+          // on the underlying table — values past this fail at the database layer
+          // rather than returning a clean 400.
+          .max(2048, "idempotencyKey must be 2048 characters or less")
+          .optional(),
+        idempotencyKeyTTL: z.string().optional(),
+        /** The original user-provided idempotency key and scope */
+        idempotencyKeyOptions: IdempotencyKeyOptionsSchema.optional(),
+        machine: MachinePresetName.optional(),
+        maxAttempts: z.number().int().optional(),
+        maxDuration: z.number().optional(),
+        metadata: z.any(),
+        metadataType: z.string().optional(),
+        payloadType: z.string().optional(),
+        tags: RunTags.optional(),
+        test: z.boolean().optional(),
+        ttl: z.string().or(z.number().nonnegative().int()).optional(),
+        priority: z.number().optional(),
+        bulkActionId: z.string().optional(),
+        region: z.string().optional(),
+        debounce: z
+          .object({
+            key: z.string().max(512),
+            delay: z.string(),
+            mode: z.enum(["leading", "trailing"]).optional(),
+            maxDelay: z.string().optional(),
+          })
+          .optional(),
+      })
+      .optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.options?.payloadType !== "application/store") {
+      return;
+    }
+
+    if (typeof value.payload !== "string" || value.payload.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "payload must be a non-empty string when options.payloadType is application/store",
+        path: ["payload"],
+      });
+    }
+  });
 
 export type TriggerTaskRequestBody = z.infer<typeof TriggerTaskRequestBody>;
 
@@ -1658,9 +1670,7 @@ export const EndAndContinueSessionResponseBody = z.object({
    */
   swapped: z.boolean(),
 });
-export type EndAndContinueSessionResponseBody = z.infer<
-  typeof EndAndContinueSessionResponseBody
->;
+export type EndAndContinueSessionResponseBody = z.infer<typeof EndAndContinueSessionResponseBody>;
 
 export const UpdateSessionRequestBody = z.object({
   tags: z.array(z.string().max(128)).max(10).optional(),
@@ -1712,13 +1722,10 @@ export const ListSessionsQueryParams = z
     "filter[createdAt][from]": z.coerce.number().int().optional(),
     "filter[createdAt][to]": z.coerce.number().int().optional(),
   })
-  .refine(
-    (value) => !(value["page[after]"] && value["page[before]"]),
-    {
-      message: "Cannot pass both page[after] and page[before] on the same request",
-      path: ["page[before]"],
-    }
-  );
+  .refine((value) => !(value["page[after]"] && value["page[before]"]), {
+    message: "Cannot pass both page[after] and page[before] on the same request",
+    path: ["page[before]"],
+  });
 export type ListSessionsQueryParams = z.infer<typeof ListSessionsQueryParams>;
 
 /**
@@ -2111,7 +2118,9 @@ export type UpdatePromptOverrideRequestBody = z.infer<typeof UpdatePromptOverrid
 export const ReactivatePromptOverrideRequestBody = z.object({
   version: z.number().int().positive(),
 });
-export type ReactivatePromptOverrideRequestBody = z.infer<typeof ReactivatePromptOverrideRequestBody>;
+export type ReactivatePromptOverrideRequestBody = z.infer<
+  typeof ReactivatePromptOverrideRequestBody
+>;
 
 export const PromptOkResponseBody = z.object({ ok: z.boolean() });
 export type PromptOkResponseBody = z.infer<typeof PromptOkResponseBody>;

@@ -16,7 +16,11 @@ vi.mock("~/services/platform.v3.server", async (importOriginal) => {
 
 import { RunEngine } from "@internal/run-engine";
 import { setupAuthenticatedEnvironment } from "@internal/run-engine/tests";
-import { containerTest } from "@internal/testcontainers";
+// Per-test redis (isolated): each test spins up its own RunEngine and runs batch work, which leaves
+// background activity on redis that outlives the test - sharing a worker redis across the 16 cases
+// here caused cross-test interference and 30s seal-timeout flakes. Same carve-out as the run-engine
+// batch tests.
+import { containerTestWithIsolatedRedis as containerTest } from "@internal/testcontainers";
 import { trace } from "@opentelemetry/api";
 import { PrismaClient } from "@trigger.dev/database";
 import { BatchId } from "@trigger.dev/core/v3/isomorphic";
@@ -1584,10 +1588,7 @@ describe("createNdjsonParserStream", () => {
     const parser = createNdjsonParserStream(1024);
     const results = await collectStream(stream.pipeThrough(parser));
 
-    expect(results).toEqual([
-      { payload: "line1\nline2\nline3" },
-      { payload: "no newlines" },
-    ]);
+    expect(results).toEqual([{ payload: "line1\nline2\nline3" }, { payload: "no newlines" }]);
   });
 
   it("should skip empty lines", async () => {
@@ -1888,7 +1889,9 @@ describe("extractIndexAndTask", () => {
   });
 
   it("should not match nested keys", () => {
-    const bytes = encoder.encode('{"nested":{"index":999,"task":"inner"},"index":5,"task":"outer"}');
+    const bytes = encoder.encode(
+      '{"nested":{"index":999,"task":"inner"},"index":5,"task":"outer"}'
+    );
     const result = extractIndexAndTask(bytes);
     expect(result.index).toBe(5);
     expect(result.task).toBe("outer");

@@ -18,7 +18,9 @@
 
 import type { SessionTriggerConfig, Task } from "@trigger.dev/core/v3";
 import type { ModelMessage, UIMessage, UIMessageChunk } from "ai";
-import { readUIMessageStream } from "ai";
+// `readUIMessageStream` is a runtime value — via the ESM/CJS shim so the CJS
+// build can `require` ESM-only `ai@7` (see ../imports/ai-runtime.ts).
+import { readUIMessageStream } from "../imports/ai-runtime.js";
 import {
   apiClientManager,
   controlSubtype,

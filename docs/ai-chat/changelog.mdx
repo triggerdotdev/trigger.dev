@@ -4,6 +4,28 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="June 5, 2026" description="4.5.0-rc.5" tags={["SDK", "Bug fix"]}>
+
+## AI SDK 7 support
+
+`chat.agent` and the chat surfaces now work against Vercel AI SDK 7. The `ai` peer range widened to include v7, so you can build your agent against v5, v6, or v7 with the same `@trigger.dev/sdk/ai`, `chat`, and `chat/react` imports; your installed `ai` major drives the types. v5 and v6 are unchanged.
+
+On v7, model-call spans moved out of `ai` core into the separate `@ai-sdk/otel` adapter, so `experimental_telemetry` alone produces nothing until an integration is registered. Install `@ai-sdk/otel` alongside `ai@7` and the SDK registers it for you once per worker at chat agent boot, so your `streamText` spans keep flowing into the run trace with no extra setup:
+
+```sh
+npm install @ai-sdk/otel
+```
+
+If you (or a library you import) already register `@ai-sdk/otel`, the SDK detects the existing integration and skips its own registration, so you won't get duplicate spans. Set `TRIGGER_AI_SDK_OTEL_AUTOREGISTER=0` to disable auto-registration entirely. See [supported AI SDK versions](/ai-chat/reference#compatibility) and [AI SDK 7 telemetry](/ai-chat/reference#ai-sdk-7-telemetry) in the reference.
+
+Task-backed tools wired in with `ai.toolExecute` also propagate their tool `context` on v7, which renamed the field from v6's `experimental_context`.
+
+## `useTriggerChatTransport` recovers a stale session
+
+When a chat's restored session state pointed at a session that no longer exists in the current environment (restored from a different environment, or from before the sessions model), the transport assumed it was live and never created a real one, so the next message 404'd and the chat could not send. The transport now treats a 404 from a session call as a missing session: after the existing token refresh it recreates the session via `startSession`, drops the stale resume cursor, and retries the send once.
+
+</Update>
+
 <Update label="June 1, 2026" description="4.5.0-rc.4" tags={["SDK"]}>
 
 ## `tools` option on `chat.agent`: `toModelOutput` survives across turns

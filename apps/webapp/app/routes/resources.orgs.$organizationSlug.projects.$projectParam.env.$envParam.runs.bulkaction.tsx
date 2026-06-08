@@ -23,7 +23,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "~/components/primitives/Accordion";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import {
   Dialog,
@@ -51,10 +51,11 @@ import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/m
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { CreateBulkActionPresenter } from "~/presenters/v3/CreateBulkActionPresenter.server";
+import { RUNS_BULK_INSPECTOR_UI_SEARCH_PARAMS } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs._index/shouldRevalidateRunsList";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import { EnvironmentParamSchema, v3BulkActionPath, v3RunsPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3BulkActionPath } from "~/utils/pathBuilder";
 import { BulkActionService } from "~/v3/services/bulk/BulkActionV2.server";
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
@@ -187,7 +188,7 @@ export function CreateBulkActionInspector({
   const project = useProject();
   const environment = useEnvironment();
   const fetcher = useTypedFetcher<typeof loader>();
-  const { value, replace } = useSearchParams();
+  const { value, replace, del } = useSearchParams();
   const [action, setAction] = useState<BulkActionAction>(
     bulkActionActionFromString(value("action"))
   );
@@ -208,9 +209,6 @@ export function CreateBulkActionInspector({
 
   const data = fetcher.data != null ? fetcher.data : undefined;
 
-  const closedSearchParams = new URLSearchParams(location.search);
-  closedSearchParams.delete("bulkInspector");
-
   const impactedCountElement =
     mode === "selected" ? selectedItems.size : <EstimatedCount count={data?.count} />;
 
@@ -225,13 +223,10 @@ export function CreateBulkActionInspector({
       <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright">
         <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
           <Header2 className="whitespace-nowrap">Create a bulk action</Header2>
-          <LinkButton
-            to={`${v3RunsPath(
-              organization,
-              project,
-              environment
-            )}?${closedSearchParams.toString()}`}
+          <Button
+            type="button"
             variant="minimal/small"
+            onClick={() => del([...RUNS_BULK_INSPECTOR_UI_SEARCH_PARAMS])}
             TrailingIcon={ExitIcon}
             shortcut={{ key: "esc" }}
             shortcutPosition="before-trailing-icon"

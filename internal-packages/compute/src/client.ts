@@ -11,6 +11,13 @@ export type ComputeClientOptions = {
   gatewayUrl: string;
   authToken?: string;
   timeoutMs: number;
+  /**
+   * Called once per outbound request to collect cross-service correlation
+   * headers (e.g. `traceparent`, `x-request-id`) from the caller's current
+   * scope. The returned record is merged onto the outbound headers. Return
+   * `{}` (or omit the option) to skip propagation.
+   */
+  getPropagationHeaders?: () => Record<string, string>;
 };
 
 export class ComputeClient {
@@ -39,6 +46,14 @@ class HttpTransport {
     const h: Record<string, string> = { "Content-Type": "application/json" };
     if (this.opts.authToken) {
       h["Authorization"] = `Bearer ${this.opts.authToken}`;
+    }
+    const propagation = this.opts.getPropagationHeaders?.();
+    if (propagation) {
+      for (const [key, value] of Object.entries(propagation)) {
+        if (value) {
+          h[key] = value;
+        }
+      }
     }
     return h;
   }

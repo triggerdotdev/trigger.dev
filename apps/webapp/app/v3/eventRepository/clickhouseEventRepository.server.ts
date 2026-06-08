@@ -62,6 +62,7 @@ import type {
   SpanOverride,
   SpanSummary,
   SpanSummaryCommon,
+  StreamedTraceEvent,
   TraceAttributes,
   TraceDetailedSummary,
   TraceEventOptions,
@@ -269,7 +270,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         return;
       }
 
-      logger.info("ClickhouseEventRepository.flushBatch Inserted batch into clickhouse", {
+      logger.debug("ClickhouseEventRepository.flushBatch Inserted batch into clickhouse", {
         events: events.length,
         insertResult: outcome.insertResult,
         sanitized: outcome.kind === "sanitized",
@@ -302,7 +303,7 @@ export class ClickhouseEventRepository implements IEventRepository {
       return;
     }
 
-    logger.info("ClickhouseEventRepository.flushLlmMetricsBatch Inserted LLM metrics batch", {
+    logger.debug("ClickhouseEventRepository.flushLlmMetricsBatch Inserted LLM metrics batch", {
       rows: rows.length,
       sanitized: outcome.kind === "sanitized",
     });
@@ -421,7 +422,7 @@ export class ClickhouseEventRepository implements IEventRepository {
         throw insertError;
       }
 
-      logger.info("ClickhouseEventRepository.flushOtelMetricsBatch Inserted OTLP metrics batch", {
+      logger.debug("ClickhouseEventRepository.flushOtelMetricsBatch Inserted OTLP metrics batch", {
         rows: rows.length,
       });
     });
@@ -1988,6 +1989,80 @@ export class ClickhouseEventRepository implements IEventRepository {
     };
   }
 
+  async *streamTraceEvents(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
+  ): AsyncIterable<StreamedTraceEvent> {
+    const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 1000);
+
+    const queryBuilder =
+      this._version === "v2"
+        ? this._clickhouse.taskEventsV2.traceEventsForExportQueryBuilder()
+        : this._clickhouse.taskEvents.traceEventsForExportQueryBuilder();
+
+    queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
+    queryBuilder.where("trace_id = {traceId: String}", { traceId });
+    queryBuilder.where("start_time >= {startCreatedAt: String}", {
+      startCreatedAt: convertDateToNanoseconds(startCreatedAtWithBuffer).toString(),
+    });
+
+    if (endCreatedAt) {
+      queryBuilder.where("start_time <= {endCreatedAt: String}", {
+        endCreatedAt: convertDateToNanoseconds(endCreatedAt).toString(),
+      });
+    }
+
+    if (this._version === "v2") {
+      queryBuilder.where("inserted_at >= {insertedAtStart: DateTime64(3)}", {
+        insertedAtStart: convertDateToClickhouseDateTime(startCreatedAtWithBuffer),
+      });
+    }
+
+    // Admin-only debug events stay hidden unless explicitly requested.
+    if (options?.includeDebugLogs !== true) {
+      queryBuilder.where("kind != {debugKind: String}", { debugKind: "DEBUG_EVENT" });
+    }
+
+    // Each span is written twice: a PARTIAL start-marker (empty attributes) and
+    // the completed row. Keep only the completed row so the export has one line
+    // per span (the tree path merges these; streaming can't, so we filter).
+    queryBuilder.where("status != {partialStatus: String}", { partialStatus: "PARTIAL" });
+
+    // Internal trigger.dev span events (start timeline) are uninformative noise
+    // in the export; the tree path filters them too. Real span events such as
+    // exceptions are kept.
+    queryBuilder.where(
+      "(kind != {spanEventKind: String} OR NOT startsWith(message, {internalPrefix: String}))",
+      { spanEventKind: "SPAN_EVENT", internalPrefix: "trigger.dev/" }
+    );
+
+    // ANCESTOR_OVERRIDE rows duplicate a descendant's error onto an ancestor span
+    // to colour the tree; they carry no event of their own. The tree path drops
+    // them, so the export does too (otherwise the same error shows up twice).
+    queryBuilder.where("kind != {ancestorKind: String}", { ancestorKind: "ANCESTOR_OVERRIDE" });
+
+    queryBuilder.orderBy("start_time ASC");
+    // Deliberately no LIMIT: streaming never materialises the result set, so the
+    // detailed-summary memory cap doesn't apply to the export.
+
+    for await (const row of queryBuilder.executeStream()) {
+      yield {
+        spanId: row.span_id,
+        parentSpanId: row.parent_span_id,
+        startTime: convertClickhouseDateTime64ToJsDate(row.start_time),
+        durationNs: typeof row.duration === "number" ? row.duration : Number(row.duration),
+        level: clickhouseKindToLevel(row.kind),
+        message: row.message,
+        isError: row.status === "ERROR",
+        propertiesText: row.attributes_text ?? "",
+      };
+    }
+  }
+
   #mergeRecordsIntoSpanDetailedSummary(
     spanId: string,
     records: TaskEventDetailedSummaryV1Result[],
@@ -2268,6 +2343,16 @@ export function convertClickhouseDateTime64ToNanosecondsEpoch(date: string): big
  *
  * Optimized with fast path for common format (avoids regex for 99% of cases).
  */
+// Map a ClickHouse task-event `kind` to a human display level for the streaming
+// export (e.g. LOG_INFO -> INFO, SPAN -> TRACE, SPAN_EVENT -> EVENT).
+function clickhouseKindToLevel(kind: string): string {
+  if (kind.startsWith("LOG_")) return kind.slice(4);
+  if (kind === "SPAN") return "TRACE";
+  if (kind === "SPAN_EVENT") return "EVENT";
+  if (kind === "DEBUG_EVENT") return "DEBUG";
+  return kind;
+}
+
 export function convertClickhouseDateTime64ToJsDate(date: string): Date {
   // Fast path for common format: "2025-09-23 12:32:46.130262875" or "2025-09-23 12:32:46"
   // This avoids the expensive regex for the common case

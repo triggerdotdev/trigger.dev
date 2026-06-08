@@ -7,7 +7,6 @@ on:
       - "docs/**"
       - ".changeset/**"
       - ".server-changes/**"
-      - "references/**"
 
 concurrency:
   group: review-md-drift-${{ github.event.pull_request.number }}
@@ -32,7 +31,7 @@ jobs:
 
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@fefa07e9c665b7320f08c3b525980457f22f58aa # v1.0.111
+        uses: anthropics/claude-code-action@787c5a0ce96a9a6cfb050ea0c8f4c05f2447c251 # v1.0.133
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           use_sticky_comment: true
