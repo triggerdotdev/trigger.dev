@@ -24,10 +24,12 @@
     "apis",
     "jobs",
     "background jobs",
-    "nextjs"
+    "nextjs",
+    "tanstack-intent"
   ],
   "files": [
-    "dist"
+    "dist",
+    "skills"
   ],
   "bin": {
     "trigger": "./dist/esm/index.js"

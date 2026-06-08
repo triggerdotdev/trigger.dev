@@ -14,15 +14,13 @@ import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { installMcpServer } from "./install-mcp.js";
 import { serverMetadata } from "../mcp/config.js";
-import { initiateRulesInstallWizard } from "./install-rules.js";
+import { initiateSkillsInstallWizard } from "./skills.js";
 
 const McpCommandOptions = CommonCommandOptions.extend({
   projectRef: z.string().optional(),
   logFile: z.string().optional(),
   devOnly: z.boolean().default(false),
   readonly: z.boolean().default(false),
-  rulesInstallManifestPath: z.string().optional(),
-  rulesInstallBranch: z.string().optional(),
 });
 
 export type McpCommandOptions = z.infer<typeof McpCommandOptions>;
@@ -42,18 +40,6 @@ export function configureMcpCommand(program: Command) {
         "Run in read-only mode. Write tools (deploy, trigger_task, cancel_run) are hidden from the AI."
       )
       .option("--log-file <log file>", "The file to log to")
-      .addOption(
-        new CommandOption(
-          "--rules-install-manifest-path <path>",
-          "The path to the rules install manifest"
-        ).hideHelp()
-      )
-      .addOption(
-        new CommandOption(
-          "--rules-install-branch <branch>",
-          "The branch to install the rules from"
-        ).hideHelp()
-      )
   ).action(async (options) => {
     wrapCommandAction("mcp", McpCommandOptions, options, async (opts) => {
       await mcpCommand(opts);
@@ -80,10 +66,7 @@ export async function mcpCommand(options: McpCommandOptions) {
       return;
     }
 
-    await initiateRulesInstallWizard({
-      manifestPath: options.rulesInstallManifestPath,
-      branch: options.rulesInstallBranch,
-    });
+    await initiateSkillsInstallWizard({});
 
     return;
   }
