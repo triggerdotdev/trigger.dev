@@ -8,7 +8,9 @@ import type { PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { ServiceValidationError } from "./baseService.server";
 import { FailDeploymentService } from "./failDeployment.server";
-import { resolveComputeAccess } from "../regionAccess.server";
+import { resolveComputeAccess, resolveEffectiveDefaultWorkerGroupId } from "../regionAccess.server";
+import { FEATURE_FLAG } from "../featureFlags";
+import { makeFlag } from "../featureFlags.server";
 
 type TemplateCreationMode = "required" | "shadow" | "skip";
 
@@ -56,7 +58,7 @@ export class ComputeTemplateCreationService {
     prisma: PrismaClientOrTransaction;
     writer?: WritableStreamDefaultWriter;
   }): Promise<void> {
-    const mode = await this.resolveMode(options.projectId, options.prisma);
+    const mode = await this.resolveMode(options.authenticatedEnv, options.prisma);
 
     if (mode === "skip") {
       return;
@@ -134,7 +136,7 @@ export class ComputeTemplateCreationService {
   }
 
   async resolveMode(
-    projectId: string,
+    authenticatedEnv: AuthenticatedEnvironment,
     prisma: PrismaClientOrTransaction
   ): Promise<TemplateCreationMode> {
     if (!this.client) {
@@ -142,11 +144,9 @@ export class ComputeTemplateCreationService {
     }
 
     const project = await prisma.project.findFirst({
-      where: { id: projectId },
+      where: { id: authenticatedEnv.projectId },
       select: {
-        defaultWorkerGroup: {
-          select: { workloadType: true },
-        },
+        defaultWorkerGroupId: true,
         organization: {
           select: { featureFlags: true },
         },
@@ -157,7 +157,24 @@ export class ComputeTemplateCreationService {
       return "skip";
     }
 
-    if (project.defaultWorkerGroup?.workloadType === "MICROVM") {
+    // Resolve the region this env actually deploys to: env default -> project default -> global default.
+    const globalDefaultWorkerGroupId = await makeFlag(prisma)({
+      key: FEATURE_FLAG.defaultWorkerInstanceGroupId,
+    });
+    const effectiveDefaultWorkerGroupId = resolveEffectiveDefaultWorkerGroupId({
+      environmentDefaultWorkerGroupId: authenticatedEnv.defaultWorkerGroupId,
+      projectDefaultWorkerGroupId: project.defaultWorkerGroupId,
+      globalDefaultWorkerGroupId,
+    });
+
+    const defaultWorkerGroup = effectiveDefaultWorkerGroupId
+      ? await prisma.workerInstanceGroup.findFirst({
+          where: { id: effectiveDefaultWorkerGroupId },
+          select: { workloadType: true },
+        })
+      : null;
+
+    if (defaultWorkerGroup?.workloadType === "MICROVM") {
       return "required";
     }
 
