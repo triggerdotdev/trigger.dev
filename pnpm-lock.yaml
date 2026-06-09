@@ -47,6 +47,9 @@ patchedDependencies:
   '@kubernetes/client-node@1.0.0':
     hash: ba1a06f46256cdb8d6faf7167246692c0de2e7cd846a9dc0f13be0137e1c3745
     path: patches/@kubernetes__client-node@1.0.0.patch
+  '@remix-run/router@1.23.2':
+    hash: f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9
+    path: patches/@remix-run__router@1.23.2.patch
   '@sentry/remix@9.46.0':
     hash: 146126b032581925294aaed63ab53ce3f5e0356a755f1763d7a9a76b9846943b
     path: patches/@sentry__remix@9.46.0.patch
@@ -497,7 +500,7 @@ importers:
         version: 2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)
       '@remix-run/router':
         specifier: ^1.23.2
-        version: 1.23.2
+        version: 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       '@remix-run/serve':
         specifier: 2.17.4
         version: 2.17.4(typescript@5.5.4)
@@ -803,7 +806,7 @@ importers:
         version: 0.3.1(@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.17.4(typescript@5.5.4))(react@18.2.0)
       remix-utils:
         specifier: ^7.7.0
-        version: 7.7.0(@remix-run/node@2.17.4(typescript@5.5.4))(@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/router@1.23.2)(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.2.0)(zod@3.25.76)
+        version: 7.7.0(@remix-run/node@2.17.4(typescript@5.5.4))(@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/router@1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9))(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.2.0)(zod@3.25.76)
       seedrandom:
         specifier: ^3.0.5
         version: 3.0.5
@@ -23657,7 +23660,7 @@ snapshots:
       '@npmcli/package-json': 4.0.1
       '@remix-run/node': 2.17.4(typescript@5.5.4)
       '@remix-run/react': 2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       '@remix-run/server-runtime': 2.17.4(typescript@5.5.4)
       '@types/mdx': 2.0.5
       '@vanilla-extract/integration': 6.2.1(@types/node@20.14.14)(lightningcss@1.29.2)(terser@5.46.1)
@@ -23772,7 +23775,7 @@ snapshots:
 
   '@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)':
     dependencies:
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       '@remix-run/server-runtime': 2.17.4(typescript@5.5.4)
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
@@ -23782,7 +23785,7 @@ snapshots:
     optionalDependencies:
       typescript: 5.5.4
 
-  '@remix-run/router@1.23.2': {}
+  '@remix-run/router@1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)': {}
 
   '@remix-run/serve@2.17.4(typescript@5.5.4)':
     dependencies:
@@ -23800,7 +23803,7 @@ snapshots:
 
   '@remix-run/server-runtime@2.17.4(typescript@5.5.4)':
     dependencies:
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       '@types/cookie': 0.6.0
       '@web3-storage/multipart-parser': 1.0.0
       cookie: 0.7.2
@@ -23814,7 +23817,7 @@ snapshots:
     dependencies:
       '@remix-run/node': 2.17.4(typescript@5.5.4)
       '@remix-run/react': 2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       react: 18.2.0
       react-router-dom: 6.30.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
     optionalDependencies:
@@ -24100,7 +24103,7 @@ snapshots:
       '@opentelemetry/semantic-conventions': 1.41.1
       '@remix-run/node': 2.17.4(typescript@5.5.4)
       '@remix-run/react': 2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       '@remix-run/server-runtime': 2.17.4(typescript@5.5.4)
       '@sentry/cli': 2.50.2(encoding@0.1.13)
       '@sentry/core': 9.46.0
@@ -33190,14 +33193,14 @@ snapshots:
 
   react-router-dom@6.30.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
     dependencies:
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
       react-router: 6.30.3(react@18.2.0)
 
   react-router@6.30.3(react@18.2.0):
     dependencies:
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       react: 18.2.0
 
   react-smooth@4.0.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
@@ -33585,13 +33588,13 @@ snapshots:
       '@remix-run/server-runtime': 2.17.4(typescript@5.5.4)
       react: 18.2.0
 
-  remix-utils@7.7.0(@remix-run/node@2.17.4(typescript@5.5.4))(@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/router@1.23.2)(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.2.0)(zod@3.25.76):
+  remix-utils@7.7.0(@remix-run/node@2.17.4(typescript@5.5.4))(@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/router@1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9))(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.2.0)(zod@3.25.76):
     dependencies:
       type-fest: 4.33.0
     optionalDependencies:
       '@remix-run/node': 2.17.4(typescript@5.5.4)
       '@remix-run/react': 2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       crypto-js: 4.2.0
       intl-parse-accept-language: 1.0.0
       react: 18.2.0
