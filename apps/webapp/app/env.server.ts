@@ -324,6 +324,15 @@ const EnvironmentSchema = z
     // hydrate cache entry. Floored, so the window only ever widens by < bucket. 0
     // disables bucketing (each feed keeps its exact lower bound).
     REALTIME_NOTIFIER_RUNSET_CREATED_AT_BUCKET_MS: z.coerce.number().int().default(60_000),
+    // Leading-edge throttle (ms) on the per-env wake channel: a busy env's run-change
+    // firehose is collapsed to at most one feed-wake per window, decoupling wake load
+    // from run throughput. Lossless because consumers refetch current state on a wake.
+    // 0 disables coalescing (every change wakes immediately).
+    REALTIME_NOTIFIER_ENV_WAKE_COALESCE_WINDOW_MS: z.coerce.number().int().default(100),
+    // When "1", a multi-run live poll woken by a change irrelevant to its filter keeps
+    // holding the long-poll (re-resolving cheaply) instead of returning an empty
+    // up-to-date the client would immediately re-issue. "0" reverts to per-wake replies.
+    REALTIME_NOTIFIER_HOLD_ON_EMPTY: z.string().default("1"),
 
     PUBSUB_REDIS_HOST: z
       .string()
@@ -387,6 +396,10 @@ const EnvironmentSchema = z
     REALTIME_RUNS_PUBSUB_REDIS_CLUSTER_MODE_ENABLED: z
       .string()
       .default(process.env.PUBSUB_REDIS_CLUSTER_MODE_ENABLED ?? "0"),
+    // Use sharded pub/sub (SSUBSCRIBE/SPUBLISH) when in cluster mode, so a busy env's
+    // traffic stays on one shard instead of broadcasting to every node. Only takes
+    // effect alongside CLUSTER_MODE_ENABLED. "0" forces classic pub/sub on the cluster.
+    REALTIME_RUNS_PUBSUB_REDIS_SHARDED_ENABLED: z.string().default("1"),
 
     DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
     DEFAULT_ENV_EXECUTION_CONCURRENCY_BURST_FACTOR: z.coerce.number().default(1.0),

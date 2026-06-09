@@ -91,6 +91,11 @@ export type NotifierRealtimeClientOptions = {
    * same-tag feeds pinned within the same bucket share a cache entry. Defaults to
    * 60000. 0 disables bucketing. */
   runSetCreatedAtBucketMs?: number;
+  /** When true (default), a multi-run live poll woken by a change irrelevant to its
+   * filter keeps holding the long-poll (re-resolving cheaply on each wake) instead of
+   * returning an empty up-to-date the client would immediately re-issue. The empty
+   * response is the dominant cost under a busy per-env wake channel. */
+  holdOnEmpty?: boolean;
   /** Observability hook: why a live request woke (notify vs timeout vs abort). */
   onWakeup?: (reason: WakeupReason) => void;
   /** Observability hook: whether a multi-run resolve hit the cache, coalesced onto
@@ -417,55 +422,93 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
     signal: AbortSignal | undefined
   ): Promise<Response> {
     return this.#withConcurrencySlot(environment, async () => {
-      // One env-scoped subscription per feed (not one per run): any run change in
-      // the env wakes us, then we re-resolve the filter.
-      const reason = await this.#waitForEnvChange(environment.id, signal);
-      this.options.onWakeup?.(reason);
-
-      const cached = this.#workingSetCache.get(handle);
       const offsetFloorMs = parseOffsetUpdatedAtMs(offset);
-      const seq = this.#nextSeq();
+      // Total time to hold this long-poll, jittered to avoid synchronized refetch herds.
+      const deadline = Date.now() + this.#jitteredTimeout();
+      const holdOnEmpty = this.options.holdOnEmpty ?? true;
 
-      // ClickHouse resolves the (possibly stale) membership; Postgres hydrates the
-      // authoritative current rows, so status is always fresh even if CH lags. The
-      // resolve+hydrate is coalesced + short-TTL cached so a single env-wide wake
-      // doesn't fan out into one CH+PG query per concurrent same-filter feed.
-      const rows = await this.#resolveAndHydrate(environment, filter, skipColumns);
+      // Working set we diff against: seeded from the cache (or the offset floor on a
+      // miss) and advanced on each refetch within this held request.
+      let prevSeen = this.#workingSetCache.get(handle);
 
-      // Diff against what the client already has, using the hydrated updatedAt:
-      // cache hit => per-row (new = insert, advanced = update); miss => anything
-      // newer than the offset floor as a merge-safe update.
-      const changes: RowChange[] = [];
-      const seen: WorkingSet = new Map();
-      let maxUpdatedAt = offsetFloorMs;
-      for (const row of rows) {
-        const updatedAtMs = row.updatedAt.getTime();
-        seen.set(row.id, updatedAtMs);
-        maxUpdatedAt = Math.max(maxUpdatedAt, updatedAtMs);
+      // The per-env channel wakes this feed on ANY run change in the environment, but
+      // most changes don't match this feed's filter. Rather than return an empty
+      // up-to-date the client would immediately re-issue (the dominant cost under a
+      // busy env), we hold the connection and only respond when THIS feed has a real
+      // delta or the backstop elapses. Each wake re-resolves via the coalesced +
+      // short-TTL cache, so an env-wide wake never fans out into per-feed CH+PG queries.
+      while (true) {
+        const remaining = deadline - Date.now();
+        // One env-scoped subscription per wait (not one per run); re-subscribed each
+        // loop until a relevant delta or the budget runs out.
+        const reason =
+          remaining > 0 ? await this.#waitForEnvChange(environment.id, signal, remaining) : "timeout";
+        this.options.onWakeup?.(reason);
 
-        if (cached) {
-          const prior = cached.get(row.id);
-          if (prior === undefined) {
-            changes.push({ row, operation: "insert" });
-          } else if (updatedAtMs > prior) {
+        if (reason === "abort") {
+          // Client disconnected; the response is discarded. Skip the refetch.
+          return this.#buildResponse(buildUpToDateBody(), apiVersion, clientVersion, {
+            offset,
+            handle,
+            cursor: String(this.#nextSeq()),
+          });
+        }
+
+        // ClickHouse resolves the (possibly stale) membership; Postgres hydrates the
+        // authoritative current rows, so status is always fresh even if CH lags. We
+        // refetch on every wake AND on the final timeout, so a wake missed during the
+        // brief re-subscribe gap is still caught by the backstop.
+        const rows = await this.#resolveAndHydrate(environment, filter, skipColumns);
+
+        // Diff against what the client already has, using the hydrated updatedAt:
+        // prior working set => per-row (new = insert, advanced = update); miss =>
+        // anything newer than the offset floor as a merge-safe update.
+        const changes: RowChange[] = [];
+        const seen: WorkingSet = new Map();
+        let maxUpdatedAt = offsetFloorMs;
+        for (const row of rows) {
+          const updatedAtMs = row.updatedAt.getTime();
+          seen.set(row.id, updatedAtMs);
+          maxUpdatedAt = Math.max(maxUpdatedAt, updatedAtMs);
+
+          if (prevSeen) {
+            const prior = prevSeen.get(row.id);
+            if (prior === undefined) {
+              changes.push({ row, operation: "insert" });
+            } else if (updatedAtMs > prior) {
+              changes.push({ row, operation: "update" });
+            }
+          } else if (updatedAtMs > offsetFloorMs) {
             changes.push({ row, operation: "update" });
           }
-        } else if (updatedAtMs > offsetFloorMs) {
-          changes.push({ row, operation: "update" });
         }
+
+        // Refresh the working set so runs that left the filter stop being tracked
+        // (the client keeps showing them; the SDK never applies deletes).
+        this.#workingSetCache.set(handle, seen);
+        prevSeen = seen;
+
+        if (changes.length > 0) {
+          const seq = this.#nextSeq();
+          return this.#buildResponse(buildRowsBody(changes, skipColumns), apiVersion, clientVersion, {
+            offset: encodeOffset(maxUpdatedAt, seq),
+            handle,
+            cursor: String(seq),
+          });
+        }
+
+        // Empty diff. With hold-on-empty (default) keep waiting until a real delta or
+        // the budget elapses; otherwise fall back to the legacy per-wake up-to-date.
+        if (reason === "timeout" || !holdOnEmpty) {
+          const seq = this.#nextSeq();
+          return this.#buildResponse(buildUpToDateBody(), apiVersion, clientVersion, {
+            offset: encodeOffset(maxUpdatedAt, seq),
+            handle,
+            cursor: String(seq),
+          });
+        }
+        // reason === "notify" with an empty diff: keep holding (loop, re-subscribe).
       }
-
-      // Refresh the working set so runs that left the filter stop being tracked
-      // (the client keeps showing them; the SDK never applies deletes).
-      this.#workingSetCache.set(handle, seen);
-
-      const body = changes.length === 0 ? buildUpToDateBody() : buildRowsBody(changes, skipColumns);
-
-      return this.#buildResponse(body, apiVersion, clientVersion, {
-        offset: encodeOffset(maxUpdatedAt, seq),
-        handle,
-        cursor: String(seq),
-      });
     });
   }
 
@@ -654,21 +697,33 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
     }
   }
 
-  #waitForChange(runId: string, signal?: AbortSignal): Promise<WakeupReason> {
-    return this.#waitForSubscription(this.options.notifier.subscribeToRunChanges(runId), signal);
-  }
-
-  #waitForEnvChange(environmentId: string, signal?: AbortSignal): Promise<WakeupReason> {
+  #waitForChange(runId: string, signal?: AbortSignal, timeoutMs?: number): Promise<WakeupReason> {
     return this.#waitForSubscription(
-      this.options.notifier.subscribeToEnvChanges(environmentId),
-      signal
+      this.options.notifier.subscribeToRunChanges(runId),
+      signal,
+      timeoutMs
     );
   }
 
-  /** Race a notifier subscription against the backstop timeout and the abort signal. */
+  #waitForEnvChange(
+    environmentId: string,
+    signal?: AbortSignal,
+    timeoutMs?: number
+  ): Promise<WakeupReason> {
+    return this.#waitForSubscription(
+      this.options.notifier.subscribeToEnvChanges(environmentId),
+      signal,
+      timeoutMs
+    );
+  }
+
+  /** Race a notifier subscription against a timeout (the jittered backstop by default,
+   * or an explicit remaining budget when a live request holds across wakes) and the
+   * abort signal. */
   async #waitForSubscription(
     subscription: RunChangeSubscription,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    timeoutMs?: number
   ): Promise<WakeupReason> {
     if (signal?.aborted) {
       subscription.unsubscribe();
@@ -682,7 +737,7 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
       return await new Promise<WakeupReason>((resolve) => {
         subscription.changed.then(() => resolve("notify")).catch(() => resolve("timeout"));
 
-        timer = setTimeout(() => resolve("timeout"), this.#jitteredTimeout());
+        timer = setTimeout(() => resolve("timeout"), timeoutMs ?? this.#jitteredTimeout());
 
         if (signal) {
           onAbort = () => resolve("abort");

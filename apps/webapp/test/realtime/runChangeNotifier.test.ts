@@ -208,4 +208,109 @@ describe("RunChangeNotifier", () => {
       }
     }
   );
+
+  redisTest(
+    "coalesces a burst of env publishes into far fewer wakes than publishes",
+    { timeout: 30_000 },
+    async ({ redisOptions }) => {
+      // A busy env's run-change firehose must not wake feeds once per publication.
+      const notifier = new RunChangeNotifier({
+        redis: toRedisOptions(redisOptions),
+        envWakeCoalesceWindowMs: 100,
+      });
+      try {
+        // Count wakes by continuously re-subscribing (each subscription is one-shot).
+        let wakes = 0;
+        let running = true;
+        const counter = (async () => {
+          while (running) {
+            const sub = notifier.subscribeToEnvChanges("env_burst");
+            let woke = false;
+            void sub.changed.then(() => (woke = true)).catch(() => {});
+            const start = Date.now();
+            while (!woke && running && Date.now() - start < 1_500) {
+              await sleep(5);
+            }
+            sub.unsubscribe();
+            if (woke) wakes++;
+            else break;
+          }
+        })();
+
+        await sleep(SUBSCRIBE_SETTLE_MS);
+        // Publish ~200/s for a second to the same env channel.
+        let pubs = 0;
+        const end = Date.now() + 1_000;
+        while (Date.now() < end) {
+          notifier.publish({ runId: `r${pubs++}`, environmentId: "env_burst" });
+          await sleep(5);
+        }
+        running = false;
+        await counter;
+
+        expect(pubs).toBeGreaterThan(100);
+        expect(wakes).toBeGreaterThanOrEqual(1); // leading edge still delivers
+        // Leading-edge throttle caps wakes to ~time/window, well below the publish count.
+        expect(wakes).toBeLessThan(pubs / 4);
+      } finally {
+        await notifier.quit();
+      }
+    }
+  );
+
+  // Sharded pub/sub (SSUBSCRIBE/SPUBLISH/smessage) wiring — validated end to end on a
+  // single node (Redis 7.2 accepts these commands and delivers same-node). Multi-shard
+  // ROUTING needs a real cluster (covered by the cluster fixture), but this proves the
+  // notifier's sharded command + event path is correct.
+  redisTest(
+    "delivers via sharded pub/sub on the per-run channel",
+    { timeout: 30_000 },
+    async ({ redisOptions }) => {
+      const notifier = new RunChangeNotifier({
+        redis: toRedisOptions(redisOptions),
+        shardedPubSub: true,
+      });
+      try {
+        const subscription = notifier.subscribeToRunChanges("run_sharded");
+        let resolved = false;
+        void subscription.changed.then(() => {
+          resolved = true;
+        });
+
+        await sleep(SUBSCRIBE_SETTLE_MS);
+        notifier.publish({ runId: "run_sharded" });
+
+        await vi.waitFor(() => expect(resolved).toBe(true), { timeout: 5_000, interval: 50 });
+        subscription.unsubscribe();
+      } finally {
+        await notifier.quit();
+      }
+    }
+  );
+
+  redisTest(
+    "delivers via sharded pub/sub on the per-env channel",
+    { timeout: 30_000 },
+    async ({ redisOptions }) => {
+      const notifier = new RunChangeNotifier({
+        redis: toRedisOptions(redisOptions),
+        shardedPubSub: true,
+      });
+      try {
+        const envSub = notifier.subscribeToEnvChanges("env_sharded");
+        let envWoke = false;
+        void envSub.changed.then(() => {
+          envWoke = true;
+        });
+
+        await sleep(SUBSCRIBE_SETTLE_MS);
+        notifier.publish({ runId: "run_1", environmentId: "env_sharded" });
+
+        await vi.waitFor(() => expect(envWoke).toBe(true), { timeout: 5_000, interval: 50 });
+        envSub.unsubscribe();
+      } finally {
+        await notifier.quit();
+      }
+    }
+  );
 });

@@ -18,6 +18,22 @@ export type RunChangeNotifierOptions = {
   /** Channel name prefix; the runId is appended inside a hash-tag for slot locality. */
   channelPrefix?: string;
   connectionName?: string;
+  /**
+   * Leading-edge throttle (ms) for the high-volume per-env channel: deliver the
+   * first wake immediately, then at most one more per window while changes keep
+   * arriving. Bounds the feed-wake rate per env regardless of run throughput.
+   * Defaults to 100ms. 0 disables coalescing (wake on every message).
+   */
+  envWakeCoalesceWindowMs?: number;
+  /**
+   * Use Redis sharded pub/sub (SSUBSCRIBE/SPUBLISH) instead of classic pub/sub.
+   * Only valid against a Redis Cluster (the channels are hash-tagged by run/env id,
+   * so each lands on one shard) and requires the client to be built with
+   * `clusterOptions.shardedSubscribers: true`. Classic PUBLISH in a cluster
+   * broadcasts to every node, so sharded pub/sub is what actually distributes the
+   * load. Defaults to false (classic pub/sub, for single-node / local).
+   */
+  shardedPubSub?: boolean;
 };
 
 export type RunChangeSubscription = {
@@ -27,6 +43,7 @@ export type RunChangeSubscription = {
 };
 
 const DEFAULT_CHANNEL_PREFIX = "realtime:";
+const DEFAULT_ENV_WAKE_COALESCE_WINDOW_MS = 100;
 
 /**
  * RunChangeNotifier — the single, encapsulated module that carries "run X changed"
@@ -44,8 +61,10 @@ const DEFAULT_CHANNEL_PREFIX = "realtime:";
  *  - `publish` is fire-and-forget and never throws; a dropped publish only costs
  *    latency because the consumer has a timeout backstop.
  *
- * Channels are hash-tagged (`<prefix>{<runId>}`) so a later move to sharded
- * pub/sub (SPUBLISH/SSUBSCRIBE) keeps slot locality without a channel rename.
+ * Channels are hash-tagged (`<prefix>{<runId>}` / `<prefix>env:{<envId>}`) so they
+ * land on a single cluster slot. With `shardedPubSub` (cluster only) the feed uses
+ * SSUBSCRIBE/SPUBLISH so each run/env's traffic stays on one shard rather than
+ * broadcasting cluster-wide; classic pub/sub is used single-node.
  */
 export class RunChangeNotifier {
   #publisher: RedisClient | undefined;
@@ -53,10 +72,19 @@ export class RunChangeNotifier {
   readonly #listeners = new Map<string, Set<() => void>>();
   readonly #channelPrefix: string;
   readonly #connectionName: string;
+  readonly #coalesceWindowMs: number;
+  /** When true, use sharded pub/sub (SSUBSCRIBE/SPUBLISH/smessage) — see options. */
+  readonly #sharded: boolean;
+  /** Active coalescing windows per channel (env channels only). */
+  readonly #coalesceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Channels that received a message while their window was open (need a trailing wake). */
+  readonly #coalesceDirty = new Set<string>();
 
   constructor(private readonly options: RunChangeNotifierOptions) {
     this.#channelPrefix = options.channelPrefix ?? DEFAULT_CHANNEL_PREFIX;
     this.#connectionName = options.connectionName ?? "trigger:realtime:run-change-notifier";
+    this.#coalesceWindowMs = options.envWakeCoalesceWindowMs ?? DEFAULT_ENV_WAKE_COALESCE_WINDOW_MS;
+    this.#sharded = options.shardedPubSub ?? false;
   }
 
   /**
@@ -75,7 +103,11 @@ export class RunChangeNotifier {
   #publishToChannel(channel: string, payload: string): void {
     try {
       const publisher = this.#ensurePublisher();
-      const result = publisher.publish(channel, payload);
+      // Sharded pub/sub (SPUBLISH) routes to the channel's slot owner; classic
+      // PUBLISH broadcasts cluster-wide. The channel is hash-tagged by run/env id.
+      const result = this.#sharded
+        ? publisher.spublish(channel, payload)
+        : publisher.publish(channel, payload);
       if (typeof (result as Promise<number>)?.catch === "function") {
         (result as Promise<number>).catch((error) => {
           logger.error("[runChangeNotifier] Failed to publish run-changed notification", {
@@ -130,7 +162,7 @@ export class RunChangeNotifier {
     if (!listeners) {
       listeners = new Set();
       this.#listeners.set(channel, listeners);
-      subscriber.subscribe(channel).catch((error) => {
+      this.#subscribeChannel(subscriber, channel).catch((error) => {
         logger.error("[runChangeNotifier] Failed to subscribe to run-change channel", {
           error,
           channel,
@@ -156,8 +188,7 @@ export class RunChangeNotifier {
         // only if no new listener re-subscribed while it was in flight. The map
         // entry's existence mirrors "subscribed (or subscribe in flight) in Redis",
         // so the subscribe path safely reuses it without a duplicate SUBSCRIBE.
-        subscriber
-          .unsubscribe(channel)
+        this.#unsubscribeChannel(subscriber, channel)
           .then(() => {
             const latest = this.#listeners.get(channel);
             if (!latest) {
@@ -169,7 +200,7 @@ export class RunChangeNotifier {
               // A listener arrived during the in-flight UNSUBSCRIBE; the channel is
               // now unsubscribed in Redis but has live waiters. Re-subscribe so they
               // still receive messages (the long-poll backstop covers the gap).
-              subscriber.subscribe(channel).catch((error) => {
+              this.#subscribeChannel(subscriber, channel).catch((error) => {
                 logger.error("[runChangeNotifier] Failed to re-subscribe to run-change channel", {
                   error,
                   channel,
@@ -198,6 +229,11 @@ export class RunChangeNotifier {
   }
 
   async quit(): Promise<void> {
+    for (const timer of this.#coalesceTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.#coalesceTimers.clear();
+    this.#coalesceDirty.clear();
     await Promise.allSettled([this.#subscriber?.quit(), this.#publisher?.quit()]);
     this.#subscriber = undefined;
     this.#publisher = undefined;
@@ -214,13 +250,38 @@ export class RunChangeNotifier {
   #ensureSubscriber(): RedisClient {
     if (!this.#subscriber) {
       const subscriber = createRedisClient(`${this.#connectionName}:sub`, this.options.redis);
-      subscriber.on("message", (channel: string) => this.#onMessage(channel));
+      const onMessage = (channel: string) => this.#onMessage(channel);
+      // Classic pub/sub delivers "message"; sharded pub/sub delivers "smessage".
+      // Register both so the delivery path is identical regardless of mode.
+      subscriber.on("message", onMessage);
+      subscriber.on("smessage", onMessage);
       this.#subscriber = subscriber;
     }
     return this.#subscriber;
   }
 
+  /** SUBSCRIBE (classic) vs SSUBSCRIBE (sharded, cluster-only). */
+  #subscribeChannel(subscriber: RedisClient, channel: string): Promise<unknown> {
+    return this.#sharded ? subscriber.ssubscribe(channel) : subscriber.subscribe(channel);
+  }
+
+  /** UNSUBSCRIBE (classic) vs SUNSUBSCRIBE (sharded, cluster-only). */
+  #unsubscribeChannel(subscriber: RedisClient, channel: string): Promise<unknown> {
+    return this.#sharded ? subscriber.sunsubscribe(channel) : subscriber.unsubscribe(channel);
+  }
+
   #onMessage(channel: string) {
+    // The per-env channel carries a busy environment's entire run-change firehose to
+    // every tag/batch feed, so throttle it; the per-run channel is low-volume and
+    // latency-sensitive, so deliver it immediately.
+    if (this.#coalesceWindowMs > 0 && this.#isEnvChannel(channel)) {
+      this.#deliverCoalesced(channel);
+      return;
+    }
+    this.#deliver(channel);
+  }
+
+  #deliver(channel: string) {
     const listeners = this.#listeners.get(channel);
     if (!listeners) {
       return;
@@ -231,8 +292,41 @@ export class RunChangeNotifier {
     }
   }
 
-  // Channels are hash-tagged (`...{<id>}`) so a later move to sharded pub/sub
-  // keeps slot locality without a rename.
+  /**
+   * Leading-edge throttle: deliver the first wake immediately, then suppress further
+   * wakes for the window, delivering one trailing wake if any messages arrived during
+   * it (and re-opening while activity continues). Caps the feed-wake rate per env to
+   * ~1/window no matter how fast runs change. Lossless: consumers refetch current
+   * state on a wake, so a coalesced burst is captured by the next refetch.
+   */
+  #deliverCoalesced(channel: string) {
+    if (this.#coalesceTimers.has(channel)) {
+      this.#coalesceDirty.add(channel);
+      return;
+    }
+    this.#deliver(channel);
+    this.#openCoalesceWindow(channel);
+  }
+
+  #openCoalesceWindow(channel: string) {
+    const timer = setTimeout(() => {
+      this.#coalesceTimers.delete(channel);
+      if (this.#coalesceDirty.delete(channel)) {
+        this.#deliver(channel);
+        this.#openCoalesceWindow(channel);
+      }
+    }, this.#coalesceWindowMs);
+    // Don't let a pending coalescing window hold the process open at shutdown.
+    timer.unref?.();
+    this.#coalesceTimers.set(channel, timer);
+  }
+
+  #isEnvChannel(channel: string): boolean {
+    return channel.startsWith(`${this.#channelPrefix}env:`);
+  }
+
+  // Channels are hash-tagged (`...{<id>}`) so all of a run's/env's traffic maps to
+  // one cluster slot (one shard) under sharded pub/sub.
   #channelForRun(runId: string): string {
     return `${this.#channelPrefix}run:{${runId}}`;
   }

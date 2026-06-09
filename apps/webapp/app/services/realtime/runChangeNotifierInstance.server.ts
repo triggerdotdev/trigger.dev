@@ -19,6 +19,11 @@ import {
 const notifierEnabled = env.REALTIME_NOTIFIER_ENABLED === "1";
 
 function initializeRunChangeNotifier(): RunChangeNotifier {
+  const clusterMode = env.REALTIME_RUNS_PUBSUB_REDIS_CLUSTER_MODE_ENABLED === "1";
+  // Sharded pub/sub only works against a cluster; classic pub/sub there would
+  // broadcast every message to every node, so this is what actually shards load.
+  const shardedPubSub = clusterMode && env.REALTIME_RUNS_PUBSUB_REDIS_SHARDED_ENABLED === "1";
+
   const notifier = new RunChangeNotifier({
     redis: {
       host: env.REALTIME_RUNS_PUBSUB_REDIS_HOST,
@@ -26,8 +31,12 @@ function initializeRunChangeNotifier(): RunChangeNotifier {
       username: env.REALTIME_RUNS_PUBSUB_REDIS_USERNAME,
       password: env.REALTIME_RUNS_PUBSUB_REDIS_PASSWORD,
       tlsDisabled: env.REALTIME_RUNS_PUBSUB_REDIS_TLS_DISABLED === "true",
-      clusterMode: env.REALTIME_RUNS_PUBSUB_REDIS_CLUSTER_MODE_ENABLED === "1",
+      clusterMode,
+      // One subscriber connection per shard so SSUBSCRIBE routes to the slot owner.
+      ...(shardedPubSub ? { clusterOptions: { shardedSubscribers: true } } : {}),
     },
+    envWakeCoalesceWindowMs: env.REALTIME_NOTIFIER_ENV_WAKE_COALESCE_WINDOW_MS,
+    shardedPubSub,
   });
 
   new Gauge({

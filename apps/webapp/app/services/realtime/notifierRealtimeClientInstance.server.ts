@@ -77,6 +77,7 @@ function initializeNotifierRealtimeClient(): NotifierRealtimeClient {
     runSetResolveCacheMaxEntries: env.REALTIME_NOTIFIER_RUNSET_CACHE_MAX_ENTRIES,
     listCacheMaxEntries: env.REALTIME_NOTIFIER_WORKING_SET_MAX_ENTRIES,
     runSetCreatedAtBucketMs: env.REALTIME_NOTIFIER_RUNSET_CREATED_AT_BUCKET_MS,
+    holdOnEmpty: env.REALTIME_NOTIFIER_HOLD_ON_EMPTY === "1",
     onWakeup: (reason) => wakeups.inc({ reason }),
     onRunSetResolve: (result) => runSetResolves.inc({ result }),
     onRunSetQuery: (stage, ms) => runSetQueryMs.observe({ stage }, ms),
