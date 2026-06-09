@@ -284,8 +284,9 @@ export class WorkerGroupService extends WithRunEngine {
       return workerGroup;
     }
 
-    // Resolution order must match resolveEffectiveDefaultWorkerGroupId:
-    // environment default -> project default -> global default.
+    // Canonical default-region resolution (reused by the regions UI, workers API
+    // and compute templates): environment default -> project default -> global
+    // default, each existence-checked so a deleted region falls through.
     if (environmentDefaultWorkerGroupId) {
       const envWorkerGroup = await this._prisma.workerInstanceGroup.findFirst({
         where: { id: environmentDefaultWorkerGroupId },
