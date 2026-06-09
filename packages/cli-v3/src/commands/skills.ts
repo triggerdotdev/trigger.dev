@@ -100,10 +100,45 @@ export async function installSkillsCommand(options: unknown) {
  * `sourceDir` (the CLI's location) rather than the user's cwd. The CLI is the only source
  * of skills (there is no remote fallback), so this only returns null in the unexpected
  * case that the CLI ships without any skills.
+ *
+ * tshy emits a dialect stub `package.json` ({"type":"module"}) in `dist/esm`, so the
+ * package.json nearest the bundled code is NOT the package root and has no `skills/`
+ * beside it. We walk up to the first package.json that has a `name` (the real root);
+ * that resolves correctly both when bundled (`<root>/dist/esm`) and from source
+ * (`<root>/src`, run via tsx in dev/tests).
  */
+export async function resolveBundledPackageJSON(startDir: string = sourceDir): Promise<
+  string | null
+> {
+  let searchDir = startDir;
+
+  for (let i = 0; i < 10; i++) {
+    const candidate = await resolvePackageJSON(searchDir);
+    const pkg = await readPackageJSON(candidate);
+
+    if (pkg.name) {
+      return candidate;
+    }
+
+    // Climb above this (stub) package.json and keep looking for the real root.
+    const above = dirname(dirname(candidate));
+    if (above === searchDir) {
+      return null;
+    }
+    searchDir = above;
+  }
+
+  return null;
+}
+
 async function loadSkillsManifest(): Promise<RulesManifest | null> {
   try {
-    const packageJsonPath = await resolvePackageJSON(sourceDir);
+    const packageJsonPath = await resolveBundledPackageJSON();
+
+    if (!packageJsonPath) {
+      return null;
+    }
+
     const pkg = await readPackageJSON(packageJsonPath);
     const skillsDir = join(dirname(packageJsonPath), "skills");
     const version = typeof pkg.version === "string" ? pkg.version : "0.0.0";
@@ -208,14 +243,55 @@ export async function initiateSkillsInstallWizard(options: SkillsWizardOptions) 
   }
 }
 
-async function installSkills(manifest: RulesManifest, opts: SkillsWizardOptions) {
+/**
+ * Mark the agent-skills install prompt as already seen at the current skills version.
+ * `trigger init` calls this after offering skills in its AI-tooling step (whether or not
+ * the user installs them) so `trigger dev` doesn't ask about skills again. Returns false
+ * if the CLI ships without bundled skills.
+ */
+export async function markSkillsPromptSeen(): Promise<boolean> {
+  const manifest = await loadSkillsManifest();
+
+  if (!manifest) {
+    return false;
+  }
+
+  writeConfigHasSeenRulesInstallPrompt(true);
+  writeConfigLastRulesInstallPromptVersion(manifest.currentVersion);
+
+  return true;
+}
+
+/**
+ * Install skills as part of `trigger init`. The user already opted in via init's AI-tooling
+ * prompt, so this skips the extra confirm and goes straight to target/skill selection, then
+ * marks the prompt seen so `trigger dev` won't re-prompt. Returns false if the CLI ships
+ * without bundled skills.
+ */
+export async function installSkillsFromInit(opts: SkillsWizardOptions = {}): Promise<boolean> {
+  const manifest = await loadSkillsManifest();
+
+  if (!manifest) {
+    return false;
+  }
+
+  writeConfigHasSeenRulesInstallPrompt(true);
+  writeConfigLastRulesInstallPromptVersion(manifest.currentVersion);
+
+  // Returns true only if skills were actually written (false e.g. when the only target
+  // chosen is "unsupported"), so callers like `trigger init` don't claim skills are ready
+  // when nothing landed.
+  return await installSkills(manifest, opts);
+}
+
+async function installSkills(manifest: RulesManifest, opts: SkillsWizardOptions): Promise<boolean> {
   const currentVersion = await manifest.getCurrentVersion();
 
   const targetNames = await resolveTargets(opts);
 
   if (targetNames.length === 1 && targetNames.includes("unsupported")) {
     handleUnsupportedTargetOnly();
-    return;
+    return false;
   }
 
   const results = [];
@@ -228,7 +304,9 @@ async function installSkills(manifest: RulesManifest, opts: SkillsWizardOptions)
     }
   }
 
-  if (results.some((r) => r.installations.length > 0 || r.pointer)) {
+  const installedAny = results.some((r) => r.installations.length > 0 || r.pointer);
+
+  if (installedAny) {
     log.step("Installed the following skills:");
 
     for (const r of results) {
@@ -244,6 +322,8 @@ async function installSkills(manifest: RulesManifest, opts: SkillsWizardOptions)
       `${cliLink("Learn how to use Trigger.dev skills", "https://trigger.dev/docs/agents/rules/overview")}`
     );
   }
+
+  return installedAny;
 }
 
 function handleUnsupportedTargetOnly() {
