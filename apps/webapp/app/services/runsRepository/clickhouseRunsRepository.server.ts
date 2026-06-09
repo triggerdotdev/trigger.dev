@@ -117,17 +117,24 @@ export class ClickHouseRunsRepository implements IRunsRepository {
           previousCursor = cursorFor(reversedRows.at(1));
           nextCursor = cursorFor(reversedRows.at(options.page.size));
         } else {
-          nextCursor = cursorFor(reversedRows.at(options.page.size - 1));
+          // No newer rows, so there's no previous (newer) page. The next
+          // (older) cursor is the oldest row on this page = rows[0] (rows are
+          // ASC here). Index by the actual row count, not page.size — on a
+          // partial page (fewer than page.size rows) page.size-1 overshoots
+          // and would null the cursor, stranding forward navigation.
+          nextCursor = cursorFor(rows.at(0));
         }
         break;
       }
     }
 
-    const runIds = (
-      direction === "backward" && hasMore
-        ? rows.slice(1, options.page.size + 1)
-        : rows.slice(0, options.page.size)
-    ).map((row) => row.runId);
+    // The page is always the first `page.size` rows of the result. listRunRows
+    // fetches one extra row only to detect `hasMore`; that extra row is the
+    // farthest from the cursor in BOTH directions (forward orders DESC, backward
+    // orders ASC), so it's always the trailing element to drop — never the
+    // leading one. (Slicing `[1, size+1]` for backward dropped the row closest
+    // to the cursor and kept the has-more sentinel, straddling two pages.)
+    const runIds = rows.slice(0, options.page.size).map((row) => row.runId);
 
     return { runIds, pagination: { nextCursor, previousCursor } };
   }
