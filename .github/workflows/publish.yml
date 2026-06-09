@@ -74,6 +74,9 @@ jobs:
       SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
     with:
       image_tag: ${{ inputs.image_tag }}
+      # Target registry namespace. Defaults to ghcr.io/<owner> so a fork publishes
+      # to its own namespace; set the IMAGE_REGISTRY repository variable to override.
+      image_registry: ${{ vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
 
   publish-worker:
     needs: [typecheck]
@@ -86,6 +89,7 @@ jobs:
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     with:
       image_tag: ${{ inputs.image_tag }}
+      image_registry: ${{ vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
 
   publish-worker-v4:
     needs: [typecheck]
@@ -96,6 +100,7 @@ jobs:
     uses: ./.github/workflows/publish-worker-v4.yml
     with:
       image_tag: ${{ inputs.image_tag }}
+      image_registry: ${{ vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
 
   # OS-level CVE scan of the image just published above. Report-only (writes to
   # the run summary); runs alongside the worker publishes and never blocks them.
@@ -106,4 +111,4 @@ jobs:
       packages: read # pull the just-published image from GHCR
     uses: ./.github/workflows/trivy-image-webapp.yml
     with:
-      image-ref: ghcr.io/triggerdotdev/trigger.dev:${{ needs.publish-webapp.outputs.version }}
+      image-ref: ${{ needs.publish-webapp.outputs.image_repo }}:${{ needs.publish-webapp.outputs.version }}

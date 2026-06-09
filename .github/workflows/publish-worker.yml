@@ -8,6 +8,11 @@ on:
         type: string
         required: false
         default: ""
+      image_registry:
+        description: The registry namespace to publish under (e.g. ghcr.io/<owner>)
+        type: string
+        required: false
+        default: ""
     secrets:
       DOCKERHUB_USERNAME:
         required: false
@@ -83,7 +88,10 @@ jobs:
           docker tag infra_image "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
           docker push "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
         env:
-          REGISTRY: ghcr.io/triggerdotdev
+          # Resolved by the caller when invoked from publish.yml; falls back to the
+          # IMAGE_REGISTRY repository variable (or ghcr.io/<owner>) for the direct
+          # push triggers above, so a fork publishes to its own namespace.
+          REGISTRY: ${{ inputs.image_registry || vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
           REPOSITORY: ${{ steps.get_repository.outputs.repo }}
           IMAGE_TAG: ${{ steps.get_tag.outputs.tag }}
 
