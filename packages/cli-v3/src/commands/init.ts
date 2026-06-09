@@ -1,4 +1,4 @@
-import { intro, isCancel, log, outro, select, text } from "@clack/prompts";
+import { intro, isCancel, log, multiselect, outro, select, text } from "@clack/prompts";
 import { context, trace } from "@opentelemetry/api";
 import {
   GetProjectResponseBody,
@@ -43,6 +43,7 @@ import {
   writeConfigHasSeenMCPInstallPrompt,
 } from "../utilities/configFiles.js";
 import { installMcpServer } from "./install-mcp.js";
+import { installSkillsFromInit, markSkillsPromptSeen } from "./skills.js";
 
 const cliVersion = VERSION as string;
 const cliTag = cliVersion.includes("v4-beta") ? "v4-beta" : "latest";
@@ -147,27 +148,53 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 
   const hasSeenMCPInstallPrompt = readConfigHasSeenMCPInstallPrompt();
 
-  // Skip the MCP-vs-CLI prompt when --yes is set: the user explicitly chose CLI
-  // by running `trigger.dev init` non-interactively, and the prompt would
+  // Skip the AI-tooling prompt when --yes is set: the user explicitly chose the CLI
+  // scaffold by running `trigger.dev init` non-interactively, and the prompt would
   // otherwise hang on a fresh machine where `hasSeenMCPInstallPrompt` is false.
   if (!hasSeenMCPInstallPrompt && !options.yes) {
-    const installChoice = await select({
-      message: "Choose how you want to initialize your project:",
+    const tooling = await multiselect({
+      message: "Set up AI tooling for your coding assistant? (optional, space to toggle)",
       options: [
         {
           value: "mcp",
-          label: "Trigger.dev MCP",
-          hint: "Automatically install the Trigger.dev MCP server and then vibe your way to a new project.",
+          label: "MCP server",
+          hint: "live access to your project: trigger tasks, deploy, monitor runs",
         },
-        { value: "cli", label: "CLI", hint: "Continue with the CLI" },
+        {
+          value: "skills",
+          label: "Agent skills",
+          hint: "teach your AI to write Trigger.dev code, version-matched to your SDK",
+        },
       ],
+      required: false,
     });
 
     writeConfigHasSeenMCPInstallPrompt(true);
 
-    const continueWithCLI = isCancel(installChoice) || installChoice === "cli";
+    const selectedTooling = isCancel(tooling) ? [] : tooling;
 
-    if (!continueWithCLI) {
+    // Track what actually installed (not just what was selected), so the AI hand-off is
+    // only offered, and only described, in terms of tooling that really landed.
+    let installedSkills = false;
+    let installedMcp = false;
+
+    // Skills are auth-free and bundled in the CLI. The user opted in here, so install
+    // straight away (no extra confirm). If they declined, still mark the prompt seen so
+    // `trigger dev` doesn't ask about skills a second time.
+    if (selectedTooling.includes("skills")) {
+      log.step("Installing the Trigger.dev agent skills");
+      const [skillsError, installed] = await tryCatch(installSkillsFromInit());
+      if (skillsError) {
+        log.warn(`Skipped agent skills: ${skillsError.message}`);
+      } else {
+        installedSkills = installed === true;
+      }
+    } else {
+      await tryCatch(markSkillsPromptSeen());
+    }
+
+    // The MCP server is also auth-free.
+    if (selectedTooling.includes("mcp")) {
       log.step("Welcome to the Trigger.dev MCP server install wizard 🧙");
 
       const [installError] = await tryCatch(
@@ -179,11 +206,44 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
       );
 
       if (installError) {
-        outro(`Failed to install MCP server: ${installError.message}`);
+        // Don't abort init if MCP fails: skills may already be installed and the user
+        // still needs the project scaffolded. Warn and carry on.
+        log.warn(`Skipped MCP server: ${installError.message}`);
+      } else {
+        installedMcp = true;
+      }
+    }
+
+    // Vibe path: once AI tooling is actually installed, the user can hand scaffolding to
+    // their assistant instead of the CLI. Only offered when something landed, and the
+    // hand-off message names only the tooling that did.
+    if (installedSkills || installedMcp) {
+      const setupChoice = await select({
+        message: "How do you want to set up your project?",
+        options: [
+          {
+            value: "cli",
+            label: "Scaffold it now with the CLI",
+            hint: "log in, create trigger.config.ts and an example task",
+          },
+          {
+            value: "ai",
+            label: "Let my AI assistant set it up",
+            hint: "hand off and let your assistant bootstrap the project",
+          },
+        ],
+      });
+
+      if (!isCancel(setupChoice) && setupChoice === "ai") {
+        outro(
+          installedSkills && installedMcp
+            ? "Your AI tooling is ready. Ask your assistant to set up Trigger.dev; it can use the getting-started skill and the MCP server to add the SDK, config, and your first task."
+            : installedSkills
+              ? "Your AI tooling is ready. Ask your assistant to set up Trigger.dev and it will use the getting-started skill to add the SDK, config, and your first task."
+              : "The MCP server is installed. Ask your assistant to set up Trigger.dev using the MCP server."
+        );
         return;
       }
-
-      return;
     }
   }
 
@@ -288,7 +348,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
   log.info("Next steps:");
   log.info(
     `   1. To start developing, run ${chalk.green(
-      `npx trigger.dev@${cliTag} dev${options.profile ? "" : ` --profile ${options.profile}`}`
+      `npx trigger.dev@${cliTag} dev${options.profile ? ` --profile ${options.profile}` : ""}`
     )} in your project directory`
   );
   log.info(`   2. Visit your ${projectDashboard} to view your newly created tasks.`);

@@ -35,6 +35,7 @@ import { engine } from "../runEngine.server";
 import { scheduleEngine } from "../scheduleEngine.server";
 
 import { stripBackgroundWorkerMetadataForStorage } from "./stripBackgroundWorkerMetadataForStorage.server";
+import { assertNoDuplicateTaskIds } from "./duplicateTaskIds.server";
 export { stripBackgroundWorkerMetadataForStorage };
 
 export class CreateBackgroundWorkerService extends BaseService {
@@ -151,6 +152,15 @@ export class CreateBackgroundWorkerService extends BaseService {
       );
 
       if (resourcesError) {
+        if (resourcesError instanceof ServiceValidationError) {
+          // Customer-facing config error (e.g. duplicate task ids). Surface the
+          // real message to the client via the rethrow.
+          logger.warn("Error creating worker resources", {
+            error: resourcesError.message,
+          });
+          throw resourcesError;
+        }
+
         logger.error("Error creating worker resources", {
           error: resourcesError,
           backgroundWorker,
@@ -279,6 +289,13 @@ export async function createWorkerResources(
   prisma: PrismaClientOrTransaction,
   tasksToBackgroundFiles?: Map<string, string>
 ): Promise<TaskMetadataEntry[]> {
+  // Defense-in-depth against two tasks sharing an id (across all task types,
+  // e.g. a schedule and a regular task). Note: the CLI's resource catalog keys
+  // tasks by id and overwrites collisions, so duplicates are normally already
+  // collapsed before reaching here — this guards against any client that sends
+  // an un-deduplicated task list.
+  assertNoDuplicateTaskIds(metadata.tasks);
+
   // Create the queues
   const queues = await createWorkerQueues(metadata, worker, environment, prisma);
 

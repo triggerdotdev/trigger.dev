@@ -38,6 +38,11 @@ export class StandardResourceCatalog implements ResourceCatalog {
   private _skillMetadata: Map<string, SkillMetadata> = new Map();
   private _skillFileMetadata: Map<string, TaskFileMetadata> = new Map();
   private _sentinelContextWarned: Set<string> = new Set();
+  // Task ids registered more than once (across files and task types). Tasks are
+  // keyed by id below, so a second registration silently overwrites the first;
+  // we record the collision here so the indexer can fail loudly instead. Only
+  // consumed by the index workers — runtime never reads it.
+  private _taskIdCollisions: Array<{ id: string; filePaths: string[] }> = [];
 
   setCurrentFileContext(filePath: string, entryPoint: string) {
     this._currentFileContext = { filePath, entryPoint };
@@ -45,6 +50,11 @@ export class StandardResourceCatalog implements ResourceCatalog {
 
   clearCurrentFileContext() {
     this._currentFileContext = undefined;
+  }
+
+  // Task ids that were registered more than once during this indexing pass.
+  listTaskIdCollisions(): Array<{ id: string; filePaths: string[] }> {
+    return this._taskIdCollisions;
   }
 
   registerQueueMetadata(queue: QueueManifest): void {
@@ -102,6 +112,28 @@ export class StandardResourceCatalog implements ResourceCatalog {
       console.warn(
         `[trigger.dev] task "${task.id}" was registered via dynamic import during another task's run(); move to a static import if you notice any issues.`
       );
+    }
+
+    // Detect a duplicate task id before the maps below overwrite the first
+    // registration. Skip the runtime sentinel context (a task() firing during
+    // another task's run) — that's a re-registration, not a duplicate
+    // definition, and the indexer never uses the sentinel.
+    if (
+      this._taskMetadata.has(task.id) &&
+      this._currentFileContext.filePath !== NO_FILE_CONTEXT
+    ) {
+      const existingFilePath = this._taskFileMetadata.get(task.id)?.filePath;
+      const currentFilePath = this._currentFileContext.filePath;
+      const collision = this._taskIdCollisions.find((c) => c.id === task.id);
+
+      if (collision) {
+        collision.filePaths.push(currentFilePath);
+      } else {
+        this._taskIdCollisions.push({
+          id: task.id,
+          filePaths: [existingFilePath ?? currentFilePath, currentFilePath],
+        });
+      }
     }
 
     this._taskFileMetadata.set(task.id, {
