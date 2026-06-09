@@ -278,19 +278,20 @@ export async function installSkillsFromInit(opts: SkillsWizardOptions = {}): Pro
   writeConfigHasSeenRulesInstallPrompt(true);
   writeConfigLastRulesInstallPromptVersion(manifest.currentVersion);
 
-  await installSkills(manifest, opts);
-
-  return true;
+  // Returns true only if skills were actually written (false e.g. when the only target
+  // chosen is "unsupported"), so callers like `trigger init` don't claim skills are ready
+  // when nothing landed.
+  return await installSkills(manifest, opts);
 }
 
-async function installSkills(manifest: RulesManifest, opts: SkillsWizardOptions) {
+async function installSkills(manifest: RulesManifest, opts: SkillsWizardOptions): Promise<boolean> {
   const currentVersion = await manifest.getCurrentVersion();
 
   const targetNames = await resolveTargets(opts);
 
   if (targetNames.length === 1 && targetNames.includes("unsupported")) {
     handleUnsupportedTargetOnly();
-    return;
+    return false;
   }
 
   const results = [];
@@ -303,7 +304,9 @@ async function installSkills(manifest: RulesManifest, opts: SkillsWizardOptions)
     }
   }
 
-  if (results.some((r) => r.installations.length > 0 || r.pointer)) {
+  const installedAny = results.some((r) => r.installations.length > 0 || r.pointer);
+
+  if (installedAny) {
     log.step("Installed the following skills:");
 
     for (const r of results) {
@@ -319,6 +322,8 @@ async function installSkills(manifest: RulesManifest, opts: SkillsWizardOptions)
       `${cliLink("Learn how to use Trigger.dev skills", "https://trigger.dev/docs/agents/rules/overview")}`
     );
   }
+
+  return installedAny;
 }
 
 function handleUnsupportedTargetOnly() {

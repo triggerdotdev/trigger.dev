@@ -206,11 +206,12 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
       );
 
       if (installError) {
-        outro(`Failed to install MCP server: ${installError.message}`);
-        return;
+        // Don't abort init if MCP fails: skills may already be installed and the user
+        // still needs the project scaffolded. Warn and carry on.
+        log.warn(`Skipped MCP server: ${installError.message}`);
+      } else {
+        installedMcp = true;
       }
-
-      installedMcp = true;
     }
 
     // Vibe path: once AI tooling is actually installed, the user can hand scaffolding to
@@ -235,9 +236,11 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 
       if (!isCancel(setupChoice) && setupChoice === "ai") {
         outro(
-          installedSkills
-            ? "Your AI tooling is ready. Ask your assistant to set up Trigger.dev and it will use the getting-started skill to add the SDK, config, and your first task."
-            : "The MCP server is installed. Ask your assistant to set up Trigger.dev using the MCP server."
+          installedSkills && installedMcp
+            ? "Your AI tooling is ready. Ask your assistant to set up Trigger.dev; it can use the getting-started skill and the MCP server to add the SDK, config, and your first task."
+            : installedSkills
+              ? "Your AI tooling is ready. Ask your assistant to set up Trigger.dev and it will use the getting-started skill to add the SDK, config, and your first task."
+              : "The MCP server is installed. Ask your assistant to set up Trigger.dev using the MCP server."
         );
         return;
       }
