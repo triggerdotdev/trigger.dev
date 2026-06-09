@@ -15,6 +15,8 @@ on:
         required: false
       SENTRY_AUTH_TOKEN:
         required: false
+      CROSS_REPO_PAT:
+        required: false
   push:
     branches:
       - main
@@ -112,3 +114,45 @@ jobs:
     uses: ./.github/workflows/trivy-image-webapp.yml
     with:
       image-ref: ${{ needs.publish-webapp.outputs.image_repo }}:${{ needs.publish-webapp.outputs.version }}
+
+  # Announce the freshly published mutable `main` webapp image to subscriber
+  # repos in the org via repository_dispatch, handing them a digest-pinned ref to
+  # build or deploy from. Fires only for the `main` tag — never semver releases or
+  # other tag builds — and only from the canonical repo (forks have no PAT).
+  dispatch-main-image:
+    name: 📣 Dispatch main image
+    needs: [publish-webapp]
+    if: github.repository == 'triggerdotdev/trigger.dev' && needs.publish-webapp.outputs.version == 'main'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Build dispatch payload
+        id: payload
+        env:
+          IMAGE_REPO: ${{ needs.publish-webapp.outputs.image_repo }}
+          DIGEST: ${{ needs.publish-webapp.outputs.digest }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Pin to the exact multi-arch index just pushed so subscribers resolve a
+          # single immutable artifact rather than chasing the moving `main` tag.
+          if [[ -z "${DIGEST}" ]]; then
+            echo "::error::publish-webapp produced no image digest; refusing to dispatch"
+            exit 1
+          fi
+          image="${IMAGE_REPO}@${DIGEST}"
+          # jq --arg JSON-escapes every value, so the ref/commit can't break out of
+          # or inject into the client payload.
+          payload=$(jq -nc \
+            --arg img "$image" \
+            --arg c "$COMMIT" \
+            '{image: $img, commit: $c}')
+          echo "client_payload=$payload" >> "$GITHUB_OUTPUT"
+
+      - name: Send repository_dispatch
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
+        with:
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          repository: triggerdotdev/cloud
+          event-type: main-image-published
+          client-payload: ${{ steps.payload.outputs.client_payload }}
