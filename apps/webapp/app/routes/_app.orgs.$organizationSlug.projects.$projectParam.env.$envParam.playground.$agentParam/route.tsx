@@ -1,4 +1,4 @@
-import { ArrowUpIcon, BoltIcon, CpuChipIcon, StopIcon } from "@heroicons/react/20/solid";
+import { BoltIcon, CheckIcon, StopIcon } from "@heroicons/react/20/solid";
 import { ClipboardIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { type MetaFunction } from "@remix-run/node";
 import { Link, useFetcher, useNavigate, useRouteLoaderData } from "@remix-run/react";
@@ -7,10 +7,11 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { TriggerChatTransport } from "@trigger.dev/sdk/chat";
-import { MainCenteredContainer } from "~/components/layout/AppLayout";
+import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { PlusIcon } from "~/assets/icons/PlusIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { Button } from "~/components/primitives/Buttons";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import {
   Popover,
   PopoverContent,
@@ -18,7 +19,6 @@ import {
   PopoverVerticalEllipseTrigger,
 } from "~/components/primitives/Popover";
 import { DurationPicker } from "~/components/primitives/DurationPicker";
-import { Header3 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -379,6 +379,12 @@ function PlaygroundChat() {
   const [preloaded, setPreloaded] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Focus on mount; refocus when the state-1 ↔ state-2 transition remounts the textarea.
+  const isEmpty = messages.length === 0;
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [isEmpty]);
+
   const session = transport.getSession(chatId);
 
   const handlePreload = useCallback(async () => {
@@ -418,6 +424,8 @@ function PlaygroundChat() {
     // steer() handles both cases: sends via input stream during streaming,
     // or sends as a normal message when ready
     pending.steer(trimmed);
+    // Keep focus after the state-1 → state-2 remount completes.
+    requestAnimationFrame(() => inputRef.current?.focus());
   }, [input, pending]);
 
   const handleKeyDown = useCallback(
@@ -446,53 +454,51 @@ function PlaygroundChat() {
             />
           </div>
 
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-            {/* Always-mounted scroll-target wrapper so useAutoScrollToBottom
-                can find its container from `rootRef.current.parentElement`
-                on mount, even before any messages exist. */}
-            <div ref={messagesRootRef}>
+          {/* Scroll container is always mounted — useAutoScrollToBottom caches
+              its container on mount and won't refind it across remounts. */}
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <div
+              ref={messagesRootRef}
+              className={cn(
+                "min-h-full",
+                messages.length === 0
+                  ? "flex items-center justify-center px-4 pb-[20vh] pt-8"
+                  : "mx-auto w-full max-w-3xl space-y-4 px-4 py-4"
+              )}
+            >
               {messages.length === 0 ? (
-                <MainCenteredContainer>
-                  <div className="flex flex-col items-center gap-3 py-16">
-                    {preloaded ? (
+                <div className="w-full max-w-2xl">
+                  <h2 className="mb-6 text-center font-sans text-xl font-semibold leading-7 tracking-tight text-text-dimmed">
+                    Type a message to start testing{" "}
+                    <span className="inline-flex items-center gap-1.5 align-middle">
+                      <CubeSparkleIcon className="size-6 text-agents" />
+                      <code className="text-text-bright">{agent.slug}</code>
+                    </span>
+                  </h2>
+                  <ChatComposer
+                    inputRef={inputRef}
+                    value={input}
+                    onChange={setInput}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Type a message…"
+                    minHeightClassName="min-h-[80px]"
+                    maxHeightClassName="max-h-[60vh]"
+                    footer={
                       <>
-                        <BoltIcon className="size-10 text-success/50" />
-                        <Header3 className="text-text-dimmed">Preloaded</Header3>
-                        <Paragraph
-                          variant="small"
-                          className="max-w-sm text-center text-text-dimmed"
-                        >
-                          Agent is warmed up and waiting. Type a message below to start.
-                        </Paragraph>
+                        <span className="text-[11px] text-text-dimmed">
+                          Press Enter to send, Shift+Enter for new line
+                        </span>
+                        <PreloadButton
+                          preloading={preloading}
+                          preloaded={preloaded}
+                          onPreload={handlePreload}
+                        />
                       </>
-                    ) : (
-                      <>
-                        <CpuChipIcon className="size-10 text-indigo-500/50" />
-                        <Header3 className="text-text-dimmed">Start a conversation</Header3>
-                        <Paragraph
-                          variant="small"
-                          className="max-w-sm text-center text-text-dimmed"
-                        >
-                          Type a message below to start testing{" "}
-                          <code className="text-text-bright">{agent.slug}</code>
-                        </Paragraph>
-                        {!session && (
-                          <Button
-                            variant="tertiary/small"
-                            LeadingIcon={preloading ? Spinner : BoltIcon}
-                            onClick={handlePreload}
-                            disabled={preloading}
-                          >
-                            {preloading ? "Preloading..." : "Preload"}
-                          </Button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </MainCenteredContainer>
+                    }
+                  />
+                </div>
               ) : (
-                <div className="mx-auto w-full max-w-4xl space-y-4">
+                <>
                   {messages.map((msg) => (
                     <MessageBubble key={msg.id} message={msg} />
                   ))}
@@ -504,76 +510,70 @@ function PlaygroundChat() {
                       </div>
                     </div>
                   )}
-                </div>
+                </>
               )}
             </div>
           </div>
 
           {/* Error */}
-          {error && (
+          {error && messages.length > 0 && (
             <div className="mx-4 mb-2 flex items-start gap-2 rounded border border-error/30 bg-error/10 px-3 py-2">
               <span className="flex-1 text-xs text-error">{error.message}</span>
             </div>
           )}
 
-          {/* Input */}
-          <div className="border-t border-grid-bright p-4">
-            <div className="mx-auto flex max-w-3xl items-end gap-2">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={isStreaming ? "Send a steering message..." : "Type a message..."}
-                rows={1}
-                className="flex-1 resize-none rounded-lg border border-charcoal-650 bg-charcoal-850 px-3 py-2.5 text-sm text-text-bright placeholder-text-dimmed focus:border-indigo-500 focus:outline-none"
-                style={{ minHeight: "40px", maxHeight: "120px" }}
-              />
-              <div className="flex items-end gap-1.5">
-                {isStreaming && (
-                  <Button variant="danger/small" LeadingIcon={StopIcon} onClick={stop}>
-                    Stop
-                  </Button>
-                )}
-                <Button
-                  variant={isStreaming ? "tertiary/small" : "primary/small"}
-                  LeadingIcon={ArrowUpIcon}
-                  onClick={handleSend}
-                  disabled={!input.trim()}
-                >
-                  {isStreaming ? "Steer" : "Send"}
-                </Button>
-              </div>
-            </div>
-            {/* Pending messages overlay */}
-            {pending.pending.length > 0 && (
-              <div className="mx-auto mt-1.5 max-w-3xl space-y-1">
-                {pending.pending.map((msg) => (
-                  <div key={msg.id} className="flex items-center gap-2 text-[10px]">
-                    <span
-                      className={cn(
-                        "rounded px-1.5 py-0.5",
-                        msg.mode === "steering"
-                          ? "bg-amber-500/10 text-amber-400"
-                          : "bg-charcoal-700 text-text-dimmed"
-                      )}
-                    >
-                      {msg.mode === "steering" ? "Steering" : "Queued"}
+          {messages.length > 0 && (
+            <div className="px-4 pb-8 pt-2">
+              <div className="mx-auto max-w-3xl">
+                <ChatComposer
+                  inputRef={inputRef}
+                  value={input}
+                  onChange={setInput}
+                  onKeyDown={handleKeyDown}
+                  placeholder={isStreaming ? "Send a steering message…" : "Type a message…"}
+                  minHeightClassName="min-h-[44px]"
+                  maxHeightClassName="max-h-[40vh]"
+                  trailing={
+                    isStreaming ? (
+                      <Button variant="danger/small" LeadingIcon={StopIcon} onClick={stop}>
+                        Stop
+                      </Button>
+                    ) : undefined
+                  }
+                  footer={
+                    <span className="text-[11px] text-text-dimmed">
+                      Press Enter to send, Shift+Enter for new line
                     </span>
-                    <span className="truncate text-text-dimmed">{msg.text}</span>
-                    {msg.injected && <span className="text-success">Injected</span>}
+                  }
+                />
+                {pending.pending.length > 0 && (
+                  <div className="mt-1.5 space-y-1">
+                    {pending.pending.map((msg) => (
+                      <div key={msg.id} className="flex items-center gap-2 text-[10px]">
+                        <span
+                          className={cn(
+                            "rounded px-1.5 py-0.5",
+                            msg.mode === "steering"
+                              ? "bg-amber-500/10 text-amber-400"
+                              : "bg-charcoal-700 text-text-dimmed"
+                          )}
+                        >
+                          {msg.mode === "steering" ? "Steering" : "Queued"}
+                        </span>
+                        <span className="truncate text-text-dimmed">{msg.text}</span>
+                        {msg.injected && <span className="text-success">Injected</span>}
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+                {isStreaming && (
+                  <div className="mt-1.5 text-[10px] text-text-dimmed">
+                    Send a steering message to guide the agent between tool calls
+                  </div>
+                )}
               </div>
-            )}
-            <div className="mx-auto mt-1.5 max-w-3xl">
-              <span className="text-[10px] text-text-dimmed">
-                {isStreaming
-                  ? "Send a steering message to guide the agent between tool calls"
-                  : "Press Enter to send, Shift+Enter for new line"}
-              </span>
             </div>
-          </div>
+          )}
         </div>
       </ResizablePanel>
       <ResizableHandle id="playground-sidebar-handle" />
@@ -616,6 +616,89 @@ function PlaygroundChat() {
 // Message rendering — `MessageBubble` is imported from
 // `~/components/runs/v3/agent/AgentMessageView`. The same module is used by
 // the run details Agent view so both surfaces stay in sync.
+
+function ChatComposer({
+  inputRef,
+  value,
+  onChange,
+  onKeyDown,
+  placeholder,
+  minHeightClassName,
+  maxHeightClassName,
+  trailing,
+  footer,
+}: {
+  inputRef: React.RefObject<HTMLTextAreaElement>;
+  value: string;
+  onChange: (val: string) => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  placeholder: string;
+  minHeightClassName: string;
+  maxHeightClassName: string;
+  trailing?: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-charcoal-650 bg-background-bright p-2 transition focus-within:border-charcoal-550">
+      <div className="flex items-end gap-2">
+        <textarea
+          ref={inputRef}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder={placeholder}
+          className={cn(
+            "scrollbar-gutter-stable flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm text-text-bright placeholder-text-dimmed outline-none ring-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600 [field-sizing:content] focus:border-0 focus:outline-none focus:ring-0",
+            minHeightClassName,
+            maxHeightClassName
+          )}
+        />
+        {trailing}
+      </div>
+      {footer && (
+        <div className="mt-1 flex items-center justify-between gap-2 px-2 pb-1">{footer}</div>
+      )}
+    </div>
+  );
+}
+
+function PreloadButton({
+  preloading,
+  preloaded,
+  onPreload,
+}: {
+  preloading: boolean;
+  preloaded: boolean;
+  onPreload: () => void;
+}) {
+  const tooltip = preloaded
+    ? "The agent is warmed up and waiting."
+    : "Pre-starts the agent to eliminate the cold-start delay on your first message.";
+
+  // Wrap in a span so hover fires even when the inner button is disabled —
+  // disabled buttons don't receive pointer events on their own.
+  return (
+    <SimpleTooltip
+      asChild
+      side="top"
+      className="max-w-[240px]"
+      content={tooltip}
+      button={
+        <span className="inline-flex">
+          <Button
+            variant="tertiary/small"
+            LeadingIcon={preloading ? Spinner : preloaded ? CheckIcon : BoltIcon}
+            leadingIconClassName={preloaded ? "text-success" : undefined}
+            onClick={onPreload}
+            disabled={preloading || preloaded}
+          >
+            {preloaded ? "Preloaded" : preloading ? "Preloading…" : "Preload"}
+          </Button>
+        </span>
+      }
+    />
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Sidebar
@@ -830,7 +913,7 @@ function PlaygroundSidebar({
                 onTagsChange={onTagsChange}
                 variant="small"
                 maxTags={3}
-                placeholder="Add tag..."
+                placeholder="Add tag…"
               />
               <Hint>Add tags to easily filter runs. 3 max (2 added automatically).</Hint>
             </InputGroup>
