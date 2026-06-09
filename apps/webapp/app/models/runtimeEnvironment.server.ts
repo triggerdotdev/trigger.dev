@@ -61,6 +61,7 @@ export function toAuthenticated(
     builtInEnvironmentVariableOverrides: env.builtInEnvironmentVariableOverrides,
     createdAt: env.createdAt,
     updatedAt: env.updatedAt,
+    defaultWorkerGroupId: env.defaultWorkerGroupId,
     project: {
       id: env.project.id,
       slug: env.project.slug,
