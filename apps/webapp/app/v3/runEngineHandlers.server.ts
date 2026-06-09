@@ -20,11 +20,12 @@ import { createExceptionPropertiesFromError } from "./eventRepository/common.ser
 import { getEventRepositoryForStore, recordRunDebugLog } from "./eventRepository/index.server";
 import { roomFromFriendlyRunId, socketIo } from "./handleSocketIo.server";
 import { engine } from "./runEngine.server";
+import { publishChangeRecord } from "~/services/realtime/runChangeNotifierInstance.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
 import { TaskRunErrorCodes } from "@trigger.dev/core/v3";
 
 export function registerRunEngineEventBusHandlers() {
-  engine.eventBus.on("runSucceeded", async ({ time, run, organization }) => {
+  engine.eventBus.on("runSucceeded", async ({ time, run, organization, environment }) => {
     const [taskRunError, taskRun] = await tryCatch(
       $replica.taskRun.findFirstOrThrow({
         where: {
@@ -45,6 +46,11 @@ export function registerRunEngineEventBusHandlers() {
           isTest: true,
           organizationId: true,
           taskEventStore: true,
+          // Piggyback the realtime run-changed publish on this existing read so the
+          // per-env channel carries the membership keys (no separate query). No-op when
+          // the notifier is disabled.
+          runTags: true,
+          batchId: true,
         },
       })
     );
@@ -56,6 +62,13 @@ export function registerRunEngineEventBusHandlers() {
       });
       return;
     }
+
+    publishChangeRecord({
+      runId: taskRun.id,
+      envId: environment.id,
+      tags: taskRun.runTags,
+      batchId: taskRun.batchId,
+    });
 
     const eventRepository = await getEventRepositoryForStore(
       run.taskEventStore,
@@ -91,7 +104,7 @@ export function registerRunEngineEventBusHandlers() {
   });
 
   // Handle events
-  engine.eventBus.on("runFailed", async ({ time, run, organization }) => {
+  engine.eventBus.on("runFailed", async ({ time, run, organization, environment }) => {
     const sanitizedError = sanitizeError(run.error);
     const exception = createExceptionPropertiesFromError(sanitizedError);
 
@@ -115,6 +128,10 @@ export function registerRunEngineEventBusHandlers() {
           isTest: true,
           organizationId: true,
           taskEventStore: true,
+          // Piggyback the realtime run-changed publish on this existing read (no-op when
+          // the notifier is disabled).
+          runTags: true,
+          batchId: true,
         },
       })
     );
@@ -126,6 +143,13 @@ export function registerRunEngineEventBusHandlers() {
       });
       return;
     }
+
+    publishChangeRecord({
+      runId: taskRun.id,
+      envId: environment.id,
+      tags: taskRun.runTags,
+      batchId: taskRun.batchId,
+    });
 
     const eventRepository = await getEventRepositoryForStore(
       run.taskEventStore,
@@ -172,6 +196,10 @@ export function registerRunEngineEventBusHandlers() {
           isTest: true,
           organizationId: true,
           taskEventStore: true,
+          // Piggyback the realtime run-changed publish on this existing read (no-op when
+          // the notifier is disabled).
+          runTags: true,
+          batchId: true,
         },
       })
     );
@@ -183,6 +211,13 @@ export function registerRunEngineEventBusHandlers() {
       });
       return;
     }
+
+    publishChangeRecord({
+      runId: taskRun.id,
+      envId: taskRun.runtimeEnvironmentId,
+      tags: taskRun.runTags,
+      batchId: taskRun.batchId,
+    });
 
     if (!taskRun.organizationId) {
       logger.error("[runAttemptFailed] Task run has no organization id", {
@@ -328,7 +363,7 @@ export function registerRunEngineEventBusHandlers() {
     }
   );
 
-  engine.eventBus.on("runExpired", async ({ time, run, organization }) => {
+  engine.eventBus.on("runExpired", async ({ time, run, organization, environment }) => {
     if (!run.ttl) {
       return;
     }
@@ -353,6 +388,10 @@ export function registerRunEngineEventBusHandlers() {
           isTest: true,
           organizationId: true,
           taskEventStore: true,
+          // Piggyback the realtime run-changed publish on this existing read (no-op when
+          // the notifier is disabled).
+          runTags: true,
+          batchId: true,
         },
       })
     );
@@ -364,6 +403,13 @@ export function registerRunEngineEventBusHandlers() {
       });
       return;
     }
+
+    publishChangeRecord({
+      runId: taskRun.id,
+      envId: environment.id,
+      tags: taskRun.runTags,
+      batchId: taskRun.batchId,
+    });
 
     const eventRepository = await getEventRepositoryForStore(
       taskRun.taskEventStore,
@@ -386,7 +432,7 @@ export function registerRunEngineEventBusHandlers() {
     }
   });
 
-  engine.eventBus.on("runCancelled", async ({ time, run, organization }) => {
+  engine.eventBus.on("runCancelled", async ({ time, run, organization, environment }) => {
     const [taskRunError, taskRun] = await tryCatch(
       $replica.taskRun.findFirstOrThrow({
         where: {
@@ -407,6 +453,10 @@ export function registerRunEngineEventBusHandlers() {
           isTest: true,
           organizationId: true,
           taskEventStore: true,
+          // Piggyback the realtime run-changed publish on this existing read (no-op when
+          // the notifier is disabled).
+          runTags: true,
+          batchId: true,
         },
       })
     );
@@ -418,6 +468,13 @@ export function registerRunEngineEventBusHandlers() {
       });
       return;
     }
+
+    publishChangeRecord({
+      runId: taskRun.id,
+      envId: environment.id,
+      tags: taskRun.runTags,
+      batchId: taskRun.batchId,
+    });
 
     const eventRepository = await getEventRepositoryForStore(
       taskRun.taskEventStore,
@@ -505,15 +562,21 @@ export function registerRunEngineEventBusHandlers() {
   });
 
   engine.eventBus.on("runMetadataUpdated", async ({ time, run }) => {
-    const env = await findEnvironmentFromRun(run.id);
+    const result = await findEnvironmentFromRun(run.id);
 
-    if (!env) {
+    if (!result) {
       logger.error("[runMetadataUpdated] Failed to find environment", { runId: run.id });
       return;
     }
 
+    const { environment, runTags, batchId } = result;
+
+    // Realtime run-changed publish: a full record (env + tags + batchId all from the one
+    // read above), so tag/batch feeds route by index instead of hydrate-to-classify.
+    publishChangeRecord({ runId: run.id, envId: environment.id, tags: runTags, batchId });
+
     try {
-      await updateMetadataService.call(run.id, run.metadata, env);
+      await updateMetadataService.call(run.id, run.metadata, environment);
     } catch (e) {
       if (e instanceof MetadataTooLargeError) {
         logger.warn("[runMetadataUpdated] Failed to update metadata, too large", {

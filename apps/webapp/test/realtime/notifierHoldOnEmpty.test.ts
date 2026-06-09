@@ -1,66 +1,86 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import { CURRENT_API_VERSION } from "~/api/versions";
 import {
   NotifierRealtimeClient,
   type RealtimeListEnvironment,
 } from "~/services/realtime/notifierRealtimeClient.server";
 import { type RealtimeRunRow } from "~/services/realtime/electricStreamProtocol.server";
+import {
+  EnvChangeRouter,
+  type EnvChangeSource,
+} from "~/services/realtime/envChangeRouter.server";
+import { type ChangeRecord } from "~/services/realtime/runChangeNotifier.server";
 import { describe, expect, it, vi } from "vitest";
 
 const ENV: RealtimeListEnvironment = { id: "env_1", organizationId: "org_1", projectId: "proj_1" };
 
-// Fixed offset floor so a row's updatedAt being above/below it deterministically
-// produces a delta / empty diff.
+// Fixed offset floor: a row's updatedAt above/below it produces a delta / empty diff. The
+// createdAt window resolves to this same floor (large maximumCreatedAtFilterAgeMs below).
 const FLOOR_MS = Date.UTC(2026, 5, 7, 12, 0, 0);
 
-function row(id: string, updatedAtMs: number): RealtimeRunRow {
+function row(
+  id: string,
+  updatedAtMs: number,
+  opts: { createdAtMs?: number; tags?: string[] } = {}
+): RealtimeRunRow {
   return {
     id,
-    createdAt: new Date("2026-06-07T09:00:00.000Z"),
+    runTags: opts.tags ?? ["t"],
+    createdAt: new Date(opts.createdAtMs ?? FLOOR_MS + 1_000),
     updatedAt: new Date(updatedAtMs),
   } as unknown as RealtimeRunRow;
 }
 
-/** A notifier whose env wakes are driven manually via wake(). Each live-poll loop
- * iteration subscribes once (one-shot), so wake() releases exactly one iteration. */
-function controllableNotifier() {
-  const pending: Array<() => void> = [];
+function rec(runId: string, extra: Partial<ChangeRecord> = {}): ChangeRecord {
+  return { v: 1, runId, envId: "env_1", ...extra };
+}
+
+/** A controllable EnvChangeSource the test pushes batches into. */
+function fakeSource() {
+  const listeners = new Map<string, Set<(records: ChangeRecord[]) => void>>();
+  const source: EnvChangeSource = {
+    subscribeToEnv(envId, onBatch) {
+      let set = listeners.get(envId);
+      if (!set) {
+        set = new Set();
+        listeners.set(envId, set);
+      }
+      set.add(onBatch);
+      return () => listeners.get(envId)?.delete(onBatch);
+    },
+  };
   return {
-    subscribeToRunChanges: () => ({ changed: new Promise<void>(() => {}), unsubscribe() {} }),
-    subscribeToEnvChanges: () => {
-      let resolve!: () => void;
-      const changed = new Promise<void>((r) => {
-        resolve = r;
-      });
-      pending.push(resolve);
-      return { changed, unsubscribe() {} };
+    source,
+    push: (envId: string, records: ChangeRecord[]) => {
+      for (const l of listeners.get(envId) ?? []) l(records);
     },
-    wake() {
-      pending.shift()?.();
-    },
-    pending() {
-      return pending.length;
-    },
+    isSubscribed: (envId: string) => (listeners.get(envId)?.size ?? 0) > 0,
   };
 }
 
-function makeClient(notifier: unknown, overrides: Record<string, unknown> = {}) {
+function makeClient(overrides: Record<string, unknown> = {}) {
   let rowsToReturn: RealtimeRunRow[] = [];
-  const hydrateSpy = vi.fn(async () => rowsToReturn);
+  const hydrateSpy = vi.fn(async (_env: string, ids: string[]) =>
+    rowsToReturn.filter((r) => ids.includes(r.id))
+  );
+  const resolveSpy = vi.fn(async () => rowsToReturn.map((r) => r.id));
+  const src = fakeSource();
+  const router = new EnvChangeRouter({ source: src.source, hydrator: { hydrateByIds: hydrateSpy } });
 
   const client = new NotifierRealtimeClient({
     runReader: { getRunById: async () => null, hydrateByIds: hydrateSpy } as any,
-    runListResolver: { resolveMatchingRunIds: async () => ["run_1"] } as any,
-    notifier: notifier as any,
+    runListResolver: { resolveMatchingRunIds: resolveSpy } as any,
+    router,
     limiter: { incrementAndCheck: async () => true, decrement: async () => {} } as any,
     cachedLimitProvider: { getCachedLimit: async () => 100 },
-    maximumCreatedAtFilterAgeMs: 24 * 60 * 60 * 1000,
-    // Disable the resolve cache so each held iteration re-hydrates the latest rows.
+    // Large so the recovered createdAt floor isn't clamped past FLOOR_MS.
+    maximumCreatedAtFilterAgeMs: 100 * 365 * 24 * 60 * 60 * 1000,
     runSetResolveCacheTtlMs: 0,
     livePollTimeoutMs: 10_000,
     ...overrides,
   });
 
-  return { client, hydrateSpy, setRows: (rows: RealtimeRunRow[]) => (rowsToReturn = rows) };
+  return { client, src, hydrateSpy, resolveSpy, setRows: (rows: RealtimeRunRow[]) => (rowsToReturn = rows) };
 }
 
 function liveRuns(client: NotifierRealtimeClient) {
@@ -74,63 +94,98 @@ function liveRuns(client: NotifierRealtimeClient) {
   );
 }
 
+async function whenWaiting(src: ReturnType<typeof fakeSource>) {
+  // Subscribed (feed registered) + a tick so waitForMatch has armed feed.resolve.
+  await vi.waitFor(() => expect(src.isSubscribed("env_1")).toBe(true));
+  await sleep(15);
+}
+
 async function bodyOf(res: Response) {
-  return JSON.parse(await res.text()) as Array<{ headers?: { control?: string; operation?: string }; value?: unknown }>;
+  return JSON.parse(await res.text()) as Array<{
+    headers?: { control?: string; operation?: string };
+    value?: unknown;
+  }>;
 }
 const hasRowOp = (body: Awaited<ReturnType<typeof bodyOf>>) =>
   body.some((m) => m?.headers?.operation || (m && typeof m === "object" && "value" in m));
 const isUpToDate = (body: Awaited<ReturnType<typeof bodyOf>>) =>
   body.some((m) => m?.headers?.control === "up-to-date");
 
-describe("NotifierRealtimeClient lever A (hold-on-empty)", () => {
-  it("holds the long-poll on an empty diff and only responds when a real delta arrives", async () => {
-    const notifier = controllableNotifier();
-    const { client, hydrateSpy, setRows } = makeClient(notifier);
-    setRows([row("run_1", FLOOR_MS - 1_000)]); // older than the floor -> empty diff
+describe("NotifierRealtimeClient multi-run live path over the router", () => {
+  it("a matching change hydrates by id (no ClickHouse) and returns a delta", async () => {
+    const { client, src, hydrateSpy, resolveSpy, setRows } = makeClient();
+    setRows([row("run_1", FLOOR_MS + 5_000, { tags: ["t"] })]);
+
+    const responsePromise = liveRuns(client);
+    await whenWaiting(src);
+    src.push("env_1", [rec("run_1", { tags: ["t", "x"] })]);
+
+    const res = await responsePromise;
+    expect(res.status).toBe(200);
+    expect(hasRowOp(await bodyOf(res))).toBe(true);
+    expect(resolveSpy).not.toHaveBeenCalled(); // ClickHouse skipped
+    expect(hydrateSpy).toHaveBeenCalledWith("env_1", ["run_1"], expect.anything());
+  });
+
+  it("a change that doesn't match the filter never wakes the feed (no CH, no PG); a later match does", async () => {
+    const { client, src, hydrateSpy, resolveSpy, setRows } = makeClient();
+    setRows([row("run_1", FLOOR_MS + 5_000, { tags: ["t"] })]);
 
     const responsePromise = liveRuns(client);
     let settled = false;
     void responsePromise.then(() => (settled = true));
+    await whenWaiting(src);
 
-    // Feed subscribed and is waiting.
-    await vi.waitFor(() => expect(notifier.pending()).toBe(1));
-
-    // An irrelevant change wakes the env channel, but this feed's diff is empty.
-    notifier.wake();
-    // It must re-subscribe and keep holding (no response yet), having refetched once.
-    await vi.waitFor(() => expect(notifier.pending()).toBe(1));
+    src.push("env_1", [rec("run_x", { tags: ["other"] })]); // doesn't intersect ["t"]
+    await sleep(50);
     expect(settled).toBe(false);
-    expect(hydrateSpy).toHaveBeenCalledTimes(1);
+    expect(hydrateSpy).not.toHaveBeenCalled(); // router never routed it
+    expect(resolveSpy).not.toHaveBeenCalled();
 
-    // A relevant change: a row advances past the floor.
-    setRows([row("run_1", FLOOR_MS + 5_000)]);
-    notifier.wake();
-
+    src.push("env_1", [rec("run_1", { tags: ["t"] })]);
     const res = await responsePromise;
     expect(settled).toBe(true);
-    expect(res.status).toBe(200);
     expect(hasRowOp(await bodyOf(res))).toBe(true);
   });
 
-  it("returns up-to-date once the backstop elapses with no relevant change", async () => {
-    const notifier = controllableNotifier();
-    const { client } = makeClient(notifier, { livePollTimeoutMs: 50 });
-    // No rows ever match; never wake -> the backstop fires and we return up-to-date.
-    const res = await liveRuns(client);
-    expect(res.status).toBe(200);
-    expect(isUpToDate(await bodyOf(res))).toBe(true);
-  });
-
-  it("with holdOnEmpty=false, returns up-to-date on the first empty wake (legacy behavior)", async () => {
-    const notifier = controllableNotifier();
-    const { client } = makeClient(notifier, { holdOnEmpty: false });
+  it("a matching run created before the window floor is hydrated but dropped (keeps holding)", async () => {
+    const { client, src, hydrateSpy, resolveSpy, setRows } = makeClient({ livePollTimeoutMs: 120 });
+    setRows([row("run_1", FLOOR_MS + 5_000, { createdAtMs: FLOOR_MS - 10_000, tags: ["t"] })]);
 
     const responsePromise = liveRuns(client);
-    await vi.waitFor(() => expect(notifier.pending()).toBe(1));
-    notifier.wake(); // empty diff -> legacy path returns immediately
+    let settled = false;
+    void responsePromise.then(() => (settled = true));
+    await whenWaiting(src);
+    src.push("env_1", [rec("run_1", { tags: ["t"] })]);
+
+    await sleep(40);
+    expect(settled).toBe(false); // dropped by the createdAt floor -> held
+    expect(hydrateSpy).toHaveBeenCalledWith("env_1", ["run_1"], expect.anything());
+    expect(resolveSpy).not.toHaveBeenCalled();
+
+    await responsePromise; // drain via the backstop
+  });
+
+  it("the backstop timeout does a full ClickHouse resolve and returns up-to-date", async () => {
+    const { client, resolveSpy } = makeClient({ livePollTimeoutMs: 50 });
+    const res = await liveRuns(client); // never pushed -> backstop fires
+    expect(res.status).toBe(200);
+    expect(isUpToDate(await bodyOf(res))).toBe(true);
+    expect(resolveSpy).toHaveBeenCalled();
+  });
+
+  it("with holdOnEmpty=false, a matched-but-not-advanced change returns up-to-date without ClickHouse", async () => {
+    const { client, src, resolveSpy, setRows } = makeClient({ holdOnEmpty: false });
+    // Matches the tag and is in-window, but updatedAt is at/below the offset floor -> no delta.
+    setRows([row("run_1", FLOOR_MS - 1_000, { tags: ["t"] })]);
+
+    const responsePromise = liveRuns(client);
+    await whenWaiting(src);
+    src.push("env_1", [rec("run_1", { tags: ["t"] })]);
 
     const res = await responsePromise;
     expect(res.status).toBe(200);
     expect(isUpToDate(await bodyOf(res))).toBe(true);
+    expect(resolveSpy).not.toHaveBeenCalled();
   });
 });

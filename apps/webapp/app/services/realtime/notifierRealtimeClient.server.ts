@@ -12,6 +12,7 @@ import { logger } from "../logger.server";
 import {
   buildElectricSchemaHeader,
   buildRowsBody,
+  buildRowsBodyFromSerialized,
   buildSnapshotBody,
   buildUpdateBody,
   buildUpToDateBody,
@@ -22,9 +23,14 @@ import {
   rewriteBodyForLegacyApiVersion,
   RESERVED_COLUMNS,
   type RowChange,
+  type SerializedRowChange,
 } from "./electricStreamProtocol.server";
 import { BoundedTtlCache } from "./boundedTtlCache";
-import { type RunChangeNotifier, type RunChangeSubscription } from "./runChangeNotifier.server";
+import {
+  type EnvChangeRouter,
+  type FeedFilter,
+  type MatchedRow,
+} from "./envChangeRouter.server";
 import { type RunHydrator, type RunListResolver } from "./runReader.server";
 import { type RealtimeConcurrencyLimiter } from "./realtimeConcurrencyLimiter.server";
 
@@ -68,11 +74,18 @@ export interface RealtimeStreamClient {
 
 export type WakeupReason = "notify" | "timeout" | "abort";
 
+/** How a live poll resolved, for observability:
+ *  - `fast-hydrate`: the router woke this feed with matched rows (hydrated by id, NO
+ *    ClickHouse). Non-matching changes never wake the feed, so they cost nothing.
+ *  - `full-resolve`: the backstop timeout did a ClickHouse resolve (the correctness net). */
+export type LivePollPath = "fast-hydrate" | "full-resolve";
+
 export type NotifierRealtimeClientOptions = {
   runReader: RunHydrator;
   /** Resolves the tag/list filter into the matching id-set (filter-only). */
   runListResolver: RunListResolver;
-  notifier: RunChangeNotifier;
+  /** Per-instance routing layer over the single env change channel. */
+  router: EnvChangeRouter;
   limiter: RealtimeConcurrencyLimiter;
   cachedLimitProvider: CachedLimitProvider;
   /** Backstop wait before refetching on a live request (ms). Defaults to 5000. */
@@ -81,7 +94,7 @@ export type NotifierRealtimeClientOptions = {
   maximumCreatedAtFilterAgeMs: number;
   /** Hard cap on tag-list snapshot size. Defaults to 1000. */
   maxListResults?: number;
-  /** TTL (ms) for the multi-run resolve+hydrate coalescing cache. Defaults to 1000. */
+  /** TTL (ms) for the multi-run resolve+hydrate coalescing cache (initial + backstop). */
   runSetResolveCacheTtlMs?: number;
   /** Max entries in the resolve+hydrate cache. Defaults to 5000. */
   runSetResolveCacheMaxEntries?: number;
@@ -91,28 +104,80 @@ export type NotifierRealtimeClientOptions = {
    * same-tag feeds pinned within the same bucket share a cache entry. Defaults to
    * 60000. 0 disables bucketing. */
   runSetCreatedAtBucketMs?: number;
-  /** When true (default), a multi-run live poll woken by a change irrelevant to its
-   * filter keeps holding the long-poll (re-resolving cheaply on each wake) instead of
-   * returning an empty up-to-date the client would immediately re-issue. The empty
-   * response is the dominant cost under a busy per-env wake channel. */
+  /** When true (default), a multi-run live poll holds the connection until a real delta
+   * or the backstop, rather than returning an empty up-to-date the client would re-issue. */
   holdOnEmpty?: boolean;
+  /** Max concurrent fresh ClickHouse resolves (cache misses) across this instance. Bounds a
+   * distinct-filter reconnect stampede so it queues instead of hammering ClickHouse. Defaults
+   * to 16; 0 disables the gate (unbounded). */
+  resolveAdmissionLimit?: number;
   /** Observability hook: why a live request woke (notify vs timeout vs abort). */
   onWakeup?: (reason: WakeupReason) => void;
-  /** Observability hook: whether a multi-run resolve hit the cache, coalesced onto
-   * an in-flight resolve, or missed (issued fresh ClickHouse + Postgres queries). */
+  /** Observability hook: how a live poll resolved (fast path vs full resolve). */
+  onLivePollPath?: (path: LivePollPath) => void;
+  /** Observability hook: whether a multi-run resolve (initial/backstop) hit the cache,
+   * coalesced onto an in-flight resolve, or missed (fresh ClickHouse + Postgres). */
   onRunSetResolve?: (result: "hit" | "miss" | "coalesced") => void;
   /** Observability hook: latency (ms) of the ClickHouse resolve / Postgres hydrate. */
   onRunSetQuery?: (stage: "resolve" | "hydrate", ms: number) => void;
+  /** Observability hook: a fresh resolve had to wait `ms` for an admission permit (the gate
+   * engaged — i.e. a stampede was throttled). Not called when a permit is free. */
+  onResolveAdmissionWait?: (ms: number) => void;
 };
 
 const DEFAULT_CONCURRENCY_LIMIT = 100_000;
-const DEFAULT_LIVE_POLL_TIMEOUT_MS = 5_000;
+// Matches Electric's ~20s live long-poll hold (jittered ±15% per request).
+const DEFAULT_LIVE_POLL_TIMEOUT_MS = 20_000;
 const DEFAULT_MAX_LIST_RESULTS = 1_000;
 const LIST_CACHE_TTL_MS = 5 * 60_000;
 const LIST_CACHE_MAX_ENTRIES = 10_000;
 const DEFAULT_RUNSET_CACHE_TTL_MS = 1_000;
 const DEFAULT_RUNSET_CACHE_MAX_ENTRIES = 5_000;
 const DEFAULT_RUNSET_CREATED_AT_BUCKET_MS = 60_000;
+const DEFAULT_RESOLVE_ADMISSION_LIMIT = 16;
+
+/**
+ * Fair FIFO semaphore bounding how many fresh ClickHouse resolves run concurrently. It sits
+ * BEHIND the single-flight + TTL cache, so only genuine cache-miss resolves take a permit: a
+ * same-filter reconnect stampede still collapses to one in-flight resolve (one permit), while
+ * a distinct-filter stampede — where every filter is a different cache key and so can't
+ * coalesce — is throttled to `limit` concurrent CH queries instead of firing all N at the
+ * database at once. Trades a little connect latency under a stampede for bounded CH load.
+ */
+class ResolveAdmissionGate {
+  #available: number;
+  #inUse = 0;
+  readonly #waiters: Array<() => void> = [];
+
+  constructor(limit: number) {
+    this.#available = limit;
+  }
+
+  /** Permits currently held (for a metrics gauge); never exceeds the limit. */
+  get inUse(): number {
+    return this.#inUse;
+  }
+
+  async acquire(): Promise<void> {
+    if (this.#available > 0) {
+      this.#available--;
+      this.#inUse++;
+      return;
+    }
+    await new Promise<void>((resolve) => this.#waiters.push(resolve));
+    this.#inUse++;
+  }
+
+  release(): void {
+    this.#inUse--;
+    const next = this.#waiters.shift();
+    if (next) {
+      next(); // hand the freed permit straight to the next waiter (FIFO, no count churn)
+    } else {
+      this.#available++;
+    }
+  }
+}
 
 /** A multi-run feed's filter. Tag-list sets `tags` (+ pinned `createdAtAfter`);
  * the batch feed sets `batchId`. Both resolve to an id-set via the resolver. */
@@ -134,37 +199,39 @@ type ResponseHeaderInput = {
 };
 
 /**
- * Notifier-backed implementation of the realtime run feeds: signals run changes
- * over Redis pub/sub and refetches the current rows from a read replica.
+ * Notifier-backed implementation of the realtime run feeds. All three feeds are
+ * predicates over ONE per-environment change stream (the EnvChangeRouter); the router
+ * decides membership, hydrates the matched runs from a read replica, and serializes their
+ * wire values once. This client owns the snapshot, the per-handle working-set diff, the
+ * ClickHouse-backed backstop, and the wire response.
  *
  * Single-run (`streamRun`):
- *  - initial (`offset=-1`): hydrate + emit `insert` + `up-to-date` (with schema)
- *  - live: race a per-run notification vs a ~5s backstop and the abort signal,
- *    refetch, and emit a full-row `update` ONLY when `updatedAt` advanced past what
- *    the client has (a stale replica read never regresses); else a bare `up-to-date`.
+ *  - initial (`offset=-1`): hydrate + emit `insert` + `up-to-date` (with schema).
+ *  - live: the router wakes this feed when its run changes; emit a full-row `update` when
+ *    `updatedAt` advanced past what the client has, else a bare `up-to-date`. The backstop
+ *    re-checks via `getRunById`.
  *
- * Multi-run feeds (`streamRuns` tag-list, `streamBatch`) share one core:
- *  - initial: resolve the matching id-set via ClickHouse `listRunIds` (filter-only,
- *    tag-OR or batchId), hydrate by-id from Postgres, emit N `insert`s.
- *  - live: one per-env subscription wakes the feed; re-resolve the set, hydrate it,
- *    and emit only new (`insert`) / advanced (`update`) rows — diffed on the
- *    authoritative Postgres `updatedAt` against a per-handle working set (cache miss
- *    falls back to the offset floor, merge-safe). ClickHouse supplies membership;
- *    Postgres supplies fresh row state, so CH ingest lag never stales the rows.
- *    Tag-list pins its `createdAt` window in the handle; batch needs no window.
+ * Multi-run feeds (`streamRuns` tag-list, `streamBatch`):
+ *  - initial: resolve the matching id-set via ClickHouse (filter-only), hydrate by-id from
+ *    Postgres, emit N `insert`s, seed the working set.
+ *  - live: the router wakes the feed with the matched runs already hydrated + serialized;
+ *    diff them on the authoritative Postgres `updatedAt` against the per-handle working
+ *    set and emit only new/advanced rows. The backstop (timeout) does a full ClickHouse
+ *    resolve — the correctness net that catches gaps and drops departed runs.
  *
- * Tokens are opaque: `offset` = `<maxUpdatedAtMs>_<seq>`, `handle` is per-shape,
- * `cursor` is a live-only counter. The wire format is produced by
- * `electricStreamProtocol`.
+ * Tokens are opaque: `offset` = `<maxUpdatedAtMs>_<seq>`, `handle` is per-shape, `cursor`
+ * is a live-only counter. The wire format is produced by `electricStreamProtocol`.
  */
 export class NotifierRealtimeClient implements RealtimeStreamClient {
   #seq = 0;
   readonly #workingSetCache: BoundedTtlCache<WorkingSet>;
-  /** Coalescing cache for the multi-run (resolveIds -> hydrateByIds) pair, keyed by
-   * (env, filter, columns). Collapses an env-wide wake's per-feed query fan-out into
-   * one shared resolve+hydrate per filter per short window. */
+  /** Coalescing cache for the multi-run (resolveIds -> hydrateByIds) pair used by the
+   * initial snapshot and the backstop, keyed by (env, filter, columns). Collapses a
+   * reconnect/snapshot stampede of identical filters into one shared resolve+hydrate. */
   readonly #runSetCache: BoundedTtlCache<RealtimeRunRow[]>;
   readonly #runSetInflight = new Map<string, Promise<RealtimeRunRow[]>>();
+  /** Bounds concurrent fresh CH resolves (undefined => unbounded). */
+  readonly #admissionGate?: ResolveAdmissionGate;
 
   constructor(private readonly options: NotifierRealtimeClientOptions) {
     this.#workingSetCache = new BoundedTtlCache(
@@ -175,11 +242,20 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
       options.runSetResolveCacheTtlMs ?? DEFAULT_RUNSET_CACHE_TTL_MS,
       options.runSetResolveCacheMaxEntries ?? DEFAULT_RUNSET_CACHE_MAX_ENTRIES
     );
+    const admissionLimit = options.resolveAdmissionLimit ?? DEFAULT_RESOLVE_ADMISSION_LIMIT;
+    if (admissionLimit > 0) {
+      this.#admissionGate = new ResolveAdmissionGate(admissionLimit);
+    }
   }
 
   /** Current size of the per-handle working-set cache (for a metrics gauge). */
   get workingSetCacheSize(): number {
     return this.#workingSetCache.size;
+  }
+
+  /** Fresh CH resolves currently holding an admission permit (for a metrics gauge). */
+  get resolveAdmissionInUse(): number {
+    return this.#admissionGate?.inUse ?? 0;
   }
 
   async streamRun(
@@ -337,6 +413,12 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
     });
   }
 
+  /**
+   * Live poll for a single-run feed. The router wakes this feed when its run changes,
+   * with the run already hydrated + serialized (no ClickHouse, ever). On the backstop
+   * timeout it re-checks via `getRunById`. Only-on-advance: emit a full-row `update` when
+   * the row moved past what the client already has; else a bare `up-to-date`.
+   */
   async #liveResponse(params: {
     environment: RealtimeEnvironment;
     runId: string;
@@ -351,30 +433,67 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
       params;
 
     return this.#withConcurrencySlot(environment, async () => {
-      const reason = await this.#waitForChange(runId, signal);
-      this.options.onWakeup?.(reason);
-
-      const row = await this.options.runReader.getRunById(environment.id, runId);
       const lastSeenMs = parseOffsetUpdatedAtMs(offset);
-      const seq = this.#nextSeq();
+      const registration = this.options.router.register(
+        environment.id,
+        { kind: "run", runId },
+        skipColumns
+      );
 
-      // Only-on-advance: emit a full-row update when the replica row moved past
-      // what the client already has; otherwise a bare up-to-date keeps the offset.
-      // Live responses carry electric-cursor but NOT electric-schema (the client
-      // already has the schema from the initial snapshot) — matching real Electric.
-      if (row && row.updatedAt.getTime() > lastSeenMs) {
-        return this.#buildResponse(buildUpdateBody(row, skipColumns), apiVersion, clientVersion, {
-          offset: encodeOffset(row.updatedAt.getTime(), seq),
+      try {
+        const { reason, rows } = await registration.waitForMatch(signal, this.#jitteredTimeout());
+        this.options.onWakeup?.(reason);
+
+        if (reason === "abort") {
+          return this.#buildResponse(buildUpToDateBody(), apiVersion, clientVersion, {
+            offset,
+            handle,
+            cursor: String(this.#nextSeq()),
+          });
+        }
+
+        if (reason === "notify" && rows.length > 0) {
+          // The router hydrated + serialized this run; emit it (only on advance).
+          this.options.onLivePollPath?.("fast-hydrate");
+          const matched = rows[0];
+          const updatedAtMs = matched.row.updatedAt.getTime();
+          const seq = this.#nextSeq();
+          if (updatedAtMs > lastSeenMs) {
+            return this.#buildResponse(
+              buildRowsBodyFromSerialized([
+                { runId: matched.row.id, value: matched.value, operation: "update" },
+              ]),
+              apiVersion,
+              clientVersion,
+              { offset: encodeOffset(updatedAtMs, seq), handle, cursor: String(seq) }
+            );
+          }
+          return this.#buildResponse(buildUpToDateBody(), apiVersion, clientVersion, {
+            offset,
+            handle,
+            cursor: String(seq),
+          });
+        }
+
+        // Backstop timeout: re-check the run directly (no ClickHouse for the single-run feed).
+        this.options.onLivePollPath?.("full-resolve");
+        const row = await this.options.runReader.getRunById(environment.id, runId);
+        const seq = this.#nextSeq();
+        if (row && row.updatedAt.getTime() > lastSeenMs) {
+          return this.#buildResponse(buildUpdateBody(row, skipColumns), apiVersion, clientVersion, {
+            offset: encodeOffset(row.updatedAt.getTime(), seq),
+            handle,
+            cursor: String(seq),
+          });
+        }
+        return this.#buildResponse(buildUpToDateBody(), apiVersion, clientVersion, {
+          offset,
           handle,
           cursor: String(seq),
         });
+      } finally {
+        registration.close();
       }
-
-      return this.#buildResponse(buildUpToDateBody(), apiVersion, clientVersion, {
-        offset,
-        handle,
-        cursor: String(seq),
-      });
     });
   }
 
@@ -409,8 +528,16 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
     });
   }
 
-  /** Live poll for a multi-run feed: wait, re-resolve the set, and emit only the
-   * rows that are new or advanced vs the cached working set. */
+  /**
+   * Live poll for a multi-run feed. Two paths:
+   *  - Fast path (router notify): the router woke us with the matched runs already
+   *    membership-confirmed, hydrated, and serialized (no ClickHouse). Diff them against
+   *    the per-handle working set and emit new/advanced rows.
+   *  - Backstop (timeout): a full ClickHouse resolve + hydrate. The correctness net —
+   *    catches members missed during a gap and drops runs that left the filter.
+   * With hold-on-empty (default) the connection holds until a real delta or the backstop
+   * rather than returning an empty response the client would re-issue.
+   */
   async #runSetLiveResponse(
     environment: RealtimeListEnvironment,
     filter: RunSetFilter,
@@ -431,94 +558,189 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
       // miss) and advanced on each refetch within this held request.
       let prevSeen = this.#workingSetCache.get(handle);
 
-      // The per-env channel wakes this feed on ANY run change in the environment, but
-      // most changes don't match this feed's filter. Rather than return an empty
-      // up-to-date the client would immediately re-issue (the dominant cost under a
-      // busy env), we hold the connection and only respond when THIS feed has a real
-      // delta or the backstop elapses. Each wake re-resolves via the coalesced +
-      // short-TTL cache, so an env-wide wake never fans out into per-feed CH+PG queries.
-      while (true) {
-        const remaining = deadline - Date.now();
-        // One env-scoped subscription per wait (not one per run); re-subscribed each
-        // loop until a relevant delta or the budget runs out.
-        const reason =
-          remaining > 0 ? await this.#waitForEnvChange(environment.id, signal, remaining) : "timeout";
-        this.options.onWakeup?.(reason);
+      const emitFromSerialized = (changes: SerializedRowChange[], maxUpdatedAt: number): Response => {
+        const seq = this.#nextSeq();
+        return this.#buildResponse(buildRowsBodyFromSerialized(changes), apiVersion, clientVersion, {
+          offset: encodeOffset(maxUpdatedAt, seq),
+          handle,
+          cursor: String(seq),
+        });
+      };
+      const emitFromRows = (changes: RowChange[], maxUpdatedAt: number): Response => {
+        const seq = this.#nextSeq();
+        return this.#buildResponse(buildRowsBody(changes, skipColumns), apiVersion, clientVersion, {
+          offset: encodeOffset(maxUpdatedAt, seq),
+          handle,
+          cursor: String(seq),
+        });
+      };
+      const emitUpToDate = (maxUpdatedAt: number): Response => {
+        const seq = this.#nextSeq();
+        return this.#buildResponse(buildUpToDateBody(), apiVersion, clientVersion, {
+          offset: encodeOffset(maxUpdatedAt, seq),
+          handle,
+          cursor: String(seq),
+        });
+      };
 
-        if (reason === "abort") {
-          // Client disconnected; the response is discarded. Skip the refetch.
-          return this.#buildResponse(buildUpToDateBody(), apiVersion, clientVersion, {
-            offset,
-            handle,
-            cursor: String(this.#nextSeq()),
-          });
-        }
+      const registration = this.options.router.register(
+        environment.id,
+        this.#feedFilter(filter),
+        skipColumns
+      );
 
-        // ClickHouse resolves the (possibly stale) membership; Postgres hydrates the
-        // authoritative current rows, so status is always fresh even if CH lags. We
-        // refetch on every wake AND on the final timeout, so a wake missed during the
-        // brief re-subscribe gap is still caught by the backstop.
-        const rows = await this.#resolveAndHydrate(environment, filter, skipColumns);
+      try {
+        while (true) {
+          const remaining = deadline - Date.now();
+          const { reason, rows } =
+            remaining > 0
+              ? await registration.waitForMatch(signal, remaining)
+              : { reason: "timeout" as const, rows: [] as MatchedRow[] };
+          this.options.onWakeup?.(reason);
 
-        // Diff against what the client already has, using the hydrated updatedAt:
-        // prior working set => per-row (new = insert, advanced = update); miss =>
-        // anything newer than the offset floor as a merge-safe update.
-        const changes: RowChange[] = [];
-        const seen: WorkingSet = new Map();
-        let maxUpdatedAt = offsetFloorMs;
-        for (const row of rows) {
-          const updatedAtMs = row.updatedAt.getTime();
-          seen.set(row.id, updatedAtMs);
-          maxUpdatedAt = Math.max(maxUpdatedAt, updatedAtMs);
-
-          if (prevSeen) {
-            const prior = prevSeen.get(row.id);
-            if (prior === undefined) {
-              changes.push({ row, operation: "insert" });
-            } else if (updatedAtMs > prior) {
-              changes.push({ row, operation: "update" });
-            }
-          } else if (updatedAtMs > offsetFloorMs) {
-            changes.push({ row, operation: "update" });
+          if (reason === "abort") {
+            return emitUpToDate(offsetFloorMs);
           }
-        }
 
-        // Refresh the working set so runs that left the filter stop being tracked
-        // (the client keeps showing them; the SDK never applies deletes).
-        this.#workingSetCache.set(handle, seen);
-        prevSeen = seen;
+          // FAST PATH: the router already confirmed membership + the createdAt window and
+          // hydrated/serialized the matched runs. Just diff against the working set.
+          if (reason === "notify") {
+            this.options.onLivePollPath?.("fast-hydrate");
+            const { changes, maxUpdatedAt, touched } = this.#diffMatched(
+              rows,
+              prevSeen,
+              offsetFloorMs
+            );
+            // Merge (not replace): the router only surfaced the changed subset, so keep the
+            // rest of the working set intact. The backstop full-resolve rebuilds it.
+            const merged = this.#mergeWorkingSet(prevSeen, touched);
+            this.#workingSetCache.set(handle, merged);
+            prevSeen = merged;
 
-        if (changes.length > 0) {
-          const seq = this.#nextSeq();
-          return this.#buildResponse(buildRowsBody(changes, skipColumns), apiVersion, clientVersion, {
-            offset: encodeOffset(maxUpdatedAt, seq),
-            handle,
-            cursor: String(seq),
-          });
-        }
+            if (changes.length > 0) {
+              return emitFromSerialized(changes, maxUpdatedAt);
+            }
+            // Matched but no row advanced (already seen). Keep holding.
+            if (holdOnEmpty) {
+              continue;
+            }
+            return emitUpToDate(maxUpdatedAt);
+          }
 
-        // Empty diff. With hold-on-empty (default) keep waiting until a real delta or
-        // the budget elapses; otherwise fall back to the legacy per-wake up-to-date.
-        if (reason === "timeout" || !holdOnEmpty) {
-          const seq = this.#nextSeq();
-          return this.#buildResponse(buildUpToDateBody(), apiVersion, clientVersion, {
-            offset: encodeOffset(maxUpdatedAt, seq),
-            handle,
-            cursor: String(seq),
-          });
+          // BACKSTOP: full ClickHouse resolve + hydrate. Replaces the working set so runs
+          // that left the filter stop being tracked (the client keeps showing them).
+          this.options.onLivePollPath?.("full-resolve");
+          const resolved = await this.#resolveAndHydrate(environment, filter, skipColumns);
+          const { changes, maxUpdatedAt, touched } = this.#diffRows(
+            resolved,
+            prevSeen,
+            offsetFloorMs
+          );
+          this.#workingSetCache.set(handle, touched);
+          prevSeen = touched;
+
+          if (changes.length > 0) {
+            return emitFromRows(changes, maxUpdatedAt);
+          }
+          // Empty backstop diff: timeout returns up-to-date; (holdOnEmpty never reaches
+          // here on a notify — those are handled in the fast path above).
+          return emitUpToDate(maxUpdatedAt);
         }
-        // reason === "notify" with an empty diff: keep holding (loop, re-subscribe).
+      } finally {
+        registration.close();
       }
     });
   }
 
+  /** Translate a multi-run filter into the router's membership predicate. */
+  #feedFilter(filter: RunSetFilter): FeedFilter {
+    if (filter.batchId !== undefined) {
+      return { kind: "batch", batchId: filter.batchId };
+    }
+    return {
+      kind: "tag",
+      tags: filter.tags ?? [],
+      createdAtFloorMs: filter.createdAtAfter?.getTime(),
+    };
+  }
+
+  /** Diff router-matched rows (already serialized) against the prior working set, pairing
+   * each row's shared `value` with this feed's operation. */
+  #diffMatched(
+    matched: MatchedRow[],
+    prevSeen: WorkingSet | undefined,
+    offsetFloorMs: number
+  ): { changes: SerializedRowChange[]; maxUpdatedAt: number; touched: WorkingSet } {
+    const changes: SerializedRowChange[] = [];
+    const touched: WorkingSet = new Map();
+    let maxUpdatedAt = offsetFloorMs;
+    for (const { row, value } of matched) {
+      const updatedAtMs = row.updatedAt.getTime();
+      touched.set(row.id, updatedAtMs);
+      maxUpdatedAt = Math.max(maxUpdatedAt, updatedAtMs);
+
+      if (prevSeen) {
+        const prior = prevSeen.get(row.id);
+        if (prior === undefined) {
+          changes.push({ runId: row.id, value, operation: "insert" });
+        } else if (updatedAtMs > prior) {
+          changes.push({ runId: row.id, value, operation: "update" });
+        }
+      } else if (updatedAtMs > offsetFloorMs) {
+        changes.push({ runId: row.id, value, operation: "update" });
+      }
+    }
+    return { changes, maxUpdatedAt, touched };
+  }
+
   /**
-   * Resolve the filter's id-set (ClickHouse) and hydrate the rows (Postgres),
-   * coalesced + short-TTL cached by (env, filter, columns). Every batch feed for a
-   * batch, and every tag feed sharing tags+window+columns, shares ONE resolve+hydrate
-   * instead of each firing its own when the per-env channel wakes them together.
-   * Concurrent callers await an in-flight resolve; callers within the TTL reuse the
-   * cached rows (staleness budget: up to the TTL; the next live poll catches up).
+   * Diff hydrated rows against the prior working set on the authoritative Postgres
+   * `updatedAt`: a run not in the set is an `insert`, one whose `updatedAt` advanced is an
+   * `update`. On a working-set miss, anything past the offset floor is a merge-safe
+   * `update`. Used by the snapshot and the backstop full-resolve.
+   */
+  #diffRows(
+    rows: RealtimeRunRow[],
+    prevSeen: WorkingSet | undefined,
+    offsetFloorMs: number
+  ): { changes: RowChange[]; maxUpdatedAt: number; touched: WorkingSet } {
+    const changes: RowChange[] = [];
+    const touched: WorkingSet = new Map();
+    let maxUpdatedAt = offsetFloorMs;
+    for (const row of rows) {
+      const updatedAtMs = row.updatedAt.getTime();
+      touched.set(row.id, updatedAtMs);
+      maxUpdatedAt = Math.max(maxUpdatedAt, updatedAtMs);
+
+      if (prevSeen) {
+        const prior = prevSeen.get(row.id);
+        if (prior === undefined) {
+          changes.push({ row, operation: "insert" });
+        } else if (updatedAtMs > prior) {
+          changes.push({ row, operation: "update" });
+        }
+      } else if (updatedAtMs > offsetFloorMs) {
+        changes.push({ row, operation: "update" });
+      }
+    }
+    return { changes, maxUpdatedAt, touched };
+  }
+
+  /** Merge fast-path touched rows into the prior working set. The fast path only saw the
+   * changed subset, so we keep the rest (the backstop full-resolve does the exact rebuild). */
+  #mergeWorkingSet(prevSeen: WorkingSet | undefined, touched: WorkingSet): WorkingSet {
+    const merged: WorkingSet = new Map(prevSeen ?? undefined);
+    for (const [id, updatedAtMs] of touched) {
+      merged.set(id, updatedAtMs);
+    }
+    return merged;
+  }
+
+  /**
+   * Resolve the filter's id-set (ClickHouse) and hydrate the rows (Postgres), coalesced +
+   * short-TTL cached by (env, filter, columns). Used by the initial snapshot and the
+   * backstop. A reconnect/snapshot stampede of identical filters shares ONE resolve+hydrate
+   * (concurrent callers await the in-flight one; callers within the TTL reuse the rows).
    */
   async #resolveAndHydrate(
     environment: RealtimeListEnvironment,
@@ -540,7 +762,9 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
     }
 
     this.options.onRunSetResolve?.("miss");
-    const promise = this.#resolveAndHydrateUncached(environment, filter, skipColumns)
+    // Registered in #runSetInflight synchronously below, so same-filter callers that arrive
+    // while this is still waiting for an admission permit coalesce onto it (one permit, not N).
+    const promise = this.#admitAndResolveUncached(environment, filter, skipColumns)
       .then((rows) => {
         this.#runSetCache.set(key, rows);
         return rows;
@@ -551,6 +775,29 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
 
     this.#runSetInflight.set(key, promise);
     return promise;
+  }
+
+  /** Acquire an admission permit (if the gate is enabled) before the fresh CH+PG resolve, so
+   * a distinct-filter stampede is throttled to the configured concurrency. */
+  async #admitAndResolveUncached(
+    environment: RealtimeListEnvironment,
+    filter: RunSetFilter,
+    skipColumns: string[]
+  ): Promise<RealtimeRunRow[]> {
+    if (!this.#admissionGate) {
+      return this.#resolveAndHydrateUncached(environment, filter, skipColumns);
+    }
+    const waitStart = Date.now();
+    await this.#admissionGate.acquire();
+    const waited = Date.now() - waitStart;
+    if (waited > 0) {
+      this.options.onResolveAdmissionWait?.(waited);
+    }
+    try {
+      return await this.#resolveAndHydrateUncached(environment, filter, skipColumns);
+    } finally {
+      this.#admissionGate.release();
+    }
   }
 
   async #resolveAndHydrateUncached(
@@ -694,64 +941,6 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
       return await work();
     } finally {
       await this.options.limiter.decrement(environment.id, requestId);
-    }
-  }
-
-  #waitForChange(runId: string, signal?: AbortSignal, timeoutMs?: number): Promise<WakeupReason> {
-    return this.#waitForSubscription(
-      this.options.notifier.subscribeToRunChanges(runId),
-      signal,
-      timeoutMs
-    );
-  }
-
-  #waitForEnvChange(
-    environmentId: string,
-    signal?: AbortSignal,
-    timeoutMs?: number
-  ): Promise<WakeupReason> {
-    return this.#waitForSubscription(
-      this.options.notifier.subscribeToEnvChanges(environmentId),
-      signal,
-      timeoutMs
-    );
-  }
-
-  /** Race a notifier subscription against a timeout (the jittered backstop by default,
-   * or an explicit remaining budget when a live request holds across wakes) and the
-   * abort signal. */
-  async #waitForSubscription(
-    subscription: RunChangeSubscription,
-    signal?: AbortSignal,
-    timeoutMs?: number
-  ): Promise<WakeupReason> {
-    if (signal?.aborted) {
-      subscription.unsubscribe();
-      return "abort";
-    }
-
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let onAbort: (() => void) | undefined;
-
-    try {
-      return await new Promise<WakeupReason>((resolve) => {
-        subscription.changed.then(() => resolve("notify")).catch(() => resolve("timeout"));
-
-        timer = setTimeout(() => resolve("timeout"), timeoutMs ?? this.#jitteredTimeout());
-
-        if (signal) {
-          onAbort = () => resolve("abort");
-          signal.addEventListener("abort", onAbort, { once: true });
-        }
-      });
-    } finally {
-      if (timer) {
-        clearTimeout(timer);
-      }
-      if (signal && onAbort) {
-        signal.removeEventListener("abort", onAbort);
-      }
-      subscription.unsubscribe();
     }
   }
 

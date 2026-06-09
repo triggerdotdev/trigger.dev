@@ -306,8 +306,10 @@ const EnvironmentSchema = z
     // "1" = run-changed signals are published and the per-org `realtimeBackend`
     // feature flag selects the backend per request.
     REALTIME_NOTIFIER_ENABLED: z.string().default("0"),
-    // Backstop wait before a live notifier request refetches the run (ms).
-    REALTIME_NOTIFIER_LIVE_POLL_TIMEOUT_MS: z.coerce.number().int().default(5_000),
+    // Backstop wait before a live notifier request refetches the run (ms). Matches
+    // Electric's ~20s live long-poll hold so the client polling cadence is unchanged
+    // across backends (a ±15% jitter is applied per request to avoid refetch herds).
+    REALTIME_NOTIFIER_LIVE_POLL_TIMEOUT_MS: z.coerce.number().int().default(20_000),
     // Hard cap on the tag-list snapshot size served by the notifier feed.
     REALTIME_NOTIFIER_MAX_LIST_RESULTS: z.coerce.number().int().default(1_000),
     // Short-TTL coalescing cache for the multi-run (tag-list/batch) resolve+hydrate.
@@ -333,6 +335,11 @@ const EnvironmentSchema = z
     // holding the long-poll (re-resolving cheaply) instead of returning an empty
     // up-to-date the client would immediately re-issue. "0" reverts to per-wake replies.
     REALTIME_NOTIFIER_HOLD_ON_EMPTY: z.string().default("1"),
+    // Max concurrent fresh ClickHouse resolves (cache misses) per instance. Caps the
+    // distinct-filter reconnect stampede: a mass reconnect of N feeds on N different filters
+    // queues to this many concurrent CH queries instead of firing all N at once. Same-filter
+    // bursts collapse via the single-flight cache before taking a permit. 0 disables the gate.
+    REALTIME_NOTIFIER_RESOLVE_ADMISSION_LIMIT: z.coerce.number().int().default(16),
 
     PUBSUB_REDIS_HOST: z
       .string()

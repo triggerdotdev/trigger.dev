@@ -2,11 +2,7 @@ import { Gauge } from "prom-client";
 import { env } from "~/env.server";
 import { metricsRegister } from "~/metrics.server";
 import { singleton } from "~/utils/singleton";
-import {
-  RunChangeNotifier,
-  type RunChangeInput,
-  type RunChangeSubscription,
-} from "./runChangeNotifier.server";
+import { RunChangeNotifier, type ChangeRecordInput } from "./runChangeNotifier.server";
 
 /**
  * Process-singleton wiring for the RunChangeNotifier plus the thin, gated
@@ -61,25 +57,18 @@ export function isRunChangeNotifierEnabled(): boolean {
   return notifierEnabled;
 }
 
-/** Fire-and-forget run-changed notify. No-op (and no notifier construction) when disabled. */
-export function publishRunChanged(input: RunChangeInput): void {
+/** Fire-and-forget publish of a run-changed record. No-op (and no notifier construction)
+ * when disabled, so publish sites can call it unconditionally. */
+export function publishChangeRecord(input: ChangeRecordInput): void {
   if (!notifierEnabled) {
     return;
   }
   getRunChangeNotifier().publish(input);
 }
 
-export function publishManyRunChanged(inputs: RunChangeInput[]): void {
+export function publishManyChangeRecords(inputs: ChangeRecordInput[]): void {
   if (!notifierEnabled) {
     return;
   }
   getRunChangeNotifier().publishMany(inputs);
-}
-
-/** Subscribe to the next change for a run via the shared subscriber. */
-export function subscribeToRunChanges(runId: string): RunChangeSubscription {
-  if (!notifierEnabled) {
-    throw new Error("Run change notifier is disabled");
-  }
-  return getRunChangeNotifier().subscribeToRunChanges(runId);
 }

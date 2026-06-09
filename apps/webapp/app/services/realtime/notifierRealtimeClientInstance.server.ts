@@ -6,6 +6,7 @@ import { singleton } from "~/utils/singleton";
 import { getCachedLimit } from "../platform.v3.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { ClickHouseRunListResolver } from "./clickHouseRunListResolver.server";
+import { EnvChangeRouter } from "./envChangeRouter.server";
 import { NotifierRealtimeClient } from "./notifierRealtimeClient.server";
 import { RealtimeConcurrencyLimiter } from "./realtimeConcurrencyLimiter.server";
 import { getRunChangeNotifier } from "./runChangeNotifierInstance.server";
@@ -19,7 +20,7 @@ import { RunHydrator } from "./runReader.server";
 function initializeNotifierRealtimeClient(): NotifierRealtimeClient {
   const wakeups = new Counter({
     name: "realtime_notifier_wakeups_total",
-    help: "Live realtime notifier wakeups by reason. A rising 'timeout' share suggests a write site is missing its publishRunChanged delegate.",
+    help: "Live realtime notifier wakeups by reason. A rising 'timeout' share suggests a write site is missing its publishChangeRecord delegate.",
     labelNames: ["reason"] as const,
     registers: [metricsRegister],
   });
@@ -39,6 +40,25 @@ function initializeNotifierRealtimeClient(): NotifierRealtimeClient {
     registers: [metricsRegister],
   });
 
+  const livePollPaths = new Counter({
+    name: "realtime_notifier_live_poll_total",
+    help: "How live polls resolved. 'fast-hydrate' = the router woke the feed with matched runs hydrated by id (no ClickHouse); 'full-resolve' = the backstop timeout did a ClickHouse resolve. A high fast-path share is the local-membership routing working.",
+    labelNames: ["path"] as const,
+    registers: [metricsRegister],
+  });
+
+  const routerHydrates = new Counter({
+    name: "realtime_notifier_router_hydrated_runs_total",
+    help: "Runs hydrated by the EnvChangeRouter's batch-hydrate (one query per column set per wake, shared across all feeds matching the same run — the hot-shared-tag fan-out collapse).",
+    registers: [metricsRegister],
+  });
+
+  const resolveAdmissionWaits = new Counter({
+    name: "realtime_notifier_resolve_admission_waits_total",
+    help: "Fresh ClickHouse resolves that had to queue for an admission permit. A rising count means a distinct-filter reconnect stampede is being throttled (the gate is doing its job).",
+    registers: [metricsRegister],
+  });
+
   const limiter = new RealtimeConcurrencyLimiter({
     keyPrefix: "tr:realtime:notifier:concurrency",
     redis: {
@@ -51,14 +71,24 @@ function initializeNotifierRealtimeClient(): NotifierRealtimeClient {
     },
   });
 
+  // One RunHydrator shared by the router (fast-path batch-hydrate) and the client
+  // (snapshot + backstop), so its single-flight + short-TTL cache covers both.
+  const runReader = new RunHydrator({ replica: $replica });
+
+  const router = new EnvChangeRouter({
+    source: getRunChangeNotifier(),
+    hydrator: runReader,
+    onHydrate: (runCount) => routerHydrates.inc(runCount),
+  });
+
   const client = new NotifierRealtimeClient({
-    runReader: new RunHydrator({ replica: $replica }),
+    runReader,
     runListResolver: new ClickHouseRunListResolver({
       getClickhouse: (organizationId) =>
         clickhouseFactory.getClickhouseForOrganization(organizationId, "realtime"),
       prisma: $replica,
     }),
-    notifier: getRunChangeNotifier(),
+    router,
     limiter,
     cachedLimitProvider: {
       async getCachedLimit(organizationId, defaultValue) {
@@ -78,9 +108,12 @@ function initializeNotifierRealtimeClient(): NotifierRealtimeClient {
     listCacheMaxEntries: env.REALTIME_NOTIFIER_WORKING_SET_MAX_ENTRIES,
     runSetCreatedAtBucketMs: env.REALTIME_NOTIFIER_RUNSET_CREATED_AT_BUCKET_MS,
     holdOnEmpty: env.REALTIME_NOTIFIER_HOLD_ON_EMPTY === "1",
+    resolveAdmissionLimit: env.REALTIME_NOTIFIER_RESOLVE_ADMISSION_LIMIT,
     onWakeup: (reason) => wakeups.inc({ reason }),
+    onLivePollPath: (path) => livePollPaths.inc({ path }),
     onRunSetResolve: (result) => runSetResolves.inc({ result }),
     onRunSetQuery: (stage, ms) => runSetQueryMs.observe({ stage }, ms),
+    onResolveAdmissionWait: () => resolveAdmissionWaits.inc(),
   });
 
   new Gauge({
@@ -89,6 +122,15 @@ function initializeNotifierRealtimeClient(): NotifierRealtimeClient {
     registers: [metricsRegister],
     collect() {
       this.set(client.workingSetCacheSize);
+    },
+  });
+
+  new Gauge({
+    name: "realtime_notifier_resolve_admission_in_use",
+    help: "Fresh ClickHouse resolves currently holding an admission permit (live concurrency against the gate's limit).",
+    registers: [metricsRegister],
+    collect() {
+      this.set(client.resolveAdmissionInUse);
     },
   });
 

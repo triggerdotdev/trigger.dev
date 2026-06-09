@@ -4,6 +4,8 @@ import {
   type RealtimeListEnvironment,
 } from "~/services/realtime/notifierRealtimeClient.server";
 import { type RealtimeRunRow } from "~/services/realtime/electricStreamProtocol.server";
+import { EnvChangeRouter } from "~/services/realtime/envChangeRouter.server";
+import { setTimeout as sleep } from "node:timers/promises";
 import { describe, expect, it, vi } from "vitest";
 
 const ENV: RealtimeListEnvironment = { id: "env_1", organizationId: "org_1", projectId: "proj_1" };
@@ -20,12 +22,16 @@ function row(id: string): RealtimeRunRow {
 function makeClient(overrides: Record<string, unknown> = {}) {
   const resolveSpy = vi.fn(async () => ["run_1", "run_2"]);
   const hydrateSpy = vi.fn(async (_env: string, ids: string[]) => ids.map(row));
-  const never = { changed: new Promise<void>(() => {}), unsubscribe() {} };
 
   const client = new NotifierRealtimeClient({
     runReader: { getRunById: async () => null, hydrateByIds: hydrateSpy } as any,
     runListResolver: { resolveMatchingRunIds: resolveSpy } as any,
-    notifier: { subscribeToRunChanges: () => never, subscribeToEnvChanges: () => never } as any,
+    // No-op source: live polls never get a router wake, so they fall through to the
+    // backstop full-resolve — which is what the live tests below assert on.
+    router: new EnvChangeRouter({
+      source: { subscribeToEnv: () => () => {} },
+      hydrator: { hydrateByIds: hydrateSpy },
+    }),
     limiter: { incrementAndCheck: async () => true, decrement: async () => {} } as any,
     cachedLimitProvider: { getCachedLimit: async () => 100 },
     maximumCreatedAtFilterAgeMs: 24 * 60 * 60 * 1000,
@@ -123,6 +129,84 @@ describe("NotifierRealtimeClient run-set resolve coalescing + cache", () => {
   });
 });
 
+describe("NotifierRealtimeClient resolve admission gate (mass-reconnect stampede)", () => {
+  // A resolver that blocks each invocation until released, so we can watch how many run
+  // concurrently. Tracks peak concurrency and exposes a release-one-at-a-time drain.
+  function gatedResolver() {
+    let active = 0;
+    let peak = 0;
+    const releases: Array<() => void> = [];
+    const resolve = vi.fn(async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise<void>((r) => releases.push(r));
+      active--;
+      return ["run_1"];
+    });
+    return {
+      resolve,
+      peak: () => peak,
+      releaseOne: () => releases.shift()?.(),
+      waiting: () => releases.length,
+    };
+  }
+
+  function makeGatedClient(resolveAdmissionLimit: number, resolver: ReturnType<typeof gatedResolver>) {
+    const hydrateSpy = vi.fn(async (_env: string, ids: string[]) => ids.map(row));
+    return new NotifierRealtimeClient({
+      runReader: { getRunById: async () => null, hydrateByIds: hydrateSpy } as any,
+      runListResolver: { resolveMatchingRunIds: resolver.resolve } as any,
+      router: new EnvChangeRouter({
+        source: { subscribeToEnv: () => () => {} },
+        hydrator: { hydrateByIds: hydrateSpy },
+      }),
+      limiter: { incrementAndCheck: async () => true, decrement: async () => {} } as any,
+      cachedLimitProvider: { getCachedLimit: async () => 100 },
+      maximumCreatedAtFilterAgeMs: 24 * 60 * 60 * 1000,
+      runSetResolveCacheTtlMs: 0, // no cache -> every distinct filter is a fresh resolve
+      resolveAdmissionLimit,
+    });
+  }
+
+  it("throttles a distinct-filter stampede to the admission limit of concurrent CH resolves", async () => {
+    const resolver = gatedResolver();
+    const client = makeGatedClient(2, resolver);
+
+    // 5 distinct batchIds => 5 distinct filters => 5 fresh resolves, fired at once.
+    const polls = [0, 1, 2, 3, 4].map((i) => snapshot(client, `batch_${i}`));
+
+    // Only the limit (2) may run concurrently; the rest queue for a permit.
+    await vi.waitFor(() => expect(resolver.resolve).toHaveBeenCalledTimes(2));
+    await sleep(20);
+    expect(resolver.resolve).toHaveBeenCalledTimes(2); // 3 still queued behind the gate
+    expect(resolver.peak()).toBe(2);
+
+    // Drain: each release frees a permit, admitting exactly one queued resolve.
+    while (resolver.waiting() > 0) {
+      resolver.releaseOne();
+      await sleep(5);
+    }
+    await Promise.all(polls);
+
+    expect(resolver.resolve).toHaveBeenCalledTimes(5); // all ran...
+    expect(resolver.peak()).toBe(2); // ...but never more than the limit at once
+  });
+
+  it("lets a same-filter burst through on a single permit (coalesces before the gate)", async () => {
+    const resolver = gatedResolver();
+    const client = makeGatedClient(1, resolver); // limit 1 would deadlock if each took a permit
+
+    // 5 identical filters fired at once -> single-flight collapses to one in-flight resolve.
+    const polls = [0, 1, 2, 3, 4].map(() => snapshot(client, "batch_same"));
+    await vi.waitFor(() => expect(resolver.resolve).toHaveBeenCalledTimes(1));
+    await sleep(20);
+
+    resolver.releaseOne();
+    await Promise.all(polls);
+    expect(resolver.resolve).toHaveBeenCalledTimes(1); // one resolve, one permit, no queue
+  });
+});
+
 describe("NotifierRealtimeClient tag-list createdAt bucketing", () => {
   it("floors the resolved createdAt lower bound to the bucket boundary", async () => {
     // Fix the clock to a non-bucket-aligned instant so the assertion is deterministic.
@@ -180,13 +264,13 @@ describe("NotifierRealtimeClient tag-list createdAt bucketing", () => {
 });
 
 describe("NotifierRealtimeClient review fixes", () => {
-  const ready = { changed: Promise.resolve(), unsubscribe() {} };
-  const liveNotifier = { subscribeToRunChanges: () => ready, subscribeToEnvChanges: () => ready };
+  // makeClient's router has a no-op source, so the live poll never gets a wake and falls
+  // through to its backstop timeout — the full ClickHouse resolve these tests assert on
+  // (createdAt clamp / concurrency limit).
 
   it("clamps a stale/crafted handle's createdAt up to the max-age floor", async () => {
     const maxAge = 24 * 60 * 60 * 1000;
     const { client, resolveSpy } = makeClient({
-      notifier: liveNotifier,
       maximumCreatedAtFilterAgeMs: maxAge,
       runSetCreatedAtBucketMs: 0,
       livePollTimeoutMs: 50,
@@ -209,7 +293,6 @@ describe("NotifierRealtimeClient review fixes", () => {
   it("enforces a concurrency limit of 0 instead of failing with a 500", async () => {
     let limitCheckedWith: number | undefined;
     const { client } = makeClient({
-      notifier: liveNotifier,
       cachedLimitProvider: { getCachedLimit: async () => 0 },
       limiter: {
         incrementAndCheck: async (_env: string, _id: string, limit: number) => {

@@ -12,6 +12,7 @@ import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
+import { publishChangeRecord } from "~/services/realtime/runChangeNotifierInstance.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { applyMetadataMutationToBufferedRun } from "~/v3/mollifier/applyMetadataMutation.server";
@@ -184,6 +185,11 @@ const { action } = createActionApiRoute(
       return json({ error: "Internal Server Error" }, { status: 500 });
     }
     if (pgResult) {
+      // Mid-run metadata flush succeeded: publish a run-changed record so a live single-run
+      // feed reflects metadata.set() without waiting for the next lifecycle event (this
+      // path doesn't otherwise touch the engine event bus). envId is free; partial record,
+      // matched by runId. No-op when disabled.
+      publishChangeRecord({ runId, envId: env.id });
       return json(pgResult, { status: 200 });
     }
 

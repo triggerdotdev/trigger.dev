@@ -1042,7 +1042,14 @@ export class RunEngine {
 
         this.eventBus.emit("runCreated", {
           time: new Date(),
-          runId: taskRun.id,
+          run: {
+            id: taskRun.id,
+            runTags: taskRun.runTags,
+            batchId: taskRun.batchId,
+          },
+          environment: {
+            id: environment.id,
+          },
         });
 
         return taskRun;

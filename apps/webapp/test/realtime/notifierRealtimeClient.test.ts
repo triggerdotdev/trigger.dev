@@ -4,6 +4,7 @@ import {
   type RealtimeListEnvironment,
 } from "~/services/realtime/notifierRealtimeClient.server";
 import { type RealtimeRunRow } from "~/services/realtime/electricStreamProtocol.server";
+import { EnvChangeRouter } from "~/services/realtime/envChangeRouter.server";
 import { describe, expect, it } from "vitest";
 
 function sampleRow(): RealtimeRunRow {
@@ -40,17 +41,17 @@ function sampleRow(): RealtimeRunRow {
 // Only the initial-snapshot path is exercised here, which touches the shared
 // #buildResponse — enough to lock the response-header contract.
 function makeClient(row: RealtimeRunRow | null) {
-  const never = { changed: new Promise<void>(() => {}), unsubscribe() {} };
   return new NotifierRealtimeClient({
     runReader: {
       getRunById: async () => row,
       hydrateByIds: async () => (row ? [row] : []),
     } as any,
     runListResolver: { resolveMatchingRunIds: async () => [] } as any,
-    notifier: {
-      subscribeToRunChanges: () => never,
-      subscribeToEnvChanges: () => never,
-    } as any,
+    // Snapshot path only; the router (over a no-op source) is never invoked here.
+    router: new EnvChangeRouter({
+      source: { subscribeToEnv: () => () => {} },
+      hydrator: { hydrateByIds: async () => (row ? [row] : []) },
+    }),
     limiter: { incrementAndCheck: async () => true, decrement: async () => {} } as any,
     cachedLimitProvider: { getCachedLimit: async () => 100 },
     maximumCreatedAtFilterAgeMs: 24 * 60 * 60 * 1000,

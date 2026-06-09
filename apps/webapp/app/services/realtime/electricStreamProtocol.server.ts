@@ -273,6 +273,26 @@ export function buildRowsBody(changes: RowChange[], skipColumns: string[] = []):
   return JSON.stringify(messages);
 }
 
+/** A row change whose wire `value` was already serialized (once, shared across feeds by
+ * the EnvChangeRouter); the per-feed `operation` is applied here. */
+export type SerializedRowChange = {
+  runId: string;
+  value: Record<string, string | null>;
+  operation: "insert" | "update";
+};
+
+/** Like `buildRowsBody`, but from values serialized once per (runId, columnSet) upstream,
+ * so a run matching many feeds is serialized once and reused across their bodies. */
+export function buildRowsBodyFromSerialized(changes: SerializedRowChange[]): string {
+  const messages: ShapeMessage[] = changes.map((change) => ({
+    key: runShapeKey(change.runId),
+    value: change.value,
+    headers: { operation: change.operation },
+  }));
+  messages.push(UP_TO_DATE);
+  return JSON.stringify(messages);
+}
+
 export const INITIAL_OFFSET = "-1";
 
 /**
