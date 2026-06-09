@@ -106,7 +106,7 @@ Once the connection is active, set your connection-string variable (for example 
 
 ## Provider notes
 
-- [Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres): the direct connection (`db.<ref>.supabase.co:5432`) resolves to IPv6 only and is unreachable from many environments, so connect through the Supavisor pooler or add the IPv4 add-on. The pooler presents Supabase's own CA, so pass that CA or set `ssl: { rejectUnauthorized: false }`.
+- [Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres): the direct connection (`db.<ref>.supabase.co:5432`) resolves to IPv6 only and is unreachable from many environments, so connect through the Supavisor pooler or add the IPv4 add-on. The pooler presents Supabase's own CA, so prefer passing that CA and keeping verification on (`rejectUnauthorized: true`). Use `rejectUnauthorized: false` only as a temporary troubleshooting step in non-production environments.
 - A `DATABASE_URL` with `sslmode=verify-full&sslrootcert=system` uses a libpq feature the `pg` driver (node-postgres, and the Prisma and Drizzle pools built on it) cannot read. Build the pool from discrete fields with `ssl: { rejectUnauthorized: true }` (Node's CA store), or point `sslrootcert` at a real CA file.
 
 ## Release connections at a wait
