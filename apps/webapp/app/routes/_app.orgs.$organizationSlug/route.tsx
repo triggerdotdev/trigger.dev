@@ -14,6 +14,7 @@ import { requireUser } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { organizationPath } from "~/utils/pathBuilder";
 import { isEnvironmentPauseResumeFormSubmission } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues/route";
+import { isSetDefaultRegionFormSubmission } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.regions/route";
 
 const ParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -50,6 +51,11 @@ export const shouldRevalidate: ShouldRevalidateFunction = (params) => {
 
   // Invalidate if the environment has been paused or resumed
   if (isEnvironmentPauseResumeFormSubmission(params.formMethod, params.formData)) {
+    return true;
+  }
+
+  // Invalidate so useRegions() reflects a newly set default region
+  if (isSetDefaultRegionFormSubmission(params.formMethod, params.formData)) {
     return true;
   }
 

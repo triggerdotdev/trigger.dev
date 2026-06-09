@@ -101,6 +101,20 @@ const FormSchema = z.object({
   regionId: z.string(),
 });
 
+// Lets the parent layout route revalidate its cached regions after a new
+// default is set — the action redirects to the same URL, so a pathname check
+// alone wouldn't refresh the default shown by useRegions().
+export function isSetDefaultRegionFormSubmission(
+  formMethod: string | undefined,
+  formData: FormData | undefined
+) {
+  if (!formMethod || !formData) {
+    return false;
+  }
+
+  return formMethod.toLowerCase() === "post" && formData.has("regionId");
+}
+
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const user = await requireUser(request);
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
