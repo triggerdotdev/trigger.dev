@@ -1186,8 +1186,7 @@ function HistoryTabContent({
         { method: "POST", action: actionPath }
       );
 
-      // Deleting the active conversation: navigate away from ?conversation=
-      // so the chat panel resets instead of pointing at a now-missing id.
+      // Deleted the active conv → clear ?conversation= so chat resets.
       if (conv.id === currentConversationId) {
         navigate(window.location.pathname);
       }
