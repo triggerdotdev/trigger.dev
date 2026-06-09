@@ -98,6 +98,12 @@ Use the pooled endpoint for your tasks. Use the direct endpoint for schema migra
 
 Transaction-mode poolers (Supavisor on `6543`, PgBouncer in transaction mode) do not keep server-side prepared statements across queries. With Prisma, add `?pgbouncer=true` to the pooled URL. With node-postgres, don't rely on prepared statements.
 
+## Private databases
+
+If your database lives in a private VPC and isn't reachable over the public internet, connect to it with [private networking](/private-networking/overview), which links your tasks to resources in your own AWS account over AWS PrivateLink. It supports Postgres (RDS, Aurora), MySQL, MongoDB, and any other TCP service behind an internal load balancer.
+
+Once the connection is active, set your connection-string variable (for example `DATABASE_URL`) to the endpoint IP shown in the dashboard, and the client setup above is unchanged. Private networking is a Pro and Enterprise feature, and the endpoint is reachable only from deployed environments, so use a public connection in local development.
+
 ## Provider notes
 
 - [Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres): the direct connection (`db.<ref>.supabase.co:5432`) resolves to IPv6 only and is unreachable from many environments, so connect through the Supavisor pooler or add the IPv4 add-on. The pooler presents Supabase's own CA, so pass that CA or set `ssl: { rejectUnauthorized: false }`.
