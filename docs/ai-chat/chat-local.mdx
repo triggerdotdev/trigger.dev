@@ -171,3 +171,4 @@ onTurnComplete: async ({ chatId }) => {
 - [Lifecycle hooks](/ai-chat/lifecycle-hooks) — `onBoot` is the canonical init site for `chat.local`.
 - [Database persistence pattern](/ai-chat/patterns/database-persistence) — full per-hook breakdown using `chat.local` alongside DB rows.
 - [Code execution sandbox pattern](/ai-chat/patterns/code-sandbox) — example of using `chat.local` to hold a sandbox handle across turns.
+- [Database connections](/database-connections) — why the database client and its connection pool belong at module scope, not in `chat.local`.
