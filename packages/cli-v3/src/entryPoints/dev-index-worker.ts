@@ -14,18 +14,14 @@ import {
 } from "@trigger.dev/core/v3/workers";
 import { sendMessageInCatalog, ZodSchemaParsedError } from "@trigger.dev/core/v3/zodMessageHandler";
 import { readFile } from "node:fs/promises";
-import sourceMapSupport from "source-map-support";
 import { registerResources } from "../indexing/registerResources.js";
+import { installSourceMapSupport } from "../utilities/installSourceMapSupport.js";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { detectRuntimeVersion } from "@trigger.dev/core/v3/build";
 import { schemaToJsonSchema } from "@trigger.dev/schema-to-json";
 
-sourceMapSupport.install({
-  handleUncaughtExceptions: false,
-  environment: "node",
-  hookRequire: false,
-});
+installSourceMapSupport();
 
 // If the parent CLI closes the IPC channel, exit cleanly instead of being
 // re-parented to init and busy-looping on `process.send` against a dead channel.
