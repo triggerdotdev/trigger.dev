@@ -441,17 +441,19 @@ function PlaygroundChat() {
   return (
     <ResizablePanelGroup orientation="horizontal" className="h-full">
       <ResizablePanel id="playground-chat" min="300px">
-        <div className="flex h-full flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-end px-2 py-2">
-            <ConversationMenu
-              runFriendlyId={activeConversation?.runFriendlyId ?? null}
-              hasMessages={messages.length > 0}
-              hasConversation={conversationId !== null}
-              messages={messages}
-              onDeleteConversation={handleDeleteConversation}
-              onNewConversation={handleNewConversation}
-            />
+        <div className="relative flex h-full flex-col">
+          {/* Header — floats over the scroll area so messages can scroll behind it */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-end px-2 py-2">
+            <div className="pointer-events-auto">
+              <ConversationMenu
+                runFriendlyId={activeConversation?.runFriendlyId ?? null}
+                hasMessages={messages.length > 0}
+                hasConversation={conversationId !== null}
+                messages={messages}
+                onDeleteConversation={handleDeleteConversation}
+                onNewConversation={handleNewConversation}
+              />
+            </div>
           </div>
 
           {/* Scroll container is always mounted — useAutoScrollToBottom caches
@@ -463,7 +465,7 @@ function PlaygroundChat() {
                 "min-h-full",
                 messages.length === 0
                   ? "flex items-center justify-center px-4 pb-[20vh] pt-8"
-                  : "mx-auto w-full max-w-3xl space-y-4 px-4 py-4"
+                  : "mx-auto w-full max-w-3xl space-y-4 px-4 pb-4 pt-12"
               )}
             >
               {messages.length === 0 ? (
@@ -523,7 +525,7 @@ function PlaygroundChat() {
           )}
 
           {messages.length > 0 && (
-            <div className="px-4 pb-8 pt-2">
+            <div className="px-4 pb-8">
               <div className="mx-auto max-w-3xl">
                 <ChatComposer
                   inputRef={inputRef}
