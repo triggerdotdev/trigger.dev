@@ -77,6 +77,27 @@ export const MessageBubble = memo(function MessageBubble({
   return null;
 });
 
+// URLs in `source-url`/`file` parts come from streamed agent/tool data, so an
+// unsafe scheme like `javascript:` would become a clickable XSS payload once it
+// reaches an href/src. Allow only http(s)/blob (and data: for inline images),
+// and return null for anything else so the caller can skip the link/image.
+export function toSafeUrl(value: unknown, allowDataImage = false): string | null {
+  if (typeof value !== "string") return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol === "http:" || parsed.protocol === "https:" || parsed.protocol === "blob:") {
+    return value;
+  }
+  if (allowDataImage && parsed.protocol === "data:" && /^data:image\//i.test(value)) {
+    return value;
+  }
+  return null;
+}
+
 export function renderPart(part: UIMessage["parts"][number], i: number) {
   const p = part as any;
   const type = part.type as string;
@@ -159,15 +180,25 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
 
   // Source URL — clickable citation link
   if (type === "source-url") {
+    const safeUrl = toSafeUrl(p.url);
+    const label = p.title || p.url;
+    // Unsafe scheme: render the citation text without a clickable link.
+    if (!safeUrl) {
+      return label ? (
+        <div key={i} className="text-xs text-text-dimmed">
+          {label}
+        </div>
+      ) : null;
+    }
     return (
       <div key={i} className="text-xs">
         <a
-          href={p.url}
+          href={safeUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="text-indigo-400 underline hover:text-indigo-300"
         >
-          {p.title || p.url}
+          {label}
         </a>
       </div>
     );
@@ -187,19 +218,30 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
   if (type === "file") {
     const isImage = typeof p.mediaType === "string" && p.mediaType.startsWith("image/");
     if (isImage) {
+      const safeSrc = toSafeUrl(p.url, true); // allow data: URIs for inline images
+      if (!safeSrc) return null;
       return (
         <img
           key={i}
-          src={p.url}
+          src={safeSrc}
           alt={p.filename ?? "file"}
           className="max-h-64 rounded border border-charcoal-650"
         />
       );
     }
+    const safeUrl = toSafeUrl(p.url);
+    // Unsafe scheme: show the filename without a clickable download link.
+    if (!safeUrl) {
+      return p.filename ? (
+        <div key={i} className="text-xs text-text-dimmed">
+          {p.filename}
+        </div>
+      ) : null;
+    }
     return (
       <div key={i} className="text-xs">
         <a
-          href={p.url}
+          href={safeUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="text-indigo-400 underline hover:text-indigo-300"
