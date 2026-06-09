@@ -117,7 +117,12 @@ export class ClickHouseRunsRepository implements IRunsRepository {
           previousCursor = cursorFor(reversedRows.at(1));
           nextCursor = cursorFor(reversedRows.at(options.page.size));
         } else {
-          nextCursor = cursorFor(reversedRows.at(options.page.size - 1));
+          // No newer rows, so there's no previous (newer) page. The next
+          // (older) cursor is the oldest row on this page = rows[0] (rows are
+          // ASC here). Index by the actual row count, not page.size — on a
+          // partial page (fewer than page.size rows) page.size-1 overshoots
+          // and would null the cursor, stranding forward navigation.
+          nextCursor = cursorFor(rows.at(0));
         }
         break;
       }

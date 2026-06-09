@@ -418,4 +418,104 @@ describe("RunsRepository cursor pagination", () => {
       expect(new Set(seen).size).toBe(ids.length);
     }
   );
+
+  replicationContainerTest(
+    "a partial backward page still exposes a forward cursor (no stranding)",
+    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
+      const { clickhouse } = await setupClickhouseReplication({
+        prisma,
+        databaseUrl: postgresContainer.getConnectionUri(),
+        clickhouseUrl: clickhouseContainer.getConnectionUrl(),
+        redisOptions,
+      });
+
+      const organization = await prisma.organization.create({
+        data: { title: "test", slug: "test" },
+      });
+      const project = await prisma.project.create({
+        data: {
+          name: "test",
+          slug: "test",
+          organizationId: organization.id,
+          externalRef: "test",
+        },
+      });
+      const runtimeEnvironment = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "test",
+          type: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "test",
+          pkApiKey: "test",
+          shortcode: "test",
+        },
+      });
+
+      // Three runs; created_at descending order is [a, b, c] (a newest).
+      const ids = [
+        "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbb",
+        "cccccccccccccccccccccccc",
+      ];
+      const base = new Date("2026-06-04T16:55:07.000Z").getTime();
+      for (let i = 0; i < ids.length; i++) {
+        await prisma.taskRun.create({
+          data: {
+            id: ids[i],
+            createdAt: new Date(base + (ids.length - 1 - i) * 1000),
+            friendlyId: `run_${ids[i]}`,
+            taskIdentifier: "my-task",
+            payload: JSON.stringify({ foo: "bar" }),
+            traceId: `trace_${i}`,
+            spanId: `span_${i}`,
+            queue: "test",
+            runtimeEnvironmentId: runtimeEnvironment.id,
+            projectId: project.id,
+            organizationId: organization.id,
+            environmentType: "DEVELOPMENT",
+            engine: "V2",
+          },
+        });
+      }
+
+      await setTimeout(1000);
+
+      const runsRepository = new RunsRepository({ prisma, clickhouse });
+      const baseOptions = {
+        projectId: project.id,
+        environmentId: runtimeEnvironment.id,
+        organizationId: organization.id,
+      };
+
+      // First page (size 2) = {a, b}; its nextCursor sits at b's boundary.
+      const first = await runsRepository.listRuns({ ...baseOptions, page: { size: 2 } });
+      expect(first.runs.map((r) => r.id).sort()).toEqual([
+        "aaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbb",
+      ]);
+
+      // Paging backward from that cursor lands on a *partial* page — just the
+      // newest run {a}, with no rows before it (hasMore === false).
+      const back = await runsRepository.listRuns({
+        ...baseOptions,
+        page: { size: 2, cursor: first.pagination.nextCursor!, direction: "backward" },
+      });
+      expect(back.runs.map((r) => r.id)).toEqual(["aaaaaaaaaaaaaaaaaaaaaaaa"]);
+
+      // A partial backward page must still expose a forward cursor, or the user
+      // is stranded with no way to page back down.
+      expect(back.pagination.nextCursor).toBeTruthy();
+
+      // And paging forward from it reaches the remaining runs.
+      const forward = await runsRepository.listRuns({
+        ...baseOptions,
+        page: { size: 2, cursor: back.pagination.nextCursor!, direction: "forward" },
+      });
+      expect(forward.runs.map((r) => r.id).sort()).toEqual([
+        "bbbbbbbbbbbbbbbbbbbbbbbb",
+        "cccccccccccccccccccccccc",
+      ]);
+    }
+  );
 });
