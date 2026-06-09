@@ -120,9 +120,7 @@ export class UpsertBranchService {
           shortcode,
           maximumConcurrencyLimit: parentEnvironment.maximumConcurrencyLimit,
           // Inherit the region from the parent preview environment.
-          defaultWorkerGroup: parentEnvironment.defaultWorkerGroupId
-            ? { connect: { id: parentEnvironment.defaultWorkerGroupId } }
-            : undefined,
+          defaultWorkerGroupId: parentEnvironment.defaultWorkerGroupId,
           organization: {
             connect: {
               id: parentEnvironment.organization.id,

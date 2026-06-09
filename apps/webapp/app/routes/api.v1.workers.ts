@@ -4,14 +4,10 @@ import {
   WorkersCreateResponseBody,
   WorkersListResponseBody,
 } from "@trigger.dev/core/v3";
-import { $replica } from "~/db.server";
 import {
   createActionApiRoute,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
-import { makeFlag } from "~/v3/featureFlags.server";
-import { resolveEffectiveDefaultWorkerGroupId } from "~/v3/regionAccess.server";
 import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.server";
 
 export const loader = createLoaderApiRoute(
@@ -31,15 +27,11 @@ export const loader = createLoaderApiRoute(
       projectId: authentication.environment.projectId,
     });
 
-    const globalDefaultWorkerGroupId = await makeFlag($replica)({
-      key: FEATURE_FLAG.defaultWorkerInstanceGroupId,
-    });
-
-    // env default -> project default -> global default
-    const effectiveDefaultWorkerGroupId = resolveEffectiveDefaultWorkerGroupId({
+    // Reuse the trigger path's resolution so isDefault matches where runs
+    // actually route: env default -> project default -> global default.
+    const defaultWorkerGroup = await service.getDefaultWorkerGroupForProject({
+      projectId: authentication.environment.projectId,
       environmentDefaultWorkerGroupId: authentication.environment.defaultWorkerGroupId,
-      projectDefaultWorkerGroupId: authentication.environment.project.defaultWorkerGroupId,
-      globalDefaultWorkerGroupId,
     });
 
     return json(
@@ -47,7 +39,7 @@ export const loader = createLoaderApiRoute(
         type: w.type,
         name: w.name,
         description: w.description,
-        isDefault: w.id === effectiveDefaultWorkerGroupId,
+        isDefault: w.id === defaultWorkerGroup?.id,
         updatedAt: w.updatedAt,
       }))
     );

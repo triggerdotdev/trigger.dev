@@ -8,9 +8,8 @@ import type { PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { ServiceValidationError } from "./baseService.server";
 import { FailDeploymentService } from "./failDeployment.server";
-import { resolveComputeAccess, resolveEffectiveDefaultWorkerGroupId } from "../regionAccess.server";
-import { FEATURE_FLAG } from "../featureFlags";
-import { makeFlag } from "../featureFlags.server";
+import { resolveComputeAccess } from "../regionAccess.server";
+import { WorkerGroupService } from "./worker/workerGroupService.server";
 
 type TemplateCreationMode = "required" | "shadow" | "skip";
 
@@ -146,7 +145,6 @@ export class ComputeTemplateCreationService {
     const project = await prisma.project.findFirst({
       where: { id: authenticatedEnv.projectId },
       select: {
-        defaultWorkerGroupId: true,
         organization: {
           select: { featureFlags: true },
         },
@@ -157,22 +155,12 @@ export class ComputeTemplateCreationService {
       return "skip";
     }
 
-    // Resolve the region this env actually deploys to: env default -> project default -> global default.
-    const globalDefaultWorkerGroupId = await makeFlag(prisma)({
-      key: FEATURE_FLAG.defaultWorkerInstanceGroupId,
-    });
-    const effectiveDefaultWorkerGroupId = resolveEffectiveDefaultWorkerGroupId({
+    // Reuse the trigger path's resolution so the template decision matches the
+    // region runs actually deploy to: env default -> project default -> global default.
+    const defaultWorkerGroup = await new WorkerGroupService().getDefaultWorkerGroupForProject({
+      projectId: authenticatedEnv.projectId,
       environmentDefaultWorkerGroupId: authenticatedEnv.defaultWorkerGroupId,
-      projectDefaultWorkerGroupId: project.defaultWorkerGroupId,
-      globalDefaultWorkerGroupId,
     });
-
-    const defaultWorkerGroup = effectiveDefaultWorkerGroupId
-      ? await prisma.workerInstanceGroup.findFirst({
-          where: { id: effectiveDefaultWorkerGroupId },
-          select: { workloadType: true },
-        })
-      : null;
 
     if (defaultWorkerGroup?.workloadType === "MICROVM") {
       return "required";
