@@ -20,12 +20,16 @@ async function findFreePort(): Promise<number> {
   });
 }
 
-async function waitForHealthcheck(url: string, timeoutMs = 60000): Promise<void> {
+async function waitForHealthcheck(
+  url: string,
+  opts: { timeoutMs?: number; acceptAnyResponse?: boolean } = {}
+): Promise<void> {
+  const { timeoutMs = 60000, acceptAnyResponse = false } = opts;
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
       const res = await fetch(url);
-      if (res.ok) return;
+      if (acceptAnyResponse || res.ok) return;
     } catch {}
     await new Promise((r) => setTimeout(r, 500));
   }
@@ -49,6 +53,18 @@ export interface StartWebappOptions {
    * plugin instead, for testing the plugin path.
    */
   forceRbacFallback?: boolean;
+
+  /**
+   * When true, spawns the webapp with `REQUIRE_PLUGINS=1` so the plugin
+   * loader throws instead of silently falling back when the plugin
+   * module fails to load. Used by the healthcheck rollback e2e test —
+   * with this set and the plugin not installed, `/healthcheck` should
+   * return 500.
+   *
+   * Implies `forceRbacFallback: false` (you can't observe REQUIRE_PLUGINS
+   * behaviour when the loader is short-circuited).
+   */
+  requirePlugins?: boolean;
 }
 
 export async function startWebapp(
@@ -59,7 +75,10 @@ export async function startWebapp(
   instance: WebappInstance;
   stop: () => Promise<void>;
 }> {
-  const forceRbacFallback = options.forceRbacFallback ?? true;
+  // requirePlugins implies forceRbacFallback=false — you can't observe the
+  // REQUIRE_PLUGINS=1 throw if the loader short-circuits before reaching it.
+  const requirePlugins = options.requirePlugins ?? false;
+  const forceRbacFallback = options.forceRbacFallback ?? !requirePlugins;
   const port = await findFreePort();
 
   // Merge NODE_PATH so transitive pnpm deps (hoisted to .pnpm/node_modules) are resolvable
@@ -107,6 +126,10 @@ export async function startWebapp(
       // plugin is installed in the local node_modules. Set to "0" /
       // undefined to spawn a webapp that loads any installed plugin.
       ...(forceRbacFallback ? { RBAC_FORCE_FALLBACK: "1" } : {}),
+      // When requirePlugins is set, explicitly override RBAC_FORCE_FALLBACK
+      // to "0" so a local apps/webapp/.env that sets it to "1" doesn't
+      // short-circuit the loader past the REQUIRE_PLUGINS check.
+      ...(requirePlugins ? { REQUIRE_PLUGINS: "1", RBAC_FORCE_FALLBACK: "0" } : {}),
       NODE_PATH: nodePath,
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -142,7 +165,12 @@ export async function startWebapp(
 
   try {
     if (spawnError) throw spawnError;
-    await waitForHealthcheck(`${baseUrl}/healthcheck`);
+    // When requirePlugins is set, /healthcheck is expected to respond with
+    // 500 (the whole point of those tests is to verify that). Accept any
+    // response as "the webapp is up" — the test then asserts the status.
+    await waitForHealthcheck(`${baseUrl}/healthcheck`, {
+      acceptAnyResponse: requirePlugins,
+    });
     if (spawnError) throw spawnError;
   } catch (err) {
     proc.kill("SIGTERM");
