@@ -1,0 +1,207 @@
+---
+title: "Database connections"
+sidebarTitle: "Database connections"
+description: "Connect a database to your tasks: where to create the client, how to size the pool for your provider's connection limit, and how to release connections so you don't run out."
+---
+
+Tasks connect to your database from their own process. This guide covers the recommended setup for each client, how to size the pool against your provider's connection limit, and how to release connections at waits.
+
+## Create the client once
+
+Create the client at module scope and import it wherever you query. The worker loads the module once per process, so every run on that worker reuses the same pool. Keep the pool small (see [Size the pool](#size-the-pool)) and attach an error handler, since an idle connection can error asynchronously and an unhandled `error` event crashes the worker.
+
+<CodeGroup>
+```ts lib/db.ts (node-postgres)
+import { Pool } from "pg";
+
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 1, // one connection per run; raise only for in-run parallel queries
+});
+
+pool.on("error", (err) => console.error("pg pool error", err));
+```
+
+```ts lib/db.ts (Prisma)
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "./generated/prisma/client";
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL, max: 1 });
+
+export const prisma = new PrismaClient({ adapter });
+```
+
+```ts lib/db.ts (Drizzle)
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+pool.on("error", (err) => console.error("pg pool error", err));
+
+export const db = drizzle({ client: pool });
+```
+
+```ts lib/db.ts (MongoDB)
+import { MongoClient } from "mongodb";
+
+export const client = new MongoClient(process.env.DATABASE_URL!, { maxPoolSize: 5 });
+```
+</CodeGroup>
+
+<Note>
+Import this one client everywhere. Don't create a client inside `run()` or a lifecycle hook, which opens a new pool on every run, and don't store one in [`chat.local`](/ai-chat/chat-local), which is per-run state that gets serialized into subtasks.
+</Note>
+
+## Size the pool
+
+A run uses connections only while it is actively executing. Queued, waiting, and suspended runs use none. So the connections in use at any moment are:
+
+> concurrent executing runs × pool size per run
+
+Set the pool small. A task usually runs its queries in sequence, so one connection per run (`max: 1`) is enough for node-postgres, Prisma, and Drizzle; raise it only when a single run issues queries in parallel. The MongoDB driver shares one pool across all operations, so keep `maxPoolSize` in the low single digits. Each client's out-of-the-box default is far larger:
+
+| Client | Default pool size |
+| --- | --- |
+| [node-postgres (`pg`)](https://node-postgres.com/guides/pool-sizing) | 10 |
+| postgres-js | 10 |
+| [Prisma (v7, `pg` adapter)](https://www.prisma.io/docs/orm/prisma-client/setup-and-configuration/databases-connections/connection-pool) | 10 (the adapter's `pg` default) |
+| Drizzle (node-postgres) | 10 (the underlying `pg` pool) |
+| [MongoDB driver](https://www.mongodb.com/docs/drivers/node/current/connect/connection-options/connection-pools/) | 100 (`maxPoolSize`) |
+
+Keep `concurrent runs × pool size` under your provider's connection limit, and cap how many runs execute at once with [concurrency limits](/queue-concurrency) so runs queue instead of overrunning the database. Direct connection limits for common Postgres providers:
+
+| Provider | Direct connection limit |
+| --- | --- |
+| [PostgreSQL (self-hosted)](https://www.postgresql.org/docs/current/runtime-config-connection.html) | `max_connections`, default `100` |
+| [Supabase](https://supabase.com/docs/guides/platform/compute-and-disk) | `60` (Nano/Micro) up to `500` (16XL), by compute size |
+| [Neon](https://neon.com/docs/connect/connection-pooling) | `104` (0.25 CU) up to `4000` (capped at 9 CU and above), by compute size |
+| [AWS RDS / Aurora](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_Limits.html) | `LEAST(DBInstanceClassMemory / 9531392, 5000)`, ~5 reserved for superusers |
+| [PlanetScale Postgres](https://planetscale.com/docs/postgres/connecting) | set per cluster size (Cluster, then Parameters, then `max_connections`) |
+
+[MongoDB Atlas](https://www.mongodb.com/docs/atlas/reference/atlas-limits/) limits connections per node: `500` on Free and Flex, `1500` on M10, `3000` on M20.
+
+When `concurrent runs × pool size` approaches these numbers, connect through a pooler instead.
+
+## Use a connection pooler
+
+A pooler (PgBouncer, RDS Proxy, Supavisor, Prisma Accelerate) sits between your tasks and the database and multiplexes many client connections onto a few backend connections. Point your connection string at the pooler's endpoint and the ceiling rises without changing your code. Use one when many runs execute concurrently, and for chat agents.
+
+| Provider | Pooled endpoint | Pooled client limit |
+| --- | --- | --- |
+| [Supabase Supavisor](https://supabase.com/docs/guides/database/connection-management) | port `6543` (transaction mode) | `200` (Nano) up to `12,000` (16XL) |
+| [Neon](https://neon.com/docs/connect/connection-pooling) | add `-pooler` to the endpoint host | up to `10,000` |
+| [AWS RDS Proxy](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy.html) | the proxy endpoint | managed |
+| [PlanetScale Postgres](https://planetscale.com/blog/scaling-postgres-connections-with-pgbouncer) | PgBouncer endpoint | managed |
+| Self-hosted | PgBouncer or PgCat | configured |
+
+Use the pooled endpoint for your tasks. Use the direct endpoint for schema migrations (Prisma Migrate, Drizzle Kit), which need a stable session that a transaction pooler does not provide.
+
+Transaction-mode poolers (Supavisor on `6543`, PgBouncer in transaction mode) do not keep server-side prepared statements across queries. With Prisma, add `?pgbouncer=true` to the pooled URL. With node-postgres, don't rely on prepared statements.
+
+## Provider notes
+
+- [Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres): the direct connection (`db.<ref>.supabase.co:5432`) resolves to IPv6 only and is unreachable from many environments, so connect through the Supavisor pooler or add the IPv4 add-on. The pooler presents Supabase's own CA, so pass that CA or set `ssl: { rejectUnauthorized: false }`.
+- A `DATABASE_URL` with `sslmode=verify-full&sslrootcert=system` uses a libpq feature the `pg` driver (node-postgres, and the Prisma and Drizzle pools built on it) cannot read. Build the pool from discrete fields with `ssl: { rejectUnauthorized: true }` (Node's CA store), or point `sslrootcert` at a real CA file.
+
+## Release connections at a wait
+
+A run holds its connections while it is paused at a wait until the process is torn down, which is not instant. Free them sooner so other runs can reuse them. How you release depends on the client:
+
+- Prisma reconnects lazily, so disconnect it from a global [`tasks.onWait`](/tasks/overview#onwait-and-onresume-functions) handler colocated with the client. One handler covers every task.
+- A `pg` Pool (node-postgres and Drizzle) and the MongoDB client can't be reused after a full close, so give them a short idle timeout instead. Idle connections close themselves during the wait while the pool stays usable.
+
+<CodeGroup>
+```ts lib/db.ts (node-postgres)
+import { Pool } from "pg";
+
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 1,
+  idleTimeoutMillis: 10_000, // idle connections close during a wait; the pool stays usable
+});
+
+pool.on("error", (err) => console.error("pg pool error", err));
+```
+
+```ts lib/db.ts (Prisma)
+import { tasks } from "@trigger.dev/sdk";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "./generated/prisma/client";
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL, max: 1 });
+export const prisma = new PrismaClient({ adapter });
+
+// Disconnect when any run pauses; Prisma reconnects on the next query.
+tasks.onWait("db", () => prisma.$disconnect());
+```
+
+```ts lib/db.ts (Drizzle)
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 1,
+  idleTimeoutMillis: 10_000,
+});
+pool.on("error", (err) => console.error("pg pool error", err));
+
+export const db = drizzle({ client: pool });
+```
+
+```ts lib/db.ts (MongoDB)
+import { MongoClient } from "mongodb";
+
+export const client = new MongoClient(process.env.DATABASE_URL!, {
+  maxPoolSize: 5,
+  maxIdleTimeMS: 10_000, // idle sockets close during a wait; the client stays usable
+});
+```
+</CodeGroup>
+
+Don't hold a client across a slow await, either. `pool.query()` checks a connection out and returns it in one call. If you `pool.connect()` and keep the client across an external HTTP call or a model stream, you pin that connection for the whole operation. Query, release, then do the slow work.
+
+## Chat agents
+
+A chat agent runs one long-lived worker per conversation and suspends between messages, so its connection count tracks the conversations streaming a turn at the same moment. The global `tasks.onWait` handler above covers chat agents too. Two more specifics:
+
+- Don't hold a connection across `streamText()`. A turn spends most of its time waiting on the model, so query and release before the stream starts.
+- To release only when a conversation goes idle (rather than on every internal wait within a turn), use [`onChatSuspend`](/ai-chat/lifecycle-hooks#onchatsuspend--onchatresume) instead of the global handler.
+
+```ts /trigger/chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { prisma } from "@/lib/db";
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  run: async ({ messages, clientData, signal }) => {
+    const user = await prisma.user.findUnique({ where: { id: clientData.userId } });
+    // The connection is back in the pool before the model stream starts.
+    return streamText({
+      model: openai("gpt-4o"),
+      system: `Helping ${user?.name ?? "the user"}.`,
+      messages,
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+## Troubleshooting
+
+`too many connections` or connection refused: `concurrent runs × pool size` is over your provider's limit. Lower the pool size, cap [concurrency](/queue-concurrency), or connect through a pooler.
+
+The worker crashes right after resuming from a wait: an idle connection that closed during the suspend emitted an unhandled `error` event. Attach `pool.on("error", ...)` on a `pg` pool (node-postgres or Drizzle); Prisma and the MongoDB driver handle this internally.
+
+## How suspend affects connections
+
+When a task waits, the runtime can [checkpoint](/how-it-works#the-checkpoint-resume-system) the run: it snapshots the process and frees the compute, then restores the process when the wait resolves. Process memory comes back, so your pool object survives, but the database closed the idle connections in the meantime. The pool reconnects on the first query after resume. This is why a suspended run holds no connections, and why the pool needs an error handler to absorb the closed connection cleanly.
+
+## See also
+
+- [Wait](/wait) for the primitives that trigger a checkpoint.
+- [Concurrency and queues](/queue-concurrency) to cap how many runs execute at once.
+- [Lifecycle functions](/tasks/overview#onwait-and-onresume-functions) for global `tasks.onWait` and `tasks.onResume`.
+- [Chat agent lifecycle hooks](/ai-chat/lifecycle-hooks) for `onChatSuspend` and `onChatResume`.

@@ -34,7 +34,7 @@ Storing the current **`runId`** is optional — useful for telemetry / dashboard
 
 ## Where each hook writes
 
-This pattern covers **durable DB rows** (the conversation and the active session). Per-process in-memory state ([`chat.local`](/ai-chat/chat-local), DB connection pools, sandboxes, etc.) belongs in [`onBoot`](/ai-chat/lifecycle-hooks#onboot) — it fires on every fresh worker including continuation runs, where `onPreload` and `onChatStart` do not.
+This pattern covers **durable DB rows** (the conversation and the active session). Per-process in-memory state ([`chat.local`](/ai-chat/chat-local), [DB connection pools](/database-connections), sandboxes, etc.) belongs in [`onBoot`](/ai-chat/lifecycle-hooks#onboot) — it fires on every fresh worker including continuation runs, where `onPreload` and `onChatStart` do not.
 
 ### `onPreload` (optional)
 
