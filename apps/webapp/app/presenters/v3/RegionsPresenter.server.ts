@@ -3,7 +3,11 @@ import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { makeFlag } from "~/v3/featureFlags.server";
-import { defaultVisibilityFilter, resolveComputeAccess } from "~/v3/regionAccess.server";
+import {
+  defaultVisibilityFilter,
+  resolveComputeAccess,
+  resolveEffectiveDefaultWorkerGroupId,
+} from "~/v3/regionAccess.server";
 import { BasePresenter } from "./basePresenter.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 
@@ -24,10 +28,12 @@ export class RegionsPresenter extends BasePresenter {
   public async call({
     userId,
     projectSlug,
+    environmentId,
     isAdmin = false,
   }: {
     userId: User["id"];
     projectSlug: Project["slug"];
+    environmentId?: string;
     isAdmin?: boolean;
   }) {
     const project = await this._replica.project.findFirst({
@@ -64,6 +70,20 @@ export class RegionsPresenter extends BasePresenter {
     if (!defaultWorkerInstanceGroupId) {
       throw new Error("Default worker instance group not found");
     }
+
+    const environment = environmentId
+      ? await this._replica.runtimeEnvironment.findFirst({
+          select: { defaultWorkerGroupId: true },
+          where: { id: environmentId },
+        })
+      : null;
+
+    // env default -> project default -> global default
+    const effectiveDefaultId = resolveEffectiveDefaultWorkerGroupId({
+      environmentDefaultWorkerGroupId: environment?.defaultWorkerGroupId,
+      projectDefaultWorkerGroupId: project.defaultWorkerGroupId,
+      globalDefaultWorkerGroupId: defaultWorkerInstanceGroupId,
+    });
 
     const hasComputeAccess = await resolveComputeAccess(
       this._replica,
@@ -103,12 +123,14 @@ export class RegionsPresenter extends BasePresenter {
       cloudProvider: region.cloudProvider ?? undefined,
       location: region.location ?? undefined,
       staticIPs: region.staticIPs ?? undefined,
-      isDefault: region.id === defaultWorkerInstanceGroupId,
+      isDefault: region.id === effectiveDefaultId,
       isHidden: region.hidden,
       workloadType: region.workloadType,
     }));
 
-    if (project.defaultWorkerGroupId) {
+    // The effective default may not be in the visible list (e.g. a hidden
+    // region set as the env/project default) — fetch and include it.
+    if (effectiveDefaultId && !regions.some((region) => region.id === effectiveDefaultId)) {
       const defaultWorkerGroup = await this._replica.workerInstanceGroup.findFirst({
         select: {
           id: true,
@@ -121,16 +143,10 @@ export class RegionsPresenter extends BasePresenter {
           hidden: true,
           workloadType: true,
         },
-        where: { id: project.defaultWorkerGroupId },
+        where: { id: effectiveDefaultId },
       });
 
       if (defaultWorkerGroup) {
-        // Unset the default region
-        const defaultRegion = regions.find((region) => region.isDefault);
-        if (defaultRegion) {
-          defaultRegion.isDefault = false;
-        }
-
         regions.push({
           id: defaultWorkerGroup.id,
           name: defaultWorkerGroup.name,

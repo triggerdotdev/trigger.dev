@@ -106,7 +106,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     }),
     shouldLoadRegions
       ? new RegionsPresenter()
-          .call({ userId: user.id, projectSlug: projectParam! })
+          .call({ userId: user.id, projectSlug: projectParam!, environmentId: environment?.id })
           .then(({ regions }) => regions)
           .catch(() => [] as Region[])
       : Promise.resolve([] as Region[]),

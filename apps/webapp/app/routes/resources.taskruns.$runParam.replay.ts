@@ -201,6 +201,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     new RegionsPresenter().call({
       userId,
       projectSlug: run.project.slug,
+      environmentId: environment.id,
       isAdmin: user.admin || user.isImpersonating,
     }),
   ]);
