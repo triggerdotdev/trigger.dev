@@ -74,7 +74,7 @@ export class RegionsPresenter extends BasePresenter {
     const environment = environmentId
       ? await this._replica.runtimeEnvironment.findFirst({
           select: { defaultWorkerGroupId: true },
-          where: { id: environmentId },
+          where: { id: environmentId, projectId: project.id, archivedAt: null },
         })
       : null;
 

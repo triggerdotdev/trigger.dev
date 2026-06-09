@@ -401,6 +401,7 @@ model RuntimeEnvironment {
   @@index([parentEnvironmentId])
   @@index([projectId])
   @@index([organizationId])
+  @@index([defaultWorkerGroupId])
 }
 
 /// Records of previously-valid API keys that are still accepted for authentication
