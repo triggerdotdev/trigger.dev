@@ -29,6 +29,9 @@ on:
       image_repo:
         description: The image repository the build was published to (without tag)
         value: ${{ jobs.publish.outputs.image_repo }}
+      digest:
+        description: Multi-arch index digest (sha256:...) of the published image
+        value: ${{ jobs.publish.outputs.digest }}
     secrets:
       SENTRY_AUTH_TOKEN:
         required: false
@@ -42,6 +45,7 @@ jobs:
       version: ${{ steps.get_tag.outputs.tag }}
       short_sha: ${{ steps.get_commit.outputs.sha_short }}
       image_repo: ${{ steps.set_tags.outputs.image_repo }}
+      digest: ${{ steps.build_push.outputs.digest }}
     steps:
       - name: 🏭 Setup Depot CLI
         uses: depot/setup-action@15c09a5f77a0840ad4bce955686522a257853461 # v1.7.1
