@@ -127,6 +127,29 @@ describe("NotifierRealtimeClient run-set resolve coalescing + cache", () => {
     await snapshot(client, "batch_1");
     expect(results).toEqual(["miss", "hit"]);
   });
+
+  it("mints a distinct batch handle per connection and echoes a client-provided one", async () => {
+    const { client } = makeClient();
+    // Two subscribers to the SAME batch must never share a handle (the working-set
+    // cache is keyed by it; sharing lets one suppress the other's deltas forever).
+    const res1 = await snapshot(client, "batch_1");
+    const res2 = await snapshot(client, "batch_1");
+    const h1 = res1.headers.get("electric-handle");
+    const h2 = res2.headers.get("electric-handle");
+    expect(h1).toBeTruthy();
+    expect(h1).not.toBe(h2);
+
+    // Catch-up under an existing handle keeps it.
+    const res3 = await client.streamBatch(
+      `http://localhost:3030/realtime/v1/batches/batch_1?offset=123_1&handle=${h1}`,
+      ENV,
+      "batch_1",
+      CURRENT_API_VERSION,
+      undefined,
+      "1.0.0"
+    );
+    expect(res3.headers.get("electric-handle")).toBe(h1);
+  });
 });
 
 describe("NotifierRealtimeClient resolve admission gate (mass-reconnect stampede)", () => {
@@ -304,7 +327,7 @@ describe("NotifierRealtimeClient review fixes", () => {
       livePollTimeoutMs: 50,
     });
     const res = await client.streamBatch(
-      "http://localhost:3030/realtime/v1/batches/batch_1?offset=123_1&live=true",
+      "http://localhost:3030/realtime/v1/batches/batch_1?offset=123_1&live=true&handle=batch_batch_1_7_abc",
       ENV,
       "batch_1",
       CURRENT_API_VERSION,

@@ -364,15 +364,11 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
     clientVersion?: string,
     signal?: AbortSignal
   ): Promise<Response> {
-    const { offset, isLive, skipColumns } = this.#parseStreamRequest(url, requestOptions);
+    const { offset, handle, isLive, skipColumns } = this.#parseStreamRequest(url, requestOptions);
 
-    // The batch set is fully defined by batchId (the route resolves it from the
-    // friendlyId on every request), so the handle is derived and stable and there's
-    // no createdAt window to pin.
-    const handle = `batch-${batchId}`;
     const filter: RunSetFilter = { batchId };
 
-    if (offset !== INITIAL_OFFSET && isLive) {
+    if (offset !== INITIAL_OFFSET && handle && isLive) {
       return this.#runSetLiveResponse(
         environment,
         filter,
@@ -385,11 +381,13 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
       );
     }
 
-    // Initial snapshot + non-live catch-up.
+    // Initial snapshot + non-live catch-up. The handle must be per-connection, never
+    // derived from the batchId: working sets are keyed by handle, and a shared handle
+    // lets one subscriber's emit permanently suppress the same row for another.
     return this.#runSetSnapshotResponse(
       environment,
       filter,
-      handle,
+      handle ?? this.#mintBatchHandle(batchId),
       skipColumns,
       apiVersion,
       clientVersion
@@ -519,7 +517,7 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
       seen.set(row.id, updatedAtMs);
       maxUpdatedAt = Math.max(maxUpdatedAt, updatedAtMs);
     }
-    this.#workingSetCache.set(handle, seen);
+    this.#workingSetCache.set(this.#workingSetKey(environment.id, handle), seen);
 
     return this.#buildResponse(buildRowsBody(changes, skipColumns), apiVersion, clientVersion, {
       offset: encodeOffset(maxUpdatedAt, this.#nextSeq()),
@@ -556,7 +554,8 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
 
       // Working set we diff against: seeded from the cache (or the offset floor on a
       // miss) and advanced on each refetch within this held request.
-      let prevSeen = this.#workingSetCache.get(handle);
+      const workingSetKey = this.#workingSetKey(environment.id, handle);
+      let prevSeen = this.#workingSetCache.get(workingSetKey);
 
       const emitFromSerialized = (changes: SerializedRowChange[], maxUpdatedAt: number): Response => {
         const seq = this.#nextSeq();
@@ -614,7 +613,7 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
             // Merge (not replace): the router only surfaced the changed subset, so keep the
             // rest of the working set intact. The backstop full-resolve rebuilds it.
             const merged = this.#mergeWorkingSet(prevSeen, touched);
-            this.#workingSetCache.set(handle, merged);
+            this.#workingSetCache.set(workingSetKey, merged);
             prevSeen = merged;
 
             if (changes.length > 0) {
@@ -636,7 +635,7 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
             prevSeen,
             offsetFloorMs
           );
-          this.#workingSetCache.set(handle, touched);
+          this.#workingSetCache.set(workingSetKey, touched);
           prevSeen = touched;
 
           if (changes.length > 0) {
@@ -881,7 +880,23 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
   #mintListHandle(createdAtFilterMs: number): string {
     // Pins the createdAt threshold in the opaque handle so live polls reuse the
     // same lower bound even on a working-set cache miss.
-    return `runs_${Math.trunc(createdAtFilterMs)}_${this.#nextSeq()}`;
+    return `runs_${Math.trunc(createdAtFilterMs)}_${this.#mintUniqueSuffix()}`;
+  }
+
+  #mintBatchHandle(batchId: string): string {
+    return `batch_${batchId}_${this.#mintUniqueSuffix()}`;
+  }
+
+  #mintUniqueSuffix(): string {
+    // The seq alone isn't unique across instances/restarts; behind a non-sticky ALB a
+    // collision would land two connections on one working-set cache entry.
+    return `${this.#nextSeq()}_${randomUUID().slice(0, 8)}`;
+  }
+
+  #workingSetKey(environmentId: string, handle: string): string {
+    // The handle is client-echoed; env-prefix the key so a foreign handle can never
+    // read or overwrite another tenant's working set.
+    return `${environmentId}:${handle}`;
   }
 
   #filterMsFromHandle(handle: string): number | undefined {

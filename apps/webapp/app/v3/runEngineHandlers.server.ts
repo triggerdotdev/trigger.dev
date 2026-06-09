@@ -571,12 +571,11 @@ export function registerRunEngineEventBusHandlers() {
 
     const { environment, runTags, batchId } = result;
 
-    // Realtime run-changed publish: a full record (env + tags + batchId all from the one
-    // read above), so tag/batch feeds route by index instead of hydrate-to-classify.
-    publishChangeRecord({ runId: run.id, envId: environment.id, tags: runTags, batchId });
-
     try {
       await updateMetadataService.call(run.id, run.metadata, environment);
+      // Realtime run-changed publish, after the write so the router's hydrate sees the new
+      // row. A full record (env + tags + batchId), so feeds route by index.
+      publishChangeRecord({ runId: run.id, envId: environment.id, tags: runTags, batchId });
     } catch (e) {
       if (e instanceof MetadataTooLargeError) {
         logger.warn("[runMetadataUpdated] Failed to update metadata, too large", {
