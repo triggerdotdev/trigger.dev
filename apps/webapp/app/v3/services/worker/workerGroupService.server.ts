@@ -220,9 +220,11 @@ export class WorkerGroupService extends WithRunEngine {
 
   async getDefaultWorkerGroupForProject({
     projectId,
+    environmentDefaultWorkerGroupId,
     regionOverride,
   }: {
     projectId: string;
+    environmentDefaultWorkerGroupId?: string | null;
     regionOverride?: string;
   }): Promise<WorkerInstanceGroup | undefined> {
     const project = await this._prisma.project.findFirst({
@@ -280,6 +282,18 @@ export class WorkerGroupService extends WithRunEngine {
       }
 
       return workerGroup;
+    }
+
+    // Resolution order must match resolveEffectiveDefaultWorkerGroupId:
+    // environment default -> project default -> global default.
+    if (environmentDefaultWorkerGroupId) {
+      const envWorkerGroup = await this._prisma.workerInstanceGroup.findFirst({
+        where: { id: environmentDefaultWorkerGroupId },
+      });
+
+      if (envWorkerGroup) {
+        return envWorkerGroup;
+      }
     }
 
     if (project.defaultWorkerGroup) {

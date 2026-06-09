@@ -34,6 +34,29 @@ export function defaultVisibilityFilter(
 }
 
 /**
+ * Canonical fallback chain for a run's default region:
+ * environment default -> project default -> global default.
+ * Both the trigger path and the regions UI must use this order so the
+ * displayed default matches what actually runs.
+ */
+export function resolveEffectiveDefaultWorkerGroupId({
+  environmentDefaultWorkerGroupId,
+  projectDefaultWorkerGroupId,
+  globalDefaultWorkerGroupId,
+}: {
+  environmentDefaultWorkerGroupId?: string | null;
+  projectDefaultWorkerGroupId?: string | null;
+  globalDefaultWorkerGroupId?: string | null;
+}): string | undefined {
+  return (
+    environmentDefaultWorkerGroupId ??
+    projectDefaultWorkerGroupId ??
+    globalDefaultWorkerGroupId ??
+    undefined
+  );
+}
+
+/**
  * Whether a region is accessible given compute access.
  * MICROVM regions require compute access; all other types pass through.
  */
