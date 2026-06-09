@@ -53,6 +53,13 @@ class LazyController implements RoleBaseAccessController {
 
   constructor(prisma: RbacPrismaInput, options?: RbacCreateOptions) {
     this._init = this.load(prisma, options);
+    // load() runs eagerly but the result is awaited lazily on first method
+    // call. If load() rejects (e.g. REQUIRE_PLUGINS=1 + plugin missing) and
+    // nothing awaits _init before Node ticks past, the rejection surfaces
+    // as unhandledRejection and kills the process. Attach a no-op .catch
+    // so Node sees the rejection as handled; the error is re-thrown when
+    // any consumer awaits this._init via c().
+    this._init.catch(() => {});
   }
 
   private async load(
@@ -105,6 +112,20 @@ class LazyController implements RoleBaseAccessController {
           "RBAC: no plugin installed (ERR_MODULE_NOT_FOUND); using fallback"
         );
       }
+
+      // Fail-fast for deployments that require plugins to be present. Set
+      // REQUIRE_PLUGINS=1 in environments where the fallback is not an
+      // acceptable degraded state — the throw surfaces on the first method
+      // call on the lazy controller (e.g. via the webapp's /healthcheck
+      // route), so the rollout's readiness probe fails and the deploy is
+      // rolled back. Self-hosters leave REQUIRE_PLUGINS unset and continue
+      // to use the fallback when no plugin is installed.
+      if (process.env.REQUIRE_PLUGINS === "1") {
+        throw new Error(
+          `REQUIRE_PLUGINS=1 but plugin "${moduleName}" did not load: ${message}`
+        );
+      }
+
       return new RoleBaseAccessFallback(prisma).create();
     }
   }

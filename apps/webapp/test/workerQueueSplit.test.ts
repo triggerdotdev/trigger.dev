@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  baseWorkerQueue,
   resolveScheduledQueueSplitEnabled,
   workerQueueForRun,
   workerQueueForClass,
@@ -95,6 +96,47 @@ describe("workerQueueForRun", () => {
         splitEnabled: true,
       })
     ).toBe(scheduled);
+  });
+});
+
+describe("baseWorkerQueue", () => {
+  const region = "us-nyc-3";
+  const scheduled = `${region}${SCHEDULED_WORKER_QUEUE_SUFFIX}`;
+
+  it("strips the scheduled split suffix back to the base region", () => {
+    expect(baseWorkerQueue(scheduled)).toBe(region);
+  });
+
+  it("leaves a base region untouched (idempotent)", () => {
+    expect(baseWorkerQueue(region)).toBe(region);
+    expect(baseWorkerQueue(baseWorkerQueue(scheduled))).toBe(region);
+  });
+
+  it("strips any future `:<class>` suffix, not just `:scheduled`", () => {
+    expect(baseWorkerQueue("us-nyc-3:priority")).toBe(region);
+    expect(baseWorkerQueue("us-nyc-3:a:b")).toBe(region);
+  });
+
+  it("handles the project-scoped masterQueue shape (`<projectId>-<name>`)", () => {
+    expect(baseWorkerQueue("proj_abc123-main:scheduled")).toBe("proj_abc123-main");
+  });
+
+  it("returns an empty string unchanged", () => {
+    expect(baseWorkerQueue("")).toBe("");
+  });
+
+  it("passes a nullish worker queue straight through (synthetic run snapshots)", () => {
+    expect(baseWorkerQueue(null)).toBeNull();
+    expect(baseWorkerQueue(undefined)).toBeUndefined();
+  });
+
+  it("round-trips with workerQueueForRun: the split queue strips back to the region it came from", () => {
+    const enqueued = workerQueueForRun({
+      workerQueue: region,
+      rootTriggerSource: "schedule",
+      splitEnabled: true,
+    });
+    expect(baseWorkerQueue(enqueued)).toBe(region);
   });
 });
 

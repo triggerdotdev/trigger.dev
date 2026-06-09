@@ -15,6 +15,7 @@ import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/databa
 import assertNever from "assert-never";
 import { API_VERSIONS, CURRENT_API_VERSION, RunStatusUnspecifiedApiVersion } from "~/api/versions";
 import { $replica, prisma } from "~/db.server";
+import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import {
   findRunByIdWithMollifierFallback,
@@ -519,7 +520,7 @@ async function createCommonRunStructure(run: CommonRelatedRun, apiVersion: API_V
     triggerFunction: resolveTriggerFunction(run),
     batchId: run.batch?.friendlyId,
     metadata,
-    region: run.workerQueue || undefined,
+    region: run.workerQueue ? baseWorkerQueue(run.workerQueue) : undefined,
   };
 }
 

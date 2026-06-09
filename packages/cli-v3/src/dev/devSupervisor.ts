@@ -8,7 +8,6 @@ import {
   CreateBackgroundWorkerRequestBody,
   DevConfigResponseBody,
   SemanticInternalAttributes,
-  TaskManifest,
   WorkerManifest,
 } from "@trigger.dev/core/v3";
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
@@ -20,7 +19,7 @@ import { resolveSourceFiles } from "../utilities/sourceFiles.js";
 import { BackgroundWorker } from "./backgroundWorker.js";
 import { copySkillFolders } from "../build/bundleSkills.js";
 import { WorkerRuntime } from "./workerRuntime.js";
-import { chalkTask, cliLink, prettyError } from "../utilities/cliOutput.js";
+import { cliLink, prettyError } from "../utilities/cliOutput.js";
 import { DevRunController } from "../entryPoints/dev-run-controller.js";
 import { io, Socket } from "socket.io-client";
 import {
@@ -841,28 +840,17 @@ class DevSupervisor implements WorkerRuntime {
   }
 }
 
-type ValidationIssue =
-  | {
-    type: "duplicateTaskId";
-    duplicationTaskIds: string[];
-  }
-  | {
-    type: "noTasksDefined";
-  };
+type ValidationIssue = {
+  type: "noTasksDefined";
+};
 
+// Duplicate task ids (including across task types, e.g. a schedule and a
+// regular task sharing an id) are enforced server-side when the background
+// worker is registered, so both `dev` and `deploy` surface a single,
+// authoritative error from the backend rather than a separate client check.
 function validateWorkerManifest(manifest: WorkerManifest): ValidationIssue | undefined {
-  const issues: ValidationIssue[] = [];
-
   if (!manifest.tasks || manifest.tasks.length === 0) {
     return { type: "noTasksDefined" };
-  }
-
-  // Check for any duplicate task ids
-  const taskIds = manifest.tasks.map((task) => task.id);
-  const duplicateTaskIds = taskIds.filter((id, index) => taskIds.indexOf(id) !== index);
-
-  if (duplicateTaskIds.length > 0) {
-    return { type: "duplicateTaskId", duplicationTaskIds: duplicateTaskIds };
   }
 
   return undefined;
@@ -870,9 +858,6 @@ function validateWorkerManifest(manifest: WorkerManifest): ValidationIssue | und
 
 function generationValidationIssueHeader(issue: ValidationIssue) {
   switch (issue.type) {
-    case "duplicateTaskId": {
-      return `Duplicate task ids detected`;
-    }
     case "noTasksDefined": {
       return `No tasks exported from your trigger files`;
     }
@@ -881,9 +866,6 @@ function generationValidationIssueHeader(issue: ValidationIssue) {
 
 function generateValidationIssueFooter(issue: ValidationIssue) {
   switch (issue.type) {
-    case "duplicateTaskId": {
-      return cliLink("View the task docs", "https://trigger.dev/docs/tasks/overview");
-    }
     case "noTasksDefined": {
       return cliLink("View the task docs", "https://trigger.dev/docs/tasks/overview");
     }
@@ -896,9 +878,6 @@ function generateValidationIssueMessage(
   buildManifest: BuildManifest
 ) {
   switch (issue.type) {
-    case "duplicateTaskId": {
-      return createDuplicateTaskIdOutputErrorMessage(issue.duplicationTaskIds, manifest.tasks);
-    }
     case "noTasksDefined": {
       return `
         Files:
@@ -923,19 +902,3 @@ function generateValidationIssueMessage(
   }
 }
 
-function createDuplicateTaskIdOutputErrorMessage(
-  duplicateTaskIds: Array<string>,
-  tasks: Array<TaskManifest>
-) {
-  const duplicateTable = duplicateTaskIds
-    .map((id) => {
-      const $tasks = tasks.filter((task) => task.id === id);
-
-      return `\n\n${chalkTask(id)} was found in:${tasks
-        .map((task) => `\n${task.filePath} -> ${task.exportName}`)
-        .join("")}`;
-    })
-    .join("");
-
-  return `Duplicate ${chalkTask("task id")} detected:${duplicateTable}`;
-}

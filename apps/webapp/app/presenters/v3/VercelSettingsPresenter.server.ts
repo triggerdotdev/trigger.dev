@@ -458,7 +458,7 @@ export class VercelSettingsPresenter extends BasePresenter {
           };
         }
 
-        const clientResult = await VercelIntegrationRepository.getVercelClient(orgIntegration);
+        const clientResult = await VercelIntegrationRepository.getVercelClientAndToken(orgIntegration);
         if (clientResult.isErr()) {
           return {
             customEnvironments: [],
@@ -473,7 +473,7 @@ export class VercelSettingsPresenter extends BasePresenter {
             isOnboardingComplete: false,
           };
         }
-        const client = clientResult.value;
+        const { client, accessToken } = clientResult.value;
         const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
 
         const projectIntegration = await (this._replica as PrismaClient).organizationProjectIntegration.findFirst({
@@ -531,7 +531,7 @@ export class VercelSettingsPresenter extends BasePresenter {
         // Only fetch shared env vars if teamId is available
           teamId
             ? VercelIntegrationRepository.getVercelSharedEnvironmentVariables(
-                client,
+                accessToken,
                 teamId,
                 projectIntegration.externalEntityId
               )

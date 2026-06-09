@@ -64,6 +64,10 @@ export class ResourceCatalogAPI {
     return this.#getCatalog().listTaskManifests();
   }
 
+  public listTaskIdCollisions(): Array<{ id: string; filePaths: string[] }> {
+    return this.#getCatalog().listTaskIdCollisions();
+  }
+
   public getTaskManifest(id: string): TaskManifest | undefined {
     return this.#getCatalog().getTaskManifest(id);
   }
