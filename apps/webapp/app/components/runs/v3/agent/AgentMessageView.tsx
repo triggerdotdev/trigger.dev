@@ -219,7 +219,14 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
     const isImage = typeof p.mediaType === "string" && p.mediaType.startsWith("image/");
     if (isImage) {
       const safeSrc = toSafeUrl(p.url, true); // allow data: URIs for inline images
-      if (!safeSrc) return null;
+      // Unsafe scheme: fall back to the filename, matching the non-image branch.
+      if (!safeSrc) {
+        return p.filename ? (
+          <div key={i} className="text-xs text-text-dimmed">
+            {p.filename}
+          </div>
+        ) : null;
+      }
       return (
         <img
           key={i}
