@@ -198,14 +198,24 @@ export type VercelEnvironmentVariableValue = {
 };
 
 /** Minimal shape of a shared (team-level) env var record from `GET /v1/env`. */
-type RawSharedEnvVar = {
-  id?: string;
-  key?: string;
-  type?: string;
-  target?: string[] | string;
-  value?: string;
-  applyToAllCustomEnvironments?: boolean;
-};
+const RawSharedEnvVarSchema = z
+  .object({
+    id: z.string().optional(),
+    key: z.string().optional(),
+    type: z.string().optional(),
+    target: z.union([z.array(z.string()), z.string()]).optional(),
+    value: z.string().optional(),
+    applyToAllCustomEnvironments: z.boolean().optional(),
+  })
+  .passthrough();
+
+type RawSharedEnvVar = z.infer<typeof RawSharedEnvVarSchema>;
+
+/** Page shape of `GET /v1/env` (shared env vars), validated at the boundary. */
+const SharedEnvPageSchema = z.object({
+  data: z.array(RawSharedEnvVarSchema).default([]),
+  pagination: z.object({ next: z.number().nullish() }).nullish(),
+});
 
 /** Narrowed Vercel project type – only id and name. */
 export type VercelProject = Pick<ResponseBodyProjects, "id" | "name">;
@@ -620,11 +630,8 @@ export class VercelIntegrationRepository {
             throw error;
           }
 
-          const json = (await response.json()) as {
-            data?: RawSharedEnvVar[];
-            pagination?: { next?: number | null } | null;
-          };
-          all.push(...(json.data ?? []));
+          const json = SharedEnvPageSchema.parse(await response.json());
+          all.push(...json.data);
 
           // `next` is a millisecond-timestamp cursor; treat 0/null/undefined as "done".
           const next = json.pagination?.next;
