@@ -354,6 +354,10 @@ model RuntimeEnvironment {
   orgMember   OrgMember? @relation(fields: [orgMemberId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   orgMemberId String?
 
+  /// The default region for this environment. Falls back to the project default, then the global default.
+  defaultWorkerGroup   WorkerInstanceGroup? @relation("EnvironmentDefaultWorkerGroup", fields: [defaultWorkerGroupId], references: [id])
+  defaultWorkerGroupId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1517,7 +1521,8 @@ model WorkerInstanceGroup {
   workers           WorkerInstance[]
   backgroundWorkers BackgroundWorker[]
 
-  defaultForProjects Project[] @relation("ProjectDefaultWorkerGroup")
+  defaultForProjects     Project[]            @relation("ProjectDefaultWorkerGroup")
+  defaultForEnvironments RuntimeEnvironment[] @relation("EnvironmentDefaultWorkerGroup")
 
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   organizationId String?
