@@ -149,7 +149,8 @@ describe("NotifierRealtimeClient multi-run live path over the router", () => {
   });
 
   it("a matching run created before the window floor is hydrated but dropped (keeps holding)", async () => {
-    const { client, src, hydrateSpy, resolveSpy, setRows } = makeClient({ livePollTimeoutMs: 120 });
+    // Generous backstop so the "still holding" assertion can't race a timeout in slow CI.
+    const { client, src, hydrateSpy, resolveSpy, setRows } = makeClient({ livePollTimeoutMs: 1500 });
     setRows([row("run_1", FLOOR_MS + 5_000, { createdAtMs: FLOOR_MS - 10_000, tags: ["t"] })]);
 
     const responsePromise = liveRuns(client);

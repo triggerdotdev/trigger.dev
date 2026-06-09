@@ -355,6 +355,8 @@ export class UpdateMetadataService {
 
     return {
       metadata: newMetadata,
+      // Internal id, so callers can publish realtime records keyed how the router indexes feeds.
+      runId: taskRun.id,
     };
   }
 

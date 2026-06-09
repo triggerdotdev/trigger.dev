@@ -185,12 +185,10 @@ const { action } = createActionApiRoute(
       return json({ error: "Internal Server Error" }, { status: 500 });
     }
     if (pgResult) {
-      // Mid-run metadata flush succeeded: publish a run-changed record so a live single-run
-      // feed reflects metadata.set() without waiting for the next lifecycle event (this
-      // path doesn't otherwise touch the engine event bus). envId is free; partial record,
-      // matched by runId. No-op when disabled.
-      publishChangeRecord({ runId, envId: env.id });
-      return json(pgResult, { status: 200 });
+      // Reflect metadata.set() on a live feed before the next lifecycle event. Publish the
+      // internal id (the router keys single-run feeds by it, not the friendly id from the URL).
+      publishChangeRecord({ runId: pgResult.runId, envId: env.id });
+      return json({ metadata: pgResult.metadata }, { status: 200 });
     }
 
     // PG miss. Target run is either buffered or genuinely absent.
