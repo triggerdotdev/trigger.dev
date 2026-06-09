@@ -12,6 +12,20 @@ import { FEATURE_FLAG, FeatureFlagCatalog } from "~/v3/featureFlags";
  */
 export const SCHEDULED_WORKER_QUEUE_SUFFIX = ":scheduled";
 
+/**
+ * Recover the base region a worker queue belongs to by stripping any split
+ * suffix (e.g. `us-nyc-3:scheduled` -> `us-nyc-3`). Region/masterQueue names are
+ * either `<name>` or `<projectId>-<name>` and never contain a colon, so the
+ * region is everything before the first `:`. Use this wherever a worker queue is
+ * read as a region — for display, filtering, or as a region override — so
+ * scheduled-split runs group under their real region instead of a phantom one.
+ * Idempotent; returns the input unchanged when there's no suffix.
+ */
+export function baseWorkerQueue(workerQueue: string): string {
+  const colon = workerQueue.indexOf(":");
+  return colon === -1 ? workerQueue : workerQueue.slice(0, colon);
+}
+
 /** `TriggerSource` value used for runs originating from a schedule. */
 const SCHEDULE_TRIGGER_SOURCE = "schedule";
 
