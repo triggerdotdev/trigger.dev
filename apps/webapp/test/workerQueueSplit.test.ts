@@ -125,6 +125,11 @@ describe("baseWorkerQueue", () => {
     expect(baseWorkerQueue("")).toBe("");
   });
 
+  it("passes a nullish worker queue straight through (synthetic run snapshots)", () => {
+    expect(baseWorkerQueue(null)).toBeNull();
+    expect(baseWorkerQueue(undefined)).toBeUndefined();
+  });
+
   it("round-trips with workerQueueForRun: the split queue strips back to the region it came from", () => {
     const enqueued = workerQueueForRun({
       workerQueue: region,

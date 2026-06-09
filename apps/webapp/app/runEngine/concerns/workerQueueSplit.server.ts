@@ -19,9 +19,16 @@ export const SCHEDULED_WORKER_QUEUE_SUFFIX = ":scheduled";
  * region is everything before the first `:`. Use this wherever a worker queue is
  * read as a region — for display, filtering, or as a region override — so
  * scheduled-split runs group under their real region instead of a phantom one.
- * Idempotent; returns the input unchanged when there's no suffix.
+ * Idempotent; returns the input unchanged when there's no suffix. A nullish
+ * worker queue (e.g. from a synthetic run snapshot) passes straight through.
  */
-export function baseWorkerQueue(workerQueue: string): string {
+export function baseWorkerQueue(workerQueue: string): string;
+export function baseWorkerQueue(workerQueue: string | null | undefined): string | null | undefined;
+export function baseWorkerQueue(workerQueue: string | null | undefined): string | null | undefined {
+  if (workerQueue == null) {
+    return workerQueue;
+  }
+
   const colon = workerQueue.indexOf(":");
   return colon === -1 ? workerQueue : workerQueue.slice(0, colon);
 }
