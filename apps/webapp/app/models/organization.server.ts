@@ -90,6 +90,7 @@ export async function createOrganization(
     slug: organization.slug,
     companySize: organization.companySize,
     createdAt: organization.createdAt,
+    adminUserId: userId,
   });
 
   return { ...organization };

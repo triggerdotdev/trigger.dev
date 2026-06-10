@@ -15,6 +15,7 @@ export const AttioWorkspaceSyncSchema = z.object({
   slug: z.string(),
   companySize: z.string().nullish(),
   createdAt: z.coerce.date(),
+  adminUserId: z.string(),
 });
 export type AttioWorkspaceSync = z.infer<typeof AttioWorkspaceSyncSchema>;
 
@@ -30,8 +31,8 @@ export type AttioUserSync = z.infer<typeof AttioUserSyncSchema>;
 class AttioClient {
   constructor(private readonly apiKey: string) {}
 
-  // Create-or-update by unique attribute; throws on failure so the worker retries.
-  async #assert(object: string, matchingAttribute: string, values: Record<string, unknown>) {
+  // Create-or-update by unique attribute; returns the record id. Throws on failure so the worker retries.
+  async #assert(object: string, matchingAttribute: string, values: Record<string, unknown>): Promise<string> {
     const url = `${ATTIO_API}/objects/${object}/records?matching_attribute=${matchingAttribute}`;
     const response = await fetch(url, {
       method: "PUT",
@@ -44,9 +45,18 @@ class AttioClient {
       logger.error("Attio assert failed", { object, matchingAttribute, status: response.status, body });
       throw new Error(`Attio assert ${object} failed with status ${response.status}`);
     }
+
+    return ((await response.json()) as any).data?.id?.record_id as string;
   }
 
   async upsertWorkspace(payload: AttioWorkspaceSync) {
+    // The creating user is an admin of the new org — set their role and link them to the workspace.
+    const adminRecordId = await this.#assert("users", "user_id", {
+      user_id: payload.adminUserId,
+      role: "Admin",
+      is_test: IS_TEST,
+    });
+
     await this.#assert("workspaces", "workspace_id", {
       workspace_id: payload.orgId,
       name: payload.title,
@@ -56,6 +66,7 @@ class AttioClient {
       plan: "Free",
       account_status: "Active",
       is_test: IS_TEST,
+      users: [{ target_object: "users", target_record_id: adminRecordId }],
     });
   }
 
