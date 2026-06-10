@@ -1947,10 +1947,9 @@ export class RunEngine {
       return await query(prisma);
     } catch (e) {
       if (useReplica && e instanceof ExecutionSnapshotNotFoundError) {
-        // Expected during replica lag: the runner learned the snapshot id from the writer
-        // before the replica caught up. Serve the read from the writer instead of failing
-        // the poll. Only count/warn when the writer actually has the snapshot - a permanent
-        // miss (bogus or pruned snapshot id) is a real error, not replica lag.
+        // Replica lag: the runner learned this snapshot id from the writer before the
+        // replica caught up. Serve from the writer; only count/warn if the writer has it
+        // (a permanent miss is a real error, not lag).
         try {
           const result = await query(this.prisma);
           this.snapshotsSinceReplicaMissCounter.add(1);

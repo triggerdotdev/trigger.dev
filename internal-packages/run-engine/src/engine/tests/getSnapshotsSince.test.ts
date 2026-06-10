@@ -889,7 +889,6 @@ describe("RunEngine getSnapshotsSince", () => {
         expect(result!.length).toBe(expectedSnapshots.length);
         expect(result!.map((s) => s.snapshot.id)).toEqual(expectedSnapshots.map((s) => s.id));
 
-        // The fallback fired exactly once - this counter is the prod rollout signal.
         expect(await getCounterValue("run_engine.snapshots_since.replica_miss")).toBe(1);
       } finally {
         await engine.quit();
@@ -1053,7 +1052,6 @@ describe("RunEngine getSnapshotsSince", () => {
         expect(result!.map((s) => s.snapshot.id)).not.toContain(tail.id);
         expect(result!.map((s) => s.snapshot.id)).toEqual(expectedSnapshots.map((s) => s.id));
 
-        // The since snapshot was on the replica - no fallback fired.
         expect(await getCounterValue("run_engine.snapshots_since.replica_miss")).toBe(0);
       } finally {
         await engine.quit();
@@ -1151,7 +1149,6 @@ describe("RunEngine getSnapshotsSince", () => {
         expect(expectedSnapshots.length).toBeGreaterThan(0);
         expect(result!.map((s) => s.snapshot.id)).toEqual(expectedSnapshots.map((s) => s.id));
 
-        // No replica read attempted, so no fallback could have fired.
         expect(await getCounterValue("run_engine.snapshots_since.replica_miss")).toBe(0);
       } finally {
         await engine.quit();
@@ -1251,7 +1248,6 @@ describe("RunEngine getSnapshotsSince", () => {
         expect(expectedSnapshots.length).toBeGreaterThan(0);
         expect(result!.map((s) => s.snapshot.id)).toEqual(expectedSnapshots.map((s) => s.id));
 
-        // The tx served the read directly - the fallback path never ran.
         expect(await getCounterValue("run_engine.snapshots_since.replica_miss")).toBe(0);
       } finally {
         await engine.quit();
