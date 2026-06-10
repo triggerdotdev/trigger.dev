@@ -22,6 +22,7 @@ export const StreamdownRenderer = lazy(() =>
           <Streamdown
             isAnimating={isAnimating}
             plugins={{ code: codePlugin }}
+            controls={{ code: { copy: false, download: false } }}
             linkSafety={{ enabled: false }}
           >
             {children}

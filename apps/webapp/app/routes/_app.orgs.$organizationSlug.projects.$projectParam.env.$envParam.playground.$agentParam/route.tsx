@@ -19,6 +19,7 @@ import {
   PopoverVerticalEllipseTrigger,
 } from "~/components/primitives/Popover";
 import { DurationPicker } from "~/components/primitives/DurationPicker";
+import { Header3 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
@@ -832,10 +833,13 @@ function PlaygroundSidebar({
           className="min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
           <div className="min-w-64 space-y-4 p-3">
-            <div>
-              <p className="mb-2 text-xs text-text-dimmed">
-                Custom metadata sent with each conversation turn.
-              </p>
+            <div className="space-y-2">
+              <div className="space-y-0.5">
+                <Header3 className="text-text-bright">Custom metadata</Header3>
+                <Paragraph variant="extra-small" className="text-text-dimmed">
+                  Sent with each conversation turn.
+                </Paragraph>
+              </div>
               <div className="overflow-hidden rounded border border-charcoal-650">
                 <JSONEditor
                   defaultValue={clientDataJson}
@@ -843,8 +847,8 @@ function PlaygroundSidebar({
                   onChange={onClientDataChange}
                   minHeight="120px"
                   maxHeight="300px"
-                  showClearButton={true}
-                  showCopyButton={true}
+                  showClearButton={false}
+                  showCopyButton={false}
                 />
               </div>
             </div>
@@ -855,8 +859,9 @@ function PlaygroundSidebar({
               taskIdentifier={agentSlug}
               getCurrentPayload={getCurrentClientData}
               generateButtonLabel="Generate client data"
-              placeholder="e.g. generate client data for a free-tier user"
+              placeholder="Prompt to generate client data using AI…"
               isAgent={true}
+              showExamplePromptsHeader={false}
               examplePromptsOverride={[
                 "Generate valid client data",
                 "Generate client data with all fields",
@@ -1297,25 +1302,22 @@ function HistoryTabContent({
           <li key={conv.id}>
             <div
               className={cn(
-                "group flex items-center gap-1 rounded-sm px-2 py-1.5 transition-colors hover:bg-charcoal-800",
+                "group flex items-start gap-2 rounded-sm px-2 py-1.5 transition-colors hover:bg-charcoal-800",
                 isActive && "bg-charcoal-750 hover:bg-charcoal-750",
                 deletingId === conv.id && "pointer-events-none opacity-50"
               )}
             >
-              <span className="w-5 shrink-0 text-right text-[10px] tabular-nums text-text-dimmed">
+              <span className="w-5 shrink-0 text-right text-sm font-medium tabular-nums text-text-dimmed">
                 {index + 1}
               </span>
               <Link
                 to={`?conversation=${conv.id}`}
                 className="flex min-w-0 flex-1 flex-col items-start gap-0.5 outline-none focus-custom"
               >
-                <Paragraph
-                  variant="small/bright"
-                  className={cn("line-clamp-1 text-left", isActive && "text-indigo-400")}
-                >
+                <Paragraph variant="small/bright" className="line-clamp-1 text-left">
                   {conv.title}
                 </Paragraph>
-                <div className="text-[10px] text-text-dimmed">
+                <div className="text-xs text-text-dimmed">
                   <DateTime date={conv.updatedAt} showTooltip={false} />
                 </div>
               </Link>
