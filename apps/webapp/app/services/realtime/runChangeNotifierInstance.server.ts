@@ -1,6 +1,5 @@
-import { Counter, Gauge } from "prom-client";
+import { getMeter } from "@internal/tracing";
 import { env } from "~/env.server";
-import { metricsRegister } from "~/metrics.server";
 import { singleton } from "~/utils/singleton";
 import { RunChangeNotifier, type ChangeRecordInput } from "./runChangeNotifier.server";
 
@@ -16,23 +15,20 @@ function initializeRunChangeNotifier(): RunChangeNotifier {
   // broadcast every message to every node, so this is what actually shards load.
   const shardedPubSub = clusterMode && env.REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_SHARDED_ENABLED === "1";
 
-  const publishes = new Counter({
-    name: "realtime_run_change_notifier_publishes_total",
-    help: "Change-record publishes by outcome. Failures are the leading indicator that feeds are degrading to their backstops (pub/sub Redis trouble).",
-    labelNames: ["result"] as const,
-    registers: [metricsRegister],
+  const meter = getMeter("realtime-notifier");
+
+  const publishes = meter.createCounter("realtime_notifier.publishes", {
+    description:
+      "Change-record publishes by outcome. Failures are the leading indicator that feeds are degrading to their backstops (pub/sub Redis trouble).",
   });
 
-  const received = new Counter({
-    name: "realtime_run_change_notifier_messages_received_total",
-    help: "Raw channel messages received by this instance's subscriber, pre-coalesce.",
-    registers: [metricsRegister],
+  const received = meter.createCounter("realtime_notifier.messages_received", {
+    description: "Raw channel messages received by this instance's subscriber, pre-coalesce.",
   });
 
-  const delivered = new Counter({
-    name: "realtime_run_change_notifier_batches_delivered_total",
-    help: "Coalesced batches delivered to listeners. received/batches = the coalesce ratio (how hard a busy env is being collapsed).",
-    registers: [metricsRegister],
+  const delivered = meter.createCounter("realtime_notifier.batches_delivered", {
+    description:
+      "Coalesced batches delivered to listeners. received/batches = the coalesce ratio (how hard a busy env is being collapsed).",
   });
 
   const notifier = new RunChangeNotifier({
@@ -48,19 +44,16 @@ function initializeRunChangeNotifier(): RunChangeNotifier {
     },
     envWakeCoalesceWindowMs: env.REALTIME_BACKEND_NATIVE_ENV_WAKE_COALESCE_WINDOW_MS,
     shardedPubSub,
-    onPublishResult: (ok) => publishes.inc({ result: ok ? "ok" : "error" }),
-    onMessageReceived: () => received.inc(),
-    onBatchDelivered: () => delivered.inc(),
+    onPublishResult: (ok) => publishes.add(1, { result: ok ? "ok" : "error" }),
+    onMessageReceived: () => received.add(1),
+    onBatchDelivered: () => delivered.add(1),
   });
 
-  new Gauge({
-    name: "realtime_run_change_notifier_active_subscriptions",
-    help: "Distinct runs currently subscribed for realtime change notifications",
-    collect() {
-      this.set(notifier.activeSubscriptionCount);
-    },
-    registers: [metricsRegister],
-  });
+  meter
+    .createObservableGauge("realtime_notifier.active_subscriptions", {
+      description: "Distinct env channels currently subscribed for realtime change notifications.",
+    })
+    .addCallback((result) => result.observe(notifier.activeSubscriptionCount));
 
   return notifier;
 }

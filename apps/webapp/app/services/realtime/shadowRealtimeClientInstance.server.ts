@@ -1,7 +1,6 @@
-import { Counter } from "prom-client";
+import { getMeter } from "@internal/tracing";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
-import { metricsRegister } from "~/metrics.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { singleton } from "~/utils/singleton";
 import { realtimeClient } from "../realtimeClientGlobal.server";
@@ -15,11 +14,9 @@ import { ShadowRealtimeClient } from "./shadowRealtimeClient.server";
  * when an org's `realtimeBackend` flag is set to "shadow".
  */
 function initializeShadowRealtimeClient(): ShadowRealtimeClient {
-  const compares = new Counter({
-    name: "realtime_shadow_compare_total",
-    help: "Dual-run shadow-compare outcomes (Electric vs native). kind=serialization|membership, result=match|diverge|skew.",
-    labelNames: ["feed", "kind", "result"] as const,
-    registers: [metricsRegister],
+  const compares = getMeter("realtime-shadow").createCounter("realtime_shadow.compares", {
+    description:
+      "Dual-run shadow-compare outcomes (Electric vs native). kind=serialization|membership, result=match|diverge|skew.",
   });
 
   const comparator = new RealtimeShadowComparator({
@@ -39,19 +36,20 @@ function initializeShadowRealtimeClient(): ShadowRealtimeClient {
     onOutcome: (outcome) => {
       const { feed } = outcome;
       if (outcome.serializationMatched) {
-        compares.inc({ feed, kind: "serialization", result: "match" }, outcome.serializationMatched);
+        compares.add(outcome.serializationMatched, { feed, kind: "serialization", result: "match" });
       }
       if (outcome.serializationDiverged) {
-        compares.inc(
-          { feed, kind: "serialization", result: "diverge" },
-          outcome.serializationDiverged
-        );
+        compares.add(outcome.serializationDiverged, {
+          feed,
+          kind: "serialization",
+          result: "diverge",
+        });
       }
       if (outcome.serializationSkew) {
-        compares.inc({ feed, kind: "serialization", result: "skew" }, outcome.serializationSkew);
+        compares.add(outcome.serializationSkew, { feed, kind: "serialization", result: "skew" });
       }
       if (outcome.membershipMatch !== undefined) {
-        compares.inc({
+        compares.add(1, {
           feed,
           kind: "membership",
           result: outcome.membershipMatch ? "match" : "diverge",
