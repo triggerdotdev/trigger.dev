@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { ComputeClientError } from "@internal/compute";
-import { isRetryableCreateError } from "./compute.js";
+import { isRetryableCreateError, runnerNameForAttempt } from "./compute.js";
+
+describe("runnerNameForAttempt", () => {
+  it("keeps the unsuffixed name for the first attempt", () => {
+    expect(runnerNameForAttempt("runner-abc123", 1)).toBe("runner-abc123");
+  });
+
+  it("suffixes retry attempts deterministically", () => {
+    expect(runnerNameForAttempt("runner-abc123", 2)).toBe("runner-abc123-r2");
+    expect(runnerNameForAttempt("runner-abc123", 3)).toBe("runner-abc123-r3");
+  });
+});
 
 describe("isRetryableCreateError", () => {
   it("retries statuses where the create definitely did not commit", () => {

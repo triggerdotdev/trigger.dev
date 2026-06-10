@@ -17,6 +17,23 @@ const CREATE_MAX_ATTEMPTS = 3;
 const CREATE_RETRY_BASE_DELAY_MS = 250;
 
 /**
+ * TEMPORARY (TRI-10293): a failed create can leave its instance name
+ * registered gateway/fcrun-side until async cleanup runs, so a same-name
+ * retry can 409 against our own residue. Until the gateway cleans up
+ * failed-create registrations properly, retry attempts get a deterministic
+ * suffix. Attempt 1 keeps the unsuffixed name so the non-retry path is
+ * unchanged; the suffixed name flows into both the instance name and
+ * TRIGGER_RUNNER_ID, which downstream flows treat as one opaque
+ * self-reported token. Only attempts following a ComputeClientError are
+ * suffixed - network-failure retries keep the same name on purpose, because
+ * the gateway's name-collision 409 is their safety net against
+ * double-creating an instance whose create response was lost.
+ */
+export function runnerNameForAttempt(runnerId: string, attempt: number): string {
+  return attempt === 1 ? runnerId : `${runnerId}-r${attempt}`;
+}
+
+/**
  * Whether a failed instance create is worth retrying. Only statuses where
  * the create definitely did NOT commit are retried: 500 means the agent or
  * fcrun returned a create error (e.g. a netns slot holding the tap busy, a
@@ -219,13 +236,36 @@ export class ComputeWorkloadManager implements WorkloadManager {
       let error: unknown;
       let data: Awaited<ReturnType<typeof this.compute.instances.create>> | null | undefined;
       let attempt = 1;
+      // Set after a ComputeClientError: the failed create may have left its
+      // name registered, so subsequent attempts use a suffixed name.
+      let suffixAttempts = false;
       for (; attempt <= CREATE_MAX_ATTEMPTS; attempt++) {
-        [error, data] = await tryCatch(this.compute.instances.create(createRequest));
+        const attemptRunnerId = suffixAttempts
+          ? runnerNameForAttempt(runnerId, attempt)
+          : runnerId;
+        [error, data] = await tryCatch(
+          this.compute.instances.create(
+            attemptRunnerId === runnerId
+              ? createRequest
+              : {
+                  ...createRequest,
+                  name: attemptRunnerId,
+                  env: { ...envVars, TRIGGER_RUNNER_ID: attemptRunnerId },
+                }
+          )
+        );
 
-        if (!error) break;
+        if (!error) {
+          event.runnerId = attemptRunnerId;
+          break;
+        }
+
+        if (error instanceof ComputeClientError) {
+          suffixAttempts = true;
+        }
 
         this.logger.warn("create instance attempt failed", {
-          runnerId,
+          runnerId: attemptRunnerId,
           attempt,
           error: error instanceof Error ? error.message : String(error),
         });
