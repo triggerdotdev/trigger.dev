@@ -216,6 +216,42 @@ const clonedPostgresContainer = async ({}, use: Use<StartedPostgreSqlContainer>)
   }
 };
 
+// A second migrated-but-empty database on the same worker postgres, cloned from the schema
+// template. For tests that need to simulate a read replica that hasn't caught up: schema
+// present, rows absent. Lazy - only booted when a test destructures it.
+const schemaOnlyPrismaFixture = async ({}: {}, use: Use<PrismaClient>) => {
+  const container = await getWorkerPostgresContainer();
+  const baseUri = container.getConnectionUri();
+  const cloneDb = `schema_only_${pgCloneCounter++}`;
+
+  const admin = new PrismaClient({
+    datasources: { db: { url: postgresUriWithDatabase(baseUri, "postgres") } },
+  });
+  await admin.$executeRawUnsafe(`CREATE DATABASE "${cloneDb}" TEMPLATE "${POSTGRES_TEMPLATE_DB}"`);
+  await admin.$disconnect();
+
+  const prisma = new PrismaClient({
+    datasources: { db: { url: postgresUriWithDatabase(baseUri, cloneDb) } },
+  });
+  try {
+    await use(prisma);
+  } finally {
+    await logCleanup("schemaOnlyPrisma", prisma.$disconnect());
+    // Best-effort drop, mirroring clonedPostgresContainer cleanup - the container is reaped on
+    // worker exit anyway, so never let cleanup fail the test.
+    const cleanup = new PrismaClient({
+      datasources: { db: { url: postgresUriWithDatabase(baseUri, "postgres") } },
+    });
+    try {
+      await cleanup.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${cloneDb}" WITH (FORCE)`);
+    } catch {
+      // ignore - reaped with the container anyway
+    } finally {
+      await cleanup.$disconnect();
+    }
+  }
+};
+
 const prismaFromContainer = async (
   { postgresContainer }: { postgresContainer: StartedPostgreSqlContainer },
   use: Use<PrismaClient>
@@ -454,6 +490,7 @@ export const postgresAndRedisTest = test.extend<PostgresAndRedisContext>({
 type ContainerTestContext = {
   postgresContainer: StartedPostgreSqlContainer;
   prisma: PrismaClient;
+  schemaOnlyPrisma: PrismaClient;
   redisContainer: StartedRedisContainer;
   resetRedis: void;
   redisOptions: RedisOptions;
@@ -468,6 +505,7 @@ type ContainerTestContext = {
 export const containerTest = test.extend<ContainerTestContext>({
   postgresContainer: clonedPostgresContainer,
   prisma: prismaFromContainer,
+  schemaOnlyPrisma: schemaOnlyPrismaFixture,
   redisContainer: [bootWorkerRedis, { scope: "worker" }],
   resetRedis: [flushRedis, { auto: true }],
   redisOptions,
