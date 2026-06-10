@@ -40,7 +40,19 @@ export type EnvChangeRouterOptions = {
   hydrator: RowHydrator;
   /** Observability: a hydrate-by-id batch ran (count = runs hydrated this tick). */
   onHydrate?: (runCount: number) => void;
+  /** How far back (ms) a newly-armed feed replays buffered records. 0 disables replay. */
+  replayWindowMs?: number;
+  /** Cap on buffered recent records per env (latest record per run). */
+  replayMaxRunsPerEnv?: number;
+  /** How long (ms) to keep an env subscribed + buffering after its last feed closes. 0 disables. */
+  unsubscribeLingerMs?: number;
+  /** Observability: a replay scan found candidates and delivered rows (or none survived). */
+  onReplay?: (result: "delivered" | "empty") => void;
 };
+
+const DEFAULT_REPLAY_WINDOW_MS = 2_000;
+const DEFAULT_REPLAY_MAX_RUNS_PER_ENV = 512;
+const DEFAULT_UNSUBSCRIBE_LINGER_MS = 5_000;
 
 /** Handle a feed holds for the duration of one long-poll. */
 export type FeedRegistration = {
@@ -49,6 +61,10 @@ export type FeedRegistration = {
   waitForMatch(signal: AbortSignal | undefined, timeoutMs: number): Promise<WaitResult>;
   /** Deregister from the index; unsubscribes the env when the last feed leaves. */
   close(): void;
+  /** False when this instance's env subscription is younger than the replay window, so a
+   * change in the caller's inter-poll gap may have been missed (hop/cold start) — the
+   * caller should resolve once instead of holding blind. */
+  gapCovered: boolean;
 };
 
 type Feed = {
@@ -57,6 +73,8 @@ type Feed = {
   columnSig: string;
   /** The currently-waiting poll's resolver (null between polls). */
   resolve: ((result: WaitResult) => void) | null;
+  /** Buffered records at or before this timestamp have been replayed (or predate this feed). */
+  replayCursorMs: number;
 };
 
 type EnvState = {
@@ -67,6 +85,12 @@ type EnvState = {
   byBatchId: Map<string, Set<Feed>>;
   /** All tag feeds, for routing partial records (no tags) as hydrate-to-classify candidates. */
   tagFeeds: Set<Feed>;
+  /** When this env's channel subscription started (for the gap-coverage check). */
+  subscribedAtMs: number;
+  /** Latest record per run, insertion-ordered, for replaying inter-poll gaps to newly-armed feeds. */
+  recent: Map<string, { record: ChangeRecord; receivedAtMs: number }>;
+  /** Pending teardown while the env lingers with zero feeds. */
+  lingerTimer?: ReturnType<typeof setTimeout>;
 };
 
 function addToIndex(index: Map<string, Set<Feed>>, key: string, feed: Feed) {
@@ -93,13 +117,29 @@ export class EnvChangeRouter {
 
   constructor(private readonly options: EnvChangeRouterOptions) {}
 
-  register(environmentId: string, filter: FeedFilter, skipColumns: string[]): FeedRegistration {
+  register(
+    environmentId: string,
+    filter: FeedFilter,
+    skipColumns: string[],
+    opts?: {
+      /** When the caller last received data for this connection. Bounds the replay to the
+       * true inter-poll gap; older than the window can't be proven covered. */
+      replaySinceMs?: number;
+    }
+  ): FeedRegistration {
     const env = this.#ensureEnv(environmentId);
+    const replayWindowMs = this.options.replayWindowMs ?? DEFAULT_REPLAY_WINDOW_MS;
+    const now = Date.now();
+    const windowFloorMs = now - replayWindowMs;
+    const sinceMs = opts?.replaySinceMs ?? windowFloorMs;
     const feed: Feed = {
       filter,
       skipColumns,
       columnSig: skipColumns.length > 0 ? [...skipColumns].sort().join(",") : "",
       resolve: null,
+      // First arm replays the caller's inter-poll gap; later arms only what arrived since.
+      // The buffer only spans the window, so never rewind past it.
+      replayCursorMs: Math.max(sinceMs, windowFloorMs),
     };
 
     env.feeds.add(feed);
@@ -129,6 +169,16 @@ export class EnvChangeRouter {
           onAbort = () => settle({ reason: "abort", rows: [] });
           signal.addEventListener("abort", onAbort, { once: true });
         }
+        // Deliver any buffered records this feed hasn't seen (catches changes that
+        // landed while the caller was between polls).
+        if (replayWindowMs > 0 && env.recent.size > 0) {
+          this.#replayRecent(environmentId, env, feed).catch((error) => {
+            logger.error("[envChangeRouter] failed to replay buffered records", {
+              environmentId,
+              error,
+            });
+          });
+        }
       });
 
     const close = () => {
@@ -141,12 +191,18 @@ export class EnvChangeRouter {
       feed.resolve?.({ reason: "abort", rows: [] });
       feed.resolve = null;
       if (env.feeds.size === 0) {
-        this.#envs.delete(environmentId);
-        env.unsubscribe();
+        this.#scheduleEnvTeardown(environmentId, env);
       }
     };
 
-    return { waitForMatch, close };
+    return {
+      waitForMatch,
+      close,
+      // Covered when this instance was already subscribed (and buffering) at the gap's
+      // start, and the gap fits inside the buffer's window.
+      gapCovered:
+        replayWindowMs <= 0 || (env.subscribedAtMs <= sinceMs && sinceMs >= windowFloorMs),
+    };
   }
 
   /** Distinct environments currently routed (for metrics). */
@@ -157,6 +213,11 @@ export class EnvChangeRouter {
   #ensureEnv(environmentId: string): EnvState {
     const existing = this.#envs.get(environmentId);
     if (existing) {
+      // A pending teardown is cancelled by new interest; the buffer survives the gap.
+      if (existing.lingerTimer) {
+        clearTimeout(existing.lingerTimer);
+        existing.lingerTimer = undefined;
+      }
       return existing;
     }
     const env: EnvState = {
@@ -166,9 +227,12 @@ export class EnvChangeRouter {
       byTag: new Map(),
       byBatchId: new Map(),
       tagFeeds: new Set(),
+      subscribedAtMs: Date.now(),
+      recent: new Map(),
     };
     this.#envs.set(environmentId, env);
     env.unsubscribe = this.options.source.subscribeToEnv(environmentId, (records) => {
+      this.#bufferRecent(env, records);
       // Fire-and-forget; catch hydrate failures here (unhandled rejection exits the process) — waiters time out into the backstop.
       this.#onBatch(environmentId, env, records).catch((error) => {
         logger.error("[envChangeRouter] failed to route a change batch", {
@@ -178,6 +242,105 @@ export class EnvChangeRouter {
       });
     });
     return env;
+  }
+
+  /** Keep the env subscribed + buffering for a linger after its last feed closes, so a
+   * client's next poll (or another instance hop landing back here) can replay the gap. */
+  #scheduleEnvTeardown(environmentId: string, env: EnvState) {
+    const lingerMs = this.options.unsubscribeLingerMs ?? DEFAULT_UNSUBSCRIBE_LINGER_MS;
+    if (lingerMs <= 0) {
+      this.#envs.delete(environmentId);
+      env.unsubscribe();
+      return;
+    }
+    if (env.lingerTimer) {
+      clearTimeout(env.lingerTimer);
+    }
+    env.lingerTimer = setTimeout(() => {
+      if (env.feeds.size === 0) {
+        this.#envs.delete(environmentId);
+        env.unsubscribe();
+      }
+    }, lingerMs);
+    env.lingerTimer.unref?.();
+  }
+
+  /** Upsert the latest record per run (insertion-ordered) and prune to the window + cap. */
+  #bufferRecent(env: EnvState, records: ChangeRecord[]) {
+    const windowMs = this.options.replayWindowMs ?? DEFAULT_REPLAY_WINDOW_MS;
+    if (windowMs <= 0) {
+      return;
+    }
+    const maxRuns = this.options.replayMaxRunsPerEnv ?? DEFAULT_REPLAY_MAX_RUNS_PER_ENV;
+    const now = Date.now();
+    for (const record of records) {
+      env.recent.delete(record.runId);
+      env.recent.set(record.runId, { record, receivedAtMs: now });
+    }
+    const cutoff = now - windowMs;
+    for (const [runId, entry] of env.recent) {
+      if (entry.receivedAtMs >= cutoff && env.recent.size <= maxRuns) {
+        break;
+      }
+      env.recent.delete(runId);
+    }
+  }
+
+  /** Whether a buffered record matches a feed's predicate (mirrors #onBatch's routing). */
+  #recordMatchesFeed(record: ChangeRecord, feed: Feed): boolean {
+    switch (feed.filter.kind) {
+      case "run":
+        return record.runId === feed.filter.runId;
+      case "batch":
+        return record.batchId != null && record.batchId === feed.filter.batchId;
+      case "tag": {
+        // Partial record (no tags) = hydrate-to-classify candidate, like the live path.
+        if (record.tags === undefined) {
+          return true;
+        }
+        const tags = feed.filter.tags;
+        return record.tags.some((tag) => tags.includes(tag));
+      }
+    }
+  }
+
+  /** Deliver buffered records newer than the feed's cursor through the normal
+   * hydrate -> serialize -> settle pipeline. Already-seen rows diff to nothing downstream. */
+  async #replayRecent(environmentId: string, env: EnvState, feed: Feed) {
+    const cursor = feed.replayCursorMs;
+    feed.replayCursorMs = Date.now();
+
+    const runIds: string[] = [];
+    for (const [runId, entry] of env.recent) {
+      if (entry.receivedAtMs > cursor && this.#recordMatchesFeed(entry.record, feed)) {
+        runIds.push(runId);
+      }
+    }
+    if (runIds.length === 0 || !feed.resolve) {
+      return;
+    }
+
+    const hydrated = await this.options.hydrator.hydrateByIds(
+      environmentId,
+      runIds,
+      feed.skipColumns
+    );
+    this.options.onHydrate?.(hydrated.length);
+
+    const rows: MatchedRow[] = [];
+    for (const row of hydrated) {
+      if (feed.filter.kind === "tag" && !this.#tagRowMatches(row, feed.filter)) {
+        continue;
+      }
+      rows.push({ row, value: serializeRunRow(row, feed.skipColumns) });
+    }
+
+    if (rows.length > 0 && feed.resolve) {
+      this.options.onReplay?.("delivered");
+      feed.resolve({ reason: "notify", rows });
+    } else {
+      this.options.onReplay?.("empty");
+    }
   }
 
   #indexFeed(env: EnvState, feed: Feed) {

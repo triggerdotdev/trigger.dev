@@ -322,6 +322,12 @@ const EnvironmentSchema = z
     REALTIME_BACKEND_NATIVE_HOLD_ON_EMPTY: z.string().default("1"),
     // Max concurrent fresh ClickHouse resolves per instance (reconnect-stampede gate); 0 disables.
     REALTIME_BACKEND_NATIVE_RESOLVE_ADMISSION_LIMIT: z.coerce.number().int().default(16),
+    // Replay window (ms) for buffered change records delivered to newly-armed feeds; 0 disables.
+    REALTIME_BACKEND_NATIVE_REPLAY_WINDOW_MS: z.coerce.number().int().default(2_000),
+    // Cap on buffered recent records per env (latest record per run).
+    REALTIME_BACKEND_NATIVE_REPLAY_MAX_RUNS: z.coerce.number().int().default(512),
+    // Keep an env subscribed + buffering this long (ms) after its last feed closes; 0 disables.
+    REALTIME_BACKEND_NATIVE_UNSUBSCRIBE_LINGER_MS: z.coerce.number().int().default(5_000),
     // Fallback per-env concurrent-connection limit when the org has none configured.
     REALTIME_BACKEND_NATIVE_DEFAULT_CONCURRENCY_LIMIT: z.coerce.number().int().default(100_000),
     // TTL/size of the single-run read-through cache that collapses duplicate refetch bursts.

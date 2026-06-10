@@ -56,6 +56,13 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
     registers: [metricsRegister],
   });
 
+  const replays = new Counter({
+    name: "realtime_native_replays_total",
+    help: "Buffered change records replayed to a newly-armed feed (inter-poll gap recovery). 'delivered' = rows reached the feed; 'empty' = candidates hydrated but none survived the filter/diff.",
+    labelNames: ["result"] as const,
+    registers: [metricsRegister],
+  });
+
   const limiter = new RealtimeConcurrencyLimiter({
     keyPrefix: "tr:realtime:native:concurrency",
     redis: {
@@ -79,6 +86,10 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
     source: getRunChangeNotifier(),
     hydrator: runReader,
     onHydrate: (runCount) => routerHydrates.inc(runCount),
+    replayWindowMs: env.REALTIME_BACKEND_NATIVE_REPLAY_WINDOW_MS,
+    replayMaxRunsPerEnv: env.REALTIME_BACKEND_NATIVE_REPLAY_MAX_RUNS,
+    unsubscribeLingerMs: env.REALTIME_BACKEND_NATIVE_UNSUBSCRIBE_LINGER_MS,
+    onReplay: (result) => replays.inc({ result }),
   });
 
   const client = new NativeRealtimeClient({

@@ -31,6 +31,8 @@ function makeClient(overrides: Record<string, unknown> = {}) {
     router: new EnvChangeRouter({
       source: { subscribeToEnv: () => () => {} },
       hydrator: { hydrateByIds: hydrateSpy },
+      replayWindowMs: 0,
+      unsubscribeLingerMs: 0,
     }),
     limiter: { incrementAndCheck: async () => true, decrement: async () => {} } as any,
     cachedLimitProvider: { getCachedLimit: async () => 100 },
@@ -182,6 +184,8 @@ describe("NativeRealtimeClient resolve admission gate (mass-reconnect stampede)"
       router: new EnvChangeRouter({
         source: { subscribeToEnv: () => () => {} },
         hydrator: { hydrateByIds: hydrateSpy },
+        replayWindowMs: 0,
+        unsubscribeLingerMs: 0,
       }),
       limiter: { incrementAndCheck: async () => true, decrement: async () => {} } as any,
       cachedLimitProvider: { getCachedLimit: async () => 100 },

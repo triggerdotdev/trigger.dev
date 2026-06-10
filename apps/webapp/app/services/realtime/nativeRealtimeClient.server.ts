@@ -70,8 +70,9 @@ export interface RealtimeStreamClient {
 
 export type WakeupReason = "notify" | "timeout" | "abort";
 
-/** How a live poll resolved: `fast-hydrate` (router woke us, hydrate-by-id) or `full-resolve` (backstop ClickHouse resolve). */
-export type LivePollPath = "fast-hydrate" | "full-resolve";
+/** How a live poll resolved: `fast-hydrate` (router woke us, hydrate-by-id), `full-resolve`
+ * (backstop), or `cold-resolve` (fresh env subscription probed once instead of holding blind). */
+export type LivePollPath = "fast-hydrate" | "full-resolve" | "cold-resolve";
 
 export type NativeRealtimeClientOptions = {
   runReader: RunHydrator;
@@ -196,9 +197,16 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
   readonly #runSetInflight = new Map<string, Promise<RealtimeRunRow[]>>();
   /** Bounds concurrent fresh CH resolves (undefined => unbounded). */
   readonly #admissionGate?: ResolveAdmissionGate;
+  /** Per-connection: when this connection's last response was sent, so the router's
+   * replay covers exactly the inter-poll gap instead of rewinding a full window. */
+  readonly #replayCursorCache: BoundedTtlCache<number>;
 
   constructor(private readonly options: NativeRealtimeClientOptions) {
     this.#workingSetCache = new BoundedTtlCache(
+      options.workingSetCacheTtlMs ?? LIST_CACHE_TTL_MS,
+      options.listCacheMaxEntries ?? LIST_CACHE_MAX_ENTRIES
+    );
+    this.#replayCursorCache = new BoundedTtlCache(
       options.workingSetCacheTtlMs ?? LIST_CACHE_TTL_MS,
       options.listCacheMaxEntries ?? LIST_CACHE_MAX_ENTRIES
     );
@@ -396,33 +404,80 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
         { kind: "run", runId },
         skipColumns
       );
+      const deadline = Date.now() + this.#jitteredTimeout();
 
       try {
-        const { reason, rows } = await registration.waitForMatch(signal, this.#jitteredTimeout());
-        this.options.onWakeup?.(reason);
-
-        if (reason === "abort") {
-          return this.#buildResponse(buildUpToDateBody(), apiVersion, clientVersion, {
-            offset,
-            handle,
-            cursor: String(this.#nextSeq()),
-          });
-        }
-
-        if (reason === "notify" && rows.length > 0) {
-          // The router hydrated + serialized this run; emit it (only on advance).
-          this.options.onLivePollPath?.("fast-hydrate");
-          const matched = rows[0];
-          const updatedAtMs = matched.row.updatedAt.getTime();
-          const seq = this.#nextSeq();
-          if (updatedAtMs > lastSeenMs) {
+        // Cold start (fresh env subscription, e.g. an instance hop): a change in the
+        // caller's inter-poll gap may have been missed — check the row once, then hold.
+        if (!registration.gapCovered) {
+          this.options.onLivePollPath?.("cold-resolve");
+          const probed = await this.options.runReader.getRunById(environment.id, runId);
+          if (probed && probed.updatedAt.getTime() > lastSeenMs) {
+            const seq = this.#nextSeq();
             return this.#buildResponse(
-              buildRowsBodyFromSerialized([
-                { runId: matched.row.id, value: matched.value, operation: "update" },
-              ]),
+              buildUpdateBody(probed, skipColumns),
               apiVersion,
               clientVersion,
-              { offset: encodeOffset(updatedAtMs, seq), handle, cursor: String(seq) }
+              {
+                offset: encodeOffset(probed.updatedAt.getTime(), seq),
+                handle,
+                cursor: String(seq),
+              }
+            );
+          }
+        }
+
+        while (true) {
+          const remaining = deadline - Date.now();
+          const { reason, rows } =
+            remaining > 0
+              ? await registration.waitForMatch(signal, remaining)
+              : { reason: "timeout" as const, rows: [] as MatchedRow[] };
+          this.options.onWakeup?.(reason);
+
+          if (reason === "abort") {
+            return this.#buildResponse(buildUpToDateBody(), apiVersion, clientVersion, {
+              offset,
+              handle,
+              cursor: String(this.#nextSeq()),
+            });
+          }
+
+          if (reason === "notify" && rows.length > 0) {
+            // The router hydrated + serialized this run; emit it (only on advance).
+            this.options.onLivePollPath?.("fast-hydrate");
+            const matched = rows[0];
+            const updatedAtMs = matched.row.updatedAt.getTime();
+            if (updatedAtMs > lastSeenMs) {
+              const seq = this.#nextSeq();
+              return this.#buildResponse(
+                buildRowsBodyFromSerialized([
+                  { runId: matched.row.id, value: matched.value, operation: "update" },
+                ]),
+                apiVersion,
+                clientVersion,
+                { offset: encodeOffset(updatedAtMs, seq), handle, cursor: String(seq) }
+              );
+            }
+            // Already seen (e.g. a replayed record): keep holding rather than returning an
+            // empty up-to-date the client would immediately re-issue.
+            continue;
+          }
+
+          // Backstop timeout: re-check the run directly (no ClickHouse for the single-run feed).
+          this.options.onLivePollPath?.("full-resolve");
+          const row = await this.options.runReader.getRunById(environment.id, runId);
+          const seq = this.#nextSeq();
+          if (row && row.updatedAt.getTime() > lastSeenMs) {
+            return this.#buildResponse(
+              buildUpdateBody(row, skipColumns),
+              apiVersion,
+              clientVersion,
+              {
+                offset: encodeOffset(row.updatedAt.getTime(), seq),
+                handle,
+                cursor: String(seq),
+              }
             );
           }
           return this.#buildResponse(buildUpToDateBody(), apiVersion, clientVersion, {
@@ -431,23 +486,6 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
             cursor: String(seq),
           });
         }
-
-        // Backstop timeout: re-check the run directly (no ClickHouse for the single-run feed).
-        this.options.onLivePollPath?.("full-resolve");
-        const row = await this.options.runReader.getRunById(environment.id, runId);
-        const seq = this.#nextSeq();
-        if (row && row.updatedAt.getTime() > lastSeenMs) {
-          return this.#buildResponse(buildUpdateBody(row, skipColumns), apiVersion, clientVersion, {
-            offset: encodeOffset(row.updatedAt.getTime(), seq),
-            handle,
-            cursor: String(seq),
-          });
-        }
-        return this.#buildResponse(buildUpToDateBody(), apiVersion, clientVersion, {
-          offset,
-          handle,
-          cursor: String(seq),
-        });
       } finally {
         registration.close();
       }
@@ -477,6 +515,7 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
       maxUpdatedAt = Math.max(maxUpdatedAt, updatedAtMs);
     }
     this.#workingSetCache.set(this.#workingSetKey(environment.id, handle), seen);
+    this.#replayCursorCache.set(this.#workingSetKey(environment.id, handle), Date.now());
 
     return this.#buildResponse(buildRowsBody(changes, skipColumns), apiVersion, clientVersion, {
       offset: encodeOffset(maxUpdatedAt, this.#nextSeq()),
@@ -507,8 +546,10 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
       const workingSetKey = this.#workingSetKey(environment.id, handle);
       let prevSeen = this.#workingSetCache.get(workingSetKey);
 
+      const markPollEnd = () => this.#replayCursorCache.set(workingSetKey, Date.now());
       const emitFromSerialized = (changes: SerializedRowChange[], maxUpdatedAt: number): Response => {
         const seq = this.#nextSeq();
+        markPollEnd();
         return this.#buildResponse(buildRowsBodyFromSerialized(changes), apiVersion, clientVersion, {
           offset: encodeOffset(maxUpdatedAt, seq),
           handle,
@@ -517,6 +558,7 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
       };
       const emitFromRows = (changes: RowChange[], maxUpdatedAt: number): Response => {
         const seq = this.#nextSeq();
+        markPollEnd();
         return this.#buildResponse(buildRowsBody(changes, skipColumns), apiVersion, clientVersion, {
           offset: encodeOffset(maxUpdatedAt, seq),
           handle,
@@ -525,6 +567,7 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
       };
       const emitUpToDate = (maxUpdatedAt: number): Response => {
         const seq = this.#nextSeq();
+        markPollEnd();
         return this.#buildResponse(buildUpToDateBody(), apiVersion, clientVersion, {
           offset: encodeOffset(maxUpdatedAt, seq),
           handle,
@@ -535,11 +578,34 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
       const registration = this.options.router.register(
         environment.id,
         this.#feedFilter(filter),
-        skipColumns
+        skipColumns,
+        // When this connection last received data, so replay covers exactly its gap.
+        { replaySinceMs: this.#replayCursorCache.get(workingSetKey) }
       );
+
+      // Cold start (fresh env subscription, e.g. an instance hop): resolve once up front
+      // instead of holding blind — a change in the caller's inter-poll gap may have been missed.
+      let coldProbe = !registration.gapCovered;
 
       try {
         while (true) {
+          if (coldProbe) {
+            coldProbe = false;
+            this.options.onLivePollPath?.("cold-resolve");
+            const resolved = await this.#resolveAndHydrate(environment, filter, skipColumns);
+            const { changes, maxUpdatedAt, touched } = this.#diffRows(
+              resolved,
+              prevSeen,
+              offsetFloorMs
+            );
+            this.#workingSetCache.set(workingSetKey, touched);
+            prevSeen = touched;
+            if (changes.length > 0) {
+              return emitFromRows(changes, maxUpdatedAt);
+            }
+            continue; // nothing was missed — hold as usual
+          }
+
           const remaining = deadline - Date.now();
           const { reason, rows } =
             remaining > 0

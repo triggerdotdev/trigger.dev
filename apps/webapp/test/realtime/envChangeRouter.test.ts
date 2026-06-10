@@ -52,12 +52,19 @@ function fakeSource() {
   };
 }
 
-function makeRouter(rowsById: Map<string, RealtimeRunRow> = new Map()) {
+function makeRouter(
+  rowsById: Map<string, RealtimeRunRow> = new Map(),
+  options: Record<string, unknown> = {}
+) {
   const src = fakeSource();
   const hydrateSpy = vi.fn<RowHydrator["hydrateByIds"]>(async (_env, ids) =>
     ids.map((id) => rowsById.get(id)).filter((r): r is RealtimeRunRow => Boolean(r))
   );
-  const router = new EnvChangeRouter({ source: src.source, hydrator: { hydrateByIds: hydrateSpy } });
+  const router = new EnvChangeRouter({
+    source: src.source,
+    hydrator: { hydrateByIds: hydrateSpy },
+    ...options,
+  });
   return { router, src, hydrateSpy };
 }
 
@@ -184,7 +191,7 @@ describe("EnvChangeRouter", () => {
   });
 
   it("times out and aborts cleanly", async () => {
-    const { router, src } = makeRouter();
+    const { router, src } = makeRouter(new Map(), { unsubscribeLingerMs: 0 });
     const reg = router.register("env_1", { kind: "tag", tags: ["a"] }, []);
     expect((await reg.waitForMatch(undefined, 30)).reason).toBe("timeout");
 
@@ -193,16 +200,116 @@ describe("EnvChangeRouter", () => {
     controller.abort();
     expect((await wait).reason).toBe("abort");
     reg.close();
-    expect(src.isSubscribed("env_1")).toBe(false); // last feed left -> unsubscribed
+    expect(src.isSubscribed("env_1")).toBe(false); // linger disabled: last feed left -> unsubscribed
   });
 
-  it("only routes to feeds currently waiting (gaps between polls fall to the backstop)", async () => {
+  it("buffers a record that arrives between polls and replays it on the next arm", async () => {
     const rows = new Map([["r1", row("r1", { tags: ["a"] })]]);
     const { router, src, hydrateSpy } = makeRouter(rows);
     const reg = router.register("env_1", { kind: "tag", tags: ["a"] }, []);
-    // Not waiting yet: a push is dropped (no hydrate, no buffering).
+    // Not waiting yet: the push can't wake anything, but it lands in the env buffer.
     src.push("env_1", [record("r1", { tags: ["a"] })]);
     expect(hydrateSpy).not.toHaveBeenCalled();
+
+    const result = await reg.waitForMatch(undefined, 1_000);
+    expect(result.reason).toBe("notify");
+    expect(result.rows.map((m) => m.row.id)).toEqual(["r1"]);
+    expect(hydrateSpy).toHaveBeenCalledTimes(1);
+    reg.close();
+  });
+
+  it("does not redeliver a replayed record on a later arm", async () => {
+    const rows = new Map([["r1", row("r1", { tags: ["a"] })]]);
+    const { router, src, hydrateSpy } = makeRouter(rows);
+    const reg = router.register("env_1", { kind: "tag", tags: ["a"] }, []);
+    src.push("env_1", [record("r1", { tags: ["a"] })]);
+    expect((await reg.waitForMatch(undefined, 1_000)).reason).toBe("notify");
+
+    // Same buffered record must not fire again; the wait falls through to its timeout.
+    expect((await reg.waitForMatch(undefined, 50)).reason).toBe("timeout");
+    expect(hydrateSpy).toHaveBeenCalledTimes(1);
+    reg.close();
+  });
+
+  it("lingers the env subscription after the last feed closes and replays the gap", async () => {
+    const rows = new Map([["r1", row("r1", { tags: ["a"] })]]);
+    const { router, src, hydrateSpy } = makeRouter(rows, { unsubscribeLingerMs: 60 });
+    const reg1 = router.register("env_1", { kind: "tag", tags: ["a"] }, []);
+    reg1.close();
+    expect(src.isSubscribed("env_1")).toBe(true); // lingering
+
+    // The inter-poll gap: a change arrives while no feed is registered.
+    src.push("env_1", [record("r1", { tags: ["a"] })]);
+
+    const reg2 = router.register("env_1", { kind: "tag", tags: ["a"] }, []);
+    const result = await reg2.waitForMatch(undefined, 1_000);
+    expect(result.reason).toBe("notify");
+    expect(result.rows.map((m) => m.row.id)).toEqual(["r1"]);
+    expect(hydrateSpy).toHaveBeenCalledTimes(1);
+
+    reg2.close();
+    await new Promise((r) => setTimeout(r, 100));
+    expect(src.isSubscribed("env_1")).toBe(false); // linger expired -> unsubscribed
+  });
+
+  it("reports gapCovered=false on a fresh env subscription and true once it ages past the window", async () => {
+    const { router } = makeRouter(new Map(), { replayWindowMs: 50 });
+    const reg1 = router.register("env_1", { kind: "run", runId: "r1" }, []);
+    expect(reg1.gapCovered).toBe(false);
+
+    await new Promise((r) => setTimeout(r, 70));
+    const reg2 = router.register("env_1", { kind: "run", runId: "r2" }, []);
+    expect(reg2.gapCovered).toBe(true);
+    reg1.close();
+    reg2.close();
+  });
+
+  it("honors the caller's replaySinceMs so a new poll doesn't rewind into delivered records", async () => {
+    const rows = new Map([["r1", row("r1", { tags: ["a"] })]]);
+    const { router, src, hydrateSpy } = makeRouter(rows);
+    const anchor = router.register("env_1", { kind: "tag", tags: ["a"] }, []); // keeps the env subscribed
+    src.push("env_1", [record("r1", { tags: ["a"] })]);
+    const afterPush = Date.now();
+
+    // A connection whose last response left after the push: nothing to replay.
+    const caughtUp = router.register("env_1", { kind: "tag", tags: ["a"] }, [], {
+      replaySinceMs: afterPush,
+    });
+    expect(caughtUp.gapCovered).toBe(true); // env subscribed since before its gap began
+    expect((await caughtUp.waitForMatch(undefined, 50)).reason).toBe("timeout");
+    expect(hydrateSpy).not.toHaveBeenCalled();
+
+    // A connection whose gap started before the push: the record replays.
+    const behind = router.register("env_1", { kind: "tag", tags: ["a"] }, [], {
+      replaySinceMs: afterPush - 1_000,
+    });
+    const result = await behind.waitForMatch(undefined, 1_000);
+    expect(result.reason).toBe("notify");
+    expect(result.rows.map((m) => m.row.id)).toEqual(["r1"]);
+
+    anchor.close();
+    caughtUp.close();
+    behind.close();
+  });
+
+  it("caps the replay buffer to the newest records per env", async () => {
+    const rows = new Map([
+      ["r1", row("r1")],
+      ["r2", row("r2")],
+      ["r3", row("r3")],
+    ]);
+    const { router, src, hydrateSpy } = makeRouter(rows, { replayMaxRunsPerEnv: 2 });
+    const reg = router.register("env_1", { kind: "batch", batchId: "batch_1" }, []);
+    src.push("env_1", [
+      record("r1", { batchId: "batch_1" }),
+      record("r2", { batchId: "batch_1" }),
+      record("r3", { batchId: "batch_1" }),
+    ]);
+
+    const result = await reg.waitForMatch(undefined, 1_000);
+    expect(result.reason).toBe("notify");
+    // r1 was evicted by the cap; only the newest two replay.
+    expect(hydrateSpy).toHaveBeenCalledWith("env_1", ["r2", "r3"], []);
     reg.close();
   });
 });

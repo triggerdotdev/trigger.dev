@@ -65,7 +65,14 @@ function makeClient(overrides: Record<string, unknown> = {}) {
   );
   const resolveSpy = vi.fn(async () => rowsToReturn.map((r) => r.id));
   const src = fakeSource();
-  const router = new EnvChangeRouter({ source: src.source, hydrator: { hydrateByIds: hydrateSpy } });
+  const router = new EnvChangeRouter({
+    source: src.source,
+    hydrator: { hydrateByIds: hydrateSpy },
+    replayWindowMs: 0,
+    unsubscribeLingerMs: 0,
+    ...(overrides.routerOptions as Record<string, unknown> ?? {}),
+  });
+  delete overrides.routerOptions;
 
   const client = new NativeRealtimeClient({
     runReader: { getRunById: async () => null, hydrateByIds: hydrateSpy } as any,
@@ -173,6 +180,62 @@ describe("NativeRealtimeClient multi-run live path over the router", () => {
     expect(res.status).toBe(200);
     expect(isUpToDate(await bodyOf(res))).toBe(true);
     expect(resolveSpy).toHaveBeenCalled();
+  });
+
+  it("a cold env registration resolves immediately instead of holding blind", async () => {
+    // Fresh env subscription (gapCovered=false): a change in the inter-poll gap may have
+    // been missed, so the live poll probes once. The row advanced past the offset floor.
+    const { client, resolveSpy, setRows } = makeClient({
+      routerOptions: { replayWindowMs: 2_000 },
+    });
+    setRows([row("run_1", FLOOR_MS + 5_000, { tags: ["t"] })]);
+
+    const res = await liveRuns(client); // no push needed — the cold probe finds the delta
+    expect(res.status).toBe(200);
+    expect(resolveSpy).toHaveBeenCalledTimes(1);
+    expect(hasRowOp(await bodyOf(res))).toBe(true);
+  });
+
+  it("a cold probe with nothing missed keeps holding", async () => {
+    const { client, src, resolveSpy, setRows } = makeClient({
+      routerOptions: { replayWindowMs: 2_000 },
+      livePollTimeoutMs: 1_500,
+    });
+    setRows([row("run_1", FLOOR_MS - 1_000, { tags: ["t"] })]); // at/below the offset floor
+
+    const responsePromise = liveRuns(client);
+    let settled = false;
+    void responsePromise.then(() => (settled = true));
+    await whenWaiting(src);
+    await sleep(50);
+    expect(settled).toBe(false); // probed, found nothing missed, held
+    expect(resolveSpy).toHaveBeenCalledTimes(1);
+    await responsePromise; // drain via the backstop
+  });
+
+  it("a single-run poll holds on a replayed already-seen record instead of busy re-polling", async () => {
+    const { client, src, setRows } = makeClient({
+      routerOptions: { replayWindowMs: 2_000 },
+      livePollTimeoutMs: 300,
+    });
+    setRows([row("run_1", FLOOR_MS + 1_000)]);
+    const url = `http://localhost:3030/realtime/v1/runs/run_1?offset=${FLOOR_MS + 1_000}_1&handle=run-run_1&live=true`;
+
+    // First poll subscribes the env, then drains via its backstop.
+    const first = await client.streamRun(url, ENV, "run_1", CURRENT_API_VERSION, undefined, "1.0.0");
+    expect(first.status).toBe(200);
+
+    // The record lands between polls; the lingering env subscription buffers it.
+    src.push("env_1", [rec("run_1")]);
+
+    // The next poll replays it, but the row hasn't advanced past the client's offset:
+    // the poll must HOLD (the old behavior returned up-to-date instantly = a busy loop).
+    let settled = false;
+    const second = client.streamRun(url, ENV, "run_1", CURRENT_API_VERSION, undefined, "1.0.0");
+    void second.then(() => (settled = true));
+    await sleep(120);
+    expect(settled).toBe(false);
+    expect((await second).status).toBe(200); // drains via the backstop
   });
 
   it("with holdOnEmpty=false, a matched-but-not-advanced change returns up-to-date without ClickHouse", async () => {

@@ -51,6 +51,8 @@ function makeClient(row: RealtimeRunRow | null) {
     router: new EnvChangeRouter({
       source: { subscribeToEnv: () => () => {} },
       hydrator: { hydrateByIds: async () => (row ? [row] : []) },
+      replayWindowMs: 0,
+      unsubscribeLingerMs: 0,
     }),
     limiter: { incrementAndCheck: async () => true, decrement: async () => {} } as any,
     cachedLimitProvider: { getCachedLimit: async () => 100 },
