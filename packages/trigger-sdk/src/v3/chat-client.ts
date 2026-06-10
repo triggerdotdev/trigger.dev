@@ -616,6 +616,9 @@ export class AgentChat<TAgent = unknown> {
       "Content-Type": "application/json",
       Authorization: `Bearer ${accessToken}`,
       "x-trigger-source": "sdk",
+      // Idempotency key: the server skips appends whose part id it has
+      // already committed, so a retried POST can't duplicate the record.
+      "X-Part-Id": crypto.randomUUID(),
     };
     const response = await this.doFetch(ctx, url, { method: "POST", headers, body });
     if (!response.ok) {

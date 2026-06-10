@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import { z } from "zod";
 import { VERSION } from "../../version.js";
 import { generateJWT } from "../jwt.js";
@@ -1276,12 +1277,16 @@ export class ApiClient {
     part: TBody,
     requestOptions?: ZodFetchOptions
   ) {
+    // Generated once per logical append, outside zodfetch, so its internal
+    // retries reuse the same part id and the server-side dedupe collapses a
+    // retried POST whose first attempt actually committed.
+    const partId = nanoid(7);
     return zodfetch(
       AppendToStreamResponseBody,
       `${this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/${io}/append`,
       {
         method: "POST",
-        headers: this.#getHeaders(false),
+        headers: { ...this.#getHeaders(false), "X-Part-Id": partId },
         body: part,
       },
       mergeRequestOptions(this.defaultRequestOptions, requestOptions)

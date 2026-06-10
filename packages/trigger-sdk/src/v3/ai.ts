@@ -1500,8 +1500,15 @@ const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
   on(handler) {
     return getChatSession().in.on<ChatInputChunk>((chunk) => {
       if (chunk.kind === "message") {
-        return handler(chunk.payload);
+        // Returning `true` marks the record CONSUMED at the manager level:
+        // it is neither buffered for a later `once()` nor re-delivered by
+        // the buffer drain when the next turn re-attaches its handler.
+        // Without this, a message arriving mid-stream was delivered twice
+        // and ran a duplicate turn.
+        void Promise.resolve(handler(chunk.payload)).catch(() => {});
+        return true;
       }
+      return undefined;
     });
   },
   once(options) {
@@ -1601,8 +1608,13 @@ const stopInput: RealtimeDefinedInputStream<{ stop: true; message?: string }> = 
   on(handler) {
     return getChatSession().in.on<ChatInputChunk>((chunk) => {
       if (chunk.kind === "stop") {
-        return handler({ stop: true, message: chunk.message });
+        // Consume stop records (see the messages facade above). A stop is
+        // only meaningful to the turn it interrupts — buffering it would
+        // let a stale stop abort a future turn.
+        void Promise.resolve(handler({ stop: true, message: chunk.message })).catch(() => {});
+        return true;
       }
+      return undefined;
     });
   },
   once(options) {
@@ -9518,7 +9530,8 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     // run-list filter by chat works without the customer having to wire it
     // up. Mirrors the browser-mediated `TriggerChatTransport.doStart` path.
     const userTags = params.triggerConfig?.tags ?? options?.triggerConfig?.tags ?? [];
-    const tags = [`chat:${params.chatId}`, ...userTags].slice(0, 5);
+    // Platform cap is 10 tags per run; the auto chat tag takes one slot.
+    const tags = [`chat:${params.chatId}`, ...userTags].slice(0, 10);
 
     const clientDataMetadata =
       params.clientData !== undefined ? { metadata: params.clientData } : {};
