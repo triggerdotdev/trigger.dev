@@ -688,6 +688,9 @@ export class RunAttemptSystem {
     runId: string;
     snapshotId: string;
     completion: TaskRunSuccessfulExecutionResult;
+    // Note: passing an open transaction as `tx` makes $transaction run inline in it,
+    // which would move this method's post-commit side effects inside the caller's
+    // transaction. Callers must pass a plain client.
     tx: PrismaClientOrTransaction;
     workerId?: string;
     runnerId?: string;

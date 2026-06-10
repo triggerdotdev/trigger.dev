@@ -884,6 +884,12 @@ export class WaitpointSystem {
                 message: error.message,
                 runId,
               });
+            },
+            {
+              // the m2m connect inserts one row per blocking waitpoint, so large
+              // batchTriggerAndWait parents need more than the 5s default
+              timeout: 30_000,
+              maxRetries: 2,
             }
           );
 
@@ -912,11 +918,6 @@ export class WaitpointSystem {
             runId,
             snapshot: newSnapshot,
             eventBus: this.$.eventBus,
-          });
-
-          this.$.logger.debug(`continueRunIfUnblocked: removed blocking waitpoints`, {
-            runId,
-            blockingWaitpoints,
           });
 
           return {

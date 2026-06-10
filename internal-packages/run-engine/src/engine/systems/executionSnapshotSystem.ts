@@ -491,11 +491,7 @@ export class ExecutionSnapshotSystem {
       completedWaitpoints: args.completedWaitpoints,
     });
 
-    return {
-      ...newSnapshot,
-      friendlyId: newSnapshot.friendlyId,
-      runFriendlyId: newSnapshot.runFriendlyId,
-    };
+    return newSnapshot;
   }
 
   public async heartbeatRun({
