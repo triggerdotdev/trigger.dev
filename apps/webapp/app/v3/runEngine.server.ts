@@ -22,6 +22,10 @@ function createRunEngine() {
       env.RUN_ENGINE_TREAT_PRODUCTION_EXECUTION_STALLS_AS_OOM === "1",
     readReplicaSnapshotsSinceEnabled:
       env.RUN_ENGINE_READ_REPLICA_SNAPSHOTS_SINCE_ENABLED === "1",
+    readReplicaSnapshotsSinceRetryDelay: {
+      minMs: env.RUN_ENGINE_SNAPSHOTS_SINCE_REPLICA_RETRY_MIN_MS,
+      maxMs: env.RUN_ENGINE_SNAPSHOTS_SINCE_REPLICA_RETRY_MAX_MS,
+    },
     worker: {
       disabled: env.RUN_ENGINE_WORKER_ENABLED === "0",
       workers: env.RUN_ENGINE_WORKER_COUNT,

@@ -1,5 +1,5 @@
 import { createRedisClient, Redis } from "@internal/redis";
-import { getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
+import { type Counter, getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import {
   CheckpointInput,
@@ -33,6 +33,7 @@ import {
 import { Worker } from "@trigger.dev/redis-worker";
 import { assertNever } from "assert-never";
 import { EventEmitter } from "node:events";
+import { setTimeout } from "node:timers/promises";
 import { BatchQueue } from "../batch-queue/index.js";
 import type {
   BatchItem,
@@ -46,7 +47,12 @@ import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { BillingCache } from "./billingCache.js";
-import { NotImplementedError, RunDuplicateIdempotencyKeyError, RunOneTimeUseTokenError } from "./errors.js";
+import {
+  ExecutionSnapshotNotFoundError,
+  NotImplementedError,
+  RunDuplicateIdempotencyKeyError,
+  RunOneTimeUseTokenError,
+} from "./errors.js";
 import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
 import { getFinalRunStatuses } from "./statuses.js";
@@ -88,6 +94,8 @@ export class RunEngine {
   private logger: Logger;
   private tracer: Tracer;
   private meter: Meter;
+  private snapshotsSinceReplicaMissCounter: Counter;
+  private snapshotsSinceReplicaRetryDelay: { minMs: number; maxMs: number };
   private heartbeatTimeouts: HeartbeatTimeouts;
   private repairSnapshotTimeoutMs: number;
   private batchQueue: BatchQueue;
@@ -271,6 +279,22 @@ export class RunEngine {
 
     this.tracer = options.tracer;
     this.meter = options.meter ?? getMeter("run-engine");
+
+    this.snapshotsSinceReplicaMissCounter = this.meter.createCounter(
+      "run_engine.snapshots_since.replica_miss",
+      {
+        description:
+          "getSnapshotsSince reads where the since snapshot was not yet on the read replica, recovered via a replica retry or served from the primary",
+      }
+    );
+
+    // Normalize the bounds, but keep maxMs <= 0 meaning "skip the replica retry".
+    const retryDelay = options.readReplicaSnapshotsSinceRetryDelay ?? { minMs: 50, maxMs: 200 };
+    const retryMinMs = Math.max(0, retryDelay.minMs);
+    this.snapshotsSinceReplicaRetryDelay = {
+      minMs: retryDelay.maxMs > 0 ? Math.min(retryMinMs, retryDelay.maxMs) : retryMinMs,
+      maxMs: retryDelay.maxMs,
+    };
 
     const defaultHeartbeatTimeouts: HeartbeatTimeouts = {
       PENDING_EXECUTING: 60_000,
@@ -1918,13 +1942,69 @@ export class RunEngine {
     snapshotId: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<RunExecutionData[] | null> {
-    const prisma =
-      tx ?? (this.options.readReplicaSnapshotsSinceEnabled ? this.readOnlyPrisma : this.prisma);
+    const useReplica =
+      !tx &&
+      this.options.readReplicaSnapshotsSinceEnabled === true &&
+      this.readOnlyPrisma !== this.prisma;
+    const prisma = tx ?? (useReplica ? this.readOnlyPrisma : this.prisma);
+
+    const query = async (client: PrismaClientOrTransaction) => {
+      const snapshots = await getExecutionSnapshotsSince(client, runId, snapshotId);
+      return snapshots.map(executionDataFromSnapshot);
+    };
 
     try {
-      const snapshots = await getExecutionSnapshotsSince(prisma, runId, snapshotId);
-      return snapshots.map(executionDataFromSnapshot);
+      return await query(prisma);
     } catch (e) {
+      if (useReplica && e instanceof ExecutionSnapshotNotFoundError) {
+        // Replica lag: the runner learned this snapshot id from the writer before the
+        // replica caught up. Give the replica one jittered retry; if it's still missing,
+        // serve from the writer. Only not-found errors get this treatment - any other
+        // replica failure stays an error rather than shifting read load to the writer.
+        // A miss on the writer too is a real error, not lag.
+        const { minMs, maxMs } = this.snapshotsSinceReplicaRetryDelay;
+        if (maxMs > 0) {
+          await setTimeout(minMs + Math.random() * Math.max(0, maxMs - minMs));
+          try {
+            const result = await query(this.readOnlyPrisma);
+            this.snapshotsSinceReplicaMissCounter.add(1, { outcome: "replica_retry" });
+            return result;
+          } catch (replicaRetryError) {
+            if (!(replicaRetryError instanceof ExecutionSnapshotNotFoundError)) {
+              this.logger.error("Failed to getSnapshotsSince", {
+                message:
+                  replicaRetryError instanceof Error
+                    ? replicaRetryError.message
+                    : replicaRetryError,
+                runId,
+                snapshotId,
+                failedDuring: "replica_retry",
+              });
+              return null;
+            }
+            // still not on the replica - fall through to the primary
+          }
+        }
+
+        try {
+          const result = await query(this.prisma);
+          this.snapshotsSinceReplicaMissCounter.add(1, { outcome: "primary" });
+          this.logger.warn("getSnapshotsSince: snapshot not yet on replica, served from primary", {
+            runId,
+            snapshotId,
+          });
+          return result;
+        } catch (retryError) {
+          this.logger.error("Failed to getSnapshotsSince", {
+            message: retryError instanceof Error ? retryError.message : retryError,
+            runId,
+            snapshotId,
+            failedDuring: "primary_fallback",
+          });
+          return null;
+        }
+      }
+
       this.logger.error("Failed to getSnapshotsSince", {
         message: e instanceof Error ? e.message : e,
         runId,
