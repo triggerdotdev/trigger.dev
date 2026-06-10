@@ -92,8 +92,19 @@ export class ComputeSnapshotService {
     });
   }
 
-  /** Cancel a pending delayed snapshot. Returns true if one was cancelled. */
-  cancel(runFriendlyId: string): boolean {
+  /**
+   * Cancel a pending delayed snapshot. Returns true if one was cancelled.
+   * When `runnerId` is given, only a snapshot scheduled for that same runner
+   * is cancelled - a stale runner for a run that has since been reassigned
+   * must not cancel the new runner's pending snapshot.
+   */
+  cancel(runFriendlyId: string, runnerId?: string): boolean {
+    if (runnerId) {
+      const pending = this.timerWheel.peek(runFriendlyId);
+      if (pending && pending.data.runnerId !== runnerId) {
+        return false;
+      }
+    }
     const cancelled = this.timerWheel.cancel(runFriendlyId);
     if (cancelled) {
       emitOneShot({
