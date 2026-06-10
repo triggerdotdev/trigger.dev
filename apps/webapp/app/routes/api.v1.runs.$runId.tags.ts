@@ -97,6 +97,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           runId: taskRun.id,
           envId: env.id,
           tags: existing.concat(newTags),
+          batchId: taskRun.batchId,
         });
         return json({ message: `Successfully set ${newTags.length} new tags.` }, { status: 200 });
       },

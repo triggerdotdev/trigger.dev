@@ -187,7 +187,12 @@ const { action } = createActionApiRoute(
     if (pgResult) {
       // Reflect metadata.set() on a live feed before the next lifecycle event. Publish the
       // internal id (the router keys single-run feeds by it, not the friendly id from the URL).
-      publishChangeRecord({ runId: pgResult.runId, envId: env.id, batchId: pgResult.batchId });
+      publishChangeRecord({
+        runId: pgResult.runId,
+        envId: env.id,
+        tags: pgResult.runTags,
+        batchId: pgResult.batchId,
+      });
       return json({ metadata: pgResult.metadata }, { status: 200 });
     }
 

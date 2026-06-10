@@ -309,6 +309,7 @@ export class UpdateMetadataService {
       select: {
         id: true,
         batchId: true,
+        runTags: true,
         completedAt: true,
         status: true,
         metadata: true,
@@ -356,9 +357,10 @@ export class UpdateMetadataService {
 
     return {
       metadata: newMetadata,
-      // Internal id + batchId, so callers can publish realtime records keyed how the router indexes feeds.
+      // Internal id + membership keys, so callers can publish full realtime records the router routes by index.
       runId: taskRun.id,
       batchId: taskRun.batchId,
+      runTags: taskRun.runTags,
     };
   }
 
