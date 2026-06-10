@@ -206,6 +206,14 @@ export function v3TasksDashboardPath(
   return `${v3EnvironmentPath(organization, project, environment)}/tasks/dashboard`;
 }
 
+export function v3AllTasksPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/all-tasks`;
+}
+
 export function v3TasksStreamingPath(
   organization: OrgForPath,
   project: ProjectForPath,

@@ -72,6 +72,7 @@ import {
   queryPath,
   regionsPath,
   v3AgentsPath,
+  v3AllTasksPath,
   v3ApiKeysPath,
   v3BatchesPath,
   v3BillingPath,
@@ -388,6 +389,36 @@ export function SideMenu({
                   </CollapsibleElement>
                 )}
               </div>
+            </div>
+
+            <div className="w-full space-y-0">
+              <SideMenuItem
+                name="Tasks"
+                icon={TaskIcon}
+                activeIconColor="text-tasks"
+                inactiveIconColor="text-text-dimmed"
+                to={v3AllTasksPath(organization, project, environment)}
+                data-action="tasks"
+                isCollapsed={isCollapsed}
+              />
+              <SideMenuItem
+                name="Runs"
+                icon={RunsIcon}
+                activeIconColor="text-runs"
+                inactiveIconColor="text-text-dimmed"
+                to={v3RunsPath(organization, project, environment)}
+                data-action="runs"
+                isCollapsed={isCollapsed}
+              />
+              <SideMenuItem
+                name="Sessions"
+                icon={AIChatIcon}
+                activeIconColor="text-sessions"
+                inactiveIconColor="text-text-dimmed"
+                to={v3SessionsPath(organization, project, environment)}
+                data-action="sessions"
+                isCollapsed={isCollapsed}
+              />
             </div>
 
             <SideMenuSection
