@@ -1956,8 +1956,7 @@ export class RunEngine {
       if (useReplica && e instanceof ExecutionSnapshotNotFoundError) {
         // Replica lag: the runner learned this snapshot id from the writer before the
         // replica caught up. Give the replica one jittered retry, then serve from the
-        // writer; only count/warn if a retry succeeds (a permanent miss is a real error,
-        // not lag).
+        // writer; a miss on the writer too is a real error, not lag.
         const { minMs, maxMs } = this.snapshotsSinceReplicaRetryDelay;
         if (maxMs > 0) {
           await setTimeout(minMs + Math.random() * Math.max(0, maxMs - minMs));
@@ -1974,7 +1973,7 @@ export class RunEngine {
                     : replicaRetryError,
                 runId,
                 snapshotId,
-                retriedFromReplica: true,
+                failedDuring: "replica_retry",
               });
               return null;
             }
@@ -1995,7 +1994,7 @@ export class RunEngine {
             message: retryError instanceof Error ? retryError.message : retryError,
             runId,
             snapshotId,
-            retriedFromReplica: true,
+            failedDuring: "primary_fallback",
           });
           return null;
         }

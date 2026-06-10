@@ -989,6 +989,10 @@ describe("RunEngine getSnapshotsSince", () => {
 
         const firstSnapshot = allSnapshots[0];
 
+        // Warm the replica connection so the engine's first attempt is a fast point
+        // read - a cold Prisma connect could outlast the 100ms seeding window below.
+        await schemaOnlyPrisma.$queryRaw`SELECT 1`;
+
         // Kick off the poll against the still-empty replica, then seed the replica
         // well before the ~400ms jittered retry fires - simulating the replica
         // catching up while the engine waits.
