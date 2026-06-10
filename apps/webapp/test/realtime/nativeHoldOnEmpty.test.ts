@@ -120,7 +120,10 @@ const isUpToDate = (body: Awaited<ReturnType<typeof bodyOf>>) =>
 
 describe("NativeRealtimeClient multi-run live path over the router", () => {
   it("a matching change hydrates by id (no ClickHouse) and returns a delta", async () => {
-    const { client, src, hydrateSpy, resolveSpy, setRows } = makeClient();
+    const emits: Array<[string, number, number]> = [];
+    const { client, src, hydrateSpy, resolveSpy, setRows } = makeClient({
+      onEmit: (path: string, lagMs: number, rows: number) => emits.push([path, lagMs, rows]),
+    });
     setRows([row("run_1", FLOOR_MS + 5_000, { tags: ["t"] })]);
 
     const responsePromise = liveRuns(client);
@@ -132,6 +135,9 @@ describe("NativeRealtimeClient multi-run live path over the router", () => {
     expect(hasRowOp(await bodyOf(res))).toBe(true);
     expect(resolveSpy).not.toHaveBeenCalled(); // ClickHouse skipped
     expect(hydrateSpy).toHaveBeenCalledWith("env_1", ["run_1"], expect.anything());
+    expect(emits).toHaveLength(1);
+    expect(emits[0][0]).toBe("fast-hydrate");
+    expect(emits[0][2]).toBe(1); // one delta row
   });
 
   it("a change that doesn't match the filter never wakes the feed (no CH, no PG); a later match does", async () => {
@@ -175,11 +181,16 @@ describe("NativeRealtimeClient multi-run live path over the router", () => {
   });
 
   it("the backstop timeout does a full ClickHouse resolve and returns up-to-date", async () => {
-    const { client, resolveSpy } = makeClient({ livePollTimeoutMs: 50 });
+    const backstopResults: string[] = [];
+    const { client, resolveSpy } = makeClient({
+      livePollTimeoutMs: 50,
+      onBackstopResult: (r: string) => backstopResults.push(r),
+    });
     const res = await liveRuns(client); // never pushed -> backstop fires
     expect(res.status).toBe(200);
     expect(isUpToDate(await bodyOf(res))).toBe(true);
     expect(resolveSpy).toHaveBeenCalled();
+    expect(backstopResults).toEqual(["empty"]);
   });
 
   it("a cold env registration resolves immediately instead of holding blind", async () => {

@@ -63,6 +63,41 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
     registers: [metricsRegister],
   });
 
+  const deliveryLagMs = new Histogram({
+    name: "realtime_native_delivery_lag_ms",
+    help: "Live emissions: now minus the newest emitted row's updatedAt (PG clock vs app clock, so approximate). The end-to-end delivery SLI — a p99 near the backstop hold means wakes are being missed.",
+    labelNames: ["path"] as const,
+    buckets: [5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 30_000],
+    registers: [metricsRegister],
+  });
+
+  const emittedRows = new Histogram({
+    name: "realtime_native_emitted_rows",
+    help: "Rows per live emission. Deltas should be small; a fat tail means working-set/offset-floor fallbacks are re-emitting full sets.",
+    buckets: [1, 2, 5, 10, 25, 50, 100, 250, 1_000],
+    registers: [metricsRegister],
+  });
+
+  const backstops = new Counter({
+    name: "realtime_native_backstop_total",
+    help: "Backstop full resolves by outcome. 'empty' is normal idle behavior; sustained 'delivered' means the notify/replay path missed changes — alert on it.",
+    labelNames: ["result"] as const,
+    registers: [metricsRegister],
+  });
+
+  const concurrencyRejections = new Counter({
+    name: "realtime_native_concurrency_rejections_total",
+    help: "Polls rejected (429) by the per-env concurrency limiter.",
+    registers: [metricsRegister],
+  });
+
+  const replayEvictions = new Counter({
+    name: "realtime_native_replay_evictions_total",
+    help: "Replay-buffer evictions. 'window' expiry is normal; 'cap' means an env churns more runs inside the window than the buffer holds (replay guarantee degrading — retune the knobs).",
+    labelNames: ["reason"] as const,
+    registers: [metricsRegister],
+  });
+
   const limiter = new RealtimeConcurrencyLimiter({
     keyPrefix: "tr:realtime:native:concurrency",
     redis: {
@@ -90,6 +125,7 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
     replayMaxRunsPerEnv: env.REALTIME_BACKEND_NATIVE_REPLAY_MAX_RUNS,
     unsubscribeLingerMs: env.REALTIME_BACKEND_NATIVE_UNSUBSCRIBE_LINGER_MS,
     onReplay: (result) => replays.inc({ result }),
+    onReplayEviction: (reason) => replayEvictions.inc({ reason }),
   });
 
   const client = new NativeRealtimeClient({
@@ -128,6 +164,12 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
     onRunSetResolve: (result) => runSetResolves.inc({ result }),
     onRunSetQuery: (stage, ms) => runSetQueryMs.observe({ stage }, ms),
     onResolveAdmissionWait: () => resolveAdmissionWaits.inc(),
+    onEmit: (path, lagMs, rowCount) => {
+      deliveryLagMs.observe({ path }, Math.max(lagMs, 0));
+      emittedRows.observe(rowCount);
+    },
+    onBackstopResult: (result) => backstops.inc({ result }),
+    onConcurrencyRejected: () => concurrencyRejections.inc(),
   });
 
   new Gauge({
@@ -145,6 +187,28 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
     registers: [metricsRegister],
     collect() {
       this.set(client.resolveAdmissionInUse);
+    },
+  });
+
+  new Gauge({
+    name: "realtime_native_held_feeds",
+    help: "Long-polls currently held, by feed kind — the system's capacity unit.",
+    labelNames: ["kind"] as const,
+    registers: [metricsRegister],
+    collect() {
+      const counts = router.heldFeedCounts;
+      this.set({ kind: "run" }, counts.run);
+      this.set({ kind: "tag" }, counts.tag);
+      this.set({ kind: "batch" }, counts.batch);
+    },
+  });
+
+  new Gauge({
+    name: "realtime_native_active_envs",
+    help: "Environments currently routed on this instance (held feeds + lingering subscriptions).",
+    registers: [metricsRegister],
+    collect() {
+      this.set(router.activeEnvCount);
     },
   });
 

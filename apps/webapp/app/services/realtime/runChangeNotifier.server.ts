@@ -60,6 +60,12 @@ export type RunChangeNotifierOptions = {
   envWakeCoalesceWindowMs?: number;
   /** Use Redis sharded pub/sub (SSUBSCRIBE/SPUBLISH); cluster-only and requires `clusterOptions.shardedSubscribers`. Defaults to false (classic). */
   shardedPubSub?: boolean;
+  /** Observability hook: a publish settled (ok) or failed (the leading degradation signal). */
+  onPublishResult?: (ok: boolean) => void;
+  /** Observability hook: a raw channel message arrived (pre-coalesce). */
+  onMessageReceived?: () => void;
+  /** Observability hook: a coalesced batch was delivered to listeners (records per batch). */
+  onBatchDelivered?: (recordCount: number) => void;
 };
 
 const DEFAULT_CHANNEL_PREFIX = "realtime:";
@@ -115,15 +121,22 @@ export class RunChangeNotifier {
       const result = this.#sharded
         ? publisher.spublish(channel, payload)
         : publisher.publish(channel, payload);
-      if (typeof (result as Promise<number>)?.catch === "function") {
-        (result as Promise<number>).catch((error) => {
-          logger.error("[runChangeNotifier] Failed to publish run-changed notification", {
-            error,
-            channel,
-          });
-        });
+      if (typeof (result as Promise<number>)?.then === "function") {
+        (result as Promise<number>).then(
+          () => this.options.onPublishResult?.(true),
+          (error) => {
+            this.options.onPublishResult?.(false);
+            logger.error("[runChangeNotifier] Failed to publish run-changed notification", {
+              error,
+              channel,
+            });
+          }
+        );
+      } else {
+        this.options.onPublishResult?.(true);
       }
     } catch (error) {
+      this.options.onPublishResult?.(false);
       logger.error("[runChangeNotifier] Failed to publish run-changed notification", {
         error,
         channel,
@@ -241,6 +254,7 @@ export class RunChangeNotifier {
   }
 
   #onMessage(channel: string, message: string) {
+    this.options.onMessageReceived?.();
     // Accumulate the decoded record (deduped by runId) before delivering, so a coalesced
     // wake carries every run that moved during the window.
     this.#addPending(channel, decodeChangeRecord(message));
@@ -274,6 +288,7 @@ export class RunChangeNotifier {
     if (!listeners || batch.length === 0) {
       return;
     }
+    this.options.onBatchDelivered?.(batch.length);
     for (const onBatch of [...listeners]) {
       onBatch(batch);
     }

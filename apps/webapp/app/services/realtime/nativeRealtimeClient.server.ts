@@ -116,6 +116,14 @@ export type NativeRealtimeClientOptions = {
   onRunSetQuery?: (stage: "resolve" | "hydrate", ms: number) => void;
   /** Observability hook: a fresh resolve waited `ms` for an admission permit (only when the gate engaged). */
   onResolveAdmissionWait?: (ms: number) => void;
+  /** Observability hook: a live emission left the server — lag is now minus the newest
+   * emitted row's updatedAt (the end-to-end delivery SLI), rowCount the delta size. */
+  onEmit?: (path: LivePollPath, lagMs: number, rowCount: number) => void;
+  /** Observability hook: a backstop resolve found missed changes (delivered) or nothing
+   * (empty). Sustained `delivered` means the notify/replay path is leaking. */
+  onBackstopResult?: (result: "delivered" | "empty") => void;
+  /** Observability hook: a poll was rejected by the per-env concurrency limiter (429). */
+  onConcurrencyRejected?: () => void;
 };
 
 const DEFAULT_CONCURRENCY_LIMIT = 100_000;
@@ -414,6 +422,7 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
           const probed = await this.options.runReader.getRunById(environment.id, runId);
           if (probed && probed.updatedAt.getTime() > lastSeenMs) {
             const seq = this.#nextSeq();
+            this.options.onEmit?.("cold-resolve", Date.now() - probed.updatedAt.getTime(), 1);
             return this.#buildResponse(
               buildUpdateBody(probed, skipColumns),
               apiVersion,
@@ -450,6 +459,7 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
             const updatedAtMs = matched.row.updatedAt.getTime();
             if (updatedAtMs > lastSeenMs) {
               const seq = this.#nextSeq();
+              this.options.onEmit?.("fast-hydrate", Date.now() - updatedAtMs, 1);
               return this.#buildResponse(
                 buildRowsBodyFromSerialized([
                   { runId: matched.row.id, value: matched.value, operation: "update" },
@@ -469,6 +479,8 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
           const row = await this.options.runReader.getRunById(environment.id, runId);
           const seq = this.#nextSeq();
           if (row && row.updatedAt.getTime() > lastSeenMs) {
+            this.options.onBackstopResult?.("delivered");
+            this.options.onEmit?.("full-resolve", Date.now() - row.updatedAt.getTime(), 1);
             return this.#buildResponse(
               buildUpdateBody(row, skipColumns),
               apiVersion,
@@ -480,6 +492,7 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
               }
             );
           }
+          this.options.onBackstopResult?.("empty");
           return this.#buildResponse(buildUpToDateBody(), apiVersion, clientVersion, {
             offset,
             handle,
@@ -601,6 +614,7 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
             this.#workingSetCache.set(workingSetKey, touched);
             prevSeen = touched;
             if (changes.length > 0) {
+              this.options.onEmit?.("cold-resolve", Date.now() - maxUpdatedAt, changes.length);
               return emitFromRows(changes, maxUpdatedAt);
             }
             continue; // nothing was missed — hold as usual
@@ -633,6 +647,7 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
             prevSeen = merged;
 
             if (changes.length > 0) {
+              this.options.onEmit?.("fast-hydrate", Date.now() - maxUpdatedAt, changes.length);
               return emitFromSerialized(changes, maxUpdatedAt);
             }
             // Matched but no row advanced (already seen). Keep holding.
@@ -655,10 +670,13 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
           prevSeen = touched;
 
           if (changes.length > 0) {
+            this.options.onBackstopResult?.("delivered");
+            this.options.onEmit?.("full-resolve", Date.now() - maxUpdatedAt, changes.length);
             return emitFromRows(changes, maxUpdatedAt);
           }
           // Empty backstop diff: timeout returns up-to-date; (holdOnEmpty never reaches
           // here on a notify — those are handled in the fast path above).
+          this.options.onBackstopResult?.("empty");
           return emitUpToDate(maxUpdatedAt);
         }
       } finally {
@@ -946,6 +964,7 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
     );
 
     if (!canProceed) {
+      this.options.onConcurrencyRejected?.();
       return json({ error: "Too many concurrent requests" }, { status: 429 });
     }
 

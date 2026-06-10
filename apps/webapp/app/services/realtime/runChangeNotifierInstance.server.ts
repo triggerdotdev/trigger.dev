@@ -1,4 +1,4 @@
-import { Gauge } from "prom-client";
+import { Counter, Gauge } from "prom-client";
 import { env } from "~/env.server";
 import { metricsRegister } from "~/metrics.server";
 import { singleton } from "~/utils/singleton";
@@ -16,6 +16,25 @@ function initializeRunChangeNotifier(): RunChangeNotifier {
   // broadcast every message to every node, so this is what actually shards load.
   const shardedPubSub = clusterMode && env.REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_SHARDED_ENABLED === "1";
 
+  const publishes = new Counter({
+    name: "realtime_run_change_notifier_publishes_total",
+    help: "Change-record publishes by outcome. Failures are the leading indicator that feeds are degrading to their backstops (pub/sub Redis trouble).",
+    labelNames: ["result"] as const,
+    registers: [metricsRegister],
+  });
+
+  const received = new Counter({
+    name: "realtime_run_change_notifier_messages_received_total",
+    help: "Raw channel messages received by this instance's subscriber, pre-coalesce.",
+    registers: [metricsRegister],
+  });
+
+  const delivered = new Counter({
+    name: "realtime_run_change_notifier_batches_delivered_total",
+    help: "Coalesced batches delivered to listeners. received/batches = the coalesce ratio (how hard a busy env is being collapsed).",
+    registers: [metricsRegister],
+  });
+
   const notifier = new RunChangeNotifier({
     redis: {
       host: env.REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_HOST,
@@ -29,6 +48,9 @@ function initializeRunChangeNotifier(): RunChangeNotifier {
     },
     envWakeCoalesceWindowMs: env.REALTIME_BACKEND_NATIVE_ENV_WAKE_COALESCE_WINDOW_MS,
     shardedPubSub,
+    onPublishResult: (ok) => publishes.inc({ result: ok ? "ok" : "error" }),
+    onMessageReceived: () => received.inc(),
+    onBatchDelivered: () => delivered.inc(),
   });
 
   new Gauge({

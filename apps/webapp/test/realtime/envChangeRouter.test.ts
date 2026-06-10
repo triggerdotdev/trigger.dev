@@ -317,7 +317,11 @@ describe("EnvChangeRouter", () => {
       ["r2", row("r2")],
       ["r3", row("r3")],
     ]);
-    const { router, src, hydrateSpy } = makeRouter(rows, { replayMaxRunsPerEnv: 2 });
+    const evictions: string[] = [];
+    const { router, src, hydrateSpy } = makeRouter(rows, {
+      replayMaxRunsPerEnv: 2,
+      onReplayEviction: (reason: string) => evictions.push(reason),
+    });
     const reg = router.register("env_1", { kind: "batch", batchId: "batch_1" }, []);
     src.push("env_1", [
       record("r1", { batchId: "batch_1" }),
@@ -329,6 +333,7 @@ describe("EnvChangeRouter", () => {
     expect(result.reason).toBe("notify");
     // r1 was evicted by the cap; only the newest two replay.
     expect(hydrateSpy).toHaveBeenCalledWith("env_1", ["r2", "r3"], []);
+    expect(evictions).toEqual(["cap"]);
     reg.close();
   });
 });

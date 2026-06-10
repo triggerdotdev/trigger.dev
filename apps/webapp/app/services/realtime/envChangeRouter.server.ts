@@ -48,6 +48,9 @@ export type EnvChangeRouterOptions = {
   unsubscribeLingerMs?: number;
   /** Observability: a replay scan found candidates and delivered rows (or none survived). */
   onReplay?: (result: "delivered" | "empty") => void;
+  /** Observability: a buffered record was evicted. `cap` evictions mean the env churns more
+   * runs inside the window than the buffer holds (the replay guarantee is degrading). */
+  onReplayEviction?: (reason: "cap" | "window") => void;
 };
 
 const DEFAULT_REPLAY_WINDOW_MS = 2_000;
@@ -210,6 +213,17 @@ export class EnvChangeRouter {
     return this.#envs.size;
   }
 
+  /** Currently-held feeds by kind (for metrics) — the system's capacity unit. */
+  get heldFeedCounts(): { run: number; tag: number; batch: number } {
+    const counts = { run: 0, tag: 0, batch: 0 };
+    for (const env of this.#envs.values()) {
+      for (const feed of env.feeds) {
+        counts[feed.filter.kind]++;
+      }
+    }
+    return counts;
+  }
+
   #ensureEnv(environmentId: string): EnvState {
     const existing = this.#envs.get(environmentId);
     if (existing) {
@@ -282,6 +296,7 @@ export class EnvChangeRouter {
       if (entry.receivedAtMs >= cutoff && env.recent.size <= maxRuns) {
         break;
       }
+      this.options.onReplayEviction?.(entry.receivedAtMs < cutoff ? "window" : "cap");
       env.recent.delete(runId);
     }
   }
