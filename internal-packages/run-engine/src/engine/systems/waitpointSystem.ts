@@ -39,6 +39,15 @@ export type WaitpointContinuationResult =
       waitpoints: Array<WaitpointContinuationWaitpoint>;
     };
 
+export type CompletedWaitpointMutationResult = {
+  waitpoint: Waitpoint;
+  affectedTaskRuns: {
+    taskRunId: string;
+    spanIdToComplete: string | null;
+    createdAt: Date;
+  }[];
+};
+
 export class WaitpointSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
@@ -80,9 +89,34 @@ export class WaitpointSystem {
       isError: boolean;
     };
   }): Promise<Waitpoint> {
+    const result = await this.completeWaitpointMutation({ id, output });
+    await this.scheduleWaitpointContinuations({ ...result, output });
+    return result.waitpoint;
+  }
+
+  /** Marks the waitpoint COMPLETED and returns the runs it was blocking.
+   * Pure Postgres mutation — safe to run inside a transaction via `tx`.
+   * Callers passing `tx` MUST call scheduleWaitpointContinuations() with the
+   * result AFTER the surrounding transaction commits, otherwise blocked runs
+   * are never continued. */
+  async completeWaitpointMutation({
+    id,
+    output,
+    tx,
+  }: {
+    id: string;
+    output?: {
+      value: string;
+      type?: string;
+      isError: boolean;
+    };
+    tx?: PrismaClientOrTransaction;
+  }): Promise<CompletedWaitpointMutationResult> {
+    const prisma = tx ?? this.$.prisma;
+
     // 1. Complete the Waitpoint (if not completed)
     const [updateError, updateResult] = await tryCatch(
-      this.$.prisma.waitpoint.updateMany({
+      prisma.waitpoint.updateMany({
         where: { id, status: "PENDING" },
         data: {
           status: "COMPLETED",
@@ -106,7 +140,7 @@ export class WaitpointSystem {
       );
     }
 
-    const waitpoint = await this.$.prisma.waitpoint.findFirst({
+    const waitpoint = await prisma.waitpoint.findFirst({
       where: { id },
     });
 
@@ -123,7 +157,7 @@ export class WaitpointSystem {
     }
 
     // 2. Find the TaskRuns blocked by this waitpoint
-    const affectedTaskRuns = await this.$.prisma.taskRunWaitpoint.findMany({
+    const affectedTaskRuns = await prisma.taskRunWaitpoint.findMany({
       where: { waitpointId: id },
       select: { taskRunId: true, spanIdToComplete: true, createdAt: true },
     });
@@ -134,6 +168,23 @@ export class WaitpointSystem {
       });
     }
 
+    return { waitpoint, affectedTaskRuns };
+  }
+
+  /** Post-commit side effects of completing a waitpoint: schedules continuation of
+   * the blocked runs and emits events. Must be called AFTER the mutation committed —
+   * never from inside a transaction. */
+  async scheduleWaitpointContinuations({
+    waitpoint,
+    affectedTaskRuns,
+    output,
+  }: CompletedWaitpointMutationResult & {
+    output?: {
+      value: string;
+      type?: string;
+      isError: boolean;
+    };
+  }): Promise<void> {
     // 3. Schedule trying to continue the runs
     for (const run of affectedTaskRuns) {
       const jobId = `continueRunIfUnblocked:${run.taskRunId}`;
@@ -141,7 +192,7 @@ export class WaitpointSystem {
       const availableAt = new Date(Date.now() + 50);
 
       this.$.logger.debug(`completeWaitpoint: enqueueing continueRunIfUnblocked`, {
-        waitpointId: id,
+        waitpointId: waitpoint.id,
         runId: run.taskRunId,
         jobId,
         availableAt,
@@ -169,8 +220,6 @@ export class WaitpointSystem {
         });
       }
     }
-
-    return waitpoint;
   }
 
   /**
