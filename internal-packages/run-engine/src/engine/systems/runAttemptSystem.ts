@@ -459,29 +459,27 @@ export class RunAttemptSystem {
                 },
               });
 
-              const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(tx, {
-                run,
-                snapshot: {
-                  executionStatus: "EXECUTING",
-                  description: `Attempt created, starting execution${
-                    isWarmStart ? " (warm start)" : ""
-                  }`,
-                },
-                previousSnapshotId: latestSnapshot.id,
-                environmentId: latestSnapshot.environmentId,
-                environmentType: latestSnapshot.environmentType,
-                projectId: latestSnapshot.projectId,
-                organizationId: latestSnapshot.organizationId,
-                batchId: latestSnapshot.batchId ?? undefined,
-                completedWaitpoints: latestSnapshot.completedWaitpoints,
-                workerId,
-                runnerId,
-              });
-
-              if (taskRun.ttl) {
-                //don't expire the run, it's going to execute
-                await this.$.worker.ack(`expireRun:${taskRun.id}`);
-              }
+              const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshotMutation(
+                tx,
+                {
+                  run,
+                  snapshot: {
+                    executionStatus: "EXECUTING",
+                    description: `Attempt created, starting execution${
+                      isWarmStart ? " (warm start)" : ""
+                    }`,
+                  },
+                  previousSnapshotId: latestSnapshot.id,
+                  environmentId: latestSnapshot.environmentId,
+                  environmentType: latestSnapshot.environmentType,
+                  projectId: latestSnapshot.projectId,
+                  organizationId: latestSnapshot.organizationId,
+                  batchId: latestSnapshot.batchId ?? undefined,
+                  completedWaitpoints: latestSnapshot.completedWaitpoints,
+                  workerId,
+                  runnerId,
+                }
+              );
 
               return { updatedRun: run, snapshot: newSnapshot };
             },
@@ -509,6 +507,18 @@ export class RunAttemptSystem {
           }
 
           const { updatedRun, snapshot } = result;
+
+          if (taskRun.ttl) {
+            //don't expire the run, it's going to execute
+            await this.$.worker.ack(`expireRun:${taskRun.id}`);
+          }
+
+          // Side effects must only run against a durably committed snapshot row.
+          await this.executionSnapshotSystem.scheduleSnapshotSideEffects({
+            snapshot,
+            runId: taskRun.id,
+            completedWaitpoints: latestSnapshot.completedWaitpoints,
+          });
 
           this.$.eventBus.emit("runAttemptStarted", {
             time: new Date(),
