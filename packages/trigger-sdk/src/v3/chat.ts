@@ -934,6 +934,16 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     await this.callWithAuthRetry(chatId, state, send);
 
+    // Supersede any in-flight reader before subscribing — same as
+    // `sendMessages`. Two concurrent readers both write `state.lastEventId`
+    // and the slower one can regress the cursor, replaying records on the
+    // next reconnect.
+    const activeStream = this.activeStreams.get(chatId);
+    if (activeStream) {
+      activeStream.abort();
+      this.activeStreams.delete(chatId);
+    }
+
     return this.subscribeToSessionStream(state, undefined, chatId);
   };
 

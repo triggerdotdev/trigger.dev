@@ -4252,6 +4252,13 @@ export type TurnCompleteEvent<TClientData = unknown, TUIM extends UIMessage = UI
    * manual `pipeChat()` or an aborted stream).
    */
   finishReason?: FinishReason;
+  /**
+   * Set when the turn failed (the `run()` body or a lifecycle hook threw).
+   * On an errored turn `responseMessage` is undefined or partial and
+   * `finishReason` is `"error"`. Use this to mark the turn failed in your
+   * persistence. Undefined on a successful turn.
+   */
+  error?: unknown;
 };
 
 /**
@@ -5094,6 +5101,11 @@ function chatCustomAgent<
       // No client-side upsert needed.
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
       locals.set(chatAgentRunContextKey, runOptions.ctx);
+      // Initialize the turn-complete trim slot so `chat.writeTurnComplete`
+      // trims `session.out` back to the previous turn boundary. Without
+      // this the slot is undefined and the trim never runs, so `.out`
+      // grows without bound for the whole custom-agent surface.
+      locals.set(lastTurnCompleteSeqNumKey, { value: undefined });
       markChatAgentRunForStreamsWarning();
       taskContext.setConversationId(payload.chatId);
       stampConversationIdOnActiveSpan(payload.chatId);
@@ -7556,6 +7568,9 @@ function chatAgent<
                 throw turnError;
               }
 
+              let errorTurnCompleteResult: Awaited<
+                ReturnType<typeof writeTurnCompleteChunk>
+              > | undefined;
               try {
                 await withChatWriter(async (writer) => {
                   const errorText =
@@ -7563,9 +7578,79 @@ function chatAgent<
                   writer.write({ type: "error", errorText } as any);
                 });
                 // Signal turn complete so the client knows this turn is done
-                await writeTurnCompleteChunk(currentWirePayload.chatId);
+                errorTurnCompleteResult = await writeTurnCompleteChunk(currentWirePayload.chatId);
               } catch {
                 // Best-effort — if stream write fails, let the run continue anyway
+              }
+
+              // Fire onTurnComplete on the error path too — the docs promise it
+              // runs "after every turn, successful or errored" so customers can
+              // mark the turn failed. `responseMessage` is undefined/partial and
+              // `error` carries the thrown value.
+              if (onTurnComplete) {
+                try {
+                  await tracer.startActiveSpan(
+                    "onTurnComplete()",
+                    async () => {
+                      await onTurnComplete({
+                        ctx,
+                        chatId: currentWirePayload.chatId,
+                        messages: accumulatedMessages,
+                        uiMessages: accumulatedUIMessages,
+                        newMessages: [],
+                        newUIMessages: [],
+                        responseMessage: undefined,
+                        rawResponseMessage: undefined,
+                        turn,
+                        runId: ctx.run.id,
+                        chatAccessToken: "",
+                        clientData: currentWirePayload.metadata as inferSchemaIn<TClientDataSchema>,
+                        stopped: false,
+                        continuation,
+                        previousRunId,
+                        preloaded,
+                        totalUsage: cumulativeUsage,
+                        finishReason: "error",
+                        error: turnError,
+                        lastEventId: errorTurnCompleteResult?.lastEventId,
+                      });
+                    },
+                    {
+                      attributes: {
+                        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                        [SemanticInternalAttributes.COLLAPSED]: true,
+                        "chat.id": currentWirePayload.chatId,
+                        "chat.turn": turn + 1,
+                        "chat.errored": true,
+                      },
+                    }
+                  );
+                } catch {
+                  // A throwing onTurnComplete on the error path must not crash
+                  // the run — keep the conversation alive for the next message.
+                }
+              }
+
+              // Persist a snapshot so the failed turn's user message isn't
+              // stranded. `writeTurnCompleteChunk` already advanced the `.in`
+              // cursor past it (via the session-in-event-id header), and the
+              // success-path snapshot write is skipped on error — without this
+              // the next boot would resume past a message that exists in
+              // neither the snapshot nor the replayable `.in` tail.
+              if (!hydrateMessages) {
+                try {
+                  await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
+                    version: 1,
+                    savedAt: Date.now(),
+                    messages: accumulatedUIMessages,
+                    lastOutEventId: errorTurnCompleteResult?.lastEventId,
+                  });
+                } catch (error) {
+                  logger.warn("chat.agent: error-path snapshot write failed", {
+                    error: error instanceof Error ? error.message : String(error),
+                    sessionId: sessionIdForSnapshot,
+                  });
+                }
               }
 
               // chat.requestUpgrade() / chat.endRun() — exit after error turn too
@@ -9873,8 +9958,19 @@ async function writeTurnCompleteChunk(
   // 2. Trim back to the previous turn-complete, if we have one. Skipping on
   //    first-turn-ever (or first turn post-OOM without a snapshot seed) is
   //    fine — the chain catches up next turn.
-  const slot = locals.get(lastTurnCompleteSeqNumKey);
-  const prev = slot?.value;
+  //
+  // Lazily create the slot if a caller reached here without one (a plain
+  // `task()` driving `chat.createSession` / `chat.writeTurnComplete`, vs.
+  // chatAgent/chatCustomAgent which seed it at boot). The first call then
+  // does no trim (nothing before it) and records its seq; later calls trim
+  // — so `.out` is bounded for every writeTurnComplete caller, not just the
+  // built-in agents.
+  let slot = locals.get(lastTurnCompleteSeqNumKey);
+  if (!slot) {
+    slot = { value: undefined };
+    locals.set(lastTurnCompleteSeqNumKey, slot);
+  }
+  const prev = slot.value;
   if (slot && prev !== undefined) {
     try {
       await session.out.trimTo(prev);
