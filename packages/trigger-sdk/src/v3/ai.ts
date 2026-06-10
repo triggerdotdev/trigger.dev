@@ -7583,6 +7583,17 @@ function chatAgent<
                 // Best-effort — if stream write fails, let the run continue anyway
               }
 
+              // The submit-message merge into the accumulator may not have run
+              // yet (a pre-run hook threw), so fold the wire message in for the
+              // error event + snapshot — the cursor has already advanced past it,
+              // so otherwise it survives in neither the snapshot nor the `.in` tail.
+              const erroredWireMessage = (currentWirePayload as { message?: TUIMessage }).message;
+              const erroredUIMessages =
+                erroredWireMessage &&
+                !accumulatedUIMessages.some((m) => m.id === erroredWireMessage.id)
+                  ? [...accumulatedUIMessages, erroredWireMessage]
+                  : accumulatedUIMessages;
+
               // Fire onTurnComplete on the error path too — the docs promise it
               // runs "after every turn, successful or errored" so customers can
               // mark the turn failed. `responseMessage` is undefined/partial and
@@ -7596,15 +7607,18 @@ function chatAgent<
                         ctx,
                         chatId: currentWirePayload.chatId,
                         messages: accumulatedMessages,
-                        uiMessages: accumulatedUIMessages,
+                        uiMessages: erroredUIMessages,
                         newMessages: [],
-                        newUIMessages: [],
+                        newUIMessages: erroredWireMessage ? [erroredWireMessage] : [],
                         responseMessage: undefined,
                         rawResponseMessage: undefined,
                         turn,
                         runId: ctx.run.id,
                         chatAccessToken: "",
-                        clientData: currentWirePayload.metadata as inferSchemaIn<TClientDataSchema>,
+                        // Parsed `clientData` isn't reliably in scope here (parsing
+                        // may itself be the failure), and the raw metadata is the
+                        // wrong shape — leave it undefined on the error path.
+                        clientData: undefined,
                         stopped: false,
                         continuation,
                         previousRunId,
@@ -7642,7 +7656,7 @@ function chatAgent<
                   await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
                     version: 1,
                     savedAt: Date.now(),
-                    messages: accumulatedUIMessages,
+                    messages: erroredUIMessages,
                     lastOutEventId: errorTurnCompleteResult?.lastEventId,
                   });
                 } catch (error) {

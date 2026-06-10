@@ -1279,8 +1279,9 @@ export class ApiClient {
   ) {
     // Generated once per logical append, outside zodfetch, so its internal
     // retries reuse the same part id and the server-side dedupe collapses a
-    // retried POST whose first attempt actually committed.
-    const partId = nanoid(7);
+    // retried POST whose first attempt actually committed. Full-length nanoid
+    // (~126 bits) to match the browser transport's randomUUID entropy.
+    const partId = nanoid();
     return zodfetch(
       AppendToStreamResponseBody,
       `${this.baseUrl}/realtime/v1/sessions/${encodeURIComponent(sessionIdOrExternalId)}/${io}/append`,

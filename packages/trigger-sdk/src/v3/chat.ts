@@ -944,6 +944,11 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       this.activeStreams.delete(chatId);
     }
 
+    // Mark streaming + persist so a reload mid-action resumes (reconnectToStream
+    // no-ops when the persisted session says isStreaming: false).
+    state.isStreaming = true;
+    this.notifySessionChange(chatId, state);
+
     return this.subscribeToSessionStream(state, undefined, chatId);
   };
 
@@ -1123,14 +1128,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
   ): Promise<void> {
     const ctx: ChatTransportEndpointContext = { endpoint: "in", chatId };
     const url = `${this.resolveBaseURL(ctx)}/realtime/v1/sessions/${encodeURIComponent(chatId)}/in/append`;
+    // extraHeaders first so the fixed headers below win — a transport-wide
+    // X-Part-Id must not override the per-append idempotency key.
     const headers: Record<string, string> = {
+      ...this.extraHeaders,
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
       "x-trigger-source": "sdk",
-      // Idempotency key: the server skips appends whose part id it has
-      // already committed, so a retried POST can't duplicate the record.
       "X-Part-Id": partId ?? crypto.randomUUID(),
-      ...this.extraHeaders,
     };
     const response = await this.doFetch(ctx, url, { method: "POST", headers, body });
     if (!response.ok) {
