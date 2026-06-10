@@ -117,10 +117,13 @@ export class ConsumerPoolMetrics {
 
     this.dequeueDurationSeconds = new Histogram({
       name: `${this.prefix}_dequeue_duration_seconds`,
-      help: "Client-side latency of the dequeue API call (POST /engine/v1/worker-actions/dequeue), measured around the HTTP request",
+      help: "Client-side duration of the dequeue API call (POST /engine/v1/worker-actions/dequeue), including the HTTP client's internal retries and backoff",
       labelNames: ["outcome"],
-      // Tuned for the dequeue endpoint: sub-10ms hits through a multi-second tail.
-      buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
+      // The HTTP client retries internally (up to 5 attempts with 0.5-5s backoff),
+      // so one observation can span multiple requests plus sleeps. A retryable
+      // failure surfaces as `error` only after >=7.5s of backoff - the 10/30s
+      // buckets exist so that mode doesn't collapse into +Inf.
+      buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30],
       registers: [this.register],
     });
   }

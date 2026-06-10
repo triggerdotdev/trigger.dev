@@ -152,7 +152,9 @@ export class RunQueueConsumer implements QueueConsumer {
         }
       }
     } catch (clientError) {
-      // Captures network errors and timeouts - exactly the tail latencies we care about.
+      // wrapZodFetch traps all errors into { success: false }, so this branch is
+      // unreachable with the real client today. Record defensively so a future
+      // client that throws can't silently lose error samples.
       this.metrics?.observeDequeueLatency((performance.now() - dequeueStart) / 1000, "error");
       this.logger.error("client.dequeue error", { error: clientError });
     }

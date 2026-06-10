@@ -79,7 +79,9 @@ describe("RunQueueConsumer dequeue latency metric", () => {
     );
   });
 
-  it('records outcome="error" when the dequeue call throws (network error / timeout)', async () => {
+  // Defensive path: wrapZodFetch traps all errors today, so the real client
+  // never throws - this guards against a future client that does.
+  it('records outcome="error" when the dequeue call throws', async () => {
     await runOneDequeue({
       dequeueImpl: async () => {
         throw new Error("network down");
