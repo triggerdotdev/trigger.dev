@@ -326,7 +326,12 @@ export class ExecutionSnapshotSystem {
     this.heartbeatTimeouts = options.heartbeatTimeouts;
   }
 
-  public async createExecutionSnapshot(
+  /**
+   * Pure Postgres mutation — safe inside a transaction. Inserts the snapshot row and
+   * returns the enhanced result. Direct callers MUST call `scheduleSnapshotSideEffects()`
+   * with the result after the surrounding transaction commits.
+   */
+  public async createExecutionSnapshotMutation(
     prisma: PrismaClientOrTransaction,
     {
       run,
@@ -399,34 +404,94 @@ export class ExecutionSnapshotSystem {
       },
     });
 
+    return {
+      ...newSnapshot,
+      friendlyId: SnapshotId.toFriendlyId(newSnapshot.id),
+      runFriendlyId: RunId.toFriendlyId(newSnapshot.runId),
+      completedWaitpoints,
+    };
+  }
+
+  /**
+   * Post-commit side effects for a newly created snapshot: arms the heartbeat job (if
+   * the execution status requires one) and emits the `executionSnapshotCreated` event.
+   * Never call this inside a transaction — these side effects must only run against a
+   * durable (committed) snapshot row.
+   */
+  public async scheduleSnapshotSideEffects({
+    snapshot,
+    runId,
+    error,
+    completedWaitpoints,
+  }: {
+    snapshot: Awaited<ReturnType<ExecutionSnapshotSystem["createExecutionSnapshotMutation"]>>;
+    runId: string;
+    error?: string;
+    completedWaitpoints?: { id: string; index?: number }[];
+  }) {
     if (!error) {
       //set heartbeat (if relevant)
-      const intervalMs = this.#getHeartbeatIntervalMs(newSnapshot.executionStatus);
+      const intervalMs = this.#getHeartbeatIntervalMs(snapshot.executionStatus);
       if (intervalMs !== null) {
         await this.$.worker.enqueue({
-          id: `heartbeatSnapshot.${run.id}`,
+          id: `heartbeatSnapshot.${runId}`,
           job: "heartbeatSnapshot",
-          payload: { snapshotId: newSnapshot.id, runId: run.id },
+          payload: { snapshotId: snapshot.id, runId },
           availableAt: new Date(Date.now() + intervalMs),
         });
       }
     }
 
     this.$.eventBus.emit("executionSnapshotCreated", {
-      time: newSnapshot.createdAt,
+      time: snapshot.createdAt,
       run: {
-        id: newSnapshot.runId,
+        id: snapshot.runId,
       },
       snapshot: {
-        ...newSnapshot,
+        ...snapshot,
         completedWaitpointIds: completedWaitpoints?.map((w) => w.id) ?? [],
       },
+    });
+  }
+
+  public async createExecutionSnapshot(
+    prisma: PrismaClientOrTransaction,
+    args: {
+      run: { id: string; status: TaskRunStatus; attemptNumber?: number | null };
+      snapshot: {
+        executionStatus: TaskRunExecutionStatus;
+        description: string;
+        metadata?: Prisma.JsonValue;
+      };
+      previousSnapshotId?: string;
+      batchId?: string;
+      environmentId: string;
+      environmentType: RuntimeEnvironmentType;
+      projectId: string;
+      organizationId: string;
+      checkpointId?: string;
+      workerId?: string;
+      runnerId?: string;
+      completedWaitpoints?: {
+        id: string;
+        index?: number;
+      }[];
+      error?: string;
+    }
+  ) {
+    const newSnapshot = await this.createExecutionSnapshotMutation(prisma, args);
+
+    await this.scheduleSnapshotSideEffects({
+      snapshot: newSnapshot,
+      runId: args.run.id,
+      error: args.error,
+      completedWaitpoints: args.completedWaitpoints,
     });
 
     return {
       ...newSnapshot,
-      friendlyId: SnapshotId.toFriendlyId(newSnapshot.id),
-      runFriendlyId: RunId.toFriendlyId(newSnapshot.runId),
+      friendlyId: newSnapshot.friendlyId,
+      runFriendlyId: newSnapshot.runFriendlyId,
     };
   }
 

@@ -836,12 +836,16 @@ export class WaitpointSystem {
           };
         }
         case "EXECUTING_WITH_WAITPOINTS": {
+          const completedWaitpointArgs = blockingWaitpoints.map((b) => ({
+            id: b.waitpoint.id,
+            index: b.batchIndex ?? undefined,
+          }));
+
           const newSnapshot = await $transaction(
             this.$.prisma,
             async (tx) => {
-              const createdSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
-                tx,
-                {
+              const createdSnapshot =
+                await this.executionSnapshotSystem.createExecutionSnapshotMutation(tx, {
                   run: {
                     id: runId,
                     status: snapshot.runStatus,
@@ -857,12 +861,8 @@ export class WaitpointSystem {
                   projectId: snapshot.projectId,
                   organizationId: snapshot.organizationId,
                   batchId: snapshot.batchId ?? undefined,
-                  completedWaitpoints: blockingWaitpoints.map((b) => ({
-                    id: b.waitpoint.id,
-                    index: b.batchIndex ?? undefined,
-                  })),
-                }
-              );
+                  completedWaitpoints: completedWaitpointArgs,
+                });
 
               // Remove the blocking waitpoints in the same transaction, so the
               // new snapshot and the unblock are atomic.
@@ -890,6 +890,14 @@ export class WaitpointSystem {
           if (!newSnapshot) {
             throw new Error(`continueRunIfUnblocked: failed to unblock run: ${runId}`);
           }
+
+          // Schedule side effects (heartbeat + eventBus) AFTER the transaction has
+          // committed, so they always reference a durable snapshot row.
+          await this.executionSnapshotSystem.scheduleSnapshotSideEffects({
+            snapshot: newSnapshot,
+            runId,
+            completedWaitpoints: completedWaitpointArgs,
+          });
 
           this.$.logger.debug(
             `continueRunIfUnblocked: run was still executing, sending notification`,
