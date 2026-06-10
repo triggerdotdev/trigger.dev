@@ -88,6 +88,8 @@ type EnvState = {
   byBatchId: Map<string, Set<Feed>>;
   /** All tag feeds, for routing partial records (no tags) as hydrate-to-classify candidates. */
   tagFeeds: Set<Feed>;
+  /** Tag feeds with no tag filter — they match every record but are unreachable via byTag. */
+  unfilteredTagFeeds: Set<Feed>;
   /** When this env's channel subscription started (for the gap-coverage check). */
   subscribedAtMs: number;
   /** Latest record per run, insertion-ordered, for replaying inter-poll gaps to newly-armed feeds. */
@@ -241,6 +243,7 @@ export class EnvChangeRouter {
       byTag: new Map(),
       byBatchId: new Map(),
       tagFeeds: new Set(),
+      unfilteredTagFeeds: new Set(),
       subscribedAtMs: Date.now(),
       recent: new Map(),
     };
@@ -309,11 +312,11 @@ export class EnvChangeRouter {
       case "batch":
         return record.batchId != null && record.batchId === feed.filter.batchId;
       case "tag": {
-        // Partial record (no tags) = hydrate-to-classify candidate, like the live path.
-        if (record.tags === undefined) {
+        const tags = feed.filter.tags;
+        // Unfiltered feed matches everything; partial record (no tags) = hydrate-to-classify.
+        if (tags.length === 0 || record.tags === undefined) {
           return true;
         }
-        const tags = feed.filter.tags;
         return record.tags.some((tag) => tags.includes(tag));
       }
     }
@@ -368,6 +371,9 @@ export class EnvChangeRouter {
         break;
       case "tag":
         env.tagFeeds.add(feed);
+        if (feed.filter.tags.length === 0) {
+          env.unfilteredTagFeeds.add(feed);
+        }
         for (const tag of feed.filter.tags) {
           addToIndex(env.byTag, tag, feed);
         }
@@ -385,6 +391,7 @@ export class EnvChangeRouter {
         break;
       case "tag":
         env.tagFeeds.delete(feed);
+        env.unfilteredTagFeeds.delete(feed);
         for (const tag of feed.filter.tags) {
           removeFromIndex(env.byTag, tag, feed);
         }
@@ -436,6 +443,8 @@ export class EnvChangeRouter {
             addMatch(feed, record.runId);
           }
         }
+        // Unfiltered tag feeds match every record but live outside the index.
+        for (const feed of env.unfilteredTagFeeds) addMatch(feed, record.runId);
       } else {
         // Partial record (no membership data): route to every tag feed as a candidate to
         // hydrate-and-classify (rare; the publish side emits full records in practice).

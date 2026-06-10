@@ -86,6 +86,30 @@ describe("EnvChangeRouter", () => {
     reg.close();
   });
 
+  it("wakes an unfiltered tag feed (no tags) for every full record, live and via replay", async () => {
+    const rows = new Map([["r1", row("r1", { tags: ["a"] })]]);
+    const { router, src } = makeRouter(rows);
+
+    // Live path: a full record (tags defined) must reach the zero-filter feed even
+    // though it can never appear in the byTag index.
+    const reg = router.register("env_1", { kind: "tag", tags: [] }, []);
+    const wait = reg.waitForMatch(undefined, 1_000);
+    src.push("env_1", [record("r1", { tags: ["a"] })]);
+    const live = await wait;
+    expect(live.reason).toBe("notify");
+    expect(live.rows.map((m) => m.row.id)).toEqual(["r1"]);
+    reg.close();
+
+    // Replay path: the buffered record matches an unfiltered feed registered after the push.
+    const late = router.register("env_1", { kind: "tag", tags: [] }, [], {
+      replaySinceMs: Date.now() - 1_000,
+    });
+    const replayed = await late.waitForMatch(undefined, 1_000);
+    expect(replayed.reason).toBe("notify");
+    expect(replayed.rows.map((m) => m.row.id)).toEqual(["r1"]);
+    late.close();
+  });
+
   it("batch-hydrates ONCE and shares the serialized value across feeds matching the same run", async () => {
     const rows = new Map([["r1", row("r1", { tags: ["a"] })]]);
     const { router, src, hydrateSpy } = makeRouter(rows);
