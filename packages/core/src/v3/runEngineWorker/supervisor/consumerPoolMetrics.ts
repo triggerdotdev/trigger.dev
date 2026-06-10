@@ -126,7 +126,9 @@ export class ConsumerPoolMetrics {
       // long-polls (RUN_ENGINE_DEQUEUE_BLOCKING_TIMEOUT_SECONDS, default 10s),
       // parking empty dequeues at ~10s - the 11/12.5/15/20 buckets give the
       // quantiles resolution just above that boundary, where the mass sits.
-      buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 11, 12.5, 15, 20, 30],
+      // 60s brackets the worst-case error envelope (5 attempts that each hit
+      // the ~10s hold, plus backoff); beyond that the connection is hung.
+      buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 11, 12.5, 15, 20, 30, 60],
       registers: [this.register],
     });
   }
