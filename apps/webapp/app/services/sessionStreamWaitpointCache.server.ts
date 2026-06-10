@@ -19,6 +19,12 @@ function buildKey(environmentId: string, addressingKey: string, io: "out" | "in"
   return `${KEY_PREFIX}${environmentId}:${addressingKey}:${io}`;
 }
 
+// Pre-env-scoping key format, drained for one release so waitpoints from the
+// previous deploy still wake. Removable once this has been live > turn timeout.
+function buildLegacyKey(addressingKey: string, io: "out" | "in"): string {
+  return `${KEY_PREFIX}${addressingKey}:${io}`;
+}
+
 function initializeRedis(): Redis | undefined {
   const host = env.CACHE_REDIS_HOST;
   if (!host) {
@@ -112,16 +118,24 @@ export async function drainSessionStreamWaitpoints(
 
   try {
     const key = buildKey(environmentId, addressingKey, io);
+    const legacyKey = buildLegacyKey(addressingKey, io);
     const pipeline = redis.multi();
     pipeline.smembers(key);
     pipeline.del(key);
+    pipeline.smembers(legacyKey);
+    pipeline.del(legacyKey);
     const results = await pipeline.exec();
     if (!results) return [];
-    const [smembersResult] = results;
-    if (!smembersResult) return [];
-    const [err, members] = smembersResult;
-    if (err) return [];
-    return Array.isArray(members) ? (members as string[]) : [];
+    // Union members from the env-scoped key and the legacy key (dual-read).
+    const ids = new Set<string>();
+    for (const idx of [0, 2]) {
+      const entry = results[idx];
+      if (!entry) continue;
+      const [err, members] = entry;
+      if (err || !Array.isArray(members)) continue;
+      for (const m of members as string[]) ids.add(m);
+    }
+    return [...ids];
   } catch (error) {
     logger.error("Failed to drain session stream waitpoint cache", {
       environmentId,
