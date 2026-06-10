@@ -317,7 +317,7 @@ const EnvironmentSchema = z
     // Bucket (ms) the tag-list createdAt floor is quantized to so same-tag feeds share a cache entry; 0 disables.
     REALTIME_BACKEND_NATIVE_RUNSET_CREATED_AT_BUCKET_MS: z.coerce.number().int().default(60_000),
     // Leading-edge throttle (ms) on per-env wake delivery; 0 wakes on every change.
-    REALTIME_BACKEND_NATIVE_ENV_WAKE_COALESCE_WINDOW_MS: z.coerce.number().int().default(100),
+    REALTIME_BACKEND_NATIVE_ENV_WAKE_COALESCE_WINDOW_MS: z.coerce.number().int().default(250),
     // "1" holds a multi-run live poll open on a non-matching wake instead of replying up-to-date.
     REALTIME_BACKEND_NATIVE_HOLD_ON_EMPTY: z.string().default("1"),
     // Max concurrent fresh ClickHouse resolves per instance (reconnect-stampede gate); 0 disables.
