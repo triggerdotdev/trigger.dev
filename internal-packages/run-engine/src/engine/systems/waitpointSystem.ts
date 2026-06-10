@@ -925,6 +925,11 @@ export class WaitpointSystem {
             waitpoints: blockingWaitpoints.map((w) => w.waitpoint),
           };
         }
+        // Unlike EXECUTING_WITH_WAITPOINTS above, this case is deliberately NOT
+        // wrapped in a single transaction: enqueueRun performs Redis queue work
+        // internally, which must never run inside an open Postgres transaction.
+        // Its snapshot insert and the post-switch waitpoint deletion below stay
+        // separate statements, as they were before the transactional refactor.
         case "SUSPENDED": {
           if (!snapshot.checkpointId) {
             // A run canceled mid-suspend has its checkpoint cleared by the
@@ -980,6 +985,8 @@ export class WaitpointSystem {
         }
       }
 
+      // Only the SUSPENDED case reaches here — EXECUTING_WITH_WAITPOINTS returns
+      // above after deleting its waitpoints inside its transaction.
       if (blockingWaitpoints.length > 0) {
         //5. Remove the blocking waitpoints
         await this.$.prisma.taskRunWaitpoint.deleteMany({
