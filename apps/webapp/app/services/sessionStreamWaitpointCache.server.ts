@@ -167,7 +167,12 @@ function buildAppendDedupeKey(
   io: "out" | "in",
   partId: string
 ): string {
-  return `${APPEND_DEDUPE_PREFIX}${environmentId}:${addressingKey}:${io}:${partId}`;
+  // Encode the free-form segments — `addressingKey` (externalId) and `partId`
+  // (X-Part-Id) are user-supplied and may contain `:`, which would otherwise
+  // let different tuples collide and falsely suppress an append.
+  return `${APPEND_DEDUPE_PREFIX}${encodeURIComponent(environmentId)}:${encodeURIComponent(
+    addressingKey
+  )}:${io}:${encodeURIComponent(partId)}`;
 }
 
 /**

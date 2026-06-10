@@ -134,13 +134,20 @@ export async function serializeSessionWithFriendlyRunId(
  * can't use with `runs.retrieve(...)`.
  */
 export async function serializeSessionsWithFriendlyRunIds(
-  sessions: Session[]
+  sessions: Session[],
+  scope: { projectId: string; runtimeEnvironmentId: string }
 ): Promise<SessionItem[]> {
   const runIds = [...new Set(sessions.map((s) => s.currentRunId).filter((id): id is string => !!id))];
 
+  // `currentRunId` is a plain string pointer (no FK), so scope the lookup to
+  // the caller's tenant — a stale value must not resolve a run in another env.
   const runs = runIds.length
     ? await $replica.taskRun.findMany({
-        where: { id: { in: runIds } },
+        where: {
+          id: { in: runIds },
+          projectId: scope.projectId,
+          runtimeEnvironmentId: scope.runtimeEnvironmentId,
+        },
         select: { id: true, friendlyId: true },
       })
     : [];

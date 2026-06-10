@@ -151,49 +151,49 @@ const { action, loader } = createActionApiRoute(
     const partId = clientPartId ?? nanoid(7);
 
     // Idempotency on client-supplied part ids: a retried POST whose first
-    // attempt committed is acknowledged without a second append (which
-    // would duplicate the record and double-fire the waitpoint drain).
-    // The marker is only written after a successful append, so retries of
-    // genuinely failed appends still go through. Server-generated ids are
-    // per-request and carry no dedupe meaning.
-    if (
-      clientPartId &&
+    // attempt committed skips the second append (which would duplicate the
+    // record), but still falls through to the drain below — so a retry whose
+    // first attempt died before waking the waitpoint can still recover it.
+    const alreadyAppended =
+      !!clientPartId &&
       (await wasSessionStreamPartAppended(
         authentication.environment.id,
         addressingKey,
         params.io,
         clientPartId
-      ))
-    ) {
-      return json({ ok: true }, { status: 200 });
-    }
+      ));
 
-    const [appendError] = await tryCatch(
-      realtimeStream.appendPartToSessionStream(part, partId, addressingKey, params.io)
-    );
+    if (!alreadyAppended) {
+      const [appendError] = await tryCatch(
+        realtimeStream.appendPartToSessionStream(part, partId, addressingKey, params.io)
+      );
 
-    if (appendError) {
-      if (appendError instanceof ServiceValidationError) {
+      if (appendError) {
+        if (appendError instanceof ServiceValidationError) {
+          return json(
+            { ok: false, error: appendError.message },
+            { status: appendError.status ?? 422 }
+          );
+        }
+        logger.error("Failed to append to session stream", {
+          sessionId: session.id,
+          io: params.io,
+          error: appendError,
+        });
         return json(
-          { ok: false, error: appendError.message },
-          { status: appendError.status ?? 422 }
+          { ok: false, error: "Something went wrong, please try again." },
+          { status: 500 }
         );
       }
-      logger.error("Failed to append to session stream", {
-        sessionId: session.id,
-        io: params.io,
-        error: appendError,
-      });
-      return json({ ok: false, error: "Something went wrong, please try again." }, { status: 500 });
-    }
 
-    if (clientPartId) {
-      await markSessionStreamPartAppended(
-        authentication.environment.id,
-        addressingKey,
-        params.io,
-        clientPartId
-      );
+      if (clientPartId) {
+        await markSessionStreamPartAppended(
+          authentication.environment.id,
+          addressingKey,
+          params.io,
+          clientPartId
+        );
+      }
     }
 
     // Fire any run-scoped waitpoints registered against this channel. Best

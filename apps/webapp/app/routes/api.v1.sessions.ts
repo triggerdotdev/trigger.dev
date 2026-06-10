@@ -108,7 +108,11 @@ export const loader = createLoaderApiRoute(
             environmentType: authentication.environment.type,
             organizationId: authentication.environment.organizationId,
           }) as Session
-      )
+      ),
+      {
+        projectId: authentication.environment.projectId,
+        runtimeEnvironmentId: authentication.environment.id,
+      }
     );
 
     return json<ListSessionsResponseBody>({
