@@ -303,6 +303,16 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   return;
                 }
 
+                // A completed attempt invalidates any pending delayed snapshot: the
+                // suspended execution state it was scheduled to capture no longer
+                // exists. Without this, the snapshot fires up to snapshotDelayMs
+                // later and pauses a VM that has long moved on, e.g. mid warm-start
+                // long-poll or already executing the next run.
+                this.snapshotService?.cancel(
+                  params.runFriendlyId,
+                  this.runnerIdFromRequest(req)
+                );
+
                 reply.json(
                   completeResponse.data satisfies WorkloadRunAttemptCompleteResponseBody
                 );
@@ -727,6 +737,19 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
       const runDisconnected = (friendlyId: string, reason: string) => {
         socketLogger.debug("runDisconnected", { ...getSocketMetadata() });
+
+        // The run is gone from this runner (crash, exit, or replaced by a new
+        // run), so a pending delayed snapshot for it is stale. Genuine
+        // waitpoint suspensions keep the socket connected, so this doesn't
+        // cancel a snapshot that's still wanted; the runnerId match guards
+        // against a stale duplicate runner cancelling a fresh runner's
+        // snapshot after the run was reassigned. Caveat: socket.data.runnerId
+        // is frozen at the websocket handshake, so after a same-supervisor
+        // restore (new runner id, socket not recreated) this guard refuses
+        // the cancel - a missed cancel, never a wrong one. The
+        // attempt.complete cancel uses the runner's current HTTP header id
+        // and is unaffected.
+        this.snapshotService?.cancel(friendlyId, socket.data.runnerId);
 
         this.runSockets.delete(friendlyId);
         this.emit("runDisconnected", { run: { friendlyId } });
