@@ -808,6 +808,9 @@ describe("RunEngine getSnapshotsSince", () => {
         // primary instead of failing the poll.
         readOnlyPrisma: schemaOnlyPrisma,
         readReplicaSnapshotsSinceEnabled: true,
+        // Tiny jitter window: the replica is permanently empty here, so the retry
+        // always misses - no need to pay a realistic delay.
+        readReplicaSnapshotsSinceRetryDelay: { minMs: 1, maxMs: 2 },
         worker: {
           redis: redisOptions,
           workers: 1,
@@ -889,7 +892,131 @@ describe("RunEngine getSnapshotsSince", () => {
         expect(result!.length).toBe(expectedSnapshots.length);
         expect(result!.map((s) => s.snapshot.id)).toEqual(expectedSnapshots.map((s) => s.id));
 
-        expect(await getCounterValue("run_engine.snapshots_since.replica_miss")).toBe(1);
+        expect(
+          await getCounterValue("run_engine.snapshots_since.replica_miss", { outcome: "primary" })
+        ).toBe(1);
+        // The replica retry never succeeds against a permanently empty replica.
+        expect(
+          await getCounterValue("run_engine.snapshots_since.replica_miss", {
+            outcome: "replica_retry",
+          })
+        ).toBe(0);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "serves the read from the replica after a jittered retry when it catches up",
+    async ({ prisma, schemaOnlyPrisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const { meter, getCounterValue } = createTestMetricsMeter();
+
+      const engine = new RunEngine({
+        prisma,
+        // The schema-only database stands in for a lagging replica: empty when the
+        // poll first arrives, caught up by the time the jittered retry fires.
+        readOnlyPrisma: schemaOnlyPrisma,
+        readReplicaSnapshotsSinceEnabled: true,
+        // A near-deterministic ~400ms window: long enough to seed the replica
+        // mid-flight (below), short enough to keep the test fast.
+        readReplicaSnapshotsSinceRetryDelay: { minMs: 400, maxMs: 401 },
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+        meter,
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const runFriendlyId = generateFriendlyId("run");
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: runFriendlyId,
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_replica_retry",
+            spanId: "s_replica_retry",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        await setTimeout(500);
+        await engine.dequeueFromWorkerQueue({
+          consumerId: "test_replica_retry",
+          workerQueue: "main",
+        });
+
+        const allSnapshots = await prisma.taskRunExecutionSnapshot.findMany({
+          where: { runId: run.id, isValid: true },
+          orderBy: { createdAt: "asc" },
+        });
+        expect(allSnapshots.length).toBeGreaterThan(1);
+
+        const firstSnapshot = allSnapshots[0];
+
+        // Kick off the poll against the still-empty replica, then seed the replica
+        // well before the ~400ms jittered retry fires - simulating the replica
+        // catching up while the engine waits.
+        const resultPromise = engine.getSnapshotsSince({
+          runId: run.id,
+          snapshotId: firstSnapshot.id,
+        });
+        await setTimeout(100);
+        await copySnapshotsToReplica(prisma, schemaOnlyPrisma, run.id);
+        const result = await resultPromise;
+
+        expect(result).not.toBeNull();
+        const expectedSnapshots = allSnapshots.filter(
+          (s) => s.createdAt.getTime() > firstSnapshot.createdAt.getTime()
+        );
+        expect(expectedSnapshots.length).toBeGreaterThan(0);
+        expect(result!.length).toBe(expectedSnapshots.length);
+        expect(result!.map((s) => s.snapshot.id)).toEqual(expectedSnapshots.map((s) => s.id));
+
+        // Recovered on the replica retry - the writer was never consulted.
+        expect(
+          await getCounterValue("run_engine.snapshots_since.replica_miss", {
+            outcome: "replica_retry",
+          })
+        ).toBe(1);
+        expect(
+          await getCounterValue("run_engine.snapshots_since.replica_miss", { outcome: "primary" })
+        ).toBe(0);
       } finally {
         await engine.quit();
       }
@@ -905,6 +1032,7 @@ describe("RunEngine getSnapshotsSince", () => {
         prisma,
         readOnlyPrisma: schemaOnlyPrisma,
         readReplicaSnapshotsSinceEnabled: true,
+        readReplicaSnapshotsSinceRetryDelay: { minMs: 1, maxMs: 2 },
         worker: {
           redis: redisOptions,
           workers: 1,
@@ -963,6 +1091,7 @@ describe("RunEngine getSnapshotsSince", () => {
         // but lags behind the primary by one snapshot (the newest one is excluded below).
         readOnlyPrisma: schemaOnlyPrisma,
         readReplicaSnapshotsSinceEnabled: true,
+        readReplicaSnapshotsSinceRetryDelay: { minMs: 1, maxMs: 2 },
         worker: {
           redis: redisOptions,
           workers: 1,
@@ -1071,6 +1200,7 @@ describe("RunEngine getSnapshotsSince", () => {
         // from the primary.
         readOnlyPrisma: schemaOnlyPrisma,
         readReplicaSnapshotsSinceEnabled: false,
+        readReplicaSnapshotsSinceRetryDelay: { minMs: 1, maxMs: 2 },
         worker: {
           redis: redisOptions,
           workers: 1,
@@ -1169,6 +1299,7 @@ describe("RunEngine getSnapshotsSince", () => {
         // the counter.
         readOnlyPrisma: schemaOnlyPrisma,
         readReplicaSnapshotsSinceEnabled: true,
+        readReplicaSnapshotsSinceRetryDelay: { minMs: 1, maxMs: 2 },
         worker: {
           redis: redisOptions,
           workers: 1,

@@ -71,18 +71,28 @@ export function createTestMetricsMeter() {
   const meterProvider = new MeterProvider({ readers: [reader] });
   const meter = meterProvider.getMeter("test");
 
-  const getCounterValue = async (name: string): Promise<number> => {
+  const getCounterValue = async (
+    name: string,
+    attributes?: Record<string, string>
+  ): Promise<number> => {
     await reader.forceFlush();
     const resourceMetrics = exporter.getMetrics();
 
     // Cumulative temporality: every export batch carries the full running total,
     // so read the most recent batch that contains the metric. A counter that was
-    // never added to exports no data points - treat that as 0.
+    // never added to exports no data points - treat that as 0. When `attributes`
+    // is provided, only data points whose attributes match are summed.
     for (let i = resourceMetrics.length - 1; i >= 0; i--) {
       for (const scopeMetrics of resourceMetrics[i].scopeMetrics) {
         for (const metric of scopeMetrics.metrics) {
           if (metric.descriptor.name === name && metric.dataPoints.length > 0) {
-            return metric.dataPoints.reduce((sum, dp) => sum + (dp.value as number), 0);
+            return metric.dataPoints
+              .filter(
+                (dp) =>
+                  !attributes ||
+                  Object.entries(attributes).every(([key, value]) => dp.attributes[key] === value)
+              )
+              .reduce((sum, dp) => sum + (dp.value as number), 0);
           }
         }
       }
