@@ -1,5 +1,6 @@
 import { type ChangeRecord } from "./runChangeNotifier.server";
 import { type RealtimeRunRow, serializeRunRow } from "./electricStreamProtocol.server";
+import { logger } from "~/services/logger.server";
 
 /**
  * EnvChangeRouter — the per-instance routing layer that turns "feeds as predicates over
@@ -182,9 +183,15 @@ export class EnvChangeRouter {
     };
     this.#envs.set(environmentId, env);
     env.unsubscribe = this.options.source.subscribeToEnv(environmentId, (records) => {
-      // Fire-and-forget; the notifier doesn't await us. Errors fall through to the feeds'
-      // backstop (a hydrate failure leaves waiters to time out into a full resolve).
-      void this.#onBatch(environmentId, env, records);
+      // Fire-and-forget; the notifier doesn't await us. A hydrate failure must be caught
+      // here (an unhandled rejection exits the process); the matched feeds' waiters stay
+      // armed and time out into the full-resolve backstop.
+      this.#onBatch(environmentId, env, records).catch((error) => {
+        logger.error("[envChangeRouter] failed to route a change batch", {
+          environmentId,
+          error,
+        });
+      });
     });
     return env;
   }

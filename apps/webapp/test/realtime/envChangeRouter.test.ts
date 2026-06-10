@@ -98,6 +98,27 @@ describe("EnvChangeRouter", () => {
     regs.forEach((r) => r.close());
   });
 
+  it("a hydrate failure doesn't reject out of the source callback; the feed times out", async () => {
+    const src = fakeSource();
+    const hydrateSpy = vi.fn<RowHydrator["hydrateByIds"]>(async () => {
+      throw new Error("replica down");
+    });
+    const router = new EnvChangeRouter({
+      source: src.source,
+      hydrator: { hydrateByIds: hydrateSpy },
+    });
+    const reg = router.register("env_1", { kind: "run", runId: "r1" }, []);
+    const wait = reg.waitForMatch(undefined, 50);
+
+    // Would be an unhandled rejection (process exit) if #onBatch's promise were unguarded.
+    src.push("env_1", [record("r1")]);
+
+    const result = await wait;
+    expect(result.reason).toBe("timeout");
+    expect(hydrateSpy).toHaveBeenCalledTimes(1);
+    reg.close();
+  });
+
   it("routes a run feed by exact runId", async () => {
     const rows = new Map([["r1", row("r1")]]);
     const { router, src } = makeRouter(rows);
