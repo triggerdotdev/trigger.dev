@@ -6,11 +6,40 @@ import {
   type WorkloadManagerCreateOptions,
   type WorkloadManagerOptions,
 } from "./types.js";
-import { ComputeClient, stripImageDigest } from "@internal/compute";
+import { ComputeClient, ComputeClientError, stripImageDigest } from "@internal/compute";
+import { setTimeout as sleep } from "node:timers/promises";
 import { extractTraceparent, getRunnerId } from "../util.js";
 import type { OtlpTraceService } from "../services/otlpTraceService.js";
 import { tryCatch } from "@trigger.dev/core";
 import { encodeBaggage, fromContext } from "../wideEvents/index.js";
+
+const CREATE_MAX_ATTEMPTS = 3;
+const CREATE_RETRY_BASE_DELAY_MS = 250;
+
+/**
+ * Whether a failed instance create is worth retrying. Only statuses where
+ * the create definitely did NOT commit are retried: 500 means the agent or
+ * fcrun returned a create error (e.g. a netns slot holding the tap busy, a
+ * full node disk - placement may differ on retry), 503 means the gateway
+ * had nowhere to place it. 502/504 are excluded: the gateway emits those
+ * when it fails to reach the node or read its response, which can happen
+ * AFTER the agent committed the create - and the gateway only records the
+ * instance name on a clean 201, so a same-name retry would miss the
+ * collision check and could double-create the VM on another node. 4xx won't
+ * heal on retry, and timeouts may still be provisioning. Network-level
+ * fetch failures are safe: if the gateway processed the create, its name
+ * index is populated and the retry 409s harmlessly.
+ */
+export function isRetryableCreateError(error: unknown): boolean {
+  if (error instanceof ComputeClientError) {
+    return error.status === 500 || error.status === 503;
+  }
+  if (error instanceof DOMException && error.name === "TimeoutError") {
+    return false;
+  }
+  // Network-level fetch failures (gateway briefly unreachable)
+  return error instanceof TypeError;
+}
 
 type ComputeWorkloadManagerOptions = WorkloadManagerOptions & {
   gateway: {
@@ -165,27 +194,48 @@ export class ComputeWorkloadManager implements WorkloadManager {
     const startMs = performance.now();
 
     try {
-      const [error, data] = await tryCatch(
-        this.compute.instances.create({
-          name: runnerId,
-          image: imageRef,
-          env: envVars,
-          cpu: opts.machine.cpu,
-          memory_gb: opts.machine.memory,
-          metadata: {
-            runId: opts.runFriendlyId,
-            envId: opts.envId,
-            envType: opts.envType,
-            orgId: opts.orgId,
-            projectId: opts.projectId,
-            deploymentVersion: opts.deploymentVersion,
-            machine: opts.machine.name,
-          },
-          ...(Object.keys(labels).length > 0 ? { labels } : {}),
-        })
-      );
+      const createRequest = {
+        name: runnerId,
+        image: imageRef,
+        env: envVars,
+        cpu: opts.machine.cpu,
+        memory_gb: opts.machine.memory,
+        metadata: {
+          runId: opts.runFriendlyId,
+          envId: opts.envId,
+          envType: opts.envType,
+          orgId: opts.orgId,
+          projectId: opts.projectId,
+          deploymentVersion: opts.deploymentVersion,
+          machine: opts.machine.name,
+        },
+        ...(Object.keys(labels).length > 0 ? { labels } : {}),
+      };
 
-      if (error) {
+      // Retry transient placement failures instead of abandoning the run: a
+      // swallowed create error leaves the run waiting for the run engine's
+      // PENDING_EXECUTING timeout (minutes) before it is redriven, while a
+      // retried create typically succeeds in under a second (TRI-10293).
+      let error: unknown;
+      let data: Awaited<ReturnType<typeof this.compute.instances.create>> | null | undefined;
+      let attempt = 1;
+      for (; attempt <= CREATE_MAX_ATTEMPTS; attempt++) {
+        [error, data] = await tryCatch(this.compute.instances.create(createRequest));
+
+        if (!error) break;
+
+        this.logger.warn("create instance attempt failed", {
+          runnerId,
+          attempt,
+          error: error instanceof Error ? error.message : String(error),
+        });
+
+        if (!isRetryableCreateError(error) || attempt === CREATE_MAX_ATTEMPTS) break;
+        await sleep(CREATE_RETRY_BASE_DELAY_MS * attempt);
+      }
+      event.createAttempts = attempt;
+
+      if (error || !data) {
         event.error = error instanceof Error ? error.message : String(error);
         event.errorType =
           error instanceof DOMException && error.name === "TimeoutError" ? "timeout" : "fetch";
