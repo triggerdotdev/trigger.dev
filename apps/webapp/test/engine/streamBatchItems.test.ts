@@ -1705,6 +1705,123 @@ describe("StreamBatchItemsService", () => {
   );
 
   containerTest(
+    "perf: higher ingest concurrency processes a batch proportionally faster",
+    async ({ prisma, redisOptions }) => {
+      const engine = buildEngine(prisma, redisOptions);
+      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const runCount = 150;
+
+      // A payload processor that holds each slot for a fixed duration, modelling
+      // the per-item object-store offload. perItemLatencyMs=0 models a small
+      // payload that never offloads, leaving the real per-item enqueueBatchItem
+      // (a Redis round-trip) as the only serialized cost. Local MinIO/Redis
+      // latency is sub-millisecond and too noisy to compare directly, so the
+      // offload case uses a fixed hold instead.
+      class FixedLatencyPayloadProcessor extends BatchPayloadProcessor {
+        constructor(private readonly perItemLatencyMs: number) {
+          super();
+        }
+        async process(payload: unknown, payloadType: string): Promise<BatchPayloadProcessResult> {
+          if (this.perItemLatencyMs > 0) {
+            await sleep(this.perItemLatencyMs);
+          }
+          return { payload, payloadType, wasOffloaded: this.perItemLatencyMs > 0, size: 0 };
+        }
+      }
+
+      async function timeIngest(concurrency: number, perItemLatencyMs: number): Promise<number> {
+        // Each run needs its own batch: sealing mutates state and a re-stream
+        // of the same batch would dedup every item.
+        const batch = await createBatch(prisma, environment.id, {
+          runCount,
+          status: "PENDING",
+          sealed: false,
+        });
+        await engine.initializeBatch({
+          batchId: batch.id,
+          friendlyId: batch.friendlyId,
+          environmentId: environment.id,
+          environmentType: environment.type,
+          organizationId: environment.organizationId,
+          projectId: environment.projectId,
+          runCount,
+          processingConcurrency: 10,
+        });
+
+        const service = new StreamBatchItemsService({
+          prisma,
+          engine,
+          payloadProcessor: new FixedLatencyPayloadProcessor(perItemLatencyMs),
+        });
+
+        const start = performance.now();
+        const result = await service.call(
+          environment,
+          batch.friendlyId,
+          itemsToAsyncIterable(makeItems(runCount)),
+          { maxItemBytes: 1024 * 1024, concurrency }
+        );
+        const elapsedMs = performance.now() - start;
+
+        // Correctness holds at every concurrency: all items accepted and sealed.
+        expect(result.sealed).toBe(true);
+        expect(result.itemsAccepted).toBe(runCount);
+        expect(result.itemsDeduplicated).toBe(0);
+        expect(await engine.getBatchEnqueuedCount(batch.id)).toBe(runCount);
+
+        return elapsedMs;
+      }
+
+      // Scenario A: large payloads, where each item offloads to object storage.
+      const offloadLatencyMs = 10;
+      const offloadSeqMs = await timeIngest(1, offloadLatencyMs);
+      const offload10Ms = await timeIngest(10, offloadLatencyMs);
+      const offload50Ms = await timeIngest(50, offloadLatencyMs);
+
+      // Scenario B: small payloads (no offload). The only per-item cost is the
+      // real Redis enqueue, so this is the floor case that proves the speedup
+      // applies to all batch ingest, not just large-payload batches.
+      const enqueueSeqMs = await timeIngest(1, 0);
+      const enqueue10Ms = await timeIngest(10, 0);
+
+      // eslint-disable-next-line no-console
+      console.log(
+        `\n[streamBatchItems perf] runCount=${runCount}\n` +
+          `  large payloads (${offloadLatencyMs}ms/item offload):\n` +
+          `    concurrency=1   ${offloadSeqMs.toFixed(0)}ms\n` +
+          `    concurrency=10  ${offload10Ms.toFixed(0)}ms  (${(
+            offloadSeqMs / offload10Ms
+          ).toFixed(1)}x faster)\n` +
+          `    concurrency=50  ${offload50Ms.toFixed(0)}ms  (${(
+            offloadSeqMs / offload50Ms
+          ).toFixed(1)}x faster)\n` +
+          `  small payloads (Redis enqueue only, no offload):\n` +
+          `    concurrency=1   ${enqueueSeqMs.toFixed(0)}ms\n` +
+          `    concurrency=10  ${enqueue10Ms.toFixed(0)}ms  (${(
+            enqueueSeqMs / enqueue10Ms
+          ).toFixed(1)}x faster)\n`
+      );
+
+      // Sequential floor: N items each held for offloadLatencyMs cannot finish
+      // faster than N x latency. Parallel ingest must beat that floor decisively.
+      const sequentialFloorMs = runCount * offloadLatencyMs;
+      expect(offloadSeqMs).toBeGreaterThan(sequentialFloorMs * 0.8);
+
+      // 10x concurrency on a latency-bound workload should be well over 2x faster.
+      expect(offload10Ms).toBeLessThan(offloadSeqMs / 2);
+      // More concurrency keeps helping (or at least never regresses).
+      expect(offload50Ms).toBeLessThanOrEqual(offload10Ms * 1.2);
+
+      // Even with no offload, overlapping the per-item Redis enqueue is strictly
+      // faster than doing them one at a time.
+      expect(enqueue10Ms).toBeLessThan(enqueueSeqMs);
+
+      await engine.quit();
+    }
+  );
+
+  containerTest(
     "deduplicates already-enqueued items during concurrent ingest (Phase 2 retry)",
     async ({ prisma, redisOptions }) => {
       const engine = buildEngine(prisma, redisOptions);
