@@ -14,7 +14,7 @@ import {
   generateLargeOutput,
 } from "./helpers/snapshotTestHelpers.js";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
-import type { PrismaReplicaClient } from "@trigger.dev/database";
+
 
 vi.setConfig({ testTimeout: 120_000 });
 
@@ -691,7 +691,7 @@ describe("RunEngine getSnapshotsSince", () => {
         // An empty (schema-only) database stands in for a read replica that has not
         // caught up: every lookup on it misses, so the engine must fall back to the
         // primary instead of failing the poll.
-        readOnlyPrisma: schemaOnlyPrisma as PrismaReplicaClient,
+        readOnlyPrisma: schemaOnlyPrisma,
         readReplicaSnapshotsSinceEnabled: true,
         worker: {
           redis: redisOptions,
@@ -766,8 +766,12 @@ describe("RunEngine getSnapshotsSince", () => {
 
         // Served by the primary fallback, not a failed poll.
         expect(result).not.toBeNull();
-        expect(result!.length).toBe(allSnapshots.length - 1);
-        expect(result!.map((s) => s.snapshot.id)).toEqual(allSnapshots.slice(1).map((s) => s.id));
+        const expectedSnapshots = allSnapshots.filter(
+          (s) => s.createdAt.getTime() > firstSnapshot.createdAt.getTime()
+        );
+        expect(expectedSnapshots.length).toBeGreaterThan(0);
+        expect(result!.length).toBe(expectedSnapshots.length);
+        expect(result!.map((s) => s.snapshot.id)).toEqual(expectedSnapshots.map((s) => s.id));
       } finally {
         await engine.quit();
       }
@@ -781,7 +785,7 @@ describe("RunEngine getSnapshotsSince", () => {
 
       const engine = new RunEngine({
         prisma,
-        readOnlyPrisma: schemaOnlyPrisma as PrismaReplicaClient,
+        readOnlyPrisma: schemaOnlyPrisma,
         readReplicaSnapshotsSinceEnabled: true,
         worker: {
           redis: redisOptions,
