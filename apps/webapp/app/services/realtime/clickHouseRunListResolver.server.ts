@@ -11,8 +11,8 @@ export type ClickHouseRunListResolverOptions = {
 
 /**
  * Resolves the realtime tag/list filter into matching run ids via ClickHouse `listRunIds` (filter-only;
- * rows hydrated from Postgres by id afterward). Tag matching is contains-ANY (OR) — note this differs from
- * Electric's `runTags @> ARRAY[...]` AND shape; restoring AND needs a `hasAll` mode on the ClickHouse filter.
+ * rows hydrated from Postgres by id afterward). Tag matching is contains-ALL, byte-matching Electric's
+ * `runTags @> ARRAY[...]` shape.
  */
 export class ClickHouseRunListResolver implements RunListResolver {
   constructor(private readonly options: ClickHouseRunListResolverOptions) {}
@@ -26,6 +26,8 @@ export class ClickHouseRunListResolver implements RunListResolver {
       projectId: filter.projectId,
       environmentId: filter.environmentId,
       tags: filter.tags && filter.tags.length > 0 ? filter.tags : undefined,
+      // Contains-ALL, matching the Electric shape's `runTags @> ARRAY[...]` semantics.
+      tagsMatch: "all",
       batchId: filter.batchId,
       from: filter.createdAtAfter?.getTime(),
       page: { size: filter.limit },

@@ -151,6 +151,25 @@ describe("EnvChangeRouter", () => {
     reg.close();
   });
 
+  it("multi-tag feeds require ALL tags on the row (Electric contains-all semantics)", async () => {
+    const rows = new Map([
+      ["r_both", row("r_both", { tags: ["a", "b", "c"] })],
+      ["r_one", row("r_one", { tags: ["a"] })],
+    ]);
+    const { router, src } = makeRouter(rows);
+    const reg = router.register("env_1", { kind: "tag", tags: ["a", "b"] }, []);
+    const wait = reg.waitForMatch(undefined, 1_000);
+
+    // r_one shares a tag (routes as a candidate via the index) but lacks "b" — must be
+    // culled by the authoritative row check. r_both carries both and wakes the feed.
+    src.push("env_1", [record("r_one", { tags: ["a"] }), record("r_both", { tags: ["a", "b", "c"] })]);
+
+    const result = await wait;
+    expect(result.reason).toBe("notify");
+    expect(result.rows.map((m) => m.row.id)).toEqual(["r_both"]);
+    reg.close();
+  });
+
   it("drops a tag match created before the feed's createdAt floor", async () => {
     const rows = new Map([["r1", row("r1", { tags: ["a"], createdAtMs: FLOOR_MS - 10_000 })]]);
     const { router, src } = makeRouter(rows);

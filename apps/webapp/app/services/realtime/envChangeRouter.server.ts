@@ -488,12 +488,13 @@ export class EnvChangeRouter {
     }
   }
 
-  /** Authoritative re-check for tag feeds: the hydrated row's tags intersect the filter and its createdAt is within the feed's window. */
+  /** Authoritative re-check for tag feeds: the hydrated row carries ALL the filter's tags
+   * (Electric's `runTags @> ARRAY[...]` semantics) and its createdAt is within the window. */
   #tagRowMatches(row: RealtimeRunRow, filter: Extract<FeedFilter, { kind: "tag" }>): boolean {
     if (filter.createdAtFloorMs !== undefined && row.createdAt.getTime() < filter.createdAtFloorMs) {
       return false;
     }
     const rowTags = row.runTags ?? [];
-    return filter.tags.some((tag) => rowTags.includes(tag));
+    return filter.tags.every((tag) => rowTags.includes(tag));
   }
 }
