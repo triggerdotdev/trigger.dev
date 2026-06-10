@@ -1,6 +1,7 @@
 import { timeoutError, tryCatch } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
+  $transaction,
   Prisma,
   PrismaClientOrTransaction,
   TaskQueue,
@@ -835,30 +836,60 @@ export class WaitpointSystem {
           };
         }
         case "EXECUTING_WITH_WAITPOINTS": {
-          const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
+          const newSnapshot = await $transaction(
             this.$.prisma,
-            {
-              run: {
-                id: runId,
-                status: snapshot.runStatus,
-                attemptNumber: snapshot.attemptNumber,
-              },
-              snapshot: {
-                executionStatus: "EXECUTING",
-                description: "Run was continued, whilst still executing.",
-              },
-              previousSnapshotId: snapshot.id,
-              environmentId: snapshot.environmentId,
-              environmentType: snapshot.environmentType,
-              projectId: snapshot.projectId,
-              organizationId: snapshot.organizationId,
-              batchId: snapshot.batchId ?? undefined,
-              completedWaitpoints: blockingWaitpoints.map((b) => ({
-                id: b.waitpoint.id,
-                index: b.batchIndex ?? undefined,
-              })),
+            async (tx) => {
+              const createdSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
+                tx,
+                {
+                  run: {
+                    id: runId,
+                    status: snapshot.runStatus,
+                    attemptNumber: snapshot.attemptNumber,
+                  },
+                  snapshot: {
+                    executionStatus: "EXECUTING",
+                    description: "Run was continued, whilst still executing.",
+                  },
+                  previousSnapshotId: snapshot.id,
+                  environmentId: snapshot.environmentId,
+                  environmentType: snapshot.environmentType,
+                  projectId: snapshot.projectId,
+                  organizationId: snapshot.organizationId,
+                  batchId: snapshot.batchId ?? undefined,
+                  completedWaitpoints: blockingWaitpoints.map((b) => ({
+                    id: b.waitpoint.id,
+                    index: b.batchIndex ?? undefined,
+                  })),
+                }
+              );
+
+              // Remove the blocking waitpoints in the same transaction, so the
+              // new snapshot and the unblock are atomic.
+              if (blockingWaitpoints.length > 0) {
+                await tx.taskRunWaitpoint.deleteMany({
+                  where: {
+                    taskRunId: runId,
+                    id: { in: blockingWaitpoints.map((b) => b.id) },
+                  },
+                });
+              }
+
+              return createdSnapshot;
+            },
+            (error) => {
+              this.$.logger.error("continueRunIfUnblocked: prisma.$transaction error", {
+                code: error.code,
+                meta: error.meta,
+                message: error.message,
+                runId,
+              });
             }
           );
+
+          if (!newSnapshot) {
+            throw new Error(`continueRunIfUnblocked: failed to unblock run: ${runId}`);
+          }
 
           this.$.logger.debug(
             `continueRunIfUnblocked: run was still executing, sending notification`,
@@ -875,7 +906,15 @@ export class WaitpointSystem {
             eventBus: this.$.eventBus,
           });
 
-          break;
+          this.$.logger.debug(`continueRunIfUnblocked: removed blocking waitpoints`, {
+            runId,
+            blockingWaitpoints,
+          });
+
+          return {
+            status: "unblocked",
+            waitpoints: blockingWaitpoints.map((w) => w.waitpoint),
+          };
         }
         case "SUSPENDED": {
           if (!snapshot.checkpointId) {
