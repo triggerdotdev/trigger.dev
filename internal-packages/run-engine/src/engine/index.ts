@@ -1,5 +1,5 @@
 import { createRedisClient, Redis } from "@internal/redis";
-import { getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
+import { type Counter, getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import {
   CheckpointInput,
@@ -46,7 +46,12 @@ import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { BillingCache } from "./billingCache.js";
-import { NotImplementedError, RunDuplicateIdempotencyKeyError, RunOneTimeUseTokenError } from "./errors.js";
+import {
+  ExecutionSnapshotNotFoundError,
+  NotImplementedError,
+  RunDuplicateIdempotencyKeyError,
+  RunOneTimeUseTokenError,
+} from "./errors.js";
 import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
 import { getFinalRunStatuses } from "./statuses.js";
@@ -88,6 +93,7 @@ export class RunEngine {
   private logger: Logger;
   private tracer: Tracer;
   private meter: Meter;
+  private snapshotsSinceReplicaMissCounter: Counter;
   private heartbeatTimeouts: HeartbeatTimeouts;
   private repairSnapshotTimeoutMs: number;
   private batchQueue: BatchQueue;
@@ -271,6 +277,14 @@ export class RunEngine {
 
     this.tracer = options.tracer;
     this.meter = options.meter ?? getMeter("run-engine");
+
+    this.snapshotsSinceReplicaMissCounter = this.meter.createCounter(
+      "run_engine.snapshots_since.replica_miss",
+      {
+        description:
+          "getSnapshotsSince reads where the since snapshot was not yet on the read replica and the query was retried on the primary",
+      }
+    );
 
     const defaultHeartbeatTimeouts: HeartbeatTimeouts = {
       PENDING_EXECUTING: 60_000,
@@ -1918,13 +1932,39 @@ export class RunEngine {
     snapshotId: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<RunExecutionData[] | null> {
-    const prisma =
-      tx ?? (this.options.readReplicaSnapshotsSinceEnabled ? this.readOnlyPrisma : this.prisma);
+    const useReplica = !tx && this.options.readReplicaSnapshotsSinceEnabled === true;
+    const prisma = tx ?? (useReplica ? this.readOnlyPrisma : this.prisma);
+
+    const query = async (client: PrismaClientOrTransaction) => {
+      const snapshots = await getExecutionSnapshotsSince(client, runId, snapshotId);
+      return snapshots.map(executionDataFromSnapshot);
+    };
 
     try {
-      const snapshots = await getExecutionSnapshotsSince(prisma, runId, snapshotId);
-      return snapshots.map(executionDataFromSnapshot);
+      return await query(prisma);
     } catch (e) {
+      if (useReplica && e instanceof ExecutionSnapshotNotFoundError) {
+        // Expected during replica lag: the runner learned the snapshot id from the writer
+        // before the replica caught up. Serve the read from the writer instead of failing
+        // the poll.
+        this.snapshotsSinceReplicaMissCounter.add(1);
+        this.logger.warn("getSnapshotsSince: snapshot not yet on replica, retrying on primary", {
+          runId,
+          snapshotId,
+        });
+
+        try {
+          return await query(this.prisma);
+        } catch (retryError) {
+          this.logger.error("Failed to getSnapshotsSince", {
+            message: retryError instanceof Error ? retryError.message : retryError,
+            runId,
+            snapshotId,
+          });
+          return null;
+        }
+      }
+
       this.logger.error("Failed to getSnapshotsSince", {
         message: e instanceof Error ? e.message : e,
         runId,
