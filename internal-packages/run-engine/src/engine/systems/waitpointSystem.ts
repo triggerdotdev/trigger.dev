@@ -864,8 +864,7 @@ export class WaitpointSystem {
                   completedWaitpoints: completedWaitpointArgs,
                 });
 
-              // Remove the blocking waitpoints in the same transaction, so the
-              // new snapshot and the unblock are atomic.
+              // Deleted in the same transaction so the snapshot and unblock are atomic.
               if (blockingWaitpoints.length > 0) {
                 await tx.taskRunWaitpoint.deleteMany({
                   where: {
@@ -897,8 +896,7 @@ export class WaitpointSystem {
             throw new Error(`continueRunIfUnblocked: failed to unblock run: ${runId}`);
           }
 
-          // Schedule side effects (heartbeat + eventBus) AFTER the transaction has
-          // committed, so they always reference a durable snapshot row.
+          // Side effects must only run against a durably committed snapshot row.
           await this.executionSnapshotSystem.scheduleSnapshotSideEffects({
             snapshot: newSnapshot,
             runId,
@@ -928,8 +926,6 @@ export class WaitpointSystem {
         // Unlike EXECUTING_WITH_WAITPOINTS above, this case is deliberately NOT
         // wrapped in a single transaction: enqueueRun performs Redis queue work
         // internally, which must never run inside an open Postgres transaction.
-        // Its snapshot insert and the post-switch waitpoint deletion below stay
-        // separate statements, as they were before the transactional refactor.
         case "SUSPENDED": {
           if (!snapshot.checkpointId) {
             // A run canceled mid-suspend has its checkpoint cleared by the

@@ -327,9 +327,8 @@ export class ExecutionSnapshotSystem {
   }
 
   /**
-   * Pure Postgres mutation — safe inside a transaction. Inserts the snapshot row and
-   * returns the enhanced result. Direct callers MUST call `scheduleSnapshotSideEffects()`
-   * with the result after the surrounding transaction commits.
+   * Pure Postgres mutation — safe inside a transaction. Direct callers MUST call
+   * `scheduleSnapshotSideEffects()` with the result after the surrounding transaction commits.
    */
   public async createExecutionSnapshotMutation(
     prisma: PrismaClientOrTransaction,
@@ -441,8 +440,7 @@ export class ExecutionSnapshotSystem {
       }
     }
 
-    // Destructure off the wrapper-only fields so the emitted payload matches the
-    // pre-split shape (raw snapshot row fields + completedWaitpointIds only).
+    // The emitted payload must contain only raw snapshot row fields (+ completedWaitpointIds).
     const { friendlyId: _fid, runFriendlyId: _rfid, ...snapshotRow } = snapshot;
 
     this.$.eventBus.emit("executionSnapshotCreated", {

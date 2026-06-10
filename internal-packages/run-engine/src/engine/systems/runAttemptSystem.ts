@@ -851,7 +851,6 @@ export class RunAttemptSystem {
             },
           });
 
-          // Post-commit side effects of the waitpoint completion
           if (completedWaitpoint) {
             await this.waitpointSystem.scheduleWaitpointContinuations(completedWaitpoint);
           }
