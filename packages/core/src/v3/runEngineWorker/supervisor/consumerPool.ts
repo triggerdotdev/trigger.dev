@@ -369,6 +369,10 @@ export class RunQueueConsumerPool {
 
       const consumer = this.consumerFactory({
         ...this.consumerOptions,
+        // Share the pool's single metrics instance so every consumer records onto
+        // the same histogram (re-registering the metric name would throw). Fall
+        // back to a caller-supplied instance rather than clobbering it.
+        metrics: this.promMetrics ?? this.consumerOptions.metrics,
         onDequeue: async (messages, timing) => {
           // Always update queue length, default to 0 for empty dequeues or missing value
           this.updateQueueLength(messages[0]?.workerQueueLength ?? 0);
