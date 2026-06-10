@@ -288,9 +288,12 @@ export class RunEngine {
       }
     );
 
-    this.snapshotsSinceReplicaRetryDelay = options.readReplicaSnapshotsSinceRetryDelay ?? {
-      minMs: 50,
-      maxMs: 200,
+    // Normalize the bounds, but keep maxMs <= 0 meaning "skip the replica retry".
+    const retryDelay = options.readReplicaSnapshotsSinceRetryDelay ?? { minMs: 50, maxMs: 200 };
+    const retryMinMs = Math.max(0, retryDelay.minMs);
+    this.snapshotsSinceReplicaRetryDelay = {
+      minMs: retryDelay.maxMs > 0 ? Math.min(retryMinMs, retryDelay.maxMs) : retryMinMs,
+      maxMs: retryDelay.maxMs,
     };
 
     const defaultHeartbeatTimeouts: HeartbeatTimeouts = {

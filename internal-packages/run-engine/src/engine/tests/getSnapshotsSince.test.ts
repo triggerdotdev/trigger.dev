@@ -890,7 +890,11 @@ describe("RunEngine getSnapshotsSince", () => {
         );
         expect(expectedSnapshots.length).toBeGreaterThan(0);
         expect(result!.length).toBe(expectedSnapshots.length);
-        expect(result!.map((s) => s.snapshot.id)).toEqual(expectedSnapshots.map((s) => s.id));
+        // Compare as sorted lists: same-millisecond snapshots have unspecified relative
+        // order in both the engine query and this test's query.
+        expect(result!.map((s) => s.snapshot.id).sort()).toEqual(
+          expectedSnapshots.map((s) => s.id).sort()
+        );
 
         expect(
           await getCounterValue("run_engine.snapshots_since.replica_miss", { outcome: "primary" })
@@ -1010,7 +1014,11 @@ describe("RunEngine getSnapshotsSince", () => {
         );
         expect(expectedSnapshots.length).toBeGreaterThan(0);
         expect(result!.length).toBe(expectedSnapshots.length);
-        expect(result!.map((s) => s.snapshot.id)).toEqual(expectedSnapshots.map((s) => s.id));
+        // Compare as sorted lists: same-millisecond snapshots have unspecified relative
+        // order in both the engine query and this test's query.
+        expect(result!.map((s) => s.snapshot.id).sort()).toEqual(
+          expectedSnapshots.map((s) => s.id).sort()
+        );
 
         // Recovered on the replica retry - the writer was never consulted.
         expect(
@@ -1183,7 +1191,11 @@ describe("RunEngine getSnapshotsSince", () => {
           (s) => s.createdAt.getTime() > since.createdAt.getTime() && s.id !== tail.id
         );
         expect(result!.map((s) => s.snapshot.id)).not.toContain(tail.id);
-        expect(result!.map((s) => s.snapshot.id)).toEqual(expectedSnapshots.map((s) => s.id));
+        // Compare as sorted lists: same-millisecond snapshots have unspecified relative
+        // order in both the engine query and this test's query.
+        expect(result!.map((s) => s.snapshot.id).sort()).toEqual(
+          expectedSnapshots.map((s) => s.id).sort()
+        );
 
         expect(await getCounterValue("run_engine.snapshots_since.replica_miss")).toBe(0);
       } finally {
@@ -1281,7 +1293,11 @@ describe("RunEngine getSnapshotsSince", () => {
           (s) => s.createdAt.getTime() > since.createdAt.getTime()
         );
         expect(expectedSnapshots.length).toBeGreaterThan(0);
-        expect(result!.map((s) => s.snapshot.id)).toEqual(expectedSnapshots.map((s) => s.id));
+        // Compare as sorted lists: same-millisecond snapshots have unspecified relative
+        // order in both the engine query and this test's query.
+        expect(result!.map((s) => s.snapshot.id).sort()).toEqual(
+          expectedSnapshots.map((s) => s.id).sort()
+        );
 
         expect(await getCounterValue("run_engine.snapshots_since.replica_miss")).toBe(0);
       } finally {
@@ -1381,7 +1397,11 @@ describe("RunEngine getSnapshotsSince", () => {
           (s) => s.createdAt.getTime() > since.createdAt.getTime()
         );
         expect(expectedSnapshots.length).toBeGreaterThan(0);
-        expect(result!.map((s) => s.snapshot.id)).toEqual(expectedSnapshots.map((s) => s.id));
+        // Compare as sorted lists: same-millisecond snapshots have unspecified relative
+        // order in both the engine query and this test's query.
+        expect(result!.map((s) => s.snapshot.id).sort()).toEqual(
+          expectedSnapshots.map((s) => s.id).sort()
+        );
 
         expect(await getCounterValue("run_engine.snapshots_since.replica_miss")).toBe(0);
       } finally {

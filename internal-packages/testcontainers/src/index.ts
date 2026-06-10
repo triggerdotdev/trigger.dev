@@ -181,11 +181,7 @@ const clonedPostgresContainer = async ({}, use: Use<StartedPostgreSqlContainer>)
   const baseUri = container.getConnectionUri();
   const cloneDb = `test_${pgCloneCounter++}`;
 
-  const admin = new PrismaClient({
-    datasources: { db: { url: postgresUriWithDatabase(baseUri, "postgres") } },
-  });
-  await admin.$executeRawUnsafe(`CREATE DATABASE "${cloneDb}" TEMPLATE "${POSTGRES_TEMPLATE_DB}"`);
-  await admin.$disconnect();
+  await createDatabaseFromTemplate(baseUri, cloneDb);
 
   const cloneUri = postgresUriWithDatabase(baseUri, cloneDb);
   const view = new Proxy(container, {
@@ -200,19 +196,36 @@ const clonedPostgresContainer = async ({}, use: Use<StartedPostgreSqlContainer>)
   try {
     await use(view);
   } finally {
-    // Best-effort drop so clones don't pile up in the worker's pg over a long suite. WITH (FORCE)
-    // terminates any lingering backends (pg 13+). A failed drop is harmless - the whole container is
-    // reaped on worker exit - so we never let cleanup fail the test.
-    const cleanup = new PrismaClient({
-      datasources: { db: { url: postgresUriWithDatabase(baseUri, "postgres") } },
-    });
-    try {
-      await cleanup.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${cloneDb}" WITH (FORCE)`);
-    } catch {
-      // ignore - reaped with the container anyway
-    } finally {
-      await cleanup.$disconnect();
-    }
+    await dropCloneDatabase(baseUri, cloneDb);
+  }
+};
+
+const createDatabaseFromTemplate = async (baseUri: string, cloneDb: string) => {
+  const admin = new PrismaClient({
+    datasources: { db: { url: postgresUriWithDatabase(baseUri, "postgres") } },
+  });
+  try {
+    await admin.$executeRawUnsafe(
+      `CREATE DATABASE "${cloneDb}" TEMPLATE "${POSTGRES_TEMPLATE_DB}"`
+    );
+  } finally {
+    await admin.$disconnect();
+  }
+};
+
+// Best-effort drop so clones don't pile up in the worker's pg over a long suite. WITH (FORCE)
+// terminates any lingering backends (pg 13+). A failed drop is harmless - the whole container is
+// reaped on worker exit - so we never let cleanup fail the test.
+const dropCloneDatabase = async (baseUri: string, cloneDb: string) => {
+  const cleanup = new PrismaClient({
+    datasources: { db: { url: postgresUriWithDatabase(baseUri, "postgres") } },
+  });
+  try {
+    await cleanup.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${cloneDb}" WITH (FORCE)`);
+  } catch {
+    // ignore - reaped with the container anyway
+  } finally {
+    await cleanup.$disconnect();
   }
 };
 
@@ -224,11 +237,7 @@ const schemaOnlyPrismaFixture = async ({}: {}, use: Use<PrismaClient>) => {
   const baseUri = container.getConnectionUri();
   const cloneDb = `schema_only_${pgCloneCounter++}`;
 
-  const admin = new PrismaClient({
-    datasources: { db: { url: postgresUriWithDatabase(baseUri, "postgres") } },
-  });
-  await admin.$executeRawUnsafe(`CREATE DATABASE "${cloneDb}" TEMPLATE "${POSTGRES_TEMPLATE_DB}"`);
-  await admin.$disconnect();
+  await createDatabaseFromTemplate(baseUri, cloneDb);
 
   const prisma = new PrismaClient({
     datasources: { db: { url: postgresUriWithDatabase(baseUri, cloneDb) } },
@@ -237,18 +246,7 @@ const schemaOnlyPrismaFixture = async ({}: {}, use: Use<PrismaClient>) => {
     await use(prisma);
   } finally {
     await logCleanup("schemaOnlyPrisma", prisma.$disconnect());
-    // Best-effort drop, mirroring clonedPostgresContainer cleanup - the container is reaped on
-    // worker exit anyway, so never let cleanup fail the test.
-    const cleanup = new PrismaClient({
-      datasources: { db: { url: postgresUriWithDatabase(baseUri, "postgres") } },
-    });
-    try {
-      await cleanup.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${cloneDb}" WITH (FORCE)`);
-    } catch {
-      // ignore - reaped with the container anyway
-    } finally {
-      await cleanup.$disconnect();
-    }
+    await dropCloneDatabase(baseUri, cloneDb);
   }
 };
 
