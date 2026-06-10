@@ -436,6 +436,117 @@ describe("RunEngine getSnapshotsSince", () => {
     }
   });
 
+  containerTest(
+    "returns null when the since snapshot belongs to a different run",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const runA = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: generateFriendlyId("run"),
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_foreign_snapshot",
+            spanId: "s_foreign_snapshot_a",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        const runB = await engine.trigger(
+          {
+            number: 2,
+            friendlyId: generateFriendlyId("run"),
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_foreign_snapshot",
+            spanId: "s_foreign_snapshot_b",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        await setTimeout(500);
+        await engine.dequeueFromWorkerQueue({
+          consumerId: "test_foreign_snapshot",
+          workerQueue: "main",
+        });
+
+        const runASnapshots = await prisma.taskRunExecutionSnapshot.findMany({
+          where: { runId: runA.id, isValid: true },
+          orderBy: { createdAt: "asc" },
+        });
+        const runBSnapshots = await prisma.taskRunExecutionSnapshot.findMany({
+          where: { runId: runB.id, isValid: true },
+          orderBy: { createdAt: "asc" },
+        });
+
+        expect(runASnapshots.length).toBeGreaterThanOrEqual(1);
+        expect(runBSnapshots.length).toBeGreaterThanOrEqual(1);
+
+        const runASnapshot = runASnapshots[0];
+
+        // Poll run B using a snapshot id that belongs to run A
+        const result = await engine.getSnapshotsSince({
+          runId: runB.id,
+          snapshotId: runASnapshot.id,
+        });
+
+        expect(result).toBeNull();
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
   // Direct database tests for the core function
   containerTest(
     "direct test: large waitpoint scenario - 100 waitpoints with 10KB outputs",
