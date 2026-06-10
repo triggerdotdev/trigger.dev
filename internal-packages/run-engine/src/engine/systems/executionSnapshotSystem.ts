@@ -10,6 +10,7 @@ import {
   TaskRunStatus,
   Waitpoint,
 } from "@trigger.dev/database";
+import { ExecutionSnapshotNotFoundError } from "../errors.js";
 import { HeartbeatTimeouts } from "../types.js";
 import { SystemResources } from "./systems.js";
 
@@ -278,7 +279,7 @@ export async function getExecutionSnapshotsSince(
   });
 
   if (!sinceSnapshot) {
-    throw new Error(`No execution snapshot found for id ${sinceSnapshotId}`);
+    throw new ExecutionSnapshotNotFoundError(sinceSnapshotId);
   }
 
   // Step 2: Fetch snapshots WITHOUT waitpoints to avoid N×M data explosion
