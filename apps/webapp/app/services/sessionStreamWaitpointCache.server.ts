@@ -151,13 +151,14 @@ export async function drainSessionStreamWaitpoints(
  * Remove a single waitpoint from the pending set. Called after a race
  * where `.wait()` completed the waitpoint from pre-arrived data.
  */
-// "ssa" — session-stream-append. Best-effort idempotency marker for the
-// append route: when a caller supplies an `X-Part-Id`, a retried POST
-// whose first attempt actually committed is skipped instead of producing
-// a duplicate record (and double-firing the waitpoint drain). The marker
-// is only written AFTER a successful S2 append, so a retry of a genuinely
-// failed append still goes through. 5-minute window — this covers HTTP
-// retry storms, not a permanent idempotency store.
+// "ssa" — session-stream-append. Idempotency claim for the append route:
+// when a caller supplies an `X-Part-Id`, the first request atomically claims
+// the key (SET NX) before appending; a concurrent or retried POST with the
+// same id fails the claim and skips the append, so it never produces a
+// duplicate record (or double-fires the waitpoint drain). The claim is
+// released if the append fails, so a retry of a genuinely failed append
+// still goes through. 5-minute window — covers retry storms, not a
+// permanent idempotency store.
 const APPEND_DEDUPE_PREFIX = "ssa:";
 const APPEND_DEDUPE_TTL_SECONDS = 5 * 60;
 
@@ -176,35 +177,45 @@ function buildAppendDedupeKey(
 }
 
 /**
- * True if a part with this id was already successfully appended to the
- * channel within the dedupe window. Fails open (returns false) when Redis
- * is unavailable — appends degrade to at-least-once, never to dropped.
+ * Atomically claim a part id before appending. Returns true if this caller
+ * won the claim (first to see this id) and should perform the append, false
+ * if the id was already claimed (a concurrent or retried POST) and the append
+ * should be skipped. Fails open (returns true) when Redis is unavailable —
+ * appends degrade to at-least-once, never to dropped.
  */
-export async function wasSessionStreamPartAppended(
+export async function claimSessionStreamPart(
   environmentId: string,
   addressingKey: string,
   io: "out" | "in",
   partId: string
 ): Promise<boolean> {
-  if (!redis) return false;
+  if (!redis) return true;
 
   try {
-    const value = await redis.get(buildAppendDedupeKey(environmentId, addressingKey, io, partId));
-    return value !== null;
+    // SET NX is the atomic claim: "OK" when set (we won), null when the key
+    // already exists (someone else owns this id).
+    const result = await redis.set(
+      buildAppendDedupeKey(environmentId, addressingKey, io, partId),
+      "1",
+      "EX",
+      APPEND_DEDUPE_TTL_SECONDS,
+      "NX"
+    );
+    return result === "OK";
   } catch (error) {
-    logger.error("Failed to read session stream append dedupe marker", {
+    logger.error("Failed to claim session stream append part", {
       environmentId,
       addressingKey,
       io,
       partId,
       error,
     });
-    return false;
+    return true;
   }
 }
 
-/** Record a successful append so a retried POST with the same part id is skipped. */
-export async function markSessionStreamPartAppended(
+/** Release a claim so a retry can proceed — called when the append itself failed. */
+export async function releaseSessionStreamPart(
   environmentId: string,
   addressingKey: string,
   io: "out" | "in",
@@ -213,14 +224,9 @@ export async function markSessionStreamPartAppended(
   if (!redis) return;
 
   try {
-    await redis.set(
-      buildAppendDedupeKey(environmentId, addressingKey, io, partId),
-      "1",
-      "EX",
-      APPEND_DEDUPE_TTL_SECONDS
-    );
+    await redis.del(buildAppendDedupeKey(environmentId, addressingKey, io, partId));
   } catch (error) {
-    logger.error("Failed to write session stream append dedupe marker", {
+    logger.error("Failed to release session stream append part", {
       environmentId,
       addressingKey,
       io,

@@ -12,9 +12,9 @@ import {
 } from "~/services/realtime/sessions.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import {
+  claimSessionStreamPart,
   drainSessionStreamWaitpoints,
-  markSessionStreamPartAppended,
-  wasSessionStreamPartAppended,
+  releaseSessionStreamPart,
 } from "~/services/sessionStreamWaitpointCache.server";
 import {
   anyResource,
@@ -150,25 +150,35 @@ const { action, loader } = createActionApiRoute(
     const clientPartId = request.headers.get("X-Part-Id");
     const partId = clientPartId ?? nanoid(7);
 
-    // Idempotency on client-supplied part ids: a retried POST whose first
-    // attempt committed skips the second append (which would duplicate the
-    // record), but still falls through to the drain below — so a retry whose
-    // first attempt died before waking the waitpoint can still recover it.
-    const alreadyAppended =
-      !!clientPartId &&
-      (await wasSessionStreamPartAppended(
-        authentication.environment.id,
-        addressingKey,
-        params.io,
-        clientPartId
-      ));
+    // Idempotency on client-supplied part ids: atomically claim the id before
+    // appending. A concurrent or retried POST that loses the claim skips the
+    // append (no duplicate record) but still falls through to the drain below,
+    // so a retry whose first attempt died before waking the waitpoint can still
+    // recover it. The claim is released on append failure so a genuine retry
+    // can re-claim and proceed.
+    const wonClaim = clientPartId
+      ? await claimSessionStreamPart(
+          authentication.environment.id,
+          addressingKey,
+          params.io,
+          clientPartId
+        )
+      : true;
 
-    if (!alreadyAppended) {
+    if (wonClaim) {
       const [appendError] = await tryCatch(
         realtimeStream.appendPartToSessionStream(part, partId, addressingKey, params.io)
       );
 
       if (appendError) {
+        if (clientPartId) {
+          await releaseSessionStreamPart(
+            authentication.environment.id,
+            addressingKey,
+            params.io,
+            clientPartId
+          );
+        }
         if (appendError instanceof ServiceValidationError) {
           return json(
             { ok: false, error: appendError.message },
@@ -183,15 +193,6 @@ const { action, loader } = createActionApiRoute(
         return json(
           { ok: false, error: "Something went wrong, please try again." },
           { status: 500 }
-        );
-      }
-
-      if (clientPartId) {
-        await markSessionStreamPartAppended(
-          authentication.environment.id,
-          addressingKey,
-          params.io,
-          clientPartId
         );
       }
     }
