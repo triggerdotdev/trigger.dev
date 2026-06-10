@@ -408,7 +408,6 @@ export class ExecutionSnapshotSystem {
       ...newSnapshot,
       friendlyId: SnapshotId.toFriendlyId(newSnapshot.id),
       runFriendlyId: RunId.toFriendlyId(newSnapshot.runId),
-      completedWaitpoints,
     };
   }
 
@@ -442,13 +441,17 @@ export class ExecutionSnapshotSystem {
       }
     }
 
+    // Destructure off the wrapper-only fields so the emitted payload matches the
+    // pre-split shape (raw snapshot row fields + completedWaitpointIds only).
+    const { friendlyId: _fid, runFriendlyId: _rfid, ...snapshotRow } = snapshot;
+
     this.$.eventBus.emit("executionSnapshotCreated", {
       time: snapshot.createdAt,
       run: {
         id: snapshot.runId,
       },
       snapshot: {
-        ...snapshot,
+        ...snapshotRow,
         completedWaitpointIds: completedWaitpoints?.map((w) => w.id) ?? [],
       },
     });
