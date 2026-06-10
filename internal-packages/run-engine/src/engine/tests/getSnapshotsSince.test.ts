@@ -14,6 +14,7 @@ import {
   generateLargeOutput,
 } from "./helpers/snapshotTestHelpers.js";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
+import type { PrismaReplicaClient } from "@trigger.dev/database";
 
 vi.setConfig({ testTimeout: 120_000 });
 
@@ -674,6 +675,173 @@ describe("RunEngine getSnapshotsSince", () => {
         for (let i = 0; i < result!.length - 1; i++) {
           expect(result![i].completedWaitpoints.length).toBe(0);
         }
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "falls back to the primary when the replica is missing the since snapshot",
+    async ({ prisma, schemaOnlyPrisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        // An empty (schema-only) database stands in for a read replica that has not
+        // caught up: every lookup on it misses, so the engine must fall back to the
+        // primary instead of failing the poll.
+        readOnlyPrisma: schemaOnlyPrisma as PrismaReplicaClient,
+        readReplicaSnapshotsSinceEnabled: true,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const runFriendlyId = generateFriendlyId("run");
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: runFriendlyId,
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_replica_fallback",
+            spanId: "s_replica_fallback",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        await setTimeout(500);
+        await engine.dequeueFromWorkerQueue({
+          consumerId: "test_replica_fallback",
+          workerQueue: "main",
+        });
+
+        const allSnapshots = await prisma.taskRunExecutionSnapshot.findMany({
+          where: { runId: run.id, isValid: true },
+          orderBy: { createdAt: "asc" },
+        });
+        expect(allSnapshots.length).toBeGreaterThan(1);
+
+        // The since-snapshot exists only on the primary - the replica misses it.
+        const firstSnapshot = allSnapshots[0];
+        const result = await engine.getSnapshotsSince({
+          runId: run.id,
+          snapshotId: firstSnapshot.id,
+        });
+
+        // Served by the primary fallback, not a failed poll.
+        expect(result).not.toBeNull();
+        expect(result!.length).toBe(allSnapshots.length - 1);
+        expect(result!.map((s) => s.snapshot.id)).toEqual(allSnapshots.slice(1).map((s) => s.id));
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "returns null when the snapshot is missing on both replica and primary",
+    async ({ prisma, schemaOnlyPrisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        readOnlyPrisma: schemaOnlyPrisma as PrismaReplicaClient,
+        readReplicaSnapshotsSinceEnabled: true,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const runFriendlyId = generateFriendlyId("run");
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: runFriendlyId,
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_replica_both_miss",
+            spanId: "s_replica_both_miss",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        // A snapshot id that exists nowhere - a genuine miss stays an error (null).
+        const result = await engine.getSnapshotsSince({
+          runId: run.id,
+          snapshotId: "snapshot_does_not_exist",
+        });
+
+        expect(result).toBeNull();
       } finally {
         await engine.quit();
       }
