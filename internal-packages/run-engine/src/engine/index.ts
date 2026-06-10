@@ -33,6 +33,7 @@ import {
 import { Worker } from "@trigger.dev/redis-worker";
 import { assertNever } from "assert-never";
 import { EventEmitter } from "node:events";
+import { setTimeout } from "node:timers/promises";
 import { BatchQueue } from "../batch-queue/index.js";
 import type {
   BatchItem,
@@ -94,6 +95,7 @@ export class RunEngine {
   private tracer: Tracer;
   private meter: Meter;
   private snapshotsSinceReplicaMissCounter: Counter;
+  private snapshotsSinceReplicaRetryDelay: { minMs: number; maxMs: number };
   private heartbeatTimeouts: HeartbeatTimeouts;
   private repairSnapshotTimeoutMs: number;
   private batchQueue: BatchQueue;
@@ -282,9 +284,14 @@ export class RunEngine {
       "run_engine.snapshots_since.replica_miss",
       {
         description:
-          "getSnapshotsSince reads where the since snapshot was not yet on the read replica and was served from the primary",
+          "getSnapshotsSince reads where the since snapshot was not yet on the read replica, recovered via a replica retry or served from the primary",
       }
     );
+
+    this.snapshotsSinceReplicaRetryDelay = options.readReplicaSnapshotsSinceRetryDelay ?? {
+      minMs: 50,
+      maxMs: 200,
+    };
 
     const defaultHeartbeatTimeouts: HeartbeatTimeouts = {
       PENDING_EXECUTING: 60_000,
@@ -1948,11 +1955,36 @@ export class RunEngine {
     } catch (e) {
       if (useReplica && e instanceof ExecutionSnapshotNotFoundError) {
         // Replica lag: the runner learned this snapshot id from the writer before the
-        // replica caught up. Serve from the writer; only count/warn if the writer has it
-        // (a permanent miss is a real error, not lag).
+        // replica caught up. Give the replica one jittered retry, then serve from the
+        // writer; only count/warn if a retry succeeds (a permanent miss is a real error,
+        // not lag).
+        const { minMs, maxMs } = this.snapshotsSinceReplicaRetryDelay;
+        if (maxMs > 0) {
+          await setTimeout(minMs + Math.random() * Math.max(0, maxMs - minMs));
+          try {
+            const result = await query(this.readOnlyPrisma);
+            this.snapshotsSinceReplicaMissCounter.add(1, { outcome: "replica_retry" });
+            return result;
+          } catch (replicaRetryError) {
+            if (!(replicaRetryError instanceof ExecutionSnapshotNotFoundError)) {
+              this.logger.error("Failed to getSnapshotsSince", {
+                message:
+                  replicaRetryError instanceof Error
+                    ? replicaRetryError.message
+                    : replicaRetryError,
+                runId,
+                snapshotId,
+                retriedFromReplica: true,
+              });
+              return null;
+            }
+            // still not on the replica - fall through to the primary
+          }
+        }
+
         try {
           const result = await query(this.prisma);
-          this.snapshotsSinceReplicaMissCounter.add(1);
+          this.snapshotsSinceReplicaMissCounter.add(1, { outcome: "primary" });
           this.logger.warn("getSnapshotsSince: snapshot not yet on replica, served from primary", {
             runId,
             snapshotId,
