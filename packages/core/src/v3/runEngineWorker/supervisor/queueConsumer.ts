@@ -2,6 +2,7 @@ import { SimpleStructuredLogger } from "../../utils/structuredLogger.js";
 import { SupervisorHttpClient } from "./http.js";
 import { WorkerApiDequeueResponseBody, WorkerQueueClass } from "./schemas.js";
 import { PreDequeueFn, PreSkipFn } from "./types.js";
+import type { ConsumerPoolMetrics } from "./consumerPoolMetrics.js";
 
 export interface QueueConsumer {
   start(): void;
@@ -18,6 +19,8 @@ export type RunQueueConsumerOptions = {
   /** Which worker-queue class this consumer pulls from. Defaults to the worker's region queue. */
   queueClass?: WorkerQueueClass;
   onDequeue: (messages: WorkerApiDequeueResponseBody, timing?: { dequeueResponseMs: number; pollingIntervalMs: number }) => Promise<void>;
+  /** Optional shared pool metrics. When provided, dequeue API latency is recorded as a histogram. */
+  metrics?: ConsumerPoolMetrics;
 };
 
 export class RunQueueConsumer implements QueueConsumer {
@@ -27,6 +30,7 @@ export class RunQueueConsumer implements QueueConsumer {
   private readonly maxRunCount?: number;
   private readonly queueClass?: WorkerQueueClass;
   private readonly onDequeue: (messages: WorkerApiDequeueResponseBody, timing?: { dequeueResponseMs: number; pollingIntervalMs: number }) => Promise<void>;
+  private readonly metrics?: ConsumerPoolMetrics;
 
   private readonly logger = new SimpleStructuredLogger("queue-consumer");
 
@@ -46,6 +50,7 @@ export class RunQueueConsumer implements QueueConsumer {
     this.lastScheduledIntervalMs = opts.idleIntervalMs;
     this.onDequeue = opts.onDequeue;
     this.client = opts.client;
+    this.metrics = opts.metrics;
   }
 
   start() {
@@ -116,18 +121,26 @@ export class RunQueueConsumer implements QueueConsumer {
 
     let nextIntervalMs = this.idleIntervalMs;
 
+    const dequeueStart = performance.now();
+
     try {
-      const dequeueStart = performance.now();
       const response = await this.client.dequeue({
         maxResources: preDequeueResult?.maxResources,
         maxRunCount: this.maxRunCount,
         queueClass: this.queueClass,
       });
-      const dequeueResponseMs = Math.round(performance.now() - dequeueStart);
+      const dequeueDurationSeconds = (performance.now() - dequeueStart) / 1000;
+      const dequeueResponseMs = Math.round(dequeueDurationSeconds * 1000);
 
       if (!response.success) {
+        this.metrics?.observeDequeueLatency(dequeueDurationSeconds, "error");
         this.logger.error("Failed to dequeue", { error: response.error });
       } else {
+        this.metrics?.observeDequeueLatency(
+          dequeueDurationSeconds,
+          response.data.length > 0 ? "success" : "empty"
+        );
+
         try {
           await this.onDequeue(response.data, { dequeueResponseMs, pollingIntervalMs: this.lastScheduledIntervalMs });
 
@@ -139,6 +152,8 @@ export class RunQueueConsumer implements QueueConsumer {
         }
       }
     } catch (clientError) {
+      // Captures network errors and timeouts - exactly the tail latencies we care about.
+      this.metrics?.observeDequeueLatency((performance.now() - dequeueStart) / 1000, "error");
       this.logger.error("client.dequeue error", { error: clientError });
     }
 

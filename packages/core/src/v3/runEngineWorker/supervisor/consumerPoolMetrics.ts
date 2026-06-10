@@ -5,6 +5,15 @@ export interface ConsumerPoolMetricsOptions {
   prefix?: string;
 }
 
+/**
+ * Outcome of a single dequeue API round-trip, used as a low-cardinality label
+ * on the dequeue latency histogram.
+ * - `success`: the call returned at least one run
+ * - `empty`: the call succeeded but returned no runs (the common idle case)
+ * - `error`: the call failed (unsuccessful response, network error, or timeout)
+ */
+export type DequeueOutcome = "success" | "empty" | "error";
+
 export class ConsumerPoolMetrics {
   private readonly register: Registry;
   private readonly prefix: string;
@@ -25,6 +34,9 @@ export class ConsumerPoolMetrics {
   // Performance metrics
   public readonly queueLengthUpdatesTotal: Counter;
   public readonly batchesProcessedTotal: Counter;
+
+  // Dequeue API latency (client-side, measured around the dequeue HTTP call)
+  public readonly dequeueDurationSeconds: Histogram;
 
   constructor(opts: ConsumerPoolMetricsOptions = {}) {
     this.register = opts.register ?? new Registry();
@@ -102,6 +114,15 @@ export class ConsumerPoolMetrics {
       help: "Total number of metric batches processed",
       registers: [this.register],
     });
+
+    this.dequeueDurationSeconds = new Histogram({
+      name: `${this.prefix}_dequeue_duration_seconds`,
+      help: "Client-side latency of the dequeue API call (POST /engine/v1/worker-actions/dequeue), measured around the HTTP request",
+      labelNames: ["outcome"],
+      // Tuned for the dequeue endpoint: sub-10ms hits through a multi-second tail.
+      buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
+      registers: [this.register],
+    });
   }
 
   /**
@@ -156,5 +177,14 @@ export class ConsumerPoolMetrics {
    */
   recordQueueLengthUpdate() {
     this.queueLengthUpdatesTotal.inc();
+  }
+
+  /**
+   * Record the client-side latency of a single dequeue API round-trip.
+   * @param seconds Wall-clock duration of the dequeue call, in seconds.
+   * @param outcome Whether the call returned runs, was empty, or errored.
+   */
+  observeDequeueLatency(seconds: number, outcome: DequeueOutcome) {
+    this.dequeueDurationSeconds.observe({ outcome }, seconds);
   }
 }
