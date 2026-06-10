@@ -37,7 +37,7 @@ Standard [task lifecycle hooks](/tasks/overview) such as `onWait`, `onResume`, `
 
 Fires **once per worker process picking up the chat** — for the initial run, for preloaded runs, AND for reactive continuation runs (post-cancel, crash, `endRun`, `requestUpgrade`, OOM retry). Does NOT fire when the same run resumes from snapshot via the idle-window suspend/resume path — use [`onChatResume`](#onchatsuspend--onchatresume) for that.
 
-This is the right place to initialize anything that lives in the JS process for the lifetime of the run: [`chat.local`](/ai-chat/chat-local) state, DB connections, sandboxes, in-memory caches. It runs before `onPreload`, `onChatStart`, the continuation-wait branch, and any turn — so anything you set up here is available everywhere downstream.
+This is the right place to initialize anything that lives in the JS process for the lifetime of the run: [`chat.local`](/ai-chat/chat-local) state, [DB connections](/database-connections), sandboxes, in-memory caches. It runs before `onPreload`, `onChatStart`, the continuation-wait branch, and any turn — so anything you set up here is available everywhere downstream.
 
 <Warning>
   If you initialize `chat.local` only in `onChatStart`, your `run()` will crash on continuation runs with `chat.local can only be modified after initialization`. `onChatStart` is once-per-chat by contract; `chat.local` is per-process and needs `onBoot`.
