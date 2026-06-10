@@ -1964,6 +1964,7 @@ export class RunEngine {
             message: retryError instanceof Error ? retryError.message : retryError,
             runId,
             snapshotId,
+            retriedFromReplica: true,
           });
           return null;
         }

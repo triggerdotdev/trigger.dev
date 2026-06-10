@@ -789,7 +789,6 @@ describe("RunEngine getSnapshotsSince", () => {
   containerTest(
     "returns null when the snapshot is missing on both replica and primary",
     async ({ prisma, schemaOnlyPrisma, redisOptions }) => {
-      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const { meter, getCounterValue } = createTestMetricsMeter();
 
       const engine = new RunEngine({
@@ -825,33 +824,9 @@ describe("RunEngine getSnapshotsSince", () => {
       });
 
       try {
-        const taskIdentifier = "test-task";
-        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
-
-        const runFriendlyId = generateFriendlyId("run");
-        const run = await engine.trigger(
-          {
-            number: 1,
-            friendlyId: runFriendlyId,
-            environment: authenticatedEnvironment,
-            taskIdentifier,
-            payload: "{}",
-            payloadType: "application/json",
-            context: {},
-            traceContext: {},
-            traceId: "t_replica_both_miss",
-            spanId: "s_replica_both_miss",
-            workerQueue: "main",
-            queue: "task/test-task",
-            isTest: false,
-            tags: [],
-          },
-          prisma
-        );
-
-        // A snapshot id that exists nowhere - a genuine miss stays an error (null).
+        // runId is never consulted - the since-snapshot lookup throws on the bogus id first.
         const result = await engine.getSnapshotsSince({
-          runId: run.id,
+          runId: "run_does_not_exist",
           snapshotId: "snapshot_does_not_exist",
         });
 
