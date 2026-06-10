@@ -1,22 +1,8 @@
 /**
- * Electric HTTP shape-stream wire protocol serializer for the single-run feed.
- *
- * This re-emits the exact wire shape that the deployed `@electric-sql/client`
- * (1.0.14 modern + 0.4.0 legacy) and the SDK's `SubscribeRunRawShape` expect,
- * so the notifier-backed realtime feed stays byte-faithful to what those clients
- * already expect.
- *
- * The module is intentionally pure: no DB, Redis, or env access, so the wire
- * contract can be unit-tested by round-tripping through the real client parser
- * + the SDK schema. Header rewrites, tokens, and transport live in the client.
- *
- * Wire facts this encodes (verified against @electric-sql/client@1.0.14):
- *  - Response body is a JSON array of messages; an empty body is treated as `[]`.
- *  - Each column value is wire-encoded as a STRING (or null); the client decodes
- *    it back using the per-column `electric-schema` header. Columns absent from
- *    the schema are passed through unparsed (so text/timestamp stay strings).
- *  - `up-to-date` is the only control message that makes the client emit rows.
- *  - Re-sending the full row each cycle is idempotent: the client merges by `key`.
+ * Pure (no DB/Redis/env) Electric HTTP shape-stream wire serializer, byte-faithful to what the
+ * deployed `@electric-sql/client` (1.0.14 + 0.4.0) and the SDK's `SubscribeRunRawShape` expect.
+ * Each column value is wire-encoded as a string (or null) decoded via the `electric-schema` header;
+ * `up-to-date` is the only control message that makes the client emit, and re-sending a full row is idempotent.
  */
 
 export type ElectricColumnType =
@@ -33,22 +19,11 @@ type ElectricColumn = {
   type: ElectricColumnType;
   /** Array dimensionality. 1 => `type[]` (Postgres `{a,b}` literal). */
   dims?: number;
-  /**
-   * Array columns only. True when the Postgres column has NO default, so an
-   * empty/absent value is stored as SQL NULL (Electric emits `null`) rather than
-   * an empty-array literal `{}`. Prisma erases this distinction — it coerces both
-   * NULL and `{}` to `[]` on read — so we re-derive the wire form from the column's
-   * known schema. `runTags` has no default; `realtimeStreams` has `@default([])`.
-   */
+  /** Array columns only: true when the column has no SQL default, so an empty value emits `null` (not `{}`). Prisma erases this distinction, so we re-derive it here. */
   emptyArrayAsNull?: boolean;
 };
 
-/**
- * The columns the realtime run feed exposes, mirroring `DEFAULT_ELECTRIC_COLUMNS`
- * in `realtimeClient.server.ts` and their Postgres types from the `TaskRun`
- * Prisma model. The `type`/`dims` drive both the `electric-schema` header and
- * the value encoding. Keep in sync with `DEFAULT_ELECTRIC_COLUMNS`.
- */
+/** Columns the realtime run feed exposes; keep in sync with `DEFAULT_ELECTRIC_COLUMNS`. `type`/`dims` drive the schema header and value encoding. */
 export const RUN_ELECTRIC_COLUMNS: ReadonlyArray<ElectricColumn> = [
   { name: "id", type: "text" },
   { name: "taskIdentifier", type: "text" },
@@ -81,10 +56,7 @@ export const RUN_ELECTRIC_COLUMNS: ReadonlyArray<ElectricColumn> = [
 /** Columns that can never be skipped via `skipColumns` (mirrors realtimeClient). */
 export const RESERVED_COLUMNS = ["id", "taskIdentifier", "friendlyId", "status", "createdAt"];
 
-/**
- * Shape of a single run hydrated for the realtime feed. Structurally compatible
- * with the Prisma `TaskRun` projection produced by `RunHydrator`.
- */
+/** A single run hydrated for the realtime feed; structurally compatible with the `RunHydrator` Prisma `TaskRun` projection. */
 export type RealtimeRunRow = {
   id: string;
   taskIdentifier: string;
@@ -219,11 +191,7 @@ export function buildElectricSchemaHeader(skipColumns: string[] = []): string {
   return JSON.stringify(schema);
 }
 
-/**
- * Initial snapshot body: a single `insert` for the row (if it exists) followed by
- * `up-to-date`. An absent row emits a bare `up-to-date` (an empty shape), which is
- * how Electric represents "no rows match".
- */
+/** Initial snapshot body: an `insert` for the row (if present) then `up-to-date`; an absent row emits a bare `up-to-date` (empty shape). */
 export function buildSnapshotBody(row: RealtimeRunRow | null, skipColumns: string[] = []): string {
   const messages: ShapeMessage[] = [];
   if (row) {
@@ -257,12 +225,7 @@ export function buildUpToDateBody(): string {
 
 export type RowChange = { row: RealtimeRunRow; operation: "insert" | "update" };
 
-/**
- * Multi-row body for the tag-list feed: one change message per row (insert for
- * rows new to the shape, update for rows that advanced) followed by `up-to-date`.
- * An empty `changes` array emits a bare `up-to-date`. The client merges every row
- * by key, so re-emitting a full row is idempotent.
- */
+/** Multi-row body for the tag-list feed: one change message per row then `up-to-date` (empty `changes` emits a bare `up-to-date`). */
 export function buildRowsBody(changes: RowChange[], skipColumns: string[] = []): string {
   const messages: ShapeMessage[] = changes.map((change) => ({
     key: runShapeKey(change.row.id),
@@ -295,12 +258,7 @@ export function buildRowsBodyFromSerialized(changes: SerializedRowChange[]): str
 
 export const INITIAL_OFFSET = "-1";
 
-/**
- * Opaque offset token, formatted to satisfy the client's `${number}_${number}`
- * type. The first segment is the row's `updatedAt` epoch-ms (lets a live request
- * detect whether the replica row has advanced past what the client already has);
- * the second is a per-connection sequence counter.
- */
+/** Opaque `<updatedAtMs>_<seq>` offset token (client `${number}_${number}` type); the first segment lets a live request detect whether the row advanced. */
 export function encodeOffset(updatedAtMs: number, seq: number): string {
   return `${Math.trunc(updatedAtMs)}_${Math.trunc(seq)}`;
 }

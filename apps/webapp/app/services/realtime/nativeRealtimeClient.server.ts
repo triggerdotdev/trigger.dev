@@ -34,14 +34,10 @@ import {
 import { type RunHydrator, type RunListResolver } from "./runReader.server";
 import { type RealtimeConcurrencyLimiter } from "./realtimeConcurrencyLimiter.server";
 
-/** The tag-list feed resolves ids via ClickHouse, which needs org + project + env.
- * `authentication.environment` (AuthenticatedEnvironment) provides projectId, so
- * widening here avoids touching the Electric client's RealtimeEnvironment type. */
+/** Widened with projectId so the tag-list feed can resolve ids via ClickHouse (needs org + project + env). */
 export type RealtimeListEnvironment = RealtimeEnvironment & { projectId: string };
 
-/** The realtime feeds the run routes depend on (single-run, tag-list, batch). Both
- * the Electric client and this notifier client satisfy it, so the routes can switch
- * between them behind a flag. */
+/** The realtime feeds the run routes depend on (single-run, tag-list, batch); both backends satisfy it. */
 export interface RealtimeStreamClient {
   streamRun(
     url: URL | string,
@@ -74,13 +70,10 @@ export interface RealtimeStreamClient {
 
 export type WakeupReason = "notify" | "timeout" | "abort";
 
-/** How a live poll resolved, for observability:
- *  - `fast-hydrate`: the router woke this feed with matched rows (hydrated by id, NO
- *    ClickHouse). Non-matching changes never wake the feed, so they cost nothing.
- *  - `full-resolve`: the backstop timeout did a ClickHouse resolve (the correctness net). */
+/** How a live poll resolved: `fast-hydrate` (router woke us, hydrate-by-id) or `full-resolve` (backstop ClickHouse resolve). */
 export type LivePollPath = "fast-hydrate" | "full-resolve";
 
-export type NotifierRealtimeClientOptions = {
+export type NativeRealtimeClientOptions = {
   runReader: RunHydrator;
   /** Resolves the tag/list filter into the matching id-set (filter-only). */
   runListResolver: RunListResolver;
@@ -88,8 +81,12 @@ export type NotifierRealtimeClientOptions = {
   router: EnvChangeRouter;
   limiter: RealtimeConcurrencyLimiter;
   cachedLimitProvider: CachedLimitProvider;
-  /** Backstop wait before refetching on a live request (ms). Defaults to 5000. */
+  /** Fallback per-env concurrent-connection limit when the org has none cached. */
+  defaultConcurrencyLimit?: number;
+  /** Backstop wait before refetching on a live request (ms). Defaults to 20000. */
   livePollTimeoutMs?: number;
+  /** Jitter ratio applied to the live-poll timeout (0.15 = ±15%). */
+  livePollJitterRatio?: number;
   /** Ceiling for the tag-list createdAt lookback window (ms). */
   maximumCreatedAtFilterAgeMs: number;
   /** Hard cap on tag-list snapshot size. Defaults to 1000. */
@@ -100,34 +97,30 @@ export type NotifierRealtimeClientOptions = {
   runSetResolveCacheMaxEntries?: number;
   /** Max entries in the per-handle working-set cache. Defaults to 10000. */
   listCacheMaxEntries?: number;
-  /** Epoch-aligned bucket (ms) the tag-list createdAt lower bound is floored to, so
-   * same-tag feeds pinned within the same bucket share a cache entry. Defaults to
-   * 60000. 0 disables bucketing. */
+  /** TTL (ms) for working-set cache entries. Defaults to 300000. */
+  workingSetCacheTtlMs?: number;
+  /** Epoch-aligned bucket (ms) the tag-list createdAt floor is floored to, so same-tag feeds share a cache entry. Defaults to 60000; 0 disables. */
   runSetCreatedAtBucketMs?: number;
-  /** When true (default), a multi-run live poll holds the connection until a real delta
-   * or the backstop, rather than returning an empty up-to-date the client would re-issue. */
+  /** When true (default), a multi-run live poll holds until a real delta or the backstop rather than returning an empty up-to-date. */
   holdOnEmpty?: boolean;
-  /** Max concurrent fresh ClickHouse resolves (cache misses) across this instance. Bounds a
-   * distinct-filter reconnect stampede so it queues instead of hammering ClickHouse. Defaults
-   * to 16; 0 disables the gate (unbounded). */
+  /** Max concurrent fresh ClickHouse resolves (cache misses) per instance, bounding a distinct-filter stampede. Defaults to 16; 0 disables. */
   resolveAdmissionLimit?: number;
   /** Observability hook: why a live request woke (notify vs timeout vs abort). */
   onWakeup?: (reason: WakeupReason) => void;
   /** Observability hook: how a live poll resolved (fast path vs full resolve). */
   onLivePollPath?: (path: LivePollPath) => void;
-  /** Observability hook: whether a multi-run resolve (initial/backstop) hit the cache,
-   * coalesced onto an in-flight resolve, or missed (fresh ClickHouse + Postgres). */
+  /** Observability hook: whether a multi-run resolve hit the cache, coalesced onto an in-flight resolve, or missed. */
   onRunSetResolve?: (result: "hit" | "miss" | "coalesced") => void;
   /** Observability hook: latency (ms) of the ClickHouse resolve / Postgres hydrate. */
   onRunSetQuery?: (stage: "resolve" | "hydrate", ms: number) => void;
-  /** Observability hook: a fresh resolve had to wait `ms` for an admission permit (the gate
-   * engaged — i.e. a stampede was throttled). Not called when a permit is free. */
+  /** Observability hook: a fresh resolve waited `ms` for an admission permit (only when the gate engaged). */
   onResolveAdmissionWait?: (ms: number) => void;
 };
 
 const DEFAULT_CONCURRENCY_LIMIT = 100_000;
 // Matches Electric's ~20s live long-poll hold (jittered ±15% per request).
 const DEFAULT_LIVE_POLL_TIMEOUT_MS = 20_000;
+const DEFAULT_LIVE_POLL_JITTER_RATIO = 0.15;
 const DEFAULT_MAX_LIST_RESULTS = 1_000;
 const LIST_CACHE_TTL_MS = 5 * 60_000;
 const LIST_CACHE_MAX_ENTRIES = 10_000;
@@ -136,14 +129,7 @@ const DEFAULT_RUNSET_CACHE_MAX_ENTRIES = 5_000;
 const DEFAULT_RUNSET_CREATED_AT_BUCKET_MS = 60_000;
 const DEFAULT_RESOLVE_ADMISSION_LIMIT = 16;
 
-/**
- * Fair FIFO semaphore bounding how many fresh ClickHouse resolves run concurrently. It sits
- * BEHIND the single-flight + TTL cache, so only genuine cache-miss resolves take a permit: a
- * same-filter reconnect stampede still collapses to one in-flight resolve (one permit), while
- * a distinct-filter stampede — where every filter is a different cache key and so can't
- * coalesce — is throttled to `limit` concurrent CH queries instead of firing all N at the
- * database at once. Trades a little connect latency under a stampede for bounded CH load.
- */
+/** Fair FIFO semaphore bounding concurrent fresh ClickHouse resolves. Sits behind the single-flight + TTL cache, so only genuine cache-miss resolves take a permit. */
 class ResolveAdmissionGate {
   #available: number;
   #inUse = 0;
@@ -179,16 +165,14 @@ class ResolveAdmissionGate {
   }
 }
 
-/** A multi-run feed's filter. Tag-list sets `tags` (+ pinned `createdAtAfter`);
- * the batch feed sets `batchId`. Both resolve to an id-set via the resolver. */
+/** A multi-run feed's filter: tag-list sets `tags` (+ pinned `createdAtAfter`); the batch feed sets `batchId`. */
 type RunSetFilter = {
   tags?: string[];
   batchId?: string;
   createdAtAfter?: Date;
 };
 
-/** Per-handle working set: runId -> last-emitted updatedAt (ms), so live polls
- * emit only rows that advanced. */
+/** Per-handle working set: runId -> last-emitted updatedAt (ms), so live polls emit only rows that advanced. */
 type WorkingSet = Map<string, number>;
 
 type ResponseHeaderInput = {
@@ -199,43 +183,23 @@ type ResponseHeaderInput = {
 };
 
 /**
- * Notifier-backed implementation of the realtime run feeds. All three feeds are
- * predicates over ONE per-environment change stream (the EnvChangeRouter); the router
- * decides membership, hydrates the matched runs from a read replica, and serializes their
- * wire values once. This client owns the snapshot, the per-handle working-set diff, the
- * ClickHouse-backed backstop, and the wire response.
- *
- * Single-run (`streamRun`):
- *  - initial (`offset=-1`): hydrate + emit `insert` + `up-to-date` (with schema).
- *  - live: the router wakes this feed when its run changes; emit a full-row `update` when
- *    `updatedAt` advanced past what the client has, else a bare `up-to-date`. The backstop
- *    re-checks via `getRunById`.
- *
- * Multi-run feeds (`streamRuns` tag-list, `streamBatch`):
- *  - initial: resolve the matching id-set via ClickHouse (filter-only), hydrate by-id from
- *    Postgres, emit N `insert`s, seed the working set.
- *  - live: the router wakes the feed with the matched runs already hydrated + serialized;
- *    diff them on the authoritative Postgres `updatedAt` against the per-handle working
- *    set and emit only new/advanced rows. The backstop (timeout) does a full ClickHouse
- *    resolve — the correctness net that catches gaps and drops departed runs.
- *
- * Tokens are opaque: `offset` = `<maxUpdatedAtMs>_<seq>`, `handle` is per-shape, `cursor`
- * is a live-only counter. The wire format is produced by `electricStreamProtocol`.
+ * Native-backend implementation of the realtime run feeds. All three feeds are predicates over ONE
+ * per-environment change stream (the EnvChangeRouter), which decides membership, hydrates the matched
+ * runs, and serializes their wire values once; this client owns the snapshot, the per-handle working-set
+ * diff, the ClickHouse backstop, and the wire response (opaque `offset`/`handle`/`cursor` tokens).
  */
-export class NotifierRealtimeClient implements RealtimeStreamClient {
+export class NativeRealtimeClient implements RealtimeStreamClient {
   #seq = 0;
   readonly #workingSetCache: BoundedTtlCache<WorkingSet>;
-  /** Coalescing cache for the multi-run (resolveIds -> hydrateByIds) pair used by the
-   * initial snapshot and the backstop, keyed by (env, filter, columns). Collapses a
-   * reconnect/snapshot stampede of identical filters into one shared resolve+hydrate. */
+  /** Coalescing cache for the multi-run resolve+hydrate, keyed by (env, filter, columns), so identical filters share one resolve. */
   readonly #runSetCache: BoundedTtlCache<RealtimeRunRow[]>;
   readonly #runSetInflight = new Map<string, Promise<RealtimeRunRow[]>>();
   /** Bounds concurrent fresh CH resolves (undefined => unbounded). */
   readonly #admissionGate?: ResolveAdmissionGate;
 
-  constructor(private readonly options: NotifierRealtimeClientOptions) {
+  constructor(private readonly options: NativeRealtimeClientOptions) {
     this.#workingSetCache = new BoundedTtlCache(
-      LIST_CACHE_TTL_MS,
+      options.workingSetCacheTtlMs ?? LIST_CACHE_TTL_MS,
       options.listCacheMaxEntries ?? LIST_CACHE_MAX_ENTRIES
     );
     this.#runSetCache = new BoundedTtlCache(
@@ -411,12 +375,7 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
     });
   }
 
-  /**
-   * Live poll for a single-run feed. The router wakes this feed when its run changes,
-   * with the run already hydrated + serialized (no ClickHouse, ever). On the backstop
-   * timeout it re-checks via `getRunById`. Only-on-advance: emit a full-row `update` when
-   * the row moved past what the client already has; else a bare `up-to-date`.
-   */
+  /** Live poll for a single-run feed: emit a full-row `update` only when the row advanced past the client's offset, else a bare `up-to-date`. */
   async #liveResponse(params: {
     environment: RealtimeEnvironment;
     runId: string;
@@ -526,16 +485,7 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
     });
   }
 
-  /**
-   * Live poll for a multi-run feed. Two paths:
-   *  - Fast path (router notify): the router woke us with the matched runs already
-   *    membership-confirmed, hydrated, and serialized (no ClickHouse). Diff them against
-   *    the per-handle working set and emit new/advanced rows.
-   *  - Backstop (timeout): a full ClickHouse resolve + hydrate. The correctness net —
-   *    catches members missed during a gap and drops runs that left the filter.
-   * With hold-on-empty (default) the connection holds until a real delta or the backstop
-   * rather than returning an empty response the client would re-issue.
-   */
+  /** Live poll for a multi-run feed: fast path diffs router-notified rows against the working set; the timeout backstop does a full ClickHouse resolve. */
   async #runSetLiveResponse(
     environment: RealtimeListEnvironment,
     filter: RunSetFilter,
@@ -692,12 +642,7 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
     return { changes, maxUpdatedAt, touched };
   }
 
-  /**
-   * Diff hydrated rows against the prior working set on the authoritative Postgres
-   * `updatedAt`: a run not in the set is an `insert`, one whose `updatedAt` advanced is an
-   * `update`. On a working-set miss, anything past the offset floor is a merge-safe
-   * `update`. Used by the snapshot and the backstop full-resolve.
-   */
+  /** Diff hydrated rows against the prior working set on Postgres `updatedAt`: not-in-set is `insert`, advanced is `update`. */
   #diffRows(
     rows: RealtimeRunRow[],
     prevSeen: WorkingSet | undefined,
@@ -735,12 +680,7 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
     return merged;
   }
 
-  /**
-   * Resolve the filter's id-set (ClickHouse) and hydrate the rows (Postgres), coalesced +
-   * short-TTL cached by (env, filter, columns). Used by the initial snapshot and the
-   * backstop. A reconnect/snapshot stampede of identical filters shares ONE resolve+hydrate
-   * (concurrent callers await the in-flight one; callers within the TTL reuse the rows).
-   */
+  /** Resolve the filter's id-set (ClickHouse) and hydrate (Postgres), coalesced + short-TTL cached so identical filters share one resolve+hydrate. */
   async #resolveAndHydrate(
     environment: RealtimeListEnvironment,
     filter: RunSetFilter,
@@ -818,9 +758,7 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
   /** Stable cache key for the resolve+hydrate cache. Same key => same id-set and the
    * same projected columns, so cached rows always match the requesting feed. */
   #runSetCacheKey(environmentId: string, filter: RunSetFilter, skipColumns: string[]): string {
-    // JSON-encode the arrays (not a join) so a value containing the separators —
-    // e.g. a tag with a comma — can't collide: ["a,b"] must not key the same as
-    // ["a","b"], which are different ClickHouse filters.
+    // JSON-encode the arrays (not a join) so a tag containing the separator can't collide with a different filter.
     const tags = filter.tags && filter.tags.length > 0 ? JSON.stringify([...filter.tags].sort()) : "";
     const cols = skipColumns.length > 0 ? JSON.stringify([...skipColumns].sort()) : "";
     const maxListResults = this.options.maxListResults ?? DEFAULT_MAX_LIST_RESULTS;
@@ -842,7 +780,7 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
     });
 
     if (ids.length >= maxListResults) {
-      logger.warn("[notifierRealtimeClient] run-set feed hit the result cap", {
+      logger.warn("[nativeRealtimeClient] run-set feed hit the result cap", {
         environmentId: environment.id,
         filter,
         cap: maxListResults,
@@ -857,11 +795,7 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
     const floor = new Date(Date.now() - this.options.maximumCreatedAtFilterAgeMs);
     const parsed = safeParseNaturalLanguageDurationAgo(createdAt ?? "24h");
     const resolved = !parsed || parsed < floor ? floor : parsed;
-    // Quantize the lower bound to a coarse epoch-aligned bucket and pin THAT in the
-    // handle, so same-tag feeds whose windows land in the same bucket resolve to the
-    // same filter -> same coalescing cache key -> one shared ClickHouse + Postgres
-    // query instead of one per feed. Floored (rounds the bound earlier), so the
-    // window only ever widens by < bucket and never drops a run the client should see.
+    // Bucket the lower bound so same-tag feeds share a cache key; floored, so the window only ever widens by < bucket.
     return new Date(this.#bucketCreatedAtMs(resolved.getTime()));
   }
 
@@ -921,10 +855,7 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
     };
   }
 
-  /**
-   * Runs `work` inside a per-env concurrency slot: acquires a slot (429 if over the
-   * org limit, 500 if the limit can't be read) and always releases it afterward.
-   */
+  /** Runs `work` inside a per-env concurrency slot (429 if over the org limit, 500 if the limit can't be read), always releasing it after. */
   async #withConcurrencySlot(
     environment: RealtimeEnvironment,
     work: () => Promise<Response>
@@ -932,11 +863,11 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
     const requestId = randomUUID();
     const concurrencyLimit = await this.options.cachedLimitProvider.getCachedLimit(
       environment.organizationId,
-      DEFAULT_CONCURRENCY_LIMIT
+      this.options.defaultConcurrencyLimit ?? DEFAULT_CONCURRENCY_LIMIT
     );
 
     if (concurrencyLimit == null) {
-      logger.error("[notifierRealtimeClient] Failed to get concurrency limit", {
+      logger.error("[nativeRealtimeClient] Failed to get concurrency limit", {
         organizationId: environment.organizationId,
       });
       return json({ error: "Failed to get concurrency limit" }, { status: 500 });
@@ -961,8 +892,9 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
 
   #jitteredTimeout(): number {
     const base = this.options.livePollTimeoutMs ?? DEFAULT_LIVE_POLL_TIMEOUT_MS;
-    // +/-15% jitter to avoid synchronized refetch herds.
-    return Math.round(base * (0.85 + Math.random() * 0.3));
+    // Jittered to avoid synchronized refetch herds.
+    const ratio = this.options.livePollJitterRatio ?? DEFAULT_LIVE_POLL_JITTER_RATIO;
+    return Math.round(base * (1 - ratio + Math.random() * 2 * ratio));
   }
 
   #buildResponse(
@@ -978,18 +910,11 @@ export class NotifierRealtimeClient implements RealtimeStreamClient {
     responseHeaders.set("content-type", "application/json");
     responseHeaders.set("cache-control", "no-store");
 
-    // Carry CORS on the response itself, mirroring how the Electric upstream does
-    // (apiCors passes a response through untouched once it has allow-origin). Browsers
-    // can only read the electric-* headers cross-origin if they're explicitly exposed;
-    // without this the deployed react-hooks fail with MissingHeadersError. Bearer-token
-    // requests are non-credentialed, so a wildcard is safe.
+    // Expose the electric-* headers cross-origin or the deployed react-hooks fail with MissingHeadersError (bearer requests are non-credentialed, so wildcard is safe).
     responseHeaders.set("access-control-allow-origin", "*");
     responseHeaders.set("access-control-expose-headers", "*");
 
-    // Modern clients (1.0.14) send `x-trigger-electric-version` and read the
-    // lowercase `electric-*` headers. Legacy clients (0.4.0) omit the version and
-    // read `electric-shape-id`/`electric-chunk-last-offset` (case-insensitive),
-    // matching realtimeClient's rewriteResponseHeaders behavior exactly.
+    // Modern clients send `x-trigger-electric-version` and read `electric-offset`/`electric-handle`; legacy clients omit it and read the shape-id/chunk-last-offset names.
     if (clientVersion) {
       responseHeaders.set("electric-offset", headers.offset);
       responseHeaders.set("electric-handle", headers.handle);

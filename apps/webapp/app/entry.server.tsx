@@ -270,8 +270,8 @@ process.on("uncaughtException", (error, origin) => {
 
 singleton("RunEngineEventBusHandlers", registerRunEngineEventBusHandlers);
 singleton("SetupBatchQueueCallbacks", setupBatchQueueCallbacks);
-// Attach the run-changed notifier delegations to the engine event bus.
-// No-ops (registers nothing) unless REALTIME_NOTIFIER_ENABLED=1.
+// Attach the realtime run-changed publish delegations to the engine event bus.
+// No-ops (registers nothing) unless REALTIME_BACKEND_NATIVE_ENABLED=1.
 singleton("RunChangeNotifierHandlers", registerRunChangeNotifierHandlers);
 
 // Wrapped in singleton() so Remix's dev-mode CJS reloads don't append

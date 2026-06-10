@@ -211,7 +211,7 @@ function initializeRunEngineClickhouseClient(): ClickHouse {
   });
 }
 
-/** Realtime runs feed tag/batch id resolution (`REALTIME_RUNS_CLICKHOUSE_URL`);
+/** Realtime runs feed tag/batch id resolution (`REALTIME_BACKEND_NATIVE_CLICKHOUSE_URL`);
  *  falls back to the default client if unset. */
 const defaultRealtimeClickhouseClient = singleton(
   "realtimeClickhouseClient",
@@ -219,25 +219,25 @@ const defaultRealtimeClickhouseClient = singleton(
 );
 
 function initializeRealtimeClickhouseClient(): ClickHouse {
-  if (!env.REALTIME_RUNS_CLICKHOUSE_URL) {
+  if (!env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_URL) {
     return defaultClickhouseClient;
   }
 
-  const url = new URL(env.REALTIME_RUNS_CLICKHOUSE_URL);
+  const url = new URL(env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_URL);
   url.searchParams.delete("secure");
 
   return new ClickHouse({
     url: url.toString(),
     name: "realtime-runs-clickhouse",
     keepAlive: {
-      enabled: env.REALTIME_RUNS_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
-      idleSocketTtl: env.REALTIME_RUNS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+      enabled: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
     },
-    logLevel: env.REALTIME_RUNS_CLICKHOUSE_LOG_LEVEL,
+    logLevel: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_LOG_LEVEL,
     compression: {
-      request: env.REALTIME_RUNS_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+      request: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_COMPRESSION_REQUEST === "1",
     },
-    maxOpenConnections: env.REALTIME_RUNS_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+    maxOpenConnections: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
   });
 }
 
@@ -366,14 +366,14 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
         url: parsed.toString(),
         name,
         keepAlive: {
-          enabled: env.REALTIME_RUNS_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
-          idleSocketTtl: env.REALTIME_RUNS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+          enabled: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+          idleSocketTtl: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
         },
-        logLevel: env.REALTIME_RUNS_CLICKHOUSE_LOG_LEVEL,
+        logLevel: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_LOG_LEVEL,
         compression: {
-          request: env.REALTIME_RUNS_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+          request: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_COMPRESSION_REQUEST === "1",
         },
-        maxOpenConnections: env.REALTIME_RUNS_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+        maxOpenConnections: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
       });
     case "standard":
     case "query":

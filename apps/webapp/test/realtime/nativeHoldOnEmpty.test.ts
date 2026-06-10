@@ -1,9 +1,9 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { CURRENT_API_VERSION } from "~/api/versions";
 import {
-  NotifierRealtimeClient,
+  NativeRealtimeClient,
   type RealtimeListEnvironment,
-} from "~/services/realtime/notifierRealtimeClient.server";
+} from "~/services/realtime/nativeRealtimeClient.server";
 import { type RealtimeRunRow } from "~/services/realtime/electricStreamProtocol.server";
 import {
   EnvChangeRouter,
@@ -67,7 +67,7 @@ function makeClient(overrides: Record<string, unknown> = {}) {
   const src = fakeSource();
   const router = new EnvChangeRouter({ source: src.source, hydrator: { hydrateByIds: hydrateSpy } });
 
-  const client = new NotifierRealtimeClient({
+  const client = new NativeRealtimeClient({
     runReader: { getRunById: async () => null, hydrateByIds: hydrateSpy } as any,
     runListResolver: { resolveMatchingRunIds: resolveSpy } as any,
     router,
@@ -83,7 +83,7 @@ function makeClient(overrides: Record<string, unknown> = {}) {
   return { client, src, hydrateSpy, resolveSpy, setRows: (rows: RealtimeRunRow[]) => (rowsToReturn = rows) };
 }
 
-function liveRuns(client: NotifierRealtimeClient) {
+function liveRuns(client: NativeRealtimeClient) {
   return client.streamRuns(
     `http://localhost:3030/realtime/v1/runs?offset=${FLOOR_MS}_1&live=true&handle=runs_${FLOOR_MS}_7`,
     ENV,
@@ -111,7 +111,7 @@ const hasRowOp = (body: Awaited<ReturnType<typeof bodyOf>>) =>
 const isUpToDate = (body: Awaited<ReturnType<typeof bodyOf>>) =>
   body.some((m) => m?.headers?.control === "up-to-date");
 
-describe("NotifierRealtimeClient multi-run live path over the router", () => {
+describe("NativeRealtimeClient multi-run live path over the router", () => {
   it("a matching change hydrates by id (no ClickHouse) and returns a delta", async () => {
     const { client, src, hydrateSpy, resolveSpy, setRows } = makeClient();
     setRows([row("run_1", FLOOR_MS + 5_000, { tags: ["t"] })]);

@@ -1,8 +1,8 @@
 import { CURRENT_API_VERSION } from "~/api/versions";
 import {
-  NotifierRealtimeClient,
+  NativeRealtimeClient,
   type RealtimeListEnvironment,
-} from "~/services/realtime/notifierRealtimeClient.server";
+} from "~/services/realtime/nativeRealtimeClient.server";
 import { type RealtimeRunRow } from "~/services/realtime/electricStreamProtocol.server";
 import { EnvChangeRouter } from "~/services/realtime/envChangeRouter.server";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -23,7 +23,7 @@ function makeClient(overrides: Record<string, unknown> = {}) {
   const resolveSpy = vi.fn(async () => ["run_1", "run_2"]);
   const hydrateSpy = vi.fn(async (_env: string, ids: string[]) => ids.map(row));
 
-  const client = new NotifierRealtimeClient({
+  const client = new NativeRealtimeClient({
     runReader: { getRunById: async () => null, hydrateByIds: hydrateSpy } as any,
     runListResolver: { resolveMatchingRunIds: resolveSpy } as any,
     // No-op source: live polls never get a router wake, so they fall through to the
@@ -44,7 +44,7 @@ function makeClient(overrides: Record<string, unknown> = {}) {
 
 // streamBatch with offset=-1 takes the snapshot path, which calls the coalescing
 // resolve+hydrate directly (no concurrency slot / subscription needed).
-function snapshot(client: NotifierRealtimeClient, batchId: string, skipColumns?: string) {
+function snapshot(client: NativeRealtimeClient, batchId: string, skipColumns?: string) {
   const skip = skipColumns ? `&skipColumns=${skipColumns}` : "";
   return client.streamBatch(
     `http://localhost:3030/realtime/v1/batches/${batchId}?offset=-1${skip}`,
@@ -57,7 +57,7 @@ function snapshot(client: NotifierRealtimeClient, batchId: string, skipColumns?:
 }
 
 // Tag-list snapshot (offset=-1) — exercises the createdAt bucketing + cache key.
-function snapshotTag(client: NotifierRealtimeClient, tags: string[]) {
+function snapshotTag(client: NativeRealtimeClient, tags: string[]) {
   return client.streamRuns(
     "http://localhost:3030/realtime/v1/runs?offset=-1",
     ENV,
@@ -68,7 +68,7 @@ function snapshotTag(client: NotifierRealtimeClient, tags: string[]) {
   );
 }
 
-describe("NotifierRealtimeClient run-set resolve coalescing + cache", () => {
+describe("NativeRealtimeClient run-set resolve coalescing + cache", () => {
   it("coalesces concurrent same-filter resolves into one ClickHouse + Postgres query", async () => {
     const { client, resolveSpy, hydrateSpy } = makeClient();
     let release!: (ids: string[]) => void;
@@ -152,7 +152,7 @@ describe("NotifierRealtimeClient run-set resolve coalescing + cache", () => {
   });
 });
 
-describe("NotifierRealtimeClient resolve admission gate (mass-reconnect stampede)", () => {
+describe("NativeRealtimeClient resolve admission gate (mass-reconnect stampede)", () => {
   // A resolver that blocks each invocation until released, so we can watch how many run
   // concurrently. Tracks peak concurrency and exposes a release-one-at-a-time drain.
   function gatedResolver() {
@@ -176,7 +176,7 @@ describe("NotifierRealtimeClient resolve admission gate (mass-reconnect stampede
 
   function makeGatedClient(resolveAdmissionLimit: number, resolver: ReturnType<typeof gatedResolver>) {
     const hydrateSpy = vi.fn(async (_env: string, ids: string[]) => ids.map(row));
-    return new NotifierRealtimeClient({
+    return new NativeRealtimeClient({
       runReader: { getRunById: async () => null, hydrateByIds: hydrateSpy } as any,
       runListResolver: { resolveMatchingRunIds: resolver.resolve } as any,
       router: new EnvChangeRouter({
@@ -230,7 +230,7 @@ describe("NotifierRealtimeClient resolve admission gate (mass-reconnect stampede
   });
 });
 
-describe("NotifierRealtimeClient tag-list createdAt bucketing", () => {
+describe("NativeRealtimeClient tag-list createdAt bucketing", () => {
   it("floors the resolved createdAt lower bound to the bucket boundary", async () => {
     // Fix the clock to a non-bucket-aligned instant so the assertion is deterministic.
     vi.useFakeTimers({ toFake: ["Date"] });
@@ -286,7 +286,7 @@ describe("NotifierRealtimeClient tag-list createdAt bucketing", () => {
   });
 });
 
-describe("NotifierRealtimeClient review fixes", () => {
+describe("NativeRealtimeClient review fixes", () => {
   // makeClient's router has a no-op source, so the live poll never gets a wake and falls
   // through to its backstop timeout — the full ClickHouse resolve these tests assert on
   // (createdAt clamp / concurrency limit).

@@ -11,12 +11,8 @@ export type RealtimeConcurrencyLimiterOptions = {
 };
 
 /**
- * Per-environment concurrent-connection limiter for realtime long-polls.
- *
- * This is a standalone copy of the limiter embedded in `realtimeClient.server.ts`
- * (Electric path), so the notifier-backed client can enforce the same per-env cap
- * WITHOUT modifying the existing Electric client. The Lua + key shape are
- * identical; only the key prefix differs, so the two paths track independently.
+ * Per-environment concurrent-connection limiter for realtime long-polls; a standalone copy of the limiter in
+ * `realtimeClient.server.ts` (identical Lua + key shape, different key prefix) so the native backend tracks independently.
  */
 export class RealtimeConcurrencyLimiter {
   private redis: RedisClient;
@@ -24,7 +20,7 @@ export class RealtimeConcurrencyLimiter {
 
   constructor(private options: RealtimeConcurrencyLimiterOptions) {
     this.redis = createRedisClient(
-      options.connectionName ?? "trigger:realtime:notifier:concurrency",
+      options.connectionName ?? "trigger:realtime:native:concurrency",
       options.redis
     );
     this.expiryTimeInSeconds = options.expiryTimeInSeconds ?? 60 * 5;
@@ -35,7 +31,7 @@ export class RealtimeConcurrencyLimiter {
     const key = this.#getKey(environmentId);
     const now = Date.now();
 
-    const result = await this.redis.incrementAndCheckRealtimeNotifierConcurrency(
+    const result = await this.redis.incrementAndCheckRealtimeNativeConcurrency(
       key,
       now.toString(),
       requestId,
@@ -57,7 +53,7 @@ export class RealtimeConcurrencyLimiter {
   }
 
   #registerCommands() {
-    this.redis.defineCommand("incrementAndCheckRealtimeNotifierConcurrency", {
+    this.redis.defineCommand("incrementAndCheckRealtimeNativeConcurrency", {
       numberOfKeys: 1,
       lua: /* lua */ `
         local concurrencyKey = KEYS[1]
@@ -98,7 +94,7 @@ export class RealtimeConcurrencyLimiter {
 
 declare module "ioredis" {
   interface RedisCommander<Context> {
-    incrementAndCheckRealtimeNotifierConcurrency(
+    incrementAndCheckRealtimeNativeConcurrency(
       key: string,
       timestamp: string,
       requestId: string,

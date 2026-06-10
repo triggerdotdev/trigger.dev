@@ -33,8 +33,7 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ authentication, request, resource: batchRun, apiVersion }) => {
-    // Pick the Electric proxy or the notifier-backed batch feed
-    // per org (defaults to Electric). Both implement streamBatch.
+    // Pick the Electric proxy or the native backend per org (defaults to Electric); both implement streamBatch.
     const client = await resolveRealtimeStreamClient(authentication.environment);
 
     return client.streamBatch(

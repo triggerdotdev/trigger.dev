@@ -9,7 +9,7 @@ import { RESERVED_COLUMNS } from "./electricStreamProtocol.server";
 import {
   type RealtimeListEnvironment,
   type RealtimeStreamClient,
-} from "./notifierRealtimeClient.server";
+} from "./nativeRealtimeClient.server";
 import { type RunListFilter } from "./runReader.server";
 import {
   type RealtimeShadowComparator,
@@ -29,13 +29,7 @@ export type ShadowRealtimeClientOptions = {
   onOutcome?: (outcome: ShadowCompareOutcome) => void;
 };
 
-/**
- * Dual-run gate: a transparent wrapper that serves the Electric
- * response unchanged and, in the background, diffs what the notifier path would emit
- * against it. The shadow work is fire-and-forget — it never blocks or fails the
- * client's request — and it exercises the read replica so the notifier's real load
- * can be measured before cutover.
- */
+/** Transparent wrapper that serves the Electric response unchanged and, in the background (fire-and-forget), diffs what the native backend would emit. */
 export class ShadowRealtimeClient implements RealtimeStreamClient {
   constructor(private readonly options: ShadowRealtimeClientOptions) {}
 
@@ -178,8 +172,8 @@ export class ShadowRealtimeClient implements RealtimeStreamClient {
         serializationMatched: outcome.serializationMatched,
         serializationSkew: outcome.serializationSkew,
         membershipMatch: outcome.membershipMatch,
-        missingInNotifier: outcome.missingInNotifier?.slice(0, 20),
-        extraInNotifier: outcome.extraInNotifier?.slice(0, 20),
+        missingInNative: outcome.missingInNative?.slice(0, 20),
+        extraInNative: outcome.extraInNative?.slice(0, 20),
         // Log only which run/column diverged, never the raw cell values — they can
         // include run payload/output/metadata and must not leak into logs.
         diffs: outcome.diffs.map(({ runId, column }) => ({ runId, column })),

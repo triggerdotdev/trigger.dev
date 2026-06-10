@@ -25,8 +25,8 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.workerQueueScheduledSplitEnabled]: z.coerce.boolean(),
   // Which backend serves the realtime run feed. Controllable
   // globally and per-org (org wins). Defaults to "electric" when unset.
-  // "shadow" serves Electric but diffs the notifier path in the background.
-  [FEATURE_FLAG.realtimeBackend]: z.enum(["electric", "notifier", "shadow"]),
+  // "shadow" serves Electric but diffs the native path in the background.
+  [FEATURE_FLAG.realtimeBackend]: z.enum(["electric", "native", "shadow"]),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

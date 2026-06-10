@@ -80,7 +80,7 @@ describe("RealtimeShadowComparator serialization", () => {
 
   it("does not flag semantically-equivalent but differently-encoded values", async () => {
     const row = sampleRow();
-    // Electric encodes bool as "true" (notifier uses "t"), a number with a trailing
+    // Electric encodes bool as "true" (native uses "t"), a number with a trailing
     // zero, and a timestamp without millis — all equal after decoding.
     const value = {
       ...serializeRunRow(row),
@@ -120,7 +120,7 @@ describe("RealtimeShadowComparator serialization", () => {
     expect(out.serializationDiverged).toBe(1);
     expect(out.serializationMatched).toBe(0);
     expect(out.diffs).toEqual([
-      { runId: "run_a", column: "payload", electric: '{"hello":"TAMPERED"}', notifier: '{"hello":"world"}' },
+      { runId: "run_a", column: "payload", electric: '{"hello":"TAMPERED"}', native: '{"hello":"world"}' },
     ]);
   });
 
@@ -178,7 +178,7 @@ describe("RealtimeShadowComparator membership", () => {
     return JSON.stringify([...msgs, UP_TO_DATE]);
   }
 
-  it("matches when Electric's set equals the notifier resolver's set", async () => {
+  it("matches when Electric's set equals the native resolver's set", async () => {
     const cmp = makeComparator(
       { a: sampleRow({ id: "a" }), b: sampleRow({ id: "b" }) },
       ["a", "b"]
@@ -192,14 +192,14 @@ describe("RealtimeShadowComparator membership", () => {
       membershipFilter: filter,
     });
     expect(out.membershipMatch).toBe(true);
-    expect(out.missingInNotifier).toEqual([]);
-    expect(out.extraInNotifier).toEqual([]);
+    expect(out.missingInNative).toEqual([]);
+    expect(out.extraInNative).toEqual([]);
   });
 
-  it("reports rows missing from / extra in the notifier resolution", async () => {
+  it("reports rows missing from / extra in the native resolution", async () => {
     const cmp = makeComparator(
       { a: sampleRow({ id: "a" }), b: sampleRow({ id: "b" }) },
-      ["a", "c"] // notifier missing b, has extra c
+      ["a", "c"] // native missing b, has extra c
     );
     const out = await cmp.compare({
       feed: "runs",
@@ -210,7 +210,7 @@ describe("RealtimeShadowComparator membership", () => {
       membershipFilter: filter,
     });
     expect(out.membershipMatch).toBe(false);
-    expect(out.missingInNotifier).toEqual(["b"]);
-    expect(out.extraInNotifier).toEqual(["c"]);
+    expect(out.missingInNative).toEqual(["b"]);
+    expect(out.extraInNative).toEqual(["c"]);
   });
 });

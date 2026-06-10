@@ -48,7 +48,7 @@ export function registerRunEngineEventBusHandlers() {
           taskEventStore: true,
           // Piggyback the realtime run-changed publish on this existing read so the
           // per-env channel carries the membership keys (no separate query). No-op when
-          // the notifier is disabled.
+          // the native backend is disabled.
           runTags: true,
           batchId: true,
         },
@@ -129,7 +129,7 @@ export function registerRunEngineEventBusHandlers() {
           organizationId: true,
           taskEventStore: true,
           // Piggyback the realtime run-changed publish on this existing read (no-op when
-          // the notifier is disabled).
+          // the native backend is disabled).
           runTags: true,
           batchId: true,
         },
@@ -197,7 +197,7 @@ export function registerRunEngineEventBusHandlers() {
           organizationId: true,
           taskEventStore: true,
           // Piggyback the realtime run-changed publish on this existing read (no-op when
-          // the notifier is disabled).
+          // the native backend is disabled).
           runTags: true,
           batchId: true,
         },
@@ -389,7 +389,7 @@ export function registerRunEngineEventBusHandlers() {
           organizationId: true,
           taskEventStore: true,
           // Piggyback the realtime run-changed publish on this existing read (no-op when
-          // the notifier is disabled).
+          // the native backend is disabled).
           runTags: true,
           batchId: true,
         },
@@ -454,7 +454,7 @@ export function registerRunEngineEventBusHandlers() {
           organizationId: true,
           taskEventStore: true,
           // Piggyback the realtime run-changed publish on this existing read (no-op when
-          // the notifier is disabled).
+          // the native backend is disabled).
           runTags: true,
           batchId: true,
         },

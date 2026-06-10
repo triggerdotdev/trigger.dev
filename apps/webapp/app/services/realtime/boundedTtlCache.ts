@@ -1,15 +1,6 @@
 /**
- * Tiny in-process bounded TTL cache shared by the realtime feeds.
- *
- * Entries expire after `ttlMs`. An expired entry is evicted when read (`get`); on
- * write, if the cache is at `maxEntries`, expired entries are swept and, if it's
- * still full (pathologically all live), the oldest insertion is dropped. Node is
- * single-threaded so no locking is needed. Used where a miss is cheap and
- * correctness-safe (read-through hydration, per-handle working sets, per-org flag
- * resolution).
- *
- * A stored value of `undefined` cannot be distinguished from a miss; callers that
- * need to cache "absence" should store an explicit sentinel (e.g. `null`).
+ * Tiny in-process bounded TTL cache shared by the realtime feeds: entries expire after `ttlMs` (evicted on read),
+ * and at-capacity writes sweep expired entries then drop the oldest. A stored `undefined` is indistinguishable from a miss (use `null` for absence).
  */
 export class BoundedTtlCache<V> {
   readonly #entries = new Map<string, { value: V; expiresAt: number }>();

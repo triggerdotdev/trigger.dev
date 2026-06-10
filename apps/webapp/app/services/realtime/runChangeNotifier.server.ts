@@ -4,15 +4,9 @@ import { logger } from "../logger.server";
 export const CHANGE_RECORD_VERSION = 1;
 
 /**
- * A run-change fact, published once to the run's environment channel. Self-describing:
- *  - `envId` routes it to its channel (mandatory).
- *  - `tags` / `batchId` let a tag/batch feed decide membership LOCALLY, without a
- *    ClickHouse re-resolve. `tags` present (even `[]`) marks a "full" record; `tags`
- *    absent marks a "partial" record (envId+runId only) that a tag feed must hydrate to
- *    classify. `batchId` present only when the run is in a batch.
- *  - `runId` lets a single-run feed match; `createdAtMs` lets a tag feed apply its
- *    createdAt floor locally; `updatedAtMs`/`status` are hints.
- * Row state (payload/output/...) is never on the wire — it's refetched from Postgres.
+ * A self-describing run-change fact published once to the run's environment channel; row state is
+ * never on the wire. `tags` present (even `[]`) marks a "full" record a feed can classify locally;
+ * `tags` absent marks a "partial" record (envId+runId only) a tag feed must hydrate to classify.
  */
 export type ChangeRecord = {
   v: number;
@@ -32,9 +26,7 @@ export function encodeChangeRecord(record: ChangeRecord): string {
   return JSON.stringify(record);
 }
 
-/** Decode a wire message into a ChangeRecord. Tolerant of a bare runId (no membership
- * data) so a malformed/legacy frame degrades to a partial record (hydrate-to-classify)
- * rather than throwing. */
+/** Decode a wire message into a ChangeRecord; a bare/malformed frame degrades to a partial record rather than throwing. */
 export function decodeChangeRecord(message: string): ChangeRecord {
   if (message.length === 0 || message[0] !== "{") {
     return { v: 0, runId: message, envId: "" };
@@ -64,19 +56,9 @@ export type RunChangeNotifierOptions = {
   /** Channel name prefix; the envId is appended inside a hash-tag for slot locality. */
   channelPrefix?: string;
   connectionName?: string;
-  /**
-   * Leading-edge throttle (ms) for the per-env channel: deliver the first wake
-   * immediately, then at most one more per window while changes keep arriving. Bounds the
-   * wake rate per env regardless of run throughput. Defaults to 100ms. 0 disables it.
-   */
+  /** Leading-edge throttle (ms) for the per-env channel, bounding the wake rate per env. Defaults to 100ms; 0 disables. */
   envWakeCoalesceWindowMs?: number;
-  /**
-   * Use Redis sharded pub/sub (SSUBSCRIBE/SPUBLISH) instead of classic pub/sub. Only
-   * valid against a Redis Cluster (channels are hash-tagged by envId, so each lands on one
-   * shard) and requires the client built with `clusterOptions.shardedSubscribers: true`.
-   * Classic PUBLISH in a cluster broadcasts to every node, so sharded pub/sub is what
-   * actually distributes the load. Defaults to false (classic, for single-node / local).
-   */
+  /** Use Redis sharded pub/sub (SSUBSCRIBE/SPUBLISH); cluster-only and requires `clusterOptions.shardedSubscribers`. Defaults to false (classic). */
   shardedPubSub?: boolean;
 };
 
@@ -84,38 +66,16 @@ const DEFAULT_CHANNEL_PREFIX = "realtime:";
 const DEFAULT_ENV_WAKE_COALESCE_WINDOW_MS = 100;
 
 /**
- * RunChangeNotifier — carries "run X changed" facts from write sites to the realtime
- * feed over ONE per-environment channel.
- *
- * Design constraints baked in here:
- *  - ONE channel type, `<prefix>env:{<envId>}`. A change is one fact published once; who
- *    cares about it is a predicate evaluated by the consumer (the EnvChangeRouter), not a
- *    second channel. Single-run, tag, and batch feeds all read this one stream.
- *  - Minimal wire data (a self-describing `ChangeRecord` of small keys), never row
- *    columns. Row state is always refetched from Postgres.
- *  - ONE shared, multiplexed subscriber connection per process with a refcounted
- *    `Map<channel, Set<listener>>`. The RunQueue pattern, deliberately NOT the
- *    per-subscribe-connection pattern of ZodPubSub/tracePubSub (which would exhaust
- *    ElastiCache `maxclients`).
- *  - Connections are created lazily: a process that never publishes or subscribes (the
- *    default, flag-off state) opens no Redis connections at all.
- *  - `publish` is fire-and-forget and never throws; a dropped publish only costs latency
- *    because the consumer has a timeout backstop.
- *
- * Channels are hash-tagged (`<prefix>env:{<envId>}`) so an env's traffic lands on one
- * cluster slot. With `shardedPubSub` (cluster only) the feed uses SSUBSCRIBE/SPUBLISH so
- * each env's traffic stays on one shard rather than broadcasting cluster-wide.
+ * RunChangeNotifier — carries "run X changed" facts from write sites to the realtime feeds over ONE
+ * per-environment channel (`<prefix>env:{<envId>}`, hash-tagged so an env stays on one cluster slot).
+ * Uses one shared multiplexed subscriber per process (refcounted), created lazily, and a fire-and-forget
+ * `publish` that never throws — a dropped publish only costs latency because the consumer has a backstop.
  */
 export class RunChangeNotifier {
   #publisher: RedisClient | undefined;
   #subscriber: RedisClient | undefined;
   readonly #listeners = new Map<string, Set<(records: ChangeRecord[]) => void>>();
-  /**
-   * Per-channel accumulator of records since the last delivery, deduped by runId. A
-   * coalesced env window collapses many publishes into one wake; this holds the batch so
-   * the wake carries every run that moved, not just the last one (latest record per run
-   * wins, keeping the freshest keys).
-   */
+  /** Per-channel accumulator of records since the last delivery, deduped by runId (latest per run wins), so a coalesced wake carries every run that moved. */
   readonly #pending = new Map<string, Map<string, ChangeRecord>>();
   readonly #channelPrefix: string;
   readonly #connectionName: string;
@@ -134,10 +94,7 @@ export class RunChangeNotifier {
     this.#sharded = options.shardedPubSub ?? false;
   }
 
-  /**
-   * Fire-and-forget publish of a run-changed fact to the run's environment channel. Never
-   * throws. The notifier stamps the record version.
-   */
+  /** Fire-and-forget publish of a run-changed fact to the run's environment channel; never throws. */
   publish(input: ChangeRecordInput): void {
     const record: ChangeRecord = { v: CHANGE_RECORD_VERSION, ...input };
     this.#publishToChannel(this.#channelForEnv(record.envId), encodeChangeRecord(record));
@@ -174,12 +131,7 @@ export class RunChangeNotifier {
     }
   }
 
-  /**
-   * Subscribe (persistently) to an environment's run-change stream. `onBatch` is invoked
-   * with the coalesced batch of records on every wake until the returned unsubscribe is
-   * called. Refcounted over the shared subscriber: the first listener for an env issues
-   * SUBSCRIBE, the last one UNSUBSCRIBE.
-   */
+  /** Subscribe to an env's run-change stream; refcounted over the shared subscriber (first listener SUBSCRIBEs, last UNSUBSCRIBEs). */
   subscribeToEnv(environmentId: string, onBatch: (records: ChangeRecord[]) => void): () => void {
     const channel = this.#channelForEnv(environmentId);
     const subscriber = this.#ensureSubscriber();
@@ -210,10 +162,7 @@ export class RunChangeNotifier {
       }
       current.delete(onBatch);
       if (current.size === 0) {
-        // Drop the channel from the map only AFTER Redis confirms UNSUBSCRIBE, and only if
-        // no new listener re-subscribed while it was in flight. The map entry's existence
-        // mirrors "subscribed (or subscribe in flight) in Redis", so the subscribe path
-        // safely reuses it without a duplicate SUBSCRIBE.
+        // Drop the channel from the map only after Redis confirms UNSUBSCRIBE and no new listener re-subscribed in the meantime.
         this.#unsubscribeChannel(subscriber, channel)
           .then(() => {
             const latest = this.#listeners.get(channel);
@@ -223,9 +172,7 @@ export class RunChangeNotifier {
             if (latest.size === 0) {
               this.#listeners.delete(channel);
             } else {
-              // A listener arrived during the in-flight UNSUBSCRIBE; the channel is now
-              // unsubscribed in Redis but has live listeners. Re-subscribe so they keep
-              // receiving messages (the long-poll backstop covers the gap).
+              // A listener arrived during the in-flight UNSUBSCRIBE; re-subscribe so it keeps receiving (the backstop covers the gap).
               this.#subscribeChannel(subscriber, channel).catch((error) => {
                 logger.error("[runChangeNotifier] Failed to re-subscribe to run-change channel", {
                   error,
@@ -235,9 +182,7 @@ export class RunChangeNotifier {
             }
           })
           .catch((error) => {
-            // UNSUBSCRIBE failed: the channel is likely still subscribed in Redis. Keep the
-            // (empty) map entry so a future subscriber reuses it without a duplicate
-            // SUBSCRIBE and #onMessage stays consistent with Redis state.
+            // UNSUBSCRIBE failed (likely still subscribed in Redis): keep the empty map entry so a future subscriber reuses it.
             logger.error("[runChangeNotifier] Failed to unsubscribe from run-change channel", {
               error,
               channel,
@@ -334,12 +279,7 @@ export class RunChangeNotifier {
     }
   }
 
-  /**
-   * Leading-edge throttle: deliver the first wake immediately, then suppress further wakes
-   * for the window, delivering one trailing wake if any messages arrived during it (and
-   * re-opening while activity continues). Caps the wake rate per env to ~1/window no
-   * matter how fast runs change. Lossless: the batch accumulates across the window.
-   */
+  /** Leading-edge throttle capping the wake rate to ~1/window: deliver the first wake immediately, then one trailing wake per window while activity continues. Lossless. */
   #deliverCoalesced(channel: string) {
     if (this.#coalesceTimers.has(channel)) {
       this.#coalesceDirty.add(channel);

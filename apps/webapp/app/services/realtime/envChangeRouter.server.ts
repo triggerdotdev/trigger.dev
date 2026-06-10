@@ -3,24 +3,10 @@ import { type RealtimeRunRow, serializeRunRow } from "./electricStreamProtocol.s
 import { logger } from "~/services/logger.server";
 
 /**
- * EnvChangeRouter — the per-instance routing layer that turns "feeds as predicates over
- * one env stream" into cheap fan-out.
- *
- * It owns ONE subscription per environment (over the RunChangeNotifier) and an inverted
- * index of the feeds currently held by THIS instance: `runId -> feeds`, `tag -> feeds`,
- * `batchId -> feeds`. On a coalesced batch of ChangeRecords it:
- *   1. routes each record to only the matching held feeds via the index (O(record-tags),
- *      not O(feeds)) — a record that matches nothing costs nothing;
- *   2. batch-hydrates the matched runs from Postgres ONCE per column set (collapsing the
- *      hot-shared-tag fan-out: one run matching N feeds = one `hydrateByIds`, not N);
- *   3. serializes each row's wire value ONCE per column set, reused across all matching
- *      feeds;
- *   4. resolves each matching feed's pending wait with its hydrated+serialized rows.
- *
- * It is stateless across reconnects: the index is rebuilt from whatever feeds this
- * instance happens to hold, so no shape affinity or cross-poll memory is required. The
- * per-handle working-set diff (insert vs update) stays in the consumer; the router only
- * decides membership, hydrates, and serializes.
+ * EnvChangeRouter — per-instance routing layer that fans one env's change stream out to the feeds it
+ * matches. Owns one subscription per env (over the RunChangeNotifier) plus an inverted index of held
+ * feeds, then per batch: routes via the index, batch-hydrates matched runs once per column set,
+ * serializes each row's wire value once, and resolves each matched feed's pending wait. Stateless across reconnects.
  */
 
 export type WakeReason = "notify" | "timeout" | "abort";
@@ -183,9 +169,7 @@ export class EnvChangeRouter {
     };
     this.#envs.set(environmentId, env);
     env.unsubscribe = this.options.source.subscribeToEnv(environmentId, (records) => {
-      // Fire-and-forget; the notifier doesn't await us. A hydrate failure must be caught
-      // here (an unhandled rejection exits the process); the matched feeds' waiters stay
-      // armed and time out into the full-resolve backstop.
+      // Fire-and-forget; catch hydrate failures here (unhandled rejection exits the process) — waiters time out into the backstop.
       this.#onBatch(environmentId, env, records).catch((error) => {
         logger.error("[envChangeRouter] failed to route a change batch", {
           environmentId,
@@ -341,9 +325,7 @@ export class EnvChangeRouter {
     }
   }
 
-  /** Authoritative re-check for tag feeds: the hydrated row's tags intersect the filter
-   * and its createdAt is within the feed's window. Handles partial-record candidates and
-   * guards record/row tag skew. */
+  /** Authoritative re-check for tag feeds: the hydrated row's tags intersect the filter and its createdAt is within the feed's window. */
   #tagRowMatches(row: RealtimeRunRow, filter: Extract<FeedFilter, { kind: "tag" }>): boolean {
     if (filter.createdAtFloorMs !== undefined && row.createdAt.getTime() < filter.createdAtFloorMs) {
       return false;

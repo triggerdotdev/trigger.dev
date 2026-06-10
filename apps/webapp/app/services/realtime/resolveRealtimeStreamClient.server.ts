@@ -1,51 +1,50 @@
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
+import { singleton } from "~/utils/singleton";
 import { FEATURE_FLAG } from "~/v3/featureFlags";
 import { makeFlag } from "~/v3/featureFlags.server";
 import { logger } from "../logger.server";
 import { type RealtimeEnvironment } from "../realtimeClient.server";
 import { realtimeClient } from "../realtimeClientGlobal.server";
 import { BoundedTtlCache } from "./boundedTtlCache";
-import { type RealtimeStreamClient } from "./notifierRealtimeClient.server";
-import { getNotifierRealtimeClient } from "./notifierRealtimeClientInstance.server";
+import { type RealtimeStreamClient } from "./nativeRealtimeClient.server";
+import { getNativeRealtimeClient } from "./nativeRealtimeClientInstance.server";
 import { getShadowRealtimeClient } from "./shadowRealtimeClientInstance.server";
 
-type RealtimeBackend = "electric" | "notifier" | "shadow";
+type RealtimeBackend = "electric" | "native" | "shadow";
 
-/**
- * Chooses which backend serves a realtime run request.
- *
- * Two gates, both defaulting to the Electric path:
- *  1. `REALTIME_NOTIFIER_ENABLED` (env master switch). When off, this returns the
- *     Electric client immediately — no flag read, no notifier client construction,
- *     byte-identical to pre-Electric-Sunset behavior.
- *  2. the `realtimeBackend` feature flag (global + per-org, org wins), resolved per
- *     org and cached in-process for 30s so the long-poll feed doesn't hit the DB
- *     on every request.
- */
-const notifierEnabled = env.REALTIME_NOTIFIER_ENABLED === "1";
-const BACKEND_CACHE_TTL_MS = 30_000;
-// Org count is bounded, but cap to avoid unbounded growth.
-const BACKEND_CACHE_MAX_ENTRIES = 50_000;
+// Two gates, both defaulting to the Electric path: the env master switch, then the
+// per-org `realtimeBackend` feature flag (cached so long-polls don't hit the DB per request).
+const nativeBackendEnabled = env.REALTIME_BACKEND_NATIVE_ENABLED === "1";
 
-const flag = makeFlag($replica);
-const backendCache = new BoundedTtlCache<RealtimeBackend>(
-  BACKEND_CACHE_TTL_MS,
-  BACKEND_CACHE_MAX_ENTRIES
+const flag = singleton("realtimeBackendFlag", () => makeFlag($replica));
+const backendCache = singleton(
+  "realtimeBackendCache",
+  () =>
+    new BoundedTtlCache<RealtimeBackend>(
+      env.REALTIME_BACKEND_FLAG_CACHE_TTL_MS,
+      env.REALTIME_BACKEND_FLAG_CACHE_MAX_ENTRIES
+    )
 );
 
 export async function resolveRealtimeStreamClient(
-  environment: RealtimeEnvironment
+  environment: RealtimeEnvironment & { organization?: { featureFlags?: unknown } }
 ): Promise<RealtimeStreamClient> {
-  if (!notifierEnabled) {
+  if (!nativeBackendEnabled) {
     return realtimeClient;
   }
 
-  switch (await getRealtimeBackend(environment.organizationId)) {
-    case "notifier":
-      return getNotifierRealtimeClient();
+  // The authenticated environment already carries the org's feature flags; pass them
+  // through so a cache miss doesn't need an extra organization read.
+  const orgFeatureFlags = environment.organization
+    ? environment.organization.featureFlags ?? {}
+    : undefined;
+
+  switch (await getRealtimeBackend(environment.organizationId, orgFeatureFlags)) {
+    case "native":
+      return getNativeRealtimeClient();
     case "shadow":
-      // Client is still served Electric; the notifier path is diffed in the background.
+      // The client is still served Electric; the native path is diffed in the background.
       return getShadowRealtimeClient();
     case "electric":
     default:
@@ -53,7 +52,10 @@ export async function resolveRealtimeStreamClient(
   }
 }
 
-async function getRealtimeBackend(organizationId: string): Promise<RealtimeBackend> {
+async function getRealtimeBackend(
+  organizationId: string,
+  orgFeatureFlags: unknown | undefined
+): Promise<RealtimeBackend> {
   const cached = backendCache.get(organizationId);
   if (cached !== undefined) {
     return cached;
@@ -62,18 +64,23 @@ async function getRealtimeBackend(organizationId: string): Promise<RealtimeBacke
   let backend: RealtimeBackend = "electric";
 
   try {
-    const org = await $replica.organization.findFirst({
-      where: { id: organizationId },
-      select: { featureFlags: true },
-    });
+    const overrides =
+      orgFeatureFlags !== undefined
+        ? orgFeatureFlags
+        : (
+            await $replica.organization.findFirst({
+              where: { id: organizationId },
+              select: { featureFlags: true },
+            })
+          )?.featureFlags;
 
     backend = await flag({
       key: FEATURE_FLAG.realtimeBackend,
       defaultValue: "electric",
-      overrides: (org?.featureFlags as Record<string, unknown>) ?? {},
+      overrides: (overrides as Record<string, unknown>) ?? {},
     });
   } catch (error) {
-    // Never let a flag lookup failure break the realtime feed — fall back to Electric.
+    // Never let a flag lookup failure break the realtime feed.
     logger.error("[resolveRealtimeStreamClient] failed to resolve realtimeBackend flag", {
       organizationId,
       error,

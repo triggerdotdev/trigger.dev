@@ -48,9 +48,7 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ authentication, request, resource: run, apiVersion }) => {
-    // Pick the Electric proxy or the notifier-backed shim per org (defaults to
-    // Electric; controlled by REALTIME_NOTIFIER_ENABLED + the realtimeBackend
-    // feature flag). Both implement the same streamRun contract.
+    // Pick the Electric proxy or the native backend per org (defaults to Electric); both implement streamRun.
     const client = await resolveRealtimeStreamClient(authentication.environment);
 
     return client.streamRun(
@@ -60,10 +58,7 @@ export const loader = createLoaderApiRoute(
       apiVersion,
       authentication.realtime,
       request.headers.get("x-trigger-electric-version") ?? undefined,
-      // Propagate abort on client disconnect so the upstream Electric long-poll
-      // fetch is cancelled too. Without this, undici buffers from the unconsumed
-      // upstream response body accumulate until Electric's poll timeout, causing
-      // steady RSS growth on api (see docs/runbooks for the H1 isolation test).
+      // Propagate abort on client disconnect so the upstream Electric long-poll is cancelled too, else undici buffers grow RSS until the poll timeout.
       getRequestAbortSignal()
     );
   }

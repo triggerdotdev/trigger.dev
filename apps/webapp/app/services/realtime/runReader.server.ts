@@ -3,16 +3,9 @@ import { BoundedTtlCache } from "./boundedTtlCache";
 import { RESERVED_COLUMNS, type RealtimeRunRow } from "./electricStreamProtocol.server";
 
 /**
- * RunReader — the pluggable read half of the notifier-backed realtime feed.
- *
- * The mandate: ClickHouse is filter-only and resolves IDs,
- * Postgres always hydrates row columns. This file owns the Postgres hydration
- * half (`RunHydrator`, by-id) and the `RunListResolver` interface (the tag/list
- * filter -> id-set seam, implemented over ClickHouse).
- *
- * Splitting hydration behind this small surface keeps the realtime feed
- * decoupled from where runs physically live, ready for a future `TaskRunFast`
- * table or a non-Postgres row store.
+ * RunReader — the pluggable read half of the native-backend realtime feed: ClickHouse is filter-only
+ * (resolves ids), Postgres always hydrates row columns. Owns the `RunHydrator` (by-id) and the
+ * `RunListResolver` interface (the tag/list filter -> id-set seam, implemented over ClickHouse).
  */
 
 /** The TaskRun columns the realtime feed projects (mirrors DEFAULT_ELECTRIC_COLUMNS). */
@@ -45,13 +38,7 @@ export const RUN_HYDRATOR_SELECT = {
   realtimeStreams: true,
 } satisfies Prisma.TaskRunSelect;
 
-/**
- * Columns the feed needs internally regardless of the client's `skipColumns`:
- * `id` keys the row, `updatedAt` drives the offset and the live working-set diff.
- * Everything else can be projected away when the client skips it (see
- * `buildHydratorSelect`), so the replica doesn't ship large `payload`/`output`/
- * `metadata`/`error` columns the response will drop anyway.
- */
+/** Columns hydrated regardless of `skipColumns`: `id` keys the row, `updatedAt` drives the offset and working-set diff. */
 const ALWAYS_HYDRATED_COLUMNS = new Set<string>(["id", "updatedAt", ...RESERVED_COLUMNS]);
 
 /** Project `RUN_HYDRATOR_SELECT` down to the columns the client didn't skip (plus
@@ -84,12 +71,7 @@ export type RunListFilter = {
   limit: number;
 };
 
-/**
- * Resolves a tag/list filter into the matching run id-set, filter-only (no row
- * columns; rows are hydrated from Postgres by id afterward). Pluggable so the
- * resolution source can change without touching the feed. The ClickHouse
- * implementation lives in `clickHouseRunListResolver.server.ts`.
- */
+/** Resolves a tag/list filter into the matching run id-set, filter-only (rows hydrated from Postgres by id afterward). ClickHouse impl in `clickHouseRunListResolver.server.ts`. */
 export interface RunListResolver {
   resolveMatchingRunIds(filter: RunListFilter): Promise<string[]>;
 }
@@ -97,11 +79,7 @@ export interface RunListResolver {
 export type RunHydratorOptions = {
   /** A read-replica Prisma client (`$replica`). Always Postgres. */
   replica: Pick<PrismaClient, "taskRun">;
-  /**
-   * Read-through cache TTL (ms) to collapse duplicate refetches across a burst
-   * of live polls for the same run. Fan-in is low in practice, so this is
-   * insurance, not load-bearing. Set to 0 to disable. Defaults to 250ms.
-   */
+  /** Read-through cache TTL (ms) collapsing duplicate refetches for the same run. Set 0 to disable. Defaults to 250ms. */
   cacheTtlMs?: number;
   /** Hard cap on cache entries before expired entries are swept. */
   maxCacheEntries?: number;
@@ -110,11 +88,7 @@ export type RunHydratorOptions = {
 const DEFAULT_CACHE_TTL_MS = 250;
 const DEFAULT_MAX_CACHE_ENTRIES = 5_000;
 
-/**
- * Hydrates a single run by id from the read replica, projected to the realtime
- * columns. Concurrent refetches for the same (env, run) are single-flighted, and
- * a short TTL cache collapses rapid repeats.
- */
+/** Hydrates runs by id from the read replica, projected to the realtime columns; concurrent same-run refetches are single-flighted + short-TTL cached. */
 export class RunHydrator {
   readonly #inflight = new Map<string, Promise<RealtimeRunRow | null>>();
   readonly #cache: BoundedTtlCache<RealtimeRunRow | null>;
@@ -156,9 +130,7 @@ export class RunHydrator {
     return row;
   }
 
-  /** Hydrate many runs by id in one query (tag/list feed). Order is not guaranteed.
-   * `skipColumns` projects the SELECT so the replica doesn't ship columns the client
-   * dropped (notably the large `payload`/`output`/`metadata`/`error` columns). */
+  /** Hydrate many runs by id in one query (order not guaranteed); `skipColumns` projects the SELECT so dropped columns aren't shipped. */
   async hydrateByIds(
     environmentId: string,
     ids: string[],

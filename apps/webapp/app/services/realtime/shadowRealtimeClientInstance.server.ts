@@ -17,7 +17,7 @@ import { ShadowRealtimeClient } from "./shadowRealtimeClient.server";
 function initializeShadowRealtimeClient(): ShadowRealtimeClient {
   const compares = new Counter({
     name: "realtime_shadow_compare_total",
-    help: "Dual-run shadow-compare outcomes (Electric vs notifier). kind=serialization|membership, result=match|diverge|skew.",
+    help: "Dual-run shadow-compare outcomes (Electric vs native). kind=serialization|membership, result=match|diverge|skew.",
     labelNames: ["feed", "kind", "result"] as const,
     registers: [metricsRegister],
   });
@@ -35,7 +35,7 @@ function initializeShadowRealtimeClient(): ShadowRealtimeClient {
     electric: realtimeClient,
     comparator,
     maximumCreatedAtFilterAgeMs: env.REALTIME_MAXIMUM_CREATED_AT_FILTER_AGE_IN_MS,
-    maxListResults: env.REALTIME_NOTIFIER_MAX_LIST_RESULTS,
+    maxListResults: env.REALTIME_BACKEND_NATIVE_MAX_LIST_RESULTS,
     onOutcome: (outcome) => {
       const { feed } = outcome;
       if (outcome.serializationMatched) {

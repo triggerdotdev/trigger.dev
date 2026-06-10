@@ -1,8 +1,8 @@
 import { CURRENT_API_VERSION } from "~/api/versions";
 import {
-  NotifierRealtimeClient,
+  NativeRealtimeClient,
   type RealtimeListEnvironment,
-} from "~/services/realtime/notifierRealtimeClient.server";
+} from "~/services/realtime/nativeRealtimeClient.server";
 import { type RealtimeRunRow } from "~/services/realtime/electricStreamProtocol.server";
 import { EnvChangeRouter } from "~/services/realtime/envChangeRouter.server";
 import { describe, expect, it } from "vitest";
@@ -41,7 +41,7 @@ function sampleRow(): RealtimeRunRow {
 // Only the initial-snapshot path is exercised here, which touches the shared
 // #buildResponse — enough to lock the response-header contract.
 function makeClient(row: RealtimeRunRow | null) {
-  return new NotifierRealtimeClient({
+  return new NativeRealtimeClient({
     runReader: {
       getRunById: async () => row,
       hydrateByIds: async () => (row ? [row] : []),
@@ -64,7 +64,7 @@ const ENV: RealtimeListEnvironment = {
   projectId: "proj_1",
 };
 
-describe("NotifierRealtimeClient response headers", () => {
+describe("NativeRealtimeClient response headers", () => {
   it("exposes electric headers cross-origin so browser hooks can read them", async () => {
     const client = makeClient(sampleRow());
     const res = await client.streamRun(

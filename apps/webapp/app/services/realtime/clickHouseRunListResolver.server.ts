@@ -10,15 +10,9 @@ export type ClickHouseRunListResolverOptions = {
 };
 
 /**
- * Resolves the realtime tag/list filter into matching run ids via ClickHouse
- * `listRunIds`. Tag matching is contains-ANY (OR), the same
- * semantics the dashboard runs list uses. Filter-only: ids only, hydrated from
- * Postgres by id afterward. This keeps the realtime tag feed off the Postgres
- * `runTags` GIN index entirely.
- *
- * (Multi-tag subscribeToRunsWithTag is therefore OR, not the AND that Electric's
- * `runTags @> ARRAY[...]` shape used. Restoring AND is a follow-up: add a
- * `hasAll` mode to the ClickHouse runs filter and use it here.)
+ * Resolves the realtime tag/list filter into matching run ids via ClickHouse `listRunIds` (filter-only;
+ * rows hydrated from Postgres by id afterward). Tag matching is contains-ANY (OR) — note this differs from
+ * Electric's `runTags @> ARRAY[...]` AND shape; restoring AND needs a `hasAll` mode on the ClickHouse filter.
  */
 export class ClickHouseRunListResolver implements RunListResolver {
   constructor(private readonly options: ClickHouseRunListResolverOptions) {}

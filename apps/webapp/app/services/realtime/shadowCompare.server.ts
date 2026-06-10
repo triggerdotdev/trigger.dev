@@ -6,24 +6,10 @@ import {
 import { type RunHydrator, type RunListFilter, type RunListResolver } from "./runReader.server";
 
 /**
- * Dual-run shadow-compare.
- *
- * The client is always served the Electric response; in the background this
- * re-derives what the notifier path WOULD emit and diffs the two, so we can prove
- * parity on real production traffic before any cutover.
- *
- * Two kinds of divergence are checked:
- *  - serialization: for each run Electric emitted, re-hydrate it and serialize via
- *    the notifier serializer, then compare SEMANTICALLY (decode both sides per
- *    column type) so equivalent-but-differently-encoded wire values (timestamp
- *    format, bool t/true, number formatting) are not false positives. The compare
- *    is gated on same-version (matching updatedAt) so a row that changed between
- *    Electric's emit and our refetch is recorded as "skew", not a divergence.
- *  - membership (tag/batch initial snapshot only): the set of run ids Electric
- *    emitted vs the set the notifier resolver returns. This is where the known
- *    tag OR-vs-AND difference shows up.
- *
- * Pure except for the injected RunHydrator/RunListResolver, so it's unit-testable.
+ * Dual-run shadow-compare: the client is always served the Electric response while this re-derives what
+ * the native backend would emit and diffs the two, to prove parity on real traffic before cutover. Checks
+ * serialization (semantic per-column compare, gated on same updatedAt so a changed row is "skew", not a
+ * divergence) and membership (emitted id-set, only on tag/batch initial snapshots). Pure but for the injected deps.
  */
 
 export type ShadowFeed = "run" | "runs" | "batch";
@@ -42,7 +28,7 @@ export type ColumnDiff = {
   runId: string;
   column: string;
   electric: string | null;
-  notifier: string | null;
+  native: string | null;
 };
 
 export type ShadowCompareOutcome = {
@@ -57,8 +43,8 @@ export type ShadowCompareOutcome = {
   diffs: ColumnDiff[];
   /** Set membership (tag/batch initial snapshot only). undefined when not checked. */
   membershipMatch?: boolean;
-  missingInNotifier?: string[];
-  extraInNotifier?: string[];
+  missingInNative?: string[];
+  extraInNative?: string[];
 };
 
 export type ShadowCompareInput = {
@@ -116,11 +102,11 @@ export class RealtimeShadowComparator {
         continue;
       }
 
-      const notifierValue = serializeRunRow(row, input.skipColumns);
+      const nativeValue = serializeRunRow(row, input.skipColumns);
 
       // Only compare rows at the same version; otherwise the row advanced between
       // Electric's emit and our refetch (timing skew, not a divergence).
-      if (!sameInstant(message.value.updatedAt, notifierValue.updatedAt)) {
+      if (!sameInstant(message.value.updatedAt, nativeValue.updatedAt)) {
         outcome.serializationSkew++;
         continue;
       }
@@ -131,11 +117,11 @@ export class RealtimeShadowComparator {
         if (!meta) {
           continue;
         }
-        const notifierRaw = notifierValue[column] ?? null;
-        if (!valuesEqual(electricRaw, notifierRaw, meta.type, meta.dims, column)) {
+        const nativeRaw = nativeValue[column] ?? null;
+        if (!valuesEqual(electricRaw, nativeRaw, meta.type, meta.dims, column)) {
           rowDiverged = true;
           if (outcome.diffs.length < MAX_DIFFS) {
-            outcome.diffs.push({ runId, column, electric: electricRaw, notifier: notifierRaw });
+            outcome.diffs.push({ runId, column, electric: electricRaw, native: nativeRaw });
           }
         }
       }
@@ -151,14 +137,14 @@ export class RealtimeShadowComparator {
       const electricIds = new Set(
         changes.map((m) => m.value.id).filter((id): id is string => typeof id === "string")
       );
-      const notifierIds = new Set(
+      const nativeIds = new Set(
         await this.options.runListResolver.resolveMatchingRunIds(input.membershipFilter)
       );
 
-      outcome.missingInNotifier = [...electricIds].filter((id) => !notifierIds.has(id));
-      outcome.extraInNotifier = [...notifierIds].filter((id) => !electricIds.has(id));
+      outcome.missingInNative = [...electricIds].filter((id) => !nativeIds.has(id));
+      outcome.extraInNative = [...nativeIds].filter((id) => !electricIds.has(id));
       outcome.membershipMatch =
-        outcome.missingInNotifier.length === 0 && outcome.extraInNotifier.length === 0;
+        outcome.missingInNative.length === 0 && outcome.extraInNative.length === 0;
     }
 
     return outcome;
@@ -194,36 +180,36 @@ function sameInstant(a: string | null | undefined, b: string | null | undefined)
 
 function valuesEqual(
   electricRaw: string | null,
-  notifierRaw: string | null,
+  nativeRaw: string | null,
   type: ElectricColumnType,
   dims: number | undefined,
   column: string
 ): boolean {
-  if (electricRaw == null || notifierRaw == null) {
-    return electricRaw == null && notifierRaw == null;
+  if (electricRaw == null || nativeRaw == null) {
+    return electricRaw == null && nativeRaw == null;
   }
 
   if (dims && dims > 0) {
-    return arraysEqual(parsePgTextArray(electricRaw), parsePgTextArray(notifierRaw));
+    return arraysEqual(parsePgTextArray(electricRaw), parsePgTextArray(nativeRaw));
   }
 
   switch (type) {
     case "timestamp":
-      return new Date(`${electricRaw}Z`).getTime() === new Date(`${notifierRaw}Z`).getTime();
+      return new Date(`${electricRaw}Z`).getTime() === new Date(`${nativeRaw}Z`).getTime();
     case "bool":
-      return parseBool(electricRaw) === parseBool(notifierRaw);
+      return parseBool(electricRaw) === parseBool(nativeRaw);
     case "int4":
     case "int8":
     case "float8":
-      return Number(electricRaw) === Number(notifierRaw);
+      return Number(electricRaw) === Number(nativeRaw);
     case "jsonb":
-      return jsonEqual(electricRaw, notifierRaw);
+      return jsonEqual(electricRaw, nativeRaw);
     case "text":
     default:
       if (column === "status") {
-        return normalizeStatus(electricRaw) === normalizeStatus(notifierRaw);
+        return normalizeStatus(electricRaw) === normalizeStatus(nativeRaw);
       }
-      return electricRaw === notifierRaw;
+      return electricRaw === nativeRaw;
   }
 }
 

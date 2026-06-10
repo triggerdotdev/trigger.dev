@@ -300,46 +300,36 @@ const EnvironmentSchema = z
       .int()
       .default(24 * 60 * 60 * 1000), // 1 day in milliseconds
 
-    // Master switch for the notifier-backed realtime feed.
-    // "0" (default) = the existing realtime path serves everything, publishes are
-    // no-ops, and no notifier Redis connections are opened (zero-overhead off).
-    // "1" = run-changed signals are published and the per-org `realtimeBackend`
-    // feature flag selects the backend per request.
-    REALTIME_NOTIFIER_ENABLED: z.string().default("0"),
-    // Backstop wait before a live notifier request refetches the run (ms). Matches
-    // Electric's ~20s live long-poll hold so the client polling cadence is unchanged
-    // across backends (a ±15% jitter is applied per request to avoid refetch herds).
-    REALTIME_NOTIFIER_LIVE_POLL_TIMEOUT_MS: z.coerce.number().int().default(20_000),
-    // Hard cap on the tag-list snapshot size served by the notifier feed.
-    REALTIME_NOTIFIER_MAX_LIST_RESULTS: z.coerce.number().int().default(1_000),
-    // Short-TTL coalescing cache for the multi-run (tag-list/batch) resolve+hydrate.
-    // Concurrent same-filter feeds share one ClickHouse resolve + Postgres hydrate
-    // within this window, so an env-wide wake doesn't fan out into per-feed queries.
-    // Staleness budget: a newly-matching run is visible within ~ttl + poll interval.
-    REALTIME_NOTIFIER_RUNSET_CACHE_TTL_MS: z.coerce.number().int().default(1_000),
-    REALTIME_NOTIFIER_RUNSET_CACHE_MAX_ENTRIES: z.coerce.number().int().default(5_000),
-    // Cap on the per-handle working-set cache (runId -> updatedAt) the notifier keeps
-    // for diffing multi-run live polls.
-    REALTIME_NOTIFIER_WORKING_SET_MAX_ENTRIES: z.coerce.number().int().default(10_000),
-    // Quantize the tag-list createdAt lower bound to this epoch-aligned bucket (ms) so
-    // same-tag feeds that pin their window within the same bucket share one resolve+
-    // hydrate cache entry. Floored, so the window only ever widens by < bucket. 0
-    // disables bucketing (each feed keeps its exact lower bound).
-    REALTIME_NOTIFIER_RUNSET_CREATED_AT_BUCKET_MS: z.coerce.number().int().default(60_000),
-    // Leading-edge throttle (ms) on the per-env wake channel: a busy env's run-change
-    // firehose is collapsed to at most one feed-wake per window, decoupling wake load
-    // from run throughput. Lossless because consumers refetch current state on a wake.
-    // 0 disables coalescing (every change wakes immediately).
-    REALTIME_NOTIFIER_ENV_WAKE_COALESCE_WINDOW_MS: z.coerce.number().int().default(100),
-    // When "1", a multi-run live poll woken by a change irrelevant to its filter keeps
-    // holding the long-poll (re-resolving cheaply) instead of returning an empty
-    // up-to-date the client would immediately re-issue. "0" reverts to per-wake replies.
-    REALTIME_NOTIFIER_HOLD_ON_EMPTY: z.string().default("1"),
-    // Max concurrent fresh ClickHouse resolves (cache misses) per instance. Caps the
-    // distinct-filter reconnect stampede: a mass reconnect of N feeds on N different filters
-    // queues to this many concurrent CH queries instead of firing all N at once. Same-filter
-    // bursts collapse via the single-flight cache before taking a permit. 0 disables the gate.
-    REALTIME_NOTIFIER_RESOLVE_ADMISSION_LIMIT: z.coerce.number().int().default(16),
+    // Master switch for the native realtime backend; off = Electric serves everything, publishes no-op.
+    REALTIME_BACKEND_NATIVE_ENABLED: z.string().default("0"),
+    // Live long-poll backstop hold (ms); matches Electric's ~20s cadence.
+    REALTIME_BACKEND_NATIVE_LIVE_POLL_TIMEOUT_MS: z.coerce.number().int().default(20_000),
+    // Jitter ratio on the live-poll hold (0.15 = ±15%) to avoid synchronized refetch herds.
+    REALTIME_BACKEND_NATIVE_LIVE_POLL_JITTER_RATIO: z.coerce.number().default(0.15),
+    // Hard cap on the tag-list snapshot size.
+    REALTIME_BACKEND_NATIVE_MAX_LIST_RESULTS: z.coerce.number().int().default(1_000),
+    // TTL/size of the coalescing cache for the multi-run resolve+hydrate (same-filter feeds share one query).
+    REALTIME_BACKEND_NATIVE_RUNSET_CACHE_TTL_MS: z.coerce.number().int().default(1_000),
+    REALTIME_BACKEND_NATIVE_RUNSET_CACHE_MAX_ENTRIES: z.coerce.number().int().default(5_000),
+    // Size/TTL of the per-handle working-set cache used to diff multi-run live polls.
+    REALTIME_BACKEND_NATIVE_WORKING_SET_MAX_ENTRIES: z.coerce.number().int().default(10_000),
+    REALTIME_BACKEND_NATIVE_WORKING_SET_TTL_MS: z.coerce.number().int().default(300_000),
+    // Bucket (ms) the tag-list createdAt floor is quantized to so same-tag feeds share a cache entry; 0 disables.
+    REALTIME_BACKEND_NATIVE_RUNSET_CREATED_AT_BUCKET_MS: z.coerce.number().int().default(60_000),
+    // Leading-edge throttle (ms) on per-env wake delivery; 0 wakes on every change.
+    REALTIME_BACKEND_NATIVE_ENV_WAKE_COALESCE_WINDOW_MS: z.coerce.number().int().default(100),
+    // "1" holds a multi-run live poll open on a non-matching wake instead of replying up-to-date.
+    REALTIME_BACKEND_NATIVE_HOLD_ON_EMPTY: z.string().default("1"),
+    // Max concurrent fresh ClickHouse resolves per instance (reconnect-stampede gate); 0 disables.
+    REALTIME_BACKEND_NATIVE_RESOLVE_ADMISSION_LIMIT: z.coerce.number().int().default(16),
+    // Fallback per-env concurrent-connection limit when the org has none configured.
+    REALTIME_BACKEND_NATIVE_DEFAULT_CONCURRENCY_LIMIT: z.coerce.number().int().default(100_000),
+    // TTL/size of the single-run read-through cache that collapses duplicate refetch bursts.
+    REALTIME_BACKEND_NATIVE_RUN_CACHE_TTL_MS: z.coerce.number().int().default(250),
+    REALTIME_BACKEND_NATIVE_RUN_CACHE_MAX_ENTRIES: z.coerce.number().int().default(5_000),
+    // TTL/size of the per-org realtimeBackend flag cache used to pick the serving backend.
+    REALTIME_BACKEND_FLAG_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
+    REALTIME_BACKEND_FLAG_CACHE_MAX_ENTRIES: z.coerce.number().int().default(50_000),
 
     PUBSUB_REDIS_HOST: z
       .string()
@@ -373,15 +363,12 @@ const EnvironmentSchema = z
     PUBSUB_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
     PUBSUB_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
-    // Dedicated pub/sub Redis for the realtime runs feed's run-changed notifier, so
-    // its publish/subscribe traffic can run on its own instance. Each value falls
-    // back to the shared PUBSUB_REDIS_* (then REDIS_*) when unset, so the default is
-    // unchanged until explicitly pointed at a dedicated instance.
-    REALTIME_RUNS_PUBSUB_REDIS_HOST: z
+    // Dedicated pub/sub Redis for the native realtime backend; falls back to PUBSUB_REDIS_* then REDIS_*.
+    REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_HOST: z
       .string()
       .optional()
       .transform((v) => v ?? process.env.PUBSUB_REDIS_HOST ?? process.env.REDIS_HOST),
-    REALTIME_RUNS_PUBSUB_REDIS_PORT: z.coerce
+    REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_PORT: z.coerce
       .number()
       .optional()
       .transform((v) => {
@@ -389,24 +376,22 @@ const EnvironmentSchema = z
         const raw = process.env.PUBSUB_REDIS_PORT ?? process.env.REDIS_PORT;
         return raw ? parseInt(raw) : undefined;
       }),
-    REALTIME_RUNS_PUBSUB_REDIS_USERNAME: z
+    REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_USERNAME: z
       .string()
       .optional()
       .transform((v) => v ?? process.env.PUBSUB_REDIS_USERNAME ?? process.env.REDIS_USERNAME),
-    REALTIME_RUNS_PUBSUB_REDIS_PASSWORD: z
+    REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_PASSWORD: z
       .string()
       .optional()
       .transform((v) => v ?? process.env.PUBSUB_REDIS_PASSWORD ?? process.env.REDIS_PASSWORD),
-    REALTIME_RUNS_PUBSUB_REDIS_TLS_DISABLED: z
+    REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_TLS_DISABLED: z
       .string()
       .default(process.env.PUBSUB_REDIS_TLS_DISABLED ?? process.env.REDIS_TLS_DISABLED ?? "false"),
-    REALTIME_RUNS_PUBSUB_REDIS_CLUSTER_MODE_ENABLED: z
+    REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_CLUSTER_MODE_ENABLED: z
       .string()
       .default(process.env.PUBSUB_REDIS_CLUSTER_MODE_ENABLED ?? "0"),
-    // Use sharded pub/sub (SSUBSCRIBE/SPUBLISH) when in cluster mode, so a busy env's
-    // traffic stays on one shard instead of broadcasting to every node. Only takes
-    // effect alongside CLUSTER_MODE_ENABLED. "0" forces classic pub/sub on the cluster.
-    REALTIME_RUNS_PUBSUB_REDIS_SHARDED_ENABLED: z.string().default("1"),
+    // Use sharded pub/sub (SSUBSCRIBE/SPUBLISH) in cluster mode; "0" forces classic pub/sub.
+    REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_SHARDED_ENABLED: z.string().default("1"),
 
     DEFAULT_ENV_EXECUTION_CONCURRENCY_LIMIT: z.coerce.number().int().default(100),
     DEFAULT_ENV_EXECUTION_CONCURRENCY_BURST_FACTOR: z.coerce.number().default(1.0),
@@ -1684,20 +1669,18 @@ const EnvironmentSchema = z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
     RUN_ENGINE_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
-    // ClickHouse client used by the realtime runs feed for tag/batch id resolution.
-    // Kept on its own URL + pool so the feed's reads can't contend with the main
-    // analytics client (CLICKHOUSE_URL). Falls back to the main URL when unset.
-    REALTIME_RUNS_CLICKHOUSE_URL: z
+    // Dedicated ClickHouse pool for the native backend's tag/batch id resolution; falls back to CLICKHOUSE_URL.
+    REALTIME_BACKEND_NATIVE_CLICKHOUSE_URL: z
       .string()
       .optional()
       .transform((v) => v ?? process.env.CLICKHOUSE_URL),
-    REALTIME_RUNS_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
-    REALTIME_RUNS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
-    REALTIME_RUNS_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
-    REALTIME_RUNS_CLICKHOUSE_LOG_LEVEL: z
+    REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
+    REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+    REALTIME_BACKEND_NATIVE_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+    REALTIME_BACKEND_NATIVE_CLICKHOUSE_LOG_LEVEL: z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
-    REALTIME_RUNS_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+    REALTIME_BACKEND_NATIVE_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
     EVENTS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(1000),
     EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     METRICS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(10000),
