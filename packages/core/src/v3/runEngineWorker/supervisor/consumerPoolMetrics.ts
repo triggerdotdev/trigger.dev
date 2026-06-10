@@ -121,9 +121,12 @@ export class ConsumerPoolMetrics {
       labelNames: ["outcome"],
       // The HTTP client retries internally (up to 5 attempts with 0.5-5s backoff),
       // so one observation can span multiple requests plus sleeps. A retryable
-      // failure surfaces as `error` only after >=7.5s of backoff - the 10/30s
-      // buckets exist so that mode doesn't collapse into +Inf.
-      buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30],
+      // failure surfaces as `error` only after >=7.5s of backoff - the 10-30s
+      // buckets exist so that mode doesn't collapse into +Inf. The server also
+      // long-polls (RUN_ENGINE_DEQUEUE_BLOCKING_TIMEOUT_SECONDS, default 10s),
+      // parking empty dequeues at ~10s - the 11/12.5/15/20 buckets give the
+      // quantiles resolution just above that boundary, where the mass sits.
+      buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 11, 12.5, 15, 20, 30],
       registers: [this.register],
     });
   }
