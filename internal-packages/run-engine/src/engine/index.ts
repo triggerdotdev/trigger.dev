@@ -1958,8 +1958,10 @@ export class RunEngine {
     } catch (e) {
       if (useReplica && e instanceof ExecutionSnapshotNotFoundError) {
         // Replica lag: the runner learned this snapshot id from the writer before the
-        // replica caught up. Give the replica one jittered retry, then serve from the
-        // writer; a miss on the writer too is a real error, not lag.
+        // replica caught up. Give the replica one jittered retry; if it's still missing,
+        // serve from the writer. Only not-found errors get this treatment - any other
+        // replica failure stays an error rather than shifting read load to the writer.
+        // A miss on the writer too is a real error, not lag.
         const { minMs, maxMs } = this.snapshotsSinceReplicaRetryDelay;
         if (maxMs > 0) {
           await setTimeout(minMs + Math.random() * Math.max(0, maxMs - minMs));
