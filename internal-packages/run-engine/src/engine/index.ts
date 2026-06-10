@@ -282,7 +282,7 @@ export class RunEngine {
       "run_engine.snapshots_since.replica_miss",
       {
         description:
-          "getSnapshotsSince reads where the since snapshot was not yet on the read replica and the query was retried on the primary",
+          "getSnapshotsSince reads where the since snapshot was not yet on the read replica and was served from the primary",
       }
     );
 
@@ -1932,7 +1932,10 @@ export class RunEngine {
     snapshotId: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<RunExecutionData[] | null> {
-    const useReplica = !tx && this.options.readReplicaSnapshotsSinceEnabled === true;
+    const useReplica =
+      !tx &&
+      this.options.readReplicaSnapshotsSinceEnabled === true &&
+      this.readOnlyPrisma !== this.prisma;
     const prisma = tx ?? (useReplica ? this.readOnlyPrisma : this.prisma);
 
     const query = async (client: PrismaClientOrTransaction) => {
@@ -1946,15 +1949,16 @@ export class RunEngine {
       if (useReplica && e instanceof ExecutionSnapshotNotFoundError) {
         // Expected during replica lag: the runner learned the snapshot id from the writer
         // before the replica caught up. Serve the read from the writer instead of failing
-        // the poll.
-        this.snapshotsSinceReplicaMissCounter.add(1);
-        this.logger.warn("getSnapshotsSince: snapshot not yet on replica, retrying on primary", {
-          runId,
-          snapshotId,
-        });
-
+        // the poll. Only count/warn when the writer actually has the snapshot - a permanent
+        // miss (bogus or pruned snapshot id) is a real error, not replica lag.
         try {
-          return await query(this.prisma);
+          const result = await query(this.prisma);
+          this.snapshotsSinceReplicaMissCounter.add(1);
+          this.logger.warn("getSnapshotsSince: snapshot not yet on replica, served from primary", {
+            runId,
+            snapshotId,
+          });
+          return result;
         } catch (retryError) {
           this.logger.error("Failed to getSnapshotsSince", {
             message: retryError instanceof Error ? retryError.message : retryError,

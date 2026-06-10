@@ -15,7 +15,6 @@ import {
 } from "./helpers/snapshotTestHelpers.js";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 
-
 vi.setConfig({ testTimeout: 120_000 });
 
 describe("RunEngine getSnapshotsSince", () => {
