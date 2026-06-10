@@ -1048,7 +1048,7 @@ Yes. `.in` records are processed in arrival order — the agent's stop handler a
 </Expandable>
 
 <Expandable title="What's the format of the optional `X-Part-Id` header?">
-Any opaque ASCII string up to ~64 characters. The built-in clients generate one per logical send (the browser transport uses a UUID; the server-side clients use a short `nanoid`) and reuse it across auth retries of that send. The server uses it as a per-record idempotency key — re-POSTing the same body with the same `X-Part-Id` produces a single S2 record. If you don't send the header, the server generates one for you and idempotency is per-request only.
+Any opaque ASCII string up to ~64 characters. The built-in clients generate a high-entropy id per logical send (a UUID in the browser, a `nanoid` server-side) and reuse it across auth retries of that send. The server uses it as a per-record idempotency key — re-POSTing the same body with the same `X-Part-Id` produces a single S2 record. If you don't send the header, the server generates one for you and idempotency is per-request only.
 </Expandable>
 
 <Expandable title="What happens on rate-limit (429)?">
