@@ -39,6 +39,12 @@ export type WaitpointContinuationResult =
       waitpoints: Array<WaitpointContinuationWaitpoint>;
     };
 
+export type WaitpointOutput = {
+  value: string;
+  type?: string;
+  isError: boolean;
+};
+
 export type CompletedWaitpointMutationResult = {
   waitpoint: Waitpoint;
   affectedTaskRuns: {
@@ -46,6 +52,7 @@ export type CompletedWaitpointMutationResult = {
     spanIdToComplete: string | null;
     createdAt: Date;
   }[];
+  output?: WaitpointOutput;
 };
 
 export class WaitpointSystem {
@@ -83,20 +90,16 @@ export class WaitpointSystem {
     output,
   }: {
     id: string;
-    output?: {
-      value: string;
-      type?: string;
-      isError: boolean;
-    };
+    output?: WaitpointOutput;
   }): Promise<Waitpoint> {
     const result = await this.completeWaitpointMutation({ id, output });
-    await this.scheduleWaitpointContinuations({ ...result, output });
+    await this.scheduleWaitpointContinuations(result);
     return result.waitpoint;
   }
 
   /** Marks the waitpoint COMPLETED and returns the runs it was blocking.
    * Pure Postgres mutation — safe to run inside a transaction via `tx`.
-   * Callers passing `tx` MUST call scheduleWaitpointContinuations() with the
+   * Direct callers MUST call scheduleWaitpointContinuations() with the
    * result AFTER the surrounding transaction commits, otherwise blocked runs
    * are never continued. */
   async completeWaitpointMutation({
@@ -105,11 +108,7 @@ export class WaitpointSystem {
     tx,
   }: {
     id: string;
-    output?: {
-      value: string;
-      type?: string;
-      isError: boolean;
-    };
+    output?: WaitpointOutput;
     tx?: PrismaClientOrTransaction;
   }): Promise<CompletedWaitpointMutationResult> {
     const prisma = tx ?? this.$.prisma;
@@ -168,7 +167,7 @@ export class WaitpointSystem {
       });
     }
 
-    return { waitpoint, affectedTaskRuns };
+    return { waitpoint, affectedTaskRuns, output };
   }
 
   /** Post-commit side effects of completing a waitpoint: schedules continuation of
@@ -178,14 +177,8 @@ export class WaitpointSystem {
     waitpoint,
     affectedTaskRuns,
     output,
-  }: CompletedWaitpointMutationResult & {
-    output?: {
-      value: string;
-      type?: string;
-      isError: boolean;
-    };
-  }): Promise<void> {
-    // 3. Schedule trying to continue the runs
+  }: CompletedWaitpointMutationResult): Promise<void> {
+    // Schedule trying to continue the runs
     for (const run of affectedTaskRuns) {
       const jobId = `continueRunIfUnblocked:${run.taskRunId}`;
       //50ms in the future
