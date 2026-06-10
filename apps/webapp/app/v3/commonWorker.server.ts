@@ -5,6 +5,12 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import { RunEngineBatchTriggerService } from "~/runEngine/services/batchTrigger.server";
 import { sendEmail } from "~/services/email.server";
+import {
+  AttioUserSyncSchema,
+  AttioWorkspaceSyncSchema,
+  runAttioUserSync,
+  runAttioWorkspaceSync,
+} from "~/services/attio.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { DeliverAlertService } from "./services/alerts/deliverAlert.server";
@@ -42,6 +48,20 @@ function initializeWorker() {
       scheduleEmail: {
         schema: DeliverEmailSchema,
         visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 3,
+        },
+      },
+      "attio.syncWorkspace": {
+        schema: AttioWorkspaceSyncSchema,
+        visibilityTimeoutMs: 30_000,
+        retry: {
+          maxAttempts: 3,
+        },
+      },
+      "attio.syncUser": {
+        schema: AttioUserSyncSchema,
+        visibilityTimeoutMs: 30_000,
         retry: {
           maxAttempts: 3,
         },
@@ -212,6 +232,12 @@ function initializeWorker() {
     jobs: {
       scheduleEmail: async ({ payload }) => {
         await sendEmail(payload);
+      },
+      "attio.syncWorkspace": async ({ payload }) => {
+        await runAttioWorkspaceSync(payload);
+      },
+      "attio.syncUser": async ({ payload }) => {
+        await runAttioUserSync(payload);
       },
       "v3.resumeBatchRun": async ({ payload }) => {
         const service = new ResumeBatchRunService();
