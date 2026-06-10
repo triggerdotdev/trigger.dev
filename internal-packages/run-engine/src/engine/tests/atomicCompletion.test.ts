@@ -3,12 +3,13 @@ import { trace } from "@internal/tracing";
 import { describe, expect, vi } from "vitest";
 import { setTimeout } from "node:timers/promises";
 import { PrismaClient } from "@trigger.dev/database";
+import { RedisOptions } from "@internal/redis";
 import { RunEngine } from "../index.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 
-function createEngine(prisma: PrismaClient, redisOptions: any) {
+function createEngine(prisma: PrismaClient, redisOptions: RedisOptions) {
   return new RunEngine({
     prisma,
     worker: {
@@ -149,13 +150,11 @@ describe("RunEngine atomic completion", () => {
       const engine = createEngine(prisma, redisOptions);
 
       try {
-        const { childRun, childAttempt } = await setupBlockedParentWithExecutingChild(
+        const { childRun, childAttempt, waitpointId } = await setupBlockedParentWithExecutingChild(
           engine,
           prisma,
           authenticatedEnvironment
         );
-
-        const before = await currentTxid(prisma);
 
         const result = await engine.completeRunAttempt({
           runId: childRun.id,
@@ -168,14 +167,22 @@ describe("RunEngine atomic completion", () => {
           },
         });
 
-        const after = await currentTxid(prisma);
-
         expect(result.attemptStatus).toBe("RUN_FINISHED");
 
-        // TaskRun update (+ nested snapshot) and waitpoint completion
-        // must share one commit.
-        const writeTransactions = Number(after - before) - 1;
-        expect(writeTransactions).toBe(1);
+        // Equal xmin on all three rows proves they were written (last-updated)
+        // by the same transaction — a timing-window-free proof that the
+        // TaskRun update, the FINISHED snapshot insert, and the waitpoint
+        // completion all share one commit.
+        const rows = await prisma.$queryRaw<{ source: string; xmin: string }[]>`
+          SELECT 'run' AS source, xmin::text FROM "TaskRun" WHERE id = ${childRun.id}
+          UNION ALL
+          SELECT 'snapshot' AS source, xmin::text FROM "TaskRunExecutionSnapshot"
+            WHERE "runId" = ${childRun.id} AND "executionStatus"::text = 'FINISHED'
+          UNION ALL
+          SELECT 'waitpoint' AS source, xmin::text FROM "Waitpoint" WHERE id = ${waitpointId}
+        `;
+        expect(rows.length, JSON.stringify(rows)).toBe(3);
+        expect(new Set(rows.map((r) => r.xmin)).size, JSON.stringify(rows)).toBe(1);
       } finally {
         await engine.quit();
       }
@@ -195,6 +202,12 @@ describe("RunEngine atomic completion", () => {
           authenticatedEnvironment
         );
 
+        // Take `before` BEFORE completeRunAttempt so the bracket covers both
+        // the completion commit and the subsequent continueRunIfUnblocked commit,
+        // eliminating the race where the continuation job could commit inside
+        // a tighter window taken after completeRunAttempt returns.
+        const before = await currentTxid(prisma);
+
         await engine.completeRunAttempt({
           runId: childRun.id,
           snapshotId: childAttempt.snapshot.id,
@@ -206,26 +219,29 @@ describe("RunEngine atomic completion", () => {
           },
         });
 
-        const before = await currentTxid(prisma);
-
         // The continueRunIfUnblocked job is debounced by 50ms; poll until the
         // parent has been continued (EXECUTING_WITH_WAITPOINTS -> EXECUTING).
         let continued = false;
+        let lastStatus: string | undefined;
         for (let i = 0; i < 50; i++) {
           await setTimeout(100);
           const parentData = await engine.getRunExecutionData({ runId: parentRun.id });
-          if (parentData?.snapshot.executionStatus === "EXECUTING") {
+          lastStatus = parentData?.snapshot.executionStatus;
+          if (lastStatus === "EXECUTING") {
             continued = true;
             break;
           }
         }
-        expect(continued).toBe(true);
+        expect(continued, `parent never continued, last status: ${lastStatus}`).toBe(true);
 
         const after = await currentTxid(prisma);
 
-        // Snapshot insert and TaskRunWaitpoint delete must share one commit.
+        // completion (1 commit) + continuation (1 commit); today this is 4 (2 + 2).
+        // Note: txid_current() is cluster-global — autovacuum could in principle
+        // add an xid between the two reads, accepted residual risk; xmin equality
+        // cannot witness the TaskRunWaitpoint DELETE so we keep the delta check here.
         const writeTransactions = Number(after - before) - 1;
-        expect(writeTransactions).toBe(1);
+        expect(writeTransactions).toBe(2);
 
         const remainingBlockers = await prisma.taskRunWaitpoint.findMany({
           where: { taskRunId: parentRun.id },
@@ -254,6 +270,10 @@ describe("RunEngine atomic completion", () => {
         // associated waitpoint so the waitpoint completion inside
         // attemptSucceeded blocks past the transaction timeout (5s default)
         // and the whole transaction aborts.
+        // NOTE: this test relies on the implementation's transaction timeout
+        // (Prisma default 5s) being well below the 8s lock hold time. If the
+        // implementation ever raises its tx timeout to ≥8s, raise the hold
+        // time here accordingly.
         const lockHolder = prisma.$transaction(
           async (tx) => {
             await tx.$queryRaw`SELECT "id" FROM "Waitpoint" WHERE "id" = ${waitpointId} FOR UPDATE`;
@@ -282,7 +302,7 @@ describe("RunEngine atomic completion", () => {
         await lockHolder;
 
         // The completion must have failed while the lock was held...
-        expect(completionError).toBeDefined();
+        expect(completionError, "completion must fail while the waitpoint row is locked").toBeDefined();
 
         // ...and NOTHING from the transition may have been committed:
         // run still EXECUTING, waitpoint still PENDING, no FINISHED snapshot.
