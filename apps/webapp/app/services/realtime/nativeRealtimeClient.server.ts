@@ -33,6 +33,7 @@ import {
 } from "./envChangeRouter.server";
 import { type RunHydrator, type RunListResolver } from "./runReader.server";
 import { type RealtimeConcurrencyLimiter } from "./realtimeConcurrencyLimiter.server";
+import { InMemoryReplayCursorStore, type ReplayCursorStore } from "./replayCursorStore.server";
 
 /** Widened with projectId so the tag-list feed can resolve ids via ClickHouse (needs org + project + env). */
 export type RealtimeListEnvironment = RealtimeEnvironment & { projectId: string };
@@ -106,6 +107,10 @@ export type NativeRealtimeClientOptions = {
   holdOnEmpty?: boolean;
   /** Max concurrent fresh ClickHouse resolves (cache misses) per instance, bounding a distinct-filter stampede. Defaults to 16; 0 disables. */
   resolveAdmissionLimit?: number;
+  /** Per-connection replay-cursor store. Inject a fleet-shared (Redis) store so an instance
+   * hop reads the connection's true inter-poll gap instead of cold-probing; defaults to a
+   * per-instance in-memory cache. */
+  replayCursorStore?: ReplayCursorStore;
   /** Observability hook: why a live request woke (notify vs timeout vs abort). */
   onWakeup?: (reason: WakeupReason) => void;
   /** Observability hook: how a live poll resolved (fast path vs full resolve). */
@@ -206,18 +211,21 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
   /** Bounds concurrent fresh CH resolves (undefined => unbounded). */
   readonly #admissionGate?: ResolveAdmissionGate;
   /** Per-connection: when this connection's last response was sent, so the router's
-   * replay covers exactly the inter-poll gap instead of rewinding a full window. */
-  readonly #replayCursorCache: BoundedTtlCache<number>;
+   * replay covers exactly the inter-poll gap instead of rewinding a full window.
+   * Fleet-shared when a store is injected (hops stop looking like unknown gaps). */
+  readonly #replayCursors: ReplayCursorStore;
 
   constructor(private readonly options: NativeRealtimeClientOptions) {
     this.#workingSetCache = new BoundedTtlCache(
       options.workingSetCacheTtlMs ?? LIST_CACHE_TTL_MS,
       options.listCacheMaxEntries ?? LIST_CACHE_MAX_ENTRIES
     );
-    this.#replayCursorCache = new BoundedTtlCache(
-      options.workingSetCacheTtlMs ?? LIST_CACHE_TTL_MS,
-      options.listCacheMaxEntries ?? LIST_CACHE_MAX_ENTRIES
-    );
+    this.#replayCursors =
+      options.replayCursorStore ??
+      new InMemoryReplayCursorStore(
+        options.workingSetCacheTtlMs ?? LIST_CACHE_TTL_MS,
+        options.listCacheMaxEntries ?? LIST_CACHE_MAX_ENTRIES
+      );
     this.#runSetCache = new BoundedTtlCache(
       options.runSetResolveCacheTtlMs ?? DEFAULT_RUNSET_CACHE_TTL_MS,
       options.runSetResolveCacheMaxEntries ?? DEFAULT_RUNSET_CACHE_MAX_ENTRIES
@@ -528,7 +536,7 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
       maxUpdatedAt = Math.max(maxUpdatedAt, updatedAtMs);
     }
     this.#workingSetCache.set(this.#workingSetKey(environment.id, handle), seen);
-    this.#replayCursorCache.set(this.#workingSetKey(environment.id, handle), Date.now());
+    this.#replayCursors.set(this.#workingSetKey(environment.id, handle), Date.now());
 
     return this.#buildResponse(buildRowsBody(changes, skipColumns), apiVersion, clientVersion, {
       offset: encodeOffset(maxUpdatedAt, this.#nextSeq()),
@@ -559,7 +567,7 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
       const workingSetKey = this.#workingSetKey(environment.id, handle);
       let prevSeen = this.#workingSetCache.get(workingSetKey);
 
-      const markPollEnd = () => this.#replayCursorCache.set(workingSetKey, Date.now());
+      const markPollEnd = () => this.#replayCursors.set(workingSetKey, Date.now());
       const emitFromSerialized = (changes: SerializedRowChange[], maxUpdatedAt: number): Response => {
         const seq = this.#nextSeq();
         markPollEnd();
@@ -588,12 +596,14 @@ export class NativeRealtimeClient implements RealtimeStreamClient {
         });
       };
 
+      // When this connection last received data, so replay covers exactly its gap. A store
+      // error degrades to undefined (cold probe), never a failed poll.
+      const replaySinceMs = await this.#replayCursors.get(workingSetKey);
       const registration = this.options.router.register(
         environment.id,
         this.#feedFilter(filter),
         skipColumns,
-        // When this connection last received data, so replay covers exactly its gap.
-        { replaySinceMs: this.#replayCursorCache.get(workingSetKey) }
+        { replaySinceMs }
       );
 
       // Cold start (fresh env subscription, e.g. an instance hop): resolve once up front

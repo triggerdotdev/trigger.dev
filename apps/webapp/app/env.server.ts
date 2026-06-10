@@ -318,6 +318,8 @@ const EnvironmentSchema = z
     REALTIME_BACKEND_NATIVE_RUNSET_CREATED_AT_BUCKET_MS: z.coerce.number().int().default(60_000),
     // Leading-edge throttle (ms) on per-env wake delivery; 0 wakes on every change.
     REALTIME_BACKEND_NATIVE_ENV_WAKE_COALESCE_WINDOW_MS: z.coerce.number().int().default(250),
+    // "1" shares per-connection replay cursors fleet-wide via Redis, so a load-balancer hop reads the connection's true inter-poll gap instead of cold-resolving.
+    REALTIME_BACKEND_NATIVE_SHARED_REPLAY_CURSORS: z.string().default("1"),
     // "1" holds a multi-run live poll open on a non-matching wake instead of replying up-to-date.
     REALTIME_BACKEND_NATIVE_HOLD_ON_EMPTY: z.string().default("1"),
     // Max concurrent fresh ClickHouse resolves per instance (reconnect-stampede gate); 0 disables.

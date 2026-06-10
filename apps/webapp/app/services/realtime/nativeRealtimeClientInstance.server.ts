@@ -9,6 +9,7 @@ import { EnvChangeRouter } from "./envChangeRouter.server";
 import { NativeRealtimeClient } from "./nativeRealtimeClient.server";
 import { RealtimeConcurrencyLimiter } from "./realtimeConcurrencyLimiter.server";
 import { getRunChangeNotifier } from "./runChangeNotifierInstance.server";
+import { RedisReplayCursorStore } from "./replayCursorStore.server";
 import { RunHydrator } from "./runReader.server";
 
 // Process-singleton wiring for the native realtime client; only constructed when a
@@ -77,6 +78,11 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
     description: "Polls rejected (429) by the per-env concurrency limiter.",
   });
 
+  const replayCursorOps = meter.createCounter("realtime_native.replay_cursor_ops", {
+    description:
+      "Shared replay-cursor store operations by outcome. Errors degrade hops to cold resolves (watch live_polls{path='cold-resolve'} rise with them), never failed polls.",
+  });
+
   const limiter = new RealtimeConcurrencyLimiter({
     keyPrefix: "tr:realtime:native:concurrency",
     redis: {
@@ -88,6 +94,24 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
       clusterMode: env.RATE_LIMIT_REDIS_CLUSTER_MODE_ENABLED === "1",
     },
   });
+
+  // Fleet-shared replay cursors (one timestamp per connection) on the same Redis as the
+  // change channel, so a load-balancer hop reads the connection's true inter-poll gap.
+  const replayCursorStore =
+    env.REALTIME_BACKEND_NATIVE_SHARED_REPLAY_CURSORS === "1"
+      ? new RedisReplayCursorStore({
+          redis: {
+            host: env.REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_HOST,
+            port: env.REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_PORT,
+            username: env.REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_USERNAME,
+            password: env.REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_PASSWORD,
+            tlsDisabled: env.REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_TLS_DISABLED === "true",
+            clusterMode: env.REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_CLUSTER_MODE_ENABLED === "1",
+          },
+          ttlMs: env.REALTIME_BACKEND_NATIVE_WORKING_SET_TTL_MS,
+          onResult: (op, ok) => replayCursorOps.add(1, { op, result: ok ? "ok" : "error" }),
+        })
+      : undefined;
 
   // One RunHydrator shared by the router and the client, so its single-flight + short-TTL cache covers both.
   const runReader = new RunHydrator({
@@ -138,6 +162,7 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
     runSetCreatedAtBucketMs: env.REALTIME_BACKEND_NATIVE_RUNSET_CREATED_AT_BUCKET_MS,
     holdOnEmpty: env.REALTIME_BACKEND_NATIVE_HOLD_ON_EMPTY === "1",
     resolveAdmissionLimit: env.REALTIME_BACKEND_NATIVE_RESOLVE_ADMISSION_LIMIT,
+    replayCursorStore,
     onWakeup: (reason) => wakeups.add(1, { reason }),
     onLivePollPath: (path) => livePollPaths.add(1, { path }),
     onRunSetResolve: (result) => runSetResolves.add(1, { result }),
