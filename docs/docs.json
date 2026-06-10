@@ -290,6 +290,7 @@
             "group": "Troubleshooting",
             "pages": [
               "troubleshooting",
+              "database-connections",
               "how-to-reduce-your-spend",
               "troubleshooting-debugging-in-vscode",
               "upgrading-packages",
