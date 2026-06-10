@@ -128,7 +128,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   // Drain any waitpoints registered for this channel — same as the
   // public append. Best-effort; failure doesn't fail the append.
   const [drainError, waitpointIds] = await tryCatch(
-    drainSessionStreamWaitpoints(addressingKey, io)
+    drainSessionStreamWaitpoints(environment.id, addressingKey, io)
   );
   if (drainError) {
     logger.error("Failed to drain session stream waitpoints (playground)", {
