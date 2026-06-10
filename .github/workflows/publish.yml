@@ -116,13 +116,18 @@ jobs:
       image-ref: ${{ needs.publish-webapp.outputs.image_repo }}:${{ needs.publish-webapp.outputs.version }}
 
   # Announce the freshly published mutable `main` webapp image to subscriber
-  # repos in the org via repository_dispatch, handing them a digest-pinned ref to
-  # build or deploy from. Fires only for the `main` tag — never semver releases or
-  # other tag builds — and only from the canonical repo (forks have no PAT).
+  # repos via repository_dispatch, handing them a digest-pinned ref to build or
+  # deploy from. The repo, ref prefix, and dispatch target all default to the
+  # canonical values and can be overridden by repository variables.
+  #
+  # `push` only: release builds reach publish.yml via workflow_call (from
+  # release.yml) with an explicit image_tag while github.ref_name is still
+  # `main`, so gate on the event to avoid dispatching — and failing on the
+  # absent CROSS_REPO_PAT — during a release.
   dispatch-main-image:
     name: 📣 Dispatch main image
     needs: [publish-webapp]
-    if: github.repository == (vars.MAIN_IMAGE_DISPATCH_REPO || 'triggerdotdev/trigger.dev') && startsWith(github.ref_name, vars.MAIN_IMAGE_DISPATCH_REF_PREFIX || 'main')
+    if: github.repository == (vars.MAIN_IMAGE_DISPATCH_REPO || 'triggerdotdev/trigger.dev') && github.event_name == 'push' && startsWith(github.ref_name, vars.MAIN_IMAGE_DISPATCH_REF_PREFIX || 'main')
     runs-on: ubuntu-latest
     permissions: {}
     steps:
@@ -153,6 +158,6 @@ jobs:
         uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
         with:
           token: ${{ secrets.CROSS_REPO_PAT }}
-          repository: triggerdotdev/cloud
+          repository: ${{ vars.MAIN_IMAGE_DISPATCH_TARGET || 'triggerdotdev/cloud' }}
           event-type: main-image-published
           client-payload: ${{ steps.payload.outputs.client_payload }}
