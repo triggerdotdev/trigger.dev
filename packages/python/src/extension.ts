@@ -121,7 +121,7 @@ class PythonExtension implements BuildExtension {
         image: {
           instructions: splitAndCleanComments(`
             # Copy the requirements file
-            COPY ${this.options.requirementsFile} .
+            COPY ${this.options.requirementsFile} ${this.options.requirementsFile}
             # Install dependencies
             RUN pip install --no-cache-dir -r ${this.options.requirementsFile}
           `),
