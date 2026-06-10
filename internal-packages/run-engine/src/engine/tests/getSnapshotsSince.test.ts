@@ -534,7 +534,7 @@ describe("RunEngine getSnapshotsSince", () => {
 
         const runASnapshot = runASnapshots[0];
 
-        // Poll run B using a snapshot id that belongs to run A
+        // Poll run B using a snapshot id that belongs to run A.
         const result = await engine.getSnapshotsSince({
           runId: runB.id,
           snapshotId: runASnapshot.id,
