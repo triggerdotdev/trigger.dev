@@ -13,6 +13,10 @@ import {
   setupTestScenario,
   generateLargeOutput,
 } from "./helpers/snapshotTestHelpers.js";
+import {
+  copySnapshotsToReplica,
+  createTestMetricsMeter,
+} from "./helpers/replicaTestHelpers.js";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 
 vi.setConfig({ testTimeout: 120_000 });
@@ -684,6 +688,7 @@ describe("RunEngine getSnapshotsSince", () => {
     "falls back to the primary when the replica is missing the since snapshot",
     async ({ prisma, schemaOnlyPrisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const { meter, getCounterValue } = createTestMetricsMeter();
 
       const engine = new RunEngine({
         prisma,
@@ -717,6 +722,7 @@ describe("RunEngine getSnapshotsSince", () => {
           baseCostInCents: 0.0001,
         },
         tracer: trace.getTracer("test", "0.0.0"),
+        meter,
       });
 
       try {
@@ -771,6 +777,9 @@ describe("RunEngine getSnapshotsSince", () => {
         expect(expectedSnapshots.length).toBeGreaterThan(0);
         expect(result!.length).toBe(expectedSnapshots.length);
         expect(result!.map((s) => s.snapshot.id)).toEqual(expectedSnapshots.map((s) => s.id));
+
+        // The fallback fired exactly once - this counter is the prod rollout signal.
+        expect(await getCounterValue("run_engine.snapshots_since.replica_miss")).toBe(1);
       } finally {
         await engine.quit();
       }
@@ -781,6 +790,7 @@ describe("RunEngine getSnapshotsSince", () => {
     "returns null when the snapshot is missing on both replica and primary",
     async ({ prisma, schemaOnlyPrisma, redisOptions }) => {
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const { meter, getCounterValue } = createTestMetricsMeter();
 
       const engine = new RunEngine({
         prisma,
@@ -811,6 +821,7 @@ describe("RunEngine getSnapshotsSince", () => {
           baseCostInCents: 0.0001,
         },
         tracer: trace.getTracer("test", "0.0.0"),
+        meter,
       });
 
       try {
@@ -845,6 +856,317 @@ describe("RunEngine getSnapshotsSince", () => {
         });
 
         expect(result).toBeNull();
+
+        // Permanent misses are deliberately NOT counted - the counter only tracks
+        // reads actually served by the primary fallback.
+        expect(await getCounterValue("run_engine.snapshots_since.replica_miss")).toBe(0);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "serves the replica's view when the replica has the since snapshot but lags behind the primary",
+    async ({ prisma, schemaOnlyPrisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const { meter, getCounterValue } = createTestMetricsMeter();
+
+      const engine = new RunEngine({
+        prisma,
+        // The schema-only database stands in for a replica that has the since-snapshot
+        // but lags behind the primary by one snapshot (the newest one is excluded below).
+        readOnlyPrisma: schemaOnlyPrisma,
+        readReplicaSnapshotsSinceEnabled: true,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+        meter,
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const runFriendlyId = generateFriendlyId("run");
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: runFriendlyId,
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_replica_stale_tail",
+            spanId: "s_replica_stale_tail",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        await setTimeout(500);
+        await engine.dequeueFromWorkerQueue({
+          consumerId: "test_replica_stale_tail",
+          workerQueue: "main",
+        });
+
+        const allSnapshots = await prisma.taskRunExecutionSnapshot.findMany({
+          where: { runId: run.id, isValid: true },
+          orderBy: { createdAt: "asc" },
+        });
+        expect(allSnapshots.length).toBeGreaterThanOrEqual(3);
+
+        const since = allSnapshots[0];
+        const tail = allSnapshots[allSnapshots.length - 1];
+
+        // Replica has everything EXCEPT the newest snapshot - a lagging-but-usable replica.
+        await copySnapshotsToReplica(prisma, schemaOnlyPrisma, run.id, {
+          excludeSnapshotIds: [tail.id],
+        });
+
+        const result = await engine.getSnapshotsSince({
+          runId: run.id,
+          snapshotId: since.id,
+        });
+
+        expect(result).not.toBeNull();
+
+        // The replica's view: everything after the since snapshot, minus the tail
+        // it hasn't received yet. If reads were hitting the primary, the tail would
+        // be present and these assertions would fail.
+        const expectedSnapshots = allSnapshots.filter(
+          (s) => s.createdAt.getTime() > since.createdAt.getTime() && s.id !== tail.id
+        );
+        expect(result!.map((s) => s.snapshot.id)).not.toContain(tail.id);
+        expect(result!.map((s) => s.snapshot.id)).toEqual(expectedSnapshots.map((s) => s.id));
+
+        // The since snapshot was on the replica - no fallback fired.
+        expect(await getCounterValue("run_engine.snapshots_since.replica_miss")).toBe(0);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "reads from the primary when the flag is off even with a replica configured",
+    async ({ prisma, schemaOnlyPrisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const { meter, getCounterValue } = createTestMetricsMeter();
+
+      const engine = new RunEngine({
+        prisma,
+        // Replica configured but EMPTY, flag off: a correct result can only come
+        // from the primary.
+        readOnlyPrisma: schemaOnlyPrisma,
+        readReplicaSnapshotsSinceEnabled: false,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+        meter,
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const runFriendlyId = generateFriendlyId("run");
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: runFriendlyId,
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_replica_flag_off",
+            spanId: "s_replica_flag_off",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        await setTimeout(500);
+        await engine.dequeueFromWorkerQueue({
+          consumerId: "test_replica_flag_off",
+          workerQueue: "main",
+        });
+
+        const allSnapshots = await prisma.taskRunExecutionSnapshot.findMany({
+          where: { runId: run.id, isValid: true },
+          orderBy: { createdAt: "asc" },
+        });
+        expect(allSnapshots.length).toBeGreaterThan(1);
+
+        const since = allSnapshots[0];
+        const result = await engine.getSnapshotsSince({
+          runId: run.id,
+          snapshotId: since.id,
+        });
+
+        expect(result).not.toBeNull();
+        const expectedSnapshots = allSnapshots.filter(
+          (s) => s.createdAt.getTime() > since.createdAt.getTime()
+        );
+        expect(expectedSnapshots.length).toBeGreaterThan(0);
+        expect(result!.map((s) => s.snapshot.id)).toEqual(expectedSnapshots.map((s) => s.id));
+
+        // No replica read attempted, so no fallback could have fired.
+        expect(await getCounterValue("run_engine.snapshots_since.replica_miss")).toBe(0);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "uses the provided transaction client and never falls back",
+    async ({ prisma, schemaOnlyPrisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const { meter, getCounterValue } = createTestMetricsMeter();
+
+      const engine = new RunEngine({
+        prisma,
+        // Flag ON with an EMPTY replica: if the provided tx didn't bypass the replica,
+        // the read would miss and (at best) be served by the fallback, incrementing
+        // the counter.
+        readOnlyPrisma: schemaOnlyPrisma,
+        readReplicaSnapshotsSinceEnabled: true,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+        meter,
+      });
+
+      try {
+        const taskIdentifier = "test-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+        const runFriendlyId = generateFriendlyId("run");
+        const run = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: runFriendlyId,
+            environment: authenticatedEnvironment,
+            taskIdentifier,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_replica_tx_bypass",
+            spanId: "s_replica_tx_bypass",
+            workerQueue: "main",
+            queue: "task/test-task",
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        await setTimeout(500);
+        await engine.dequeueFromWorkerQueue({
+          consumerId: "test_replica_tx_bypass",
+          workerQueue: "main",
+        });
+
+        const allSnapshots = await prisma.taskRunExecutionSnapshot.findMany({
+          where: { runId: run.id, isValid: true },
+          orderBy: { createdAt: "asc" },
+        });
+        expect(allSnapshots.length).toBeGreaterThan(1);
+
+        const since = allSnapshots[0];
+        const result = await engine.getSnapshotsSince({
+          runId: run.id,
+          snapshotId: since.id,
+          tx: prisma,
+        });
+
+        expect(result).not.toBeNull();
+        const expectedSnapshots = allSnapshots.filter(
+          (s) => s.createdAt.getTime() > since.createdAt.getTime()
+        );
+        expect(expectedSnapshots.length).toBeGreaterThan(0);
+        expect(result!.map((s) => s.snapshot.id)).toEqual(expectedSnapshots.map((s) => s.id));
+
+        // The tx served the read directly - the fallback path never ran.
+        expect(await getCounterValue("run_engine.snapshots_since.replica_miss")).toBe(0);
       } finally {
         await engine.quit();
       }
