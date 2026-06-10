@@ -905,15 +905,12 @@ export class WaitpointSystem {
             completedWaitpoints: completedWaitpointArgs,
           });
 
-          // Log IDs only — full snapshots include completedWaitpoint outputs, and this
-          // runs at debug level in prod where cloning them would burn event-loop time.
           this.$.logger.debug(
             `continueRunIfUnblocked: run was still executing, sending notification`,
             {
               runId,
-              previousSnapshotId: snapshot.id,
-              newSnapshotId: newSnapshot.id,
-              completedWaitpointCount: blockingWaitpoints.length,
+              snapshot,
+              newSnapshot,
             }
           );
 
