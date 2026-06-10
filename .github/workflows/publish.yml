@@ -122,7 +122,7 @@ jobs:
   dispatch-main-image:
     name: 📣 Dispatch main image
     needs: [publish-webapp]
-    if: github.repository == 'triggerdotdev/trigger.dev' && needs.publish-webapp.outputs.version == 'main'
+    if: github.repository == (vars.MAIN_IMAGE_DISPATCH_REPO || 'triggerdotdev/trigger.dev') && startsWith(github.ref_name, vars.MAIN_IMAGE_DISPATCH_REF_PREFIX || 'main')
     runs-on: ubuntu-latest
     permissions: {}
     steps:
