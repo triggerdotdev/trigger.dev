@@ -144,6 +144,10 @@ class ManagedSupervisor {
           otelEndpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
           prettyLogs: env.RUNNER_PRETTY_LOGS,
         },
+        createRetry: {
+          maxAttempts: env.COMPUTE_INSTANCE_CREATE_MAX_ATTEMPTS,
+          baseDelayMs: env.COMPUTE_INSTANCE_CREATE_RETRY_BASE_DELAY_MS,
+        },
       });
       this.computeManager = computeManager;
       this.workloadManager = computeManager;
