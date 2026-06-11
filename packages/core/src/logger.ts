@@ -26,6 +26,10 @@ export class Logger {
   // Add a static "onError" method that will be called when an error is logged
   static onError: (message: string, ...args: Array<Record<string, unknown> | undefined>) => void;
 
+  // Optional static sink called with the fully-structured log for every emitted line.
+  // Used (e.g.) to fan logs out to a dev-only telnet stream. Must not re-enter the Logger.
+  static onLog?: (structuredLog: Record<string, unknown>) => void;
+
   constructor(
     name: string,
     level: LogLevel = "info",
@@ -132,6 +136,14 @@ export class Logger {
     // If the span is not recording, and it's a debug log, mark it so we can filter it out when we forward it
     if (currentSpan && !currentSpan.isRecording() && level === "debug") {
       structuredLog.skipForwarding = true;
+    }
+
+    if (Logger.onLog) {
+      try {
+        Logger.onLog(structuredLog);
+      } catch {
+        // A sink must never break logging — and must never re-enter the Logger.
+      }
     }
 
     loggerFunction(JSON.stringify(structuredLog, this.#jsonReplacer));

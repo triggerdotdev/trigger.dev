@@ -1,5 +1,6 @@
 import type { LogLevel } from "@trigger.dev/core/logger";
 import { Logger } from "@trigger.dev/core/logger";
+import { patchConsoleToTelnet, startTelnetLogServer } from "@trigger.dev/core/v3/telnetLogServer";
 import { sensitiveDataReplacer } from "./sensitiveDataReplacer";
 import { AsyncLocalStorage } from "async_hooks";
 import { getHttpContext } from "./httpAsyncStorage.server";
@@ -79,3 +80,19 @@ export const socketLogger = new Logger(
     return fields ? { ...fields } : {};
   }
 );
+
+// Opt-in, dev-only: mirror this process's stdout to a local telnet/TCP stream.
+// We patch console (rather than the static Logger.onLog sink) so the stream also captures logs
+// from separate/bundled copies of the Logger — e.g. the enterprise SSO plugin, which bundles its
+// own @trigger.dev/core and logs via its own console.log, invisible to the webapp's onLog hook.
+const telnetLogsPort = process.env.WEBAPP_TELNET_LOGS_PORT
+  ? Number(process.env.WEBAPP_TELNET_LOGS_PORT)
+  : undefined;
+if (telnetLogsPort && Number.isFinite(telnetLogsPort) && telnetLogsPort > 0) {
+  const telnetGlobal = globalThis as typeof globalThis & { __webappTelnetLogs?: boolean };
+  if (!telnetGlobal.__webappTelnetLogs) {
+    telnetGlobal.__webappTelnetLogs = true;
+    const telnetLogServer = startTelnetLogServer({ port: telnetLogsPort, name: "webapp" });
+    patchConsoleToTelnet(telnetLogServer, { pretty: true });
+  }
+}

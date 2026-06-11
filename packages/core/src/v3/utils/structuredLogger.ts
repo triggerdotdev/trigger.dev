@@ -19,6 +19,10 @@ export enum LogLevel {
 }
 
 export class SimpleStructuredLogger implements StructuredLogger {
+  // Optional static sink called with the fully-structured log for every emitted line.
+  // Used (e.g.) to fan logs out to a dev-only telnet stream. Must not re-enter the logger.
+  static onLog?: (structuredLog: Record<string, unknown>) => void;
+
   private prettyPrint = ["1", "true"].includes(process.env.PRETTY_LOGS ?? "");
 
   constructor(
@@ -92,6 +96,14 @@ export class SimpleStructuredLogger implements StructuredLogger {
       ...this.fields,
       ...(args.length === 1 ? args[0] : args),
     };
+
+    if (SimpleStructuredLogger.onLog) {
+      try {
+        SimpleStructuredLogger.onLog(structuredLog);
+      } catch {
+        // A sink must never break logging — and must never re-enter the logger.
+      }
+    }
 
     if (this.prettyPrint) {
       loggerFunction(JSON.stringify(structuredLog, null, 2));

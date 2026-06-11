@@ -139,6 +139,9 @@ const EnvironmentSchema = z
       .optional(),
     ADMIN_EMAILS: z.string().refine(isValidRegex, "ADMIN_EMAILS must be a valid regex.").optional(),
     REMIX_APP_PORT: z.string().optional(),
+    // Opt-in, dev-only: stream this process's logs over a local telnet/TCP socket on this port.
+    // Read directly from process.env in server.ts (before this schema loads); declared here for discoverability.
+    WEBAPP_TELNET_LOGS_PORT: z.coerce.number().optional(),
     LOGIN_ORIGIN: z.string().default("http://localhost:3030"),
     LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
