@@ -2,8 +2,7 @@ import { BookOpenIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid
 import { type MetaFunction } from "@remix-run/node";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { TaskRunStatus } from "@trigger.dev/database";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { Fragment, Suspense, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { Fragment, Suspense, useMemo } from "react";
 import {
   Bar,
   BarChart,
@@ -24,6 +23,7 @@ import { LinkButton } from "~/components/primitives/Buttons";
 import { formatDateTime } from "~/components/primitives/DateTime";
 import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
 import { SearchInput } from "~/components/primitives/SearchInput";
@@ -123,10 +123,7 @@ const KIND_OPTIONS: { value: UnifiedTaskKind; label: string }[] = [
   { value: "SCHEDULED", label: "Scheduled tasks" },
 ];
 
-// Match the env-variables page virtualization tuning.
-const SSR_ROW_WINDOW = 50;
-const ROW_ESTIMATE_HEIGHT = 44;
-const VIRTUAL_OVERSCAN = 10;
+const PAGE_SIZE = 25;
 
 export default function Page() {
   const organization = useOrganization();
@@ -153,19 +150,16 @@ export default function Page() {
 
   const hasItems = items.length > 0;
 
-  // Virtualize once we cross the SSR window threshold. The first paint always
-  // renders a static slice (so SSR is correct and the page is interactive
-  // before JS hydrates); the layout effect swaps to the virtualized body on
-  // the client.
-  const tableScrollRef = useRef<HTMLDivElement>(null);
-  const shouldVirtualize = visibleItems.length > SSR_ROW_WINDOW;
-  const [isVirtualized, setIsVirtualized] = useState(false);
-  useLayoutEffect(() => {
-    setIsVirtualized(shouldVirtualize);
-  }, [shouldVirtualize]);
-  const staticRows = useMemo(
-    () => (shouldVirtualize ? visibleItems.slice(0, SSR_ROW_WINDOW) : visibleItems),
-    [visibleItems, shouldVirtualize]
+  // Client-side pagination. The presenter returns every task because the
+  // search + type filter run client-side too, but we only render PAGE_SIZE
+  // rows at a time. Clamps to the last page if the requested one is past
+  // the end (e.g. after a search narrows the result set).
+  const totalPages = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE));
+  const requestedPage = Math.max(1, parseInt(value("page") ?? "1", 10) || 1);
+  const currentPage = Math.min(requestedPage, totalPages);
+  const pagedItems = useMemo(
+    () => visibleItems.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [visibleItems, currentPage]
   );
 
   return (
@@ -186,64 +180,51 @@ export default function Page() {
         <div className={cn("grid h-full grid-rows-1")}>
           {hasItems ? (
             <div className="flex min-w-0 max-w-full flex-col">
-              <div className="flex max-h-full min-h-0 flex-col overflow-hidden">
-                <div className="flex items-center gap-1.5 p-2">
-                  <SearchInput placeholder="Search tasks…" autoFocus />
-                  <TaskTypeFilter />
+              <div className="max-h-full overflow-hidden">
+                <div className="flex items-center justify-between gap-1.5 p-2">
+                  <div className="flex flex-1 items-center gap-1.5">
+                    <SearchInput placeholder="Search tasks…" autoFocus resetParams={["page"]} />
+                    <TaskTypeFilter />
+                  </div>
+                  <PaginationControls
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    showPageNumbers={false}
+                  />
                 </div>
-                <div
-                  ref={tableScrollRef}
-                  className="min-h-0 flex-1 overflow-auto pb-[2.5rem] scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
-                >
-                  <Table containerClassName="overflow-visible">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHeaderCell>Task ID</TableHeaderCell>
-                        <TableHeaderCell>Task type</TableHeaderCell>
-                        <TableHeaderCell>File</TableHeaderCell>
-                        <TableHeaderCell>Running</TableHeaderCell>
-                        <TableHeaderCell>Activity (24h)</TableHeaderCell>
-                        <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
-                      </TableRow>
-                    </TableHeader>
-                    {visibleItems.length === 0 ? (
-                      <TableBody>
-                        <TableBlankRow colSpan={6}>
-                          <Paragraph
-                            variant="small"
-                            className="flex items-center justify-center"
-                          >
-                            No tasks match your filters
-                          </Paragraph>
-                        </TableBlankRow>
-                      </TableBody>
-                    ) : isVirtualized && shouldVirtualize ? (
-                      <TasksVirtualTableBody
-                        items={visibleItems}
-                        scrollRef={tableScrollRef}
-                        runningStates={runningStates}
-                        hourlyActivity={hourlyActivity}
-                        organization={organization}
-                        project={project}
-                        environment={environment}
-                      />
+                <Table containerClassName="max-h-full">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHeaderCell>Task ID</TableHeaderCell>
+                      <TableHeaderCell>Task type</TableHeaderCell>
+                      <TableHeaderCell>File</TableHeaderCell>
+                      <TableHeaderCell>Running</TableHeaderCell>
+                      <TableHeaderCell>Activity (24h)</TableHeaderCell>
+                      <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pagedItems.length > 0 ? (
+                      pagedItems.map((item) => (
+                        <TaskRow
+                          key={item.slug}
+                          item={item}
+                          runningStates={runningStates}
+                          hourlyActivity={hourlyActivity}
+                          organization={organization}
+                          project={project}
+                          environment={environment}
+                        />
+                      ))
                     ) : (
-                      <TableBody>
-                        {staticRows.map((item) => (
-                          <TaskRow
-                            key={item.slug}
-                            item={item}
-                            runningStates={runningStates}
-                            hourlyActivity={hourlyActivity}
-                            organization={organization}
-                            project={project}
-                            environment={environment}
-                          />
-                        ))}
-                      </TableBody>
+                      <TableBlankRow colSpan={6}>
+                        <Paragraph variant="small" className="flex items-center justify-center">
+                          No tasks match your filters
+                        </Paragraph>
+                      </TableBlankRow>
                     )}
-                  </Table>
-                </div>
+                  </TableBody>
+                </Table>
               </div>
             </div>
           ) : environment.type === "DEVELOPMENT" ? (
@@ -387,60 +368,6 @@ function TaskRow({
   );
 }
 
-function TasksVirtualTableBody({
-  items,
-  scrollRef,
-  runningStates,
-  hourlyActivity,
-  organization,
-  project,
-  environment,
-}: {
-  items: UnifiedTaskListItem[];
-  scrollRef: RefObject<HTMLDivElement | null>;
-} & Omit<TaskRowProps, "item">) {
-  const rowVirtualizer = useVirtualizer({
-    count: items.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_ESTIMATE_HEIGHT,
-    overscan: VIRTUAL_OVERSCAN,
-  });
-
-  const virtualItems = rowVirtualizer.getVirtualItems();
-  const topSpacerHeight = virtualItems[0]?.start ?? 0;
-  const bottomSpacerHeight = rowVirtualizer.getTotalSize() - (virtualItems.at(-1)?.end ?? 0);
-
-  return (
-    <TableBody>
-      {topSpacerHeight > 0 && (
-        <tr aria-hidden style={{ height: topSpacerHeight }}>
-          <td colSpan={6} />
-        </tr>
-      )}
-      {virtualItems.map((virtualRow) => {
-        const item = items[virtualRow.index];
-        if (!item) return null;
-        return (
-          <TaskRow
-            key={item.slug}
-            item={item}
-            runningStates={runningStates}
-            hourlyActivity={hourlyActivity}
-            organization={organization}
-            project={project}
-            environment={environment}
-          />
-        );
-      })}
-      {bottomSpacerHeight > 0 && (
-        <tr aria-hidden style={{ height: bottomSpacerHeight }}>
-          <td colSpan={6} />
-        </tr>
-      )}
-    </TableBody>
-  );
-}
-
 function RunningCell({ state }: { state: UnifiedRunningState | undefined }) {
   if (!state) {
     return <span className="text-text-dimmed">–</span>;
@@ -458,10 +385,12 @@ function TaskTypeFilter() {
 
   const handleChange = (next: string[]) => {
     // Empty or fully-selected → clear the URL so the default (all) applies.
+    // Always reset `page` since the filter change probably moves rows out from
+    // under the current page.
     if (next.length === 0 || next.length === KIND_OPTIONS.length) {
-      replace({ types: undefined });
+      replace({ types: undefined, page: undefined });
     } else {
-      replace({ types: next });
+      replace({ types: next, page: undefined });
     }
   };
 
