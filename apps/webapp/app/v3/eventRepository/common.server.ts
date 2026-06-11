@@ -21,7 +21,10 @@ export function extractContextFromCarrier(carrier: Record<string, unknown>) {
 }
 
 export function getNowInNanoseconds(): bigint {
-  return BigInt(new Date().getTime() * 1_000_000);
+  // Convert to BigInt BEFORE multiplying — epoch-ms times 1e6 is ~1.7e18,
+  // which exceeds Number.MAX_SAFE_INTEGER (~9e15) and loses ~256 ns of
+  // precision on ~0.2 % of calls when done in float-land.
+  return BigInt(new Date().getTime()) * BigInt(1_000_000);
 }
 
 export function getDateFromNanoseconds(nanoseconds: bigint): Date {
@@ -35,7 +38,11 @@ export function calculateDurationFromStart(
 ) {
   const $endtime = typeof endTime === "string" ? new Date(endTime) : endTime;
 
-  const duration = Number(BigInt($endtime.getTime() * 1_000_000) - startTime);
+  // Convert to BigInt BEFORE multiplying — same overflow class as
+  // `getNowInNanoseconds()` above; the float-land multiply silently loses
+  // ~256 ns of precision and can disorder spans that complete close to the
+  // start of a millisecond boundary.
+  const duration = Number(BigInt($endtime.getTime()) * BigInt(1_000_000) - startTime);
 
   if (minimumDuration && duration < minimumDuration) {
     return minimumDuration;

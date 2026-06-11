@@ -521,7 +521,9 @@ export function registerRunEngineEventBusHandlers() {
         );
 
         await eventRepository.recordEvent(retryMessage, {
-          startTime: BigInt(time.getTime() * 1000000),
+          // Convert to BigInt BEFORE multiplying — float-land multiply
+          // overflows Number.MAX_SAFE_INTEGER and loses ~256 ns of precision.
+          startTime: BigInt(time.getTime()) * BigInt(1_000_000),
           taskSlug: run.taskIdentifier,
           environment,
           attributes: {

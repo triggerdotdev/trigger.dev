@@ -262,7 +262,11 @@ async function recordRunEvent(
         runId: foundRun.friendlyId,
         ...attributes,
       },
-      startTime: BigInt((startTime?.getTime() ?? Date.now()) * 1_000_000),
+      // Convert to BigInt BEFORE multiplying — see `getNowInNanoseconds()` /
+      // `convertDateToNanoseconds()` in common.server.ts. The float-land
+      // multiply overflows Number.MAX_SAFE_INTEGER and silently loses
+      // ~256 ns of precision.
+      startTime: BigInt(startTime?.getTime() ?? Date.now()) * BigInt(1_000_000),
       ...optionsRest,
     });
 
