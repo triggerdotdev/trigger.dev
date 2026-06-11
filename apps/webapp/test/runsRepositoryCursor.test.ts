@@ -70,7 +70,7 @@ describe("RunsRepository cursor pagination", () => {
         "dddddddddddddddddddddddd",
         "eeeeeeeeeeeeeeeeeeeeeeee",
       ];
-      const base = new Date("2026-06-04T16:55:07.000Z").getTime();
+      const base = Date.now() - 60 * 60 * 1000; // relative, so fixtures never age out of the default 7d window
       for (let i = 0; i < ids.length; i++) {
         await prisma.taskRun.create({
           data: {
@@ -160,7 +160,7 @@ describe("RunsRepository cursor pagination", () => {
         "bbbbbbbbbbbbbbbbbbbbbbbb",
         "cccccccccccccccccccccccc",
       ];
-      const base = new Date("2026-06-04T16:55:07.000Z").getTime();
+      const base = Date.now() - 60 * 60 * 1000; // relative, so fixtures never age out of the default 7d window
       for (let i = 0; i < ids.length; i++) {
         await prisma.taskRun.create({
           data: {
@@ -255,7 +255,7 @@ describe("RunsRepository cursor pagination", () => {
         "bbbbbbbbbbbbbbbbbbbbbbbb",
         "cccccccccccccccccccccccc",
       ];
-      const base = new Date("2026-06-04T16:55:07.000Z").getTime();
+      const base = Date.now() - 60 * 60 * 1000; // relative, so fixtures never age out of the default 7d window
       for (let i = 0; i < ids.length; i++) {
         await prisma.taskRun.create({
           data: {
@@ -339,7 +339,7 @@ describe("RunsRepository cursor pagination", () => {
         "dddddddddddddddddddddddd",
         "eeeeeeeeeeeeeeeeeeeeeeee",
       ];
-      const base = new Date("2026-06-04T16:55:07.000Z").getTime();
+      const base = Date.now() - 60 * 60 * 1000; // relative, so fixtures never age out of the default 7d window
       for (let i = 0; i < ids.length; i++) {
         await prisma.taskRun.create({
           data: {
@@ -458,7 +458,7 @@ describe("RunsRepository cursor pagination", () => {
         "bbbbbbbbbbbbbbbbbbbbbbbb",
         "cccccccccccccccccccccccc",
       ];
-      const base = new Date("2026-06-04T16:55:07.000Z").getTime();
+      const base = Date.now() - 60 * 60 * 1000; // relative, so fixtures never age out of the default 7d window
       for (let i = 0; i < ids.length; i++) {
         await prisma.taskRun.create({
           data: {
