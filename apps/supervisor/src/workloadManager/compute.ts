@@ -13,8 +13,8 @@ import type { OtlpTraceService } from "../services/otlpTraceService.js";
 import { tryCatch } from "@trigger.dev/core";
 import { encodeBaggage, fromContext } from "../wideEvents/index.js";
 
-const CREATE_MAX_ATTEMPTS = 3;
-const CREATE_RETRY_BASE_DELAY_MS = 250;
+const DEFAULT_CREATE_MAX_ATTEMPTS = 3;
+const DEFAULT_CREATE_RETRY_BASE_DELAY_MS = 250;
 
 /**
  * TEMPORARY (TRI-10293): a failed create can leave its instance name
@@ -76,13 +76,23 @@ type ComputeWorkloadManagerOptions = WorkloadManagerOptions & {
     otelEndpoint: string;
     prettyLogs: boolean;
   };
+  createRetry?: {
+    maxAttempts: number;
+    baseDelayMs: number;
+  };
 };
 
 export class ComputeWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("compute-workload-manager");
   private readonly compute: ComputeClient;
+  private readonly createMaxAttempts: number;
+  private readonly createRetryBaseDelayMs: number;
 
   constructor(private opts: ComputeWorkloadManagerOptions) {
+    this.createMaxAttempts = opts.createRetry?.maxAttempts ?? DEFAULT_CREATE_MAX_ATTEMPTS;
+    this.createRetryBaseDelayMs =
+      opts.createRetry?.baseDelayMs ?? DEFAULT_CREATE_RETRY_BASE_DELAY_MS;
+
     if (opts.workloadApiDomain) {
       this.logger.warn("⚠️ Custom workload API domain", {
         domain: opts.workloadApiDomain,
@@ -239,7 +249,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
       // Set after a ComputeClientError: the failed create may have left its
       // name registered, so subsequent attempts use a suffixed name.
       let suffixAttempts = false;
-      for (; attempt <= CREATE_MAX_ATTEMPTS; attempt++) {
+      for (; attempt <= this.createMaxAttempts; attempt++) {
         const attemptRunnerId = suffixAttempts
           ? runnerNameForAttempt(runnerId, attempt)
           : runnerId;
@@ -270,8 +280,8 @@ export class ComputeWorkloadManager implements WorkloadManager {
           error: error instanceof Error ? error.message : String(error),
         });
 
-        if (!isRetryableCreateError(error) || attempt === CREATE_MAX_ATTEMPTS) break;
-        await sleep(CREATE_RETRY_BASE_DELAY_MS * attempt);
+        if (!isRetryableCreateError(error) || attempt === this.createMaxAttempts) break;
+        await sleep(this.createRetryBaseDelayMs * attempt);
       }
       event.createAttempts = attempt;
 
