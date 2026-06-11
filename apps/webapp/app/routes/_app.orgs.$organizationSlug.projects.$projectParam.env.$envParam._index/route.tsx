@@ -241,7 +241,7 @@ export default function Page() {
                                   resolve={runningStates}
                                   errorElement={<FailedToLoadStats />}
                                 >
-                                  {(data) => <RunningCell item={item} state={data[item.slug]} />}
+                                  {(data) => <RunningCell state={data[item.slug]} />}
                                 </TypedAwait>
                               </Suspense>
                             </TableCell>
@@ -319,62 +319,11 @@ export default function Page() {
   );
 }
 
-function RunningCell({
-  item,
-  state,
-}: {
-  item: UnifiedTaskListItem;
-  state: UnifiedRunningState | undefined;
-}) {
+function RunningCell({ state }: { state: UnifiedRunningState | undefined }) {
   if (!state) {
     return <span className="text-text-dimmed">–</span>;
   }
-  if (state.kind === "task") {
-    return <>{state.running ?? 0}</>;
-  }
-  if (state.running === 0 && state.suspended === 0) {
-    return <span className="text-text-dimmed">–</span>;
-  }
-  const lines: string[] = [];
-  if (state.running > 0) {
-    lines.push(`${state.running} ${state.running === 1 ? "run" : "runs"} currently executing`);
-  }
-  if (state.suspended > 0) {
-    lines.push(
-      `${state.suspended} ${
-        state.suspended === 1 ? "run" : "runs"
-      } paused while waiting (e.g. on a tool, user input, or another task)`
-    );
-  }
-  return (
-    <SimpleTooltip
-      side="top"
-      content={
-        <div className="flex flex-col gap-1 text-xs">
-          {lines.map((line) => (
-            <span key={line}>{line}</span>
-          ))}
-        </div>
-      }
-      button={
-        <span className="flex items-center gap-1.5 text-xs">
-          {state.running > 0 && (
-            <span className="flex items-center gap-1.5">
-              <span className="size-1.5 rounded-full bg-success" />
-              <span>{state.running}</span>
-            </span>
-          )}
-          {state.running > 0 && state.suspended > 0 && <span className="text-text-dimmed">·</span>}
-          {state.suspended > 0 && (
-            <span className="flex items-center gap-1.5">
-              <span className="size-1.5 rounded-full bg-blue-500" />
-              <span>{state.suspended}</span>
-            </span>
-          )}
-        </span>
-      }
-    />
-  );
+  return <>{state.running ?? 0}</>;
 }
 
 function TaskTypeFilter() {
