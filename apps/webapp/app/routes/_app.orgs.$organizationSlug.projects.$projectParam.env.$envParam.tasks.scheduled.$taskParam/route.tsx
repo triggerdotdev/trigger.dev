@@ -1,7 +1,7 @@
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Suspense, useMemo } from "react";
-import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
+import { Suspense, useCallback, useEffect, useMemo } from "react";
+import { TypedAwait, typeddefer, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
@@ -17,6 +17,8 @@ import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
+import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
+import { ScheduleInspector } from "~/components/schedules/ScheduleInspector";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -42,10 +44,12 @@ import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { ScheduleListPresenter } from "~/presenters/v3/ScheduleListPresenter.server";
+import type { loader as scheduleDetailLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.$scheduleParam/route";
 import {
   TaskDetailPresenter,
   type TaskActivity,
@@ -167,6 +171,14 @@ export default function Page() {
 
   const filters: TaskRunListSearchFilters = useMemo(() => ({ tasks: [task.slug] }), [task.slug]);
 
+  const search = useSearchParams();
+  const openScheduleId = search.value("schedule");
+  const openSchedule = useCallback(
+    (friendlyId: string) => search.replace({ schedule: friendlyId }),
+    [search]
+  );
+  const closeSchedule = useCallback(() => search.del("schedule"), [search]);
+
   return (
     <PageContainer>
       <NavBar>
@@ -276,11 +288,62 @@ export default function Page() {
               task={task}
               testPath={testPath}
               scheduleList={scheduleList}
+              onSelectSchedule={openSchedule}
             />
           </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
+
+      <ScheduleSheet
+        openScheduleId={openScheduleId}
+        organization={organization}
+        project={project}
+        environment={environment}
+        onClose={closeSchedule}
+      />
     </PageContainer>
+  );
+}
+
+function ScheduleSheet({
+  openScheduleId,
+  organization,
+  project,
+  environment,
+  onClose,
+}: {
+  openScheduleId: string | undefined;
+  organization: ReturnType<typeof useOrganization>;
+  project: ReturnType<typeof useProject>;
+  environment: ReturnType<typeof useEnvironment>;
+  onClose: () => void;
+}) {
+  const fetcher = useTypedFetcher<typeof scheduleDetailLoader>();
+  const detailPath = openScheduleId
+    ? v3SchedulePath(organization, project, environment, { friendlyId: openScheduleId })
+    : undefined;
+
+  useEffect(() => {
+    if (detailPath) fetcher.load(detailPath);
+  }, [detailPath]);
+
+  const schedule = fetcher.data?.schedule;
+  const isLoading = fetcher.state === "loading" || (!!openScheduleId && !schedule);
+
+  return (
+    <Sheet open={!!openScheduleId} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent
+        side="right"
+        className="w-[480px] max-w-none border-l border-grid-dimmed bg-background-bright p-0 sm:max-w-none"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        {isLoading || !schedule ? (
+          <TableLoading />
+        ) : (
+          <ScheduleInspector schedule={schedule} actionPath={detailPath} />
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -290,7 +353,11 @@ function ScheduledTaskDetailSidebar({
   task,
   testPath,
   scheduleList,
-}: { task: TaskDetail; testPath: string } & Pick<LoaderData, "scheduleList">) {
+  onSelectSchedule,
+}: { task: TaskDetail; testPath: string; onSelectSchedule: (friendlyId: string) => void } & Pick<
+  LoaderData,
+  "scheduleList"
+>) {
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
       <div className="flex min-w-0 items-center gap-2 overflow-hidden border-b border-grid-dimmed px-3 py-2">
@@ -343,7 +410,11 @@ function ScheduledTaskDetailSidebar({
               <TypedAwait resolve={scheduleList} errorElement={<TableLoading />}>
                 {(list) =>
                   list ? (
-                    <SchedulesMiniTable schedules={list.schedules} variant="bright" />
+                    <SchedulesMiniTable
+                      schedules={list.schedules}
+                      variant="bright"
+                      onSelectSchedule={onSelectSchedule}
+                    />
                   ) : (
                     <TableLoading />
                   )
@@ -372,14 +443,12 @@ type ScheduleRow = {
 function SchedulesMiniTable({
   schedules,
   variant,
+  onSelectSchedule,
 }: {
   schedules: ScheduleRow[];
   variant?: TableVariant;
+  onSelectSchedule: (friendlyId: string) => void;
 }) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-
   if (schedules.length === 0) {
     return (
       <Table variant={variant}>
@@ -409,15 +478,13 @@ function SchedulesMiniTable({
       </TableHeader>
       <TableBody>
         {schedules.map((schedule) => {
-          const inspectorPath = v3SchedulePath(organization, project, environment, {
-            friendlyId: schedule.friendlyId,
-          });
+          const open = () => onSelectSchedule(schedule.friendlyId);
           return (
             <TableRow key={schedule.id} className="group">
-              <TableCell to={inspectorPath} isTabbableCell>
+              <TableCell onClick={open} isTabbableCell>
                 <span className="font-mono text-xs">{schedule.friendlyId}</span>
               </TableCell>
-              <TableCell to={inspectorPath}>
+              <TableCell onClick={open}>
                 <span className="inline-flex items-center gap-1 text-xs text-text-dimmed">
                   <ScheduleTypeIcon
                     type={schedule.type}
@@ -426,27 +493,27 @@ function SchedulesMiniTable({
                   {scheduleTypeName(schedule.type)}
                 </span>
               </TableCell>
-              <TableCell to={inspectorPath}>
+              <TableCell onClick={open}>
                 <span className="font-mono text-xs">{schedule.cron}</span>
               </TableCell>
-              <TableCell to={inspectorPath}>
+              <TableCell onClick={open}>
                 {schedule.externalId ? (
                   <span className="font-mono text-xs">{schedule.externalId}</span>
                 ) : (
                   <span className="text-text-dimmed">–</span>
                 )}
               </TableCell>
-              <TableCell to={inspectorPath}>
+              <TableCell onClick={open}>
                 <RelativeDateTime date={schedule.nextRun} />
               </TableCell>
-              <TableCell to={inspectorPath}>
+              <TableCell onClick={open}>
                 {schedule.lastRun ? (
                   <RelativeDateTime date={schedule.lastRun} />
                 ) : (
                   <span className="text-text-dimmed">Never</span>
                 )}
               </TableCell>
-              <TableCell to={inspectorPath}>
+              <TableCell onClick={open}>
                 <EnabledStatus enabled={schedule.active} />
               </TableCell>
             </TableRow>
