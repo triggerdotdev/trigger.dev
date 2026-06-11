@@ -174,7 +174,7 @@ export default function Page() {
           backButton={{ to: scheduledTasksListingPath, text: "Tasks" }}
           title={
             <span className="flex items-center gap-1">
-              <ClockIcon className="size-4 text-schedules" />
+              <ClockIcon className="size-4.5 text-schedules" />
               <span>{task.slug}</span>
             </span>
           }
@@ -281,7 +281,20 @@ function ScheduledTaskContentTabs({
             layoutId="scheduled-task-content-tabs"
             onClick={() => setTab("schedules")}
           >
-            Schedules
+            <span className="inline-flex items-center gap-1.5">
+              Schedules
+              <Suspense fallback={null}>
+                <TypedAwait resolve={scheduleList} errorElement={null}>
+                  {(list) =>
+                    list ? (
+                      <span className="rounded-sm border border-charcoal-700 bg-charcoal-800 px-1 py-0.5 text-xxs tabular-nums text-text-bright">
+                        {list.totalCount}
+                      </span>
+                    ) : null
+                  }
+                </TypedAwait>
+              </Suspense>
+            </span>
           </TabButton>
         </TabContainer>
         {tab === "runs" ? (
@@ -293,19 +306,7 @@ function ScheduledTaskContentTabs({
               </TypedAwait>
             </Suspense>
           </div>
-        ) : (
-          <Suspense fallback={null}>
-            <TypedAwait resolve={scheduleList} errorElement={null}>
-              {(list) =>
-                list ? (
-                  <span className="pr-2 text-xs tabular-nums text-text-dimmed">
-                    {list.totalCount} total
-                  </span>
-                ) : null
-              }
-            </TypedAwait>
-          </Suspense>
-        )}
+        ) : null}
       </div>
 
       {/* Tab content */}
@@ -351,18 +352,12 @@ function ScheduledTaskContentTabs({
   );
 }
 
-function ScheduledTaskDetailSidebar({
-  task,
-  testPath,
-}: {
-  task: TaskDetail;
-  testPath: string;
-}) {
+function ScheduledTaskDetailSidebar({ task, testPath }: { task: TaskDetail; testPath: string }) {
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
       <div className="flex items-center gap-2 border-b border-grid-dimmed px-3 py-2">
         <Header2 className="flex min-w-0 flex-1 items-center gap-1.5">
-          <ClockIcon className="size-4 shrink-0 text-schedules" />
+          <ClockIcon className="size-4.5 shrink-0 text-schedules" />
           <span className="truncate">{task.slug}</span>
         </Header2>
         <LinkButton
