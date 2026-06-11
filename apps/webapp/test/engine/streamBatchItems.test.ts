@@ -16,11 +16,9 @@ vi.mock("~/services/platform.v3.server", async (importOriginal) => {
 
 import { RunEngine } from "@internal/run-engine";
 import { setupAuthenticatedEnvironment } from "@internal/run-engine/tests";
-// Per-test redis (isolated): each test spins up its own RunEngine and runs batch work, which leaves
-// background activity on redis that outlives the test - sharing a worker redis across the 16 cases
-// here caused cross-test interference and 30s seal-timeout flakes. Same carve-out as the run-engine
-// batch tests.
-import { containerTestWithIsolatedRedis as containerTest } from "@internal/testcontainers";
+// Per-test redis isolation: each test runs its own RunEngine whose background work outlives the test
+// body. NoClickhouse because this suite never touches ClickHouse - skips the worker-scoped boot+migrate.
+import { containerTestWithIsolatedRedisNoClickhouse as containerTest } from "@internal/testcontainers";
 import { trace } from "@opentelemetry/api";
 import { PrismaClient } from "@trigger.dev/database";
 import { BatchId } from "@trigger.dev/core/v3/isomorphic";
@@ -33,7 +31,9 @@ import {
 } from "../../app/runEngine/services/streamBatchItems.server";
 import { ServiceValidationError } from "../../app/v3/services/baseService.server";
 
-vi.setConfig({ testTimeout: 30_000 }); // 30 seconds timeout
+// 120s: a cold per-test container boot counts against the test's own timeout, and under CI Docker
+// contention 30s was too tight. Matches the run-engine convention for this footprint.
+vi.setConfig({ testTimeout: 120_000 });
 
 describe("StreamBatchItemsService", () => {
   /**
