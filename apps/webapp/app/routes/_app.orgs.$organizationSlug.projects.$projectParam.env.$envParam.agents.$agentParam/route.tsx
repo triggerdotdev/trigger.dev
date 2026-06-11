@@ -154,10 +154,10 @@ export default function Page() {
     <>
       <NavBar>
         <PageTitle
-          backButton={{ to: tasksPath, text: "Agent tasks" }}
+          backButton={{ to: tasksPath, text: "Tasks" }}
           title={
             <span className="flex items-center gap-1">
-              <CubeSparkleIcon className="size-4 text-agents" />
+              <CubeSparkleIcon className="size-4.5 text-agents" />
               <span>{agent.slug}</span>
             </span>
           }
@@ -306,7 +306,7 @@ function AgentDetailSidebar({
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
       <div className="flex items-center gap-2 border-b border-grid-dimmed px-3 py-2">
         <Header2 className="flex min-w-0 flex-1 items-center gap-1.5">
-          <CubeSparkleIcon className="size-4 shrink-0 text-agents" />
+          <CubeSparkleIcon className="size-4.5 shrink-0 text-agents" />
           <span className="truncate">{agent.slug}</span>
         </Header2>
         <LinkButton

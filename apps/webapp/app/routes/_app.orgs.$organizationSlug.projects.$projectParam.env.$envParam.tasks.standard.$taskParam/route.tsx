@@ -132,10 +132,10 @@ export default function Page() {
     <PageContainer>
       <NavBar>
         <PageTitle
-          backButton={{ to: tasksListingPath, text: "Standard tasks" }}
+          backButton={{ to: tasksListingPath, text: "Tasks" }}
           title={
             <span className="flex items-center gap-1">
-              <TaskIcon className="size-4 text-tasks" />
+              <TaskIcon className="size-4.5 text-tasks" />
               <span>{task.slug}</span>
             </span>
           }
@@ -214,28 +214,24 @@ export default function Page() {
 function TaskDetailSidebar({ task, testPath }: { task: TaskDetail; testPath: string }) {
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="border-b border-grid-dimmed px-3 py-2">
-        <Header2 className="flex min-w-0 items-center gap-1.5">
-          <TaskIcon className="size-4 shrink-0 text-tasks" />
+      <div className="flex items-center gap-2 border-b border-grid-dimmed px-3 py-2">
+        <Header2 className="flex min-w-0 flex-1 items-center gap-1.5">
+          <TaskIcon className="size-4.5 shrink-0 text-tasks" />
           <span className="truncate">{task.slug}</span>
         </Header2>
+        <LinkButton
+          variant="primary/small"
+          to={testPath}
+          LeadingIcon={BeakerIcon}
+          iconSpacing="gap-x-2"
+          leadingIconClassName="-mx-2"
+          className="shrink-0"
+        >
+          Test task
+        </LinkButton>
       </div>
       <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <Property.Table>
-          <Property.Item>
-            <Property.Label>Test this task</Property.Label>
-            <Property.Value className="mt-1">
-              <LinkButton
-                variant="primary/small"
-                to={testPath}
-                LeadingIcon={BeakerIcon}
-                iconSpacing="gap-x-2"
-                leadingIconClassName="-mx-2"
-              >
-                Test
-              </LinkButton>
-            </Property.Value>
-          </Property.Item>
           <Property.Item>
             <Property.Label>Identifier</Property.Label>
             <Property.Value>

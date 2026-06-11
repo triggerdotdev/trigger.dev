@@ -152,12 +152,8 @@ export const myAgent = chat.agent({
       <NavBar>
         {selectedAgent ? (
           <PageTitle
-            backButton={{
-              to: v3PlaygroundPath(organization, project, environment),
-              text: "Test",
-            }}
             title={
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 <Select
                   value={selectedAgent}
                   setValue={(slug) => {

@@ -30,10 +30,7 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
-import {
-  ScheduleTypeIcon,
-  scheduleTypeName,
-} from "~/components/runs/v3/ScheduleType";
+import { ScheduleTypeIcon, scheduleTypeName } from "~/components/runs/v3/ScheduleType";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { $replica } from "~/db.server";
@@ -44,10 +41,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { ScheduleListPresenter } from "~/presenters/v3/ScheduleListPresenter.server";
-import {
-  TaskDetailPresenter,
-  type TaskDetail,
-} from "~/presenters/v3/TaskDetailPresenter.server";
+import { TaskDetailPresenter, type TaskDetail } from "~/presenters/v3/TaskDetailPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser } from "~/services/session.server";
 import {
@@ -61,7 +55,9 @@ import {
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const slug = (data as { task?: TaskDetail | null } | undefined)?.task?.slug;
-  return [{ title: slug ? `${slug} | Scheduled tasks | Trigger.dev` : "Scheduled task | Trigger.dev" }];
+  return [
+    { title: slug ? `${slug} | Scheduled tasks | Trigger.dev` : "Scheduled task | Trigger.dev" },
+  ];
 };
 
 const ParamsSchema = EnvironmentParamSchema.extend({
@@ -148,18 +144,15 @@ export default function Page() {
     taskIdentifier: task.slug,
   });
 
-  const filters: TaskRunListSearchFilters = useMemo(
-    () => ({ tasks: [task.slug] }),
-    [task.slug]
-  );
+  const filters: TaskRunListSearchFilters = useMemo(() => ({ tasks: [task.slug] }), [task.slug]);
 
   return (
     <PageContainer>
       <NavBar>
         <PageTitle
-          backButton={{ to: scheduledTasksListingPath, text: "Scheduled tasks" }}
+          backButton={{ to: scheduledTasksListingPath, text: "Tasks" }}
           title={
-            <span className="flex items-center gap-2">
+            <span className="flex items-center gap-1">
               <ClockIcon className="size-4 text-schedules" />
               <span>{task.slug}</span>
             </span>
@@ -328,9 +321,7 @@ function SchedulesMiniTable({ schedules }: { schedules: ScheduleRow[] }) {
                 <span className="inline-flex items-center gap-1 text-xs text-text-dimmed">
                   <ScheduleTypeIcon
                     type={schedule.type}
-                    className={
-                      schedule.type === "DECLARATIVE" ? "text-sky-500" : "text-teal-500"
-                    }
+                    className={schedule.type === "DECLARATIVE" ? "text-sky-500" : "text-teal-500"}
                   />
                   {scheduleTypeName(schedule.type)}
                 </span>
