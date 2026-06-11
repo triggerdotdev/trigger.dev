@@ -31,7 +31,7 @@ export const feedbackTypes = {
   },
   feedback: {
     label: "General feedback",
-    labelTypeId: "lt_01HB920BT61HB7T776BCK4GC7X",
+    labelTypeId: "lt_01HB920BSRZ3RA1ETHBVEB5ST2",
     threadTitle: "Contact form: General feedback",
   },
   concurrency: {
