@@ -288,23 +288,25 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               async () => {
                 const { req, reply, params, body } = ctx;
                 const runnerId = this.runnerIdFromRequest(req);
+
+                // A completion attempt invalidates any pending delayed snapshot
+                // regardless of outcome: the runner has finished executing, so the
+                // suspended state the snapshot was scheduled to capture no longer
+                // exists. Cancel BEFORE the async completion call - the timer
+                // wheel can tick during the await, so cancelling after it leaves
+                // a real window for a due snapshot to dispatch and pause a VM
+                // that has moved on. The runnerId guard keeps a stale duplicate
+                // runner's completion from cancelling a fresh runner's snapshot,
+                // and the runner can't schedule a new suspend until it receives
+                // this route's reply, so nothing legitimate can be cancelled here.
+                this.snapshotService?.cancel(params.runFriendlyId, runnerId);
+
                 const completeResponse = await this.workerClient.completeRunAttempt(
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
                   body,
                   runnerId
                 );
-
-                // A completion attempt invalidates any pending delayed snapshot
-                // regardless of outcome: the runner has finished executing, so the
-                // suspended state the snapshot was scheduled to capture no longer
-                // exists. Without this, the snapshot fires up to snapshotDelayMs
-                // later and pauses a VM that has long moved on - and on a transient
-                // completion failure the runner retries, so waiting for success
-                // would leave the stale snapshot armed in the meantime. The
-                // runnerId guard keeps a stale duplicate runner's failed completion
-                // from cancelling a fresh runner's snapshot.
-                this.snapshotService?.cancel(params.runFriendlyId, runnerId);
 
                 if (!completeResponse.success) {
                   this.logger.error("Failed to complete run", {
