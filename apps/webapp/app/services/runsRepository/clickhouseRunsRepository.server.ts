@@ -321,7 +321,9 @@ function applyRunFiltersToQueryBuilder<T>(
   }
 
   if (options.tags && options.tags.length > 0) {
-    queryBuilder.where("hasAny(tags, {tags: Array(String)})", { tags: options.tags });
+    // Both hasAny and hasAll are served by the tags bloom_filter skip index.
+    const tagsFn = options.tagsMatch === "all" ? "hasAll" : "hasAny";
+    queryBuilder.where(`${tagsFn}(tags, {tags: Array(String)})`, { tags: options.tags });
   }
 
   if (options.scheduleId) {

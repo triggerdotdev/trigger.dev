@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
-import { realtimeClient } from "~/services/realtimeClientGlobal.server";
+import { resolveRealtimeStreamClient } from "~/services/realtime/resolveRealtimeStreamClient.server";
 import {
   anyResource,
   createLoaderApiRoute,
@@ -25,12 +25,7 @@ export const loader = createLoaderApiRoute(
     authorization: {
       action: "read",
       resource: (_, __, searchParams) =>
-        // Pre-RBAC, the resource was the searchParams object itself and
-        // the legacy `checkAuthorization` iterated `Object.keys`, so a
-        // JWT with type-level `read:tags` (no id) granted access to the
-        // unfiltered runs stream. Including `{ type: "tags" }` here
-        // preserves that — per-id `read:tags:<tag>` still grants only
-        // when the filter includes that tag.
+        // `{ type: "tags" }` preserves pre-RBAC type-level `read:tags` access to the unfiltered stream; per-id `read:tags:<tag>` still grants only when the filter includes that tag.
         anyResource([
           { type: "runs" },
           { type: "tags" },
@@ -39,7 +34,10 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ searchParams, authentication, request, apiVersion }) => {
-    return realtimeClient.streamRuns(
+    // Pick the Electric proxy or the native backend per org (defaults to Electric); both implement streamRuns.
+    const client = await resolveRealtimeStreamClient(authentication.environment);
+
+    return client.streamRuns(
       request.url,
       authentication.environment,
       searchParams,

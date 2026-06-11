@@ -79,6 +79,8 @@ export class DelayedRunSystem {
               delayUntil: delayUntil,
               updatedAt: updatedRun.updatedAt,
               createdAt: updatedRun.createdAt,
+              runTags: updatedRun.runTags,
+              batchId: updatedRun.batchId,
             },
             organization: {
               id: snapshot.organizationId,
@@ -192,6 +194,8 @@ export class DelayedRunSystem {
           queuedAt,
           updatedAt: updatedRun.updatedAt,
           createdAt: updatedRun.createdAt,
+          runTags: updatedRun.runTags,
+          batchId: updatedRun.batchId,
         },
         organization: {
           id: run.runtimeEnvironment.organizationId,

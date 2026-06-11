@@ -211,6 +211,36 @@ function initializeRunEngineClickhouseClient(): ClickHouse {
   });
 }
 
+/** Realtime runs feed tag/batch id resolution (`REALTIME_BACKEND_NATIVE_CLICKHOUSE_URL`);
+ *  falls back to the default client if unset. */
+const defaultRealtimeClickhouseClient = singleton(
+  "realtimeClickhouseClient",
+  initializeRealtimeClickhouseClient
+);
+
+function initializeRealtimeClickhouseClient(): ClickHouse {
+  if (!env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_URL) {
+    return defaultClickhouseClient;
+  }
+
+  const url = new URL(env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_URL);
+  url.searchParams.delete("secure");
+
+  return new ClickHouse({
+    url: url.toString(),
+    name: "realtime-runs-clickhouse",
+    keepAlive: {
+      enabled: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_LOG_LEVEL,
+    compression: {
+      request: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+    },
+    maxOpenConnections: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+  });
+}
+
 /** Task events (`EVENTS_CLICKHOUSE_URL`); not exported — accessed via factory. */
 const defaultEventsClickhouseClient = singleton(
   "eventsClickhouseClient",
@@ -257,7 +287,8 @@ export type ClientType =
   | "logs"
   | "query"
   | "admin"
-  | "engine";
+  | "engine"
+  | "realtime";
 
 function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHouse {
   const parsed = new URL(url);
@@ -330,6 +361,20 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
         },
         maxOpenConnections: env.RUN_ENGINE_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
       });
+    case "realtime":
+      return new ClickHouse({
+        url: parsed.toString(),
+        name,
+        keepAlive: {
+          enabled: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+          idleSocketTtl: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+        },
+        logLevel: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_LOG_LEVEL,
+        compression: {
+          request: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+        },
+        maxOpenConnections: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+      });
     case "standard":
     case "query":
     case "admin":
@@ -398,6 +443,8 @@ export class ClickhouseFactory {
           return defaultAdminClickhouseClient;
         case "engine":
           return defaultRunEngineClickhouseClient;
+        case "realtime":
+          return defaultRealtimeClickhouseClient;
       }
     }
 

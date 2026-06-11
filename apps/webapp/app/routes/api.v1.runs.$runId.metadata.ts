@@ -12,6 +12,7 @@ import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
+import { publishChangeRecord } from "~/services/realtime/runChangeNotifierInstance.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { applyMetadataMutationToBufferedRun } from "~/v3/mollifier/applyMetadataMutation.server";
@@ -184,7 +185,15 @@ const { action } = createActionApiRoute(
       return json({ error: "Internal Server Error" }, { status: 500 });
     }
     if (pgResult) {
-      return json(pgResult, { status: 200 });
+      // Reflect metadata.set() on a live feed before the next lifecycle event. Publish the
+      // internal id (the router keys single-run feeds by it, not the friendly id from the URL).
+      publishChangeRecord({
+        runId: pgResult.runId,
+        envId: env.id,
+        tags: pgResult.runTags,
+        batchId: pgResult.batchId,
+      });
+      return json({ metadata: pgResult.metadata }, { status: 200 });
     }
 
     // PG miss. Target run is either buffered or genuinely absent.
