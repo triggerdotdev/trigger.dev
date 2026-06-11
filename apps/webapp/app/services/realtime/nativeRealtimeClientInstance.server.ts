@@ -5,11 +5,12 @@ import { singleton } from "~/utils/singleton";
 import { getCachedLimit } from "../platform.v3.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { ClickHouseRunListResolver } from "./clickHouseRunListResolver.server";
-import { EnvChangeRouter } from "./envChangeRouter.server";
+import { EnvChangeRouter, type EnvChangeSource } from "./envChangeRouter.server";
 import { NativeRealtimeClient } from "./nativeRealtimeClient.server";
 import { RealtimeConcurrencyLimiter } from "./realtimeConcurrencyLimiter.server";
 import { getRunChangeNotifier } from "./runChangeNotifierInstance.server";
 import { RedisReplayCursorStore } from "./replayCursorStore.server";
+import { createPostgresReplicaLagSource, ReplicaLagEstimator } from "./replicaLagEstimator.server";
 import { RunHydrator } from "./runReader.server";
 
 // Process-singleton wiring for the native realtime client; only constructed when a
@@ -83,6 +84,11 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
       "Shared replay-cursor store operations by outcome. Errors degrade hops to cold resolves (watch live_polls{path='cold-resolve'} rise with them), never failed polls.",
   });
 
+  const staleHydrates = meter.createCounter("realtime_native.stale_hydrates", {
+    description:
+      "Wake hydrates the read-your-writes tripwire caught reading behind the publish. 'recovered' = a retry delivered the fresh row; sustained 'gave_up' means replica lag is outrunning the retry budget.",
+  });
+
   const limiter = new RealtimeConcurrencyLimiter({
     keyPrefix: "tr:realtime:native:concurrency",
     redis: {
@@ -120,8 +126,37 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
     maxCacheEntries: env.REALTIME_BACKEND_NATIVE_RUN_CACHE_MAX_ENTRIES,
   });
 
+  // Read-your-writes gate: the estimator samples replica lag (reader-side only, paused
+  // when idle) and the router delays wake hydrates by it, anchored to each record's
+  // updatedAtMs — so a publish racing the replica's apply is waited out, not read stale.
+  const lagEstimator =
+    env.REALTIME_BACKEND_NATIVE_REPLICA_LAG_GATE_ENABLED === "1"
+      ? new ReplicaLagEstimator({
+          source: createPostgresReplicaLagSource($replica),
+          sampleIntervalMs: env.REALTIME_BACKEND_NATIVE_REPLICA_LAG_SAMPLE_INTERVAL_MS,
+          idleAfterMs: env.REALTIME_BACKEND_NATIVE_REPLICA_LAG_IDLE_AFTER_MS,
+          windowMs: env.REALTIME_BACKEND_NATIVE_REPLICA_LAG_WINDOW_MS,
+          defaultLagMs: env.REALTIME_BACKEND_NATIVE_REPLICA_LAG_DEFAULT_MS,
+          observedFloorTtlMs: env.REALTIME_BACKEND_NATIVE_REPLICA_LAG_OBSERVED_FLOOR_TTL_MS,
+        })
+      : undefined;
+
+  // The notifier wrapped so router activity keeps the lag sampler warm.
+  const notifier = getRunChangeNotifier();
+  const source: EnvChangeSource = lagEstimator
+    ? {
+        subscribeToEnv(environmentId, onBatch) {
+          lagEstimator.touch();
+          return notifier.subscribeToEnv(environmentId, (records) => {
+            lagEstimator.touch();
+            onBatch(records);
+          });
+        },
+      }
+    : notifier;
+
   const router = new EnvChangeRouter({
-    source: getRunChangeNotifier(),
+    source,
     hydrator: runReader,
     onHydrate: (runCount) => routerHydrates.add(runCount),
     replayWindowMs: env.REALTIME_BACKEND_NATIVE_REPLAY_WINDOW_MS,
@@ -129,6 +164,16 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
     unsubscribeLingerMs: env.REALTIME_BACKEND_NATIVE_UNSUBSCRIBE_LINGER_MS,
     onReplay: (result) => replays.add(1, { result }),
     onReplayEviction: (reason) => replayEvictions.add(1, { reason }),
+    replicaLag: lagEstimator
+      ? {
+          getLagMs: () => lagEstimator.getLagMs(),
+          noteObservedLagMs: (lagMs) => lagEstimator.noteObservedLagMs(lagMs),
+          marginMs: env.REALTIME_BACKEND_NATIVE_REPLICA_LAG_MARGIN_MS,
+          maxDelayMs: env.REALTIME_BACKEND_NATIVE_REPLICA_LAG_MAX_DELAY_MS,
+          staleRetries: env.REALTIME_BACKEND_NATIVE_STALE_HYDRATE_RETRIES,
+          onStaleHydrate: (outcome, runCount) => staleHydrates.add(runCount, { outcome }),
+        }
+      : undefined,
   });
 
   const client = new NativeRealtimeClient({
@@ -207,6 +252,15 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
         "Environments currently routed on this instance (held feeds + lingering subscriptions).",
     })
     .addCallback((result) => result.observe(router.activeEnvCount));
+
+  if (lagEstimator) {
+    meter
+      .createObservableGauge("realtime_native.replica_lag_estimate_ms", {
+        description:
+          "The read-your-writes gate's current replica-lag estimate (max sample in the window). Wake hydrates are delayed by roughly this much past each change's commit.",
+      })
+      .addCallback((result) => result.observe(lagEstimator.getLagMs()));
+  }
 
   return client;
 }

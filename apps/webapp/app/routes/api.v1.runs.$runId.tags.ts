@@ -84,20 +84,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
         if (newTags.length === 0) {
           return json({ message: "No new tags to add" }, { status: 200 });
         }
-        await prisma.taskRun.update({
+        const updated = await prisma.taskRun.update({
           where: {
             id: taskRun.id,
             runtimeEnvironmentId: env.id,
           },
           data: { runTags: { push: newTags } },
+          select: { updatedAt: true },
         });
         // Publish a run-changed record with the NEW tag set so tag feeds reindex
-        // (no-op unless enabled).
+        // (no-op unless enabled). updatedAt is the read-your-writes watermark.
         publishChangeRecord({
           runId: taskRun.id,
           envId: env.id,
           tags: existing.concat(newTags),
           batchId: taskRun.batchId,
+          updatedAtMs: updated.updatedAt.getTime(),
         });
         return json({ message: `Successfully set ${newTags.length} new tags.` }, { status: 200 });
       },

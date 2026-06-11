@@ -100,7 +100,20 @@ export async function routeOperationsToRun(
   const [error, result] = await tryCatch(
     updateMetadataService.call(targetRunId, { operations }, env)
   );
-  if (!error && result !== undefined) return;
+  if (!error && result !== undefined) {
+    // The parent/root run changed too — wake its live feeds (only when something was
+    // actually written here; buffered writes publish from the flusher).
+    if (result.updatedAtMs !== undefined) {
+      publishChangeRecord({
+        runId: result.runId,
+        envId: env.id,
+        tags: result.runTags,
+        batchId: result.batchId,
+        updatedAtMs: result.updatedAtMs,
+      });
+    }
+    return;
+  }
 
   if (error) {
     // PG threw — auxiliary op, stay best-effort and don't surface this
@@ -186,13 +199,18 @@ const { action } = createActionApiRoute(
     }
     if (pgResult) {
       // Reflect metadata.set() on a live feed before the next lifecycle event. Publish the
-      // internal id (the router keys single-run feeds by it, not the friendly id from the URL).
-      publishChangeRecord({
-        runId: pgResult.runId,
-        envId: env.id,
-        tags: pgResult.runTags,
-        batchId: pgResult.batchId,
-      });
+      // internal id (the router keys single-run feeds by it, not the friendly id from the
+      // URL) with the committed updatedAt as the read-your-writes watermark. No write
+      // (no-op body, or ops buffered for the flusher) means nothing to announce here.
+      if (pgResult.updatedAtMs !== undefined) {
+        publishChangeRecord({
+          runId: pgResult.runId,
+          envId: env.id,
+          tags: pgResult.runTags,
+          batchId: pgResult.batchId,
+          updatedAtMs: pgResult.updatedAtMs,
+        });
+      }
       return json({ metadata: pgResult.metadata }, { status: 200 });
     }
 

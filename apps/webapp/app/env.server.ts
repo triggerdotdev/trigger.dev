@@ -338,6 +338,28 @@ const EnvironmentSchema = z
     // TTL/size of the per-org realtimeBackend flag cache used to pick the serving backend.
     REALTIME_BACKEND_FLAG_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
     REALTIME_BACKEND_FLAG_CACHE_MAX_ENTRIES: z.coerce.number().int().default(50_000),
+    // "1" enables the read-your-writes gate: wake hydrates wait out the measured replica lag
+    // (anchored to the change record's updatedAtMs) and stale reads are retried.
+    REALTIME_BACKEND_NATIVE_REPLICA_LAG_GATE_ENABLED: z.string().default("1"),
+    // Reader-side lag probe cadence while the router is active; probing pauses when idle.
+    REALTIME_BACKEND_NATIVE_REPLICA_LAG_SAMPLE_INTERVAL_MS: z.coerce.number().int().default(250),
+    REALTIME_BACKEND_NATIVE_REPLICA_LAG_IDLE_AFTER_MS: z.coerce.number().int().default(30_000),
+    // The lag estimate is the max sample inside this window (spikes widen it immediately).
+    REALTIME_BACKEND_NATIVE_REPLICA_LAG_WINDOW_MS: z.coerce.number().int().default(5_000),
+    // Estimate before the first sample lands (and the floor when probing is unavailable).
+    REALTIME_BACKEND_NATIVE_REPLICA_LAG_DEFAULT_MS: z.coerce.number().int().default(30),
+    // Safety margin (clock skew + scheduling) added on top of the lag estimate.
+    REALTIME_BACKEND_NATIVE_REPLICA_LAG_MARGIN_MS: z.coerce.number().int().default(10),
+    // Hard cap on any single gate delay — a sick replica degrades freshness, never liveness.
+    REALTIME_BACKEND_NATIVE_REPLICA_LAG_MAX_DELAY_MS: z.coerce.number().int().default(1_000),
+    // Re-hydrate attempts for rows the tripwire still finds stale after the delay.
+    REALTIME_BACKEND_NATIVE_STALE_HYDRATE_RETRIES: z.coerce.number().int().default(3),
+    // How long a tripwire-observed staleness floors the lag estimate (vanilla-PG replicas
+    // can't measure mid-apply lag, so observations carry the estimate between races).
+    REALTIME_BACKEND_NATIVE_REPLICA_LAG_OBSERVED_FLOOR_TTL_MS: z.coerce
+      .number()
+      .int()
+      .default(60_000),
 
     PUBSUB_REDIS_HOST: z
       .string()
