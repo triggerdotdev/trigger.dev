@@ -1,5 +1,4 @@
 import {
-  ArrowUpRightIcon,
   CheckIcon,
   ExclamationTriangleIcon,
   ShieldCheckIcon,
@@ -37,6 +36,7 @@ import { Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TextArea } from "~/components/primitives/TextArea";
+import { TextLink } from "~/components/primitives/TextLink";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
@@ -237,6 +237,11 @@ const pricingDefinitions = {
     title: "Query period",
     content: "The maximum number of days a query can look back when analyzing your task data.",
   },
+  hipaaBaa: {
+    title: "HIPAA BAA",
+    content:
+      "A signed Business Associate Agreement (BAA) is required to run tasks that process Protected Health Information (PHI) on Trigger.dev Cloud.",
+  },
 };
 
 type PricingPlansProps = {
@@ -317,10 +322,7 @@ export function TierFree({
     <TierContainer>
       <div className="relative">
         <PricingHeader title={plan.title} cost={0} />
-        <TierLimit href="https://trigger.dev/pricing#computePricing">
-          ${plan.limits.includedUsage / 100} free monthly usage
-        </TierLimit>
-        {showGithubVerificationBadge && status === "approved" && (
+          {showGithubVerificationBadge && status === "approved" && (
           <SimpleTooltip
             buttonClassName="absolute right-1 top-1"
             button={
@@ -351,8 +353,7 @@ export function TierFree({
       </div>
       {status === "rejected" ? (
         <div>
-          <hr className="my-6 border-grid-bright" />
-          <div className="flex flex-col gap-2 rounded-sm border border-warning p-4">
+              <div className="flex flex-col gap-2 rounded-sm border border-warning p-4">
             <ExclamationTriangleIcon className="size-6 text-warning" />
             <Paragraph variant="small/bright">
               Your Trigger.dev account failed to be verified for the Free plan because your GitHub
@@ -533,6 +534,16 @@ export function TierFree({
             </Form>
           )}
           <ul className="flex flex-col gap-2.5">
+            <FeatureItem checked>
+              <DefinitionTip
+                title="Free credits"
+                content={`You get $${
+                  plan.limits.includedUsage / 100
+                } of compute each month for free. Requires a verified GitHub account.`}
+              >
+                ${plan.limits.includedUsage / 100} / month free credits
+              </DefinitionTip>
+            </FeatureItem>
             <ConcurrentRuns limits={plan.limits} />
             <FeatureItem checked>
               Unlimited{" "}
@@ -584,9 +595,6 @@ export function TierHobby({
   return (
     <TierContainer isHighlighted={isHighlighted}>
       <PricingHeader title={plan.title} isHighlighted={isHighlighted} cost={plan.tierPrice} />
-      <TierLimit href="https://trigger.dev/pricing#computePricing">
-        ${plan.limits.includedUsage / 100} usage included
-      </TierLimit>
       <Form action={formAction} method="post" id="subscribe-hobby" className="py-6">
         <input type="hidden" name="type" value="paid" />
         <input type="hidden" name="planCode" value={plan.code} />
@@ -652,6 +660,23 @@ export function TierHobby({
         )}
       </Form>
       <ul className="flex flex-col gap-2.5">
+        <FeatureItem checked>
+          <DefinitionTip
+            title="Credits included"
+            content={
+              <>
+                This plan includes ${plan.tierPrice} of compute each month. After that's used, tasks
+                keep running and you're billed per our{" "}
+                <TextLink to="https://trigger.dev/pricing#computePricing">
+                  compute usage rates
+                </TextLink>
+                .
+              </>
+            }
+          >
+            ${plan.limits.includedUsage / 100} / month credits included
+          </DefinitionTip>
+        </FeatureItem>
         <ConcurrentRuns limits={plan.limits} />
         <FeatureItem checked>
           Unlimited{" "}
@@ -672,6 +697,16 @@ export function TierHobby({
         <SupportLevel limits={plan.limits} />
         <Alerts limits={plan.limits} />
         <RealtimeConcurrency limits={plan.limits} />
+        <HIPAAAddOn>
+          <Feedback
+            defaultValue="hipaa"
+            button={
+              <span className="cursor-pointer underline decoration-charcoal-500 underline-offset-4 transition hover:decoration-text-bright">
+                Request a BAA
+              </span>
+            }
+          />
+        </HIPAAAddOn>
       </ul>
     </TierContainer>
   );
@@ -701,9 +736,6 @@ export function TierPro({
   return (
     <TierContainer>
       <PricingHeader title={plan.title} cost={plan.tierPrice} />
-      <TierLimit href="https://trigger.dev/pricing#computePricing">
-        ${plan.limits.includedUsage / 100} usage included
-      </TierLimit>
       <Form action={formAction} method="post" id="subscribe-pro">
         <div className="py-6">
           <input type="hidden" name="type" value="paid" />
@@ -773,6 +805,23 @@ export function TierPro({
         </div>
       </Form>
       <ul className="flex flex-col gap-2.5">
+        <FeatureItem checked>
+          <DefinitionTip
+            title="Credits included"
+            content={
+              <>
+                This plan includes ${plan.tierPrice} of compute each month. After that's used, tasks
+                keep running and you're billed per our{" "}
+                <TextLink to="https://trigger.dev/pricing#computePricing">
+                  compute usage rates
+                </TextLink>
+                .
+              </>
+            }
+          >
+            ${plan.limits.includedUsage / 100} / month credits included
+          </DefinitionTip>
+        </FeatureItem>
         <ConcurrentRuns limits={plan.limits}>
           {`Then ${formatCurrency(concurrencyAddOnPricing.centsPerStep / 100, true)}/month per ${
             concurrencyAddOnPricing.stepSize
@@ -801,6 +850,16 @@ export function TierPro({
         <RealtimeConcurrency limits={plan.limits}>
           {pricingDefinitions.additionalRealtimeConnections.content}
         </RealtimeConcurrency>
+        <HIPAAAddOn>
+          <Feedback
+            defaultValue="hipaa"
+            button={
+              <span className="cursor-pointer underline decoration-charcoal-500 underline-offset-4 transition hover:decoration-text-bright">
+                Request a BAA
+              </span>
+            }
+          />
+        </HIPAAAddOn>
       </ul>
     </TierContainer>
   );
@@ -809,41 +868,12 @@ export function TierPro({
 export function TierEnterprise() {
   return (
     <TierContainer>
-      <div className="flex w-full flex-col items-center justify-between gap-4 lg:flex-row">
-        <div className="flex w-full flex-wrap items-center justify-between gap-2 lg:flex-nowrap">
-          <div className="-mt-1 mb-2 flex w-full flex-col gap-2 lg:mb-0 lg:gap-0.5">
-            <h2 className="text-xl font-medium text-text-dimmed">Enterprise</h2>
-            <hr className="my-2 block border-grid-dimmed lg:hidden" />
-            <p className="whitespace-nowrap font-sans text-lg font-normal text-text-bright lg:text-sm">
-              Tailor a custom plan
-            </p>
-          </div>
-          <ul className="flex w-full flex-col gap-y-3 lg:gap-y-1">
-            <FeatureItem checked checkedColor="bright">
-              All Pro plan features +
-            </FeatureItem>
-            <FeatureItem checked checkedColor="bright">
-              Custom log retention
-            </FeatureItem>
-          </ul>
-          <ul className="flex w-full flex-col gap-y-3 lg:gap-y-1">
-            <FeatureItem checked checkedColor="bright">
-              Priority support
-            </FeatureItem>
-            <FeatureItem checked checkedColor="bright">
-              Role-based access control
-            </FeatureItem>
-          </ul>
-          <ul className="flex w-full flex-col gap-y-3 lg:gap-y-1">
-            <FeatureItem checked checkedColor="bright">
-              SOC 2 report
-            </FeatureItem>
-            <FeatureItem checked checkedColor="bright">
-              SSO
-            </FeatureItem>
-          </ul>
+      <div className="mb-4 flex w-full flex-col items-start justify-between gap-4 lg:flex-row lg:items-center">
+        <div className="flex flex-col gap-0.5">
+          <h2 className="text-xl font-medium text-text-dimmed">Enterprise</h2>
+          <p className="font-sans text-lg font-normal text-text-bright">Tailor a custom plan</p>
         </div>
-        <div className="w-full lg:max-w-[16rem]">
+        <div className="w-full lg:w-auto lg:max-w-[16rem]">
           <Feedback
             defaultValue="enterprise"
             button={
@@ -853,6 +883,44 @@ export function TierEnterprise() {
             }
           />
         </div>
+      </div>
+      <div className="flex w-full flex-wrap items-start justify-between gap-2 lg:flex-nowrap">
+        <ul className="flex w-full flex-col gap-y-3 lg:gap-y-1">
+          <FeatureItem checked checkedColor="bright">
+            All Pro plan features +
+          </FeatureItem>
+          <FeatureItem checked checkedColor="bright">
+            Custom log retention
+          </FeatureItem>
+        </ul>
+        <ul className="flex w-full flex-col gap-y-3 lg:gap-y-1">
+          <FeatureItem checked checkedColor="bright">
+            Priority support
+          </FeatureItem>
+          <FeatureItem checked checkedColor="bright">
+            Role-based access control
+          </FeatureItem>
+        </ul>
+        <ul className="flex w-full flex-col gap-y-3 lg:gap-y-1">
+          <FeatureItem checked checkedColor="bright">
+            SOC 2 report
+          </FeatureItem>
+          <FeatureItem checked checkedColor="bright">
+            SSO
+          </FeatureItem>
+        </ul>
+        <ul className="flex w-full flex-col gap-y-3 lg:gap-y-1">
+          <HIPAAAddOn checkedColor="bright">
+            <Feedback
+              defaultValue="hipaa"
+              button={
+                <span className="cursor-pointer underline decoration-charcoal-500 underline-offset-4 transition hover:decoration-text-bright">
+                  Request a BAA
+                </span>
+              }
+            />
+          </HIPAAAddOn>
+        </ul>
       </div>
     </TierContainer>
   );
@@ -918,36 +986,6 @@ function PricingHeader({
         <h2 className="text-4xl font-medium">Custom</h2>
       )}
     </div>
-  );
-}
-
-function TierLimit({ children, href }: { children: React.ReactNode; href?: string }) {
-  return (
-    <>
-      <hr className="my-6 border-grid-bright" />
-      {href ? (
-        <SimpleTooltip
-          buttonClassName="text-left w-fit"
-          disableHoverableContent
-          button={
-            <a
-              href={href}
-              className="text-left font-sans text-lg font-normal text-text-bright underline decoration-charcoal-500 underline-offset-4 transition hover:decoration-text-bright"
-            >
-              {children}
-            </a>
-          }
-          content={
-            <div className="flex items-center gap-1">
-              <Paragraph variant="small">View compute pricing information</Paragraph>
-              <ArrowUpRightIcon className="size-4 text-text-dimmed" />
-            </div>
-          }
-        />
-      ) : (
-        <div className="font-sans text-lg font-normal text-text-bright">{children}</div>
-      )}
-    </>
   );
 }
 
@@ -1202,6 +1240,31 @@ function QueryPeriod({ limits }: { limits: Limits }) {
       >
         query period
       </DefinitionTip>
+    </FeatureItem>
+  );
+}
+
+function HIPAAAddOn({
+  children,
+  checkedColor = "primary",
+}: {
+  children?: React.ReactNode;
+  checkedColor?: "primary" | "bright";
+}) {
+  return (
+    <FeatureItem checked checkedColor={checkedColor}>
+      <div className="flex flex-col gap-y-0.5">
+        <div>
+          <DefinitionTip
+            title={pricingDefinitions.hipaaBaa.title}
+            content={pricingDefinitions.hipaaBaa.content}
+          >
+            HIPAA BAA
+          </DefinitionTip>{" "}
+          add-on
+        </div>
+        {children && <span className="text-xs text-text-dimmed">{children}</span>}
+      </div>
     </FeatureItem>
   );
 }
