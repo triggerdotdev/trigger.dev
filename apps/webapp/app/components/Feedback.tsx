@@ -142,8 +142,8 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
                     panelClassName="w-full mb-2"
                   >
                     <Paragraph variant="small">
-                      We offer a signed Business Associate Agreement (BAA) as a paid add-on on Pro
-                      and Enterprise plans. To help us get back to you quickly, please include your
+                      We offer a signed Business Associate Agreement (BAA) as a paid add-on on
+                      any paid plan. To help us get back to you quickly, please include your
                       company name, expected go-live date, and a brief description of the PHI
                       workload you plan to run.
                     </Paragraph>
