@@ -287,12 +287,24 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               "POST",
               async () => {
                 const { req, reply, params, body } = ctx;
+                const runnerId = this.runnerIdFromRequest(req);
                 const completeResponse = await this.workerClient.completeRunAttempt(
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
                   body,
-                  this.runnerIdFromRequest(req)
+                  runnerId
                 );
+
+                // A completion attempt invalidates any pending delayed snapshot
+                // regardless of outcome: the runner has finished executing, so the
+                // suspended state the snapshot was scheduled to capture no longer
+                // exists. Without this, the snapshot fires up to snapshotDelayMs
+                // later and pauses a VM that has long moved on - and on a transient
+                // completion failure the runner retries, so waiting for success
+                // would leave the stale snapshot armed in the meantime. The
+                // runnerId guard keeps a stale duplicate runner's failed completion
+                // from cancelling a fresh runner's snapshot.
+                this.snapshotService?.cancel(params.runFriendlyId, runnerId);
 
                 if (!completeResponse.success) {
                   this.logger.error("Failed to complete run", {
@@ -302,16 +314,6 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   reply.empty(500);
                   return;
                 }
-
-                // A completed attempt invalidates any pending delayed snapshot: the
-                // suspended execution state it was scheduled to capture no longer
-                // exists. Without this, the snapshot fires up to snapshotDelayMs
-                // later and pauses a VM that has long moved on, e.g. mid warm-start
-                // long-poll or already executing the next run.
-                this.snapshotService?.cancel(
-                  params.runFriendlyId,
-                  this.runnerIdFromRequest(req)
-                );
 
                 reply.json(
                   completeResponse.data satisfies WorkloadRunAttemptCompleteResponseBody
