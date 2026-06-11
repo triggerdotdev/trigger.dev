@@ -3,7 +3,15 @@ import { type MetaFunction } from "@remix-run/node";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { TaskRunStatus } from "@trigger.dev/database";
 import { Fragment, Suspense, useMemo } from "react";
-import { Bar, BarChart, ResponsiveContainer, Tooltip, type TooltipProps } from "recharts";
+import {
+  Bar,
+  BarChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  type TooltipProps,
+  YAxis,
+} from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
@@ -50,15 +58,16 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { type TaskActivity } from "~/presenters/v3/TaskListPresenter.server";
 import {
   unifiedTaskListPresenter,
+  type HourlyTaskActivity,
   type UnifiedRunningState,
   type UnifiedTaskKind,
   type UnifiedTaskListItem,
 } from "~/presenters/v3/UnifiedTaskListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
+import { formatNumberCompact } from "~/utils/numberFormatter";
 import {
   docsPath,
   EnvironmentParamSchema,
@@ -89,14 +98,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   try {
-    const { items, activity, runningStates } = await unifiedTaskListPresenter.call({
+    const { items, hourlyActivity, runningStates } = await unifiedTaskListPresenter.call({
       organizationId: project.organizationId,
       projectId: project.id,
       environmentId: environment.id,
       environmentType: environment.type,
     });
 
-    return typeddefer({ items, activity, runningStates });
+    return typeddefer({ items, hourlyActivity, runningStates });
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -116,7 +125,7 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { items, activity, runningStates } = useTypedLoaderData<typeof loader>();
+  const { items, hourlyActivity, runningStates } = useTypedLoaderData<typeof loader>();
   const { value, values } = useSearchParams();
 
   const selectedTypes = useMemo(() => {
@@ -167,7 +176,7 @@ export default function Page() {
                       <TableHeaderCell>Task type</TableHeaderCell>
                       <TableHeaderCell>File</TableHeaderCell>
                       <TableHeaderCell>Running</TableHeaderCell>
-                      <TableHeaderCell>Activity (7d)</TableHeaderCell>
+                      <TableHeaderCell>Activity (24h)</TableHeaderCell>
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
@@ -247,13 +256,14 @@ export default function Page() {
                             </TableCell>
                             <TableCell to={rowPath} actionClassName="py-1.5">
                               <Suspense fallback={<TaskActivityBlankState />}>
-                                <TypedAwait resolve={activity} errorElement={<FailedToLoadStats />}>
+                                <TypedAwait
+                                  resolve={hourlyActivity}
+                                  errorElement={<FailedToLoadStats />}
+                                >
                                   {(data) => {
                                     const taskData = data[item.slug];
-                                    return taskData !== undefined ? (
-                                      <div className="h-6 w-[5.125rem] rounded-sm">
-                                        <TaskActivityGraph activity={taskData} />
-                                      </div>
+                                    return taskData && taskData.length > 0 ? (
+                                      <TaskActivityGraph activity={taskData} />
                                     ) : (
                                       <TaskActivityBlankState />
                                     );
@@ -384,99 +394,107 @@ function formatAgentType(type: string): string {
   }
 }
 
-function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
+const STATUS_BARS: { status: TaskRunStatus; fill: string }[] = [
+  { status: "DELAYED", fill: "#5F6570" },
+  { status: "PENDING", fill: "#5F6570" },
+  { status: "PENDING_VERSION", fill: "#F59E0B" },
+  { status: "EXECUTING", fill: "#3B82F6" },
+  { status: "RETRYING_AFTER_FAILURE", fill: "#3B82F6" },
+  { status: "WAITING_TO_RESUME", fill: "#3B82F6" },
+  { status: "COMPLETED_SUCCESSFULLY", fill: "#28BF5C" },
+  { status: "CANCELED", fill: "#5F6570" },
+  { status: "COMPLETED_WITH_ERRORS", fill: "#F43F5E" },
+  { status: "INTERRUPTED", fill: "#F43F5E" },
+  { status: "SYSTEM_FAILURE", fill: "#F43F5E" },
+  { status: "PAUSED", fill: "#FCD34D" },
+  { status: "CRASHED", fill: "#F43F5E" },
+  { status: "EXPIRED", fill: "#5F6570" },
+  { status: "TIMED_OUT", fill: "#F43F5E" },
+];
+
+function TaskActivityGraph({ activity }: { activity: HourlyTaskActivity[string] }) {
+  const maxTotal = Math.max(...activity.map((d) => d.total));
+
   return (
-    <ResponsiveContainer width="100%" height="100%">
-      <BarChart
-        data={activity}
-        margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
-        width={82}
-        height={24}
-      >
-        <Tooltip
-          cursor={{ fill: "transparent" }}
-          content={<CustomTooltip />}
-          allowEscapeViewBox={{ x: true, y: true }}
-          wrapperStyle={{ zIndex: 1000 }}
-          animationDuration={0}
-        />
-        <Bar
-          dataKey="bg"
-          background={{ fill: "#212327" }}
-          strokeWidth={0}
-          stackId="a"
-          barSize={10}
-          isAnimationActive={false}
-        />
-        <Bar dataKey="DELAYED" fill="#5F6570" stackId="a" strokeWidth={0} barSize={10} />
-        <Bar dataKey="PENDING" fill="#5F6570" stackId="a" strokeWidth={0} barSize={10} />
-        <Bar dataKey="PENDING_VERSION" fill="#F59E0B" stackId="a" strokeWidth={0} barSize={10} />
-        <Bar dataKey="EXECUTING" fill="#3B82F6" stackId="a" strokeWidth={0} barSize={10} />
-        <Bar
-          dataKey="RETRYING_AFTER_FAILURE"
-          fill="#3B82F6"
-          stackId="a"
-          strokeWidth={0}
-          barSize={10}
-        />
-        <Bar dataKey="WAITING_TO_RESUME" fill="#3B82F6" stackId="a" strokeWidth={0} barSize={10} />
-        <Bar
-          dataKey="COMPLETED_SUCCESSFULLY"
-          fill="#28BF5C"
-          stackId="a"
-          strokeWidth={0}
-          barSize={10}
-        />
-        <Bar dataKey="CANCELED" fill="#5F6570" stackId="a" strokeWidth={0} barSize={10} />
-        <Bar
-          dataKey="COMPLETED_WITH_ERRORS"
-          fill="#F43F5E"
-          stackId="a"
-          strokeWidth={0}
-          barSize={10}
-        />
-        <Bar dataKey="INTERRUPTED" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
-        <Bar dataKey="SYSTEM_FAILURE" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
-        <Bar dataKey="PAUSED" fill="#FCD34D" stackId="a" strokeWidth={0} barSize={10} />
-        <Bar dataKey="CRASHED" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
-        <Bar dataKey="EXPIRED" fill="#5F6570" stackId="a" strokeWidth={0} barSize={10} />
-        <Bar dataKey="TIMED_OUT" fill="#F43F5E" stackId="a" strokeWidth={0} barSize={10} />
-      </BarChart>
-    </ResponsiveContainer>
+    <div className="flex items-start gap-1.5">
+      <div className="h-6 w-[7rem] rounded-sm">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={activity} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+            <YAxis domain={[0, maxTotal || 1]} hide />
+            <Tooltip
+              cursor={{ fill: "rgba(255, 255, 255, 0.06)" }}
+              content={<TaskActivityTooltip />}
+              allowEscapeViewBox={{ x: true, y: true }}
+              wrapperStyle={{ zIndex: 1000 }}
+              animationDuration={0}
+            />
+            {STATUS_BARS.map(({ status, fill }) => (
+              <Bar
+                key={status}
+                dataKey={status}
+                stackId="a"
+                fill={fill}
+                strokeWidth={0}
+                isAnimationActive={false}
+              />
+            ))}
+            <ReferenceLine y={0} stroke="#2C3034" strokeWidth={1} />
+            {maxTotal > 0 && (
+              <ReferenceLine y={maxTotal} stroke="#4D525B" strokeDasharray="4 4" strokeWidth={1} />
+            )}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <SimpleTooltip
+        asChild
+        button={
+          <span className="-mt-1 text-xxs tabular-nums text-text-dimmed">
+            {formatNumberCompact(maxTotal)}
+          </span>
+        }
+        content="Peak runs in a single hour"
+      />
+    </div>
   );
 }
 
 function TaskActivityBlankState() {
   return (
-    <div className="flex h-6 w-[5.125rem] items-center gap-0.5 rounded-sm">
-      {[...Array(7)].map((_, i) => (
-        <div key={i} className="h-full w-2.5 bg-[#212327]" />
+    <div className="flex h-6 w-[7rem] items-end gap-px rounded-sm">
+      {[...Array(24)].map((_, i) => (
+        <div key={i} className="h-full flex-1 bg-[#212327]" />
       ))}
     </div>
   );
 }
 
-const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
-  if (active && payload) {
-    const items = payload.map((p) => ({
-      status: p.dataKey as TaskRunStatus,
-      value: p.value,
-    }));
-    const title = payload[0].payload.day as string;
-    const formattedDate = formatDateTime(new Date(title), "UTC", [], false, false);
+const TaskActivityTooltip = ({ active, payload }: TooltipProps<number, string>) => {
+  if (active && payload && payload.length > 0) {
+    const entry = payload[0].payload as { date: Date; total: number } & Partial<
+      Record<TaskRunStatus, number>
+    >;
+    const date = entry.date instanceof Date ? entry.date : new Date(entry.date);
+    const formattedDate = formatDateTime(date, "UTC", [], false, true);
+    const items = STATUS_BARS.filter(({ status }) => (entry[status] ?? 0) > 0).map(
+      ({ status }) => ({ status, value: entry[status] ?? 0 })
+    );
 
     return (
       <TooltipPortal active={active}>
         <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
           <Header3 className="border-b border-b-charcoal-650 pb-2">{formattedDate}</Header3>
-          <div className="mt-2 grid grid-cols-[1fr_auto] gap-2 text-xs text-text-bright">
-            {items.map((item) => (
-              <Fragment key={item.status}>
-                <TaskRunStatusCombo status={item.status} />
-                <p>{item.value}</p>
-              </Fragment>
-            ))}
-          </div>
+          {items.length === 0 ? (
+            <div className="mt-2 text-xs text-text-dimmed">No runs</div>
+          ) : (
+            <div className="mt-2 grid grid-cols-[1fr_auto] gap-2 text-xs text-text-bright">
+              {items.map((item) => (
+                <Fragment key={item.status}>
+                  <TaskRunStatusCombo status={item.status} />
+                  <p className="tabular-nums">{item.value}</p>
+                </Fragment>
+              ))}
+            </div>
+          )}
         </div>
       </TooltipPortal>
     );

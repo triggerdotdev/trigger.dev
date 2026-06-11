@@ -1,14 +1,13 @@
+import { type ClickHouse } from "@internal/clickhouse";
 import {
   type PrismaClientOrTransaction,
   type RuntimeEnvironmentType,
+  type TaskRunStatus,
   type TaskTriggerSource,
 } from "@trigger.dev/database";
+import { z } from "zod";
 import { $replica } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
-import {
-  ClickHouseEnvironmentMetricsRepository,
-  type DailyTaskActivity,
-} from "~/services/environmentMetricsRepository.server";
 import { singleton } from "~/utils/singleton";
 import { agentListPresenter, type AgentActiveState } from "./AgentListPresenter.server";
 import { taskListPresenter, type TaskListItem } from "./TaskListPresenter.server";
@@ -31,6 +30,16 @@ export type UnifiedRunningState =
 
 export type UnifiedRunningStates = Record<string, UnifiedRunningState>;
 
+/** One hour bucket: the bucket start date, a total count for axis scaling,
+ *  and per-status counts (sparse — only statuses that occurred are present). */
+export type HourlyTaskActivityBucket = {
+  date: Date;
+  total: number;
+} & Partial<Record<TaskRunStatus, number>>;
+
+/** 24h hourly stacked-by-status series keyed by task slug. */
+export type HourlyTaskActivity = Record<string, HourlyTaskActivityBucket[]>;
+
 export class UnifiedTaskListPresenter {
   constructor(private readonly _replica: PrismaClientOrTransaction) {}
 
@@ -41,7 +50,7 @@ export class UnifiedTaskListPresenter {
     environmentType: RuntimeEnvironmentType;
   }): Promise<{
     items: UnifiedTaskListItem[];
-    activity: Promise<DailyTaskActivity>;
+    hourlyActivity: Promise<HourlyTaskActivity>;
     runningStates: Promise<UnifiedRunningStates>;
   }> {
     const [taskResult, agentResult] = await Promise.all([
@@ -50,28 +59,17 @@ export class UnifiedTaskListPresenter {
     ]);
 
     const items = toUnifiedItems(taskResult.tasks, agentResult.agents);
-
-    // Unified activity fetch: one call across both task and agent slugs so
-    // the chart cell can look up `data[slug]` for every row regardless of
-    // kind. Discards the activity promise already returned by
-    // `taskListPresenter` (it would have been awaited once anyway).
     const allSlugs = items.map((item) => item.slug);
-    const activity =
+
+    const hourlyActivity: Promise<HourlyTaskActivity> =
       allSlugs.length === 0
-        ? Promise.resolve({} as DailyTaskActivity)
+        ? Promise.resolve({})
         : (async () => {
             const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
               args.organizationId,
               "standard"
             );
-            const repo = new ClickHouseEnvironmentMetricsRepository({ clickhouse });
-            return repo.getDailyTaskActivity({
-              organizationId: args.organizationId,
-              projectId: args.projectId,
-              environmentId: args.environmentId,
-              days: 6, // 7 days inclusive of today, matching the Standard Tasks page
-              tasks: allSlugs,
-            });
+            return getHourlyTaskActivity(clickhouse, args.environmentId, allSlugs);
           })();
 
     const runningStates: Promise<UnifiedRunningStates> = Promise.all([
@@ -79,8 +77,98 @@ export class UnifiedTaskListPresenter {
       agentResult.activeStates,
     ]).then(([runningStats, activeStates]) => mergeRunningStates(runningStats, activeStates));
 
-    return { items, activity, runningStates };
+    return { items, hourlyActivity, runningStates };
   }
+}
+
+/** Query trigger_dev.task_runs_v2 for run counts per (hour, status) over the
+ *  past 24h, grouped by task slug. */
+async function getHourlyTaskActivity(
+  clickhouse: ClickHouse,
+  environmentId: string,
+  slugs: string[]
+): Promise<HourlyTaskActivity> {
+  const queryFn = clickhouse.reader.query({
+    name: "unifiedTaskListHourlyActivity",
+    query: `SELECT
+        task_identifier,
+        toStartOfHour(created_at) AS bucket,
+        status,
+        count() AS val
+      FROM trigger_dev.task_runs_v2
+      WHERE environment_id = {environmentId: String}
+        AND task_identifier IN {slugs: Array(String)}
+        AND created_at >= now() - INTERVAL 24 HOUR
+      GROUP BY task_identifier, bucket, status
+      ORDER BY task_identifier, bucket, status`,
+    params: z.object({
+      environmentId: z.string(),
+      slugs: z.array(z.string()),
+    }),
+    schema: z.object({
+      task_identifier: z.string(),
+      bucket: z.string(),
+      status: z.string(),
+      val: z.coerce.number(),
+    }),
+  });
+
+  const [error, rows] = await queryFn({ environmentId, slugs });
+  if (error) {
+    console.error("Unified task list hourly activity query failed:", error);
+    return {};
+  }
+
+  // 24 hourly buckets ending at the current hour. Keys match ClickHouse's
+  // `toStartOfHour(created_at)` formatting ("YYYY-MM-DD HH:00:00").
+  const now = new Date();
+  const startHour = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      now.getUTCHours() - 23,
+      0,
+      0,
+      0
+    )
+  );
+
+  const buckets: { key: string; date: Date }[] = [];
+  for (let i = 0; i < 24; i++) {
+    const date = new Date(startHour.getTime() + i * 3_600_000);
+    const key = date.toISOString().slice(0, 13).replace("T", " ") + ":00:00";
+    buckets.push({ key, date });
+  }
+
+  // slug → bucketKey → bucket payload (per-status counts + total)
+  const slugBuckets = new Map<string, Map<string, HourlyTaskActivityBucket>>();
+  for (const row of rows ?? []) {
+    let perSlug = slugBuckets.get(row.task_identifier);
+    if (!perSlug) {
+      perSlug = new Map();
+      slugBuckets.set(row.task_identifier, perSlug);
+    }
+    let bucket = perSlug.get(row.bucket);
+    if (!bucket) {
+      bucket = { date: new Date(0), total: 0 };
+      perSlug.set(row.bucket, bucket);
+    }
+    const status = row.status as TaskRunStatus;
+    bucket[status] = (bucket[status] ?? 0) + row.val;
+    bucket.total += row.val;
+  }
+
+  const result: HourlyTaskActivity = {};
+  for (const slug of slugs) {
+    const perSlug = slugBuckets.get(slug);
+    result[slug] = buckets.map(({ key, date }) => {
+      const existing = perSlug?.get(key);
+      if (!existing) return { date, total: 0 };
+      return { ...existing, date };
+    });
+  }
+  return result;
 }
 
 function toUnifiedItems(
