@@ -260,6 +260,75 @@ describe("chat.handover", () => {
     }
   });
 
+  it("pure-text head-start preserves reasoning parts in the response (TRI-10716)", async () => {
+    // Extended-thinking models stream a reasoning part in step 1. The
+    // synthesized partial must carry it (with provider metadata, so an
+    // Anthropic signature survives a UIMessage -> ModelMessage round
+    // trip) or the durable history loses the step-1 thinking.
+    let captured:
+      | { partTypes?: string[]; reasoningText?: string; meta?: unknown }
+      | undefined;
+
+    const agent = chat.agent({
+      id: "chat.handover.reasoning",
+      onTurnComplete: ({ responseMessage }) => {
+        const parts = responseMessage?.parts ?? [];
+        captured = {
+          partTypes: parts.map((p) => p.type),
+          reasoningText: parts
+            .filter((p) => p.type === "reasoning")
+            .map((p) => (p as { text?: string }).text || "")
+            .join(""),
+          meta: (parts.find((p) => p.type === "reasoning") as
+            | { providerMetadata?: unknown }
+            | undefined)?.providerMetadata,
+        };
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({
+          model: new MockLanguageModelV3({
+            doStream: async () => ({ stream: textStream("should-not-run") }),
+          }),
+          messages,
+          abortSignal: signal,
+        });
+      },
+    });
+
+    const harness = mockChatAgent(agent, {
+      chatId: "test-handover-reasoning",
+      mode: "handover-prepare",
+    });
+
+    try {
+      await harness.sendHandover({
+        partialAssistantMessage: [
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "reasoning",
+                text: "thinking about the greeting",
+                providerOptions: { anthropic: { signature: "sig-abc" } },
+              },
+              { type: "text", text: "Hello!" },
+            ],
+          },
+        ],
+        messageId: "asst-reason-1",
+        isFinal: true,
+      });
+      await new Promise((r) => setTimeout(r, 30));
+
+      expect(captured).toBeDefined();
+      expect(captured!.partTypes).toEqual(["reasoning", "text"]);
+      expect(captured!.reasoningText).toBe("thinking about the greeting");
+      expect(captured!.meta).toEqual({ anthropic: { signature: "sig-abc" } });
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("pure-text head-start (isFinal: true) with hydrateMessages persists the partial (TRI-10715)", async () => {
     // Same as the pure-text case above, but the customer registers
     // `hydrateMessages` (the documented DB-as-source-of-truth pattern).

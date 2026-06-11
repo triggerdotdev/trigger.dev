@@ -1810,6 +1810,9 @@ const chatHandoverIsFinalKey = locals.create<boolean>("chat.handoverIsFinal");
  * `tool-approval-response` rows are AI-SDK-internal and don't need a
  * UIMessage representation. We map:
  *   - `text` parts → `{ type: "text", text }`
+ *   - `reasoning` parts → `{ type: "reasoning", text, state: "done" }`
+ *      (provider metadata carried so an Anthropic thinking signature
+ *      survives a UIMessage → ModelMessage round trip)
  *   - `tool-call` parts → `{ type: "tool-${name}", toolCallId,
  *      state: "input-available", input }`
  *   - `tool-approval-request` parts → skipped (AI SDK derives the
@@ -1831,9 +1834,17 @@ function synthesizeHandoverUIMessage(
     toolCallId?: string;
     toolName?: string;
     input?: unknown;
+    providerOptions?: unknown;
   }>) {
     if (part.type === "text" && typeof part.text === "string") {
       parts.push({ type: "text", text: part.text } as UIMessage["parts"][number]);
+    } else if (part.type === "reasoning" && typeof part.text === "string") {
+      parts.push({
+        type: "reasoning",
+        text: part.text,
+        state: "done",
+        ...(part.providerOptions ? { providerMetadata: part.providerOptions } : {}),
+      } as unknown as UIMessage["parts"][number]);
     } else if (part.type === "tool-call" && part.toolCallId && part.toolName) {
       parts.push({
         type: `tool-${part.toolName}`,
