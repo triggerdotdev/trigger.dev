@@ -662,16 +662,17 @@ export function TierHobby({
       <ul className="flex flex-col gap-2.5">
         <FeatureItem checked>
           <DefinitionTip
+            disableHoverableContent={false}
             title="Credits included"
             content={
-              <>
-                This plan includes ${plan.limits.includedUsage / 100} of compute each month. After that's used, tasks
-                keep running and you're billed per our{" "}
-                <TextLink to="https://trigger.dev/pricing#computePricing">
+              <Paragraph variant="small/dimmed" spacing>
+                This plan includes ${plan.limits.includedUsage / 100} of compute each month. After
+                that's used, tasks keep running and you're billed per our{" "}
+                <TextLink target="_blank" to="https://trigger.dev/pricing#computePricing">
                   compute usage rates
                 </TextLink>
                 .
-              </>
+              </Paragraph>
             }
           >
             ${plan.limits.includedUsage / 100} / month credits included
@@ -807,16 +808,17 @@ export function TierPro({
       <ul className="flex flex-col gap-2.5">
         <FeatureItem checked>
           <DefinitionTip
+            disableHoverableContent={false}
             title="Credits included"
             content={
-              <>
-                This plan includes ${plan.limits.includedUsage / 100} of compute each month. After that's used, tasks
-                keep running and you're billed per our{" "}
-                <TextLink to="https://trigger.dev/pricing#computePricing">
+              <Paragraph variant="small/dimmed" spacing>
+                This plan includes ${plan.limits.includedUsage / 100} of compute each month. After
+                that's used, tasks keep running and you're billed per our{" "}
+                <TextLink target="_blank" to="https://trigger.dev/pricing#computePricing">
                   compute usage rates
                 </TextLink>
                 .
-              </>
+              </Paragraph>
             }
           >
             ${plan.limits.includedUsage / 100} / month credits included
