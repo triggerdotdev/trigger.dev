@@ -4,6 +4,7 @@ import { $replica } from "~/db.server";
 import { chatSnapshotStorageKey } from "~/services/realtime/chatSnapshot.server";
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
 import {
+  anyResource,
   createActionApiRoute,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
@@ -21,8 +22,31 @@ const routeConfig = {
     resolveSessionByIdOrExternalId($replica, auth.environment.id, params.sessionId),
 };
 
+// Authorize against the union of the URL form, friendlyId, and externalId —
+// same shape as the sibling session routes. Without an authorization block
+// the route builder skips scope checks entirely, so any session-scoped JWT
+// in the environment could presign URLs for any other session's snapshot.
+function sessionResource(
+  paramId: string,
+  session: { friendlyId: string; externalId: string | null } | null | undefined
+) {
+  const ids = new Set<string>([paramId]);
+  if (session) {
+    ids.add(session.friendlyId);
+    if (session.externalId) ids.add(session.externalId);
+  }
+  return anyResource([...ids].map((id) => ({ type: "sessions" as const, id })));
+}
+
 export const { action } = createActionApiRoute(
-  { ...routeConfig, method: "PUT" },
+  {
+    ...routeConfig,
+    method: "PUT",
+    authorization: {
+      action: "write",
+      resource: (params, _, __, ___, session) => sessionResource(params.sessionId, session),
+    },
+  },
   async ({ authentication, resource: session }) => {
     if (!session) {
       return json({ error: "Session not found" }, { status: 404 });
@@ -42,7 +66,15 @@ export const { action } = createActionApiRoute(
   }
 );
 
-export const loader = createLoaderApiRoute(routeConfig, async ({ authentication, resource: session }) => {
+export const loader = createLoaderApiRoute(
+  {
+    ...routeConfig,
+    authorization: {
+      action: "read",
+      resource: (session, params) => sessionResource(params.sessionId, session),
+    },
+  },
+  async ({ authentication, resource: session }) => {
   if (!session) {
     return json({ error: "Session not found" }, { status: 404 });
   }
