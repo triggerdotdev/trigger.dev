@@ -355,8 +355,8 @@ function ScheduledTaskContentTabs({
 function ScheduledTaskDetailSidebar({ task, testPath }: { task: TaskDetail; testPath: string }) {
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center gap-2 border-b border-grid-dimmed px-3 py-2">
-        <Header2 className="flex min-w-0 flex-1 items-center gap-1.5">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden border-b border-grid-dimmed px-3 py-2">
+        <Header2 className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
           <ClockIcon className="size-4.5 shrink-0 text-schedules" />
           <span className="truncate">{task.slug}</span>
         </Header2>
