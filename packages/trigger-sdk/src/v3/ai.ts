@@ -183,49 +183,42 @@ const lastTurnCompleteSeqNumKey = locals.create<{ value: number | undefined }>(
  * the `.in` subscription so already-processed user messages don't get
  * replayed from S2.
  *
- * Implementation streams the SSE endpoint and listens for `turn-complete`
- * via the transport's `onControl` callback; the data-chunk for-await is
- * just there to drive the stream. The scan is O(1 turn) because
- * `session.out` is bounded to roughly one turn at steady state — every
- * successful turn-complete is followed by an S2 trim back to the
- * previous one (see `writeTurnCompleteChunk`).
+ * Implementation is a non-blocking records read (`wait=0`) — the
+ * endpoint returns everything currently stored (including pre-trim
+ * records, since S2 trims are eventually consistent) in one shot, and
+ * we keep the LAST matching header. The previous SSE-based scan had to
+ * idle-wait a full 5s window to know it reached the tail, which put a
+ * constant ~6s tax on every continuation boot.
  *
  * Returns `undefined` if no `turn-complete` carrying the header has been
  * written yet — first-turn-ever, first turn post-OOM-with-no-prior-runs,
- * or a `turn-complete` written before this header existed (cross-version
- * boot). Callers fall back to subscribing `.in` from seq 0 in that case;
- * the slim-wire merge handles any dedup against snapshot-restored
- * messages.
+ * a `turn-complete` written before this header existed, or a server old
+ * enough that the records endpoint doesn't serialize headers. Callers
+ * fall back to subscribing `.in` from seq 0 in that case; the slim-wire
+ * merge handles any dedup against snapshot-restored messages.
  * @internal
  */
 async function findLatestSessionInCursor(
   chatId: string
 ): Promise<number | undefined> {
   const apiClient = apiClientManager.clientOrThrow();
+  const response = await apiClient.readSessionStreamRecords(chatId, "out");
   let latestCursor: number | undefined;
-  const stream = await apiClient.subscribeToSessionStream<unknown>(chatId, "out", {
-    // 5s rather than 1s: S2 trim is eventually-consistent (10-60s
-    // window), so a worker booting just after a trim could still see
-    // pre-trim records and need a bit longer to drain them all before
-    // the SSE long-poll closes. Without enough headroom the scan would
-    // fall back to `undefined`, the `.in` cursor wouldn't be seeded,
-    // and the next subscribe would replay messages already processed.
-    timeoutInSeconds: 5,
-    onControl: (event) => {
-      if (event.subtype !== TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) return;
-      const raw = headerValue(event.headers, SESSION_IN_EVENT_ID_HEADER);
-      if (!raw) return;
-      const parsed = Number.parseInt(raw, 10);
-      if (Number.isFinite(parsed)) latestCursor = parsed;
-    },
-  });
-  // Drain the stream so the underlying SSE reader runs to completion. We
-  // don't accumulate chunks; `onControl` fires inline as turn-complete
-  // records arrive.
-  for await (const _ of stream) {
-    // intentionally empty
+  for (const record of response.records) {
+    if (controlSubtype(record.headers) !== TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) continue;
+    const raw = headerValue(record.headers, SESSION_IN_EVENT_ID_HEADER);
+    if (!raw) continue;
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed)) latestCursor = parsed;
   }
   return latestCursor;
+}
+
+/** Test-only entry point for the records-based cursor scan. @internal */
+export async function __findLatestSessionInCursorForTests(
+  chatId: string
+): Promise<number | undefined> {
+  return findLatestSessionInCursor(chatId);
 }
 
 /**
@@ -5320,6 +5313,12 @@ function chatAgent<
       const couldHavePriorState =
         payload.continuation === true || ctx.attempt.number > 1;
 
+      // `.in` resume cursor, computed at most once per boot. The boot
+      // block below resolves it (snapshot field or records scan) and the
+      // resume-cursor block reuses it instead of re-scanning.
+      let bootInCursor: number | undefined;
+      let bootInCursorResolved = false;
+
       if (!hydrateMessages && couldHavePriorState) {
         // Single parent span for the whole boot read phase — snapshot
         // read, session.out replay, session.in replay. Per-phase timing
@@ -5363,34 +5362,39 @@ function chatAgent<
               }
             }
 
-            // session.out replay
-            const replayOutStart = Date.now();
-            try {
-              const replayResult = await replaySessionOutTail<TUIMessage>(
-                sessionIdForSnapshot,
-                { lastEventId: bootSnapshot?.lastOutEventId }
+            // The `.out` replay and the `.in` cursor + tail read are
+            // independent (both depend only on the snapshot) — run them
+            // concurrently. Each phase keeps its own catch + duration
+            // attribute.
+            const replayOutPhase = async () => {
+              const replayOutStart = Date.now();
+              try {
+                const replayResult = await replaySessionOutTail<TUIMessage>(
+                  sessionIdForSnapshot,
+                  { lastEventId: bootSnapshot?.lastOutEventId }
+                );
+                replayedSettled = replayResult.settled;
+                replayedPartial = replayResult.partial;
+                replayedPartialRaw = replayResult.partialRaw;
+              } catch (error) {
+                logger.warn(
+                  "chat.agent: session.out replay failed; using snapshot only",
+                  {
+                    error: error instanceof Error ? error.message : String(error),
+                    sessionId: sessionIdForSnapshot,
+                  }
+                );
+              }
+              bootSpan.setAttribute(
+                "chat.boot.replay.out.durationMs",
+                Date.now() - replayOutStart
               );
-              replayedSettled = replayResult.settled;
-              replayedPartial = replayResult.partial;
-              replayedPartialRaw = replayResult.partialRaw;
-            } catch (error) {
-              logger.warn(
-                "chat.agent: session.out replay failed; using snapshot only",
-                {
-                  error: error instanceof Error ? error.message : String(error),
-                  sessionId: sessionIdForSnapshot,
-                }
+              bootSpan.setAttribute("chat.boot.replay.out.settledCount", replayedSettled.length);
+              bootSpan.setAttribute(
+                "chat.boot.replay.out.partialPresent",
+                replayedPartial !== undefined
               );
-            }
-            bootSpan.setAttribute(
-              "chat.boot.replay.out.durationMs",
-              Date.now() - replayOutStart
-            );
-            bootSpan.setAttribute("chat.boot.replay.out.settledCount", replayedSettled.length);
-            bootSpan.setAttribute(
-              "chat.boot.replay.out.partialPresent",
-              replayedPartial !== undefined
-            );
+            };
 
             // session.in tail read
             //
@@ -5402,28 +5406,49 @@ function chatAgent<
             // visible via the live SSE subscription — by which point they
             // would arrive AFTER the partial-assistant orphan and look like
             // brand-new turns to the model, producing inverted chains.
-            const replayInStart = Date.now();
-            const lastInEventId = await findLatestSessionInCursor(payload.chatId)
-              .then((cursor) => (cursor !== undefined ? String(cursor) : undefined))
-              .catch(() => undefined);
-            try {
-              replayedInTail = await replaySessionInTail<TUIMessage>(payload.chatId, {
-                lastEventId: lastInEventId,
-              });
-            } catch (error) {
-              logger.warn(
-                "chat.agent: session.in replay failed; in-flight users may not be recovered",
-                { error: error instanceof Error ? error.message : String(error) }
+            //
+            // The cursor comes from the snapshot when present (written
+            // there since `lastInEventId` was added) — otherwise from a
+            // records scan of `.out`'s latest turn-complete header.
+            const replayInPhase = async () => {
+              const replayInStart = Date.now();
+              const snapshotInCursor =
+                bootSnapshot?.lastInEventId !== undefined
+                  ? Number.parseInt(bootSnapshot.lastInEventId, 10)
+                  : undefined;
+              if (snapshotInCursor !== undefined && Number.isFinite(snapshotInCursor)) {
+                bootInCursor = snapshotInCursor;
+              } else {
+                bootInCursor = await findLatestSessionInCursor(payload.chatId).catch(
+                  () => undefined
+                );
+              }
+              bootInCursorResolved = true;
+              bootSpan.setAttribute(
+                "chat.boot.replay.in.cursorFromSnapshot",
+                snapshotInCursor !== undefined
               );
-            }
-            bootSpan.setAttribute(
-              "chat.boot.replay.in.durationMs",
-              Date.now() - replayInStart
-            );
-            bootSpan.setAttribute(
-              "chat.boot.replay.in.userCount",
-              replayedInTail.length
-            );
+              try {
+                replayedInTail = await replaySessionInTail<TUIMessage>(payload.chatId, {
+                  lastEventId: bootInCursor !== undefined ? String(bootInCursor) : undefined,
+                });
+              } catch (error) {
+                logger.warn(
+                  "chat.agent: session.in replay failed; in-flight users may not be recovered",
+                  { error: error instanceof Error ? error.message : String(error) }
+                );
+              }
+              bootSpan.setAttribute(
+                "chat.boot.replay.in.durationMs",
+                Date.now() - replayInStart
+              );
+              bootSpan.setAttribute(
+                "chat.boot.replay.in.userCount",
+                replayedInTail.length
+              );
+            };
+
+            await Promise.all([replayOutPhase(), replayInPhase()]);
           },
           {
             attributes: {
@@ -5469,7 +5494,12 @@ function chatAgent<
 
       if (needsResumeCursor) {
         try {
-          const cursor = await findLatestSessionInCursor(payload.chatId);
+          // Reuse the cursor the boot block already resolved (snapshot
+          // field or records scan) — only scan here when the boot block
+          // was skipped (hydrateMessages, or snapshot-only signals).
+          const cursor = bootInCursorResolved
+            ? bootInCursor
+            : await findLatestSessionInCursor(payload.chatId);
           if (cursor !== undefined) {
             sessionStreams.setLastSeqNum(payload.chatId, "in", cursor);
             sessionStreams.setLastDispatchedSeqNum(payload.chatId, "in", cursor);
@@ -7428,11 +7458,17 @@ function chatAgent<
                       await tracer.startActiveSpan(
                         "snapshot.write",
                         async () => {
+                          const snapshotInCursor =
+                            getChatSession().in.lastDispatchedSeqNum();
                           await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
                             version: 1,
                             savedAt: Date.now(),
                             messages: accumulatedUIMessages,
                             lastOutEventId: turnCompleteResult?.lastEventId,
+                            lastInEventId:
+                              snapshotInCursor !== undefined
+                                ? String(snapshotInCursor)
+                                : undefined,
                           });
                         },
                         {
@@ -7687,11 +7723,17 @@ function chatAgent<
               // neither the snapshot nor the replayable `.in` tail.
               if (!hydrateMessages) {
                 try {
+                  const errorSnapshotInCursor =
+                    getChatSession().in.lastDispatchedSeqNum();
                   await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
                     version: 1,
                     savedAt: Date.now(),
                     messages: erroredUIMessages,
                     lastOutEventId: errorTurnCompleteResult?.lastEventId,
+                    lastInEventId:
+                      errorSnapshotInCursor !== undefined
+                        ? String(errorSnapshotInCursor)
+                        : undefined,
                   });
                 } catch (error) {
                   logger.warn("chat.agent: error-path snapshot write failed", {
