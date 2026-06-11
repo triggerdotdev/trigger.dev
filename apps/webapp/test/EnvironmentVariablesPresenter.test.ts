@@ -56,7 +56,7 @@ describe("EnvironmentVariablesPresenter", () => {
       userId: user.id,
     });
 
-    const result = await new EnvironmentVariablesPresenter(prisma).call({
+    const result = await new EnvironmentVariablesPresenter(prisma, prisma).call({
       userId: user.id,
       projectSlug,
     });
@@ -146,7 +146,7 @@ describe("EnvironmentVariablesPresenter", () => {
         data: { archivedAt: new Date() },
       });
 
-      const result = await new EnvironmentVariablesPresenter(prisma).call({
+      const result = await new EnvironmentVariablesPresenter(prisma, prisma).call({
         userId: user.id,
         projectSlug,
       });

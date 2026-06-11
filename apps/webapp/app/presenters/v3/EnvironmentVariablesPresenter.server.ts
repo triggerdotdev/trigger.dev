@@ -1,4 +1,4 @@
-import { PrismaClient, prisma } from "~/db.server";
+import { $replica, PrismaClient, PrismaReplicaClient, prisma } from "~/db.server";
 import { Project } from "~/models/project.server";
 import { User } from "~/models/user.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
@@ -15,13 +15,15 @@ export type EnvironmentVariableWithSetValues = Result["environmentVariables"][nu
 
 export class EnvironmentVariablesPresenter {
   #prismaClient: PrismaClient;
+  #replicaClient: PrismaReplicaClient;
 
-  constructor(prismaClient: PrismaClient = prisma) {
+  constructor(prismaClient: PrismaClient = prisma, replicaClient: PrismaReplicaClient = $replica) {
     this.#prismaClient = prismaClient;
+    this.#replicaClient = replicaClient;
   }
 
   public async call({ userId, projectSlug }: { userId: User["id"]; projectSlug: Project["slug"] }) {
-    const project = await this.#prismaClient.project.findFirst({
+    const project = await this.#replicaClient.project.findFirst({
       select: {
         id: true,
       },
@@ -43,7 +45,7 @@ export class EnvironmentVariablesPresenter {
 
     const { environments: sortedEnvironments, hasStaging } =
       await loadEnvironmentVariablesEnvironments(
-        this.#prismaClient,
+        this.#replicaClient,
         { userId, projectId: project.id },
         { skipProjectAccessCheck: true }
       );
@@ -52,7 +54,7 @@ export class EnvironmentVariablesPresenter {
     // values in archived branch environments, which would otherwise all be loaded here.
     const environmentIds = sortedEnvironments.map((env) => env.id);
 
-    const environmentVariables = await this.#prismaClient.environmentVariable.findMany({
+    const environmentVariables = await this.#replicaClient.environmentVariable.findMany({
       select: {
         id: true,
         key: true,
@@ -100,7 +102,7 @@ export class EnvironmentVariablesPresenter {
 
     const users =
       userIds.size > 0
-        ? await this.#prismaClient.user.findMany({
+        ? await this.#replicaClient.user.findMany({
             where: {
               id: {
                 in: Array.from(userIds),
@@ -118,7 +120,7 @@ export class EnvironmentVariablesPresenter {
     const usersRecord: Record<string, { id: string; name: string | null; displayName: string | null; avatarUrl: string | null }> =
       Object.fromEntries(users.map((u) => [u.id, u]));
 
-    const repository = new EnvironmentVariablesRepository(this.#prismaClient);
+    const repository = new EnvironmentVariablesRepository(this.#prismaClient, this.#replicaClient);
 
     const nonSecretItems: Array<{ environmentId: string; key: string }> = [];
     for (const environmentVariable of environmentVariables) {
