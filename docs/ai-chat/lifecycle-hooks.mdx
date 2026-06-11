@@ -273,7 +273,7 @@ Use this when the backend should be the source of truth for message history: abu
 | `chatId`           | `string`                                              | Chat session ID                                           |
 | `turn`             | `number`                                              | Turn number (0-indexed)                                   |
 | `trigger`          | `"submit-message" \| "regenerate-message" \| "action"` | The trigger type for this turn                           |
-| `incomingMessages` | `UIMessage[]`                                         | Validated wire messages from the frontend — 0-or-1-length (empty for actions, regenerates, and continuations; one element for normal `submit-message` and tool-approval responses). On a [Head Start](/ai-chat/fast-starts#with-hydratemessages) first turn, carries the route handler's first-turn history |
+| `incomingMessages` | `UIMessage[]`                                         | Validated incoming messages for this turn. Usually 0-or-1 (empty for actions, regenerates, and continuations; one element for normal `submit-message` and tool-approval responses). On a [Head Start](/ai-chat/fast-starts#with-hydratemessages) first turn, this can contain the route handler's first-turn history. |
 | `previousMessages` | `UIMessage[]`                                         | Accumulated UI messages before this turn (`[]` on turn 0) |
 | `clientData`       | Typed by `clientDataSchema`                           | Custom data from the frontend                             |
 | `continuation`     | `boolean`                                             | Whether this run is continuing an existing chat           |
