@@ -5418,12 +5418,17 @@ function chatAgent<
                   : undefined;
               if (snapshotInCursor !== undefined && Number.isFinite(snapshotInCursor)) {
                 bootInCursor = snapshotInCursor;
+                bootInCursorResolved = true;
               } else {
-                bootInCursor = await findLatestSessionInCursor(payload.chatId).catch(
-                  () => undefined
-                );
+                try {
+                  bootInCursor = await findLatestSessionInCursor(payload.chatId);
+                  bootInCursorResolved = true;
+                } catch {
+                  // Transient scan failure: leave unresolved so the
+                  // resume-cursor block below retries the lookup.
+                  bootInCursor = undefined;
+                }
               }
-              bootInCursorResolved = true;
               bootSpan.setAttribute(
                 "chat.boot.replay.in.cursorFromSnapshot",
                 snapshotInCursor !== undefined
