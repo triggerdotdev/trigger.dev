@@ -195,8 +195,8 @@ export default function Page() {
                 <Table containerClassName="max-h-full">
                   <TableHeader>
                     <TableRow>
-                      <TableHeaderCell>Task ID</TableHeaderCell>
                       <TableHeaderCell>Task type</TableHeaderCell>
+                      <TableHeaderCell>Task ID</TableHeaderCell>
                       <TableHeaderCell>File</TableHeaderCell>
                       <TableHeaderCell>Running</TableHeaderCell>
                       <TableHeaderCell>Activity (24h)</TableHeaderCell>
@@ -277,28 +277,11 @@ function TaskRow({
     <TableRow className="group">
       <TableCell to={rowPath} isTabbableCell>
         <div className="flex items-center gap-2">
-          <SimpleTooltip
-            button={
-              item.kind === "AGENT" ? (
-                <CubeSparkleIcon className="size-4.5 text-agents" />
-              ) : (
-                <TaskTriggerSourceIcon source={item.triggerSource} />
-              )
-            }
-            content={
-              item.kind === "AGENT"
-                ? "Agent task"
-                : item.kind === "SCHEDULED"
-                ? "Scheduled task"
-                : "Standard task"
-            }
-            disableHoverableContent
-          />
-          <span>{item.slug}</span>
-        </div>
-      </TableCell>
-      <TableCell to={rowPath}>
-        <div className="flex items-center gap-2">
+          {item.kind === "AGENT" ? (
+            <CubeSparkleIcon className="size-4.5 text-agents" />
+          ) : (
+            <TaskTriggerSourceIcon source={item.triggerSource} />
+          )}
           <span>
             {item.kind === "AGENT"
               ? "Agent"
@@ -310,6 +293,9 @@ function TaskRow({
             <Badge variant="extra-small">{formatAgentType(item.agentType)}</Badge>
           )}
         </div>
+      </TableCell>
+      <TableCell to={rowPath}>
+        <span>{item.slug}</span>
       </TableCell>
       <TableCell to={rowPath}>
         <TaskFileName fileName={item.filePath} variant="extra-extra-small" />
