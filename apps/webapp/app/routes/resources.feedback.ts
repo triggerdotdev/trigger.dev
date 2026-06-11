@@ -21,7 +21,7 @@ export const feedbackTypes = {
   },
   help: {
     label: "Help me out",
-    labelTypeId: undefined,
+    labelTypeId: "lt_01KTVCAPZY5ZJ0SS4ACMXWYYT3",
     threadTitle: "Contact form: Help me out",
   },
   enterprise: {
@@ -36,12 +36,12 @@ export const feedbackTypes = {
   },
   concurrency: {
     label: "Increase my concurrency",
-    labelTypeId: undefined,
+    labelTypeId: "lt_01KTVCCY2PDE5V6WV2PQ8N85K2",
     threadTitle: "Contact form: Increase my concurrency",
   },
   region: {
     label: "Suggest a new region",
-    labelTypeId: undefined,
+    labelTypeId: "lt_01KTVCDPYYBW6KS9H5V8MTQ0GG",
     threadTitle: "Contact form: Suggest a new region",
   },
   hipaa: {
