@@ -6362,6 +6362,21 @@ function chatAgent<
 
                   let cleanedUIMessages: TUIMessage[] = cleanedIncomingMessages;
 
+                  // Turn-0 head-start with hydrateMessages: the boot seeding from
+                  // `payload.headStartMessages` is non-hydrate-only, so ship the
+                  // route handler's first-turn history to the hydrate hook as
+                  // incoming messages instead (gated on the pending handover).
+                  if (
+                    turn === 0 &&
+                    hydrateMessages &&
+                    cleanedUIMessages.length === 0 &&
+                    (locals.get(chatHandoverPartialKey)?.length ?? 0) > 0 &&
+                    Array.isArray(payload.headStartMessages) &&
+                    payload.headStartMessages.length > 0
+                  ) {
+                    cleanedUIMessages = payload.headStartMessages as TUIMessage[];
+                  }
+
                   // Validate/transform UIMessages before conversion — catches malformed
                   // messages from storage or untrusted input before they reach the model.
                   // Slim wire: triggers like `regenerate-message` carry no incoming
@@ -6568,32 +6583,40 @@ function chatAgent<
                     // `preload` / `close` / `handover-prepare` and submits
                     // with no incoming message fall through with the boot-
                     // seeded accumulator unchanged.
+                  }
 
-                    if (turn === 0) {
-                      // Head-start handover splice (turn 0 only): the
-                      // `chat.handover` route handler signalled a mid-turn
-                      // handover, so splice its partial assistant response
-                      // (text + pending tool-calls + the synthesized
-                      // tool-approval round) onto the accumulator.
-                      // `streamText` then hits AI SDK's initial-tool-
-                      // execution branch, runs the agent-side tool executes,
-                      // and resumes from step 2 — skipping the first model
-                      // call (already done by the handler).
-                      //
-                      // We also synthesize a UIMessage form of the partial
-                      // assistant and push it to `accumulatedUIMessages` so
-                      // AI SDK's `processUIMessageStream` (invoked when the
-                      // run loop calls `runResult.toUIMessageStream({
-                      // onFinish })`) can initialize `state.message` from
-                      // the trailing assistant in `originalMessages`. Without
-                      // that, the `tool-output-available` chunks emitted by
-                      // the initial-tool-execution branch can't find their
-                      // matching tool-call in state and AI SDK throws
-                      // `UIMessageStreamError: No tool invocation found`.
-                      const pendingHandoverPartial = locals.get(chatHandoverPartialKey);
-                      if (pendingHandoverPartial && pendingHandoverPartial.length > 0) {
+                  if (turn === 0) {
+                    // Head-start handover splice (turn 0 only, BOTH
+                    // accumulation branches — hydrate and default): the
+                    // `chat.handover` route handler signalled a mid-turn
+                    // handover, so splice its partial assistant response
+                    // (text + pending tool-calls + the synthesized
+                    // tool-approval round) onto the accumulator.
+                    // `streamText` then hits AI SDK's initial-tool-
+                    // execution branch, runs the agent-side tool executes,
+                    // and resumes from step 2 — skipping the first model
+                    // call (already done by the handler).
+                    //
+                    // We also synthesize a UIMessage form of the partial
+                    // assistant and push it to `accumulatedUIMessages` so
+                    // AI SDK's `processUIMessageStream` (invoked when the
+                    // run loop calls `runResult.toUIMessageStream({
+                    // onFinish })`) can initialize `state.message` from
+                    // the trailing assistant in `originalMessages`. Without
+                    // that, the `tool-output-available` chunks emitted by
+                    // the initial-tool-execution branch can't find their
+                    // matching tool-call in state and AI SDK throws
+                    // `UIMessageStreamError: No tool invocation found`.
+                    const pendingHandoverPartial = locals.get(chatHandoverPartialKey);
+                    if (pendingHandoverPartial && pendingHandoverPartial.length > 0) {
+                      const handoverMessageId = locals.get(chatHandoverMessageIdKey);
+                      // Skip if the hydrated chain already persisted the
+                      // partial under the handover messageId.
+                      const alreadyInChain =
+                        handoverMessageId !== undefined &&
+                        accumulatedUIMessages.some((m) => m.id === handoverMessageId);
+                      if (!alreadyInChain) {
                         accumulatedMessages.push(...pendingHandoverPartial);
-                        const handoverMessageId = locals.get(chatHandoverMessageIdKey);
                         const partialUI = synthesizeHandoverUIMessage(
                           pendingHandoverPartial,
                           handoverMessageId
@@ -6601,12 +6624,12 @@ function chatAgent<
                         if (partialUI) {
                           accumulatedUIMessages.push(partialUI as TUIMessage);
                         }
-                        locals.set(chatHandoverPartialKey, []); // consume once
                       }
+                      locals.set(chatHandoverPartialKey, []); // consume once
                     }
-
-                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                   }
+
+                  locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
 
                   } // end if (trigger !== "action")
 
