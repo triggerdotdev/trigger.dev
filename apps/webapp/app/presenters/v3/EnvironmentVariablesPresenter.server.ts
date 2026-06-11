@@ -41,6 +41,17 @@ export class EnvironmentVariablesPresenter {
       throw new Error("Project not found");
     }
 
+    const { environments: sortedEnvironments, hasStaging } =
+      await loadEnvironmentVariablesEnvironments(
+        this.#prismaClient,
+        { userId, projectId: project.id },
+        { skipProjectAccessCheck: true }
+      );
+
+    // Only load values for the environments we display. Projects can accumulate
+    // values in archived branch environments, which would otherwise all be loaded here.
+    const environmentIds = sortedEnvironments.map((env) => env.id);
+
     const environmentVariables = await this.#prismaClient.environmentVariable.findMany({
       select: {
         id: true,
@@ -58,6 +69,11 @@ export class EnvironmentVariablesPresenter {
               },
             },
             isSecret: true,
+          },
+          where: {
+            environmentId: {
+              in: environmentIds,
+            },
           },
         },
       },
@@ -101,13 +117,6 @@ export class EnvironmentVariablesPresenter {
 
     const usersRecord: Record<string, { id: string; name: string | null; displayName: string | null; avatarUrl: string | null }> =
       Object.fromEntries(users.map((u) => [u.id, u]));
-
-    const { environments: sortedEnvironments, hasStaging } =
-      await loadEnvironmentVariablesEnvironments(
-        this.#prismaClient,
-        { userId, projectId: project.id },
-        { skipProjectAccessCheck: true }
-      );
 
     const repository = new EnvironmentVariablesRepository(this.#prismaClient);
 

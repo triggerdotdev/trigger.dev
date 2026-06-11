@@ -69,4 +69,112 @@ describe("EnvironmentVariablesPresenter", () => {
     expect(secretVariable!.value).toBe("");
     expect(nonSecretVariable!.value).toBe("plain-value");
   });
+
+  postgresTest(
+    "returns values for active environments (including branch environments) and excludes archived branch environments",
+    async ({ prisma }) => {
+      const { user, organization, project, projectSlug } =
+        await createTestOrgProjectWithMember(prisma);
+
+      const prodEnvironment = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        type: "PRODUCTION",
+      });
+
+      const parentPreviewEnvironment = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        type: "PREVIEW",
+      });
+      await prisma.runtimeEnvironment.update({
+        where: { id: parentPreviewEnvironment.id },
+        data: { isBranchableEnvironment: true },
+      });
+
+      const activeBranchEnvironment = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        type: "PREVIEW",
+      });
+      await prisma.runtimeEnvironment.update({
+        where: { id: activeBranchEnvironment.id },
+        data: {
+          parentEnvironmentId: parentPreviewEnvironment.id,
+          branchName: "feature/active",
+        },
+      });
+
+      const archivedBranchEnvironment = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        type: "PREVIEW",
+      });
+      await prisma.runtimeEnvironment.update({
+        where: { id: archivedBranchEnvironment.id },
+        data: {
+          parentEnvironmentId: parentPreviewEnvironment.id,
+          branchName: "feature/archived",
+        },
+      });
+
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
+
+      await createEnvironmentVariable(repository, project.id, {
+        environmentId: prodEnvironment.id,
+        key: "MY_VAR",
+        value: "prod-value",
+        userId: user.id,
+      });
+      await createEnvironmentVariable(repository, project.id, {
+        environmentId: activeBranchEnvironment.id,
+        key: "MY_VAR",
+        value: "active-branch-value",
+        userId: user.id,
+      });
+      await createEnvironmentVariable(repository, project.id, {
+        environmentId: archivedBranchEnvironment.id,
+        key: "MY_VAR",
+        value: "archived-branch-value",
+        userId: user.id,
+      });
+
+      // Archive the branch after it accumulated values (archiving does not
+      // delete its EnvironmentVariableValue rows).
+      await prisma.runtimeEnvironment.update({
+        where: { id: archivedBranchEnvironment.id },
+        data: { archivedAt: new Date() },
+      });
+
+      const result = await new EnvironmentVariablesPresenter(prisma).call({
+        userId: user.id,
+        projectSlug,
+      });
+
+      const environmentIds = result.environments.map((environment) => environment.id);
+      expect(environmentIds).toContain(prodEnvironment.id);
+      expect(environmentIds).toContain(activeBranchEnvironment.id);
+      expect(environmentIds).not.toContain(archivedBranchEnvironment.id);
+
+      const myVarValues = result.environmentVariables.filter(
+        (variable) => variable.key === "MY_VAR"
+      );
+      expect(myVarValues).toHaveLength(2);
+
+      const prodValue = myVarValues.find(
+        (variable) => variable.environment.id === prodEnvironment.id
+      );
+      expect(prodValue?.value).toBe("prod-value");
+
+      const activeBranchValue = myVarValues.find(
+        (variable) => variable.environment.id === activeBranchEnvironment.id
+      );
+      expect(activeBranchValue?.value).toBe("active-branch-value");
+      expect(activeBranchValue?.environment.branchName).toBe("feature/active");
+
+      expect(
+        myVarValues.some((variable) => variable.environment.id === archivedBranchEnvironment.id)
+      ).toBe(false);
+    }
+  );
 });
