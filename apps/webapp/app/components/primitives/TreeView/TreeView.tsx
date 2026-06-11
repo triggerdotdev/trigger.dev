@@ -1,6 +1,14 @@
 import { VirtualItem, Virtualizer, useVirtualizer } from "@tanstack/react-virtual";
 import { motion } from "framer-motion";
-import { MutableRefObject, RefObject, useCallback, useEffect, useReducer, useRef } from "react";
+import {
+  MutableRefObject,
+  RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+} from "react";
 import { cn } from "~/utils/cn";
 import { NodeState, NodesState, reducer } from "./reducer";
 import { concreteStateFromInput, selectedIdFromState } from "./utils";
@@ -46,6 +54,16 @@ export function TreeView<TData>({
   }, [autoFocus, parentRef?.current]);
 
   const virtualItems = virtualizer.getVirtualItems();
+
+  // id -> node lookup so each virtual row resolves in O(1) instead of
+  // scanning the whole tree per row.
+  const nodesById = useMemo(() => {
+    const map = new Map<string, FlatTreeItem<TData>>();
+    for (const node of tree) {
+      map.set(node.id, node);
+    }
+    return map;
+  }, [tree]);
 
   const scrollCallback = useCallback(
     (event: Event) => {
@@ -99,7 +117,7 @@ export function TreeView<TData>({
           }}
         >
           {virtualItems.map((virtualItem) => {
-            const node = tree.find((node) => node.id === virtualItem.key);
+            const node = nodesById.get(virtualItem.key as string);
             if (!node) return null;
             const state = nodes[node.id];
             if (!state) return null;
@@ -196,6 +214,16 @@ export function useTree<TData, TFilterValue>({
     reducer,
     concreteStateFromInput({ tree, selectedId, collapsedIds, filter })
   );
+
+  // id -> index lookup so getNodeProps resolves in O(1) instead of scanning
+  // the whole tree per rendered row.
+  const treeIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    tree.forEach((node, index) => {
+      map.set(node.id, index);
+    });
+    return map;
+  }, [tree]);
 
   //sync external selectedId prop into internal state
   useEffect(() => {
@@ -497,7 +525,7 @@ export function useTree<TData, TFilterValue>({
     (id: string) => {
       const node = state.nodes[id];
       if (!node) return {};
-      const treeItemIndex = tree.findIndex((node) => node.id === id);
+      const treeItemIndex = treeIndexById.get(id) ?? -1;
       const treeItem = tree[treeItemIndex];
       return {
         "aria-expanded": node.expanded,
@@ -506,7 +534,7 @@ export function useTree<TData, TFilterValue>({
         tabIndex: node.selected ? -1 : undefined,
       };
     },
-    [state]
+    [state, treeIndexById]
   );
 
   return {

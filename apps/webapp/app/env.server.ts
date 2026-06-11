@@ -726,6 +726,9 @@ const EnvironmentSchema = z
     MAXIMUM_LIVE_RELOADING_EVENTS: z.coerce.number().int().default(1000),
     MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),
+    // Emergency circuit breaker: when set, clamps the trace summary and detailed
+    // summary span limits on both event store paths to this value. Unset = disabled.
+    TRACE_VIEW_EMERGENCY_SPAN_CAP: z.coerce.number().int().positive().optional(),
     TASK_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().default(524_288), // 512KB
     BATCH_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().optional(), // Defaults to TASK_PAYLOAD_OFFLOAD_THRESHOLD if not set
     TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728), // 3MB

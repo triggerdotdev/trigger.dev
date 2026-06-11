@@ -181,6 +181,15 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
     );
   });
 
+  test("should not attach raw span event properties to timeline events", () => {
+    const result = createTimelineSpanEventsFromSpanEvents(sampleSpanEvents, true);
+
+    expect(result.length).toBeGreaterThan(0);
+    for (const event of result) {
+      expect(event).not.toHaveProperty("properties");
+    }
+  });
+
   test("should preserve duration from span events", () => {
     const result = createTimelineSpanEventsFromSpanEvents(sampleSpanEvents, true);
 
