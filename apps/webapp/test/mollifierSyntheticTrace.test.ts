@@ -141,9 +141,10 @@ describe("buildSyntheticTraceForBufferedRun", () => {
     expect(trace.queuedDuration).toBeUndefined();
   });
 
-  it("synthesises an empty events list (no timeline events from the buffer)", () => {
+  it("synthesises an empty timeline and keeps raw span events out of the payload", () => {
     const trace = buildSyntheticTraceForBufferedRun(makeSyntheticRun());
-    expect(trace.events[0].data.events).toEqual([]);
+    // Raw span events stay server-side (mirrors RunPresenter's payload diet).
+    expect(trace.events[0].data).not.toHaveProperty("events");
     expect(trace.events[0].data.timelineEvents).toEqual([]);
   });
 });
