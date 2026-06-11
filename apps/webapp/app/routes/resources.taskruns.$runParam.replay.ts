@@ -1,5 +1,5 @@
 import { parse } from "@conform-to/zod";
-import { type ActionFunction, json, type LoaderFunctionArgs } from "@remix-run/node";
+import { json, type LoaderFunctionArgs } from "@remix-run/node";
 import { type EnvironmentType, prettyPrintPacket } from "@trigger.dev/core/v3";
 import { typedjson } from "remix-typedjson";
 import { z } from "zod";
@@ -8,6 +8,7 @@ import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/m
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
@@ -252,169 +253,190 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   });
 }
 
-export const action: ActionFunction = async ({ request, params }) => {
-  // Dashboard auth: identical pattern to resources.taskruns.$runParam.cancel.ts.
-  // The loader above this action already gates with `requireUser`, but
-  // Remix's action runs independently — without this call any request
-  // with a valid runParam could submit a replay. The PG findFirst below
-  // also adds the org-membership filter so a PAT can't replay another
-  // org's run, and the buffered fallback verifies org membership via
-  // orgMember.findFirst against the snapshot's orgId.
-  const user = await requireUser(request);
-  const userId = user.id;
-  const { runParam } = ParamSchema.parse(params);
-
-  const formData = await request.formData();
-  const submission = parse(formData, { schema: ReplayRunData });
-
-  if (!submission.value) {
-    return json(submission);
+// Resolve the run's organization so the RBAC auth scope can resolve the
+// user's role in it. The run may not be in Postgres yet (buffered during a
+// burst), so fall back to the buffer entry's org.
+async function resolveRunOrganizationId(runParam: string): Promise<string | null> {
+  const run = await $replica.taskRun.findFirst({
+    where: { friendlyId: runParam },
+    select: { project: { select: { organizationId: true } } },
+  });
+  if (run) {
+    return run.project.organizationId;
   }
 
-  try {
-    const pgRun = await prisma.taskRun.findFirst({
-      where: {
-        friendlyId: runParam,
-        project: {
-          organization: {
-            members: {
-              some: {
-                userId,
+  const buffer = getMollifierBuffer();
+  const entry = buffer ? await buffer.getEntry(runParam) : null;
+  return entry?.orgId ?? null;
+}
+
+export const action = dashboardAction(
+  {
+    params: ParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveRunOrganizationId(params.runParam);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "write", resource: { type: "runs" } },
+  },
+  // The PG findFirst below keeps the org-membership filter so a user can't
+  // replay another org's run, and the buffered fallback verifies membership
+  // via orgMember.findFirst against the snapshot's orgId.
+  async ({ request, params, user }) => {
+    const { runParam } = params;
+
+    const formData = await request.formData();
+    const submission = parse(formData, { schema: ReplayRunData });
+
+    if (!submission.value) {
+      return json(submission);
+    }
+
+    try {
+      const pgRun = await prisma.taskRun.findFirst({
+        where: {
+          friendlyId: runParam,
+          project: {
+            organization: {
+              members: {
+                some: {
+                  userId: user.id,
+                },
               },
             },
           },
         },
-      },
-      include: {
-        runtimeEnvironment: {
-          select: {
-            slug: true,
-          },
-        },
-        project: {
-          include: {
-            organization: true,
-          },
-        },
-      },
-    });
-
-    // Mollifier read-fallback: if the original isn't in PG yet,
-    // synthesise a TaskRun from the buffered snapshot. The B4-extended
-    // SyntheticRun carries every field ReplayTaskRunService reads. We
-    // also need projectSlug + orgSlug + envSlug for the redirect path,
-    // so look those up via the snapshot's runtimeEnvironmentId.
-    let taskRun: SyntheticReplayTaskRun | null = pgRun ?? null;
-    if (!taskRun) {
-      const buffer = getMollifierBuffer();
-      const entry = buffer ? await buffer.getEntry(runParam) : null;
-      if (entry) {
-        // Same org-membership gate as the PG path above. Without this
-        // any authenticated user who knows a runId could replay the
-        // buffered run across orgs.
-        const member = await prisma.orgMember.findFirst({
-          where: { userId, organizationId: entry.orgId },
-          select: { id: true },
-        });
-        if (!member) {
-          return redirectWithErrorMessage(
-            submission.value.failedRedirect,
-            request,
-            "Run not found"
-          );
-        }
-        const synthetic = await findRunByIdWithMollifierFallback({
-          runId: runParam,
-          environmentId: entry.envId,
-          organizationId: entry.orgId,
-        });
-        if (synthetic) {
-          const envRow = await prisma.runtimeEnvironment.findFirst({
-            where: { id: entry.envId },
+        include: {
+          runtimeEnvironment: {
             select: {
               slug: true,
-              project: { select: { slug: true, organization: { select: { slug: true } } } },
             },
+          },
+          project: {
+            include: {
+              organization: true,
+            },
+          },
+        },
+      });
+
+      // Mollifier read-fallback: if the original isn't in PG yet,
+      // synthesise a TaskRun from the buffered snapshot. The B4-extended
+      // SyntheticRun carries every field ReplayTaskRunService reads. We
+      // also need projectSlug + orgSlug + envSlug for the redirect path,
+      // so look those up via the snapshot's runtimeEnvironmentId.
+      let taskRun: SyntheticReplayTaskRun | null = pgRun ?? null;
+      if (!taskRun) {
+        const buffer = getMollifierBuffer();
+        const entry = buffer ? await buffer.getEntry(runParam) : null;
+        if (entry) {
+          // Same org-membership gate as the PG path above. Without this
+          // any authenticated user who knows a runId could replay the
+          // buffered run across orgs.
+          const member = await prisma.orgMember.findFirst({
+            where: { userId: user.id, organizationId: entry.orgId },
+            select: { id: true },
           });
-          if (envRow) {
-            taskRun = buildSyntheticReplayTaskRun({ synthetic, envRow });
+          if (!member) {
+            return redirectWithErrorMessage(
+              submission.value.failedRedirect,
+              request,
+              "Run not found"
+            );
+          }
+          const synthetic = await findRunByIdWithMollifierFallback({
+            runId: runParam,
+            environmentId: entry.envId,
+            organizationId: entry.orgId,
+          });
+          if (synthetic) {
+            const envRow = await prisma.runtimeEnvironment.findFirst({
+              where: { id: entry.envId },
+              select: {
+                slug: true,
+                project: { select: { slug: true, organization: { select: { slug: true } } } },
+              },
+            });
+            if (envRow) {
+              taskRun = buildSyntheticReplayTaskRun({ synthetic, envRow });
+            }
           }
         }
       }
-    }
 
-    if (!taskRun) {
-      return redirectWithErrorMessage(submission.value.failedRedirect, request, "Run not found");
-    }
+      if (!taskRun) {
+        return redirectWithErrorMessage(submission.value.failedRedirect, request, "Run not found");
+      }
 
-    const replayRunService = new ReplayTaskRunService();
-    const newRun = await replayRunService.call(taskRun, {
-      environmentId: submission.value.environment,
-      payload: submission.value.payload,
-      metadata: submission.value.metadata,
-      tags: submission.value.tags,
-      queue: submission.value.queue,
-      concurrencyKey: submission.value.concurrencyKey,
-      maxAttempts: submission.value.maxAttempts,
-      maxDurationSeconds: submission.value.maxDurationSeconds,
-      machine: submission.value.machine,
-      region: submission.value.region,
-      delaySeconds: submission.value.delaySeconds,
-      idempotencyKey: submission.value.idempotencyKey,
-      idempotencyKeyTTLSeconds: submission.value.idempotencyKeyTTLSeconds,
-      ttlSeconds: submission.value.ttlSeconds,
-      version: submission.value.version,
-      prioritySeconds: submission.value.prioritySeconds,
-      triggerSource: "dashboard",
-    });
+      const replayRunService = new ReplayTaskRunService();
+      const newRun = await replayRunService.call(taskRun, {
+        environmentId: submission.value.environment,
+        payload: submission.value.payload,
+        metadata: submission.value.metadata,
+        tags: submission.value.tags,
+        queue: submission.value.queue,
+        concurrencyKey: submission.value.concurrencyKey,
+        maxAttempts: submission.value.maxAttempts,
+        maxDurationSeconds: submission.value.maxDurationSeconds,
+        machine: submission.value.machine,
+        region: submission.value.region,
+        delaySeconds: submission.value.delaySeconds,
+        idempotencyKey: submission.value.idempotencyKey,
+        idempotencyKeyTTLSeconds: submission.value.idempotencyKeyTTLSeconds,
+        ttlSeconds: submission.value.ttlSeconds,
+        version: submission.value.version,
+        prioritySeconds: submission.value.prioritySeconds,
+        triggerSource: "dashboard",
+      });
 
-    if (!newRun) {
+      if (!newRun) {
+        return redirectWithErrorMessage(
+          submission.value.failedRedirect,
+          request,
+          "Failed to replay run"
+        );
+      }
+
+      const runPath = v3RunSpanPath(
+        {
+          slug: taskRun.project.organization.slug,
+        },
+        { slug: taskRun.project.slug },
+        { slug: taskRun.runtimeEnvironment.slug },
+        { friendlyId: newRun.friendlyId },
+        { spanId: newRun.spanId }
+      );
+
+      logger.debug("Replayed run", {
+        taskRunId: taskRun.id,
+        taskRunFriendlyId: taskRun.friendlyId,
+        newRunId: newRun.id,
+        newRunFriendlyId: newRun.friendlyId,
+        runPath,
+      });
+
+      return redirectWithSuccessMessage(runPath, request, `Replaying run`);
+    } catch (error) {
+      if (error instanceof Error) {
+        logger.error("Failed to replay run", {
+          error: {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+          },
+        });
+        return redirectWithErrorMessage(submission.value.failedRedirect, request, error.message);
+      }
+
+      logger.error("Failed to replay run", { error });
       return redirectWithErrorMessage(
         submission.value.failedRedirect,
         request,
-        "Failed to replay run"
+        JSON.stringify(error)
       );
     }
-
-    const runPath = v3RunSpanPath(
-      {
-        slug: taskRun.project.organization.slug,
-      },
-      { slug: taskRun.project.slug },
-      { slug: taskRun.runtimeEnvironment.slug },
-      { friendlyId: newRun.friendlyId },
-      { spanId: newRun.spanId }
-    );
-
-    logger.debug("Replayed run", {
-      taskRunId: taskRun.id,
-      taskRunFriendlyId: taskRun.friendlyId,
-      newRunId: newRun.id,
-      newRunFriendlyId: newRun.friendlyId,
-      runPath,
-    });
-
-    return redirectWithSuccessMessage(runPath, request, `Replaying run`);
-  } catch (error) {
-    if (error instanceof Error) {
-      logger.error("Failed to replay run", {
-        error: {
-          name: error.name,
-          message: error.message,
-          stack: error.stack,
-        },
-      });
-      return redirectWithErrorMessage(submission.value.failedRedirect, request, error.message);
-    }
-
-    logger.error("Failed to replay run", { error });
-    return redirectWithErrorMessage(
-      submission.value.failedRedirect,
-      request,
-      JSON.stringify(error)
-    );
   }
-};
+);
 
 async function findTask(
   environment: { type: EnvironmentType; id: string },
