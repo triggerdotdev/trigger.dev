@@ -536,6 +536,28 @@ export const containerTestWithIsolatedRedis = test.extend<ContainerWithIsolatedR
   clickhouseClient: scopedClickhouseClient,
 });
 
+type ContainerWithIsolatedRedisNoClickhouseContext = {
+  network: StartedNetwork;
+  postgresContainer: StartedPostgreSqlContainer;
+  prisma: PrismaClient;
+  redisContainer: StartedRedisContainer;
+  redisOptions: RedisOptions;
+};
+
+// Postgres (template-clone) + per-test Redis, and NOTHING else. Same Redis isolation as
+// containerTestWithIsolatedRedis (for background work that outlives the test body) but without the
+// worker-scoped ClickHouse boot+migrate that the `resetClickhouse` auto fixture would otherwise force
+// on the first test in the file. Use this for tests that touch Postgres + Redis but never ClickHouse -
+// it removes the heaviest item from the cold-start container budget.
+export const containerTestWithIsolatedRedisNoClickhouse =
+  test.extend<ContainerWithIsolatedRedisNoClickhouseContext>({
+    network,
+    postgresContainer: clonedPostgresContainer,
+    prisma: prismaFromContainer,
+    redisContainer,
+    redisOptions,
+  });
+
 // For tests that exercise the Postgres -> ClickHouse logical-replication pipeline (WAL slots,
 // publications, REPLICA IDENTITY). These need a dedicated Postgres per test - the worker-scoped +
 // template-clone model used by containerTest doesn't carry logical replication across cloned dbs.
