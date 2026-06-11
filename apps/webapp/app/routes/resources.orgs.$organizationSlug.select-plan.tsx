@@ -665,7 +665,7 @@ export function TierHobby({
             title="Credits included"
             content={
               <>
-                This plan includes ${plan.tierPrice} of compute each month. After that's used, tasks
+                This plan includes ${plan.limits.includedUsage / 100} of compute each month. After that's used, tasks
                 keep running and you're billed per our{" "}
                 <TextLink to="https://trigger.dev/pricing#computePricing">
                   compute usage rates
@@ -810,7 +810,7 @@ export function TierPro({
             title="Credits included"
             content={
               <>
-                This plan includes ${plan.tierPrice} of compute each month. After that's used, tasks
+                This plan includes ${plan.limits.includedUsage / 100} of compute each month. After that's used, tasks
                 keep running and you're billed per our{" "}
                 <TextLink to="https://trigger.dev/pricing#computePricing">
                   compute usage rates
