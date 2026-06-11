@@ -29,6 +29,7 @@ import { LinkButton } from "../primitives/Buttons";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { Paragraph } from "../primitives/Paragraph";
 import { Badge } from "../primitives/Badge";
@@ -55,6 +56,7 @@ export function OrganizationSettingsSideMenu({
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
   const currentPlan = useCurrentPlan();
+  const showSelfServe = useShowSelfServe();
   const isAdmin = useHasAdminAccess();
   const showBuildInfo = isAdmin || !isManagedCloud;
 
@@ -103,14 +105,16 @@ export function OrganizationSettingsSideMenu({
                   ) : undefined
                 }
               />
-              <SideMenuItem
-                name="Billing alerts"
-                icon={BellIcon}
-                activeIconColor="text-text-bright"
-                inactiveIconColor="text-text-dimmed"
-                to={v3BillingAlertsPath(organization)}
-                data-action="billing-alerts"
-              />
+              {showSelfServe ? (
+                <SideMenuItem
+                  name="Billing alerts"
+                  icon={BellIcon}
+                  activeIconColor="text-text-bright"
+                  inactiveIconColor="text-text-dimmed"
+                  to={v3BillingAlertsPath(organization)}
+                  data-action="billing-alerts"
+                />
+              ) : null}
             </>
           )}
           <SideMenuItem

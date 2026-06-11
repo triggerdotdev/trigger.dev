@@ -4,6 +4,7 @@ import { EnvelopeIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { useFetcher } from "@remix-run/react";
 import { type ReactNode, useEffect, useState } from "react";
+import { Feedback } from "~/components/Feedback";
 import { Button } from "~/components/primitives/Buttons";
 import {
   Dialog,
@@ -20,6 +21,7 @@ import { InputNumberStepper } from "~/components/primitives/InputNumberStepper";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { PurchaseSchema } from "~/routes/resources.orgs.$organizationSlug.schedules-addon";
 import { cn } from "~/utils/cn";
 import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
@@ -49,6 +51,7 @@ export function PurchaseSchedulesModal({
   planScheduleLimit,
   triggerButton,
 }: Props) {
+  const showSelfServe = useShowSelfServe();
   const fetcher = useFetcher();
   const lastSubmission =
     fetcher.data && typeof fetcher.data === "object" && "intent" in fetcher.data
@@ -104,6 +107,15 @@ export function PurchaseSchedulesModal({
   const pricePerStep = schedulePricing.centsPerStep / 100;
   const stepUnit = formatNumber(stepSize);
   const title = extraSchedules === 0 ? "Purchase extra schedules…" : "Add/remove extra schedules…";
+
+  if (!showSelfServe) {
+    return (
+      <Feedback
+        defaultValue="enterprise"
+        button={<Button variant="secondary/small">Request more</Button>}
+      />
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

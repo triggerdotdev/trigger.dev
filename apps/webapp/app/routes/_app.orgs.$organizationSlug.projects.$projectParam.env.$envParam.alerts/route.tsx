@@ -18,6 +18,7 @@ import assertNever from "assert-never";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AlertsNoneDev, AlertsNoneDeployed } from "~/components/BlankStatePanels";
+import { Feedback } from "~/components/Feedback";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -45,6 +46,7 @@ import {
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
@@ -182,6 +184,7 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+  const showSelfServe = useShowSelfServe();
 
   const requiresUpgrade = limits.used >= limits.limit;
 
@@ -343,9 +346,16 @@ export default function Page() {
                       </Header3>
                     )}
 
-                    <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
-                      Upgrade
-                    </LinkButton>
+                    {showSelfServe ? (
+                      <LinkButton to={v3BillingPath(organization)} variant="secondary/small">
+                        Upgrade
+                      </LinkButton>
+                    ) : (
+                      <Feedback
+                        defaultValue="enterprise"
+                        button={<Button variant="secondary/small">Request more</Button>}
+                      />
+                    )}
                   </div>
                 </div>
               </div>

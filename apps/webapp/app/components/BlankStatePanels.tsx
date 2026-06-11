@@ -434,7 +434,7 @@ export function NoWaitpointTokens() {
   );
 }
 
-export function BranchesNoBranchableEnvironment() {
+export function BranchesNoBranchableEnvironment({ showSelfServe }: { showSelfServe: boolean }) {
   const { isManagedCloud } = useFeatures();
   const organization = useOrganization();
 
@@ -462,9 +462,16 @@ export function BranchesNoBranchableEnvironment() {
       iconClassName="text-preview"
       panelClassName="max-w-full"
       accessory={
-        <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
-          Upgrade
-        </LinkButton>
+        showSelfServe ? (
+          <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
+            Upgrade
+          </LinkButton>
+        ) : (
+          <Feedback
+            button={<Button variant="secondary/small">Request more</Button>}
+            defaultValue="enterprise"
+          />
+        )
       }
     >
       <Paragraph spacing variant="small">
@@ -483,10 +490,12 @@ export function BranchesNoBranches({
   parentEnvironment,
   limits,
   canUpgrade,
+  showSelfServe,
 }: {
   parentEnvironment: { id: string };
   limits: { used: number; limit: number };
   canUpgrade: boolean;
+  showSelfServe: boolean;
 }) {
   const organization = useOrganization();
 
@@ -498,14 +507,18 @@ export function BranchesNoBranches({
         iconClassName="text-preview"
         panelClassName="max-w-full"
         accessory={
-          canUpgrade ? (
+          showSelfServe && canUpgrade ? (
             <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
               Upgrade
             </LinkButton>
           ) : (
             <Feedback
-              button={<Button variant="primary/small">Request more</Button>}
-              defaultValue="help"
+              button={
+                <Button variant={showSelfServe ? "primary/small" : "secondary/small"}>
+                  Request more
+                </Button>
+              }
+              defaultValue={showSelfServe ? "help" : "enterprise"}
             />
           )
         }
