@@ -269,9 +269,9 @@ export default function Page() {
                               }
                               hiddenButtons={
                                 <LinkButton
-                                  variant="minimal/small"
+                                  variant="secondary/small"
                                   LeadingIcon={BeakerIcon}
-                                  leadingIconClassName="-mx-2.5 text-text-bright"
+                                  leadingIconClassName="-mx-2.5 text-tests"
                                   to={testPath}
                                 >
                                   Test
@@ -325,13 +325,13 @@ function RunningCell({
   }
   const lines: string[] = [];
   if (state.running > 0) {
-    lines.push(`${state.running} ${state.running === 1 ? "run" : "runs"} currently executing.`);
+    lines.push(`${state.running} ${state.running === 1 ? "run" : "runs"} currently executing`);
   }
   if (state.suspended > 0) {
     lines.push(
       `${state.suspended} ${
         state.suspended === 1 ? "run" : "runs"
-      } paused while waiting (e.g. on a tool, user input, or another task).`
+      } paused while waiting (e.g. on a tool, user input, or another task)`
     );
   }
   return (
