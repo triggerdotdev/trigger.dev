@@ -1889,6 +1889,11 @@ describe("mockChatAgent", () => {
         // The snapshot reflects the post-turn accumulator: 1 user + 1 assistant.
         const roles = snap!.messages.map((m) => m.role);
         expect(roles).toEqual(["user", "assistant"]);
+        // `lastInEventId` stays undefined here: TestSessionStreamManager
+        // deliberately has no seq numbers, so the committed `.in` cursor
+        // the production write site reads is undefined in harness runs.
+        // The cursor round-trip is covered by the live smoke instead.
+        expect(snap!.lastInEventId).toBeUndefined();
       } finally {
         await harness.close();
       }

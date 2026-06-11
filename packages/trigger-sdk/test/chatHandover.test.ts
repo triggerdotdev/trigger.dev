@@ -260,6 +260,271 @@ describe("chat.handover", () => {
     }
   });
 
+  it("pure-text head-start preserves reasoning parts in the response (TRI-10716)", async () => {
+    // Extended-thinking models stream a reasoning part in step 1. The
+    // synthesized partial must carry it (with provider metadata, so an
+    // Anthropic signature survives a UIMessage -> ModelMessage round
+    // trip) or the durable history loses the step-1 thinking.
+    let captured:
+      | { partTypes?: string[]; reasoningText?: string; meta?: unknown }
+      | undefined;
+
+    const agent = chat.agent({
+      id: "chat.handover.reasoning",
+      onTurnComplete: ({ responseMessage }) => {
+        const parts = responseMessage?.parts ?? [];
+        captured = {
+          partTypes: parts.map((p) => p.type),
+          reasoningText: parts
+            .filter((p) => p.type === "reasoning")
+            .map((p) => (p as { text?: string }).text || "")
+            .join(""),
+          meta: (parts.find((p) => p.type === "reasoning") as
+            | { providerMetadata?: unknown }
+            | undefined)?.providerMetadata,
+        };
+      },
+      run: async ({ messages, signal }) => {
+        return streamText({
+          model: new MockLanguageModelV3({
+            doStream: async () => ({ stream: textStream("should-not-run") }),
+          }),
+          messages,
+          abortSignal: signal,
+        });
+      },
+    });
+
+    const harness = mockChatAgent(agent, {
+      chatId: "test-handover-reasoning",
+      mode: "handover-prepare",
+    });
+
+    try {
+      await harness.sendHandover({
+        partialAssistantMessage: [
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "reasoning",
+                text: "thinking about the greeting",
+                providerOptions: { anthropic: { signature: "sig-abc" } },
+              },
+              { type: "text", text: "Hello!" },
+            ],
+          },
+        ],
+        messageId: "asst-reason-1",
+        isFinal: true,
+      });
+      await new Promise((r) => setTimeout(r, 30));
+
+      expect(captured).toBeDefined();
+      expect(captured!.partTypes).toEqual(["reasoning", "text"]);
+      expect(captured!.reasoningText).toBe("thinking about the greeting");
+      expect(captured!.meta).toEqual({ anthropic: { signature: "sig-abc" } });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("pure-text head-start (isFinal: true) with hydrateMessages persists the partial (TRI-10715)", async () => {
+    // Same as the pure-text case above, but the customer registers
+    // `hydrateMessages` (the documented DB-as-source-of-truth pattern).
+    // The head-start user message must reach the hydrate hook as
+    // `incomingMessages`, and the warm route's partial must land in the
+    // accumulator so `onTurnComplete` carries the full first turn.
+    const runFn = vi.fn();
+    const stored: { id: string; role: string; parts: unknown[] }[] = [];
+    const hydrateIncomingRoles: string[] = [];
+    let captured:
+      | { responseId?: string; responseText?: string; roles?: string[] }
+      | undefined;
+
+    const agent = chat.agent({
+      id: "chat.handover.hydrate-pure-text",
+      hydrateMessages: async ({ incomingMessages }) => {
+        hydrateIncomingRoles.push(...incomingMessages.map((m) => m.role));
+        for (const m of incomingMessages) {
+          if (!stored.some((s) => s.id === m.id)) stored.push(m as (typeof stored)[number]);
+        }
+        return [...stored] as never;
+      },
+      onTurnComplete: ({ responseMessage, uiMessages }) => {
+        captured = {
+          responseId: responseMessage?.id,
+          responseText: (responseMessage?.parts ?? [])
+            .filter((p) => p.type === "text")
+            .map((p) => (p as { text?: string }).text || "")
+            .join(""),
+          roles: uiMessages.map((m) => m.role),
+        };
+      },
+      run: async ({ messages, signal }) => {
+        runFn();
+        return streamText({
+          model: new MockLanguageModelV3({
+            doStream: async () => ({ stream: textStream("should-not-run") }),
+          }),
+          messages,
+          abortSignal: signal,
+        });
+      },
+    });
+
+    const harness = mockChatAgent(agent, {
+      chatId: "test-handover-hydrate-final",
+      mode: "handover-prepare",
+      headStartMessages: [
+        { id: "hs-user-1", role: "user", parts: [{ type: "text", text: "say hi" }] },
+      ],
+    });
+
+    try {
+      await harness.sendHandover({
+        partialAssistantMessage: [
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "Hi there, hope you're well." }],
+          },
+        ],
+        messageId: "asst-hydrate-1",
+        isFinal: true,
+      });
+      await new Promise((r) => setTimeout(r, 30));
+
+      // isFinal — the agent never calls the user's run().
+      expect(runFn).not.toHaveBeenCalled();
+
+      // The head-start user message reached the hydrate hook as incoming.
+      expect(hydrateIncomingRoles).toContain("user");
+
+      // onTurnComplete carries the full first turn: user + the warm
+      // route's assistant, under the handover messageId.
+      expect(captured).toBeDefined();
+      expect(captured!.roles).toEqual(["user", "assistant"]);
+      expect(captured!.responseId).toBe("asst-hydrate-1");
+      expect(captured!.responseText).toBe("Hi there, hope you're well.");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("tool-call handover (isFinal: false) with hydrateMessages resumes from step 2 (TRI-10715)", async () => {
+    // Hydrate variant of the schema-only tool-call case: the spliced
+    // partial (assistant + approval round) must reach the agent's
+    // streamText so AI SDK executes the pending tool instead of
+    // re-running step 1 from scratch against an empty/short prompt.
+    const toolExecute = vi.fn(async ({ city }: { city: string }) => ({ city, temp: 22 }));
+    const weatherTool = tool({
+      description: "Look up weather",
+      inputSchema: z.object({ city: z.string() }),
+      execute: toolExecute,
+    });
+
+    const stored: { id: string; role: string; parts: unknown[] }[] = [];
+    let runMessageRoles: string[] | undefined;
+    let captured: { roles?: string[]; assistantIds?: (string | undefined)[] } | undefined;
+
+    const agent = chat.agent({
+      id: "chat.handover.hydrate-schema-only-tool",
+      hydrateMessages: async ({ incomingMessages }) => {
+        for (const m of incomingMessages) {
+          if (!stored.some((s) => s.id === m.id)) stored.push(m as (typeof stored)[number]);
+        }
+        return [...stored] as never;
+      },
+      onTurnComplete: ({ uiMessages }) => {
+        captured = {
+          roles: uiMessages.map((m) => m.role),
+          assistantIds: uiMessages.filter((m) => m.role === "assistant").map((m) => m.id),
+        };
+      },
+      run: async ({ messages, signal }) => {
+        runMessageRoles = messages.map((m) => m.role);
+        return streamText({
+          model: new MockLanguageModelV3({
+            doStream: async () => ({ stream: textStream("the weather in tokyo is 22°C") }),
+          }),
+          messages,
+          tools: { weather: weatherTool },
+          abortSignal: signal,
+        });
+      },
+    });
+
+    const harness = mockChatAgent(agent, {
+      chatId: "test-handover-hydrate-tool",
+      mode: "handover-prepare",
+      headStartMessages: [
+        { id: "hs-user-2", role: "user", parts: [{ type: "text", text: "weather in tokyo?" }] },
+      ],
+    });
+
+    try {
+      const turn = await harness.sendHandover({
+        isFinal: false,
+        messageId: "asst-hydrate-2",
+        partialAssistantMessage: [
+          {
+            role: "assistant",
+            content: [
+              { type: "text", text: "let me check the weather" },
+              {
+                type: "tool-call",
+                toolCallId: "tc-h1",
+                toolName: "weather",
+                input: { city: "tokyo" },
+              },
+              {
+                type: "tool-approval-request",
+                approvalId: "handover-approval-h1",
+                toolCallId: "tc-h1",
+              },
+            ],
+          },
+          {
+            role: "tool",
+            content: [
+              {
+                type: "tool-approval-response",
+                approvalId: "handover-approval-h1",
+                approved: true,
+              },
+            ],
+          },
+        ],
+      });
+      await new Promise((r) => setTimeout(r, 30));
+
+      // The resume prompt contained the full splice: user + partial
+      // assistant + approval round — NOT an empty/user-only prompt.
+      expect(runMessageRoles).toEqual(["user", "assistant", "tool"]);
+
+      // AI SDK's initial-tool-execution branch ran the agent-side
+      // execute (no step-1 re-run).
+      expect(toolExecute).toHaveBeenCalledWith(
+        expect.objectContaining({ city: "tokyo" }),
+        expect.anything()
+      );
+
+      // Step-2 text streamed through session.out.
+      const text = turn.chunks
+        .filter((c) => c.type === "text-delta")
+        .map((c) => (c as { delta: string }).delta)
+        .join("");
+      expect(text).toContain("tokyo");
+
+      // One assistant in the final chain, under the handover messageId.
+      expect(captured).toBeDefined();
+      expect(captured!.roles).toEqual(["user", "assistant"]);
+      expect(captured!.assistantIds).toEqual(["asst-hydrate-2"]);
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("onTurnStart fires after the handover signal arrives (lazy)", async () => {
     // Hooks should not fire during the wait — only once handover lands
     // and a real turn begins. Verifies the order so customers can

@@ -93,6 +93,12 @@ export type MockChatAgentOptions = {
    */
   mode?: "preload" | "submit-message" | "handover-prepare" | "continuation";
   /**
+   * First-turn UIMessage history shipped on the BOOT payload. Only
+   * meaningful with `mode: "handover-prepare"` — mirrors the
+   * `chat.headStart` route handler's `basePayload.headStartMessages`.
+   */
+  headStartMessages?: UIMessage[];
+  /**
    * Pre-seed the snapshot the agent reads at run boot. The runtime's
    * snapshot read is replaced with one that returns this snapshot
    * (skipping the real S3 GET). Use to drive boot scenarios — fresh
@@ -501,6 +507,7 @@ export function mockChatAgent(
         metadata: clientData,
         ...(!isContinuationMode && options.continuation ? { continuation: true } : {}),
         ...(options.previousRunId ? { previousRunId: options.previousRunId } : {}),
+        ...(options.headStartMessages ? { headStartMessages: options.headStartMessages } : {}),
       };
 
       sendSessionInput = drivers.sessions.in.send;
