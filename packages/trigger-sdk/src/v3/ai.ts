@@ -1500,8 +1500,15 @@ const messagesInput: RealtimeDefinedInputStream<ChatTaskWirePayload> = {
   on(handler) {
     return getChatSession().in.on<ChatInputChunk>((chunk) => {
       if (chunk.kind === "message") {
-        return handler(chunk.payload);
+        // Returning `true` marks the record CONSUMED at the manager level:
+        // it is neither buffered for a later `once()` nor re-delivered by
+        // the buffer drain when the next turn re-attaches its handler.
+        // Without this, a message arriving mid-stream was delivered twice
+        // and ran a duplicate turn.
+        void Promise.resolve(handler(chunk.payload)).catch(() => {});
+        return true;
       }
+      return undefined;
     });
   },
   once(options) {
@@ -1601,8 +1608,13 @@ const stopInput: RealtimeDefinedInputStream<{ stop: true; message?: string }> = 
   on(handler) {
     return getChatSession().in.on<ChatInputChunk>((chunk) => {
       if (chunk.kind === "stop") {
-        return handler({ stop: true, message: chunk.message });
+        // Consume stop records (see the messages facade above). A stop is
+        // only meaningful to the turn it interrupts — buffering it would
+        // let a stale stop abort a future turn.
+        void Promise.resolve(handler({ stop: true, message: chunk.message })).catch(() => {});
+        return true;
       }
+      return undefined;
     });
   },
   once(options) {
@@ -4240,6 +4252,13 @@ export type TurnCompleteEvent<TClientData = unknown, TUIM extends UIMessage = UI
    * manual `pipeChat()` or an aborted stream).
    */
   finishReason?: FinishReason;
+  /**
+   * Set when the turn failed (the `run()` body or a lifecycle hook threw).
+   * On an errored turn `responseMessage` is undefined or partial and
+   * `finishReason` is `"error"`. Use this to mark the turn failed in your
+   * persistence. Undefined on a successful turn.
+   */
+  error?: unknown;
 };
 
 /**
@@ -5082,6 +5101,11 @@ function chatCustomAgent<
       // No client-side upsert needed.
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
       locals.set(chatAgentRunContextKey, runOptions.ctx);
+      // Initialize the turn-complete trim slot so `chat.writeTurnComplete`
+      // trims `session.out` back to the previous turn boundary. Without
+      // this the slot is undefined and the trim never runs, so `.out`
+      // grows without bound for the whole custom-agent surface.
+      locals.set(lastTurnCompleteSeqNumKey, { value: undefined });
       markChatAgentRunForStreamsWarning();
       taskContext.setConversationId(payload.chatId);
       stampConversationIdOnActiveSpan(payload.chatId);
@@ -7544,6 +7568,9 @@ function chatAgent<
                 throw turnError;
               }
 
+              let errorTurnCompleteResult: Awaited<
+                ReturnType<typeof writeTurnCompleteChunk>
+              > | undefined;
               try {
                 await withChatWriter(async (writer) => {
                   const errorText =
@@ -7551,9 +7578,93 @@ function chatAgent<
                   writer.write({ type: "error", errorText } as any);
                 });
                 // Signal turn complete so the client knows this turn is done
-                await writeTurnCompleteChunk(currentWirePayload.chatId);
+                errorTurnCompleteResult = await writeTurnCompleteChunk(currentWirePayload.chatId);
               } catch {
                 // Best-effort — if stream write fails, let the run continue anyway
+              }
+
+              // The submit-message merge into the accumulator may not have run
+              // yet (a pre-run hook threw), so fold the wire message in for the
+              // error event + snapshot — the cursor has already advanced past it,
+              // so otherwise it survives in neither the snapshot nor the `.in` tail.
+              const erroredWireMessage = (currentWirePayload as { message?: TUIMessage }).message;
+              const erroredUIMessages =
+                erroredWireMessage &&
+                !accumulatedUIMessages.some((m) => m.id === erroredWireMessage.id)
+                  ? [...accumulatedUIMessages, erroredWireMessage]
+                  : accumulatedUIMessages;
+
+              // Fire onTurnComplete on the error path too — the docs promise it
+              // runs "after every turn, successful or errored" so customers can
+              // mark the turn failed. `responseMessage` is undefined/partial and
+              // `error` carries the thrown value.
+              if (onTurnComplete) {
+                try {
+                  await tracer.startActiveSpan(
+                    "onTurnComplete()",
+                    async () => {
+                      await onTurnComplete({
+                        ctx,
+                        chatId: currentWirePayload.chatId,
+                        messages: accumulatedMessages,
+                        uiMessages: erroredUIMessages,
+                        newMessages: [],
+                        newUIMessages: erroredWireMessage ? [erroredWireMessage] : [],
+                        responseMessage: undefined,
+                        rawResponseMessage: undefined,
+                        turn,
+                        runId: ctx.run.id,
+                        chatAccessToken: "",
+                        // Parsed `clientData` isn't reliably in scope here (parsing
+                        // may itself be the failure), and the raw metadata is the
+                        // wrong shape — leave it undefined on the error path.
+                        clientData: undefined,
+                        stopped: false,
+                        continuation,
+                        previousRunId,
+                        preloaded,
+                        totalUsage: cumulativeUsage,
+                        finishReason: "error",
+                        error: turnError,
+                        lastEventId: errorTurnCompleteResult?.lastEventId,
+                      });
+                    },
+                    {
+                      attributes: {
+                        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                        [SemanticInternalAttributes.COLLAPSED]: true,
+                        "chat.id": currentWirePayload.chatId,
+                        "chat.turn": turn + 1,
+                        "chat.errored": true,
+                      },
+                    }
+                  );
+                } catch {
+                  // A throwing onTurnComplete on the error path must not crash
+                  // the run — keep the conversation alive for the next message.
+                }
+              }
+
+              // Persist a snapshot so the failed turn's user message isn't
+              // stranded. `writeTurnCompleteChunk` already advanced the `.in`
+              // cursor past it (via the session-in-event-id header), and the
+              // success-path snapshot write is skipped on error — without this
+              // the next boot would resume past a message that exists in
+              // neither the snapshot nor the replayable `.in` tail.
+              if (!hydrateMessages) {
+                try {
+                  await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
+                    version: 1,
+                    savedAt: Date.now(),
+                    messages: erroredUIMessages,
+                    lastOutEventId: errorTurnCompleteResult?.lastEventId,
+                  });
+                } catch (error) {
+                  logger.warn("chat.agent: error-path snapshot write failed", {
+                    error: error instanceof Error ? error.message : String(error),
+                    sessionId: sessionIdForSnapshot,
+                  });
+                }
               }
 
               // chat.requestUpgrade() / chat.endRun() — exit after error turn too
@@ -9518,7 +9629,8 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     // run-list filter by chat works without the customer having to wire it
     // up. Mirrors the browser-mediated `TriggerChatTransport.doStart` path.
     const userTags = params.triggerConfig?.tags ?? options?.triggerConfig?.tags ?? [];
-    const tags = [`chat:${params.chatId}`, ...userTags].slice(0, 5);
+    // Platform cap is 10 tags per run; the auto chat tag takes one slot.
+    const tags = [`chat:${params.chatId}`, ...userTags].slice(0, 10);
 
     const clientDataMetadata =
       params.clientData !== undefined ? { metadata: params.clientData } : {};
@@ -9860,8 +9972,19 @@ async function writeTurnCompleteChunk(
   // 2. Trim back to the previous turn-complete, if we have one. Skipping on
   //    first-turn-ever (or first turn post-OOM without a snapshot seed) is
   //    fine — the chain catches up next turn.
-  const slot = locals.get(lastTurnCompleteSeqNumKey);
-  const prev = slot?.value;
+  //
+  // Lazily create the slot if a caller reached here without one (a plain
+  // `task()` driving `chat.createSession` / `chat.writeTurnComplete`, vs.
+  // chatAgent/chatCustomAgent which seed it at boot). The first call then
+  // does no trim (nothing before it) and records its seq; later calls trim
+  // — so `.out` is bounded for every writeTurnComplete caller, not just the
+  // built-in agents.
+  let slot = locals.get(lastTurnCompleteSeqNumKey);
+  if (!slot) {
+    slot = { value: undefined };
+    locals.set(lastTurnCompleteSeqNumKey, slot);
+  }
+  const prev = slot.value;
   if (slot && prev !== undefined) {
     try {
       await session.out.trimTo(prev);

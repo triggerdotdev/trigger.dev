@@ -106,12 +106,14 @@ const { action, loader } = createActionApiRoute(
       });
 
       // Step 2: Register the waitpoint on the session channel so the next
-      // append fires it. Keyed by (addressingKey, io) — the canonical
-      // string for the row. The append handler drains by the same
-      // canonical key, so writers and readers converge regardless of
-      // which URL form the agent vs. the appending caller used.
+      // append fires it. Keyed by (environmentId, addressingKey, io) — the
+      // canonical string for the row, scoped to the environment because
+      // externalIds are only unique per environment. The append handler
+      // drains by the same key, so writers and readers converge regardless
+      // of which URL form the agent vs. the appending caller used.
       const ttlMs = timeout ? timeout.getTime() - Date.now() : undefined;
       await addSessionStreamWaitpoint(
+        authentication.environment.id,
         addressingKey,
         body.io,
         result.waitpoint.id,
@@ -152,6 +154,7 @@ const { action, loader } = createActionApiRoute(
               });
 
               await removeSessionStreamWaitpoint(
+                authentication.environment.id,
                 addressingKey,
                 body.io,
                 result.waitpoint.id

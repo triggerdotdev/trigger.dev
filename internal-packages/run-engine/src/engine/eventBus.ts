@@ -11,7 +11,14 @@ export type EventBusEvents = {
   runCreated: [
     {
       time: Date;
-      runId: string;
+      run: {
+        id: string;
+        runTags: string[];
+        batchId: string | null;
+      };
+      environment: {
+        id: string;
+      };
     },
   ];
   runEnqueuedAfterDelay: [
@@ -23,6 +30,8 @@ export type EventBusEvents = {
         queuedAt: Date;
         updatedAt: Date;
         createdAt: Date;
+        runTags: string[];
+        batchId: string | null;
       };
       organization: {
         id: string;
@@ -44,6 +53,8 @@ export type EventBusEvents = {
         delayUntil: Date;
         updatedAt: Date;
         createdAt: Date;
+        runTags: string[];
+        batchId: string | null;
       };
       organization: {
         id: string;
@@ -76,6 +87,8 @@ export type EventBusEvents = {
         maxDurationInSeconds?: number;
         maxAttempts?: number;
         createdAt: Date;
+        runTags: string[];
+        batchId: string | null;
       };
       organization: {
         id: string;
@@ -96,6 +109,8 @@ export type EventBusEvents = {
         status: TaskRunStatus;
         updatedAt: Date;
         createdAt: Date;
+        runTags: string[];
+        batchId: string | null;
       };
       organization: {
         id?: string;
@@ -119,6 +134,8 @@ export type EventBusEvents = {
         attemptNumber: number;
         baseCostInCents: number;
         executedAt: Date | undefined;
+        runTags: string[];
+        batchId: string | null;
       };
       organization: {
         id: string;
@@ -245,6 +262,8 @@ export type EventBusEvents = {
         createdAt: Date;
         error: TaskRunError;
         taskEventStore?: string;
+        runTags: string[];
+        batchId: string | null;
       };
       organization: {
         id: string;

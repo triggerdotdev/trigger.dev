@@ -133,13 +133,11 @@ export class ComputeWorkloadManager implements WorkloadManager {
     // Strip image digest - resolve by tag, not digest
     const imageRef = stripImageDigest(opts.image);
 
-    // Labels forwarded to the compute provider for network-policy selection;
-    // the provider promotes a configured subset to its network layer. Mirrors
-    // the privatelink label the Kubernetes workload manager sets on the run pod.
-    const labels: Record<string, string> = {};
-    if (opts.hasPrivateLink) {
-      labels.privatelink = opts.orgId;
-    }
+    // Labels forwarded to the compute provider for network-policy selection.
+    // `org` is always set so every run carries its org identity.
+    const labels: Record<string, string> = {
+      org: opts.orgId,
+    };
 
     // Wide event: single canonical log line emitted in finally
     const event: Record<string, unknown> = {
@@ -319,12 +317,11 @@ export class ComputeWorkloadManager implements WorkloadManager {
       TRIGGER_WORKER_INSTANCE_NAME: this.opts.runner.instanceName,
     };
 
-    // Resupply the same labels on restore (mirror of the create path); the
-    // provider doesn't persist them across a snapshot, so without this a
-    // restored run would lose its policy-based network selection.
+    // Resupply labels on restore (the provider doesn't persist them across a
+    // snapshot). orgId is optional on the restore opts type, so guard it.
     const labels: Record<string, string> = {};
-    if (opts.hasPrivateLink && opts.orgId) {
-      labels.privatelink = opts.orgId;
+    if (opts.orgId) {
+      labels.org = opts.orgId;
     }
 
     this.logger.verbose("restore request body", {
