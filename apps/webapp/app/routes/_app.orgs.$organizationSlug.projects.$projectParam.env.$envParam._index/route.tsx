@@ -163,7 +163,8 @@ export default function Page() {
                 <Table containerClassName="max-h-full pb-[2.5rem]">
                   <TableHeader>
                     <TableRow>
-                      <TableHeaderCell>ID</TableHeaderCell>
+                      <TableHeaderCell>Task ID</TableHeaderCell>
+                      <TableHeaderCell>Task type</TableHeaderCell>
                       <TableHeaderCell>File</TableHeaderCell>
                       <TableHeaderCell>Running</TableHeaderCell>
                       <TableHeaderCell>Activity (7d)</TableHeaderCell>
@@ -213,6 +214,17 @@ export default function Page() {
                                   disableHoverableContent
                                 />
                                 <span>{item.slug}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell to={rowPath}>
+                              <div className="flex items-center gap-2">
+                                <span>
+                                  {item.kind === "AGENT"
+                                    ? "Agent"
+                                    : item.kind === "SCHEDULED"
+                                    ? "Scheduled"
+                                    : "Standard"}
+                                </span>
                                 {item.kind === "AGENT" && item.agentType && (
                                   <Badge variant="extra-small">
                                     {formatAgentType(item.agentType)}
@@ -282,7 +294,7 @@ export default function Page() {
                         );
                       })
                     ) : (
-                      <TableBlankRow colSpan={5}>
+                      <TableBlankRow colSpan={6}>
                         <Paragraph variant="small" className="flex items-center justify-center">
                           No tasks match your filters
                         </Paragraph>
