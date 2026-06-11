@@ -544,11 +544,8 @@ type ContainerWithIsolatedRedisNoClickhouseContext = {
   redisOptions: RedisOptions;
 };
 
-// Postgres (template-clone) + per-test Redis, and NOTHING else. Same Redis isolation as
-// containerTestWithIsolatedRedis (for background work that outlives the test body) but without the
-// worker-scoped ClickHouse boot+migrate that the `resetClickhouse` auto fixture would otherwise force
-// on the first test in the file. Use this for tests that touch Postgres + Redis but never ClickHouse -
-// it removes the heaviest item from the cold-start container budget.
+// Like containerTestWithIsolatedRedis (template-clone Postgres + per-test Redis) but with no
+// ClickHouse - for suites that touch Postgres + Redis but never ClickHouse, avoiding its boot+migrate.
 export const containerTestWithIsolatedRedisNoClickhouse =
   test.extend<ContainerWithIsolatedRedisNoClickhouseContext>({
     network,

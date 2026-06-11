@@ -16,11 +16,8 @@ vi.mock("~/services/platform.v3.server", async (importOriginal) => {
 
 import { RunEngine } from "@internal/run-engine";
 import { setupAuthenticatedEnvironment } from "@internal/run-engine/tests";
-// Per-test redis (isolated): each test spins up its own RunEngine and runs batch work, which leaves
-// background activity on redis that outlives the test - sharing a worker redis across the 16 cases
-// here caused cross-test interference and 30s seal-timeout flakes. Same carve-out as the run-engine
-// batch tests. The NoClickhouse variant skips the worker-scoped ClickHouse boot+migrate (these tests
-// never touch ClickHouse), which the cold-start test would otherwise pay inside its test timeout.
+// Per-test redis isolation: each test runs its own RunEngine whose background work outlives the test
+// body. NoClickhouse because this suite never touches ClickHouse - skips the worker-scoped boot+migrate.
 import { containerTestWithIsolatedRedisNoClickhouse as containerTest } from "@internal/testcontainers";
 import { trace } from "@opentelemetry/api";
 import { PrismaClient } from "@trigger.dev/database";
@@ -34,11 +31,8 @@ import {
 } from "../../app/runEngine/services/streamBatchItems.server";
 import { ServiceValidationError } from "../../app/v3/services/baseService.server";
 
-// 120s (not 30s): each of the 16 cases here boots its own per-test Redis container and spins up a
-// full RunEngine, and a cold container boot counts against the test's own timeout. Under CI Docker
-// contention that boot can take tens of seconds, so 30s was too tight and the flake landed on
-// whichever test happened to boot while Docker was busiest. 120s matches the run-engine package
-// convention for tests of this footprint (RunEngine + per-test container).
+// 120s: a cold per-test container boot counts against the test's own timeout, and under CI Docker
+// contention 30s was too tight. Matches the run-engine convention for this footprint.
 vi.setConfig({ testTimeout: 120_000 });
 
 describe("StreamBatchItemsService", () => {
