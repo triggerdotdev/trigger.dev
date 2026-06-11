@@ -1,10 +1,8 @@
-import {
-  BellAlertIcon,
-  ChartBarIcon,
-  CreditCardIcon,
-} from "@heroicons/react/20/solid";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
+import { BellIcon } from "~/assets/icons/BellIcon";
+import { CreditCardIcon } from "~/assets/icons/CreditCardIcon";
 import { PadlockIcon } from "~/assets/icons/PadlockIcon";
+import { UsageIcon } from "~/assets/icons/UsageIcon";
 import { RolesIcon } from "~/assets/icons/RolesIcon";
 import { ShieldLockIcon } from "~/assets/icons/ShieldLockIcon";
 import { SlackIcon } from "~/assets/icons/SlackIcon";
@@ -86,7 +84,7 @@ export function OrganizationSettingsSideMenu({
             <>
               <SideMenuItem
                 name="Usage"
-                icon={ChartBarIcon}
+                icon={UsageIcon}
                 activeIconColor="text-text-bright"
                 inactiveIconColor="text-text-dimmed"
                 to={v3UsagePath(organization)}
@@ -107,7 +105,7 @@ export function OrganizationSettingsSideMenu({
               />
               <SideMenuItem
                 name="Billing alerts"
-                icon={BellAlertIcon}
+                icon={BellIcon}
                 activeIconColor="text-text-bright"
                 inactiveIconColor="text-text-dimmed"
                 to={v3BillingAlertsPath(organization)}

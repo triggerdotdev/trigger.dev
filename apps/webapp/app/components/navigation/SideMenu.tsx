@@ -1,8 +1,6 @@
 import {
   ArrowTopRightOnSquareIcon,
-  ChartBarIcon as ChartBarIconHero,
   ChevronRightIcon,
-  CogIcon,
   ExclamationTriangleIcon,
   PencilSquareIcon,
 } from "@heroicons/react/24/outline";
@@ -42,6 +40,7 @@ import { SlidersIcon } from "~/assets/icons/SlidersIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { BellIcon } from "~/assets/icons/BellIcon";
+import { UsageIcon } from "~/assets/icons/UsageIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
@@ -726,6 +725,12 @@ export function SideMenu({
           </div>
         </div>
         <div>
+          <NotificationPanel
+            isCollapsed={isCollapsed}
+            hasIncident={incidentStatus.hasIncident}
+            organizationId={organization.id}
+            projectId={project.id}
+          />
           <IncidentStatusPanel
             isCollapsed={isCollapsed}
             title={incidentStatus.title}
@@ -738,12 +743,6 @@ export function SideMenu({
             projectCreatedAt={project.createdAt}
             hasIncident={incidentStatus.hasIncident}
             isManagedCloud={incidentStatus.isManagedCloud}
-          />
-          <NotificationPanel
-            isCollapsed={isCollapsed}
-            hasIncident={incidentStatus.hasIncident}
-            organizationId={organization.id}
-            projectId={project.id}
           />
           <motion.div
             layout
@@ -984,7 +983,7 @@ function ProjectSelector({
               iconSpacing="gap-1.5"
               className="group-hover/button:border-charcoal-500"
             >
-              <CogIcon className="size-4 text-text-dimmed" />
+              <SlidersIcon className="size-4 text-text-dimmed" />
               <span className="text-text-bright">Settings</span>
             </LinkButton>
             {isManagedCloud && (
@@ -995,7 +994,7 @@ function ProjectSelector({
                 iconSpacing="gap-1.5"
                 className="group-hover/button:border-charcoal-500"
               >
-                <ChartBarIconHero className="size-4 text-text-dimmed" />
+                <UsageIcon className="size-4 text-text-dimmed" />
                 <span className="text-text-bright">Usage</span>
               </LinkButton>
             )}
