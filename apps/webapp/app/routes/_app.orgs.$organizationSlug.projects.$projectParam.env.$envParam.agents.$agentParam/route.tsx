@@ -304,28 +304,24 @@ function AgentDetailSidebar({
 
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="border-b border-grid-dimmed px-3 py-2">
-        <Header2 className="flex min-w-0 items-center gap-1.5">
+      <div className="flex items-center gap-2 border-b border-grid-dimmed px-3 py-2">
+        <Header2 className="flex min-w-0 flex-1 items-center gap-1.5">
           <CubeSparkleIcon className="size-4 shrink-0 text-agents" />
           <span className="truncate">{agent.slug}</span>
         </Header2>
+        <LinkButton
+          variant="primary/small"
+          to={playgroundPath}
+          LeadingIcon={BeakerIcon}
+          iconSpacing="gap-x-2"
+          leadingIconClassName="-mx-2"
+          className="shrink-0"
+        >
+          Test agent
+        </LinkButton>
       </div>
       <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <Property.Table>
-          <Property.Item>
-            <Property.Label>Test this agent</Property.Label>
-            <Property.Value className="mt-1">
-              <LinkButton
-                variant="primary/small"
-                to={playgroundPath}
-                LeadingIcon={BeakerIcon}
-                iconSpacing="gap-x-2"
-                leadingIconClassName="-mx-2"
-              >
-                Test
-              </LinkButton>
-            </Property.Value>
-          </Property.Item>
           <Property.Item>
             <Property.Label>Slug</Property.Label>
             <Property.Value>
