@@ -9,8 +9,10 @@ import {
   useTypedLoaderData,
 } from "remix-typedjson";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
+import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { DevDisconnectedBanner, useDevPresence } from "~/components/DevPresence";
+import { InlineCode } from "~/components/code/InlineCode";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -32,6 +34,7 @@ import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { TextLink } from "~/components/primitives/TextLink";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { RunsFilters, type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
@@ -134,7 +137,26 @@ export default function Page() {
   return (
     <>
       <NavBar>
-        <PageTitle title="Runs" />
+        <PageTitle
+          title="Runs"
+          accessory={
+            <SimpleTooltip
+              button={<QuestionMarkIcon className="size-4 text-text-dimmed" />}
+              content={
+                <>
+                  A run is a single instance of a task being executed. It's created when you trigger
+                  a task. For example:{" "}
+                  <InlineCode variant="extra-extra-small">
+                    yourTask.trigger({`{ foo: "bar" }`})
+                  </InlineCode>
+                  .
+                </>
+              }
+              className="max-w-xs"
+              disableHoverableContent
+            />
+          }
+        />
         {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
           <DevDisconnectedBanner isConnected={isConnected} />
         )}

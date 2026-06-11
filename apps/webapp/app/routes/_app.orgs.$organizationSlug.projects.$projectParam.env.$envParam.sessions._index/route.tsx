@@ -74,7 +74,10 @@ export default function Page() {
   return (
     <>
       <NavBar>
-        <PageTitle title="Sessions" />
+        <PageTitle
+          title="Sessions"
+          accessory="A session is a pair of streams: input for incoming user messages, and output for everything the agent produces, including AI generation parts (text, reasoning, tool calls, etc.) and custom data parts. Sessions also orchestrate the execution of agent runs."
+        />
         <PageAccessories>
           <AdminDebugTooltip />
           <LinkButton
