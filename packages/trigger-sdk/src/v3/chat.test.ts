@@ -1005,6 +1005,65 @@ describe("TriggerChatTransport", () => {
       expect(actionBody.payload.trigger).toBe("action");
       expect(actionBody.payload.action).toEqual({ type: "undo" });
     });
+
+    it("marks the session streaming and notifies before subscribing", async () => {
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) return defaultAppendResponse();
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const onSessionChange = vi.fn();
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        onSessionChange,
+        sessions: { "chat-act-stream": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendAction("chat-act-stream", { type: "undo" });
+      // isStreaming:true must be observed during the action — otherwise a reload
+      // mid-action sees a persisted isStreaming:false and never resumes.
+      expect(
+        onSessionChange.mock.calls.some(([, session]) => session && session.isStreaming === true)
+      ).toBe(true);
+      await drainChunks(stream);
+    });
+  });
+
+  describe("append idempotency header", () => {
+    it("the per-append X-Part-Id wins over a transport-wide headers override", async () => {
+      let appendPartId: string | undefined;
+      global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+        const urlStr = typeof url === "string" ? url : url.toString();
+        if (isSessionStreamAppendUrl(urlStr)) {
+          appendPartId = (init!.headers as Record<string, string>)["X-Part-Id"];
+          return defaultAppendResponse();
+        }
+        if (isSessionOutSubscribeUrl(urlStr)) return defaultSseResponse();
+        throw new Error(`Unexpected URL: ${urlStr}`);
+      });
+
+      const transport = new TriggerChatTransport({
+        task: "my-chat-task",
+        accessToken: () => "pat",
+        headers: { "X-Part-Id": "STATIC-OVERRIDE" },
+        sessions: { "chat-hdr": { publicAccessToken: "p" } },
+      });
+
+      const stream = await transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "chat-hdr",
+        messageId: undefined,
+        messages: [createUserMessage("hi")],
+        abortSignal: undefined,
+      });
+      await drainChunks(stream);
+
+      expect(appendPartId).toBeDefined();
+      expect(appendPartId).not.toBe("STATIC-OVERRIDE");
+    });
   });
 
   describe("reconnectToStream", () => {

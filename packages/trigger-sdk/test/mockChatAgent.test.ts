@@ -1140,6 +1140,63 @@ describe("mockChatAgent", () => {
     }
   });
 
+  it("error turn: onTurnComplete fires with the error and the failed message is snapshotted", async () => {
+    const onTurnComplete = vi.fn();
+    const agent = chat.agent({
+      id: "mockChatAgent.error-turn-run",
+      onTurnComplete,
+      run: async () => {
+        throw new Error("boom in run");
+      },
+    });
+    const harness = mockChatAgent(agent, { chatId: "err-run" });
+    try {
+      await harness.sendMessage(userMessage("hello", "u-err-run"));
+      await new Promise((r) => setTimeout(r, 50));
+      expect(onTurnComplete).toHaveBeenCalledTimes(1);
+      const evt = onTurnComplete.mock.calls[0]![0];
+      expect(evt.error).toBeInstanceOf(Error);
+      expect(evt.finishReason).toBe("error");
+      expect(evt.responseMessage).toBeUndefined();
+      expect(evt.uiMessages.some((m: any) => m.id === "u-err-run")).toBe(true);
+      const snap = harness.getSnapshot();
+      expect(snap?.messages.some((m) => m.id === "u-err-run")).toBe(true);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("error turn: a pre-merge hook throw still snapshots the failed user message", async () => {
+    const model = new MockLanguageModelV3({
+      doStream: async () => ({ stream: textStream("never reached") }),
+    });
+    const onTurnComplete = vi.fn();
+    const agent = chat.agent({
+      id: "mockChatAgent.error-turn-prehook",
+      // onValidateMessages fires BEFORE the wire message is merged into the
+      // accumulator, so the message lands in the snapshot only because the
+      // error path folds the wire message back in.
+      onValidateMessages: async () => {
+        throw new Error("boom in validate");
+      },
+      onTurnComplete,
+      run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
+    });
+    const harness = mockChatAgent(agent, { chatId: "err-prehook" });
+    try {
+      await harness.sendMessage(userMessage("validate me", "u-err-prehook"));
+      await new Promise((r) => setTimeout(r, 50));
+      expect(onTurnComplete).toHaveBeenCalledTimes(1);
+      const evt = onTurnComplete.mock.calls[0]![0];
+      expect(evt.error).toBeInstanceOf(Error);
+      expect(evt.uiMessages.some((m: any) => m.id === "u-err-prehook")).toBe(true);
+      const snap = harness.getSnapshot();
+      expect(snap?.messages.some((m) => m.id === "u-err-prehook")).toBe(true);
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("seeds locals before run() via setupLocals (DI pattern)", async () => {
     type FakeDb = { findUser(id: string): Promise<{ id: string; name: string }> };
     const dbKey = locals.create<FakeDb>("test-db");
