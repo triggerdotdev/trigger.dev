@@ -323,7 +323,7 @@ After the hook returns, the runtime overlays the wire's tool-state advances (`ou
 </Tip>
 
 <Note>
-  `incomingMessages` is **0-or-1-length** consistently. `submit-message` and tool-approval responses ship a single message; `regenerate-message`, continuations, and actions ship none. Patterns like [tool-result auditing](/ai-chat/patterns/tool-result-auditing) work the same regardless — iterate the array and the loop runs zero or one times.
+  `incomingMessages` is **usually 0-or-1-length**. `submit-message` and tool-approval responses ship a single message; `regenerate-message`, continuations, and actions ship none. The exception is a [Head Start](/ai-chat/fast-starts#with-hydratemessages) first turn, where it carries the route handler's first-turn history. Patterns like [tool-result auditing](/ai-chat/patterns/tool-result-auditing) work the same regardless — iterate the array rather than assuming a single element.
 </Note>
 
 ## onTurnStart
