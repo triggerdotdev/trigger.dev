@@ -322,7 +322,7 @@ export function TierFree({
     <TierContainer>
       <div className="relative">
         <PricingHeader title={plan.title} cost={0} />
-          {showGithubVerificationBadge && status === "approved" && (
+        {showGithubVerificationBadge && status === "approved" && (
           <SimpleTooltip
             buttonClassName="absolute right-1 top-1"
             button={
@@ -353,7 +353,7 @@ export function TierFree({
       </div>
       {status === "rejected" ? (
         <div>
-              <div className="flex flex-col gap-2 rounded-sm border border-warning p-4">
+          <div className="flex flex-col gap-2 rounded-sm border border-warning p-4">
             <ExclamationTriangleIcon className="size-6 text-warning" />
             <Paragraph variant="small/bright">
               Your Trigger.dev account failed to be verified for the Free plan because your GitHub
