@@ -40,7 +40,11 @@ import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.serve
 import { SessionListPresenter } from "~/presenters/v3/SessionListPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser } from "~/services/session.server";
-import { EnvironmentParamSchema, v3AgentsPath, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
+import {
+  EnvironmentParamSchema,
+  v3EnvironmentPath,
+  v3PlaygroundAgentPath,
+} from "~/utils/pathBuilder";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const slug = (data as { agent?: AgentDetail | null } | undefined)?.agent?.slug;
@@ -144,13 +148,13 @@ export default function Page() {
   const environment = useEnvironment();
 
   const playgroundPath = v3PlaygroundAgentPath(organization, project, environment, agent.slug);
-  const agentsPath = v3AgentsPath(organization, project, environment);
+  const tasksPath = v3EnvironmentPath(organization, project, environment);
 
   return (
     <>
       <NavBar>
         <PageTitle
-          backButton={{ to: agentsPath, text: "Agent tasks" }}
+          backButton={{ to: tasksPath, text: "Agent tasks" }}
           title={
             <span className="flex items-center gap-1">
               <CubeSparkleIcon className="size-4 text-agents" />

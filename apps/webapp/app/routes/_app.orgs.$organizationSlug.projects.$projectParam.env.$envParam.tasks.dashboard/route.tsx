@@ -25,9 +25,8 @@ import { requireUserId } from "~/services/session.server";
 import {
   docsPath,
   EnvironmentParamSchema,
-  v3AgentsPath,
+  v3EnvironmentPath,
   v3RunsPath,
-  v3SchedulesPath,
 } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
@@ -125,7 +124,7 @@ export default function TasksDashboardPage() {
                   example="A support agent that drafts replies using your docs as context."
                   data={s.agents}
                   seriesColor="hsl(280 80% 65%)"
-                  listingPath={v3AgentsPath(organization, project, environment)}
+                  listingPath={v3EnvironmentPath(organization, project, environment)}
                   docsHref={docsPath("v3/agents")}
                   emptyTitle="You don't have any agents yet"
                   emptyDescription="Create an AI agent to call LLMs, use tools, and run multi-step conversations from a Trigger.dev task."
@@ -165,7 +164,7 @@ export default function TasksDashboardPage() {
                   example="Generate a nightly report, refresh a cache every 5 minutes, or send a weekly digest email."
                   data={s.scheduled}
                   seriesColor="hsl(30 90% 60%)"
-                  listingPath={v3SchedulesPath(organization, project, environment)}
+                  listingPath={v3EnvironmentPath(organization, project, environment)}
                   docsHref={docsPath("v3/tasks-scheduled")}
                   emptyTitle="You don't have any scheduled tasks yet"
                   emptyDescription="Schedule a task to run on a cron expression. Once you've defined a `schedules.task` you can attach one or many schedules to it."

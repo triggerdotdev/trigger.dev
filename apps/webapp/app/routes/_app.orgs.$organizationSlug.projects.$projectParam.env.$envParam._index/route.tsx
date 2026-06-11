@@ -1,39 +1,33 @@
-import {
-  BookOpenIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
-  ExclamationTriangleIcon,
-} from "@heroicons/react/20/solid";
-import { BeakerIcon } from "~/assets/icons/BeakerIcon";
+import { BookOpenIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/node";
-import { useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import type { TaskRunStatus } from "@trigger.dev/database";
-import { Fragment, Suspense, useEffect, useState } from "react";
+import { Fragment, Suspense, useMemo } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, type TooltipProps } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
+import { BeakerIcon } from "~/assets/icons/BeakerIcon";
+import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { HasNoTasksDeployed, HasNoTasksDev } from "~/components/BlankStatePanels";
-import {
-  PackageManagerProvider,
-  TriggerDevStepV3,
-  TriggerLoginStepV3,
-} from "~/components/SetupCommands";
-import { StepContentContainer } from "~/components/StepContentContainer";
-import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Callout } from "~/components/primitives/Callout";
+import { Badge } from "~/components/primitives/Badge";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { formatDateTime } from "~/components/primitives/DateTime";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
-import * as Property from "~/components/primitives/PropertyTable";
 import { SearchInput } from "~/components/primitives/SearchInput";
+import {
+  ComboboxProvider,
+  SelectItem,
+  SelectList,
+  SelectPopover,
+  SelectProvider,
+  SelectTrigger,
+  shortcutFromIndex,
+} from "~/components/primitives/Select";
 import { Spinner } from "~/components/primitives/Spinner";
-import { StepNumber } from "~/components/primitives/StepNumber";
 import {
   Table,
   TableBlankRow,
@@ -48,42 +42,36 @@ import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { TaskFileName } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
-import {
-  taskTriggerSourceDescription,
-  TaskTriggerSourceIcon,
-} from "~/components/runs/v3/TaskTriggerSource";
+import { TaskTriggerSourceIcon } from "~/components/runs/v3/TaskTriggerSource";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { useEventSource } from "~/hooks/useEventSource";
 import { useFuzzyFilter } from "~/hooks/useFuzzyFilter";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { type TaskActivity } from "~/presenters/v3/TaskListPresenter.server";
 import {
-  type TaskActivity,
-  type TaskListItem,
-  taskListPresenter,
-} from "~/presenters/v3/TaskListPresenter.server";
+  unifiedTaskListPresenter,
+  type UnifiedRunningState,
+  type UnifiedTaskKind,
+  type UnifiedTaskListItem,
+} from "~/presenters/v3/UnifiedTaskListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
   docsPath,
   EnvironmentParamSchema,
   v3AgentTaskPath,
+  v3PlaygroundAgentPath,
   v3RunsPath,
   v3ScheduledTaskPath,
   v3StandardTaskPath,
-  v3TasksStreamingPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
-  return [
-    {
-      title: `Tasks | Trigger.dev`,
-    },
-  ];
+  return [{ title: `Tasks | Trigger.dev` }];
 };
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -92,34 +80,23 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
-    throw new Response(undefined, {
-      status: 404,
-      statusText: "Project not found",
-    });
+    throw new Response(undefined, { status: 404, statusText: "Project not found" });
   }
 
   const environment = await findEnvironmentBySlug(project.id, envParam, userId);
   if (!environment) {
-    throw new Response(undefined, {
-      status: 404,
-      statusText: "Environment not found",
-    });
+    throw new Response(undefined, { status: 404, statusText: "Environment not found" });
   }
 
   try {
-    const { tasks, activity, runningStats, durations } = await taskListPresenter.call({
+    const { items, activity, runningStates } = await unifiedTaskListPresenter.call({
       organizationId: project.organizationId,
       projectId: project.id,
       environmentId: environment.id,
       environmentType: environment.type,
     });
 
-    return typeddefer({
-      tasks,
-      activity,
-      runningStats,
-      durations,
-    });
+    return typeddefer({ items, activity, runningStates });
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -129,47 +106,42 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 };
 
+const KIND_OPTIONS: { value: UnifiedTaskKind; label: string }[] = [
+  { value: "AGENT", label: "Agent tasks" },
+  { value: "STANDARD", label: "Standard tasks" },
+  { value: "SCHEDULED", label: "Scheduled tasks" },
+];
+
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { tasks, activity, runningStats, durations } = useTypedLoaderData<typeof loader>();
-  const { value } = useSearchParams();
-  const { filteredItems } = useFuzzyFilter<TaskListItem>({
-    items: tasks,
+  const { items, activity, runningStates } = useTypedLoaderData<typeof loader>();
+  const { value, values } = useSearchParams();
+
+  const selectedTypes = useMemo(() => {
+    const raw = values("types") as UnifiedTaskKind[];
+    return raw.length > 0 ? new Set(raw) : null; // null = all
+  }, [values]);
+
+  const { filteredItems } = useFuzzyFilter<UnifiedTaskListItem>({
+    items,
     keys: ["slug", "filePath", "triggerSource"],
     filterText: value("search") ?? "",
   });
 
-  const hasTasks = tasks.length > 0;
+  const visibleItems = useMemo(() => {
+    if (!selectedTypes) return filteredItems;
+    return filteredItems.filter((item) => selectedTypes.has(item.kind));
+  }, [filteredItems, selectedTypes]);
 
-  //live reload the page when the tasks change
-  const revalidator = useRevalidator();
-  const streamedEvents = useEventSource(v3TasksStreamingPath(organization, project, environment), {
-    event: "message",
-  });
-
-  useEffect(() => {
-    if (streamedEvents !== null) {
-      revalidator.revalidate();
-    }
-    // WARNING Don't put the revalidator in the useEffect deps array or bad things will happen
-  }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
+  const hasItems = items.length > 0;
 
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Standard tasks" />
+        <PageTitle title="Tasks" />
         <PageAccessories>
-          <AdminDebugTooltip>
-            <Property.Table>
-              {tasks.map((task) => (
-                <Property.Item key={task.slug}>
-                  <Property.Label>{task.filePath}</Property.Label>
-                </Property.Item>
-              ))}
-            </Property.Table>
-          </AdminDebugTooltip>
           <LinkButton
             variant={"docs/small"}
             LeadingIcon={BookOpenIcon}
@@ -181,127 +153,98 @@ export default function Page() {
       </NavBar>
       <PageBody scrollable={false}>
         <div className={cn("grid h-full grid-rows-1")}>
-          {hasTasks ? (
+          {hasItems ? (
             <div className="flex min-w-0 max-w-full flex-col">
-              {tasks.length === 0 ? <UserHasNoTasks /> : null}
               <div className="max-h-full overflow-hidden">
-                <div className="flex items-center justify-between gap-1 p-2">
+                <div className="flex items-center gap-1.5 p-2">
                   <SearchInput placeholder="Search tasks…" autoFocus />
+                  <TaskTypeFilter />
                 </div>
                 <Table containerClassName="max-h-full pb-[2.5rem]">
                   <TableHeader>
                     <TableRow>
-                      <TableHeaderCell>Task ID</TableHeaderCell>
+                      <TableHeaderCell>ID</TableHeaderCell>
                       <TableHeaderCell>File</TableHeaderCell>
                       <TableHeaderCell>Running</TableHeaderCell>
-                      <TableHeaderCell>Queued</TableHeaderCell>
                       <TableHeaderCell>Activity (7d)</TableHeaderCell>
-                      <TableHeaderCell>Avg. duration</TableHeaderCell>
                       <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredItems.length > 0 ? (
-                      filteredItems.map((task) => {
-                        const runsPath = v3RunsPath(organization, project, environment, {
-                          tasks: [task.slug],
-                        });
-                        const path =
-                          task.triggerSource === "AGENT"
-                            ? v3AgentTaskPath(organization, project, environment, task.slug)
-                            : task.triggerSource === "SCHEDULED"
-                            ? v3ScheduledTaskPath(organization, project, environment, task.slug)
-                            : v3StandardTaskPath(organization, project, environment, task.slug);
+                    {visibleItems.length > 0 ? (
+                      visibleItems.map((item) => {
+                        const rowPath =
+                          item.kind === "AGENT"
+                            ? v3AgentTaskPath(organization, project, environment, item.slug)
+                            : item.kind === "SCHEDULED"
+                            ? v3ScheduledTaskPath(organization, project, environment, item.slug)
+                            : v3StandardTaskPath(organization, project, environment, item.slug);
 
-                        const testPath = v3TestTaskPath(organization, project, environment, {
-                          taskIdentifier: task.slug,
+                        const testPath =
+                          item.kind === "AGENT"
+                            ? v3PlaygroundAgentPath(organization, project, environment, item.slug)
+                            : v3TestTaskPath(organization, project, environment, {
+                                taskIdentifier: item.slug,
+                              });
+
+                        const runsPath = v3RunsPath(organization, project, environment, {
+                          tasks: [item.slug],
                         });
 
                         return (
-                          <TableRow key={task.slug} className="group">
-                            <TableCell to={path} isTabbableCell>
+                          <TableRow key={item.slug} className="group">
+                            <TableCell to={rowPath} isTabbableCell>
                               <div className="flex items-center gap-2">
                                 <SimpleTooltip
-                                  button={<TaskTriggerSourceIcon source={task.triggerSource} />}
-                                  content={taskTriggerSourceDescription(task.triggerSource)}
+                                  button={
+                                    item.kind === "AGENT" ? (
+                                      <CubeSparkleIcon className="size-4.5 text-agents" />
+                                    ) : (
+                                      <TaskTriggerSourceIcon source={item.triggerSource} />
+                                    )
+                                  }
+                                  content={
+                                    item.kind === "AGENT"
+                                      ? "Agent task"
+                                      : item.kind === "SCHEDULED"
+                                      ? "Scheduled task"
+                                      : "Standard task"
+                                  }
+                                  disableHoverableContent
                                 />
-                                <span>{task.slug}</span>
+                                <span>{item.slug}</span>
+                                {item.kind === "AGENT" && item.agentType && (
+                                  <Badge variant="extra-small">
+                                    {formatAgentType(item.agentType)}
+                                  </Badge>
+                                )}
                               </div>
                             </TableCell>
-                            <TableCell to={path}>
-                              <TaskFileName
-                                fileName={task.filePath}
-                                variant="extra-extra-small"
-                              />
+                            <TableCell to={rowPath}>
+                              <TaskFileName fileName={item.filePath} variant="extra-extra-small" />
                             </TableCell>
-                            <TableCell to={path}>
-                              <Suspense
-                                fallback={
-                                  <>
-                                    <Spinner color="muted" />
-                                  </>
-                                }
-                              >
+                            <TableCell to={rowPath}>
+                              <Suspense fallback={<Spinner color="muted" />}>
                                 <TypedAwait
-                                  resolve={runningStats}
+                                  resolve={runningStates}
                                   errorElement={<FailedToLoadStats />}
                                 >
-                                  {(data) => {
-                                    const taskData = data[task.slug];
-                                    return taskData?.running ?? "0";
-                                  }}
+                                  {(data) => <RunningCell item={item} state={data[item.slug]} />}
                                 </TypedAwait>
                               </Suspense>
                             </TableCell>
-                            <TableCell to={path}>
-                              <Suspense fallback={<></>}>
-                                <TypedAwait
-                                  resolve={runningStats}
-                                  errorElement={<FailedToLoadStats />}
-                                >
-                                  {(data) => {
-                                    const taskData = data[task.slug];
-                                    return taskData?.queued ?? "0";
-                                  }}
-                                </TypedAwait>
-                              </Suspense>
-                            </TableCell>
-                            <TableCell to={path} actionClassName="py-1.5">
+                            <TableCell to={rowPath} actionClassName="py-1.5">
                               <Suspense fallback={<TaskActivityBlankState />}>
-                                <TypedAwait
-                                  resolve={activity}
-                                  errorElement={<FailedToLoadStats />}
-                                >
+                                <TypedAwait resolve={activity} errorElement={<FailedToLoadStats />}>
                                   {(data) => {
-                                    const taskData = data[task.slug];
-                                    return (
-                                      <>
-                                        {taskData !== undefined ? (
-                                          <div className="h-6 w-[5.125rem] rounded-sm">
-                                            <TaskActivityGraph activity={taskData} />
-                                          </div>
-                                        ) : (
-                                          <TaskActivityBlankState />
-                                        )}
-                                      </>
+                                    const taskData = data[item.slug];
+                                    return taskData !== undefined ? (
+                                      <div className="h-6 w-[5.125rem] rounded-sm">
+                                        <TaskActivityGraph activity={taskData} />
+                                      </div>
+                                    ) : (
+                                      <TaskActivityBlankState />
                                     );
-                                  }}
-                                </TypedAwait>
-                              </Suspense>
-                            </TableCell>
-                            <TableCell to={path}>
-                              <Suspense fallback={<></>}>
-                                <TypedAwait
-                                  resolve={durations}
-                                  errorElement={<FailedToLoadStats />}
-                                >
-                                  {(data) => {
-                                    const taskData = data[task.slug];
-                                    return taskData
-                                      ? formatDurationMilliseconds(taskData * 1000, {
-                                          style: "short",
-                                        })
-                                      : "–";
                                   }}
                                 </TypedAwait>
                               </Suspense>
@@ -319,16 +262,16 @@ export default function Page() {
                                   <PopoverMenuItem
                                     icon={BeakerIcon}
                                     to={testPath}
-                                    title="Test task"
+                                    title="Test"
                                     leadingIconClassName="-mx-1 text-tests"
                                   />
                                 </>
                               }
                               hiddenButtons={
                                 <LinkButton
-                                  variant="minimal/small"
+                                  variant="secondary/small"
                                   LeadingIcon={BeakerIcon}
-                                  leadingIconClassName="-mx-2.5 text-text-bright"
+                                  leadingIconClassName="-mx-2.5 text-tests"
                                   to={testPath}
                                 >
                                   Test
@@ -339,7 +282,7 @@ export default function Page() {
                         );
                       })
                     ) : (
-                      <TableBlankRow colSpan={8}>
+                      <TableBlankRow colSpan={5}>
                         <Paragraph variant="small" className="flex items-center justify-center">
                           No tasks match your filters
                         </Paragraph>
@@ -364,52 +307,120 @@ export default function Page() {
   );
 }
 
-function UserHasNoTasks() {
-  const [open, setOpen] = useState(false);
+function RunningCell({
+  item,
+  state,
+}: {
+  item: UnifiedTaskListItem;
+  state: UnifiedRunningState | undefined;
+}) {
+  if (!state) {
+    return <span className="text-text-dimmed">–</span>;
+  }
+  if (state.kind === "task") {
+    return <>{state.running ?? 0}</>;
+  }
+  if (state.running === 0 && state.suspended === 0) {
+    return <span className="text-text-dimmed">–</span>;
+  }
+  const lines: string[] = [];
+  if (state.running > 0) {
+    lines.push(`${state.running} ${state.running === 1 ? "run" : "runs"} currently executing`);
+  }
+  if (state.suspended > 0) {
+    lines.push(
+      `${state.suspended} ${
+        state.suspended === 1 ? "run" : "runs"
+      } paused while waiting (e.g. on a tool, user input, or another task)`
+    );
+  }
+  return (
+    <SimpleTooltip
+      side="top"
+      content={
+        <div className="flex flex-col gap-1 text-xs">
+          {lines.map((line) => (
+            <span key={line}>{line}</span>
+          ))}
+        </div>
+      }
+      button={
+        <span className="flex items-center gap-1.5 text-xs">
+          {state.running > 0 && (
+            <span className="flex items-center gap-1.5">
+              <span className="size-1.5 rounded-full bg-success" />
+              <span>{state.running}</span>
+            </span>
+          )}
+          {state.running > 0 && state.suspended > 0 && <span className="text-text-dimmed">·</span>}
+          {state.suspended > 0 && (
+            <span className="flex items-center gap-1.5">
+              <span className="size-1.5 rounded-full bg-blue-500" />
+              <span>{state.suspended}</span>
+            </span>
+          )}
+        </span>
+      }
+    />
+  );
+}
+
+function TaskTypeFilter() {
+  const { values, replace } = useSearchParams();
+  const raw = values("types") as UnifiedTaskKind[];
+  const isAll = raw.length === 0 || raw.length === KIND_OPTIONS.length;
+  // When no filter is applied, render the popover with every option preselected
+  // so the user sees the "all" state and can uncheck what they don't want.
+  const popoverValue = isAll ? KIND_OPTIONS.map((k) => k.value) : raw;
+
+  const handleChange = (next: string[]) => {
+    // Empty or fully-selected → clear the URL so the default (all) applies.
+    if (next.length === 0 || next.length === KIND_OPTIONS.length) {
+      replace({ types: undefined });
+    } else {
+      replace({ types: next });
+    }
+  };
+
+  const label = isAll
+    ? "All"
+    : raw.map((v) => KIND_OPTIONS.find((k) => k.value === v)?.label ?? v).join(", ");
 
   return (
-    <div className="px-2 pt-2">
-      <Callout
-        variant="info"
-        cta={
-          <Button
-            variant="tertiary/small"
-            TrailingIcon={open ? ChevronUpIcon : ChevronDownIcon}
-            onClick={() => setOpen((o) => !o)}
-          >
-            {open ? "Close" : "Setup your dev environment"}
-          </Button>
-        }
-      >
-        {open ? (
-          <PackageManagerProvider>
-            <div>
-              <Header2 spacing>Get setup in 3 minutes</Header2>
-
-              <StepNumber stepNumber="1" title="Open up your project" className="mt-6" />
-              <StepContentContainer>
-                <Paragraph>You'll need to open a terminal at the root of your project.</Paragraph>
-              </StepContentContainer>
-              <StepNumber stepNumber="2" title="Run the CLI 'login' command" />
-              <StepContentContainer>
-                <TriggerLoginStepV3 />
-              </StepContentContainer>
-              <StepNumber stepNumber="3" title="Run the CLI 'dev' command" />
-              <StepContentContainer>
-                <TriggerDevStepV3 />
-              </StepContentContainer>
-              <StepNumber stepNumber="4" title="Waiting for tasks" displaySpinner />
-              <StepContentContainer>
-                <Paragraph>This page will automatically refresh.</Paragraph>
-              </StepContentContainer>
-            </div>
-          </PackageManagerProvider>
-        ) : (
-          "Your DEV environment isn't setup yet."
-        )}
-      </Callout>
-    </div>
+    <ComboboxProvider>
+      <SelectProvider value={popoverValue} setValue={handleChange} virtualFocus>
+        <SelectTrigger variant="secondary/small" dropdownIcon>
+          <span className="text-text-bright">Task type: </span>
+          <span className="max-w-[180px] truncate text-text-dimmed">{label}</span>
+        </SelectTrigger>
+        <SelectPopover className="min-w-fit">
+          <SelectList>
+            {KIND_OPTIONS.map((opt, index) => (
+              <SelectItem
+                key={opt.value}
+                value={opt.value}
+                shortcut={shortcutFromIndex(index, { shortcutsEnabled: true })}
+              >
+                <span className="flex items-center gap-2">
+                  <TaskTriggerSourceIcon source={opt.value} />
+                  <span className="text-text-bright">{opt.label}</span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectList>
+        </SelectPopover>
+      </SelectProvider>
+    </ComboboxProvider>
   );
+}
+
+function formatAgentType(type: string): string {
+  switch (type) {
+    case "ai-sdk-chat":
+      return "AI SDK Chat";
+    default:
+      return type;
+  }
 }
 
 function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
@@ -417,12 +428,7 @@ function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
     <ResponsiveContainer width="100%" height="100%">
       <BarChart
         data={activity}
-        margin={{
-          top: 0,
-          right: 0,
-          left: 0,
-          bottom: 0,
-        }}
+        margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
         width={82}
         height={24}
       >
@@ -433,8 +439,6 @@ function TaskActivityGraph({ activity }: { activity: TaskActivity }) {
           wrapperStyle={{ zIndex: 1000 }}
           animationDuration={0}
         />
-
-        {/* The background */}
         <Bar
           dataKey="bg"
           background={{ fill: "#212327" }}
@@ -491,7 +495,7 @@ function TaskActivityBlankState() {
   );
 }
 
-const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
+const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
   if (active && payload) {
     const items = payload.map((p) => ({
       status: p.dataKey as TaskRunStatus,
@@ -516,7 +520,6 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
       </TooltipPortal>
     );
   }
-
   return null;
 };
 
@@ -528,4 +531,3 @@ function FailedToLoadStats() {
     />
   );
 }
-

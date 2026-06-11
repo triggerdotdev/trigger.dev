@@ -51,9 +51,9 @@ import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {
   v3EditSchedulePath,
+  v3EnvironmentPath,
   v3ScheduleParams,
   v3SchedulePath,
-  v3SchedulesPath,
 } from "~/utils/pathBuilder";
 import { throwNotFound } from "~/utils/httpErrors";
 import { DeleteTaskScheduleService } from "~/v3/services/deleteTaskSchedule.server";
@@ -144,7 +144,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           friendlyId: scheduleParam,
         });
         return redirectWithSuccessMessage(
-          v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
+          v3EnvironmentPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
           request,
           `${scheduleParam} deleted`
         );
@@ -231,7 +231,7 @@ export default function Page() {
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
         <Header2 className={cn("whitespace-nowrap")}>{schedule.friendlyId}</Header2>
         <LinkButton
-          to={`${v3SchedulesPath(organization, project, environment)}${location.search}`}
+          to={`${v3EnvironmentPath(organization, project, environment)}${location.search}`}
           variant="minimal/small"
           TrailingIcon={ExitIcon}
           shortcut={{ key: "esc" }}

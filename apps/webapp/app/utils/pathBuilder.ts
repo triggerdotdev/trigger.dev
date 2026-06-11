@@ -206,14 +206,6 @@ export function v3TasksDashboardPath(
   return `${v3EnvironmentPath(organization, project, environment)}/tasks/dashboard`;
 }
 
-export function v3AllTasksPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  environment: EnvironmentForPath
-) {
-  return `${v3EnvironmentPath(organization, project, environment)}/all-tasks`;
-}
-
 export function v3TasksStreamingPath(
   organization: OrgForPath,
   project: ProjectForPath,
@@ -359,21 +351,15 @@ export function v3PlaygroundAgentPath(
   return `${v3PlaygroundPath(organization, project, environment)}/${encodeURIComponent(agentSlug)}`;
 }
 
-export function v3AgentsPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  environment: EnvironmentForPath
-) {
-  return `${v3EnvironmentPath(organization, project, environment)}/agents`;
-}
-
 export function v3AgentTaskPath(
   organization: OrgForPath,
   project: ProjectForPath,
   environment: EnvironmentForPath,
   agentSlug: string
 ) {
-  return `${v3AgentsPath(organization, project, environment)}/${encodeURIComponent(agentSlug)}`;
+  return `${v3EnvironmentPath(organization, project, environment)}/agents/${encodeURIComponent(
+    agentSlug
+  )}`;
 }
 
 export function v3StandardTaskPath(
@@ -487,14 +473,6 @@ export function v3RunIdempotencyKeyResetPath(
   return `/resources/orgs/${organizationParam(organization)}/projects/${projectParam(
     project
   )}/env/${environmentParam(environment)}/runs/${run.friendlyId}/idempotencyKey/reset`;
-}
-
-export function v3SchedulesPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  environment: EnvironmentForPath
-) {
-  return `${v3EnvironmentPath(organization, project, environment)}/schedules`;
 }
 
 export function v3SchedulePath(

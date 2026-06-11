@@ -44,7 +44,7 @@ import {
   EnvironmentParamSchema,
   ProjectParamSchema,
   docsPath,
-  v3SchedulesPath,
+  v3EnvironmentPath,
 } from "~/utils/pathBuilder";
 import { CronPattern, UpsertSchedule } from "~/v3/schedules";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
@@ -99,7 +99,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const result = await createSchedule.call(project.id, submission.value);
 
     return redirectWithSuccessMessage(
-      v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
+      v3EnvironmentPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
       request,
       submission.value?.friendlyId === result.id ? "Schedule updated" : "Schedule created"
     );
@@ -108,7 +108,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     const errorMessage = `Something went wrong. Please try again.`;
     return redirectWithErrorMessage(
-      v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
+      v3EnvironmentPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
       request,
       errorMessage
     );
@@ -402,7 +402,7 @@ export function UpsertScheduleForm({
       <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
         <div className="flex items-center gap-4">
           <LinkButton
-            to={`${v3SchedulesPath(organization, project, environment)}${location.search}`}
+            to={`${v3EnvironmentPath(organization, project, environment)}${location.search}`}
             variant="secondary/medium"
           >
             Cancel

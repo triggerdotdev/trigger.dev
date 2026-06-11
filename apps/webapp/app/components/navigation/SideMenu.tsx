@@ -19,8 +19,6 @@ import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { BatchesIcon } from "~/assets/icons/BatchesIcon";
 import { Box3DIcon } from "~/assets/icons/Box3DIcon";
 import { ChartBarIcon } from "~/assets/icons/ChartBarIcon";
-import { ClockIcon } from "~/assets/icons/ClockIcon";
-import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { DeploymentsIcon } from "~/assets/icons/DeploymentsIcon";
 import { FolderClosedIcon } from "~/assets/icons/FolderClosedIcon";
 import { FolderOpenIcon } from "~/assets/icons/FolderOpenIcon";
@@ -70,8 +68,6 @@ import {
   organizationTeamPath,
   queryPath,
   regionsPath,
-  v3AgentsPath,
-  v3AllTasksPath,
   v3ApiKeysPath,
   v3BatchesPath,
   v3BillingPath,
@@ -90,7 +86,6 @@ import {
   v3ProjectSettingsIntegrationsPath,
   v3QueuesPath,
   v3RunsPath,
-  v3SchedulesPath,
   v3SessionsPath,
   v3UsagePath,
   v3WaitpointTokensPath,
@@ -396,7 +391,7 @@ export function SideMenu({
                 icon={TaskIcon}
                 activeIconColor="text-tasks"
                 inactiveIconColor="text-text-dimmed"
-                to={v3AllTasksPath(organization, project, environment)}
+                to={v3EnvironmentPath(organization, project, environment)}
                 data-action="tasks"
                 isCollapsed={isCollapsed}
               />
@@ -419,60 +414,6 @@ export function SideMenu({
                 isCollapsed={isCollapsed}
               />
             </div>
-
-            <SideMenuSection
-              title="Tasks"
-              isSideMenuCollapsed={isCollapsed}
-              itemSpacingClassName="space-y-0"
-              initialCollapsed={getSectionCollapsed(user.dashboardPreferences.sideMenu, "tasks")}
-              onCollapseToggle={handleSectionToggle("tasks")}
-            >
-              <SideMenuItem
-                name="Agents"
-                icon={CubeSparkleIcon}
-                activeIconColor="text-agents"
-                inactiveIconColor="text-text-dimmed"
-                to={v3AgentsPath(organization, project, environment)}
-                data-action="agents"
-                isCollapsed={isCollapsed}
-              />
-              <SideMenuItem
-                name="Standard"
-                icon={TaskIcon}
-                activeIconColor="text-tasks"
-                inactiveIconColor="text-text-dimmed"
-                to={v3EnvironmentPath(organization, project, environment)}
-                data-action="tasks-standard"
-                isCollapsed={isCollapsed}
-              />
-              <SideMenuItem
-                name="Schedules"
-                icon={ClockIcon}
-                activeIconColor="text-schedules"
-                inactiveIconColor="text-text-dimmed"
-                to={v3SchedulesPath(organization, project, environment)}
-                data-action="schedules"
-                isCollapsed={isCollapsed}
-              />
-              <SideMenuItem
-                name="Runs"
-                icon={RunsIcon}
-                activeIconColor="text-runs"
-                inactiveIconColor="text-text-dimmed"
-                to={v3RunsPath(organization, project, environment)}
-                data-action="runs"
-                isCollapsed={isCollapsed}
-              />
-              <SideMenuItem
-                name="Sessions"
-                icon={AIChatIcon}
-                activeIconColor="text-sessions"
-                inactiveIconColor="text-text-dimmed"
-                to={v3SessionsPath(organization, project, environment)}
-                data-action="sessions"
-                isCollapsed={isCollapsed}
-              />
-            </SideMenuSection>
 
             {(user.admin || user.isImpersonating || featureFlags.hasAiAccess) && (
               <SideMenuSection

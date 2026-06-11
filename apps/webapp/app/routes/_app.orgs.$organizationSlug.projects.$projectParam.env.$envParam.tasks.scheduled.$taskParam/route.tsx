@@ -53,9 +53,9 @@ import { requireUser } from "~/services/session.server";
 import {
   EnvironmentParamSchema,
   v3CreateBulkActionPath,
+  v3EnvironmentPath,
   v3RunsPath,
   v3SchedulePath,
-  v3SchedulesPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
 
@@ -143,7 +143,7 @@ export default function Page() {
   const project = useProject();
   const environment = useEnvironment();
 
-  const scheduledTasksListingPath = v3SchedulesPath(organization, project, environment);
+  const scheduledTasksListingPath = v3EnvironmentPath(organization, project, environment);
   const testPath = v3TestTaskPath(organization, project, environment, {
     taskIdentifier: task.slug,
   });
