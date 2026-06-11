@@ -1,19 +1,23 @@
-import { BeakerIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { BeakerIcon } from "~/assets/icons/BeakerIcon";
+import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
-import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
+import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
-import { Header3 } from "~/components/primitives/Headers";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { Header2 } from "~/components/primitives/Headers";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import * as Property from "~/components/primitives/PropertyTable";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -30,9 +34,10 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
-import { ScheduleTypeIcon, scheduleTypeName } from "~/components/runs/v3/ScheduleType";
-import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
+import { ScheduleTypeIcon, scheduleTypeName } from "~/components/runs/v3/ScheduleType";
+import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
+import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -41,7 +46,11 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { ScheduleListPresenter } from "~/presenters/v3/ScheduleListPresenter.server";
-import { TaskDetailPresenter, type TaskDetail } from "~/presenters/v3/TaskDetailPresenter.server";
+import {
+  TaskDetailPresenter,
+  type TaskActivity,
+  type TaskDetail,
+} from "~/presenters/v3/TaskDetailPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser } from "~/services/session.server";
 import {
@@ -100,6 +109,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   if (!task) throw new Response("Scheduled task not found", { status: 404 });
 
+  const time = timeFilterFromTo({ period, from, to, defaultPeriod: "7d" });
+
+  const activity = taskPresenter
+    .getActivity({
+      environmentId: environment.id,
+      taskSlug: task.slug,
+      from: time.from,
+      to: time.to,
+    })
+    .catch(() => ({ data: [], statuses: [] } satisfies TaskActivity));
+
   const pageRaw = parseInt(url.searchParams.get("page") ?? "1", 10);
   const schedulesPage = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
 
@@ -128,13 +148,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return typeddefer({
     task,
+    activity,
     scheduleList,
     runList,
   });
 };
 
 export default function Page() {
-  const { task, scheduleList, runList } = useTypedLoaderData<typeof loader>();
+  const { task, activity, scheduleList, runList } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -158,108 +179,232 @@ export default function Page() {
             </span>
           }
         />
-        <PageAccessories>
-          <LinkButton
-            variant="secondary/small"
-            to={testPath}
-            LeadingIcon={BeakerIcon}
-            leadingIconClassName="text-tests"
-          >
-            Test scheduled task
-          </LinkButton>
-        </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <ResizablePanelGroup orientation="vertical" className="max-h-full">
-          {/* Top half: schedules table */}
-          <ResizablePanel id="scheduled-task-schedules" min="120px" default="40%">
-            <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
-              <div className="flex items-center justify-between border-b border-grid-dimmed px-3 py-2">
-                <Header3>Schedules</Header3>
-                <Suspense fallback={null}>
-                  <TypedAwait resolve={scheduleList}>
-                    {(list) =>
-                      list ? (
-                        <span className="text-xs tabular-nums text-text-dimmed">
-                          {list.totalCount} total
-                        </span>
-                      ) : null
-                    }
-                  </TypedAwait>
-                </Suspense>
-              </div>
-              <div className="overflow-y-auto">
-                <Suspense fallback={<TableLoading />}>
-                  <TypedAwait resolve={scheduleList} errorElement={<TableLoading />}>
-                    {(list) =>
-                      list ? <SchedulesMiniTable schedules={list.schedules} /> : <TableLoading />
-                    }
-                  </TypedAwait>
-                </Suspense>
-              </div>
-            </div>
+        <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+          <ResizablePanel id="scheduled-task-main" min="300px">
+            <ResizablePanelGroup orientation="vertical" className="max-h-full">
+              {/* Activity chart + filters */}
+              <ResizablePanel id="scheduled-task-activity" min="144px" default="200px">
+                <div className="flex h-full flex-col gap-3 overflow-hidden bg-background-bright py-2 pl-2 pr-4">
+                  <div className="flex items-center gap-2">
+                    <TimeFilter defaultPeriod="7d" labelName="Runs" />
+                  </div>
+                  <div className="flex min-h-0 flex-1 flex-col">
+                    <Suspense fallback={<ActivityChartSkeleton />}>
+                      <TypedAwait resolve={activity} errorElement={<ActivityChartSkeleton />}>
+                        {(result) => <ActivityChart activity={result} />}
+                      </TypedAwait>
+                    </Suspense>
+                  </div>
+                </div>
+              </ResizablePanel>
+
+              <ResizableHandle id="scheduled-task-activity-handle" />
+
+              {/* Runs / Schedules tabs */}
+              <ResizablePanel id="scheduled-task-content" min="160px">
+                <ScheduledTaskContentTabs
+                  runList={runList}
+                  scheduleList={scheduleList}
+                  runsToolbar={
+                    <>
+                      <LinkButton
+                        variant="secondary/small"
+                        to={v3RunsPath(organization, project, environment, filters)}
+                        LeadingIcon={RunsIcon}
+                      >
+                        View all runs
+                      </LinkButton>
+                      <LinkButton
+                        variant="secondary/small"
+                        to={v3CreateBulkActionPath(
+                          organization,
+                          project,
+                          environment,
+                          filters,
+                          "filter",
+                          "replay"
+                        )}
+                        LeadingIcon={ListCheckedIcon}
+                      >
+                        Bulk replay…
+                      </LinkButton>
+                    </>
+                  }
+                />
+              </ResizablePanel>
+            </ResizablePanelGroup>
           </ResizablePanel>
 
-          <ResizableHandle id="scheduled-task-handle" />
-
-          {/* Bottom half: runs */}
-          <ResizablePanel id="scheduled-task-runs" min="120px">
-            <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
-              <div className="flex items-center justify-between border-b border-grid-dimmed px-3 py-2">
-                <Header3>Runs</Header3>
-                <div className="flex items-center gap-2">
-                  <LinkButton
-                    variant="secondary/small"
-                    to={v3RunsPath(organization, project, environment, filters)}
-                    LeadingIcon={RunsIcon}
-                  >
-                    View all runs
-                  </LinkButton>
-                  <LinkButton
-                    variant="secondary/small"
-                    to={v3CreateBulkActionPath(
-                      organization,
-                      project,
-                      environment,
-                      filters,
-                      "filter",
-                      "replay"
-                    )}
-                    LeadingIcon={ListCheckedIcon}
-                  >
-                    Bulk replay…
-                  </LinkButton>
-                  <Suspense fallback={null}>
-                    <TypedAwait resolve={runList}>
-                      {(list) => (list ? <ListPagination list={list} /> : null)}
-                    </TypedAwait>
-                  </Suspense>
-                </div>
-              </div>
-              <div className="overflow-y-auto">
-                <Suspense fallback={<TableLoading />}>
-                  <TypedAwait resolve={runList} errorElement={<TableLoading />}>
-                    {(list) =>
-                      list ? (
-                        <TaskRunsTable
-                          total={list.runs.length}
-                          hasFilters={list.hasFilters}
-                          filters={list.filters}
-                          runs={list.runs}
-                          variant="dimmed"
-                        />
-                      ) : (
-                        <TableLoading />
-                      )
-                    }
-                  </TypedAwait>
-                </Suspense>
-              </div>
-            </div>
+          <ResizableHandle id="scheduled-task-detail-handle" />
+          <ResizablePanel
+            id="scheduled-task-detail"
+            min="280px"
+            default="380px"
+            max="500px"
+            isStaticAtRest
+          >
+            <ScheduledTaskDetailSidebar task={task} testPath={testPath} />
           </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
+  );
+}
+
+type LoaderData = ReturnType<typeof useTypedLoaderData<typeof loader>>;
+
+function ScheduledTaskContentTabs({
+  runList,
+  scheduleList,
+  runsToolbar,
+}: Pick<LoaderData, "runList" | "scheduleList"> & {
+  runsToolbar: React.ReactNode;
+}) {
+  const [tab, setTab] = useState<"runs" | "schedules">("runs");
+
+  return (
+    <div className="grid h-full grid-rows-[2.25rem_1fr] overflow-hidden">
+      {/* Tab bar + per-tab toolbar on the same row */}
+      <div className="flex items-center justify-between border-b border-grid-dimmed bg-background-bright pl-3 pr-1">
+        <TabContainer className="-mb-px translate-y-[2px]">
+          <TabButton
+            isActive={tab === "runs"}
+            layoutId="scheduled-task-content-tabs"
+            onClick={() => setTab("runs")}
+          >
+            Runs
+          </TabButton>
+          <TabButton
+            isActive={tab === "schedules"}
+            layoutId="scheduled-task-content-tabs"
+            onClick={() => setTab("schedules")}
+          >
+            Schedules
+          </TabButton>
+        </TabContainer>
+        {tab === "runs" ? (
+          <div className="flex items-center gap-2">
+            {runsToolbar}
+            <Suspense fallback={null}>
+              <TypedAwait resolve={runList} errorElement={null}>
+                {(list) => (list ? <ListPagination list={list} /> : null)}
+              </TypedAwait>
+            </Suspense>
+          </div>
+        ) : (
+          <Suspense fallback={null}>
+            <TypedAwait resolve={scheduleList} errorElement={null}>
+              {(list) =>
+                list ? (
+                  <span className="pr-2 text-xs tabular-nums text-text-dimmed">
+                    {list.totalCount} total
+                  </span>
+                ) : null
+              }
+            </TypedAwait>
+          </Suspense>
+        )}
+      </div>
+
+      {/* Tab content */}
+      <div className="min-h-0 overflow-hidden">
+        {tab === "runs" ? (
+          <Suspense fallback={<TableLoading />}>
+            <TypedAwait resolve={runList} errorElement={<TableLoading />}>
+              {(list) =>
+                list ? (
+                  <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                    <TaskRunsTable
+                      total={list.runs.length}
+                      hasFilters={list.hasFilters}
+                      filters={list.filters}
+                      runs={list.runs}
+                      variant="dimmed"
+                      showTopBorder={false}
+                    />
+                  </div>
+                ) : (
+                  <TableLoading />
+                )
+              }
+            </TypedAwait>
+          </Suspense>
+        ) : (
+          <Suspense fallback={<TableLoading />}>
+            <TypedAwait resolve={scheduleList} errorElement={<TableLoading />}>
+              {(list) =>
+                list ? (
+                  <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                    <SchedulesMiniTable schedules={list.schedules} />
+                  </div>
+                ) : (
+                  <TableLoading />
+                )
+              }
+            </TypedAwait>
+          </Suspense>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ScheduledTaskDetailSidebar({
+  task,
+  testPath,
+}: {
+  task: TaskDetail;
+  testPath: string;
+}) {
+  return (
+    <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
+      <div className="flex items-center gap-2 border-b border-grid-dimmed px-3 py-2">
+        <Header2 className="flex min-w-0 flex-1 items-center gap-1.5">
+          <ClockIcon className="size-4 shrink-0 text-schedules" />
+          <span className="truncate">{task.slug}</span>
+        </Header2>
+        <LinkButton
+          variant="primary/small"
+          to={testPath}
+          LeadingIcon={BeakerIcon}
+          iconSpacing="gap-x-2"
+          leadingIconClassName="-mx-2"
+          className="shrink-0"
+        >
+          Test schedule
+        </LinkButton>
+      </div>
+      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <Property.Table>
+          <Property.Item>
+            <Property.Label>Identifier</Property.Label>
+            <Property.Value>
+              <CopyableText value={task.slug} />
+            </Property.Value>
+          </Property.Item>
+          <Property.Item>
+            <Property.Label>File path</Property.Label>
+            <Property.Value>
+              <CopyableText value={task.filePath} />
+            </Property.Value>
+          </Property.Item>
+          <Property.Item>
+            <Property.Label>Type</Property.Label>
+            <Property.Value>
+              <Paragraph variant="small">Scheduled task</Paragraph>
+            </Property.Value>
+          </Property.Item>
+          <Property.Item>
+            <Property.Label>Created</Property.Label>
+            <Property.Value>
+              <DateTime date={task.createdAt} />
+            </Property.Value>
+          </Property.Item>
+        </Property.Table>
+      </div>
+    </div>
   );
 }
 
@@ -354,6 +499,113 @@ function SchedulesMiniTable({ schedules }: { schedules: ScheduleRow[] }) {
         })}
       </TableBody>
     </Table>
+  );
+}
+
+const STATUS_COLOR: Record<string, string> = {
+  COMPLETED: "#28BF5C",
+  RUNNING: "#3B82F6",
+  FAILED: "#E11D48",
+  CANCELED: "#878C99",
+};
+
+function ActivityChart({ activity }: { activity: TaskActivity }) {
+  const chartConfig: ChartConfig = useMemo(() => {
+    const cfg: ChartConfig = {};
+    for (const status of activity.statuses) {
+      cfg[status] = {
+        label: status.charAt(0) + status.slice(1).toLowerCase(),
+        color: STATUS_COLOR[status] ?? "#9CA3AF",
+      };
+    }
+    return cfg;
+  }, [activity.statuses]);
+
+  const { xAxisFormatter, xAxisTicks } = useMemo(() => {
+    const data = activity.data;
+    const range = data.length >= 2 ? data[data.length - 1].bucket - data[0].bucket : 0;
+    const oneDay = 24 * 60 * 60 * 1000;
+    const showTime = range <= oneDay;
+
+    const formatter = (value: number) => {
+      const date = new Date(value);
+      return showTime
+        ? date.toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+            timeZone: "UTC",
+          })
+        : date.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            timeZone: "UTC",
+          });
+    };
+
+    const ticks = showTime
+      ? undefined
+      : data.filter((d) => new Date(d.bucket).getUTCHours() === 0).map((d) => d.bucket);
+
+    return { xAxisFormatter: formatter, xAxisTicks: ticks };
+  }, [activity.data]);
+
+  const tooltipLabelFormatter = useMemo(() => {
+    const data = activity.data;
+    const bucketMs = data.length >= 2 ? data[1].bucket - data[0].bucket : 0;
+    const oneDay = 24 * 60 * 60 * 1000;
+    const isSubDayBucket = bucketMs > 0 && bucketMs < oneDay;
+
+    return (_label: string, payload: { payload?: { bucket?: number } }[]) => {
+      const ts = payload?.[0]?.payload?.bucket;
+      if (typeof ts !== "number" || !Number.isFinite(ts)) return _label;
+      const date = new Date(ts);
+      return isSubDayBucket
+        ? date.toLocaleString("en-US", {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+            timeZone: "UTC",
+          })
+        : date.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            timeZone: "UTC",
+          });
+    };
+  }, [activity.data]);
+
+  return (
+    <Chart.Root
+      config={chartConfig}
+      data={activity.data}
+      dataKey="bucket"
+      series={activity.statuses}
+      fillContainer
+    >
+      <Chart.Bar
+        stackId="status"
+        barRadius={0}
+        xAxisProps={{
+          tickFormatter: xAxisFormatter,
+          ...(xAxisTicks ? { ticks: xAxisTicks, interval: 0 } : {}),
+        }}
+        tooltipLabelFormatter={tooltipLabelFormatter}
+      />
+    </Chart.Root>
+  );
+}
+
+function ActivityChartSkeleton() {
+  return (
+    <div className="flex min-h-0 flex-1 items-end gap-px rounded-sm">
+      {Array.from({ length: 42 }).map((_, i) => (
+        <div key={i} className="h-full flex-1 bg-charcoal-850" />
+      ))}
+    </div>
   );
 }
 
