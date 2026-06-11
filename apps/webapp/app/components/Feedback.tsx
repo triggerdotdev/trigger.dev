@@ -1,10 +1,10 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { InformationCircleIcon, ArrowUpCircleIcon } from "@heroicons/react/20/solid";
-import { EnvelopeIcon } from "@heroicons/react/24/solid";
+import { EnvelopeIcon, ShieldCheckIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useLocation, useNavigation, useSearchParams } from "@remix-run/react";
 import { type ReactNode, useEffect, useState } from "react";
-import { type FeedbackType, feedbackTypeLabel, schema } from "~/routes/resources.feedback";
+import { type FeedbackType, feedbackTypes, schema } from "~/routes/resources.feedback";
 import { Button } from "./primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "./primitives/Dialog";
 import { Fieldset } from "./primitives/Fieldset";
@@ -84,9 +84,12 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
               How can we help? We read every message and will respond as quickly as we can.
             </Paragraph>
           </div>
-          {!(type === "feature" || type === "help" || type === "concurrency") && (
-            <hr className="border-grid-dimmed" />
-          )}
+          {!(
+            type === "feature" ||
+            type === "help" ||
+            type === "concurrency" ||
+            type === "hipaa"
+          ) && <hr className="border-grid-dimmed" />}
           <Form method="post" action="/resources/feedback" {...form.props} className="w-full">
             <Fieldset className="max-w-full gap-y-3">
               <input value={location.pathname} {...conform.input(path, { type: "hidden" })} />
@@ -132,6 +135,20 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
                     </Paragraph>
                   </InfoPanel>
                 )}
+                {type === "hipaa" && (
+                  <InfoPanel
+                    icon={ShieldCheckIcon}
+                    iconClassName="text-green-500"
+                    panelClassName="w-full mb-2"
+                  >
+                    <Paragraph variant="small">
+                      We offer a signed Business Associate Agreement (BAA) as a paid add-on on Pro
+                      and Enterprise plans. To help us get back to you quickly, please include your
+                      company name, expected go-live date, and a brief description of the PHI
+                      workload you plan to run.
+                    </Paragraph>
+                  </InfoPanel>
+                )}
                 <Select
                   {...conform.select(feedbackType)}
                   variant="tertiary/medium"
@@ -139,12 +156,12 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
                   defaultValue={type}
                   setValue={(v) => setType(v as FeedbackType)}
                   placeholder="Select type"
-                  text={(value) => feedbackTypeLabel[value as FeedbackType]}
+                  text={(value) => feedbackTypes[value as FeedbackType].label}
                   dropdownIcon
                 >
-                  {Object.entries(feedbackTypeLabel).map(([name, title]) => (
+                  {Object.entries(feedbackTypes).map(([name, { label }]) => (
                     <SelectItem key={name} value={name}>
-                      {title}
+                      {label}
                     </SelectItem>
                   ))}
                 </Select>
