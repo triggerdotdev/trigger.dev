@@ -2,7 +2,8 @@ import { BookOpenIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid
 import { type MetaFunction } from "@remix-run/node";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { TaskRunStatus } from "@trigger.dev/database";
-import { Fragment, Suspense, useMemo } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { Fragment, Suspense, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   Bar,
   BarChart,
@@ -62,6 +63,7 @@ import {
   unifiedTaskListPresenter,
   type HourlyTaskActivity,
   type UnifiedRunningState,
+  type UnifiedRunningStates,
   type UnifiedTaskKind,
   type UnifiedTaskListItem,
 } from "~/presenters/v3/UnifiedTaskListPresenter.server";
@@ -121,6 +123,11 @@ const KIND_OPTIONS: { value: UnifiedTaskKind; label: string }[] = [
   { value: "SCHEDULED", label: "Scheduled tasks" },
 ];
 
+// Match the env-variables page virtualization tuning.
+const SSR_ROW_WINDOW = 50;
+const ROW_ESTIMATE_HEIGHT = 44;
+const VIRTUAL_OVERSCAN = 10;
+
 export default function Page() {
   const organization = useOrganization();
   const project = useProject();
@@ -146,6 +153,21 @@ export default function Page() {
 
   const hasItems = items.length > 0;
 
+  // Virtualize once we cross the SSR window threshold. The first paint always
+  // renders a static slice (so SSR is correct and the page is interactive
+  // before JS hydrates); the layout effect swaps to the virtualized body on
+  // the client.
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const shouldVirtualize = visibleItems.length > SSR_ROW_WINDOW;
+  const [isVirtualized, setIsVirtualized] = useState(false);
+  useLayoutEffect(() => {
+    setIsVirtualized(shouldVirtualize);
+  }, [shouldVirtualize]);
+  const staticRows = useMemo(
+    () => (shouldVirtualize ? visibleItems.slice(0, SSR_ROW_WINDOW) : visibleItems),
+    [visibleItems, shouldVirtualize]
+  );
+
   return (
     <PageContainer>
       <NavBar>
@@ -164,154 +186,64 @@ export default function Page() {
         <div className={cn("grid h-full grid-rows-1")}>
           {hasItems ? (
             <div className="flex min-w-0 max-w-full flex-col">
-              <div className="max-h-full overflow-hidden">
+              <div className="flex max-h-full min-h-0 flex-col overflow-hidden">
                 <div className="flex items-center gap-1.5 p-2">
                   <SearchInput placeholder="Search tasks…" autoFocus />
                   <TaskTypeFilter />
                 </div>
-                <Table containerClassName="max-h-full pb-[2.5rem]">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHeaderCell>Task ID</TableHeaderCell>
-                      <TableHeaderCell>Task type</TableHeaderCell>
-                      <TableHeaderCell>File</TableHeaderCell>
-                      <TableHeaderCell>Running</TableHeaderCell>
-                      <TableHeaderCell>Activity (24h)</TableHeaderCell>
-                      <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {visibleItems.length > 0 ? (
-                      visibleItems.map((item) => {
-                        const rowPath =
-                          item.kind === "AGENT"
-                            ? v3AgentTaskPath(organization, project, environment, item.slug)
-                            : item.kind === "SCHEDULED"
-                            ? v3ScheduledTaskPath(organization, project, environment, item.slug)
-                            : v3StandardTaskPath(organization, project, environment, item.slug);
-
-                        const testPath =
-                          item.kind === "AGENT"
-                            ? v3PlaygroundAgentPath(organization, project, environment, item.slug)
-                            : v3TestTaskPath(organization, project, environment, {
-                                taskIdentifier: item.slug,
-                              });
-
-                        const runsPath = v3RunsPath(organization, project, environment, {
-                          tasks: [item.slug],
-                        });
-
-                        return (
-                          <TableRow key={item.slug} className="group">
-                            <TableCell to={rowPath} isTabbableCell>
-                              <div className="flex items-center gap-2">
-                                <SimpleTooltip
-                                  button={
-                                    item.kind === "AGENT" ? (
-                                      <CubeSparkleIcon className="size-4.5 text-agents" />
-                                    ) : (
-                                      <TaskTriggerSourceIcon source={item.triggerSource} />
-                                    )
-                                  }
-                                  content={
-                                    item.kind === "AGENT"
-                                      ? "Agent task"
-                                      : item.kind === "SCHEDULED"
-                                      ? "Scheduled task"
-                                      : "Standard task"
-                                  }
-                                  disableHoverableContent
-                                />
-                                <span>{item.slug}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell to={rowPath}>
-                              <div className="flex items-center gap-2">
-                                <span>
-                                  {item.kind === "AGENT"
-                                    ? "Agent"
-                                    : item.kind === "SCHEDULED"
-                                    ? "Scheduled"
-                                    : "Standard"}
-                                </span>
-                                {item.kind === "AGENT" && item.agentType && (
-                                  <Badge variant="extra-small">
-                                    {formatAgentType(item.agentType)}
-                                  </Badge>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell to={rowPath}>
-                              <TaskFileName fileName={item.filePath} variant="extra-extra-small" />
-                            </TableCell>
-                            <TableCell to={rowPath}>
-                              <Suspense fallback={<Spinner color="muted" />}>
-                                <TypedAwait
-                                  resolve={runningStates}
-                                  errorElement={<FailedToLoadStats />}
-                                >
-                                  {(data) => <RunningCell state={data[item.slug]} />}
-                                </TypedAwait>
-                              </Suspense>
-                            </TableCell>
-                            <TableCell to={rowPath} actionClassName="py-1.5">
-                              <Suspense fallback={<TaskActivityBlankState />}>
-                                <TypedAwait
-                                  resolve={hourlyActivity}
-                                  errorElement={<FailedToLoadStats />}
-                                >
-                                  {(data) => {
-                                    const taskData = data[item.slug];
-                                    return taskData && taskData.length > 0 ? (
-                                      <TaskActivityGraph activity={taskData} />
-                                    ) : (
-                                      <TaskActivityBlankState />
-                                    );
-                                  }}
-                                </TypedAwait>
-                              </Suspense>
-                            </TableCell>
-                            <TableCellMenu
-                              isSticky
-                              popoverContent={
-                                <>
-                                  <PopoverMenuItem
-                                    icon={RunsIcon}
-                                    to={runsPath}
-                                    title="View runs"
-                                    leadingIconClassName="-mx-1 text-runs"
-                                  />
-                                  <PopoverMenuItem
-                                    icon={BeakerIcon}
-                                    to={testPath}
-                                    title="Test"
-                                    leadingIconClassName="-mx-1 text-tests"
-                                  />
-                                </>
-                              }
-                              hiddenButtons={
-                                <LinkButton
-                                  variant="secondary/small"
-                                  LeadingIcon={BeakerIcon}
-                                  leadingIconClassName="-mx-2.5 text-tests"
-                                  to={testPath}
-                                >
-                                  Test
-                                </LinkButton>
-                              }
-                            />
-                          </TableRow>
-                        );
-                      })
+                <div
+                  ref={tableScrollRef}
+                  className="min-h-0 flex-1 overflow-auto pb-[2.5rem] scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+                >
+                  <Table containerClassName="overflow-visible">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHeaderCell>Task ID</TableHeaderCell>
+                        <TableHeaderCell>Task type</TableHeaderCell>
+                        <TableHeaderCell>File</TableHeaderCell>
+                        <TableHeaderCell>Running</TableHeaderCell>
+                        <TableHeaderCell>Activity (24h)</TableHeaderCell>
+                        <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
+                      </TableRow>
+                    </TableHeader>
+                    {visibleItems.length === 0 ? (
+                      <TableBody>
+                        <TableBlankRow colSpan={6}>
+                          <Paragraph
+                            variant="small"
+                            className="flex items-center justify-center"
+                          >
+                            No tasks match your filters
+                          </Paragraph>
+                        </TableBlankRow>
+                      </TableBody>
+                    ) : isVirtualized && shouldVirtualize ? (
+                      <TasksVirtualTableBody
+                        items={visibleItems}
+                        scrollRef={tableScrollRef}
+                        runningStates={runningStates}
+                        hourlyActivity={hourlyActivity}
+                        organization={organization}
+                        project={project}
+                        environment={environment}
+                      />
                     ) : (
-                      <TableBlankRow colSpan={6}>
-                        <Paragraph variant="small" className="flex items-center justify-center">
-                          No tasks match your filters
-                        </Paragraph>
-                      </TableBlankRow>
+                      <TableBody>
+                        {staticRows.map((item) => (
+                          <TaskRow
+                            key={item.slug}
+                            item={item}
+                            runningStates={runningStates}
+                            hourlyActivity={hourlyActivity}
+                            organization={organization}
+                            project={project}
+                            environment={environment}
+                          />
+                        ))}
+                      </TableBody>
                     )}
-                  </TableBody>
-                </Table>
+                  </Table>
+                </div>
               </div>
             </div>
           ) : environment.type === "DEVELOPMENT" ? (
@@ -326,6 +258,186 @@ export default function Page() {
         </div>
       </PageBody>
     </PageContainer>
+  );
+}
+
+type TaskRowProps = {
+  item: UnifiedTaskListItem;
+  runningStates: Promise<UnifiedRunningStates>;
+  hourlyActivity: Promise<HourlyTaskActivity>;
+  organization: ReturnType<typeof useOrganization>;
+  project: ReturnType<typeof useProject>;
+  environment: ReturnType<typeof useEnvironment>;
+};
+
+function TaskRow({
+  item,
+  runningStates,
+  hourlyActivity,
+  organization,
+  project,
+  environment,
+}: TaskRowProps) {
+  const rowPath =
+    item.kind === "AGENT"
+      ? v3AgentTaskPath(organization, project, environment, item.slug)
+      : item.kind === "SCHEDULED"
+      ? v3ScheduledTaskPath(organization, project, environment, item.slug)
+      : v3StandardTaskPath(organization, project, environment, item.slug);
+
+  const testPath =
+    item.kind === "AGENT"
+      ? v3PlaygroundAgentPath(organization, project, environment, item.slug)
+      : v3TestTaskPath(organization, project, environment, { taskIdentifier: item.slug });
+
+  const runsPath = v3RunsPath(organization, project, environment, { tasks: [item.slug] });
+
+  return (
+    <TableRow className="group">
+      <TableCell to={rowPath} isTabbableCell>
+        <div className="flex items-center gap-2">
+          <SimpleTooltip
+            button={
+              item.kind === "AGENT" ? (
+                <CubeSparkleIcon className="size-4.5 text-agents" />
+              ) : (
+                <TaskTriggerSourceIcon source={item.triggerSource} />
+              )
+            }
+            content={
+              item.kind === "AGENT"
+                ? "Agent task"
+                : item.kind === "SCHEDULED"
+                ? "Scheduled task"
+                : "Standard task"
+            }
+            disableHoverableContent
+          />
+          <span>{item.slug}</span>
+        </div>
+      </TableCell>
+      <TableCell to={rowPath}>
+        <div className="flex items-center gap-2">
+          <span>
+            {item.kind === "AGENT"
+              ? "Agent"
+              : item.kind === "SCHEDULED"
+              ? "Scheduled"
+              : "Standard"}
+          </span>
+          {item.kind === "AGENT" && item.agentType && (
+            <Badge variant="extra-small">{formatAgentType(item.agentType)}</Badge>
+          )}
+        </div>
+      </TableCell>
+      <TableCell to={rowPath}>
+        <TaskFileName fileName={item.filePath} variant="extra-extra-small" />
+      </TableCell>
+      <TableCell to={rowPath}>
+        <Suspense fallback={<Spinner color="muted" />}>
+          <TypedAwait resolve={runningStates} errorElement={<FailedToLoadStats />}>
+            {(data) => <RunningCell state={data[item.slug]} />}
+          </TypedAwait>
+        </Suspense>
+      </TableCell>
+      <TableCell to={rowPath} actionClassName="py-1.5">
+        <Suspense fallback={<TaskActivityBlankState />}>
+          <TypedAwait resolve={hourlyActivity} errorElement={<FailedToLoadStats />}>
+            {(data) => {
+              const taskData = data[item.slug];
+              return taskData && taskData.length > 0 ? (
+                <TaskActivityGraph activity={taskData} />
+              ) : (
+                <TaskActivityBlankState />
+              );
+            }}
+          </TypedAwait>
+        </Suspense>
+      </TableCell>
+      <TableCellMenu
+        isSticky
+        popoverContent={
+          <>
+            <PopoverMenuItem
+              icon={RunsIcon}
+              to={runsPath}
+              title="View runs"
+              leadingIconClassName="-mx-1 text-runs"
+            />
+            <PopoverMenuItem
+              icon={BeakerIcon}
+              to={testPath}
+              title="Test"
+              leadingIconClassName="-mx-1 text-tests"
+            />
+          </>
+        }
+        hiddenButtons={
+          <LinkButton
+            variant="secondary/small"
+            LeadingIcon={BeakerIcon}
+            leadingIconClassName="-mx-2.5 text-tests"
+            to={testPath}
+          >
+            Test
+          </LinkButton>
+        }
+      />
+    </TableRow>
+  );
+}
+
+function TasksVirtualTableBody({
+  items,
+  scrollRef,
+  runningStates,
+  hourlyActivity,
+  organization,
+  project,
+  environment,
+}: {
+  items: UnifiedTaskListItem[];
+  scrollRef: RefObject<HTMLDivElement | null>;
+} & Omit<TaskRowProps, "item">) {
+  const rowVirtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_ESTIMATE_HEIGHT,
+    overscan: VIRTUAL_OVERSCAN,
+  });
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const topSpacerHeight = virtualItems[0]?.start ?? 0;
+  const bottomSpacerHeight = rowVirtualizer.getTotalSize() - (virtualItems.at(-1)?.end ?? 0);
+
+  return (
+    <TableBody>
+      {topSpacerHeight > 0 && (
+        <tr aria-hidden style={{ height: topSpacerHeight }}>
+          <td colSpan={6} />
+        </tr>
+      )}
+      {virtualItems.map((virtualRow) => {
+        const item = items[virtualRow.index];
+        if (!item) return null;
+        return (
+          <TaskRow
+            key={item.slug}
+            item={item}
+            runningStates={runningStates}
+            hourlyActivity={hourlyActivity}
+            organization={organization}
+            project={project}
+            environment={environment}
+          />
+        );
+      })}
+      {bottomSpacerHeight > 0 && (
+        <tr aria-hidden style={{ height: bottomSpacerHeight }}>
+          <td colSpan={6} />
+        </tr>
+      )}
+    </TableBody>
   );
 }
 
