@@ -3,6 +3,7 @@ import { type MetaFunction } from "@remix-run/react";
 import { useState } from "react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button } from "~/components/primitives/Buttons";
@@ -24,7 +25,7 @@ import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { rbac } from "~/services/rbac.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
-import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { TextLink } from "~/components/primitives/TextLink";
 
 export const meta: MetaFunction = () => {
@@ -99,9 +100,7 @@ export default function Page() {
   const { roles, assignableRoleIds, allPermissions, systemRoles, isUsingPlugin } =
     useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
-  const plan = useCurrentPlan();
-  const planCode = plan?.v3Subscription?.plan?.code;
-  const isEnterprise = planCode === "enterprise";
+  const showSelfServe = useShowSelfServe();
 
   // Map role-id → role for fast cell lookup. Each role's permissions are
   // already the expanded `effectivePermissions` output (system roles
@@ -139,7 +138,7 @@ export default function Page() {
             dialog copy ("Available on the Enterprise plan") doesn't
             apply. The not-supported empty state below makes the
             absence of role infrastructure clear instead. */}
-        {isUsingPlugin && !isEnterprise ? <CreateRoleUpsell /> : null}
+        {isUsingPlugin && showSelfServe ? <CreateRoleUpsell /> : null}
       </NavBar>
       <PageBody scrollable={false}>
         <div className="grid max-h-full min-h-full grid-rows-[auto_1fr]">
@@ -152,7 +151,7 @@ export default function Page() {
           </div>
           <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             {columns.length === 0 ? (
-              <EmptyState isUsingPlugin={isUsingPlugin} />
+              <EmptyState isUsingPlugin={isUsingPlugin} showSelfServe={showSelfServe} />
             ) : (
               <Table containerClassName="border-t-0">
                 <TableHeader>
@@ -223,12 +222,18 @@ export default function Page() {
   );
 }
 
-function EmptyState({ isUsingPlugin }: { isUsingPlugin: boolean }) {
-  // Two distinct empty states:
+function EmptyState({
+  isUsingPlugin,
+  showSelfServe,
+}: {
+  isUsingPlugin: boolean;
+  showSelfServe: boolean;
+}) {
+  // Three distinct empty states:
   //
   // 1. Plugin loaded, but rbac.allRoles returned nothing the org can
-  //    use under its plan tier. The plan-upsell copy is correct —
-  //    upgrade unlocks the role infrastructure.
+  //    use under its plan tier. Self-serve orgs see upgrade copy;
+  //    managed-billing orgs get a contact path instead.
   // 2. No plugin loaded (OSS self-host). There's no "plan" to upgrade
   //    to. RBAC simply isn't part of this deployment; we use a
   //    permissive ability for every authenticated user and rely on
@@ -249,8 +254,16 @@ function EmptyState({ isUsingPlugin }: { isUsingPlugin: boolean }) {
     <div className="flex flex-col items-center gap-2 p-8 text-center">
       <Header3>No roles available on this plan.</Header3>
       <Paragraph variant="small" className="text-text-dimmed">
-        Upgrade to Pro to unlock RBAC.
+        {showSelfServe
+          ? "Upgrade to Pro to unlock RBAC."
+          : "Contact us to discuss RBAC for your organization."}
       </Paragraph>
+      {!showSelfServe ? (
+        <Feedback
+          defaultValue="enterprise"
+          button={<Button variant="secondary/small">Contact us</Button>}
+        />
+      ) : null}
     </div>
   );
 }

@@ -1,11 +1,14 @@
-import { CalendarDaysIcon, StarIcon } from "@heroicons/react/20/solid";
+import { CalendarDaysIcon, CreditCardIcon, StarIcon } from "@heroicons/react/20/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { type PlanDefinition } from "@trigger.dev/platform";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
-import { PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Feedback } from "~/components/Feedback";
+import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
@@ -14,10 +17,12 @@ import {
   OrganizationParamsSchema,
   organizationPath,
   v3StripePortalPath,
+  v3UsagePath,
 } from "~/utils/pathBuilder";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
 import { type MetaFunction } from "@remix-run/react";
 import { Callout } from "~/components/primitives/Callout";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 
 export const meta: MetaFunction = () => {
   return [
@@ -91,12 +96,14 @@ export default function ChoosePlanPage() {
     daysRemaining,
     message,
   } = useTypedLoaderData<typeof loader>();
+  const showSelfServe = useShowSelfServe();
+
   return (
     <PageContainer>
       <NavBar>
         <PageTitle title="Billing" />
         <PageAccessories>
-          {v3Subscription?.isPaying && (
+          {v3Subscription?.isPaying && showSelfServe && (
             <>
               <LinkButton
                 to={v3StripePortalPath({ slug: organizationSlug })}
@@ -114,42 +121,70 @@ export default function ChoosePlanPage() {
           )}
         </PageAccessories>
       </NavBar>
-      <PageBody scrollable={true}>
-        <div className="flex flex-col gap-3">
-          {message && (
-            <Callout variant="idea" className="mb-2">
-              {message}
-            </Callout>
-          )}
-          <div className="flex flex-col gap-y-3 divide-grid-bright rounded-sm border border-grid-bright bg-background-bright py-2 pr-1 text-text-bright lg:w-fit lg:flex-row lg:items-center lg:divide-x">
-            <div className="flex gap-2 px-3 lg:items-center">
-              <StarIcon className="size-5 min-w-5 lg:-mt-0.5" />
-              {planLabel(v3Subscription?.plan, v3Subscription?.canceledAt !== undefined, periodEnd)}
-            </div>
-            {v3Subscription?.isPaying ? (
+      <PageBody scrollable={showSelfServe}>
+        {showSelfServe ? (
+          <div className="flex flex-col gap-3">
+            {message && (
+              <Callout variant="idea" className="mb-2">
+                {message}
+              </Callout>
+            )}
+            <div className="flex flex-col gap-y-3 divide-grid-bright rounded-sm border border-grid-bright bg-background-bright py-2 pr-1 text-text-bright lg:w-fit lg:flex-row lg:items-center lg:divide-x">
               <div className="flex gap-2 px-3 lg:items-center">
-                <CalendarDaysIcon className="size-5 min-w-5 lg:-mt-0.5" />
-                Billing period: <DateTime
-                  date={periodStart}
-                  includeTime={false}
-                  timeZone="UTC"
-                />{" "}
-                to <DateTime date={periodEnd} includeTime={false} timeZone="UTC" /> ({daysRemaining}{" "}
-                days remaining)
+                <StarIcon className="size-5 min-w-5 lg:-mt-0.5" />
+                {planLabel(
+                  v3Subscription?.plan,
+                  v3Subscription?.canceledAt !== undefined,
+                  periodEnd
+                )}
               </div>
-            ) : null}
+              {v3Subscription?.isPaying ? (
+                <div className="flex gap-2 px-3 lg:items-center">
+                  <CalendarDaysIcon className="size-5 min-w-5 lg:-mt-0.5" />
+                  Billing period: <DateTime
+                    date={periodStart}
+                    includeTime={false}
+                    timeZone="UTC"
+                  />{" "}
+                  to <DateTime date={periodEnd} includeTime={false} timeZone="UTC" /> (
+                  {daysRemaining} days remaining)
+                </div>
+              ) : null}
+            </div>
+            <div>
+              <PricingPlans
+                plans={plans}
+                concurrencyAddOnPricing={addOnPricing.concurrency}
+                subscription={v3Subscription}
+                organizationSlug={organizationSlug}
+                hasPromotedPlan={false}
+                periodEnd={periodEnd}
+              />
+            </div>
           </div>
-          <div>
-            <PricingPlans
-              plans={plans}
-              concurrencyAddOnPricing={addOnPricing.concurrency}
-              subscription={v3Subscription}
-              organizationSlug={organizationSlug}
-              hasPromotedPlan={false}
-              periodEnd={periodEnd}
-            />
-          </div>
-        </div>
+        ) : (
+          <MainCenteredContainer className="max-w-md">
+            <InfoPanel
+              title="Billing"
+              icon={CreditCardIcon}
+              iconClassName="text-emerald-500"
+              panelClassName="max-w-full"
+              accessory={
+                <Feedback
+                  defaultValue="enterprise"
+                  button={<Button variant="secondary/small">Contact us</Button>}
+                />
+              }
+            >
+              <Paragraph spacing variant="small">
+                Your billing is managed by our team.
+              </Paragraph>
+              <Paragraph spacing variant="small">
+                Get in touch for invoices, plan changes, or other billing questions.
+              </Paragraph>
+            </InfoPanel>
+          </MainCenteredContainer>
+        )}
       </PageBody>
     </PageContainer>
   );
@@ -161,7 +196,7 @@ function planLabel(plan: PlanDefinition | undefined, canceled: boolean, periodEn
   }
 
   if (plan.type === "enterprise") {
-    return `You're on the Enterprise plan`;
+    return "You're on the Enterprise plan";
   }
 
   const text = `You're on the $${plan.tierPrice}/mo ${plan.title} plan`;

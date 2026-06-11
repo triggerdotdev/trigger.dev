@@ -62,6 +62,7 @@ import {
   scheduleTypeName,
 } from "~/components/runs/v3/ScheduleType";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { usePathName } from "~/hooks/usePathName";
 import { useProject } from "~/hooks/useProject";
@@ -218,6 +219,60 @@ export default function Page() {
   const isShowingNewPane = pathName.endsWith("/new");
   const isShowingSchedule = !!scheduleParam;
 
+  const showSelfServe = useShowSelfServe();
+
+  function ScheduleLimitActions({ variant = "banner" }: { variant?: "dialog" | "banner" } = {}) {
+    if (!showSelfServe) {
+      return (
+        <Feedback
+          button={<Button variant="secondary/small">Request more</Button>}
+          defaultValue="enterprise"
+        />
+      );
+    }
+
+    if (canPurchaseSchedules && schedulePricing) {
+      return (
+        <PurchaseSchedulesModal
+          schedulePricing={schedulePricing}
+          extraSchedules={extraSchedules}
+          usedSchedules={limits.used}
+          maxQuota={maxScheduleQuota}
+          planScheduleLimit={planScheduleLimit}
+          triggerButton={
+            variant === "dialog" ? (
+              <Button variant="primary/small">Purchase more…</Button>
+            ) : undefined
+          }
+        />
+      );
+    }
+
+    if (canUpgrade) {
+      return variant === "dialog" ? (
+        <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
+          Upgrade
+        </LinkButton>
+      ) : (
+        <LinkButton
+          to={v3BillingPath(organization)}
+          variant="secondary/small"
+          LeadingIcon={ArrowUpCircleIcon}
+          leadingIconClassName="text-indigo-500"
+        >
+          Upgrade
+        </LinkButton>
+      );
+    }
+
+    return (
+      <Feedback
+        button={<Button variant="primary/small">Request more</Button>}
+        defaultValue="help"
+      />
+    );
+  }
+
   return (
     <PageContainer>
       <NavBar>
@@ -284,39 +339,16 @@ export default function Page() {
                               You've used {limits.used}/{limits.limit} of your schedules.
                             </DialogDescription>
                             <DialogFooter>
-                              {canPurchaseSchedules && schedulePricing ? (
-                                <PurchaseSchedulesModal
-                                  schedulePricing={schedulePricing}
-                                  extraSchedules={extraSchedules}
-                                  usedSchedules={limits.used}
-                                  maxQuota={maxScheduleQuota}
-                                  planScheduleLimit={planScheduleLimit}
-                                  triggerButton={
-                                    <Button variant="primary/small">Purchase more…</Button>
-                                  }
-                                />
-                              ) : canUpgrade ? (
-                                <LinkButton
-                                  variant="primary/small"
-                                  to={v3BillingPath(organization)}
-                                >
-                                  Upgrade
-                                </LinkButton>
-                              ) : (
-                                <Feedback
-                                  button={
-                                    <Button variant="primary/small">Request more</Button>
-                                  }
-                                  defaultValue="help"
-                                />
-                              )}
+                              <ScheduleLimitActions variant="dialog" />
                             </DialogFooter>
                           </DialogContent>
                         </Dialog>
                       ) : (
                         <LinkButton
                           LeadingIcon={PlusIcon}
-                          to={`${v3NewSchedulePath(organization, project, environment)}${location.search}`}
+                          to={`${v3NewSchedulePath(organization, project, environment)}${
+                            location.search
+                          }`}
                           variant="primary/small"
                           shortcut={{ key: "n" }}
                           disabled={possibleTasks.length === 0 || isShowingNewPane}
@@ -389,29 +421,7 @@ export default function Page() {
                           </div>
                         )}
 
-                        {canPurchaseSchedules && schedulePricing ? (
-                          <PurchaseSchedulesModal
-                            schedulePricing={schedulePricing}
-                            extraSchedules={extraSchedules}
-                            usedSchedules={limits.used}
-                            maxQuota={maxScheduleQuota}
-                            planScheduleLimit={planScheduleLimit}
-                          />
-                        ) : canUpgrade ? (
-                          <LinkButton
-                            to={v3BillingPath(organization)}
-                            variant="secondary/small"
-                            LeadingIcon={ArrowUpCircleIcon}
-                            leadingIconClassName="text-indigo-500"
-                          >
-                            Upgrade
-                          </LinkButton>
-                        ) : (
-                          <Feedback
-                            button={<Button variant="secondary/small">Request more</Button>}
-                            defaultValue="help"
-                          />
-                        )}
+                        <ScheduleLimitActions />
                       </div>
                     </div>
                   </div>
@@ -532,7 +542,12 @@ function SchedulesTable({
             const selectedActionClass = isSelected ? "text-text-bright" : undefined;
             return (
               <TableRow key={schedule.id} className={isSelected ? "bg-grid-dimmed" : undefined}>
-                <TableCell to={path} isTabbableCell className={cellClass} actionClassName={selectedActionClass}>
+                <TableCell
+                  to={path}
+                  isTabbableCell
+                  className={cellClass}
+                  actionClassName={selectedActionClass}
+                >
                   {schedule.friendlyId}
                 </TableCell>
                 <TableCell to={path} className={cellClass} actionClassName={selectedActionClass}>
@@ -615,6 +630,7 @@ function PurchaseSchedulesModal({
   planScheduleLimit: number;
   triggerButton?: React.ReactNode;
 }) {
+  const showSelfServe = useShowSelfServe();
   const fetcher = useFetcher();
   const lastSubmission =
     fetcher.data && typeof fetcher.data === "object" && "intent" in fetcher.data
@@ -665,6 +681,15 @@ function PurchaseSchedulesModal({
   const pricePerStep = schedulePricing.centsPerStep / 100;
   const stepUnit = formatNumber(stepSize);
   const title = extraSchedules === 0 ? "Purchase extra schedules…" : "Add/remove extra schedules…";
+
+  if (!showSelfServe) {
+    return (
+      <Feedback
+        defaultValue="enterprise"
+        button={<Button variant="secondary/small">Request more</Button>}
+      />
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
