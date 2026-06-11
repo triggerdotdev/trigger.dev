@@ -2,6 +2,7 @@ import { ClickHouse } from "@internal/clickhouse";
 import { createHash } from "crypto";
 import { ClickhouseEventRepository } from "~/v3/eventRepository/clickhouseEventRepository.server";
 import { env } from "~/env.server";
+import { clampToEmergencySpanCap } from "~/v3/eventRepository/emergencySpanCap.server";
 import { singleton } from "~/utils/singleton";
 import type { OrganizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistry.server";
 import { type IEventRepository } from "~/v3/eventRepository/eventRepository.types";
@@ -533,9 +534,12 @@ function buildEventRepository(store: string, clickhouse: ClickHouse): Clickhouse
         clickhouse,
         batchSize: env.EVENTS_CLICKHOUSE_BATCH_SIZE,
         flushInterval: env.EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS,
-        maximumTraceSummaryViewCount: env.EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT,
-        maximumTraceDetailedSummaryViewCount:
-          env.EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT,
+        maximumTraceSummaryViewCount: clampToEmergencySpanCap(
+          env.EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT
+        ),
+        maximumTraceDetailedSummaryViewCount: clampToEmergencySpanCap(
+          env.EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT
+        ),
         maximumLiveReloadingSetting: env.EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING,
         insertStrategy: env.EVENTS_CLICKHOUSE_INSERT_STRATEGY,
         waitForAsyncInsert: env.EVENTS_CLICKHOUSE_WAIT_FOR_ASYNC_INSERT === "1",
@@ -557,9 +561,12 @@ function buildEventRepository(store: string, clickhouse: ClickHouse): Clickhouse
         clickhouse: clickhouse,
         batchSize: env.EVENTS_CLICKHOUSE_BATCH_SIZE,
         flushInterval: env.EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS,
-        maximumTraceSummaryViewCount: env.EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT,
-        maximumTraceDetailedSummaryViewCount:
-          env.EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT,
+        maximumTraceSummaryViewCount: clampToEmergencySpanCap(
+          env.EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT
+        ),
+        maximumTraceDetailedSummaryViewCount: clampToEmergencySpanCap(
+          env.EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT
+        ),
         maximumLiveReloadingSetting: env.EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING,
         insertStrategy: env.EVENTS_CLICKHOUSE_INSERT_STRATEGY,
         waitForAsyncInsert: env.EVENTS_CLICKHOUSE_WAIT_FOR_ASYNC_INSERT === "1",
