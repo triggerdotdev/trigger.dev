@@ -1,6 +1,6 @@
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
@@ -13,11 +13,10 @@ import { LinkButton } from "~/components/primitives/Buttons";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
-import { Header2 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
-import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -32,6 +31,7 @@ import {
   TableHeader,
   TableHeaderCell,
   TableRow,
+  type TableVariant,
 } from "~/components/primitives/Table";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
@@ -202,13 +202,12 @@ export default function Page() {
 
               <ResizableHandle id="scheduled-task-activity-handle" />
 
-              {/* Runs / Schedules tabs */}
+              {/* Runs table */}
               <ResizablePanel id="scheduled-task-content" min="160px">
-                <ScheduledTaskContentTabs
-                  runList={runList}
-                  scheduleList={scheduleList}
-                  runsToolbar={
-                    <>
+                <div className="grid h-full grid-rows-[2.25rem_1fr] overflow-hidden">
+                  <div className="flex items-center justify-between border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
+                    <Paragraph variant="small/bright">Runs</Paragraph>
+                    <div className="flex items-center gap-1.5">
                       <LinkButton
                         variant="secondary/small"
                         to={v3RunsPath(organization, project, environment, filters)}
@@ -227,12 +226,40 @@ export default function Page() {
                           "replay"
                         )}
                         LeadingIcon={ListCheckedIcon}
+                        leadingIconClassName="-mx-1"
                       >
                         Bulk replay…
                       </LinkButton>
-                    </>
-                  }
-                />
+                      <Suspense fallback={null}>
+                        <TypedAwait resolve={runList} errorElement={null}>
+                          {(list) => (list ? <ListPagination list={list} /> : null)}
+                        </TypedAwait>
+                      </Suspense>
+                    </div>
+                  </div>
+                  <div className="min-h-0 overflow-hidden">
+                    <Suspense fallback={<TableLoading />}>
+                      <TypedAwait resolve={runList} errorElement={<TableLoading />}>
+                        {(list) =>
+                          list ? (
+                            <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                              <TaskRunsTable
+                                total={list.runs.length}
+                                hasFilters={list.hasFilters}
+                                filters={list.filters}
+                                runs={list.runs}
+                                variant="dimmed"
+                                showTopBorder={false}
+                              />
+                            </div>
+                          ) : (
+                            <TableLoading />
+                          )
+                        }
+                      </TypedAwait>
+                    </Suspense>
+                  </div>
+                </div>
               </ResizablePanel>
             </ResizablePanelGroup>
           </ResizablePanel>
@@ -245,7 +272,11 @@ export default function Page() {
             max="500px"
             isStaticAtRest
           >
-            <ScheduledTaskDetailSidebar task={task} testPath={testPath} />
+            <ScheduledTaskDetailSidebar
+              task={task}
+              testPath={testPath}
+              scheduleList={scheduleList}
+            />
           </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
@@ -255,104 +286,11 @@ export default function Page() {
 
 type LoaderData = ReturnType<typeof useTypedLoaderData<typeof loader>>;
 
-function ScheduledTaskContentTabs({
-  runList,
+function ScheduledTaskDetailSidebar({
+  task,
+  testPath,
   scheduleList,
-  runsToolbar,
-}: Pick<LoaderData, "runList" | "scheduleList"> & {
-  runsToolbar: React.ReactNode;
-}) {
-  const [tab, setTab] = useState<"runs" | "schedules">("runs");
-
-  return (
-    <div className="grid h-full grid-rows-[2.25rem_1fr] overflow-hidden">
-      {/* Tab bar + per-tab toolbar on the same row */}
-      <div className="flex items-center justify-between border-b border-grid-dimmed bg-background-bright pl-3 pr-1">
-        <TabContainer className="-mb-px translate-y-[2px]">
-          <TabButton
-            isActive={tab === "runs"}
-            layoutId="scheduled-task-content-tabs"
-            onClick={() => setTab("runs")}
-          >
-            Runs
-          </TabButton>
-          <TabButton
-            isActive={tab === "schedules"}
-            layoutId="scheduled-task-content-tabs"
-            onClick={() => setTab("schedules")}
-          >
-            <span className="inline-flex items-center gap-1.5">
-              Schedules
-              <Suspense fallback={null}>
-                <TypedAwait resolve={scheduleList} errorElement={null}>
-                  {(list) =>
-                    list ? (
-                      <span className="rounded-sm border border-charcoal-700 bg-charcoal-800 px-1 py-0.5 text-xxs tabular-nums text-text-bright">
-                        {list.totalCount}
-                      </span>
-                    ) : null
-                  }
-                </TypedAwait>
-              </Suspense>
-            </span>
-          </TabButton>
-        </TabContainer>
-        {tab === "runs" ? (
-          <div className="flex items-center gap-2">
-            {runsToolbar}
-            <Suspense fallback={null}>
-              <TypedAwait resolve={runList} errorElement={null}>
-                {(list) => (list ? <ListPagination list={list} /> : null)}
-              </TypedAwait>
-            </Suspense>
-          </div>
-        ) : null}
-      </div>
-
-      {/* Tab content */}
-      <div className="min-h-0 overflow-hidden">
-        {tab === "runs" ? (
-          <Suspense fallback={<TableLoading />}>
-            <TypedAwait resolve={runList} errorElement={<TableLoading />}>
-              {(list) =>
-                list ? (
-                  <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                    <TaskRunsTable
-                      total={list.runs.length}
-                      hasFilters={list.hasFilters}
-                      filters={list.filters}
-                      runs={list.runs}
-                      variant="dimmed"
-                      showTopBorder={false}
-                    />
-                  </div>
-                ) : (
-                  <TableLoading />
-                )
-              }
-            </TypedAwait>
-          </Suspense>
-        ) : (
-          <Suspense fallback={<TableLoading />}>
-            <TypedAwait resolve={scheduleList} errorElement={<TableLoading />}>
-              {(list) =>
-                list ? (
-                  <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                    <SchedulesMiniTable schedules={list.schedules} />
-                  </div>
-                ) : (
-                  <TableLoading />
-                )
-              }
-            </TypedAwait>
-          </Suspense>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ScheduledTaskDetailSidebar({ task, testPath }: { task: TaskDetail; testPath: string }) {
+}: { task: TaskDetail; testPath: string } & Pick<LoaderData, "scheduleList">) {
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
       <div className="flex min-w-0 items-center gap-2 overflow-hidden border-b border-grid-dimmed px-3 py-2">
@@ -398,6 +336,22 @@ function ScheduledTaskDetailSidebar({ task, testPath }: { task: TaskDetail; test
             </Property.Value>
           </Property.Item>
         </Property.Table>
+        <div className="mt-4 flex flex-col gap-2">
+          <Header3>Schedules</Header3>
+          <div className="-mx-3 overflow-hidden border-y border-grid-dimmed">
+            <Suspense fallback={<TableLoading />}>
+              <TypedAwait resolve={scheduleList} errorElement={<TableLoading />}>
+                {(list) =>
+                  list ? (
+                    <SchedulesMiniTable schedules={list.schedules} variant="bright" />
+                  ) : (
+                    <TableLoading />
+                  )
+                }
+              </TypedAwait>
+            </Suspense>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -415,14 +369,20 @@ type ScheduleRow = {
   active: boolean;
 };
 
-function SchedulesMiniTable({ schedules }: { schedules: ScheduleRow[] }) {
+function SchedulesMiniTable({
+  schedules,
+  variant,
+}: {
+  schedules: ScheduleRow[];
+  variant?: TableVariant;
+}) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
 
   if (schedules.length === 0) {
     return (
-      <Table>
+      <Table variant={variant}>
         <TableBody>
           <TableBlankRow colSpan={6}>
             <Paragraph variant="small" className="flex items-center justify-center">
@@ -435,7 +395,7 @@ function SchedulesMiniTable({ schedules }: { schedules: ScheduleRow[] }) {
   }
 
   return (
-    <Table>
+    <Table variant={variant}>
       <TableHeader>
         <TableRow>
           <TableHeaderCell>Schedule ID</TableHeaderCell>
