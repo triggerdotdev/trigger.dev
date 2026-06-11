@@ -676,17 +676,6 @@ function BlankState({
         <Paragraph className="w-auto" variant="base/bright" spacing>
           There are no runs for {filters.tasks[0]}
         </Paragraph>
-        <div className="flex justify-center">
-          <LinkButton
-            to={testPath}
-            variant="secondary/medium"
-            LeadingIcon={BeakerIcon}
-            leadingIconClassName="text-tests -mx-2 gap-2"
-            className="inline-flex"
-          >
-            Create a test run
-          </LinkButton>
-        </div>
       </TableBlankRow>
     );
   }
