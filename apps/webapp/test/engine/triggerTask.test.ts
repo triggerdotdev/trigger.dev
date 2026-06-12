@@ -23,7 +23,10 @@ import { TaskRun } from "@trigger.dev/database";
 import { Redis } from "ioredis";
 import { IdempotencyKeyConcern } from "~/runEngine/concerns/idempotencyKeys.server";
 import { DefaultQueueManager } from "~/runEngine/concerns/queues.server";
-import { RedisTaskMetadataCache } from "~/services/taskMetadataCache.server";
+import {
+  NoopTaskMetadataCache,
+  RedisTaskMetadataCache,
+} from "~/services/taskMetadataCache.server";
 import {
   EntitlementValidationParams,
   MaxAttemptsValidationParams,
@@ -944,6 +947,129 @@ describe("RunEngineTriggerTaskService", () => {
       expect(result4).toBeDefined();
       expect(result4?.run.queue).toBe("non-existent-queue");
       expect(result4?.run.status).toBe("PENDING");
+
+      await engine.quit();
+    }
+  );
+
+  containerTest(
+    "should fall back to the writer when a stale replica returns no row for a locked task",
+    async ({ prisma, redisOptions }) => {
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0005,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const taskIdentifier = "test-task";
+
+      const worker = await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+      // A read replica that has not yet caught up to the BackgroundWorkerTask
+      // row: it is the real database for every query except the locked-task
+      // lookup, which comes back empty (the TRI-10868 false-negative window).
+      const staleReplica = new Proxy(prisma, {
+        get(target, prop, receiver) {
+          if (prop === "backgroundWorkerTask") {
+            const delegate = Reflect.get(target, prop, receiver);
+            return new Proxy(delegate, {
+              get(taskTarget, taskProp, taskReceiver) {
+                if (taskProp === "findFirst") {
+                  return async () => null;
+                }
+                const value = Reflect.get(taskTarget, taskProp, taskReceiver);
+                return typeof value === "function" ? value.bind(taskTarget) : value;
+              },
+            });
+          }
+          const value = Reflect.get(target, prop, receiver);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }) as typeof prisma;
+
+      // Noop cache so every resolve misses the cache and exercises the
+      // replica -> writer fallback. The writer is the real `prisma`.
+      const queuesManager = new DefaultQueueManager(
+        prisma,
+        engine,
+        staleReplica,
+        new NoopTaskMetadataCache()
+      );
+
+      const triggerTaskService = new RunEngineTriggerTaskService({
+        engine,
+        prisma,
+        payloadProcessor: new MockPayloadProcessor(),
+        queueConcern: queuesManager,
+        idempotencyKeyConcern: new IdempotencyKeyConcern(
+          prisma,
+          engine,
+          new MockTraceEventConcern()
+        ),
+        validator: new MockTriggerTaskValidator(),
+        traceEventConcern: new MockTraceEventConcern(),
+        tracer: trace.getTracer("test", "0.0.0"),
+        metadataMaximumSize: 1024 * 1024 * 1,
+      });
+
+      // The task IS registered on the locked worker, but the replica returns
+      // nothing. Before the fix this threw "not found on locked version"; now
+      // the writer fallback resolves the registered row.
+      const result = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: {
+          payload: { test: "test" },
+          options: {
+            lockToVersion: worker.worker.version,
+          },
+        },
+      });
+
+      expect(result).toBeDefined();
+      expect(result?.run.status).toBe("PENDING");
+      expect(result?.run.queue).toBe(`task/${taskIdentifier}`);
+
+      // A genuinely unregistered task must still throw, even with the writer
+      // fallback — the writer has no row either, so the 422 is correct.
+      await expect(
+        triggerTaskService.call({
+          taskId: "not-a-registered-task",
+          environment: authenticatedEnvironment,
+          body: {
+            payload: { test: "test" },
+            options: {
+              lockToVersion: worker.worker.version,
+            },
+          },
+        })
+      ).rejects.toThrow(
+        `Task 'not-a-registered-task' not found on locked version '${worker.worker.version}'`
+      );
 
       await engine.quit();
     }

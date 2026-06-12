@@ -268,14 +268,27 @@ export class DefaultQueueManager implements QueueManager {
     const cached = await this.taskMetaCache.getByWorker(workerId, slug);
     if (cached) return cached;
 
-    const row = await this.replicaPrisma.backgroundWorkerTask.findFirst({
-      where: { workerId, runtimeEnvironmentId: environmentId, slug },
-      select: {
-        ttl: true,
-        triggerSource: true,
-        queue: { select: { id: true, name: true } },
-      },
-    });
+    // Cache miss. Read the row from the replica first; if the replica comes
+    // back empty, re-check the writer before concluding the task is missing.
+    // The locked worker itself was just resolved on the writer (see
+    // triggerTask.server.ts), so a replica that returns no row here is stale,
+    // not authoritative. Trusting a stale-replica negative throws a
+    // non-retryable "not found on locked version" for a task that is in fact
+    // registered. The writer read only runs on this rare miss-then-empty path,
+    // never on the hot path.
+    let row = await this.findLockedTaskRow(this.replicaPrisma, workerId, environmentId, slug);
+
+    if (!row && this.replicaPrisma !== this.prisma) {
+      row = await this.findLockedTaskRow(this.prisma, workerId, environmentId, slug);
+
+      if (row) {
+        logger.warn("Locked task metadata missing on replica but found on writer", {
+          workerId,
+          environmentId,
+          slug,
+        });
+      }
+    }
 
     if (!row) return null;
 
@@ -292,6 +305,22 @@ export class DefaultQueueManager implements QueueManager {
     void this.taskMetaCache.setByWorker(workerId, entry);
 
     return entry;
+  }
+
+  private findLockedTaskRow(
+    client: PrismaClientOrTransaction,
+    workerId: string,
+    environmentId: string,
+    slug: string
+  ) {
+    return client.backgroundWorkerTask.findFirst({
+      where: { workerId, runtimeEnvironmentId: environmentId, slug },
+      select: {
+        ttl: true,
+        triggerSource: true,
+        queue: { select: { id: true, name: true } },
+      },
+    });
   }
 
   /**
