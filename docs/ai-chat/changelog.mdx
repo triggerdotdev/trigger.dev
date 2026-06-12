@@ -4,6 +4,46 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="June 12, 2026" description="4.5.0-rc.6" tags={["SDK", "CLI", "Bug fix"]}>
+
+## chat.agent reliability fixes
+
+A batch of fixes for edge cases around message delivery, stopping, and error handling:
+
+- **No more duplicate turns from mid-stream sends.** A user message sent while the agent was streaming could be delivered twice — once via steering and again on the next turn — running a duplicate turn. Delivery is now deduplicated.
+- **Idempotent input appends.** Sends to `session.in` carry an idempotency key, so a client retry after a network blip can't append the same message twice.
+- **Stop clears streaming state.** Stopping a generation now clears the session's streaming snapshot, so a page reload right after a stop no longer replays the stopped turn.
+- **`onTurnComplete` fires on errored turns.** When `run()` or a lifecycle hook throws, `onTurnComplete` now runs with `error` carrying the thrown value and `finishReason: "error"`, and the failed turn's user message is persisted so it isn't lost on the next run. Use this to mark the turn failed in your own storage. See [error handling](/ai-chat/error-handling#using-onturncomplete).
+- **Full tag sets on chat runs.** Runs triggered by chat sessions can now carry the full set of dashboard tags instead of being silently truncated.
+- **Stream hygiene for custom agents.** Manual `chat.writeTurnComplete()` callers now trim the output stream the way `chat.agent` does, sending a custom action no longer leaves a second stream reader running, and a long-lived `watch` subscription no longer grows its dedupe set without bound.
+
+## Continuation boots no longer stall
+
+Continuation runs (after a cancel, crash, or version upgrade) used to stall around 10 seconds before the first turn: finding the `session.in` resume cursor drained an SSE long-poll that always waited out its full 5 second inactivity window, twice per boot. The cursor is now found with a non-blocking records read, the boot reads run concurrently, and chat snapshots carry the cursor so subsequent boots skip the scan entirely.
+
+## chat.headStart: hydration and reasoning fixes
+
+Two fixes for the [Head Start](/ai-chat/fast-starts) handover:
+
+- With `hydrateMessages` registered, the warm route's step-1 partial now reaches the agent's accumulator, so `onTurnComplete` carries the full first turn, tool-call handovers resume from step 2 instead of re-running step 1, and the assistant `messageId` stays stable across the handover.
+- Extended-thinking models' step-1 reasoning now lands in the durable session history (and `onTurnComplete`) under the same assistant `messageId`, with provider metadata intact so Anthropic thinking signatures survive replays.
+
+## chat.createSession: stop and continuation fixes
+
+Stopping a generation no longer wedges the run: `turn.complete()` bare-awaited the AI SDK's `totalUsage` promise, which never settles after a stop-abort, so the loop hung inside the stopped turn and the chat couldn't take another message. It's now raced with a timeout, the same guard `chat.agent`'s turn loop uses.
+
+Continuation runs also no longer invoke the model with an empty prompt: a message-less continuation boot now waits for the next session input, and `turn.continuation` is preserved so your loop can seed stored history on the first turn. See [chat.createSession](/ai-chat/backend#chat-createsession).
+
+## trigger skills: agent skills for your coding assistant
+
+The CLI's new `trigger skills` command installs Trigger.dev agent skills — including the chat.agent authoring skill — into your coding assistant's native skills directory (Claude Code, Cursor, GitHub Copilot, and Codex / AGENTS.md). The skills ship inside the CLI, version-matched to the SDK you build against, and `trigger dev` offers to install them on first run. `trigger init` can now also set up the MCP server and skills as part of project scaffolding.
+
+```bash
+npx trigger.dev@4.5.0-rc.6 skills
+```
+
+</Update>
+
 <Update label="June 5, 2026" description="4.5.0-rc.5" tags={["SDK", "Bug fix"]}>
 
 ## AI SDK 7 support
