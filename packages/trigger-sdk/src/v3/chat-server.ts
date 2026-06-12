@@ -59,6 +59,7 @@ import {
   SessionStreamInstance,
   TRIGGER_CONTROL_SUBTYPE,
   apiClientManager,
+  type SessionTriggerConfig,
 } from "@trigger.dev/core/v3";
 // Runtime VALUES via the ESM/CJS shim so the CJS build can `require` ESM-only
 // `ai@7` (see ../imports/ai-runtime.ts).
@@ -195,6 +196,12 @@ export type HeadStartHandlerOptions<TTools extends Record<string, Tool>> = {
    * exiting. Defaults to 60.
    */
   idleTimeoutInSeconds?: number;
+  /**
+   * Run options for the auto-triggered `handover-prepare` session run —
+   * tags, queue, machine, etc. Mirrors `chat.createStartSessionAction`.
+   * The `chat:{chatId}` tag is prepended automatically.
+   */
+  triggerConfig?: Partial<SessionTriggerConfig>;
 };
 
 // ---------------------------------------------------------------------------
@@ -220,6 +227,7 @@ export const chat = {
         req,
         agentId: opts.agentId,
         idleTimeoutInSeconds: opts.idleTimeoutInSeconds,
+        triggerConfig: opts.triggerConfig,
       });
 
       const helper: HeadStartChatHelper<TTools> = {
@@ -249,6 +257,7 @@ export const chat = {
     req: Request;
     agentId: string;
     idleTimeoutInSeconds?: number;
+    triggerConfig?: Partial<SessionTriggerConfig>;
   }): Promise<HeadStartSession> {
     return openHandoverSession(opts).then((s) => s.handle);
   },
@@ -304,6 +313,7 @@ async function openHandoverSession(opts: {
   req: Request;
   agentId: string;
   idleTimeoutInSeconds?: number;
+  triggerConfig?: Partial<SessionTriggerConfig>;
 }): Promise<InternalSession> {
   const wirePayload = (await opts.req.json()) as ChatTaskWirePayload;
   const chatId = wirePayload.chatId;
@@ -323,7 +333,35 @@ async function openHandoverSession(opts: {
   const modelMessages = await convertToModelMessages(uiMessages);
 
   const apiClient = resolveApiClient();
-  const idleTimeoutInSeconds = opts.idleTimeoutInSeconds ?? 60;
+  const idleTimeoutInSeconds =
+    opts.idleTimeoutInSeconds ?? opts.triggerConfig?.idleTimeoutInSeconds ?? 60;
+
+  const userTags = opts.triggerConfig?.tags ?? [];
+  const tags = [`chat:${chatId}`, ...userTags].slice(0, 5);
+
+  const triggerConfig: SessionTriggerConfig = {
+    basePayload: {
+      ...(opts.triggerConfig?.basePayload ?? {}),
+      ...wirePayload,
+      chatId,
+      trigger: "handover-prepare",
+      idleTimeoutInSeconds,
+    },
+    ...(opts.triggerConfig?.machine ? { machine: opts.triggerConfig.machine } : {}),
+    ...(opts.triggerConfig?.queue ? { queue: opts.triggerConfig.queue } : {}),
+    tags,
+    ...(opts.triggerConfig?.maxAttempts !== undefined
+      ? { maxAttempts: opts.triggerConfig.maxAttempts }
+      : {}),
+    ...(opts.triggerConfig?.maxDuration !== undefined
+      ? { maxDuration: opts.triggerConfig.maxDuration }
+      : {}),
+    ...(opts.triggerConfig?.region ? { region: opts.triggerConfig.region } : {}),
+    ...(opts.triggerConfig?.lockToVersion
+      ? { lockToVersion: opts.triggerConfig.lockToVersion }
+      : {}),
+    idleTimeoutInSeconds,
+  };
 
   // Create the session and trigger the chat.agent's `handover-prepare`
   // run atomically. `createSession` is idempotent on `(env, externalId
@@ -342,15 +380,7 @@ async function openHandoverSession(opts: {
     type: "chat.agent",
     externalId: chatId,
     taskIdentifier: opts.agentId,
-    triggerConfig: {
-      basePayload: {
-        ...wirePayload,
-        chatId,
-        trigger: "handover-prepare",
-        idleTimeoutInSeconds,
-      },
-      idleTimeoutInSeconds,
-    },
+    triggerConfig,
   });
   const sessionPublicAccessToken = created.publicAccessToken;
 
