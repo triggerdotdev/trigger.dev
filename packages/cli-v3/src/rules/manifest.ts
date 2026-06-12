@@ -1,5 +1,5 @@
-import { readFile } from "fs/promises";
-import { dirname, join } from "path";
+import { readFile, readdir } from "fs/promises";
+import { join } from "path";
 import { z } from "zod";
 import { RulesFileInstallStrategy } from "./types.js";
 
@@ -76,7 +76,7 @@ export class RulesManifest {
         // Omit path
         const { path, installStrategy, ...rest } = option;
 
-        const $installStrategy = RulesFileInstallStrategy.safeParse(installStrategy ?? "default");
+        const $installStrategy = RulesFileInstallStrategy.safeParse(installStrategy ?? "skills");
 
         // Skip variants with invalid install strategies
         if (!$installStrategy.success) {
@@ -109,57 +109,138 @@ export interface RulesManifestLoader {
   loadRulesFile(relativePath: string): Promise<string>;
 }
 
-export class GithubRulesManifestLoader implements RulesManifestLoader {
-  constructor(private readonly branch: string = "main") {}
+/**
+ * Loads agent skills bundled inside the `trigger.dev` CLI (the `skills/` folder shipped
+ * via the package's `files[]`). The CLI is the only source of skills; `skillsDir` and
+ * `version` are resolved from the CLI's own package by the caller and injected here, so
+ * this stays a pure reader. Synthesizes the manifest shape the install pipeline consumes
+ * so skills flow through `loadRulesManifest` -> `getCurrentVersion` -> install, with
+ * `installStrategy: "skills"`. `version` (== the CLI/SDK version) is stamped into each
+ * skill on read in place of the `{{TRIGGER_SDK_VERSION}}` placeholder.
+ */
+export class BundledSkillsLoader implements RulesManifestLoader {
+  constructor(
+    private readonly skillsDir: string,
+    private readonly version: string
+  ) {}
 
   async loadManifestContent(): Promise<string> {
-    const response = await fetch(
-      `https://raw.githubusercontent.com/triggerdotdev/trigger.dev/refs/heads/${this.branch}/rules/manifest.json`,
-      {
-        signal: AbortSignal.timeout(5000),
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Failed to load rules manifest: ${response.status} ${response.statusText}`);
+    let entries: string[] = [];
+    try {
+      const dirents = await readdir(this.skillsDir, { withFileTypes: true });
+      entries = dirents
+        .filter((d) => d.isDirectory() && !d.name.startsWith("_") && !d.name.startsWith("."))
+        .map((d) => d.name)
+        .sort();
+    } catch (error) {
+      throw new Error(`No skills found in ${this.skillsDir}: ${error}`);
     }
 
-    return response.text();
+    const options = [];
+    for (const name of entries) {
+      const skillMdPath = join(this.skillsDir, name, "SKILL.md");
+
+      let contents: string;
+      try {
+        contents = await readFile(skillMdPath, "utf8");
+      } catch {
+        // a directory without a SKILL.md isn't a skill
+        continue;
+      }
+
+      const description = extractSkillDescription(contents) ?? humanizeSkillName(name);
+
+      options.push({
+        name,
+        title: humanizeSkillName(name),
+        label: description,
+        path: join(name, "SKILL.md"),
+        tokens: Math.max(1, Math.round(contents.length / 4)),
+        installStrategy: "skills",
+      });
+    }
+
+    if (options.length === 0) {
+      throw new Error(`No skills with a SKILL.md found in ${this.skillsDir}`);
+    }
+
+    return JSON.stringify({
+      name: "trigger.dev",
+      description: "Trigger.dev agent skills",
+      currentVersion: this.version,
+      versions: {
+        [this.version]: { options },
+      },
+    });
   }
 
   async loadRulesFile(relativePath: string): Promise<string> {
-    const response = await fetch(
-      `https://raw.githubusercontent.com/triggerdotdev/trigger.dev/refs/heads/${this.branch}/rules/${relativePath}`
-    );
+    const path = join(this.skillsDir, relativePath);
 
-    if (!response.ok) {
-      throw new Error(
-        `Failed to load rules file: ${relativePath} - ${response.status} ${response.statusText}`
-      );
+    try {
+      const raw = await readFile(path, "utf8");
+      // Stamp the CLI/SDK version into the skill so the copy on disk reflects the
+      // version the user is on, not a hardcoded number that drifts.
+      return raw.replace(/\{\{TRIGGER_SDK_VERSION\}\}/g, this.version);
+    } catch (error) {
+      throw new Error(`Failed to load skill file: ${relativePath} - ${error}`);
     }
-
-    return response.text();
   }
 }
 
-export class LocalRulesManifestLoader implements RulesManifestLoader {
-  constructor(private readonly path: string) {}
+function humanizeSkillName(name: string): string {
+  const spaced = name.replace(/[-_]+/g, " ").trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
 
-  async loadManifestContent(): Promise<string> {
-    try {
-      return await readFile(this.path, "utf8");
-    } catch (error) {
-      throw new Error(`Failed to load rules manifest: ${this.path} - ${error}`);
-    }
+/**
+ * Best-effort extraction of the `description` field from a SKILL.md YAML frontmatter
+ * block, used only for the picker label. Handles single-line, quoted, and folded/literal
+ * (`>`, `|`) scalars. Returns undefined if there's no frontmatter or description.
+ */
+function extractSkillDescription(skillMd: string): string | undefined {
+  const match = skillMd.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  const frontmatter = match?.[1];
+  if (!frontmatter) {
+    return undefined;
   }
 
-  async loadRulesFile(relativePath: string): Promise<string> {
-    const path = join(dirname(this.path), relativePath);
-
-    try {
-      return await readFile(path, "utf8");
-    } catch (error) {
-      throw new Error(`Failed to load rules file: ${relativePath} - ${error}`);
+  const lines = frontmatter.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line === undefined) {
+      continue;
     }
+
+    const m = line.match(/^description:\s*(.*)$/);
+    if (!m) {
+      continue;
+    }
+
+    const value = (m[1] ?? "").trim();
+
+    // Folded (>) or literal (|) block scalar: collect the indented continuation lines.
+    if (/^[>|][+-]?$/.test(value)) {
+      const collected: string[] = [];
+      for (let j = i + 1; j < lines.length; j++) {
+        const next = lines[j];
+        if (next === undefined) {
+          break;
+        }
+        if (/^\s+\S/.test(next)) {
+          collected.push(next.trim());
+        } else if (next.trim() === "") {
+          collected.push("");
+        } else {
+          break;
+        }
+      }
+      return collected.join(" ").replace(/\s+/g, " ").trim() || undefined;
+    }
+
+    // Inline scalar, possibly quoted.
+    return value.replace(/^["']|["']$/g, "").trim() || undefined;
   }
+
+  return undefined;
 }

@@ -30,6 +30,16 @@ export type UpdateMetadataServiceOptions = {
   maximumSize?: number;
   logger?: Logger;
   logLevel?: LogLevel;
+  /** Called after the batched flusher writes a run's buffered operations, with everything
+   * a realtime change record needs — buffered (parent/root) updates otherwise never wake
+   * live feeds. */
+  onRunFlushed?: (run: {
+    runId: string;
+    environmentId: string;
+    tags: string[];
+    batchId: string | null;
+    updatedAtMs: number;
+  }) => void;
   // Testing hooks
   onBeforeUpdate?: (runId: string) => Promise<void>;
   onAfterRead?: (runId: string, metadataVersion: number) => Promise<void>;
@@ -172,12 +182,20 @@ export class UpdateMetadataService {
     operations: BufferedRunMetadataChangeOperation[]
   ) => {
     return Effect.gen(this, function* (_) {
-      // Fetch current run
+      // Fetch current run (+ the realtime membership keys, so a flush can publish)
       const run = yield* _(
         Effect.tryPromise(() =>
           this._prisma.taskRun.findFirst({
             where: { id: runId },
-            select: { id: true, metadata: true, metadataType: true, metadataVersion: true },
+            select: {
+              id: true,
+              metadata: true,
+              metadataType: true,
+              metadataVersion: true,
+              runtimeEnvironmentId: true,
+              runTags: true,
+              batchId: true,
+            },
           })
         )
       );
@@ -237,6 +255,9 @@ export class UpdateMetadataService {
         yield* _(Effect.tryPromise(() => this.options.onBeforeUpdate!(runId)));
       }
 
+      // Stamp updatedAt explicitly so the realtime publish can carry the exact committed
+      // value without a follow-up read (updateMany can't RETURNING).
+      const writeTime = new Date();
       const result = yield* _(
         Effect.tryPromise(() =>
           this._prisma.taskRun.updateMany({
@@ -247,6 +268,7 @@ export class UpdateMetadataService {
             data: {
               metadata: newMetadataPacket.data,
               metadataVersion: { increment: 1 },
+              updatedAt: writeTime,
             },
           })
         )
@@ -261,6 +283,16 @@ export class UpdateMetadataService {
 
         return yield* _(Effect.fail(new Error("Optimistic lock failed")));
       }
+
+      yield* Effect.sync(() => {
+        this.options.onRunFlushed?.({
+          runId,
+          environmentId: run.runtimeEnvironmentId,
+          tags: run.runTags,
+          batchId: run.batchId,
+          updatedAtMs: writeTime.getTime(),
+        });
+      });
 
       return result;
     });
@@ -308,6 +340,8 @@ export class UpdateMetadataService {
           },
       select: {
         id: true,
+        batchId: true,
+        runTags: true,
         completedAt: true,
         status: true,
         metadata: true,
@@ -344,7 +378,7 @@ export class UpdateMetadataService {
       this.#ingestRunOperations(taskRun.rootTaskRun?.id ?? taskRun.id, body.rootOperations);
     }
 
-    const newMetadata = await this.#updateRunMetadata({
+    const result = await this.#updateRunMetadata({
       runId: taskRun.id,
       body,
       existingMetadata: {
@@ -354,7 +388,14 @@ export class UpdateMetadataService {
     });
 
     return {
-      metadata: newMetadata,
+      metadata: result?.metadata,
+      // Internal id + membership keys, so callers can publish full realtime records the router routes by index.
+      runId: taskRun.id,
+      batchId: taskRun.batchId,
+      runTags: taskRun.runTags,
+      // The committed row's updatedAt — the realtime watermark. Undefined when nothing was
+      // written here (no-op, or buffered for the flusher, which publishes itself).
+      updatedAtMs: result?.updatedAtMs,
     };
   }
 
@@ -366,7 +407,7 @@ export class UpdateMetadataService {
     runId: string;
     body: UpdateMetadataRequestBody;
     existingMetadata: IOPacket;
-  }) {
+  }): Promise<{ metadata: Record<string, unknown> | undefined; updatedAtMs?: number }> {
     if (Array.isArray(body.operations)) {
       return this.#updateRunMetadataWithOperations(runId, body.operations);
     } else {
@@ -374,7 +415,10 @@ export class UpdateMetadataService {
     }
   }
 
-  async #updateRunMetadataWithOperations(runId: string, operations: RunMetadataChangeOperation[]) {
+  async #updateRunMetadataWithOperations(
+    runId: string,
+    operations: RunMetadataChangeOperation[]
+  ): Promise<{ metadata: Record<string, unknown> | undefined; updatedAtMs?: number }> {
     const MAX_RETRIES = 3;
     let attempts = 0;
 
@@ -402,9 +446,9 @@ export class UpdateMetadataService {
       // Apply operations to the current metadata
       const applyResults = applyMetadataOperations(currentMetadata, operations);
 
-      // If no operations were applied, return the current metadata
+      // If no operations were applied, return the current metadata (nothing written)
       if (applyResults.unappliedOperations.length === operations.length) {
-        return currentMetadata;
+        return { metadata: currentMetadata };
       }
 
       const newMetadataPacket = handleMetadataPacket(
@@ -422,7 +466,9 @@ export class UpdateMetadataService {
         await this.options.onBeforeUpdate(runId);
       }
 
-      // Update with optimistic locking
+      // Update with optimistic locking; updatedAt stamped explicitly so the caller can
+      // publish the exact committed watermark without a follow-up read.
+      const writeTime = new Date();
       const result = await this._prisma.taskRun.updateMany({
         where: {
           id: runId,
@@ -434,6 +480,7 @@ export class UpdateMetadataService {
           metadataVersion: {
             increment: 1,
           },
+          updatedAt: writeTime,
         },
       });
 
@@ -448,9 +495,10 @@ export class UpdateMetadataService {
         }
 
         // If this was our last attempt, buffer the operations and return optimistically
+        // (no watermark — the flusher writes later and publishes itself).
         if (attempts === MAX_RETRIES) {
           this.#ingestRunOperations(runId, operations);
-          return applyResults.newMetadata;
+          return { metadata: applyResults.newMetadata };
         }
 
         // Otherwise sleep and try again
@@ -468,8 +516,10 @@ export class UpdateMetadataService {
       }
 
       // Success! Return the new metadata
-      return applyResults.newMetadata;
+      return { metadata: applyResults.newMetadata, updatedAtMs: writeTime.getTime() };
     }
+
+    return { metadata: undefined };
   }
 
   // Checks to see if a run is updatable
@@ -487,7 +537,7 @@ export class UpdateMetadataService {
     runId: string,
     body: UpdateMetadataRequestBody,
     existingMetadata: IOPacket
-  ) {
+  ): Promise<{ metadata: Record<string, unknown> | undefined; updatedAtMs?: number }> {
     const metadataPacket = handleMetadataPacket(
       body.metadata,
       "application/json",
@@ -495,8 +545,10 @@ export class UpdateMetadataService {
     );
 
     if (!metadataPacket) {
-      return {};
+      return { metadata: {} };
     }
+
+    let updatedAtMs: number | undefined;
 
     if (
       metadataPacket.data !== "{}" ||
@@ -509,7 +561,9 @@ export class UpdateMetadataService {
         });
       }
 
-      // Update the metadata without version check
+      // Update the metadata without version check; updatedAt stamped explicitly so the
+      // caller can publish the exact committed watermark.
+      const writeTime = new Date();
       await this._prisma.taskRun.update({
         where: {
           id: runId,
@@ -520,12 +574,14 @@ export class UpdateMetadataService {
           metadataVersion: {
             increment: 1,
           },
+          updatedAt: writeTime,
         },
       });
+      updatedAtMs = writeTime.getTime();
     }
 
     const newMetadata = await parsePacket(metadataPacket);
-    return newMetadata;
+    return { metadata: newMetadata, updatedAtMs };
   }
 
   #ingestRunOperations(runId: string, operations: RunMetadataChangeOperation[]) {

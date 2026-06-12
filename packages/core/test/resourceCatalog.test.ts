@@ -152,3 +152,54 @@ describe("StandardResourceCatalog — runtime registration via sentinel context"
     }
   );
 });
+
+describe("StandardResourceCatalog — duplicate task id collisions", () => {
+  function register(catalog: StandardResourceCatalog, id: string, filePath: string) {
+    catalog.setCurrentFileContext(filePath, filePath);
+    catalog.registerTaskMetadata({ id, fns: { run: async () => "ok" } });
+    catalog.clearCurrentFileContext();
+  }
+
+  it("reports no collisions when every task id is unique", () => {
+    const catalog = new StandardResourceCatalog();
+
+    register(catalog, "a", "src/a.ts");
+    register(catalog, "b", "src/b.ts");
+
+    expect(catalog.listTaskIdCollisions()).toEqual([]);
+  });
+
+  it("records a collision with both file paths when an id is reused across files", () => {
+    const catalog = new StandardResourceCatalog();
+
+    register(catalog, "dupe", "src/a.ts");
+    register(catalog, "dupe", "src/b.ts");
+
+    expect(catalog.listTaskIdCollisions()).toEqual([
+      { id: "dupe", filePaths: ["src/a.ts", "src/b.ts"] },
+    ]);
+  });
+
+  it("collects every distinct file path when an id is defined three or more times", () => {
+    const catalog = new StandardResourceCatalog();
+
+    register(catalog, "dupe", "src/a.ts");
+    register(catalog, "dupe", "src/b.ts");
+    register(catalog, "dupe", "src/c.ts");
+
+    expect(catalog.listTaskIdCollisions()).toEqual([
+      { id: "dupe", filePaths: ["src/a.ts", "src/b.ts", "src/c.ts"] },
+    ]);
+  });
+
+  it("records two definitions in the same file (e.g. two exports sharing an id)", () => {
+    const catalog = new StandardResourceCatalog();
+
+    register(catalog, "dupe", "src/dupe.ts");
+    register(catalog, "dupe", "src/dupe.ts");
+
+    expect(catalog.listTaskIdCollisions()).toEqual([
+      { id: "dupe", filePaths: ["src/dupe.ts", "src/dupe.ts"] },
+    ]);
+  });
+});

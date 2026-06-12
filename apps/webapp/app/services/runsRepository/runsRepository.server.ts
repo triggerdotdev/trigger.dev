@@ -30,6 +30,8 @@ const RunListInputOptionsSchema = z.object({
   versions: z.array(z.string()).optional(),
   statuses: z.array(RunStatus).optional(),
   tags: z.array(z.string()).optional(),
+  // "any" (default) = run has at least one of `tags`; "all" = run has every tag.
+  tagsMatch: z.enum(["any", "all"]).optional(),
   scheduleId: z.string().optional(),
   period: z.string().optional(),
   from: z.number().optional(),
@@ -127,9 +129,25 @@ export type TagList = {
   tags: string[];
 };
 
+export type CursorPagination = {
+  nextCursor: string | null;
+  previousCursor: string | null;
+};
+
+export type RunIdsPage = {
+  runIds: string[];
+  pagination: CursorPagination;
+};
+
 export interface IRunsRepository {
   name: string;
-  listRunIds(options: ListRunsOptions): Promise<string[]>;
+  /**
+   * A keyset-paginated page of run ids plus the cursors to navigate
+   * forward/backward. The cursors are opaque composite `(created_at, run_id)`
+   * tokens, so pagination can't duplicate or skip runs. This is the single
+   * cursor-aware list primitive — `listRuns` and bulk actions build on it.
+   */
+  listRunIds(options: ListRunsOptions): Promise<RunIdsPage>;
   /** Returns friendly IDs (e.g., run_xxx) instead of internal UUIDs. Used for ClickHouse task_events queries. */
   listFriendlyRunIds(options: ListRunsOptions): Promise<string[]>;
   listRuns(options: ListRunsOptions): Promise<{
@@ -154,7 +172,7 @@ export class RunsRepository implements IRunsRepository {
     return "runsRepository";
   }
 
-  async listRunIds(options: ListRunsOptions): Promise<string[]> {
+  async listRunIds(options: ListRunsOptions): Promise<RunIdsPage> {
     return startActiveSpan(
       "runsRepository.listRunIds",
       async () => this.clickHouseRunsRepository.listRunIds(options),

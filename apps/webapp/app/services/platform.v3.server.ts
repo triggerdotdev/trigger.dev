@@ -478,6 +478,22 @@ export async function setBranchesAddOn(organizationId: string, amount: number) {
   }
 }
 
+export async function setSchedulesAddOn(organizationId: string, amount: number) {
+  if (!client) return undefined;
+
+  try {
+    const result = await client.setAddOn(organizationId, { type: "schedules", amount });
+    if (!result.success) {
+      recordPlatformFailure("setSchedulesAddOn", "no_success");
+      return undefined;
+    }
+    return result;
+  } catch (e) {
+    recordPlatformFailure("setSchedulesAddOn", "caught");
+    return undefined;
+  }
+}
+
 export async function getUsage(organizationId: string, { from, to }: { from: Date; to: Date }) {
   if (!client) return undefined;
 

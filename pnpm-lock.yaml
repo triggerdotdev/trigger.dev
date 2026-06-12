@@ -47,6 +47,9 @@ patchedDependencies:
   '@kubernetes/client-node@1.0.0':
     hash: ba1a06f46256cdb8d6faf7167246692c0de2e7cd846a9dc0f13be0137e1c3745
     path: patches/@kubernetes__client-node@1.0.0.patch
+  '@remix-run/router@1.23.2':
+    hash: f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9
+    path: patches/@remix-run__router@1.23.2.patch
   '@sentry/remix@9.46.0':
     hash: 146126b032581925294aaed63ab53ce3f5e0356a755f1763d7a9a76b9846943b
     path: patches/@sentry__remix@9.46.0.patch
@@ -225,8 +228,8 @@ importers:
         specifier: ^4.0.6
         version: 4.0.6
       ioredis:
-        specifier: ^5.3.2
-        version: 5.3.2
+        specifier: ~5.6.0
+        version: 5.6.1
       p-limit:
         specifier: ^6.2.0
         version: 6.2.0
@@ -497,7 +500,7 @@ importers:
         version: 2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)
       '@remix-run/router':
         specifier: ^1.23.2
-        version: 1.23.2
+        version: 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       '@remix-run/serve':
         specifier: 2.17.4
         version: 2.17.4(typescript@5.5.4)
@@ -553,8 +556,8 @@ importers:
         specifier: workspace:*
         version: link:../../internal-packages/otlp-importer
       '@trigger.dev/platform':
-        specifier: 1.0.27
-        version: 1.0.27
+        specifier: 1.0.28
+        version: 1.0.28
       '@trigger.dev/rbac':
         specifier: workspace:*
         version: link:../../internal-packages/rbac
@@ -661,8 +664,8 @@ importers:
         specifier: ^1.0.0
         version: 1.0.0
       ioredis:
-        specifier: ^5.3.2
-        version: 5.3.2
+        specifier: ~5.6.0
+        version: 5.6.1
       isbot:
         specifier: ^3.6.5
         version: 3.6.5
@@ -803,7 +806,7 @@ importers:
         version: 0.3.1(@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.17.4(typescript@5.5.4))(react@18.2.0)
       remix-utils:
         specifier: ^7.7.0
-        version: 7.7.0(@remix-run/node@2.17.4(typescript@5.5.4))(@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/router@1.23.2)(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.2.0)(zod@3.25.76)
+        version: 7.7.0(@remix-run/node@2.17.4(typescript@5.5.4))(@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/router@1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9))(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.2.0)(zod@3.25.76)
       seedrandom:
         specifier: ^3.0.5
         version: 3.0.5
@@ -1253,8 +1256,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/core
       ioredis:
-        specifier: ^5.3.2
-        version: 5.3.2
+        specifier: ~5.6.0
+        version: 5.6.1
 
   internal-packages/replication:
     dependencies:
@@ -1326,6 +1329,9 @@ importers:
       '@internal/testcontainers':
         specifier: workspace:*
         version: link:../testcontainers
+      '@opentelemetry/sdk-metrics':
+        specifier: 2.7.1
+        version: 2.7.1(@opentelemetry/api@1.9.1)
       '@types/seedrandom':
         specifier: ^3.0.8
         version: 3.0.8
@@ -1401,8 +1407,8 @@ importers:
         specifier: workspace:*
         version: link:../database
       ioredis:
-        specifier: ^5.3.2
-        version: 5.3.2
+        specifier: ~5.6.0
+        version: 5.6.1
     devDependencies:
       '@testcontainers/postgresql':
         specifier: ^11.14.0
@@ -1488,7 +1494,7 @@ importers:
         specifier: ^6.10.0
         version: 6.19.0(magicast@0.3.5)
       '@trigger.dev/core':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../core
       mlly:
         specifier: ^1.7.1
@@ -1564,13 +1570,13 @@ importers:
         specifier: ^0.22.10
         version: 0.22.10(supports-color@10.0.0)
       '@trigger.dev/build':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../build
       '@trigger.dev/core':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../core
       '@trigger.dev/schema-to-json':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../schema-to-json
       ansi-escapes:
         specifier: ^7.0.0
@@ -1960,7 +1966,7 @@ importers:
   packages/python:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../core
       tinyexec:
         specifier: ^0.3.2
@@ -1970,10 +1976,10 @@ importers:
         specifier: ^0.15.4
         version: 0.15.4
       '@trigger.dev/build':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../build
       '@trigger.dev/sdk':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../trigger-sdk
       '@types/node':
         specifier: 20.14.14
@@ -1997,7 +2003,7 @@ importers:
   packages/react-hooks:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^4.5.0-rc.5
+        specifier: workspace:^4.5.0-rc.6
         version: link:../core
       react:
         specifier: ^18.0 || ^19.0 || ^19.0.0-rc
@@ -2031,7 +2037,7 @@ importers:
   packages/redis-worker:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../core
       cron-parser:
         specifier: ^4.9.0
@@ -2080,7 +2086,7 @@ importers:
   packages/rsc:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^4.5.0-rc.5
+        specifier: workspace:^4.5.0-rc.6
         version: link:../core
       mlly:
         specifier: ^1.7.1
@@ -2096,7 +2102,7 @@ importers:
         specifier: ^0.15.4
         version: 0.15.4
       '@trigger.dev/build':
-        specifier: workspace:^4.5.0-rc.5
+        specifier: workspace:^4.5.0-rc.6
         version: link:../build
       '@types/node':
         specifier: 20.14.14
@@ -2175,7 +2181,7 @@ importers:
         specifier: 1.41.1
         version: 1.41.1
       '@trigger.dev/core':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../core
       chalk:
         specifier: ^5.2.0
@@ -8122,8 +8128,8 @@ packages:
       react: ^18.2.0
       react-dom: 18.2.0
 
-  '@trigger.dev/platform@1.0.27':
-    resolution: {integrity: sha512-gYfYDBnp2RJpgL4V2oOeqzV20flMZg+oGALhxHmmNJdJM01MW4aJSLsFFjoj+dikpL+4/3gocJcoyZk1G02UNg==}
+  '@trigger.dev/platform@1.0.28':
+    resolution: {integrity: sha512-UVb7FlGljThZH5FJtXv5BvQQTGot510OAMZR98UJ1TLFuTvTwKo+NITf0yimYiDW5YaP768p6v1nVERx8MwpNw==}
 
   '@types/acorn@4.0.6':
     resolution: {integrity: sha512-veQTnWP+1D/xbxVrPC3zHnCZRjSrKfhbMUlEA43iMZLu7EsnTtkJklIuwrCPbOi8YkvDQAiW05VQQFvvz9oieQ==}
@@ -11967,8 +11973,8 @@ packages:
     resolution: {integrity: sha512-YFMSV91JNBOSjw1cOfw2tup6hDP7mkz+2AUV7W1L1AM6ntgI75qC1ZeFpjPGMrWp+upmBRTX2fJWQ8c7jsUWpA==}
     engines: {node: '>=14'}
 
-  ioredis@5.3.2:
-    resolution: {integrity: sha512-1DKMMzlIHM02eBBVOFQ1+AolGjs6+xEcM4PDL7NqOS6szq7H9jSaEkIUH6/a5Hl241LzW6JLSiAbNvTQjUupUA==}
+  ioredis@5.6.1:
+    resolution: {integrity: sha512-UxC0Yv1Y4WRJiGQxQkP0hfdL0/5/6YvdfOOClRgJ0qppSarkhneSa6UvkMkms0AkdGimSH3Ikqm+6mkMmX7vGA==}
     engines: {node: '>=12.22.0'}
 
   ip-address@10.0.1:
@@ -15394,8 +15400,9 @@ packages:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
 
-  shell-quote@1.8.1:
-    resolution: {integrity: sha512-6j1W9l1iAs/4xYBI1SYOVZyFcCis9b4KCLQ8fgAGG07QvzaRLVVRQvAy85yNmmZSjYjg4MWh4gNvlPujU/5LpA==}
+  shell-quote@1.8.4:
+    resolution: {integrity: sha512-VsC6n6vz1ihYYyZZwX7YZSF5l5x36ca17OC+a69h94YqB7X6XLwf+5MOgynYir2SLFUbl8gIYvBo8K8RoNQ6bQ==}
+    engines: {node: '>= 0.4'}
 
   shiki@3.23.0:
     resolution: {integrity: sha512-55Dj73uq9ZXL5zyeRPzHQsK7Nbyt6Y10k5s7OjuFZGMhpp4r/rsLBH0o/0fstIzX1Lep9VxefWljK/SKCzygIA==}
@@ -23657,7 +23664,7 @@ snapshots:
       '@npmcli/package-json': 4.0.1
       '@remix-run/node': 2.17.4(typescript@5.5.4)
       '@remix-run/react': 2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       '@remix-run/server-runtime': 2.17.4(typescript@5.5.4)
       '@types/mdx': 2.0.5
       '@vanilla-extract/integration': 6.2.1(@types/node@20.14.14)(lightningcss@1.29.2)(terser@5.46.1)
@@ -23772,7 +23779,7 @@ snapshots:
 
   '@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)':
     dependencies:
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       '@remix-run/server-runtime': 2.17.4(typescript@5.5.4)
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
@@ -23782,7 +23789,7 @@ snapshots:
     optionalDependencies:
       typescript: 5.5.4
 
-  '@remix-run/router@1.23.2': {}
+  '@remix-run/router@1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)': {}
 
   '@remix-run/serve@2.17.4(typescript@5.5.4)':
     dependencies:
@@ -23800,7 +23807,7 @@ snapshots:
 
   '@remix-run/server-runtime@2.17.4(typescript@5.5.4)':
     dependencies:
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       '@types/cookie': 0.6.0
       '@web3-storage/multipart-parser': 1.0.0
       cookie: 0.7.2
@@ -23814,7 +23821,7 @@ snapshots:
     dependencies:
       '@remix-run/node': 2.17.4(typescript@5.5.4)
       '@remix-run/react': 2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       react: 18.2.0
       react-router-dom: 6.30.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
     optionalDependencies:
@@ -24100,7 +24107,7 @@ snapshots:
       '@opentelemetry/semantic-conventions': 1.41.1
       '@remix-run/node': 2.17.4(typescript@5.5.4)
       '@remix-run/react': 2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       '@remix-run/server-runtime': 2.17.4(typescript@5.5.4)
       '@sentry/cli': 2.50.2(encoding@0.1.13)
       '@sentry/core': 9.46.0
@@ -25327,7 +25334,7 @@ snapshots:
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
 
-  '@trigger.dev/platform@1.0.27':
+  '@trigger.dev/platform@1.0.28':
     dependencies:
       zod: 3.23.8
 
@@ -30045,11 +30052,11 @@ snapshots:
 
   intl-parse-accept-language@1.0.0: {}
 
-  ioredis@5.3.2:
+  ioredis@5.6.1:
     dependencies:
       '@ioredis/commands': 1.2.0
       cluster-key-slot: 1.1.2
-      debug: 4.3.7(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       denque: 2.1.0
       lodash.defaults: 4.2.0
       lodash.isarguments: 3.1.0
@@ -31918,7 +31925,7 @@ snapshots:
       minimatch: 3.1.5
       pidtree: 0.3.1
       read-pkg: 3.0.0
-      shell-quote: 1.8.1
+      shell-quote: 1.8.4
       string.prototype.padend: 3.1.4
 
   npm-run-path@4.0.1:
@@ -33190,14 +33197,14 @@ snapshots:
 
   react-router-dom@6.30.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
     dependencies:
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
       react-router: 6.30.3(react@18.2.0)
 
   react-router@6.30.3(react@18.2.0):
     dependencies:
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       react: 18.2.0
 
   react-smooth@4.0.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
@@ -33585,13 +33592,13 @@ snapshots:
       '@remix-run/server-runtime': 2.17.4(typescript@5.5.4)
       react: 18.2.0
 
-  remix-utils@7.7.0(@remix-run/node@2.17.4(typescript@5.5.4))(@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/router@1.23.2)(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.2.0)(zod@3.25.76):
+  remix-utils@7.7.0(@remix-run/node@2.17.4(typescript@5.5.4))(@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/router@1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9))(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.2.0)(zod@3.25.76):
     dependencies:
       type-fest: 4.33.0
     optionalDependencies:
       '@remix-run/node': 2.17.4(typescript@5.5.4)
       '@remix-run/react': 2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       crypto-js: 4.2.0
       intl-parse-accept-language: 1.0.0
       react: 18.2.0
@@ -33906,7 +33913,7 @@ snapshots:
 
   send@1.1.0(supports-color@10.0.0):
     dependencies:
-      debug: 4.3.6(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       destroy: 1.2.0
       encodeurl: 2.0.0
       escape-html: 1.0.3
@@ -34000,7 +34007,7 @@ snapshots:
 
   shebang-regex@3.0.0: {}
 
-  shell-quote@1.8.1: {}
+  shell-quote@1.8.4: {}
 
   shiki@3.23.0:
     dependencies:

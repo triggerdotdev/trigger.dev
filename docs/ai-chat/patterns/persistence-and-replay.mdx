@@ -142,7 +142,13 @@ export const myChat = chat.agent({
     // See lifecycle-hooks for the full upsert pattern + rationale:
     // /ai-chat/lifecycle-hooks#hydratemessages
     if (upsertIncomingMessage(stored, { trigger, incomingMessages })) {
-      await db.chat.update({ where: { id: chatId }, data: { messages: stored } });
+      // Upsert, not update: head-start first turns run without a preload
+      // to create the row.
+      await db.chat.upsert({
+        where: { id: chatId },
+        create: { id: chatId, messages: stored },
+        update: { messages: stored },
+      });
     }
 
     return stored;

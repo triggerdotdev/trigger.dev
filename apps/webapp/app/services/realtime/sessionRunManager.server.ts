@@ -111,31 +111,32 @@ export async function ensureRunForSession(
   // 1. Probe currentRunId.
   let priorDeadRunFriendlyId: string | undefined;
   if (session.currentRunId) {
-    const probe = await getRunStatusAndFriendlyId(session.currentRunId);
+    let probe = await getRunStatusAndFriendlyId(session.currentRunId);
+    if (!probe) {
+      // Replica miss on a row we just observed via `currentRunId` — the
+      // run was likely triggered moments ago and hasn't replicated yet.
+      // Re-probe the writer BEFORE deciding liveness: treating a lagging
+      // replica as "row vanished" double-triggers the session (a fast
+      // first append after session create races the replica apply delay
+      // and spawns a second live run consuming the same `.in`).
+      probe = await prisma.taskRun.findFirst({
+        where: { id: session.currentRunId },
+        select: { status: true, friendlyId: true },
+      });
+    }
     if (probe && !isFinalRunStatus(probe.status)) {
       return { runId: session.currentRunId, triggered: false };
     }
-    // Either the row vanished (probe null) or its status is final. Either
-    // way the prior run isn't going to consume new appends — but the
-    // session may still hold conversation state on `session.out` and an
-    // S3 snapshot keyed on `session.friendlyId`. Forward the prior run's
-    // public-form id (friendlyId — same shape as `ctx.run.id`) to the
-    // agent as `previousRunId` so its boot gate flips
+    // Either the row vanished on the writer too (probe null) or its status
+    // is final. Either way the prior run isn't going to consume new
+    // appends — but the session may still hold conversation state on
+    // `session.out` and an S3 snapshot keyed on `session.friendlyId`.
+    // Forward the prior run's public-form id (friendlyId — same shape as
+    // `ctx.run.id`) to the agent as `previousRunId` so its boot gate flips
     // `couldHavePriorState` and replays the persisted state instead of
     // treating this as a fresh chat. See `chat.agent`'s boot orchestration
     // in `packages/trigger-sdk/src/v3/ai.ts`.
-    if (probe?.friendlyId) {
-      priorDeadRunFriendlyId = probe.friendlyId;
-    } else {
-      // Replica miss on a row we just observed via `currentRunId`. Retry
-      // on the writer so the customer's `runs.retrieve(previousRunId)`
-      // gets the public `run_*` form rather than the internal cuid.
-      const writerProbe = await prisma.taskRun.findFirst({
-        where: { id: session.currentRunId },
-        select: { friendlyId: true },
-      });
-      priorDeadRunFriendlyId = writerProbe?.friendlyId ?? session.currentRunId;
-    }
+    priorDeadRunFriendlyId = probe?.friendlyId ?? session.currentRunId;
   }
 
   // 2. Validate config + trigger upfront. Continuation overrides

@@ -615,11 +615,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     const state = await this.ensureSessionState(chatId);
 
+    // Generated outside the closure so auth-retries reuse the same part id
+    // and the server-side dedupe sees one logical append.
+    const partId = crypto.randomUUID();
     const sendChatMessage = async (token: string) => {
       await this.appendInputChunk(
         chatId,
         token,
-        this.serializeInputChunk({ kind: "message", payload: wirePayload })
+        this.serializeInputChunk({ kind: "message", payload: wirePayload }),
+        partId
       );
     };
 
@@ -800,11 +804,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       metadata: mergedMetadata,
     };
 
+    const partId = crypto.randomUUID();
     const send = async (token: string) => {
       await this.appendInputChunk(
         chatId,
         token,
-        this.serializeInputChunk({ kind: "message", payload: wirePayload })
+        this.serializeInputChunk({ kind: "message", payload: wirePayload }),
+        partId
       );
     };
 
@@ -859,8 +865,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     const state = this.sessions.get(chatId);
     if (!state) return false;
 
+    const partId = crypto.randomUUID();
     const send = async (token: string) => {
-      await this.appendInputChunk(chatId, token, this.serializeInputChunk({ kind: "stop" }));
+      await this.appendInputChunk(
+        chatId,
+        token,
+        this.serializeInputChunk({ kind: "stop" }),
+        partId
+      );
     };
 
     try {
@@ -876,6 +888,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       activeStream.abort();
       this.activeStreams.delete(chatId);
     }
+
+    // The turn won't reach its turn-complete on this client (we just
+    // aborted the reader), so clear the streaming flag here and persist —
+    // otherwise a reload resumes mid-turn and replays the chunks the user
+    // explicitly stopped.
+    state.isStreaming = false;
+    this.notifySessionChange(chatId, state);
     return true;
   };
 
@@ -908,11 +927,27 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     };
 
     const body = this.serializeInputChunk({ kind: "message", payload: wirePayload });
+    const partId = crypto.randomUUID();
     const send = async (token: string) => {
-      await this.appendInputChunk(chatId, token, body);
+      await this.appendInputChunk(chatId, token, body, partId);
     };
 
     await this.callWithAuthRetry(chatId, state, send);
+
+    // Supersede any in-flight reader before subscribing — same as
+    // `sendMessages`. Two concurrent readers both write `state.lastEventId`
+    // and the slower one can regress the cursor, replaying records on the
+    // next reconnect.
+    const activeStream = this.activeStreams.get(chatId);
+    if (activeStream) {
+      activeStream.abort();
+      this.activeStreams.delete(chatId);
+    }
+
+    // Mark streaming + persist so a reload mid-action resumes (reconnectToStream
+    // no-ops when the persisted session says isStreaming: false).
+    state.isStreaming = true;
+    this.notifySessionChange(chatId, state);
 
     return this.subscribeToSessionStream(state, undefined, chatId);
   };
@@ -1085,14 +1120,22 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     return this.fetchOverride ? this.fetchOverride(url, init, ctx) : fetch(url, init);
   }
 
-  private async appendInputChunk(chatId: string, token: string, body: string): Promise<void> {
+  private async appendInputChunk(
+    chatId: string,
+    token: string,
+    body: string,
+    partId?: string
+  ): Promise<void> {
     const ctx: ChatTransportEndpointContext = { endpoint: "in", chatId };
     const url = `${this.resolveBaseURL(ctx)}/realtime/v1/sessions/${encodeURIComponent(chatId)}/in/append`;
+    // extraHeaders first so the fixed headers below win — a transport-wide
+    // X-Part-Id must not override the per-append idempotency key.
     const headers: Record<string, string> = {
+      ...this.extraHeaders,
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
       "x-trigger-source": "sdk",
-      ...this.extraHeaders,
+      "X-Part-Id": partId ?? crypto.randomUUID(),
     };
     const response = await this.doFetch(ctx, url, { method: "POST", headers, body });
     if (!response.ok) {

@@ -1,6 +1,6 @@
 {
   "name": "trigger.dev",
-  "version": "4.5.0-rc.5",
+  "version": "4.5.0-rc.6",
   "description": "A Command-Line Interface for Trigger.dev projects",
   "type": "module",
   "license": "MIT",
@@ -24,10 +24,12 @@
     "apis",
     "jobs",
     "background jobs",
-    "nextjs"
+    "nextjs",
+    "tanstack-intent"
   ],
   "files": [
-    "dist"
+    "dist",
+    "skills"
   ],
   "bin": {
     "trigger": "./dist/esm/index.js"
@@ -95,9 +97,9 @@
     "@opentelemetry/sdk-trace-node": "2.7.1",
     "@opentelemetry/semantic-conventions": "1.41.1",
     "@s2-dev/streamstore": "^0.22.10",
-    "@trigger.dev/build": "workspace:4.5.0-rc.5",
-    "@trigger.dev/core": "workspace:4.5.0-rc.5",
-    "@trigger.dev/schema-to-json": "workspace:4.5.0-rc.5",
+    "@trigger.dev/build": "workspace:4.5.0-rc.6",
+    "@trigger.dev/core": "workspace:4.5.0-rc.6",
+    "@trigger.dev/schema-to-json": "workspace:4.5.0-rc.6",
     "ansi-escapes": "^7.0.0",
     "braces": "^3.0.3",
     "c12": "^1.11.1",

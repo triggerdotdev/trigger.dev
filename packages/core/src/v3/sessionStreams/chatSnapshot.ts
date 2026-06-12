@@ -26,6 +26,14 @@ export type ChatSnapshotV1<TUIMessage extends UIMessage = UIMessage> = {
   savedAt: number;
   messages: TUIMessage[];
   lastOutEventId?: string;
+  /**
+   * Committed `.in` consume cursor (S2 seq_num, stringified) as of this
+   * snapshot's turn-complete. Lets the next boot seed the `.in` resume
+   * cursor without scanning `session.out` for the latest turn-complete
+   * header. Absent on snapshots written before this field existed —
+   * readers fall back to the scan.
+   */
+  lastInEventId?: string;
 };
 
 /**
@@ -39,6 +47,7 @@ export const ChatSnapshotV1Schema = z.object({
   savedAt: z.number(),
   messages: z.array(z.unknown()),
   lastOutEventId: z.string().optional(),
+  lastInEventId: z.string().optional(),
 });
 
 /**

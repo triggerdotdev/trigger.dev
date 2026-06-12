@@ -117,7 +117,6 @@ export function createTimelineSpanEventsFromSpanEvents(
       offset,
       timestamp,
       duration,
-      properties: spanEvent.properties,
       helpText: getHelpTextForEvent(name),
       markerVariant,
       lineVariant: "light" as const,

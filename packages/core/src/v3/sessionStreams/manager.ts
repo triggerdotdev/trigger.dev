@@ -9,7 +9,11 @@ import { computeReconnectDelayMs } from "../utils/reconnectBackoff.js";
 import { SessionChannelIO, SessionStreamManager } from "./types.js";
 import { controlSubtype } from "./wireProtocol.js";
 
-type SessionStreamHandler = (data: unknown) => void | Promise<void>;
+// A handler that synchronously returns `true` CONSUMES the record: it is
+// not buffered for a later `once()` and the committed-consume cursor
+// advances past it. Anything else (void, a Promise) leaves the record
+// available to other consumers. See `SessionStreamManager.on` in types.ts.
+type SessionStreamHandler = (data: unknown) => void | boolean | Promise<void>;
 
 type OnceWaiter = {
   resolve: (result: InputStreamOnceResult<unknown>) => void;
@@ -113,30 +117,41 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     this.explicitlyDisconnected.delete(key);
     this.#ensureTailConnected(sessionId, io);
 
+    // Selective drain: offer each buffered record to the new handler and
+    // remove ONLY the ones it consumed (returned `true` — e.g. the
+    // messages facade for message-kind records). Consumed records advance
+    // the committed-consume cursor, so a worker using `messagesInput.on()`
+    // for user-message delivery persists a `.in` cursor that matches what
+    // the handler processed. Records the handler did not consume (other
+    // kinds) STAY buffered for a future `once()` or a different handler —
+    // a blind drain here either swallowed them (delivered to a handler
+    // that filtered them out, then deleted) or re-delivered already-
+    // processed messages into every newly attached per-turn handler,
+    // duplicating turns.
     const buffered = this.buffer.get(key);
     if (buffered && buffered.length > 0) {
-      for (const data of buffered) {
-        this.#invokeHandler(handler, data);
-      }
-      // Advance the committed-consume cursor to the highest seq drained
-      // into the new handler. `on()`-drain removes the records from the
-      // buffer, so they're no longer available to a future `once()` —
-      // from the manager's perspective they've been consumed. Without
-      // this, a worker that uses `messagesInput.on()` for user-message
-      // delivery (pendingMessages mode) would persist a `.in` cursor
-      // that lags behind the records the handler already processed, and
-      // the next boot would re-deliver them.
-      const seqList = this.bufferSeqNums.get(key);
-      if (seqList) {
-        for (const s of seqList) {
+      const seqList = this.bufferSeqNums.get(key) ?? [];
+      const keptRecords: unknown[] = [];
+      // Kept in lock-step with `keptRecords` — drifting lengths would map
+      // seq_nums to the wrong records on subsequent shifts.
+      const keptSeqNums: Array<number | undefined> = [];
+      for (let i = 0; i < buffered.length; i++) {
+        const consumed = this.#invokeHandler(handler, buffered[i]);
+        if (consumed) {
+          const s = seqList[i];
           if (s !== undefined) this.#advanceLastDispatched(key, s);
+        } else {
+          keptRecords.push(buffered[i]);
+          keptSeqNums.push(seqList[i]);
         }
       }
-      this.buffer.delete(key);
-      // Keep `bufferSeqNums` in lock-step with `buffer` — without this,
-      // the parallel array desyncs and the next `#dispatch` that buffers
-      // a record would shift a stale seqNum into `lastDispatchedSeqNum`.
-      this.bufferSeqNums.delete(key);
+      if (keptRecords.length > 0) {
+        this.buffer.set(key, keptRecords);
+        this.bufferSeqNums.set(key, keptSeqNums);
+      } else {
+        this.buffer.delete(key);
+        this.bufferSeqNums.delete(key);
+      }
     }
 
     return {
@@ -509,13 +524,21 @@ export class StandardSessionStreamManager implements SessionStreamManager {
       return;
     }
 
-    // Persistent handlers (e.g. `stopInput.on(...)`) get a copy of the chunk,
-    // but they don't "consume" it — handlers usually filter by `kind` and
-    // ignore chunks they don't care about. Buffer the chunk regardless so a
-    // subsequent `once()` (e.g. `messagesInput.waitWithIdleTimeout` in
-    // chat.agent's preload) can still pick up the same chunk that arrived
-    // before its waiter was registered.
-    this.#invokeHandlers(key, data);
+    // Persistent handlers get a copy of the chunk. A handler that
+    // synchronously returns `true` CONSUMES it (e.g. the messages facade
+    // for message-kind records): the record must not also be buffered, or
+    // the next `on()` attach / `once()` would deliver it a second time —
+    // in chat.agent's turn loop that duplicated user messages into a
+    // second turn. Records no handler consumed (e.g. a message arriving
+    // while only the stop facade is attached during preload) are buffered
+    // so a subsequent `once()` can still pick them up.
+    const consumed = this.#invokeHandlers(key, data);
+    if (consumed) {
+      if (seqNum !== undefined) {
+        this.#advanceLastDispatched(key, seqNum);
+      }
+      return;
+    }
 
     let buffered = this.buffer.get(key);
     if (!buffered) {
@@ -535,17 +558,24 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     bufferedSeqs.push(seqNum);
   }
 
-  #invokeHandlers(key: string, data: unknown): void {
+  /** Returns true when any handler consumed the record. All handlers are invoked regardless. */
+  #invokeHandlers(key: string, data: unknown): boolean {
     const handlers = this.handlers.get(key);
-    if (!handlers) return;
+    if (!handlers) return false;
+    let consumed = false;
     for (const handler of handlers) {
-      this.#invokeHandler(handler, data);
+      if (this.#invokeHandler(handler, data)) {
+        consumed = true;
+      }
     }
+    return consumed;
   }
 
-  #invokeHandler(handler: SessionStreamHandler, data: unknown): void {
+  /** Returns true when the handler synchronously consumed the record (returned `true`). */
+  #invokeHandler(handler: SessionStreamHandler, data: unknown): boolean {
     try {
       const result = handler(data);
+      if (result === true) return true;
       if (result && typeof result === "object" && "catch" in result) {
         (result as Promise<void>).catch((error) => {
           if (this.debug) {
@@ -558,6 +588,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
         console.error("[SessionStreamManager] Handler error:", error);
       }
     }
+    return false;
   }
 
   #removeOnceWaiter(key: string, waiter: OnceWaiter): void {
