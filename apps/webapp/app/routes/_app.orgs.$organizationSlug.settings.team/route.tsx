@@ -423,8 +423,8 @@ export default function Page() {
                           </Paragraph>
                         </div>
                         <div className="flex grow items-center justify-end gap-x-2">
-                          <ResendButton invite={invite} />
-                          <RevokeButton invite={invite} />
+                          <ResendButton invite={invite} canManageMembers={canManageMembers} />
+                          <RevokeButton invite={invite} canManageMembers={canManageMembers} />
                         </div>
                       </li>
                     ))}
@@ -772,7 +772,7 @@ function initialCooldown(updatedAt: Date | string): number {
   return remaining > 0 ? remaining : 0;
 }
 
-function ResendButton({ invite }: { invite: Invite }) {
+function ResendButton({ invite, canManageMembers }: { invite: Invite; canManageMembers: boolean }) {
   const navigation = useNavigation();
   const isSubmitting =
     navigation.state === "submitting" &&
@@ -806,12 +806,17 @@ function ResendButton({ invite }: { invite: Invite }) {
     return () => clearInterval(intervalRef.current);
   }, [cooldownActive]);
 
-  const isDisabled = isSubmitting || cooldown > 0;
+  const isDisabled = isSubmitting || cooldown > 0 || !canManageMembers;
 
   return (
     <Form method="post" action={resendInvitePath()} className="flex">
       <input type="hidden" value={invite.id} name="inviteId" />
-      <Button type="submit" variant="secondary/small" disabled={isDisabled}>
+      <Button
+        type="submit"
+        variant="secondary/small"
+        disabled={isDisabled}
+        tooltip={canManageMembers ? undefined : "You don't have permission to manage team members"}
+      >
         {isSubmitting ? (
           "Sending…"
         ) : cooldown > 0 ? (
@@ -824,7 +829,7 @@ function ResendButton({ invite }: { invite: Invite }) {
   );
 }
 
-function RevokeButton({ invite }: { invite: Invite }) {
+function RevokeButton({ invite, canManageMembers }: { invite: Invite; canManageMembers: boolean }) {
   const organization = useOrganization();
 
   return (
@@ -839,9 +844,12 @@ function RevokeButton({ invite }: { invite: Invite }) {
             LeadingIcon={NoSymbolIcon}
             leadingIconClassName="text-white"
             aria-label="Revoke invite"
+            disabled={!canManageMembers}
           />
         }
-        content="Revoke invite"
+        content={
+          canManageMembers ? "Revoke invite" : "You don't have permission to manage team members"
+        }
         disableHoverableContent
         asChild
       />
