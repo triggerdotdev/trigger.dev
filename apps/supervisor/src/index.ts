@@ -586,7 +586,10 @@ class ManagedSupervisor {
         createStart,
         error instanceof Error ? error : new Error(String(error))
       );
-      this.logger.error("Failed to create workload", { error });
+      this.logger.error("Failed to create workload", {
+        runId: message.run.friendlyId,
+        error,
+      });
     }
   }
 
@@ -671,9 +674,11 @@ class ManagedSupervisor {
 
   async stop() {
     this.logger.log("Shutting down");
+    // Stop the verifier first: its timer can otherwise fire mid-shutdown and
+    // cold-create a workload on a node that is going down.
+    this.warmStartVerifier?.stop();
     await this.workloadServer.stop();
     await this.workerSession.stop();
-    this.warmStartVerifier?.stop();
 
     // Optional services
     this.backpressureMonitor?.stop();
