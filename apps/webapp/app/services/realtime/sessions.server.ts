@@ -1,6 +1,6 @@
 import type { PrismaClient, Session } from "@trigger.dev/database";
 import type { SessionItem } from "@trigger.dev/core/v3";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 
 /**
  * Prefix that {@link SessionId.generate} attaches to every Session friendlyId.
@@ -34,6 +34,22 @@ export async function resolveSessionByIdOrExternalId(
   return prisma.session.findFirst({
     where: { runtimeEnvironmentId, externalId: idOrExternalId },
   });
+}
+
+/**
+ * Replica-first session resolution with a writer fallback on miss. For the
+ * hot realtime routes (append / SSE subscribe / end-and-continue): a fresh
+ * session's first append or subscribe can arrive inside the replica's apply
+ * window, and a bare replica miss there surfaces as a 404 (or a subscribe
+ * that never finds its session) for a session that exists on the writer.
+ */
+export async function resolveSessionWithWriterFallback(
+  runtimeEnvironmentId: string,
+  idOrExternalId: string
+): Promise<Session | null> {
+  const row = await resolveSessionByIdOrExternalId($replica, runtimeEnvironmentId, idOrExternalId);
+  if (row) return row;
+  return resolveSessionByIdOrExternalId(prisma, runtimeEnvironmentId, idOrExternalId);
 }
 
 /** True for `session_*` friendlyId form, false for everything else. */
