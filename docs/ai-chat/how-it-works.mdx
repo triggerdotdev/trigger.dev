@@ -179,7 +179,7 @@ See [Lifecycle hooks](/ai-chat/lifecycle-hooks) for the full signatures and firi
 
 **Not a good fit**:
 - Single-shot completions where you don't need durability or resume. Call your model directly.
-- Workflows where you control both ends and want a custom protocol. Use a [raw `task()` with chat primitives](/ai-chat/backend#raw-task-with-primitives) directly without the `chat.agent` wrapper.
+- Workflows where you control both ends and want a custom protocol. Use a [raw `task()` with chat primitives](/ai-chat/custom-agents) directly without the `chat.agent` wrapper.
 - High-fanout broadcasting (one source, many subscribers). Use Trigger.dev realtime streams against a regular task instead.
 
 ## Putting it together

@@ -71,7 +71,7 @@ Options for `chat.agent()`.
 | `exitAfterPreloadIdle`        | `boolean`                                                   | `false`                        | Exit run after preload idle timeout instead of suspending. See [exitAfterPreloadIdle](/ai-chat/lifecycle-hooks#exitafterpreloadidle) |
 | `oomMachine`                  | `MachinePresetName`                                         | —                              | Fallback machine when an attempt fails with OOM. Setting it enables a single OOM retry on the larger machine. See [OOM resilience](/ai-chat/patterns/oom-resilience) |
 
-Plus most standard [TaskOptions](/tasks/overview) — `queue`, `machine`, `maxDuration`, **`onWait`**, **`onResume`**, **`onComplete`**, and other lifecycle hooks. Generic `retry` is **not** exposed on `chat.agent`; use `oomMachine` for OOM recovery, or drop down to a raw [`task()`](/ai-chat/backend#raw-task-with-primitives) if you need richer retry semantics. Standard hooks use the same parameter shapes as on a normal `task()` (including `ctx`).
+Plus most standard [TaskOptions](/tasks/overview) — `queue`, `machine`, `maxDuration`, **`onWait`**, **`onResume`**, **`onComplete`**, and other lifecycle hooks. Generic `retry` is **not** exposed on `chat.agent`; use `oomMachine` for OOM recovery, or drop down to a raw [`task()`](/ai-chat/custom-agents) if you need richer retry semantics. Standard hooks use the same parameter shapes as on a normal `task()` (including `ctx`).
 
 ## Task context (`ctx`)
 
@@ -447,34 +447,40 @@ Return value of `usePendingMessages` hook. See [Pending Messages — Frontend](/
 
 Options for `chat.createSession()`.
 
-| Option                 | Type          | Default  | Description                         |
-| ---------------------- | ------------- | -------- | ----------------------------------- |
-| `signal`               | `AbortSignal` | required | Run-level cancel signal             |
-| `idleTimeoutInSeconds` | `number`      | `30`     | Seconds to stay idle between turns  |
-| `timeout`              | `string`      | `"1h"`   | Duration string for suspend timeout |
-| `maxTurns`             | `number`      | `100`    | Max turns before ending             |
+| Option                 | Type                        | Default     | Description                                                                                                  |
+| ---------------------- | --------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------ |
+| `signal`               | `AbortSignal`               | required    | Run-level cancel signal                                                                                      |
+| `idleTimeoutInSeconds` | `number`                    | `30`        | Seconds to stay idle between turns                                                                           |
+| `timeout`              | `string`                    | `"1h"`      | Duration string for suspend timeout                                                                          |
+| `maxTurns`             | `number`                    | `100`       | Max turns before ending                                                                                      |
+| `compaction`           | `ChatAgentCompactionOptions`| `undefined` | Automatic context [compaction](/ai-chat/compaction) — same options as `chat.agent({ compaction })`           |
+| `pendingMessages`      | `PendingMessagesOptions`    | `undefined` | Mid-execution [message injection](/ai-chat/pending-messages) — same options as `chat.agent({ pendingMessages })` |
 
 ## ChatTurn
 
 Each turn yielded by `chat.createSession()`.
 
-| Field          | Type             | Description                                   |
-| -------------- | ---------------- | --------------------------------------------- |
-| `number`       | `number`         | Turn number (0-indexed)                       |
-| `chatId`       | `string`         | Chat session ID                               |
-| `trigger`      | `string`         | What triggered this turn                      |
-| `clientData`   | `unknown`        | Client data from the transport                |
-| `messages`     | `ModelMessage[]` | Full accumulated model messages               |
-| `uiMessages`   | `UIMessage[]`    | Full accumulated UI messages                  |
-| `signal`       | `AbortSignal`    | Combined stop+cancel signal (fresh each turn) |
-| `stopped`      | `boolean`        | Whether the user stopped generation this turn |
-| `continuation` | `boolean`        | Whether this is a continuation run            |
+| Field               | Type                              | Description                                                |
+| ------------------- | --------------------------------- | ---------------------------------------------------------- |
+| `number`            | `number`                          | Turn number (0-indexed)                                    |
+| `chatId`            | `string`                          | Chat session ID                                            |
+| `trigger`           | `string`                          | What triggered this turn                                   |
+| `clientData`        | `unknown`                         | Client data from the transport                             |
+| `messages`          | `ModelMessage[]`                  | Full accumulated model messages                            |
+| `uiMessages`        | `UIMessage[]`                     | Full accumulated UI messages                               |
+| `signal`            | `AbortSignal`                     | Combined stop+cancel signal (fresh each turn)              |
+| `stopped`           | `boolean`                         | Whether the user stopped generation this turn              |
+| `continuation`      | `boolean`                         | Whether this is a continuation run                         |
+| `previousTurnUsage` | `LanguageModelUsage \| undefined` | Token usage from the previous turn (undefined on turn 0)   |
+| `totalUsage`        | `LanguageModelUsage`              | Cumulative token usage across all completed turns          |
 
-| Method                  | Returns                           | Description                                                  |
-| ----------------------- | --------------------------------- | ------------------------------------------------------------ |
-| `complete(source)`      | `Promise<UIMessage \| undefined>` | Pipe, capture, accumulate, cleanup, and signal turn-complete |
-| `done()`                | `Promise<void>`                   | Signal turn-complete (when you've piped manually)            |
-| `addResponse(response)` | `Promise<void>`                   | Add response to accumulator manually                         |
+| Method                   | Returns                           | Description                                                                                            |
+| ------------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `complete(source)`       | `Promise<UIMessage \| undefined>` | Pipe, capture, accumulate, cleanup, and signal turn-complete                                           |
+| `done()`                 | `Promise<void>`                   | Signal turn-complete (when you've piped manually)                                                      |
+| `addResponse(response)`  | `Promise<void>`                   | Add response to accumulator manually                                                                   |
+| `setMessages(uiMessages)`| `Promise<void>`                   | Replace the accumulated messages (continuation seeding, compaction)                                    |
+| `prepareStep()`          | `function \| undefined`           | `prepareStep` callback wiring compaction + injection — pass to `streamText` when not using `chat.toStreamTextOptions()` |
 
 ## chat namespace
 
