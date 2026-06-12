@@ -21,7 +21,7 @@ import {
   isKubernetesEnvironment,
 } from "@trigger.dev/core/v3/serverOnly";
 import { createK8sApi } from "./clients/kubernetes.js";
-import { collectDefaultMetrics } from "prom-client";
+import { collectDefaultMetrics, Histogram } from "prom-client";
 import { register } from "./metrics.js";
 import { PodCleaner } from "./services/podCleaner.js";
 import { FailedPodHandler } from "./services/failedPodHandler.js";
@@ -45,11 +45,20 @@ if (env.METRICS_COLLECT_DEFAULTS) {
   collectDefaultMetrics({ register });
 }
 
+const workloadCreateDuration = new Histogram({
+  name: "workload_create_duration_seconds",
+  help: "Duration of workload manager create calls. A create may include backend-internal retries, so one observation can span multiple attempts.",
+  labelNames: ["backend", "outcome"],
+  buckets: [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60],
+  registers: [register],
+});
+
 class ManagedSupervisor {
   private readonly workerSession: SupervisorSession;
   private readonly metricsServer?: HttpServer;
   private readonly workloadServer: WorkloadServer;
   private readonly workloadManager: WorkloadManager;
+  private readonly workloadManagerBackend: "compute" | "kubernetes" | "docker";
   private readonly computeManager?: ComputeWorkloadManager;
   private readonly logger = new SimpleStructuredLogger("managed-supervisor");
   private readonly resourceMonitor: ResourceMonitor;
@@ -151,10 +160,13 @@ class ManagedSupervisor {
       });
       this.computeManager = computeManager;
       this.workloadManager = computeManager;
+      this.workloadManagerBackend = "compute";
+    } else if (this.isKubernetes) {
+      this.workloadManager = new KubernetesWorkloadManager(workloadManagerOptions);
+      this.workloadManagerBackend = "kubernetes";
     } else {
-      this.workloadManager = this.isKubernetes
-        ? new KubernetesWorkloadManager(workloadManagerOptions)
-        : new DockerWorkloadManager(workloadManagerOptions);
+      this.workloadManager = new DockerWorkloadManager(workloadManagerOptions);
+      this.workloadManagerBackend = "docker";
     }
 
     if (this.isKubernetes) {
@@ -493,6 +505,10 @@ class ManagedSupervisor {
                 hasPrivateLink: message.organization.hasPrivateLink,
               });
               recordPhaseSince("workload_create", createStart, undefined);
+              workloadCreateDuration.observe(
+                { backend: this.workloadManagerBackend, outcome: "success" },
+                (performance.now() - createStart) / 1000
+              );
 
               // Disabled for now
               // this.resourceMonitor.blockResources({
@@ -504,6 +520,10 @@ class ManagedSupervisor {
                 "workload_create",
                 createStart,
                 error instanceof Error ? error : new Error(String(error))
+              );
+              workloadCreateDuration.observe(
+                { backend: this.workloadManagerBackend, outcome: "error" },
+                (performance.now() - createStart) / 1000
               );
               this.logger.error("Failed to create workload", { error });
             }
