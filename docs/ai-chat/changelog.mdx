@@ -14,6 +14,18 @@ A batch of fixes for edge cases around message delivery, stopping, and error han
 - **Idempotent input appends.** Sends to `session.in` carry an idempotency key, so a client retry after a network blip can't append the same message twice.
 - **Stop clears streaming state.** Stopping a generation now clears the session's streaming snapshot, so a page reload right after a stop no longer replays the stopped turn.
 - **`onTurnComplete` fires on errored turns.** When `run()` or a lifecycle hook throws, `onTurnComplete` now runs with `error` carrying the thrown value and `finishReason: "error"`, and the failed turn's user message is persisted so it isn't lost on the next run. Use this to mark the turn failed in your own storage. See [error handling](/ai-chat/error-handling#using-onturncomplete).
+
+  ```ts
+  onTurnComplete: async ({ chatId, uiMessages, stopped, error }) => {
+    await db.chat.update({
+      where: { id: chatId },
+      data: {
+        messages: uiMessages,
+        lastTurnStatus: error ? "errored" : stopped ? "stopped" : "ok",
+      },
+    });
+  },
+  ```
 - **Full tag sets on chat runs.** Runs triggered by chat sessions can now carry the full set of dashboard tags instead of being silently truncated.
 - **Stream hygiene for custom agents.** Manual `chat.writeTurnComplete()` callers now trim the output stream the way `chat.agent` does, sending a custom action no longer leaves a second stream reader running, and a long-lived `watch` subscription no longer grows its dedupe set without bound.
 
@@ -32,7 +44,21 @@ Two fixes for the [Head Start](/ai-chat/fast-starts) handover:
 
 Stopping a generation no longer wedges the run: `turn.complete()` bare-awaited the AI SDK's `totalUsage` promise, which never settles after a stop-abort, so the loop hung inside the stopped turn and the chat couldn't take another message. It's now raced with a timeout, the same guard `chat.agent`'s turn loop uses.
 
-Continuation runs also no longer invoke the model with an empty prompt: a message-less continuation boot now waits for the next session input, and `turn.continuation` is preserved so your loop can seed stored history on the first turn. See [chat.createSession](/ai-chat/backend#chat-createsession).
+Continuation runs also no longer invoke the model with an empty prompt: a message-less continuation boot now waits for the next session input, and `turn.continuation` is preserved so your loop can seed stored history on the first turn:
+
+```ts
+for await (const turn of session) {
+  if (turn.continuation && turn.number === 0) {
+    const stored = await loadMessages(turn.chatId);
+    const incoming = turn.uiMessages.filter((m) => !stored.some((s) => s.id === m.id));
+    await turn.setMessages([...stored, ...incoming]);
+  }
+
+  // ... streamText + turn.complete as usual
+}
+```
+
+See [chat.createSession](/ai-chat/backend#chat-createsession).
 
 ## trigger skills: agent skills for your coding assistant
 
