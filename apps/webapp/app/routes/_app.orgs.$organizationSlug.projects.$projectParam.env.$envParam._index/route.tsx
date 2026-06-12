@@ -5,15 +5,7 @@ import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/ser
 import type { TaskRunStatus } from "@trigger.dev/database";
 import type { PanelHandle } from "@window-splitter/react";
 import { Fragment, Suspense, useCallback, useMemo, useRef, useState } from "react";
-import {
-  Bar,
-  BarChart,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  type TooltipProps,
-  YAxis,
-} from "recharts";
+import { Bar, BarChart, ReferenceLine, Tooltip, type TooltipProps, YAxis } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
@@ -172,6 +164,12 @@ export default function Page() {
   const { value, values } = useSearchParams();
 
   const [showUsefulLinks, setShowUsefulLinks] = useState(usefulLinksPreference ?? true);
+  // While the side panel is animating, swap each row's activity chart for
+  // its blank-state placeholder. Re-rendering ~25 recharts SVGs per frame
+  // during the collapse animation tanks performance; the placeholder
+  // matches the cell size so the table doesn't shift.
+  const [isPanelAnimating, setIsPanelAnimating] = useState(false);
+  const animatingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const usefulLinksPanelRef = useRef<PanelHandle>(null);
   const fetcher = useFetcher();
   const fetcherRef = useRef(fetcher);
@@ -179,6 +177,11 @@ export default function Page() {
 
   const toggleUsefulLinks = useCallback((show: boolean) => {
     setShowUsefulLinks(show);
+    setIsPanelAnimating(true);
+    if (animatingTimerRef.current) clearTimeout(animatingTimerRef.current);
+    // Matches RESIZABLE_PANEL_ANIMATION duration (300ms) + a small buffer
+    // so the charts come back after the panel settles.
+    animatingTimerRef.current = setTimeout(() => setIsPanelAnimating(false), 350);
     if (show) {
       usefulLinksPanelRef.current?.expand();
     } else {
@@ -284,6 +287,7 @@ export default function Page() {
                               organization={organization}
                               project={project}
                               environment={environment}
+                              isPanelAnimating={isPanelAnimating}
                             />
                           ))
                         ) : (
@@ -342,6 +346,7 @@ type TaskRowProps = {
   organization: ReturnType<typeof useOrganization>;
   project: ReturnType<typeof useProject>;
   environment: ReturnType<typeof useEnvironment>;
+  isPanelAnimating: boolean;
 };
 
 function TaskRow({
@@ -351,6 +356,7 @@ function TaskRow({
   organization,
   project,
   environment,
+  isPanelAnimating,
 }: TaskRowProps) {
   const rowPath =
     item.kind === "AGENT"
@@ -397,18 +403,22 @@ function TaskRow({
         </Suspense>
       </TableCell>
       <TableCell to={rowPath} actionClassName="py-1.5">
-        <Suspense fallback={<TaskActivityBlankState />}>
-          <TypedAwait resolve={hourlyActivity} errorElement={<FailedToLoadStats />}>
-            {(data) => {
-              const taskData = data[item.slug];
-              return taskData && taskData.length > 0 ? (
-                <TaskActivityGraph activity={taskData} />
-              ) : (
-                <TaskActivityBlankState />
-              );
-            }}
-          </TypedAwait>
-        </Suspense>
+        {isPanelAnimating ? (
+          <TaskActivityBlankState />
+        ) : (
+          <Suspense fallback={<TaskActivityBlankState />}>
+            <TypedAwait resolve={hourlyActivity} errorElement={<FailedToLoadStats />}>
+              {(data) => {
+                const taskData = data[item.slug];
+                return taskData && taskData.length > 0 ? (
+                  <TaskActivityGraph activity={taskData} />
+                ) : (
+                  <TaskActivityBlankState />
+                );
+              }}
+            </TypedAwait>
+          </Suspense>
+        )}
       </TableCell>
       <TableCellMenu
         isSticky
@@ -528,38 +538,52 @@ const STATUS_BARS: { status: TaskRunStatus; fill: string }[] = [
   { status: "TIMED_OUT", fill: "#F43F5E" },
 ];
 
+// Activity chart dimensions in px — kept fixed so the chart skips the
+// ResponsiveContainer + ResizeObserver path. With ~25 charts on screen,
+// re-rendering them on every frame of the side-panel collapse animation
+// produced visible jank; with fixed dimensions the chart only re-renders
+// when its data prop changes.
+const ACTIVITY_CHART_WIDTH = 112;
+const ACTIVITY_CHART_HEIGHT = 24;
+
 function TaskActivityGraph({ activity }: { activity: HourlyTaskActivity[string] }) {
   const maxTotal = Math.max(...activity.map((d) => d.total));
 
   return (
     <div className="flex items-start gap-1.5">
-      <div className="h-6 w-[7rem] rounded-sm">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={activity} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-            <YAxis domain={[0, maxTotal || 1]} hide />
-            <Tooltip
-              cursor={{ fill: "rgba(255, 255, 255, 0.06)" }}
-              content={<TaskActivityTooltip />}
-              allowEscapeViewBox={{ x: true, y: true }}
-              wrapperStyle={{ zIndex: 1000 }}
-              animationDuration={0}
+      <div
+        className="rounded-sm"
+        style={{ width: ACTIVITY_CHART_WIDTH, height: ACTIVITY_CHART_HEIGHT }}
+      >
+        <BarChart
+          data={activity}
+          width={ACTIVITY_CHART_WIDTH}
+          height={ACTIVITY_CHART_HEIGHT}
+          margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
+        >
+          <YAxis domain={[0, maxTotal || 1]} hide />
+          <Tooltip
+            cursor={{ fill: "rgba(255, 255, 255, 0.06)" }}
+            content={<TaskActivityTooltip />}
+            allowEscapeViewBox={{ x: true, y: true }}
+            wrapperStyle={{ zIndex: 1000 }}
+            animationDuration={0}
+          />
+          {STATUS_BARS.map(({ status, fill }) => (
+            <Bar
+              key={status}
+              dataKey={status}
+              stackId="a"
+              fill={fill}
+              strokeWidth={0}
+              isAnimationActive={false}
             />
-            {STATUS_BARS.map(({ status, fill }) => (
-              <Bar
-                key={status}
-                dataKey={status}
-                stackId="a"
-                fill={fill}
-                strokeWidth={0}
-                isAnimationActive={false}
-              />
-            ))}
-            <ReferenceLine y={0} stroke="#2C3034" strokeWidth={1} />
-            {maxTotal > 0 && (
-              <ReferenceLine y={maxTotal} stroke="#4D525B" strokeDasharray="4 4" strokeWidth={1} />
-            )}
-          </BarChart>
-        </ResponsiveContainer>
+          ))}
+          <ReferenceLine y={0} stroke="#2C3034" strokeWidth={1} />
+          {maxTotal > 0 && (
+            <ReferenceLine y={maxTotal} stroke="#4D525B" strokeDasharray="4 4" strokeWidth={1} />
+          )}
+        </BarChart>
       </div>
       <SimpleTooltip
         asChild
@@ -574,12 +598,21 @@ function TaskActivityGraph({ activity }: { activity: HourlyTaskActivity[string] 
   );
 }
 
+// SVG line (not CSS border) so the bottom-edge anti-aliasing matches recharts' y=0 ReferenceLine.
 function TaskActivityBlankState() {
   return (
-    <div className="flex h-6 w-[7rem] items-end gap-px rounded-sm">
-      {[...Array(24)].map((_, i) => (
-        <div key={i} className="h-full flex-1 bg-[#212327]" />
-      ))}
+    <div className="flex items-start gap-1.5">
+      <svg width={ACTIVITY_CHART_WIDTH} height={ACTIVITY_CHART_HEIGHT} className="rounded-sm">
+        <line
+          x1={0}
+          y1={ACTIVITY_CHART_HEIGHT}
+          x2={ACTIVITY_CHART_WIDTH}
+          y2={ACTIVITY_CHART_HEIGHT}
+          stroke="#333539"
+          strokeWidth={1}
+        />
+      </svg>
+      <span className="-mt-1 text-xxs tabular-nums text-text-dimmed">0</span>
     </div>
   );
 }
