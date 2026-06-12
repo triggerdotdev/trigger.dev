@@ -66,11 +66,18 @@ export async function updateTriggerPackages(
 
   const projectPath = resolve(process.cwd(), dir);
 
-  const { packageJson, readonlyPackageJson, packageJsonPath } = await getPackageJson(projectPath);
+  let packageJson: PackageJson;
+  let readonlyPackageJson: PackageJson;
+  let packageJsonPath: string;
 
-  if (!packageJson) {
-    log.error("Failed to load package.json. Try to re-run with `-l debug` to see what's going on.");
-    return false;
+  try {
+    ({ packageJson, readonlyPackageJson, packageJsonPath } = await getPackageJson(projectPath));
+  } catch {
+    // `getPackageJson` throws when no package.json is found — show an
+    // actionable message instead of crashing with a raw stack trace.
+    throw new OutroCommandError(
+      `Couldn't find a package.json in ${projectPath} (or any parent directory). Run this command from your project's root directory. If you haven't set up a project yet, create one first (e.g. \`npm init -y\`), then run \`npx trigger.dev@latest init\`.`
+    );
   }
 
   const newCliVersion = await updateCheck();
