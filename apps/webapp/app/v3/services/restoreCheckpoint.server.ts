@@ -82,7 +82,7 @@ export class RestoreCheckpointService extends BaseService {
     });
 
     if (restoreEvent) {
-      logger.error("Restore event already exists", {
+      logger.warn("Restore event already exists", {
         runId: checkpoint.runId,
         attemptId: checkpoint.attemptId,
         checkpointId: checkpoint.id,
