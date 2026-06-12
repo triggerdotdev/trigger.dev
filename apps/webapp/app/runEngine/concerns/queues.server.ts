@@ -20,6 +20,10 @@ import { createCache, createLRUMemoryStore, DefaultStatefulContext, Namespace } 
 import { singleton } from "~/utils/singleton";
 import type { TaskMetadataCache, TaskMetadataEntry } from "~/services/taskMetadataCache.server";
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
+import {
+  recordTaskMetaResolve,
+  type TaskMetaResolveSource,
+} from "~/services/taskMetadataCacheTelemetry.server";
 
 // LRU cache for environment queue sizes to reduce Redis calls
 const queueSizeCache = singleton("queueSizeCache", () => {
@@ -266,7 +270,10 @@ export class DefaultQueueManager implements QueueManager {
     slug: string
   ): Promise<TaskMetadataEntry | null> {
     const cached = await this.taskMetaCache.getByWorker(workerId, slug);
-    if (cached) return cached;
+    if (cached) {
+      recordTaskMetaResolve("locked", "cache");
+      return cached;
+    }
 
     // Cache miss. Read the row from the replica first; if the replica comes
     // back empty, re-check the writer before concluding the task is missing.
@@ -277,11 +284,13 @@ export class DefaultQueueManager implements QueueManager {
     // registered. The writer read only runs on this rare miss-then-empty path,
     // never on the hot path.
     let row = await this.findLockedTaskRow(this.replicaPrisma, workerId, environmentId, slug);
+    let source: TaskMetaResolveSource = "replica";
 
     if (!row && this.replicaPrisma !== this.prisma) {
       row = await this.findLockedTaskRow(this.prisma, workerId, environmentId, slug);
 
       if (row) {
+        source = "writer";
         logger.warn("Locked task metadata missing on replica but found on writer", {
           workerId,
           environmentId,
@@ -290,7 +299,12 @@ export class DefaultQueueManager implements QueueManager {
       }
     }
 
-    if (!row) return null;
+    if (!row) {
+      recordTaskMetaResolve("locked", "miss");
+      return null;
+    }
+
+    recordTaskMetaResolve("locked", source);
 
     const entry: TaskMetadataEntry = {
       slug,
@@ -336,14 +350,20 @@ export class DefaultQueueManager implements QueueManager {
     slug: string
   ): Promise<TaskMetadataEntry | null> {
     const cached = await this.taskMetaCache.getCurrent(environment.id, slug);
-    if (cached) return cached;
+    if (cached) {
+      recordTaskMetaResolve("current", "cache");
+      return cached;
+    }
 
     // Cold cache: discover the current worker for the env. Replica is fine —
     // the adjacent BackgroundWorkerTask lookup below uses `replicaPrisma` too
     // (replica lag for "just deployed" is bounded the same way for both
     // queries; reading from the writer here would only widen the window).
     const worker = await findCurrentWorkerFromEnvironment(environment, this.replicaPrisma);
-    if (!worker) return null;
+    if (!worker) {
+      recordTaskMetaResolve("current", "miss");
+      return null;
+    }
 
     const row = await this.replicaPrisma.backgroundWorkerTask.findFirst({
       where: { workerId: worker.id, runtimeEnvironmentId: environment.id, slug },
@@ -354,7 +374,12 @@ export class DefaultQueueManager implements QueueManager {
       },
     });
 
-    if (!row) return null;
+    if (!row) {
+      recordTaskMetaResolve("current", "miss");
+      return null;
+    }
+
+    recordTaskMetaResolve("current", "replica");
 
     const entry: TaskMetadataEntry = {
       slug,
