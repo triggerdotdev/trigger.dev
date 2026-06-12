@@ -8988,19 +8988,35 @@ function createChatSession(
         async next(): Promise<IteratorResult<ChatTurn>> {
           turn++;
 
-          // First turn: handle preload — wait for the first real message
-          if (turn === 0 && currentPayload.trigger === "preload") {
+          // First turn: wait when the boot payload carries no message.
+          // Preload boots wait for the first real message; continuation
+          // boots (fresh run via `ensureRunForSession` / end-and-continue)
+          // arrive with the sticky boot-payload fields stripped, so running
+          // a turn immediately would invoke the model with no user input.
+          const isMessagelessContinuationBoot =
+            currentPayload.continuation === true && !currentPayload.message;
+          if (turn === 0 && (currentPayload.trigger === "preload" || isMessagelessContinuationBoot)) {
             const result = await messagesInput.waitWithIdleTimeout({
               idleTimeoutInSeconds:
                 sessionIdleTimeoutOpt ?? currentPayload.idleTimeoutInSeconds ?? 30,
               timeout,
-              spanName: "waiting for first message",
+              spanName:
+                currentPayload.trigger === "preload"
+                  ? "waiting for first message"
+                  : "waiting for first message (continuation)",
             });
             if (!result.ok || runSignal.aborted) {
               stop.cleanup();
               return { done: true, value: undefined };
             }
+            const continuationBoot = isMessagelessContinuationBoot;
             currentPayload = result.output;
+            // Preserve the continuation flag — the wire payload of the next
+            // message doesn't carry it, and `turn.continuation` is how the
+            // user knows to seed history (e.g. `turn.setMessages(stored)`).
+            if (continuationBoot && currentPayload.continuation === undefined) {
+              currentPayload = { ...currentPayload, continuation: true };
+            }
           }
 
           // Subsequent turns: wait for the next message
@@ -9170,14 +9186,22 @@ function createChatSession(
                 }
               }
 
-              // Capture token usage from the streamText result
+              // Capture token usage from the streamText result. Race with a 2s
+              // timeout — on stop-abort the AI SDK's totalUsage promise can hang
+              // indefinitely, which would wedge the turn loop (same guard as
+              // chat.agent's turn loop).
               let turnUsage: LanguageModelUsage | undefined;
               if (typeof (source as any).totalUsage?.then === "function") {
                 try {
-                  const usage: LanguageModelUsage = await (source as any).totalUsage;
-                  turnUsage = usage;
-                  previousTurnUsage = usage;
-                  cumulativeUsage = addUsage(cumulativeUsage, usage);
+                  const usage = (await Promise.race([
+                    (source as any).totalUsage,
+                    new Promise<undefined>((r) => setTimeout(() => r(undefined), 2_000)),
+                  ])) as LanguageModelUsage | undefined;
+                  if (usage) {
+                    turnUsage = usage;
+                    previousTurnUsage = usage;
+                    cumulativeUsage = addUsage(cumulativeUsage, usage);
+                  }
                 } catch {
                   /* non-fatal */
                 }
