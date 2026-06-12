@@ -181,6 +181,8 @@ Any SDK call inside the callback uses the overridden config. Calls outside the c
 
 The override is scoped via [AsyncLocalStorage](https://nodejs.org/api/async_context.html), so concurrent `auth.withAuth` calls (including overlapping calls inside `Promise.all` with different tokens) do not interfere. Nested calls compose — an inner `auth.withAuth({ accessToken })` inside an outer `auth.withAuth({ baseURL })` runs with both fields applied.
 
+Unlike `TriggerClient` instances (which stay isolated unless you opt in), `auth.withAuth` keeps the surrounding task context: a call made inside a task still inherits `parentRunId`, version locking, and the test flag, the same as a direct SDK call. See the [isolation contract](/management/multiple-clients#isolation-contract).
+
 <Note>
   On runtimes without AsyncLocalStorage (browsers and some edge runtimes), the SDK falls back to
   swapping the global config in place for the duration of the callback, which is not safe under
