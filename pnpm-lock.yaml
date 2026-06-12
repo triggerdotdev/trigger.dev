@@ -228,8 +228,8 @@ importers:
         specifier: ^4.0.6
         version: 4.0.6
       ioredis:
-        specifier: ^5.3.2
-        version: 5.3.2
+        specifier: ~5.6.0
+        version: 5.6.1
       p-limit:
         specifier: ^6.2.0
         version: 6.2.0
@@ -664,8 +664,8 @@ importers:
         specifier: ^1.0.0
         version: 1.0.0
       ioredis:
-        specifier: ^5.3.2
-        version: 5.3.2
+        specifier: ~5.6.0
+        version: 5.6.1
       isbot:
         specifier: ^3.6.5
         version: 3.6.5
@@ -1256,8 +1256,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/core
       ioredis:
-        specifier: ^5.3.2
-        version: 5.3.2
+        specifier: ~5.6.0
+        version: 5.6.1
 
   internal-packages/replication:
     dependencies:
@@ -1329,6 +1329,9 @@ importers:
       '@internal/testcontainers':
         specifier: workspace:*
         version: link:../testcontainers
+      '@opentelemetry/sdk-metrics':
+        specifier: 2.7.1
+        version: 2.7.1(@opentelemetry/api@1.9.1)
       '@types/seedrandom':
         specifier: ^3.0.8
         version: 3.0.8
@@ -1404,8 +1407,8 @@ importers:
         specifier: workspace:*
         version: link:../database
       ioredis:
-        specifier: ^5.3.2
-        version: 5.3.2
+        specifier: ~5.6.0
+        version: 5.6.1
     devDependencies:
       '@testcontainers/postgresql':
         specifier: ^11.14.0
@@ -11970,8 +11973,8 @@ packages:
     resolution: {integrity: sha512-YFMSV91JNBOSjw1cOfw2tup6hDP7mkz+2AUV7W1L1AM6ntgI75qC1ZeFpjPGMrWp+upmBRTX2fJWQ8c7jsUWpA==}
     engines: {node: '>=14'}
 
-  ioredis@5.3.2:
-    resolution: {integrity: sha512-1DKMMzlIHM02eBBVOFQ1+AolGjs6+xEcM4PDL7NqOS6szq7H9jSaEkIUH6/a5Hl241LzW6JLSiAbNvTQjUupUA==}
+  ioredis@5.6.1:
+    resolution: {integrity: sha512-UxC0Yv1Y4WRJiGQxQkP0hfdL0/5/6YvdfOOClRgJ0qppSarkhneSa6UvkMkms0AkdGimSH3Ikqm+6mkMmX7vGA==}
     engines: {node: '>=12.22.0'}
 
   ip-address@10.0.1:
@@ -15397,8 +15400,9 @@ packages:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
 
-  shell-quote@1.8.1:
-    resolution: {integrity: sha512-6j1W9l1iAs/4xYBI1SYOVZyFcCis9b4KCLQ8fgAGG07QvzaRLVVRQvAy85yNmmZSjYjg4MWh4gNvlPujU/5LpA==}
+  shell-quote@1.8.4:
+    resolution: {integrity: sha512-VsC6n6vz1ihYYyZZwX7YZSF5l5x36ca17OC+a69h94YqB7X6XLwf+5MOgynYir2SLFUbl8gIYvBo8K8RoNQ6bQ==}
+    engines: {node: '>= 0.4'}
 
   shiki@3.23.0:
     resolution: {integrity: sha512-55Dj73uq9ZXL5zyeRPzHQsK7Nbyt6Y10k5s7OjuFZGMhpp4r/rsLBH0o/0fstIzX1Lep9VxefWljK/SKCzygIA==}
@@ -30048,11 +30052,11 @@ snapshots:
 
   intl-parse-accept-language@1.0.0: {}
 
-  ioredis@5.3.2:
+  ioredis@5.6.1:
     dependencies:
       '@ioredis/commands': 1.2.0
       cluster-key-slot: 1.1.2
-      debug: 4.3.7(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       denque: 2.1.0
       lodash.defaults: 4.2.0
       lodash.isarguments: 3.1.0
@@ -31921,7 +31925,7 @@ snapshots:
       minimatch: 3.1.5
       pidtree: 0.3.1
       read-pkg: 3.0.0
-      shell-quote: 1.8.1
+      shell-quote: 1.8.4
       string.prototype.padend: 3.1.4
 
   npm-run-path@4.0.1:
@@ -33909,7 +33913,7 @@ snapshots:
 
   send@1.1.0(supports-color@10.0.0):
     dependencies:
-      debug: 4.3.6(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       destroy: 1.2.0
       encodeurl: 2.0.0
       escape-html: 1.0.3
@@ -34003,7 +34007,7 @@ snapshots:
 
   shebang-regex@3.0.0: {}
 
-  shell-quote@1.8.1: {}
+  shell-quote@1.8.4: {}
 
   shiki@3.23.0:
     dependencies:

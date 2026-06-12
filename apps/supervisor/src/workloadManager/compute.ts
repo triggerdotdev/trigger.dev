@@ -6,11 +6,57 @@ import {
   type WorkloadManagerCreateOptions,
   type WorkloadManagerOptions,
 } from "./types.js";
-import { ComputeClient, stripImageDigest } from "@internal/compute";
+import { ComputeClient, ComputeClientError, stripImageDigest } from "@internal/compute";
+import { setTimeout as sleep } from "node:timers/promises";
 import { extractTraceparent, getRunnerId } from "../util.js";
 import type { OtlpTraceService } from "../services/otlpTraceService.js";
 import { tryCatch } from "@trigger.dev/core";
 import { encodeBaggage, fromContext } from "../wideEvents/index.js";
+
+const DEFAULT_CREATE_MAX_ATTEMPTS = 3;
+const DEFAULT_CREATE_RETRY_BASE_DELAY_MS = 250;
+
+/**
+ * TEMPORARY (TRI-10293): a failed create can leave its instance name
+ * registered gateway/fcrun-side until async cleanup runs, so a same-name
+ * retry can 409 against our own residue. Until the gateway cleans up
+ * failed-create registrations properly, retry attempts get a deterministic
+ * suffix. Attempt 1 keeps the unsuffixed name so the non-retry path is
+ * unchanged; the suffixed name flows into both the instance name and
+ * TRIGGER_RUNNER_ID, which downstream flows treat as one opaque
+ * self-reported token. Only attempts following a ComputeClientError are
+ * suffixed - network-failure retries keep the same name on purpose, because
+ * the gateway's name-collision 409 is their safety net against
+ * double-creating an instance whose create response was lost.
+ */
+export function runnerNameForAttempt(runnerId: string, attempt: number): string {
+  return attempt === 1 ? runnerId : `${runnerId}-r${attempt}`;
+}
+
+/**
+ * Whether a failed instance create is worth retrying. Only statuses where
+ * the create definitely did NOT commit are retried: 500 means the agent or
+ * fcrun returned a create error (e.g. a netns slot holding the tap busy, a
+ * full node disk - placement may differ on retry), 503 means the gateway
+ * had nowhere to place it. 502/504 are excluded: the gateway emits those
+ * when it fails to reach the node or read its response, which can happen
+ * AFTER the agent committed the create - and the gateway only records the
+ * instance name on a clean 201, so a same-name retry would miss the
+ * collision check and could double-create the VM on another node. 4xx won't
+ * heal on retry, and timeouts may still be provisioning. Network-level
+ * fetch failures are safe: if the gateway processed the create, its name
+ * index is populated and the retry 409s harmlessly.
+ */
+export function isRetryableCreateError(error: unknown): boolean {
+  if (error instanceof ComputeClientError) {
+    return error.status === 500 || error.status === 503;
+  }
+  if (error instanceof DOMException && error.name === "TimeoutError") {
+    return false;
+  }
+  // Network-level fetch failures (gateway briefly unreachable)
+  return error instanceof TypeError;
+}
 
 type ComputeWorkloadManagerOptions = WorkloadManagerOptions & {
   gateway: {
@@ -30,13 +76,23 @@ type ComputeWorkloadManagerOptions = WorkloadManagerOptions & {
     otelEndpoint: string;
     prettyLogs: boolean;
   };
+  createRetry?: {
+    maxAttempts: number;
+    baseDelayMs: number;
+  };
 };
 
 export class ComputeWorkloadManager implements WorkloadManager {
   private readonly logger = new SimpleStructuredLogger("compute-workload-manager");
   private readonly compute: ComputeClient;
+  private readonly createMaxAttempts: number;
+  private readonly createRetryBaseDelayMs: number;
 
   constructor(private opts: ComputeWorkloadManagerOptions) {
+    this.createMaxAttempts = opts.createRetry?.maxAttempts ?? DEFAULT_CREATE_MAX_ATTEMPTS;
+    this.createRetryBaseDelayMs =
+      opts.createRetry?.baseDelayMs ?? DEFAULT_CREATE_RETRY_BASE_DELAY_MS;
+
     if (opts.workloadApiDomain) {
       this.logger.warn("⚠️ Custom workload API domain", {
         domain: opts.workloadApiDomain,
@@ -133,13 +189,11 @@ export class ComputeWorkloadManager implements WorkloadManager {
     // Strip image digest - resolve by tag, not digest
     const imageRef = stripImageDigest(opts.image);
 
-    // Labels forwarded to the compute provider for network-policy selection;
-    // the provider promotes a configured subset to its network layer. Mirrors
-    // the privatelink label the Kubernetes workload manager sets on the run pod.
-    const labels: Record<string, string> = {};
-    if (opts.hasPrivateLink) {
-      labels.privatelink = opts.orgId;
-    }
+    // Labels forwarded to the compute provider for network-policy selection.
+    // `org` is always set so every run carries its org identity.
+    const labels: Record<string, string> = {
+      org: opts.orgId,
+    };
 
     // Wide event: single canonical log line emitted in finally
     const event: Record<string, unknown> = {
@@ -165,27 +219,71 @@ export class ComputeWorkloadManager implements WorkloadManager {
     const startMs = performance.now();
 
     try {
-      const [error, data] = await tryCatch(
-        this.compute.instances.create({
-          name: runnerId,
-          image: imageRef,
-          env: envVars,
-          cpu: opts.machine.cpu,
-          memory_gb: opts.machine.memory,
-          metadata: {
-            runId: opts.runFriendlyId,
-            envId: opts.envId,
-            envType: opts.envType,
-            orgId: opts.orgId,
-            projectId: opts.projectId,
-            deploymentVersion: opts.deploymentVersion,
-            machine: opts.machine.name,
-          },
-          ...(Object.keys(labels).length > 0 ? { labels } : {}),
-        })
-      );
+      const createRequest = {
+        name: runnerId,
+        image: imageRef,
+        env: envVars,
+        cpu: opts.machine.cpu,
+        memory_gb: opts.machine.memory,
+        metadata: {
+          runId: opts.runFriendlyId,
+          envId: opts.envId,
+          envType: opts.envType,
+          orgId: opts.orgId,
+          projectId: opts.projectId,
+          deploymentVersion: opts.deploymentVersion,
+          machine: opts.machine.name,
+        },
+        ...(Object.keys(labels).length > 0 ? { labels } : {}),
+      };
 
-      if (error) {
+      // Retry transient placement failures instead of abandoning the run: a
+      // swallowed create error leaves the run waiting for the run engine's
+      // PENDING_EXECUTING timeout (minutes) before it is redriven, while a
+      // retried create typically succeeds in under a second (TRI-10293).
+      let error: unknown;
+      let data: Awaited<ReturnType<typeof this.compute.instances.create>> | null | undefined;
+      let attempt = 1;
+      // Set after a ComputeClientError: the failed create may have left its
+      // name registered, so subsequent attempts use a suffixed name.
+      let suffixAttempts = false;
+      for (; attempt <= this.createMaxAttempts; attempt++) {
+        const attemptRunnerId = suffixAttempts
+          ? runnerNameForAttempt(runnerId, attempt)
+          : runnerId;
+        [error, data] = await tryCatch(
+          this.compute.instances.create(
+            attemptRunnerId === runnerId
+              ? createRequest
+              : {
+                  ...createRequest,
+                  name: attemptRunnerId,
+                  env: { ...envVars, TRIGGER_RUNNER_ID: attemptRunnerId },
+                }
+          )
+        );
+
+        if (!error) {
+          event.runnerId = attemptRunnerId;
+          break;
+        }
+
+        if (error instanceof ComputeClientError) {
+          suffixAttempts = true;
+        }
+
+        this.logger.warn("create instance attempt failed", {
+          runnerId: attemptRunnerId,
+          attempt,
+          error: error instanceof Error ? error.message : String(error),
+        });
+
+        if (!isRetryableCreateError(error) || attempt === this.createMaxAttempts) break;
+        await sleep(this.createRetryBaseDelayMs * attempt);
+      }
+      event.createAttempts = attempt;
+
+      if (error || !data) {
         event.error = error instanceof Error ? error.message : String(error);
         event.errorType =
           error instanceof DOMException && error.name === "TimeoutError" ? "timeout" : "fetch";
@@ -319,12 +417,11 @@ export class ComputeWorkloadManager implements WorkloadManager {
       TRIGGER_WORKER_INSTANCE_NAME: this.opts.runner.instanceName,
     };
 
-    // Resupply the same labels on restore (mirror of the create path); the
-    // provider doesn't persist them across a snapshot, so without this a
-    // restored run would lose its policy-based network selection.
+    // Resupply labels on restore (the provider doesn't persist them across a
+    // snapshot). orgId is optional on the restore opts type, so guard it.
     const labels: Record<string, string> = {};
-    if (opts.hasPrivateLink && opts.orgId) {
-      labels.privatelink = opts.orgId;
+    if (opts.orgId) {
+      labels.org = opts.orgId;
     }
 
     this.logger.verbose("restore request body", {

@@ -34,7 +34,7 @@ export class SessionStreamsAPI implements SessionStreamManager {
   public on(
     sessionId: string,
     io: SessionChannelIO,
-    handler: (data: unknown) => void | Promise<void>
+    handler: (data: unknown) => void | boolean | Promise<void>
   ): { off: () => void } {
     return this.#getManager().on(sessionId, io, handler);
   }

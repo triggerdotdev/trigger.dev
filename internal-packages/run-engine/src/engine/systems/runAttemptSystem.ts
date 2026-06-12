@@ -520,6 +520,8 @@ export class RunAttemptSystem {
               attemptNumber: nextAttemptNumber,
               baseCostInCents: updatedRun.baseCostInCents,
               executedAt: updatedRun.executedAt ?? undefined,
+              runTags: updatedRun.runTags,
+              batchId: updatedRun.batchId,
             },
             organization: {
               id: updatedRun.runtimeEnvironment.organizationId,
@@ -1052,6 +1054,8 @@ export class RunAttemptSystem {
                   error: completion.error,
                   createdAt: run.createdAt,
                   taskEventStore: run.taskEventStore,
+                  runTags: run.runTags,
+                  batchId: run.batchId,
                 },
                 organization: {
                   id: run.runtimeEnvironment.organizationId,

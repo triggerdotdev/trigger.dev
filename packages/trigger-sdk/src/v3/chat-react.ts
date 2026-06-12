@@ -299,6 +299,8 @@ export function usePendingMessages<TUIMessage extends UIMessage = UIMessage>(
   // Internal state: track messages with their mode
   type InternalMessage = TUIMessage & { _mode: "steering" | "queued" };
   const [pendingMsgs, setPendingMsgs] = useState<InternalMessage[]>([]);
+  const pendingMsgsRef = useRef(pendingMsgs);
+  pendingMsgsRef.current = pendingMsgs;
   const injectedIdsRef = useRef<Set<string>>(new Set());
   const prevStatusRef = useRef(status);
 
@@ -400,14 +402,18 @@ export function usePendingMessages<TUIMessage extends UIMessage = UIMessage>(
       if (promotedIdsRef.current.has(id)) {
         return;
       }
-      promotedIdsRef.current.add(id);
 
-      setPendingMsgs((prev) => {
-        const msg = prev.find((m) => m.id === id);
-        if (!msg || msg._mode !== "queued") return prev;
-        transport.sendPendingMessage(chatId, msg, metadata);
-        return prev.map((m) => (m.id === id ? { ...m, _mode: "steering" as const } : m));
-      });
+      // Read from the ref, send OUTSIDE the state updater. React may invoke
+      // updaters more than once (StrictMode, update rebasing), so a network
+      // call inside one can double-send.
+      const msg = pendingMsgsRef.current.find((m) => m.id === id);
+      if (!msg || msg._mode !== "queued") return;
+      promotedIdsRef.current.add(id);
+      transport.sendPendingMessage(chatId, msg, metadata);
+
+      setPendingMsgs((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, _mode: "steering" as const } : m))
+      );
     },
     [transport, chatId, metadata]
   );

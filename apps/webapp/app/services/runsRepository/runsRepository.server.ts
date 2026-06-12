@@ -30,6 +30,8 @@ const RunListInputOptionsSchema = z.object({
   versions: z.array(z.string()).optional(),
   statuses: z.array(RunStatus).optional(),
   tags: z.array(z.string()).optional(),
+  // "any" (default) = run has at least one of `tags`; "all" = run has every tag.
+  tagsMatch: z.enum(["any", "all"]).optional(),
   scheduleId: z.string().optional(),
   period: z.string().optional(),
   from: z.number().optional(),

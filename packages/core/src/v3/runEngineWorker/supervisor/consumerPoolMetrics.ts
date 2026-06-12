@@ -5,6 +5,15 @@ export interface ConsumerPoolMetricsOptions {
   prefix?: string;
 }
 
+/**
+ * Outcome of a single dequeue API round-trip, used as a low-cardinality label
+ * on the dequeue latency histogram.
+ * - `success`: the call returned at least one run
+ * - `empty`: the call succeeded but returned no runs (the common idle case)
+ * - `error`: the call failed (unsuccessful response, network error, or timeout)
+ */
+export type DequeueOutcome = "success" | "empty" | "error";
+
 export class ConsumerPoolMetrics {
   private readonly register: Registry;
   private readonly prefix: string;
@@ -25,6 +34,9 @@ export class ConsumerPoolMetrics {
   // Performance metrics
   public readonly queueLengthUpdatesTotal: Counter;
   public readonly batchesProcessedTotal: Counter;
+
+  // Dequeue API latency (client-side, measured around the dequeue HTTP call)
+  public readonly dequeueDurationSeconds: Histogram;
 
   constructor(opts: ConsumerPoolMetricsOptions = {}) {
     this.register = opts.register ?? new Registry();
@@ -102,6 +114,23 @@ export class ConsumerPoolMetrics {
       help: "Total number of metric batches processed",
       registers: [this.register],
     });
+
+    this.dequeueDurationSeconds = new Histogram({
+      name: `${this.prefix}_dequeue_duration_seconds`,
+      help: "Client-side duration of the dequeue API call (POST /engine/v1/worker-actions/dequeue), including the HTTP client's internal retries and backoff",
+      labelNames: ["outcome"],
+      // The HTTP client retries internally (up to 5 attempts with 0.5-5s backoff),
+      // so one observation can span multiple requests plus sleeps. A retryable
+      // failure surfaces as `error` only after >=7.5s of backoff - the 10-30s
+      // buckets exist so that mode doesn't collapse into +Inf. The server also
+      // long-polls (RUN_ENGINE_DEQUEUE_BLOCKING_TIMEOUT_SECONDS, default 10s),
+      // parking empty dequeues at ~10s - the 11/12.5/15/20 buckets give the
+      // quantiles resolution just above that boundary, where the mass sits.
+      // 60s brackets the worst-case error envelope (5 attempts that each hit
+      // the ~10s hold, plus backoff); beyond that the connection is hung.
+      buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 11, 12.5, 15, 20, 30, 60],
+      registers: [this.register],
+    });
   }
 
   /**
@@ -156,5 +185,14 @@ export class ConsumerPoolMetrics {
    */
   recordQueueLengthUpdate() {
     this.queueLengthUpdatesTotal.inc();
+  }
+
+  /**
+   * Record the client-side latency of a single dequeue API round-trip.
+   * @param seconds Wall-clock duration of the dequeue call, in seconds.
+   * @param outcome Whether the call returned runs, was empty, or errored.
+   */
+  observeDequeueLatency(seconds: number, outcome: DequeueOutcome) {
+    this.dequeueDurationSeconds.observe({ outcome }, seconds);
   }
 }

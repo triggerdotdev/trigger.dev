@@ -6,7 +6,7 @@ export class NoopSessionStreamManager implements SessionStreamManager {
   on(
     _sessionId: string,
     _io: SessionChannelIO,
-    _handler: (data: unknown) => void | Promise<void>
+    _handler: (data: unknown) => void | boolean | Promise<void>
   ): { off: () => void } {
     return { off: () => {} };
   }

@@ -7,6 +7,8 @@ import {
 import { SupervisorHttpClient } from "./http.js";
 import type { WorkerApiDequeueResponseBody } from "./schemas.js";
 import type { QueueConsumer } from "./queueConsumer.js";
+import { ConsumerPoolMetrics } from "./consumerPoolMetrics.js";
+import { Registry } from "prom-client";
 
 // Mock only the logger
 vi.mock("../../utils/structuredLogger.js");
@@ -16,9 +18,11 @@ class TestQueueConsumer implements QueueConsumer {
   public started = false;
   public stopped = false;
   public onDequeue?: (messages: WorkerApiDequeueResponseBody) => Promise<void>;
+  public metrics?: ConsumerPoolMetrics;
 
   constructor(opts: any) {
     this.onDequeue = opts.onDequeue;
+    this.metrics = opts.metrics;
   }
 
   start(): void {
@@ -716,6 +720,38 @@ describe("RunQueueConsumerPool", () => {
 
       // Should eventually reach minimum
       expect(pool.size).toBe(1);
+    });
+  });
+
+  describe("Metrics wiring", () => {
+    it("injects the pool's shared ConsumerPoolMetrics into every consumer when a registry is provided", async () => {
+      pool = new RunQueueConsumerPool({
+        ...defaultOptions,
+        metricsRegistry: new Registry(),
+        scaling: { strategy: "none", maxConsumerCount: 3 },
+      });
+
+      await pool.start();
+
+      expect(testConsumers.length).toBe(3);
+      const poolMetrics = pool["promMetrics"];
+      expect(poolMetrics).toBeInstanceOf(ConsumerPoolMetrics);
+      testConsumers.forEach((consumer) => {
+        expect(consumer.metrics).toBe(poolMetrics);
+      });
+    });
+
+    it("preserves a caller-supplied consumer metrics instance when no registry is provided", async () => {
+      const callerMetrics = new ConsumerPoolMetrics({ register: new Registry() });
+      pool = new RunQueueConsumerPool({
+        ...defaultOptions,
+        consumer: { ...defaultOptions.consumer, metrics: callerMetrics },
+        scaling: { strategy: "none", maxConsumerCount: 1 },
+      });
+
+      await pool.start();
+
+      expect(testConsumers[0]?.metrics).toBe(callerMetrics);
     });
   });
 

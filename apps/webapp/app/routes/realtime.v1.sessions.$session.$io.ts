@@ -1,12 +1,11 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { $replica } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
 import {
   canonicalSessionAddressingKey,
   isSessionFriendlyIdForm,
-  resolveSessionByIdOrExternalId,
+  resolveSessionWithWriterFallback,
 } from "~/services/realtime/sessions.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import {
@@ -43,8 +42,7 @@ const { action } = createActionApiRoute(
     // when a row exists. The S2 stream key is built from the row's
     // canonical key (externalId if set, else friendlyId) so writers
     // and readers converge regardless of URL form.
-    const maybeSession = await resolveSessionByIdOrExternalId(
-      $replica,
+    const maybeSession = await resolveSessionWithWriterFallback(
       authentication.environment.id,
       params.session
     );
@@ -100,8 +98,7 @@ const loader = createLoaderApiRoute(
     allowJWT: true,
     corsStrategy: "all",
     findResource: async (params, auth) => {
-      const row = await resolveSessionByIdOrExternalId(
-        $replica,
+      const row = await resolveSessionWithWriterFallback(
         auth.environment.id,
         params.session
       );

@@ -626,15 +626,19 @@ export class SessionInputChannel {
 
   /**
    * Register a handler that fires for every record landing on `.in`.
-   * Handlers are flushed with any buffered records on attach and cleaned
-   * up automatically when the task run completes. Returns `{ off }` to
-   * unsubscribe early.
+   * Buffered records are offered to the handler on attach, and handlers
+   * are cleaned up automatically when the task run completes. Returns
+   * `{ off }` to unsubscribe early.
+   *
+   * A handler that synchronously returns `true` CONSUMES the record: it
+   * won't be buffered for a later `once()` and won't be re-delivered on a
+   * future `on()` attach. Plain observers should return nothing.
    */
-  on<T = unknown>(handler: (data: T) => void | Promise<void>): { off: () => void } {
+  on<T = unknown>(handler: (data: T) => void | boolean | Promise<void>): { off: () => void } {
     return sessionStreams.on(
       this.sessionId,
       "in",
-      handler as (data: unknown) => void | Promise<void>
+      handler as (data: unknown) => void | boolean | Promise<void>
     );
   }
 

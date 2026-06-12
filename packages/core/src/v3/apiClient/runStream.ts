@@ -371,7 +371,20 @@ export class SSEStreamSubscription implements StreamSubscription {
       this.retryCount = 0; // reset on success
       armStall();
 
+      // Dedup window for record ids. Bounded with FIFO eviction so a
+      // long-lived `watch: true` subscription (one connection across many
+      // turns) doesn't grow this set without bound. The window only needs
+      // to cover the overlap a reconnect/replay can re-deliver, so a few
+      // thousand ids is ample.
+      const SEEN_IDS_CAP = 5000;
       const seenIds = new Set<string>();
+      const rememberSeen = (id: string) => {
+        seenIds.add(id);
+        if (seenIds.size > SEEN_IDS_CAP) {
+          const oldest = seenIds.values().next().value;
+          if (oldest !== undefined) seenIds.delete(oldest);
+        }
+      };
 
       const stream = response.body
         .pipeThrough(new TextDecoderStream())
@@ -426,7 +439,7 @@ export class SSEStreamSubscription implements StreamSubscription {
                       | undefined;
                     if (parsedBody?.id) {
                       if (seenIds.has(parsedBody.id)) continue;
-                      seenIds.add(parsedBody.id);
+                      rememberSeen(parsedBody.id);
                     }
                     chunkController.enqueue({
                       id: record.seq_num.toString(),

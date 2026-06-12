@@ -2,16 +2,19 @@ import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { nanoid } from "nanoid";
 import { z } from "zod";
-import { $replica } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
 import { ensureRunForSession } from "~/services/realtime/sessionRunManager.server";
 import {
   canonicalSessionAddressingKey,
-  resolveSessionByIdOrExternalId,
+  resolveSessionWithWriterFallback,
 } from "~/services/realtime/sessions.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
-import { drainSessionStreamWaitpoints } from "~/services/sessionStreamWaitpointCache.server";
+import {
+  claimSessionStreamPart,
+  drainSessionStreamWaitpoints,
+  releaseSessionStreamPart,
+} from "~/services/sessionStreamWaitpointCache.server";
 import {
   anyResource,
   createActionApiRoute,
@@ -51,9 +54,10 @@ const { action, loader } = createActionApiRoute(
     // also triggers the first run). The row exists before any caller
     // can reach `.in/append` — no row, no append. Resolved here so the
     // authorization scope can expand to both addressing forms (friendlyId
-    // + externalId) and the handler can skip its own lookup.
+    // + externalId) and the handler can skip its own lookup. Writer
+    // fallback: a first append can land inside the replica apply window.
     findResource: async (params, auth) =>
-      resolveSessionByIdOrExternalId($replica, auth.environment.id, params.session),
+      resolveSessionWithWriterFallback(auth.environment.id, params.session),
     authorization: {
       action: "write",
       // Authorize against the union of the URL form, friendlyId, and
@@ -88,6 +92,17 @@ const { action, loader } = createActionApiRoute(
       return json(
         { ok: false, error: "Cannot append to an expired session" },
         { status: 400 }
+      );
+    }
+
+    // `.out` is the agent→client channel. Only PRIVATE (secret key) auth —
+    // i.e. the agent run itself — may write to it. Session-scoped JWTs carry
+    // `write:sessions:<key>` for `.in`; without this gate they could forge
+    // assistant chunks and complete `.out` waitpoints on their own session.
+    if (params.io === "out" && authentication.type !== "PRIVATE") {
+      return json(
+        { ok: false, error: "Appending to the out channel requires secret key authentication" },
+        { status: 403 }
       );
     }
 
@@ -132,25 +147,54 @@ const { action, loader } = createActionApiRoute(
     const addressingKey = canonicalSessionAddressingKey(session, params.session);
 
     const part = await request.text();
-    const partId = request.headers.get("X-Part-Id") ?? nanoid(7);
+    const clientPartId = request.headers.get("X-Part-Id");
+    const partId = clientPartId ?? nanoid(7);
 
-    const [appendError] = await tryCatch(
-      realtimeStream.appendPartToSessionStream(part, partId, addressingKey, params.io)
-    );
+    // Idempotency on client-supplied part ids: atomically claim the id before
+    // appending. A concurrent or retried POST that loses the claim skips the
+    // append (no duplicate record) but still falls through to the drain below,
+    // so a retry whose first attempt died before waking the waitpoint can still
+    // recover it. The claim is released on append failure so a genuine retry
+    // can re-claim and proceed.
+    const wonClaim = clientPartId
+      ? await claimSessionStreamPart(
+          authentication.environment.id,
+          addressingKey,
+          params.io,
+          clientPartId
+        )
+      : true;
 
-    if (appendError) {
-      if (appendError instanceof ServiceValidationError) {
+    if (wonClaim) {
+      const [appendError] = await tryCatch(
+        realtimeStream.appendPartToSessionStream(part, partId, addressingKey, params.io)
+      );
+
+      if (appendError) {
+        if (clientPartId) {
+          await releaseSessionStreamPart(
+            authentication.environment.id,
+            addressingKey,
+            params.io,
+            clientPartId
+          );
+        }
+        if (appendError instanceof ServiceValidationError) {
+          return json(
+            { ok: false, error: appendError.message },
+            { status: appendError.status ?? 422 }
+          );
+        }
+        logger.error("Failed to append to session stream", {
+          sessionId: session.id,
+          io: params.io,
+          error: appendError,
+        });
         return json(
-          { ok: false, error: appendError.message },
-          { status: appendError.status ?? 422 }
+          { ok: false, error: "Something went wrong, please try again." },
+          { status: 500 }
         );
       }
-      logger.error("Failed to append to session stream", {
-        sessionId: session.id,
-        io: params.io,
-        error: appendError,
-      });
-      return json({ ok: false, error: "Something went wrong, please try again." }, { status: 500 });
     }
 
     // Fire any run-scoped waitpoints registered against this channel. Best
@@ -160,7 +204,7 @@ const { action, loader } = createActionApiRoute(
     // `sessions.open(...).in.wait()`, so writers and readers converge
     // regardless of which URL form they used.
     const [drainError, waitpointIds] = await tryCatch(
-      drainSessionStreamWaitpoints(addressingKey, params.io)
+      drainSessionStreamWaitpoints(authentication.environment.id, addressingKey, params.io)
     );
     if (drainError) {
       logger.error("Failed to drain session stream waitpoints", {

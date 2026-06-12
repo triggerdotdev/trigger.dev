@@ -163,6 +163,8 @@ export class PendingVersionSystem {
           status: "PENDING",
           updatedAt: run.updatedAt,
           createdAt: run.createdAt,
+          runTags: run.runTags,
+          batchId: run.batchId,
         },
         organization: {
           id: backgroundWorker.runtimeEnvironment.organizationId,
