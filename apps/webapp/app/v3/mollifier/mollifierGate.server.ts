@@ -24,7 +24,7 @@ export type TripDecision =
   | { divert: false }
   | {
       divert: true;
-      reason: "per_env_rate";
+      reason: "per_env_rate" | "global_rate";
       count: number;
       threshold: number;
       windowMs: number;
@@ -89,11 +89,22 @@ export type GateDependencies = {
 // gate observing whichever env values are live at trigger time.
 const defaultEvaluator = createRealTripEvaluator({
   getBuffer: () => getMollifierBuffer(),
-  options: () => ({
-    windowMs: env.TRIGGER_MOLLIFIER_TRIP_WINDOW_MS,
-    threshold: env.TRIGGER_MOLLIFIER_TRIP_THRESHOLD,
-    holdMs: env.TRIGGER_MOLLIFIER_HOLD_MS,
-  }),
+  // Pick the per-env or global rate parameters based on the configured gate
+  // mode. Kept as separate env vars so the two regimes never share tuning.
+  options: () =>
+    env.TRIGGER_MOLLIFIER_GATE_MODE === "global"
+      ? {
+          mode: "global",
+          windowMs: env.TRIGGER_MOLLIFIER_GLOBAL_TRIP_WINDOW_MS,
+          threshold: env.TRIGGER_MOLLIFIER_GLOBAL_TRIP_THRESHOLD,
+          holdMs: env.TRIGGER_MOLLIFIER_GLOBAL_HOLD_MS,
+        }
+      : {
+          mode: "per_env",
+          windowMs: env.TRIGGER_MOLLIFIER_TRIP_WINDOW_MS,
+          threshold: env.TRIGGER_MOLLIFIER_TRIP_THRESHOLD,
+          holdMs: env.TRIGGER_MOLLIFIER_HOLD_MS,
+        },
 });
 
 function logDivertDecision(

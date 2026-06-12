@@ -1203,6 +1203,18 @@ const EnvironmentSchema = z
     TRIGGER_MOLLIFIER_TRIP_WINDOW_MS: z.coerce.number().int().positive().default(200),
     TRIGGER_MOLLIFIER_TRIP_THRESHOLD: z.coerce.number().int().positive().default(100),
     TRIGGER_MOLLIFIER_HOLD_MS: z.coerce.number().int().positive().default(500),
+    // Gate mode. "per_env" (default) rate-limits each env independently via the
+    // TRIGGER_MOLLIFIER_TRIP_* values above. "global" rate-limits the aggregate
+    // fleet-wide trigger.run rate via a single shared counter (ignoring per-env
+    // contributions) using the TRIGGER_MOLLIFIER_GLOBAL_* values below — it
+    // protects the primary DB from the aggregate rate that per-env tripping
+    // cannot bound. The two parameter sets are kept separate so switching modes
+    // never silently reuses the other regime's tuning. Global threshold default
+    // (1000 per 200ms ≈ 5k/s) targets the observed aggregate metastable edge.
+    TRIGGER_MOLLIFIER_GATE_MODE: z.enum(["per_env", "global"]).default("per_env"),
+    TRIGGER_MOLLIFIER_GLOBAL_TRIP_WINDOW_MS: z.coerce.number().int().positive().default(200),
+    TRIGGER_MOLLIFIER_GLOBAL_TRIP_THRESHOLD: z.coerce.number().int().positive().default(1000),
+    TRIGGER_MOLLIFIER_GLOBAL_HOLD_MS: z.coerce.number().int().positive().default(500),
     TRIGGER_MOLLIFIER_DRAIN_CONCURRENCY: z.coerce.number().int().positive().default(50),
     TRIGGER_MOLLIFIER_DRAIN_MAX_ATTEMPTS: z.coerce.number().int().positive().default(3),
     TRIGGER_MOLLIFIER_DRAIN_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
