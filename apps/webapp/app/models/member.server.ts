@@ -227,19 +227,35 @@ export async function acceptInvite({
     };
   });
 
-  // If the invite carried an explicit RBAC role. Errors are logged, not fatal.
+  // If the invite carried an explicit RBAC role, assign it. Best-effort: the
+  // invite is already consumed and membership created above, so a failure here
+  // — a returned {ok:false} or a thrown error from the plugin — must not block
+  // joining the org. Swallow and log either way; without the catch a plugin
+  // throw escapes and turns the whole invite-accept into a 400.
   if (result.rbacRoleId) {
-    const roleResult = await rbac.setUserRole({
-      userId: user.id,
-      organizationId: result.organization.id,
-      roleId: result.rbacRoleId,
-    });
-    if (!roleResult.ok) {
-      logger.error("acceptInvite: skipped RBAC role assignment", {
+    try {
+      const roleResult = await rbac.setUserRole({
+        userId: user.id,
+        organizationId: result.organization.id,
+        roleId: result.rbacRoleId,
+      });
+      if (!roleResult.ok) {
+        logger.error("acceptInvite: skipped RBAC role assignment", {
+          organizationId: result.organization.id,
+          userId: user.id,
+          rbacRoleId: result.rbacRoleId,
+          reason: roleResult.error,
+        });
+      }
+    } catch (error) {
+      logger.error("acceptInvite: RBAC role assignment threw", {
         organizationId: result.organization.id,
         userId: user.id,
         rbacRoleId: result.rbacRoleId,
-        reason: roleResult.error,
+        error:
+          error instanceof Error
+            ? { name: error.name, message: error.message, stack: error.stack }
+            : String(error),
       });
     }
   }
