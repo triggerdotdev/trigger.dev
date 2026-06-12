@@ -180,3 +180,10 @@ const projectBRuns = await auth.withAuth(
 Any SDK call inside the callback uses the overridden config. Calls outside the callback continue to use whatever was set by `configure` (or picked up from `TRIGGER_SECRET_KEY`).
 
 The override is scoped via [AsyncLocalStorage](https://nodejs.org/api/async_context.html), so concurrent `auth.withAuth` calls (including overlapping calls inside `Promise.all` with different tokens) do not interfere. Nested calls compose — an inner `auth.withAuth({ accessToken })` inside an outer `auth.withAuth({ baseURL })` runs with both fields applied.
+
+<Note>
+  On runtimes without AsyncLocalStorage (browsers and some edge runtimes), the SDK falls back to
+  swapping the global config in place for the duration of the callback, which is not safe under
+  concurrency. If you need concurrent multi-target calls there, use
+  [`new TriggerClient({...})`](/management/multiple-clients) instances instead.
+</Note>
