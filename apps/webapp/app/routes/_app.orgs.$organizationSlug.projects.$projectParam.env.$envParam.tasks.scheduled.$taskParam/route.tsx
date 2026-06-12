@@ -3,13 +3,14 @@ import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useCallback, useEffect, useMemo } from "react";
 import { TypedAwait, typeddefer, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { PlusIcon } from "@heroicons/react/20/solid";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
@@ -50,6 +51,8 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { ScheduleListPresenter } from "~/presenters/v3/ScheduleListPresenter.server";
 import type { loader as scheduleDetailLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.$scheduleParam/route";
+import type { loader as scheduleNewLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
+import { UpsertScheduleForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
 import {
   TaskDetailPresenter,
   type TaskActivity,
@@ -61,6 +64,7 @@ import {
   EnvironmentParamSchema,
   v3CreateBulkActionPath,
   v3EnvironmentPath,
+  v3NewSchedulePath,
   v3RunsPath,
   v3SchedulePath,
   v3TestTaskPath,
@@ -179,6 +183,13 @@ export default function Page() {
   );
   const closeSchedule = useCallback(() => search.del("schedule"), [search]);
 
+  const isCreatingSchedule = search.has("createSchedule");
+  const openCreateSchedule = useCallback(
+    () => search.replace({ createSchedule: "1" }),
+    [search]
+  );
+  const closeCreateSchedule = useCallback(() => search.del("createSchedule"), [search]);
+
   return (
     <PageContainer>
       <NavBar>
@@ -198,9 +209,17 @@ export default function Page() {
             <ResizablePanelGroup orientation="vertical" className="max-h-full">
               {/* Activity chart + filters */}
               <ResizablePanel id="scheduled-task-activity" min="144px" default="200px">
-                <div className="flex h-full flex-col gap-3 overflow-hidden bg-background-bright py-2 pl-2 pr-4">
-                  <div className="flex items-center gap-2">
+                <div className="flex h-full flex-col gap-3 overflow-hidden bg-background-bright py-2 pl-2 pr-2">
+                  <div className="flex items-center justify-between gap-2">
                     <TimeFilter defaultPeriod="7d" labelName="Runs" />
+                    <Button
+                      variant="primary/small"
+                      LeadingIcon={PlusIcon}
+                      leadingIconClassName="-mx-1"
+                      onClick={openCreateSchedule}
+                    >
+                      Create schedule
+                    </Button>
                   </div>
                   <div className="flex min-h-0 flex-1 flex-col">
                     <Suspense fallback={<ActivityChartSkeleton />}>
@@ -301,7 +320,65 @@ export default function Page() {
         environment={environment}
         onClose={closeSchedule}
       />
+
+      <CreateScheduleSheet
+        open={isCreatingSchedule}
+        organization={organization}
+        project={project}
+        environment={environment}
+        defaultTaskIdentifier={task.slug}
+        onClose={closeCreateSchedule}
+      />
     </PageContainer>
+  );
+}
+
+function CreateScheduleSheet({
+  open,
+  organization,
+  project,
+  environment,
+  defaultTaskIdentifier,
+  onClose,
+}: {
+  open: boolean;
+  organization: ReturnType<typeof useOrganization>;
+  project: ReturnType<typeof useProject>;
+  environment: ReturnType<typeof useEnvironment>;
+  defaultTaskIdentifier: string;
+  onClose: () => void;
+}) {
+  const fetcher = useTypedFetcher<typeof scheduleNewLoader>();
+  const newPath = v3NewSchedulePath(organization, project, environment);
+
+  useEffect(() => {
+    if (open) fetcher.load(newPath);
+  }, [open, newPath]);
+
+  const data = fetcher.data;
+  const isLoading = fetcher.state === "loading" || (open && !data);
+
+  return (
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent
+        side="right"
+        className="w-[480px] max-w-none border-l border-grid-dimmed bg-background-bright p-0 sm:max-w-none"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        {isLoading || !data ? (
+          <TableLoading />
+        ) : (
+          <UpsertScheduleForm
+            schedule={data.schedule}
+            possibleTasks={data.possibleTasks}
+            possibleEnvironments={data.possibleEnvironments}
+            possibleTimezones={data.possibleTimezones}
+            showGenerateField={data.showGenerateField}
+            defaultTaskIdentifier={defaultTaskIdentifier}
+          />
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }
 
