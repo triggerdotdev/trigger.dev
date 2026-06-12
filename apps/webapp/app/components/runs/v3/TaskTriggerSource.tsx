@@ -24,7 +24,9 @@ export function TaskTriggerSourceIcon({
     }
     case "AGENT": {
       return (
-        <CubeSparkleIcon className={cn("size-[1.125rem] min-w-[1.125rem] text-agents", className)} />
+        <CubeSparkleIcon
+          className={cn("size-[1.125rem] min-w-[1.125rem] text-agents", className)}
+        />
       );
     }
   }
@@ -39,7 +41,7 @@ export function taskTriggerSourceDescription(source: TaskTriggerSource) {
       return "Scheduled task";
     }
     case "AGENT": {
-      return "Agent";
+      return "Agent task";
     }
   }
 }

@@ -58,7 +58,10 @@ import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { TaskFileName } from "~/components/runs/v3/TaskPath";
 import { TaskRunStatusCombo } from "~/components/runs/v3/TaskRunStatus";
-import { TaskTriggerSourceIcon } from "~/components/runs/v3/TaskTriggerSource";
+import {
+  TaskTriggerSourceIcon,
+  taskTriggerSourceDescription,
+} from "~/components/runs/v3/TaskTriggerSource";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useFuzzyFilter } from "~/hooks/useFuzzyFilter";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -148,9 +151,9 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 const KIND_OPTIONS: { value: UnifiedTaskKind; label: string }[] = [
-  { value: "AGENT", label: "Agent tasks" },
-  { value: "STANDARD", label: "Standard tasks" },
-  { value: "SCHEDULED", label: "Scheduled tasks" },
+  { value: "AGENT", label: "Agent" },
+  { value: "STANDARD", label: "Standard" },
+  { value: "SCHEDULED", label: "Scheduled" },
 ];
 
 const PAGE_SIZE = 25;
@@ -268,8 +271,8 @@ export default function Page() {
                     <Table containerClassName="max-h-full">
                       <TableHeader>
                         <TableRow>
-                          <TableHeaderCell>Task type</TableHeaderCell>
-                          <TableHeaderCell>Task ID</TableHeaderCell>
+                          <TableHeaderCell>ID</TableHeaderCell>
+                          <TableHeaderCell>Type</TableHeaderCell>
                           <TableHeaderCell>File</TableHeaderCell>
                           <TableHeaderCell>Running</TableHeaderCell>
                           <TableHeaderCell>Activity (24h)</TableHeaderCell>
@@ -376,11 +379,16 @@ function TaskRow({
     <TableRow className="group">
       <TableCell to={rowPath} isTabbableCell>
         <div className="flex items-center gap-2">
-          {item.kind === "AGENT" ? (
-            <CubeSparkleIcon className="size-4.5 text-agents" />
-          ) : (
-            <TaskTriggerSourceIcon source={item.triggerSource} />
-          )}
+          <SimpleTooltip
+            button={<TaskTriggerSourceIcon source={item.triggerSource} />}
+            content={taskTriggerSourceDescription(item.triggerSource)}
+            disableHoverableContent
+          />
+          <span>{item.slug}</span>
+        </div>
+      </TableCell>
+      <TableCell to={rowPath}>
+        <div className="flex items-center gap-2">
           <span>
             {item.kind === "AGENT" ? "Agent" : item.kind === "SCHEDULED" ? "Scheduled" : "Standard"}
           </span>
@@ -388,9 +396,6 @@ function TaskRow({
             <Badge variant="extra-small">{formatAgentType(item.agentType)}</Badge>
           )}
         </div>
-      </TableCell>
-      <TableCell to={rowPath}>
-        <span>{item.slug}</span>
       </TableCell>
       <TableCell to={rowPath}>
         <TaskFileName fileName={item.filePath} variant="extra-extra-small" />
