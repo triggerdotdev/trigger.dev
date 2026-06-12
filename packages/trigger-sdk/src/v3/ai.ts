@@ -222,6 +222,44 @@ export async function __findLatestSessionInCursorForTests(
 }
 
 /**
+ * Seed the `.in` resume cursor for custom-agent loops (`chat.customAgent`
+ * raw loops and `chat.createSession`) the way `chat.agent`'s boot does.
+ *
+ * MUST run before anything attaches a `.in` listener (`createStopSignal`,
+ * `chat.messages.on`, the first wait): attaching opens the SSE tail with
+ * `Last-Event-ID` from the seeded cursor, so attach-then-seed replays
+ * every record from seq 0 — already-answered user messages get delivered
+ * into the new run's first wait and the loop re-answers them.
+ *
+ * Seeds both cursors: `setLastSeqNum` controls the SSE `Last-Event-ID`,
+ * `setLastDispatchedSeqNum` gates waiter dispatch — seeding only the
+ * former still re-delivers records the manager buffered before the seed.
+ *
+ * No-ops on fresh boots and when a cursor is already seeded (e.g. the
+ * `chatCustomAgent` wrapper ran before a nested `createChatSession`).
+ * @internal
+ */
+async function seedSessionInResumeCursorForCustomLoop(
+  payload: Pick<ChatTaskWirePayload, "chatId" | "continuation">
+): Promise<void> {
+  const attemptNumber = taskContext.ctx?.attempt.number ?? 1;
+  if (payload.continuation !== true && attemptNumber <= 1) return;
+  if (sessionStreams.lastSeqNum(payload.chatId, "in") !== undefined) return;
+  try {
+    const cursor = await findLatestSessionInCursor(payload.chatId);
+    if (cursor !== undefined) {
+      sessionStreams.setLastSeqNum(payload.chatId, "in", cursor);
+      sessionStreams.setLastDispatchedSeqNum(payload.chatId, "in", cursor);
+    }
+  } catch (error) {
+    logger.warn(
+      "chat session: session.in resume cursor lookup failed; old messages may replay",
+      { error: error instanceof Error ? error.message : String(error) }
+    );
+  }
+}
+
+/**
  * Versioned blob written to S3 after every turn completes (when no
  * `hydrateMessages` hook is registered). Read at run boot to seed the
  * accumulator with prior conversation state, replacing the old wire-borne
@@ -921,6 +959,15 @@ function createTaskToolExecuteHandler<
       toolMeta.turn = chatCtx.turn;
       toolMeta.continuation = chatCtx.continuation;
       toolMeta.clientData = chatCtx.clientData;
+    } else {
+      // Hand-rolled chat.customAgent loops never set per-turn context, but
+      // the wrapper binds the session handle at run boot — thread the
+      // chatId from it so subtask chat helpers (`chat.stream.writer`
+      // with target "root") can open the parent's session.
+      const sessionHandle = locals.get(chatSessionHandleKey);
+      if (sessionHandle) {
+        toolMeta.chatId = sessionHandle.id;
+      }
     }
 
     const chatLocals: Record<string, unknown> = {};
@@ -5113,6 +5160,10 @@ function chatCustomAgent<
       markChatAgentRunForStreamsWarning();
       taskContext.setConversationId(payload.chatId);
       stampConversationIdOnActiveSpan(payload.chatId);
+      // Seed the `.in` resume cursor before user code attaches any `.in`
+      // listener — otherwise a continuation boot replays already-answered
+      // messages into the loop's first wait.
+      await seedSessionInResumeCursorForCustomLoop(payload);
       return userRun(payload, runOptions);
     },
   });
@@ -8613,8 +8664,15 @@ async function pipeChatAndCapture(
     resolveOnFinish = r;
   });
 
+  const resolvedOptions = resolveUIMessageStreamOptions();
   const uiStream = source.toUIMessageStream({
-    ...resolveUIMessageStreamOptions(),
+    ...resolvedOptions,
+    // Stamp a server-generated id on the start chunk, same as chat.agent's
+    // pipe. Without it the AI SDK regenerates the assistant id when a
+    // prepareStep injection (steering) starts a new step mid-stream, and
+    // the frontend replaces the partial message — wiping the
+    // pre-injection text from the UI and the captured response.
+    generateMessageId: resolvedOptions.generateMessageId ?? generateMessageId,
     onFinish: ({ responseMessage }: { responseMessage: UIMessage }) => {
       captured = responseMessage;
       resolveOnFinish!();
@@ -8979,13 +9037,23 @@ function createChatSession(
     [Symbol.asyncIterator]() {
       let currentPayload = payload;
       let turn = -1;
-      const stop = createStopSignal();
+      // Created on the first next() call, AFTER the resume-cursor seed —
+      // createStopSignal attaches the `.in` SSE tail, and attaching
+      // before the seed replays every record from seq 0 (the seed is a
+      // no-op when the chatCustomAgent wrapper already ran it).
+      let stop!: ReturnType<typeof createStopSignal>;
+      let booted = false;
       const accumulator = new ChatMessageAccumulator();
       let previousTurnUsage: LanguageModelUsage | undefined;
       let cumulativeUsage: LanguageModelUsage = emptyUsage();
 
       return {
         async next(): Promise<IteratorResult<ChatTurn>> {
+          if (!booted) {
+            booted = true;
+            await seedSessionInResumeCursorForCustomLoop(currentPayload);
+            stop = createStopSignal();
+          }
           turn++;
 
           // First turn: wait when the boot payload carries no message.
@@ -9328,7 +9396,8 @@ function createChatSession(
         },
 
         async return() {
-          stop.cleanup();
+          // `stop` only exists once next() has booted the iterator.
+          stop?.cleanup();
           return { done: true, value: undefined };
         },
       };
