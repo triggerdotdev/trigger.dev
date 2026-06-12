@@ -39,6 +39,7 @@
     "chat-start-session-action-typed-client-data",
     "chat-transport-recreate-missing-session",
     "cli-deploy-skip-rewrite-timestamp",
+    "cli-dev-without-project",
     "cli-init-ai-tooling",
     "coerce-concurrency-key-to-string",
     "create-session-stop-continuation",

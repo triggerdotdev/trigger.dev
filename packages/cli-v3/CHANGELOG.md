@@ -1,5 +1,15 @@
 # trigger.dev
 
+## 4.5.0-rc.7
+
+### Patch Changes
+
+- Running a CLI command like `dev`, `deploy`, `preview`, or `update` before initializing a project no longer crashes with a raw `Cannot find matching package.json` stack trace. The CLI now detects the missing project and points you to `npx trigger.dev@latest init` instead. ([#3929](https://github.com/triggerdotdev/trigger.dev/pull/3929))
+- Updated dependencies:
+  - `@trigger.dev/build@4.5.0-rc.7`
+  - `@trigger.dev/core@4.5.0-rc.7`
+  - `@trigger.dev/schema-to-json@4.5.0-rc.7`
+
 ## 4.5.0-rc.6
 
 ### Patch Changes
