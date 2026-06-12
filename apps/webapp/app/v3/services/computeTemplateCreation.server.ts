@@ -9,6 +9,7 @@ import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { ServiceValidationError } from "./baseService.server";
 import { FailDeploymentService } from "./failDeployment.server";
 import { resolveComputeAccess } from "../regionAccess.server";
+import { WorkerGroupService } from "./worker/workerGroupService.server";
 
 type TemplateCreationMode = "required" | "shadow" | "skip";
 
@@ -56,7 +57,7 @@ export class ComputeTemplateCreationService {
     prisma: PrismaClientOrTransaction;
     writer?: WritableStreamDefaultWriter;
   }): Promise<void> {
-    const mode = await this.resolveMode(options.projectId, options.prisma);
+    const mode = await this.resolveMode(options.authenticatedEnv, options.prisma);
 
     if (mode === "skip") {
       return;
@@ -134,7 +135,7 @@ export class ComputeTemplateCreationService {
   }
 
   async resolveMode(
-    projectId: string,
+    authenticatedEnv: AuthenticatedEnvironment,
     prisma: PrismaClientOrTransaction
   ): Promise<TemplateCreationMode> {
     if (!this.client) {
@@ -142,11 +143,8 @@ export class ComputeTemplateCreationService {
     }
 
     const project = await prisma.project.findFirst({
-      where: { id: projectId },
+      where: { id: authenticatedEnv.projectId },
       select: {
-        defaultWorkerGroup: {
-          select: { workloadType: true },
-        },
         organization: {
           select: { featureFlags: true },
         },
@@ -157,7 +155,14 @@ export class ComputeTemplateCreationService {
       return "skip";
     }
 
-    if (project.defaultWorkerGroup?.workloadType === "MICROVM") {
+    // Reuse the trigger path's resolution so the template decision matches the
+    // region runs actually deploy to: env default -> project default -> global default.
+    const defaultWorkerGroup = await new WorkerGroupService().getDefaultWorkerGroupForProject({
+      projectId: authenticatedEnv.projectId,
+      environmentDefaultWorkerGroupId: authenticatedEnv.defaultWorkerGroupId,
+    });
+
+    if (defaultWorkerGroup?.workloadType === "MICROVM") {
       return "required";
     }
 

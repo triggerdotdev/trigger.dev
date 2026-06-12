@@ -27,12 +27,19 @@ export const loader = createLoaderApiRoute(
       projectId: authentication.environment.projectId,
     });
 
+    // Reuse the trigger path's resolution so isDefault matches where runs
+    // actually route: env default -> project default -> global default.
+    const defaultWorkerGroup = await service.getDefaultWorkerGroupForProject({
+      projectId: authentication.environment.projectId,
+      environmentDefaultWorkerGroupId: authentication.environment.defaultWorkerGroupId,
+    });
+
     return json(
       workers.map((w) => ({
         type: w.type,
         name: w.name,
         description: w.description,
-        isDefault: w.id === authentication.environment.project.defaultWorkerGroupId,
+        isDefault: w.id === defaultWorkerGroup?.id,
         updatedAt: w.updatedAt,
       }))
     );

@@ -52,12 +52,12 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
+import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type Region, RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { requireUser } from "~/services/session.server";
 import {
   docsPath,
   EnvironmentParamSchema,
-  ProjectParamSchema,
   regionsPath,
   v3BillingPath,
 } from "~/utils/pathBuilder";
@@ -65,13 +65,24 @@ import { SetDefaultRegionService } from "~/v3/services/setDefaultRegion.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
-  const { projectParam } = ProjectParamSchema.parse(params);
+  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+
+  const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+  if (!project) {
+    throw new Response(undefined, { status: 404, statusText: "Project not found" });
+  }
+
+  const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
+  if (!environment) {
+    throw new Response(undefined, { status: 404, statusText: "Environment not found" });
+  }
 
   const presenter = new RegionsPresenter();
   const [error, result] = await tryCatch(
     presenter.call({
       userId: user.id,
       projectSlug: projectParam,
+      environmentId: environment.id,
       isAdmin: user.admin || user.isImpersonating,
     })
   );
@@ -90,6 +101,20 @@ const FormSchema = z.object({
   regionId: z.string(),
 });
 
+// Lets the parent layout route revalidate its cached regions after a new
+// default is set — the action redirects to the same URL, so a pathname check
+// alone wouldn't refresh the default shown by useRegions().
+export function isSetDefaultRegionFormSubmission(
+  formMethod: string | undefined,
+  formData: FormData | undefined
+) {
+  if (!formMethod || !formData) {
+    return false;
+  }
+
+  return formMethod.toLowerCase() === "post" && formData.has("regionId");
+}
+
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const user = await requireUser(request);
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
@@ -106,6 +131,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     throw redirectWithErrorMessage(redirectPath, request, "Project not found");
   }
 
+  const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
+  if (!environment) {
+    throw redirectWithErrorMessage(redirectPath, request, "Environment not found");
+  }
+
   const formData = await request.formData();
   const parsedFormData = FormSchema.safeParse(Object.fromEntries(formData));
 
@@ -116,7 +146,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const service = new SetDefaultRegionService();
   const [error, result] = await tryCatch(
     service.call({
-      projectId: project.id,
+      environmentId: environment.id,
       regionId: parsedFormData.data.regionId,
       isAdmin: user.admin || user.isImpersonating,
     })

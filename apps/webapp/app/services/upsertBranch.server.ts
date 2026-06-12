@@ -119,6 +119,8 @@ export class UpsertBranchService {
           pkApiKey,
           shortcode,
           maximumConcurrencyLimit: parentEnvironment.maximumConcurrencyLimit,
+          // Inherit the region from the parent preview environment.
+          defaultWorkerGroupId: parentEnvironment.defaultWorkerGroupId,
           organization: {
             connect: {
               id: parentEnvironment.organization.id,
