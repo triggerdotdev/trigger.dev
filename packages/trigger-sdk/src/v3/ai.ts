@@ -242,9 +242,12 @@ export async function __findLatestSessionInCursorForTests(
 async function seedSessionInResumeCursorForCustomLoop(
   payload: Pick<ChatTaskWirePayload, "chatId" | "continuation">
 ): Promise<void> {
-  const attemptNumber = taskContext.ctx?.attempt.number ?? 1;
-  if (payload.continuation !== true && attemptNumber <= 1) return;
   if (sessionStreams.lastSeqNum(payload.chatId, "in") !== undefined) return;
+  // No continuation/attempt gate: the wire may omit `continuation` on a
+  // run that still has prior turns (chat.agent covers that case via its
+  // snapshot). The scan doubles as the prior-state probe — a fresh
+  // session has no turn-complete on `.out`, returns no cursor, and
+  // seeds nothing. Cost on fresh boots is one non-blocking records read.
   try {
     const cursor = await findLatestSessionInCursor(payload.chatId);
     if (cursor !== undefined) {
