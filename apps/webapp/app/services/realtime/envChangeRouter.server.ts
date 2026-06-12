@@ -51,6 +51,25 @@ export type EnvChangeRouterOptions = {
   /** Observability: a buffered record was evicted. `cap` evictions mean the env churns more
    * runs inside the window than the buffer holds (the replay guarantee is degrading). */
   onReplayEviction?: (reason: "cap" | "window") => void;
+  /** Read-your-writes gate over the replica: delays wake-path hydrates until the replica
+   * should have applied the change (record.updatedAtMs + lag + margin), and re-hydrates
+   * rows the tripwire still finds stale. Omit to hydrate immediately (legacy behavior). */
+  replicaLag?: ReplicaLagGate;
+};
+
+export type ReplicaLagGate = {
+  /** Current replica-lag estimate (ms). */
+  getLagMs(): number;
+  /** Feedback: a hydrate provably read at least this far behind the primary. */
+  noteObservedLagMs(lagMs: number): void;
+  /** Safety margin added on top of the estimate (clock skew + scheduling). */
+  marginMs: number;
+  /** Hard cap on any single gate delay — a sick replica degrades freshness, never liveness. */
+  maxDelayMs: number;
+  /** Re-hydrate attempts for rows that still read stale after the delay. */
+  staleRetries: number;
+  /** Observability: stale rows recovered by a retry, or delivered stale after exhausting them. */
+  onStaleHydrate?: (outcome: "recovered" | "gave_up", runCount: number) => void;
 };
 
 const DEFAULT_REPLAY_WINDOW_MS = 2_000;
@@ -97,6 +116,13 @@ type EnvState = {
   /** Pending teardown while the env lingers with zero feeds. */
   lingerTimer?: ReturnType<typeof setTimeout>;
 };
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    timer.unref?.();
+  });
+}
 
 function addToIndex(index: Map<string, Set<Feed>>, key: string, feed: Feed) {
   let set = index.get(key);
@@ -322,6 +348,24 @@ export class EnvChangeRouter {
     }
   }
 
+  /** How long to wait before hydrating so the replica has applied every change in the
+   * batch: each record is safe at updatedAtMs + lag + margin (records without a watermark
+   * anchor at now, degrading to a plain lag-sized delay). Capped — see ReplicaLagGate. */
+  #gateDelayMs(records: ChangeRecord[]): number {
+    const gate = this.options.replicaLag;
+    if (!gate || records.length === 0) {
+      return 0;
+    }
+    const now = Date.now();
+    const lagMs = gate.getLagMs();
+    let safeAtMs = 0;
+    for (const record of records) {
+      const anchorMs = record.updatedAtMs ?? now;
+      safeAtMs = Math.max(safeAtMs, anchorMs + lagMs + gate.marginMs);
+    }
+    return Math.max(0, Math.min(safeAtMs - now, gate.maxDelayMs));
+  }
+
   /** Deliver buffered records newer than the feed's cursor through the normal
    * hydrate -> serialize -> settle pipeline. Already-seen rows diff to nothing downstream. */
   async #replayRecent(environmentId: string, env: EnvState, feed: Feed) {
@@ -329,13 +373,26 @@ export class EnvChangeRouter {
     feed.replayCursorMs = Date.now();
 
     const runIds: string[] = [];
+    const candidateRecords: ChangeRecord[] = [];
     for (const [runId, entry] of env.recent) {
       if (entry.receivedAtMs > cursor && this.#recordMatchesFeed(entry.record, feed)) {
         runIds.push(runId);
+        candidateRecords.push(entry.record);
       }
     }
     if (runIds.length === 0 || !feed.resolve) {
       return;
+    }
+
+    // Replayed records are usually past the lag window already (delay computes to 0); a
+    // just-buffered one gets the same read-your-writes gate as the live path. No tripwire
+    // here — a stale replay diffs to a re-emission on the next wake or backstop.
+    const replayDelayMs = this.#gateDelayMs(candidateRecords);
+    if (replayDelayMs > 0) {
+      await sleepMs(replayDelayMs);
+      if (!feed.resolve) {
+        return;
+      }
     }
 
     const hydrated = await this.options.hydrator.hydrateByIds(
@@ -399,7 +456,17 @@ export class EnvChangeRouter {
     }
   }
 
-  async #onBatch(environmentId: string, env: EnvState, records: ChangeRecord[]) {
+  async #onBatch(environmentId: string, env: EnvState, records: ChangeRecord[], attempt = 0) {
+    // 0. Read-your-writes gate: wait out the replica's apply lag before hydrating, so the
+    //    rows we read contain the changes the records announce. Retry attempts were
+    //    scheduled with their own delay, so only the first pass gates here.
+    if (attempt === 0) {
+      const delayMs = this.#gateDelayMs(records);
+      if (delayMs > 0) {
+        await sleepMs(delayMs);
+      }
+    }
+
     // 1. Route each record to the held feeds it matches; collect matched runIds per feed.
     const matchedRunIdsByFeed = new Map<Feed, Set<string>>();
     const addMatch = (feed: Feed, runId: string) => {
@@ -485,6 +552,63 @@ export class EnvChangeRouter {
       })
     );
 
+    // 3.5 Stale tripwire: a watermarked record whose hydrated row is older (or missing —
+    //     the insert race) read a replica that hadn't applied the change. Withhold those
+    //     rows and re-hydrate shortly. Exhausting the retry budget delivers what we have
+    //     (liveness over freshness) — but a stale emission advances the feed's cursor, so
+    //     it ALSO schedules echo passes past the gate: re-hydrates flowing through normal
+    //     emission, where the working-set diff drops unchanged rows and emits the fresh
+    //     version once the replica catches up. The backstop stays the terminal net.
+    //     Each detection feeds the lag estimator.
+    const gate = this.options.replicaLag;
+    const isEchoPass = gate !== undefined && attempt > gate.staleRetries;
+    const staleRunIds = gate
+      ? this.#detectStaleRuns(records, runIdsByColumnSig, hydratedByColumnSig)
+      : new Set<string>();
+    if (attempt > 0 && !isEchoPass) {
+      const recovered = new Set(records.map((r) => r.runId)).size - staleRunIds.size;
+      if (recovered > 0) {
+        gate?.onStaleHydrate?.("recovered", recovered);
+      }
+    }
+    if (staleRunIds.size > 0 && gate) {
+      const staleRecords = records.filter((record) => staleRunIds.has(record.runId));
+      // Re-buffer the withheld records so a feed that re-arms between now and the next
+      // pass replays them instead of waiting for its backstop.
+      this.#bufferRecent(env, staleRecords);
+      if (attempt >= gate.staleRetries) {
+        // Budget exhausted: deliver the stale rows below (liveness) — but a stale emission
+        // advances the feed's cursor, so keep echoing re-hydrates through normal emission
+        // (the working-set diff drops unchanged rows, emits the fresh version when the
+        // replica catches up). Echoes stop once the change ages past the horizon; deeper
+        // outages are the backstop's job.
+        if (attempt === gate.staleRetries) {
+          gate.onStaleHydrate?.("gave_up", staleRunIds.size);
+        }
+        staleRunIds.clear();
+      }
+      const echoHorizonMs = gate.maxDelayMs * 10;
+      const newestWatermarkMs = Math.max(
+        ...staleRecords.map((record) => record.updatedAtMs ?? 0)
+      );
+      const withinEchoHorizon = Date.now() - newestWatermarkMs < echoHorizonMs;
+      if (attempt < gate.staleRetries || withinEchoHorizon) {
+        const retryDelayMs = Math.max(
+          25,
+          Math.min(gate.getLagMs() + gate.marginMs, gate.maxDelayMs)
+        );
+        const timer = setTimeout(() => {
+          this.#onBatch(environmentId, env, staleRecords, attempt + 1).catch((error) => {
+            logger.error("[envChangeRouter] failed to re-hydrate stale rows", {
+              environmentId,
+              error,
+            });
+          });
+        }, retryDelayMs);
+        timer.unref?.();
+      }
+    }
+
     // 4. Assemble each feed's matched rows (post-filtering tag feeds against the
     //    authoritative hydrated row) and resolve its pending wait.
     for (const [feed, runIds] of matchedRunIdsByFeed) {
@@ -496,6 +620,9 @@ export class EnvChangeRouter {
 
       const rows: MatchedRow[] = [];
       for (const runId of runIds) {
+        if (staleRunIds.has(runId)) {
+          continue; // withheld; the scheduled re-hydrate delivers the fresh version
+        }
         const matched = hydrated.get(runId);
         if (!matched) continue; // run not found / left the table
         if (feed.filter.kind === "tag" && !this.#tagRowMatches(matched.row, feed.filter)) {
@@ -510,6 +637,49 @@ export class EnvChangeRouter {
       // No surviving rows (e.g. a partial-record candidate that didn't actually match):
       // leave the feed waiting; nothing relevant changed for it.
     }
+  }
+
+  /** Runs whose hydrated row is provably behind its record's watermark (stale content),
+   * or absent entirely despite a watermark (the insert hasn't applied). Records without
+   * `updatedAtMs` can't be judged and always pass. */
+  #detectStaleRuns(
+    records: ChangeRecord[],
+    runIdsByColumnSig: Map<string, { skipColumns: string[]; runIds: Set<string> }>,
+    hydratedByColumnSig: Map<string, Map<string, MatchedRow>>
+  ): Set<string> {
+    const gate = this.options.replicaLag;
+    const stale = new Set<string>();
+    if (!gate) {
+      return stale;
+    }
+    const expectedByRunId = new Map<string, number>();
+    for (const record of records) {
+      if (record.updatedAtMs !== undefined) {
+        const existing = expectedByRunId.get(record.runId);
+        if (existing === undefined || record.updatedAtMs > existing) {
+          expectedByRunId.set(record.runId, record.updatedAtMs);
+        }
+      }
+    }
+    if (expectedByRunId.size === 0) {
+      return stale;
+    }
+    const now = Date.now();
+    for (const [columnSig, group] of runIdsByColumnSig) {
+      const hydrated = hydratedByColumnSig.get(columnSig);
+      for (const runId of group.runIds) {
+        const expected = expectedByRunId.get(runId);
+        if (expected === undefined || stale.has(runId)) {
+          continue;
+        }
+        const matched = hydrated?.get(runId);
+        if (!matched || matched.row.updatedAt.getTime() < expected) {
+          stale.add(runId);
+          gate.noteObservedLagMs(now - expected);
+        }
+      }
+    }
+    return stale;
   }
 
   /** Authoritative re-check for tag feeds: the hydrated row carries ALL the filter's tags

@@ -361,3 +361,190 @@ describe("EnvChangeRouter", () => {
     reg.close();
   });
 });
+
+describe("EnvChangeRouter read-your-writes gate", () => {
+  function gate(overrides: Record<string, unknown> = {}) {
+    const observed: number[] = [];
+    const outcomes: { outcome: string; runCount: number }[] = [];
+    return {
+      observed,
+      outcomes,
+      replicaLag: {
+        getLagMs: () => 0,
+        noteObservedLagMs: (ms: number) => observed.push(ms),
+        marginMs: 0,
+        maxDelayMs: 1_000,
+        staleRetries: 3,
+        onStaleHydrate: (outcome: string, runCount: number) =>
+          outcomes.push({ outcome, runCount }),
+        ...overrides,
+      },
+    };
+  }
+
+  it("delays the wake hydrate by lag+margin anchored to the record's updatedAtMs", async () => {
+    const rows = new Map([["r1", row("r1", { tags: ["a"] })]]);
+    const g = gate({ getLagMs: () => 80, marginMs: 10 });
+    const { router, src, hydrateSpy } = makeRouter(rows, { replicaLag: g.replicaLag });
+    const reg = router.register("env_1", { kind: "tag", tags: ["a"] }, []);
+    const wait = reg.waitForMatch(undefined, 2_000);
+
+    const pushedAt = Date.now();
+    src.push("env_1", [record("r1", { tags: ["a"], updatedAtMs: pushedAt })]);
+
+    // The hydrate must wait out the lag window (~90ms), not run immediately.
+    await new Promise((r) => setTimeout(r, 30));
+    expect(hydrateSpy).not.toHaveBeenCalled();
+
+    const result = await wait;
+    expect(result.reason).toBe("notify");
+    expect(Date.now() - pushedAt).toBeGreaterThanOrEqual(80);
+    reg.close();
+  });
+
+  it("does not delay when the record's anchor is already past the lag window", async () => {
+    // The row's updatedAt matches the watermark so the tripwire stays quiet.
+    const anchorMs = Date.now() - 5_000;
+    const rows = new Map([["r1", row("r1", { tags: ["a"], updatedAtMs: anchorMs })]]);
+    const g = gate({ getLagMs: () => 80, marginMs: 10 });
+    const { router, src } = makeRouter(rows, { replicaLag: g.replicaLag });
+    const reg = router.register("env_1", { kind: "tag", tags: ["a"] }, []);
+    const wait = reg.waitForMatch(undefined, 2_000);
+
+    const pushedAt = Date.now();
+    src.push("env_1", [record("r1", { tags: ["a"], updatedAtMs: anchorMs })]);
+
+    const result = await wait;
+    expect(result.reason).toBe("notify");
+    expect(Date.now() - pushedAt).toBeLessThan(60);
+    reg.close();
+  });
+
+  it("withholds a stale row, re-hydrates, and delivers only the fresh version", async () => {
+    const watermark = FLOOR_MS + 10_000;
+    const staleRow = row("r1", { tags: ["a"], updatedAtMs: FLOOR_MS + 5_000 });
+    const freshRow = row("r1", { tags: ["a"], updatedAtMs: watermark });
+    const hydrateSpy = vi
+      .fn<RowHydrator["hydrateByIds"]>()
+      .mockResolvedValueOnce([staleRow])
+      .mockResolvedValue([freshRow]);
+    const src = fakeSource();
+    const g = gate();
+    const router = new EnvChangeRouter({
+      source: src.source,
+      hydrator: { hydrateByIds: hydrateSpy },
+      replicaLag: g.replicaLag,
+    });
+    const reg = router.register("env_1", { kind: "tag", tags: ["a"] }, []);
+    const wait = reg.waitForMatch(undefined, 2_000);
+
+    src.push("env_1", [record("r1", { tags: ["a"], updatedAtMs: watermark })]);
+
+    const result = await wait;
+    expect(result.reason).toBe("notify");
+    expect(result.rows[0].row.updatedAt.getTime()).toBe(watermark);
+    expect(hydrateSpy).toHaveBeenCalledTimes(2);
+    expect(g.observed.length).toBe(1); // the stale read fed the estimator
+    expect(g.outcomes).toEqual([{ outcome: "recovered", runCount: 1 }]);
+    reg.close();
+  });
+
+  it("a missing row with a watermark (insert race) retries and delivers when it appears", async () => {
+    const watermark = FLOOR_MS + 10_000;
+    const freshRow = row("r1", { tags: ["a"], updatedAtMs: watermark });
+    const hydrateSpy = vi
+      .fn<RowHydrator["hydrateByIds"]>()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([freshRow]);
+    const src = fakeSource();
+    const g = gate();
+    const router = new EnvChangeRouter({
+      source: src.source,
+      hydrator: { hydrateByIds: hydrateSpy },
+      replicaLag: g.replicaLag,
+    });
+    const reg = router.register("env_1", { kind: "tag", tags: ["a"] }, []);
+    const wait = reg.waitForMatch(undefined, 2_000);
+
+    src.push("env_1", [record("r1", { tags: ["a"], updatedAtMs: watermark })]);
+
+    const result = await wait;
+    expect(result.rows[0].row.id).toBe("r1");
+    expect(hydrateSpy).toHaveBeenCalledTimes(2);
+    reg.close();
+  });
+
+  it("delivers the stale row after exhausting retries (liveness over freshness)", async () => {
+    const watermark = FLOOR_MS + 10_000;
+    const staleRow = row("r1", { tags: ["a"], updatedAtMs: FLOOR_MS + 5_000 });
+    const hydrateSpy = vi.fn<RowHydrator["hydrateByIds"]>().mockResolvedValue([staleRow]);
+    const src = fakeSource();
+    const g = gate({ staleRetries: 1 });
+    const router = new EnvChangeRouter({
+      source: src.source,
+      hydrator: { hydrateByIds: hydrateSpy },
+      replicaLag: g.replicaLag,
+    });
+    const reg = router.register("env_1", { kind: "tag", tags: ["a"] }, []);
+    const wait = reg.waitForMatch(undefined, 2_000);
+
+    src.push("env_1", [record("r1", { tags: ["a"], updatedAtMs: watermark })]);
+
+    const result = await wait;
+    expect(result.reason).toBe("notify");
+    expect(result.rows[0].row.updatedAt.getTime()).toBe(FLOOR_MS + 5_000);
+    expect(hydrateSpy).toHaveBeenCalledTimes(2); // first pass + 1 retry
+    expect(g.outcomes).toEqual([{ outcome: "gave_up", runCount: 1 }]);
+    reg.close();
+  });
+
+  it("after giving up, echo passes deliver the fresh row once the replica catches up", async () => {
+    // Recent watermark (inside the echo horizon); retries exhausted immediately.
+    const watermark = Date.now() - 50;
+    const staleRow = row("r1", { tags: ["a"], updatedAtMs: watermark - 5_000 });
+    const freshRow = row("r1", { tags: ["a"], updatedAtMs: watermark });
+    const hydrateSpy = vi
+      .fn<RowHydrator["hydrateByIds"]>()
+      .mockResolvedValueOnce([staleRow]) // first pass: stale -> gave_up, delivered anyway
+      .mockResolvedValue([freshRow]); // echo pass: fresh
+    const src = fakeSource();
+    const g = gate({ staleRetries: 0 });
+    const router = new EnvChangeRouter({
+      source: src.source,
+      hydrator: { hydrateByIds: hydrateSpy },
+      replicaLag: g.replicaLag,
+    });
+    const reg = router.register("env_1", { kind: "tag", tags: ["a"] }, []);
+
+    const first = reg.waitForMatch(undefined, 2_000);
+    src.push("env_1", [record("r1", { tags: ["a"], updatedAtMs: watermark })]);
+    const staleDelivery = await first;
+    expect(staleDelivery.rows[0].row.updatedAt.getTime()).toBe(watermark - 5_000);
+    expect(g.outcomes).toEqual([{ outcome: "gave_up", runCount: 1 }]);
+
+    // The client re-arms (as it would after consuming the stale emission); the echo
+    // re-hydrate delivers the fresh version through the normal pipeline.
+    const echoed = await reg.waitForMatch(undefined, 2_000);
+    expect(echoed.reason).toBe("notify");
+    expect(echoed.rows[0].row.updatedAt.getTime()).toBe(watermark);
+    reg.close();
+  });
+
+  it("records without a watermark bypass the tripwire entirely", async () => {
+    const staleLooking = row("r1", { tags: ["a"], updatedAtMs: FLOOR_MS + 5_000 });
+    const rows = new Map([["r1", staleLooking]]);
+    const g = gate();
+    const { router, src, hydrateSpy } = makeRouter(rows, { replicaLag: g.replicaLag });
+    const reg = router.register("env_1", { kind: "tag", tags: ["a"] }, []);
+    const wait = reg.waitForMatch(undefined, 2_000);
+
+    src.push("env_1", [record("r1", { tags: ["a"] })]); // no updatedAtMs
+
+    const result = await wait;
+    expect(result.reason).toBe("notify");
+    expect(hydrateSpy).toHaveBeenCalledTimes(1);
+    expect(g.outcomes).toEqual([]);
+    expect(g.observed).toEqual([]);
+    reg.close();
+  });
+});
