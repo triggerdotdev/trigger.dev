@@ -7,6 +7,8 @@ import { setLastAuthMethodHeader } from "~/services/lastAuthMethod.server";
 import { commitSession, getUserSession } from "~/services/sessionStorage.server";
 import { commitAuthenticatedSession } from "~/services/sessionDuration.server";
 import { trackAndClearReferralSource } from "~/services/referralSource.server";
+import { ssoRedirectFromAuthError } from "~/services/ssoAutoDiscovery.server";
+import type { AuthUser } from "~/services/authUser";
 import { redirectCookie } from "./auth.github";
 import { sanitizeRedirectPath } from "~/utils";
 
@@ -15,9 +17,26 @@ export let loader: LoaderFunction = async ({ request }) => {
   const redirectValue = await redirectCookie.parse(cookie);
   const redirectTo = sanitizeRedirectPath(redirectValue);
 
-  const auth = await authenticator.authenticate("github", request, {
-    failureRedirect: "/login", // If auth fails, the failureRedirect will be thrown as a Response
-  });
+  // The SSO auto-discovery gate runs inside the strategy's verify
+  // callback (before any account write), so an SSO-enforced domain
+  // throws out here instead of linking the GitHub identity. remix-auth
+  // surfaces its own OAuth redirects by throwing Responses — pass those
+  // through; an SsoRequiredError becomes the SSO redirect.
+  let auth: AuthUser;
+  try {
+    // throwOnError so a verify-callback throw surfaces as an
+    // AuthorizationError (carrying the SsoRequiredError as `cause`)
+    // rather than being flattened into a bare 401 Response — otherwise
+    // the SSO-enforced redirect below is never reached.
+    auth = await authenticator.authenticate("github", request, { throwOnError: true });
+  } catch (thrown) {
+    if (thrown instanceof Response) throw thrown;
+    const ssoRedirect = ssoRedirectFromAuthError(thrown);
+    if (ssoRedirect) {
+      return redirect(ssoRedirect);
+    }
+    return redirect("/login");
+  }
 
   const session = await getUserSession(request);
 

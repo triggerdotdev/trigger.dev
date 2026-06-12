@@ -112,6 +112,7 @@ enum AuthenticationMethod {
   GITHUB
   MAGIC_LINK
   GOOGLE
+  SSO
 }
 
 /// Used to generate PersonalAccessTokens, they're one-time use

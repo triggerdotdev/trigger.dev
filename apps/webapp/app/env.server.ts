@@ -1867,6 +1867,32 @@ const EnvironmentSchema = z
 
     // Force RBAC to not use the plugin
     RBAC_FORCE_FALLBACK: BoolEnv.default(false),
+
+    // Force SSO to not use the plugin (contributors without the cloud
+    // plugin installed can opt in to a clean OSS-only experience).
+    SSO_FORCE_FALLBACK: BoolEnv.default(false),
+    // Emit a console.log when the SSO fallback is selected because no
+    // plugin is installed. Default off so OSS deployments stay quiet.
+    SSO_LOG_FALLBACK: BoolEnv.default(false),
+    // Master deploy gate for the whole SSO feature. Default OFF so the
+    // image can ship dark and be flipped on only once the SSO plugin's
+    // backing services are available. When false, the SSO controller is
+    // forced to the OSS fallback — login link hidden, SSO login disabled,
+    // settings inert, and session re-validation skipped.
+    SSO_ENABLED: BoolEnv.default(false),
+    // How often (seconds) a live SSO session is re-validated against the
+    // identity provider. The check is single-flight per user, so this is
+    // the minimum interval between plugin round-trips, not a per-request
+    // cost. Defaults to 5 minutes: every active SSO user drives one
+    // billing→IdP round-trip per window, so a seconds-scale default
+    // exhausts vendor rate limits at trivial user counts (masked by
+    // fail-open, so it degrades silently).
+    SSO_SESSION_REVALIDATION_INTERVAL_SECONDS: z.coerce.number().int().default(300),
+    // Hard timeout (ms) on the re-validation round-trip. If the SSO plugin
+    // doesn't answer within this window the check fails OPEN (session kept)
+    // and emits a `sso.revalidation.timeout` warn log — alert on an
+    // elevated rate of those to catch a slow/unhealthy SSO dependency.
+    SSO_SESSION_REVALIDATION_TIMEOUT_MS: z.coerce.number().int().default(2000),
   })
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema)

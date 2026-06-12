@@ -19,6 +19,7 @@ import { ButtonSpinner } from "~/components/primitives/Spinner";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
+import { ssoRedirectForEmail } from "~/services/ssoAutoDiscovery.server";
 import { confirmBasicDetailsPath, newProjectPath } from "~/utils/pathBuilder";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
@@ -190,6 +191,20 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (!submission.success) {
     return json({ error: "Invalid submission" }, { status: 400 });
+  }
+
+  // SSO auto-discovery: if the signed-in user's domain requires SSO, the
+  // current session was established via a non-SSO method — block the
+  // onboarding action and route them through the SSO flow instead.
+  const sessionUser = await prisma.user.findFirst({
+    where: { id: userId },
+    select: { email: true },
+  });
+  if (sessionUser?.email) {
+    const ssoRedirect = await ssoRedirectForEmail(sessionUser.email, "oauth_blocked");
+    if (ssoRedirect) {
+      return redirect(ssoRedirect);
+    }
   }
 
   const { code, configurationId, next } = submission.data;

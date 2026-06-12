@@ -30,7 +30,18 @@ type FindOrCreateGoogle = {
   authenticationExtraParams: Record<string, unknown>;
 };
 
-type FindOrCreateUser = FindOrCreateMagicLink | FindOrCreateGithub | FindOrCreateGoogle;
+type FindOrCreateSso = {
+  authenticationMethod: "SSO";
+  email: User["email"];
+  firstName: string | null;
+  lastName: string | null;
+};
+
+type FindOrCreateUser =
+  | FindOrCreateMagicLink
+  | FindOrCreateGithub
+  | FindOrCreateGoogle
+  | FindOrCreateSso;
 
 type LoggedInUser = {
   user: User;
@@ -47,6 +58,9 @@ export async function findOrCreateUser(input: FindOrCreateUser): Promise<LoggedI
     }
     case "GOOGLE": {
       return findOrCreateGoogleUser(input);
+    }
+    case "SSO": {
+      return findOrCreateSsoUser(input);
     }
   }
 }
@@ -301,6 +315,44 @@ export async function findOrCreateGoogleUser({
     user,
     isNewUser: !existingUser,
   };
+}
+
+// Find an existing user by email (lowercased) or create a new one with the
+// SSO authentication method. Mirrors the magic-link upsert shape; the
+// callback route is responsible for normalising email before calling.
+// Plugin writes (linking the IdP identity row) happen via the SSO plugin
+// after this returns.
+export async function findOrCreateSsoUser({
+  email,
+  firstName,
+  lastName,
+}: FindOrCreateSso): Promise<LoggedInUser> {
+  assertEmailAllowed(email);
+
+  const normalised = email.toLowerCase().trim();
+  const existingUser = await prisma.user.findFirst({ where: { email: normalised } });
+
+  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim() || null;
+
+  const user = await prisma.user.upsert({
+    where: { email: normalised },
+    update: {
+      // Existing magic-link / OAuth users keep their original
+      // authenticationMethod; we only refresh name/displayName when the
+      // user has nothing set yet so we don't clobber a customised display
+      // name on every SSO login.
+      ...(existingUser?.name ? {} : { name: fullName }),
+      ...(existingUser?.displayName ? {} : { displayName: fullName }),
+    },
+    create: {
+      email: normalised,
+      name: fullName,
+      displayName: fullName,
+      authenticationMethod: "SSO",
+    },
+  });
+
+  return { user, isNewUser: !existingUser };
 }
 
 export type UserWithDashboardPreferences = User & {
