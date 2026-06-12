@@ -18,7 +18,7 @@ Each skill is a directory containing a `SKILL.md` file: YAML frontmatter (name, 
 
 ## Installation
 
-The skills ship inside the `trigger.dev` CLI, version-matched to the SDK you have installed. Run:
+The skills ship inside the `trigger.dev` CLI and are versioned with it. Run:
 
 ```bash
 npx trigger.dev@latest skills
@@ -29,9 +29,10 @@ The CLI detects your installed AI tools, lets you pick which skills to install, 
 When you run `trigger dev` for the first time, the CLI offers to install the skills for you.
 
 <Note>
-  Because the skills are bundled with the CLI, the guidance your assistant gets is pinned to the
-  Trigger.dev version you are actually building against, instead of always being the latest from the
-  internet.
+  Because the skills are bundled with the CLI, the guidance your assistant gets is pinned to the CLI
+  version that installs them. To keep it matched to the Trigger.dev version you are building
+  against, run the CLI pinned in your project (`pnpm exec trigger skills`) instead of
+  `npx trigger.dev@latest`.
 </Note>
 
 ### Non-interactive install
