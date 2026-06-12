@@ -168,7 +168,7 @@ This is shorthand for `UIMessage<unknown, UIDataTypes, InferUITools<typeof tools
 
 ## Manual turn loops (`chat.customAgent`)
 
-The `tools` config option belongs to the managed [`chat.agent`](/ai-chat/backend#chat-agent). When you drive the loop yourself with [`chat.customAgent`](/ai-chat/backend#raw-task-primitives) (or build messages from `chat.history`), you own the conversion, so pass your tools to `convertToModelMessages` directly to get the same cross-turn `toModelOutput` behavior:
+The `tools` config option belongs to the managed [`chat.agent`](/ai-chat/backend#chat-agent). When you drive the loop yourself with [`chat.customAgent`](/ai-chat/custom-agents#chat-customagent) (or build messages from `chat.history`), you own the conversion, so pass your tools to `convertToModelMessages` directly to get the same cross-turn `toModelOutput` behavior:
 
 ```ts
 import { convertToModelMessages, streamText } from "ai";

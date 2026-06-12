@@ -104,7 +104,7 @@
               {
                 "group": "Building agents",
                 "pages": [
-                  "ai-chat/how-it-works",
+                  "ai-chat/anatomy",
                   "ai-chat/backend",
                   "ai-chat/lifecycle-hooks",
                   "ai-chat/tools",
@@ -112,7 +112,9 @@
                   "ai-chat/server-chat",
                   "ai-chat/sessions",
                   "ai-chat/chat-local",
-                  "ai-chat/types"
+                  "ai-chat/types",
+                  "ai-chat/custom-agents",
+                  "ai-chat/how-it-works"
                 ]
               },
               {

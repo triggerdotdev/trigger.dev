@@ -8,6 +8,22 @@ import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
 
 <RcBanner />
 
+There are three abstraction levels for a chat backend. All three speak the same wire protocol, so the [frontend transport](/ai-chat/frontend) works unchanged whichever you pick.
+
+| Capability                            | `chat.agent()` | `chat.createSession()`                                        | Raw primitives |
+| ------------------------------------- | -------------- | ------------------------------------------------------------- | -------------- |
+| Turn loop, stop signals, accumulation | Managed        | Managed                                                        | You write it   |
+| Lifecycle hooks                       | Yes            | No — inline code per turn                                      | No             |
+| Continuation recovery on new runs     | Automatic      | [Manual seeding](/ai-chat/custom-agents#continuation-runs-and-history-seeding)       | Manual seeding |
+| Compaction / steering                 | Built-in       | Built-in                                                       | Manual         |
+| Head Start, actions, tool approvals   | Yes            | No                                                             | No             |
+| Custom stream conversion              | No             | Limited                                                        | Full control   |
+| Agent dashboard visibility            | Yes            | Yes (via `customAgent`)                                        | Yes            |
+
+The raw-primitives column assumes [`chat.customAgent()`](/ai-chat/custom-agents) as the wrapper, which is what makes the task visible to the agent dashboard.
+
+Start with `chat.agent()`. Drop to `chat.createSession()` when you want to own the per-turn code (model routing, persistence, custom telemetry) without rebuilding the turn loop. Drop to raw primitives only when you need full control over stream conversion or a custom protocol.
+
 ## chat.agent()
 
 The highest-level approach. Handles message accumulation, stop signals, turn lifecycle, and auto-piping automatically.
@@ -119,7 +135,7 @@ writer.write({
 </Info>
 
 <Note>
-  `chat.response` and the `writer` accumulation behavior work with `chat.agent` and `chat.createSession`. If you're using [`chat.customAgent`](#raw-task-with-primitives), you own the accumulator — see the raw-task example for the manual pattern.
+  `chat.response` and the `writer` accumulation behavior work with `chat.agent` and `chat.createSession`. If you're using [`chat.customAgent`](/ai-chat/custom-agents), you own the accumulator — see the raw-task example for the manual pattern.
 </Note>
 
 ### Raw streaming with `chat.stream`
@@ -750,7 +766,7 @@ See [ChatUIMessageStreamOptions](/ai-chat/reference#chatuimessagestreamoptions) 
 <Note>
   `onFinish` is managed internally for response capture and cannot be overridden here. Use
   `streamText`'s `onFinish` callback for custom finish handling, or use [raw task
-  mode](#raw-task-with-primitives) for full control over `toUIMessageStream()`.
+  mode](/ai-chat/custom-agents) for full control over `toUIMessageStream()`.
 </Note>
 
 ### Manual mode with task()
@@ -787,241 +803,15 @@ export const manualChat = task({
 
 ---
 
-## chat.createSession()
+{/* Anchor stubs for inbound deep links to the sections that moved to /ai-chat/custom-agents. */}
+<a id="chat-createsession" />
+<a id="chat-customagent" />
+<a id="raw-task-with-primitives" />
 
-A middle ground between `chat.agent()` and raw primitives. You get an async iterator that yields `ChatTurn` objects — each turn handles stop signals, message accumulation, and turn-complete signaling automatically. You control initialization, model/tool selection, persistence, and any custom per-turn logic.
+## Custom agents
 
-Use `chat.createSession()` inside a standard `task()`:
+Both lower levels — `chat.createSession()` (managed turn iterator, your turn body) and `chat.customAgent()` with raw primitives (hand-rolled loop, full stream-conversion control) — are covered together on the Custom agents page, including the `ChatTurn` surface, the continuation-seeding pattern, and the hand-rolled-loop checklist:
 
-```ts
-import { task } from "@trigger.dev/sdk";
-import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
-import { streamText } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-
-export const myChat = task({
-  id: "my-chat",
-  run: async (payload: ChatTaskWirePayload, { signal }) => {
-    // One-time initialization — just code, no hooks
-    const clientData = payload.metadata as { userId: string };
-    await db.chat.create({ data: { id: payload.chatId, userId: clientData.userId } });
-
-    const session = chat.createSession(payload, {
-      signal,
-      idleTimeoutInSeconds: 60,
-      timeout: "1h",
-    });
-
-    for await (const turn of session) {
-      const result = streamText({
-        model: anthropic("claude-sonnet-4-5"),
-        messages: turn.messages,
-        abortSignal: turn.signal,
-        stopWhen: stepCountIs(15),
-      });
-
-      // Pipe, capture, accumulate, and signal turn-complete — all in one call
-      await turn.complete(result);
-
-      // Persist after each turn
-      await db.chat.update({
-        where: { id: turn.chatId },
-        data: { messages: turn.uiMessages },
-      });
-    }
-  },
-});
-```
-
-### ChatSessionOptions
-
-| Option                 | Type          | Default  | Description                                 |
-| ---------------------- | ------------- | -------- | ------------------------------------------- |
-| `signal`               | `AbortSignal` | required | Run-level cancel signal (from task context) |
-| `idleTimeoutInSeconds` | `number`      | `30`     | Seconds to stay idle between turns          |
-| `timeout`              | `string`      | `"1h"`   | Duration string for suspend timeout         |
-| `maxTurns`             | `number`      | `100`    | Max turns before ending                     |
-
-### ChatTurn
-
-Each turn yielded by the iterator provides:
-
-| Field          | Type             | Description                                            |
-| -------------- | ---------------- | ------------------------------------------------------ |
-| `number`       | `number`         | Turn number (0-indexed)                                |
-| `chatId`       | `string`         | Chat session ID                                        |
-| `trigger`      | `string`         | What triggered this turn                               |
-| `clientData`   | `unknown`        | Client data from the transport                         |
-| `messages`     | `ModelMessage[]` | Full accumulated model messages — pass to `streamText` |
-| `uiMessages`   | `UIMessage[]`    | Full accumulated UI messages — use for persistence     |
-| `signal`       | `AbortSignal`    | Combined stop+cancel signal (fresh each turn)          |
-| `stopped`      | `boolean`        | Whether the user stopped generation this turn          |
-| `continuation` | `boolean`        | Whether this is a continuation run                     |
-
-| Method                       | Description                                                         |
-| ---------------------------- | ------------------------------------------------------------------- |
-| `turn.complete(source)`      | Pipe stream, capture response, accumulate, and signal turn-complete |
-| `turn.done()`                | Just signal turn-complete (when you've piped manually)              |
-| `turn.addResponse(response)` | Add a response to the accumulator manually                          |
-
-### turn.complete() vs manual control
-
-`turn.complete(result)` is the easy path — it handles piping, capturing the response, accumulating messages, cleaning up aborted parts, and writing the turn-complete chunk.
-
-For more control, you can do each step manually:
-
-```ts
-for await (const turn of session) {
-  const result = streamText({
-    model: anthropic("claude-sonnet-4-5"),
-    messages: turn.messages,
-    abortSignal: turn.signal,
-    stopWhen: stepCountIs(15),
-  });
-
-  // Manual: pipe and capture separately
-  const response = await chat.pipeAndCapture(result, { signal: turn.signal });
-
-  if (response) {
-    // Custom processing before accumulating
-    await turn.addResponse(response);
-  }
-
-  // Custom persistence, analytics, etc.
-  await db.chat.update({ ... });
-
-  // Must call done() when not using complete()
-  await turn.done();
-}
-```
-
----
-
-## Raw task with primitives
-
-For full control, use a standard `task()` with the composable primitives from the `chat` namespace. You manage everything: the turn loop, stop signals, message accumulation, and turn-complete signaling.
-
-Raw task mode also lets you call `.toUIMessageStream()` yourself with any options — including `onFinish` and `originalMessages`. This is the right choice when you need complete control over the stream conversion beyond what `chat.setUIMessageStreamOptions()` provides.
-
-### Primitives
-
-| Primitive                       | Description                                                                                 |
-| ------------------------------- | ------------------------------------------------------------------------------------------- |
-| `chat.messages`                 | Input stream for incoming messages — use `.waitWithIdleTimeout()` to wait for the next turn |
-| `chat.createStopSignal()`       | Create a managed stop signal wired to the stop input stream                                 |
-| `chat.pipeAndCapture(result)`   | Pipe a `StreamTextResult` to the chat stream and capture the response                       |
-| `chat.writeTurnComplete()`      | Signal the frontend that the current turn is complete                                       |
-| `chat.MessageAccumulator`       | Accumulates conversation messages across turns                                              |
-| `chat.pipe(stream)`             | Pipe a stream to the frontend (no response capture)                                         |
-| `chat.cleanupAbortedParts(msg)` | Clean up incomplete parts from a stopped response                                           |
-
-### Example
-
-```ts
-import { task } from "@trigger.dev/sdk";
-import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
-import { streamText } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-
-export const myChat = task({
-  id: "my-chat-raw",
-  run: async (payload: ChatTaskWirePayload, { signal: runSignal }) => {
-    let currentPayload = payload;
-
-    // Handle preload — wait for the first real message
-    if (currentPayload.trigger === "preload") {
-      const result = await chat.messages.waitWithIdleTimeout({
-        idleTimeoutInSeconds: 60,
-        timeout: "1h",
-        spanName: "waiting for first message",
-      });
-      if (!result.ok) return;
-      currentPayload = result.output;
-    }
-
-    const stop = chat.createStopSignal();
-    const conversation = new chat.MessageAccumulator();
-
-    for (let turn = 0; turn < 100; turn++) {
-      stop.reset();
-
-      const messages = await conversation.addIncoming(
-        currentPayload.messages,
-        currentPayload.trigger,
-        turn
-      );
-
-      const combinedSignal = AbortSignal.any([runSignal, stop.signal]);
-
-      const result = streamText({
-        model: anthropic("claude-sonnet-4-5"),
-        messages,
-        abortSignal: combinedSignal,
-        stopWhen: stepCountIs(15),
-      });
-
-      let response;
-      try {
-        response = await chat.pipeAndCapture(result, { signal: combinedSignal });
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          if (runSignal.aborted) break;
-          // Stop — fall through to accumulate partial
-        } else {
-          throw error;
-        }
-      }
-
-      if (response) {
-        const cleaned =
-          stop.signal.aborted && !runSignal.aborted ? chat.cleanupAbortedParts(response) : response;
-        await conversation.addResponse(cleaned);
-      }
-
-      if (runSignal.aborted) break;
-
-      // Persist, analytics, etc.
-      await db.chat.update({
-        where: { id: currentPayload.chatId },
-        data: { messages: conversation.uiMessages },
-      });
-
-      await chat.writeTurnComplete();
-
-      // Wait for the next message
-      const next = await chat.messages.waitWithIdleTimeout({
-        idleTimeoutInSeconds: 60,
-        timeout: "1h",
-        spanName: "waiting for next message",
-      });
-      if (!next.ok) break;
-      currentPayload = next.output;
-    }
-
-    stop.cleanup();
-  },
-});
-```
-
-### MessageAccumulator
-
-The `MessageAccumulator` handles the transport protocol automatically:
-
-- Turn 0: replaces messages (full history from frontend)
-- Subsequent turns: appends new messages (frontend only sends the new user message)
-- Regenerate: replaces messages (full history minus last assistant message)
-
-```ts
-const conversation = new chat.MessageAccumulator();
-
-// Returns full accumulated ModelMessage[] for streamText
-const messages = await conversation.addIncoming(payload.messages, payload.trigger, turn);
-
-// After piping, add the response
-const response = await chat.pipeAndCapture(result);
-if (response) await conversation.addResponse(response);
-
-// Access accumulated messages for persistence
-conversation.uiMessages; // UIMessage[]
-conversation.modelMessages; // ModelMessage[]
-```
+<Card title="Custom agents" icon="screwdriver-wrench" href="/ai-chat/custom-agents">
+  Build agents without the managed lifecycle — createSession or raw primitives.
+</Card>
