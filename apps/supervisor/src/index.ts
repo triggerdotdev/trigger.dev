@@ -27,6 +27,10 @@ import { PodCleaner } from "./services/podCleaner.js";
 import { FailedPodHandler } from "./services/failedPodHandler.js";
 import { getWorkerToken } from "./workerToken.js";
 import { OtlpTraceService } from "./services/otlpTraceService.js";
+import {
+  WarmStartVerificationService,
+  type WarmStartTimings,
+} from "./services/warmStartVerificationService.js";
 import { extractTraceparent, getRestoreRunnerId } from "./util.js";
 import { Redis } from "ioredis";
 import { BackpressureMonitor } from "./backpressure/backpressureMonitor.js";
@@ -54,6 +58,7 @@ class ManagedSupervisor {
   private readonly logger = new SimpleStructuredLogger("managed-supervisor");
   private readonly resourceMonitor: ResourceMonitor;
   private readonly checkpointClient?: CheckpointClient;
+  private readonly warmStartVerifier?: WarmStartVerificationService;
 
   private readonly podCleaner?: PodCleaner;
   private readonly failedPodHandler?: FailedPodHandler;
@@ -299,6 +304,19 @@ class ManagedSupervisor {
       });
     }
 
+    if (env.TRIGGER_WARM_START_VERIFY_ENABLED && this.warmStartUrl) {
+      this.logger.log("Warm-start delivery verification enabled", {
+        delayMs: env.TRIGGER_WARM_START_VERIFY_DELAY_MS,
+      });
+
+      this.warmStartVerifier = new WarmStartVerificationService({
+        workerClient: this.workerSession.httpClient,
+        delayMs: env.TRIGGER_WARM_START_VERIFY_DELAY_MS,
+        createWorkload: (message, timings) => this.createWorkload(message, timings),
+        wideEventOpts: this.wideEventOpts,
+      });
+    }
+
     this.workerSession.on("runNotification", async ({ time, run }) => {
       this.logger.verbose("runNotification", { time, run });
 
@@ -455,58 +473,24 @@ class ManagedSupervisor {
             if (didWarmStart) {
               setExtra(fromContext(), "path_taken", "warm_start");
               this.logger.debug("Warm start successful", { runId: message.run.id });
+              // A hit only means the response was written to the long-poll
+              // socket, not that the runner received it. Schedule a delivery
+              // verification that cold-starts the run if nobody acts on it.
+              this.warmStartVerifier?.schedule(message, {
+                dequeueResponseMs,
+                pollingIntervalMs,
+                warmStartCheckMs,
+              });
               return;
             }
 
             setExtra(fromContext(), "path_taken", "cold_create");
 
-            const createStart = performance.now();
-            try {
-              if (!message.deployment.friendlyId) {
-                // mostly a type guard, deployments always exists for deployed environments
-                // a proper fix would be to use a discriminated union schema to differentiate between dequeued runs in dev and in deployed environments.
-                throw new Error("Deployment is missing");
-              }
-
-              await this.workloadManager.create({
-                dequeuedAt: message.dequeuedAt,
-                dequeueResponseMs,
-                pollingIntervalMs,
-                warmStartCheckMs,
-                envId: message.environment.id,
-                envType: message.environment.type,
-                image: message.image,
-                machine: message.run.machine,
-                orgId: message.organization.id,
-                projectId: message.project.id,
-                deploymentFriendlyId: message.deployment.friendlyId,
-                deploymentVersion: message.backgroundWorker.version,
-                runId: message.run.id,
-                runFriendlyId: message.run.friendlyId,
-                version: message.version,
-                nextAttemptNumber: message.run.attemptNumber,
-                snapshotId: message.snapshot.id,
-                snapshotFriendlyId: message.snapshot.friendlyId,
-                placementTags: message.placementTags,
-                traceContext: message.run.traceContext,
-                annotations: message.run.annotations,
-                hasPrivateLink: message.organization.hasPrivateLink,
-              });
-              recordPhaseSince("workload_create", createStart, undefined);
-
-              // Disabled for now
-              // this.resourceMonitor.blockResources({
-              //   cpu: message.run.machine.cpu,
-              //   memory: message.run.machine.memory,
-              // });
-            } catch (error) {
-              recordPhaseSince(
-                "workload_create",
-                createStart,
-                error instanceof Error ? error : new Error(String(error))
-              );
-              this.logger.error("Failed to create workload", { error });
-            }
+            await this.createWorkload(message, {
+              dequeueResponseMs,
+              pollingIntervalMs,
+              warmStartCheckMs,
+            });
           }
         );
       }
@@ -541,12 +525,69 @@ class ManagedSupervisor {
 
   async onRunConnected({ run }: { run: { friendlyId: string } }) {
     this.logger.debug("Run connected", { run });
+    // The dispatched run reached a runner on this node - no fallback needed.
+    this.warmStartVerifier?.cancel(run.friendlyId);
     this.workerSession.subscribeToRunNotifications([run.friendlyId]);
   }
 
   async onRunDisconnected({ run }: { run: { friendlyId: string } }) {
     this.logger.debug("Run disconnected", { run });
     this.workerSession.unsubscribeFromRunNotifications([run.friendlyId]);
+  }
+
+  private async createWorkload(message: DequeuedMessage, timings: WarmStartTimings) {
+    const createStart = performance.now();
+    try {
+      if (!message.deployment.friendlyId) {
+        // mostly a type guard, deployments always exists for deployed environments
+        // a proper fix would be to use a discriminated union schema to differentiate between dequeued runs in dev and in deployed environments.
+        throw new Error("Deployment is missing");
+      }
+
+      if (!message.image) {
+        // same type-guard situation as deployment above
+        throw new Error("Image is missing");
+      }
+
+      await this.workloadManager.create({
+        dequeuedAt: message.dequeuedAt,
+        dequeueResponseMs: timings.dequeueResponseMs,
+        pollingIntervalMs: timings.pollingIntervalMs,
+        warmStartCheckMs: timings.warmStartCheckMs,
+        envId: message.environment.id,
+        envType: message.environment.type,
+        image: message.image,
+        machine: message.run.machine,
+        orgId: message.organization.id,
+        projectId: message.project.id,
+        deploymentFriendlyId: message.deployment.friendlyId,
+        deploymentVersion: message.backgroundWorker.version,
+        runId: message.run.id,
+        runFriendlyId: message.run.friendlyId,
+        version: message.version,
+        nextAttemptNumber: message.run.attemptNumber,
+        snapshotId: message.snapshot.id,
+        snapshotFriendlyId: message.snapshot.friendlyId,
+        placementTags: message.placementTags,
+        traceContext: message.run.traceContext,
+        annotations: message.run.annotations,
+        hasPrivateLink: message.organization.hasPrivateLink,
+      });
+      recordPhaseSince("workload_create", createStart, undefined);
+
+      // Disabled for now
+      // this.resourceMonitor.blockResources({
+      //   cpu: message.run.machine.cpu,
+      //   memory: message.run.machine.memory,
+      // });
+    } catch (error) {
+      recordPhaseSince(
+        "workload_create",
+        createStart,
+        error instanceof Error ? error : new Error(String(error))
+      );
+      this.logger.error("Failed to create workload", { error });
+    }
   }
 
   private async tryWarmStart(
@@ -632,6 +673,7 @@ class ManagedSupervisor {
     this.logger.log("Shutting down");
     await this.workloadServer.stop();
     await this.workerSession.stop();
+    this.warmStartVerifier?.stop();
 
     // Optional services
     this.backpressureMonitor?.stop();
