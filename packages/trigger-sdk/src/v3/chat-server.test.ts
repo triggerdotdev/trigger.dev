@@ -216,6 +216,67 @@ describe("chat.headStart (route handler)", () => {
     expect(body.triggerConfig.basePayload.idleTimeoutInSeconds).toBe(60);
   });
 
+  it("merges triggerConfig tags and queue into createSession", async () => {
+    const requests: CapturedRequest[] = [];
+    global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      requests.push({ url: urlStr, init });
+      if (urlStr.endsWith("/api/v1/sessions") || urlStr.endsWith("/api/v1/sessions/")) {
+        return createSessionResponse("chat-1");
+      }
+      if (urlStr.includes("/realtime/v1/sessions/") && urlStr.endsWith("/in/append")) {
+        return appendOkResponse();
+      }
+      if (/\/realtime\/v1\/sessions\/[^/]+\/out$/.test(urlStr)) {
+        return new Response(new ReadableStream({ start(c) { c.close(); } }), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      throw new Error(`Unexpected URL: ${urlStr}`);
+    });
+
+    const handler = chat.headStart({
+      agentId: "test-agent",
+      triggerConfig: {
+        tags: ["org:acme", "agentic-run:xyz"],
+        queue: "my-queue",
+      },
+      run: async ({ chat: chatHelper }) => {
+        return streamText({
+          ...chatHelper.toStreamTextOptions(),
+          model: new MockLanguageModelV3({
+            doStream: async () => ({ stream: textStream("hi back") }),
+          }),
+        });
+      },
+    });
+
+    await withApiContext(() =>
+      handler(
+        makeRequest({
+          chatId: "chat-1",
+          trigger: "submit-message",
+          headStartMessages: [{ id: "m1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+        })
+      )
+    );
+
+    const sessionCreate = requests.find((r) =>
+      r.url.endsWith("/api/v1/sessions") || r.url.endsWith("/api/v1/sessions/")
+    );
+    expect(sessionCreate).toBeDefined();
+    const body = JSON.parse(sessionCreate!.init!.body as string);
+    expect(body.triggerConfig.tags).toEqual([
+      "chat:chat-1",
+      "org:acme",
+      "agentic-run:xyz",
+    ]);
+    expect(body.triggerConfig.queue).toBe("my-queue");
+    expect(body.triggerConfig.basePayload.trigger).toBe("handover-prepare");
+    expect(body.triggerConfig.basePayload.chatId).toBe("chat-1");
+  });
+
   it("dispatches handover with isFinal=true on pure-text finishReason", async () => {
     const requests: CapturedRequest[] = [];
     global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
