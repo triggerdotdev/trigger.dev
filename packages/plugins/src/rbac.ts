@@ -3,9 +3,9 @@
  * these in canonical order (highest authority first) so the dashboard
  * can render columns / build a level ladder without knowing role names.
  *
- * Roles the plugin doesn't expose at all (e.g. seeded but with the
- * `is_hidden` flag set in the cloud plugin) are not returned by
- * `systemRoles()` — there's no "advertised but absent" state.
+ * Roles the plugin chooses not to expose at all (e.g. seeded but hidden)
+ * are not returned by `systemRoles()` — there's no "advertised but
+ * absent" state.
  *
  * `available` indicates whether the role is assignable on the *org's
  * plan*. v1: Free/Hobby plans get Owner+Admin available; Pro+ adds
@@ -28,9 +28,9 @@ export type Permission = {
   // first appear in `allPermissions()`, so the plugin owns both the
   // bucket label and the section ordering. Omit for "no grouping".
   group?: string;
-  // Inverted rules (CASL `cannot`) surface as ✗ in the Roles page.
+  // Inverted (deny) rules surface as ✗ in the Roles page.
   inverted?: boolean;
-  // CASL conditions (e.g. `{ envType: "PRODUCTION" }`) — when present,
+  // Rule conditions (e.g. `{ envType: "PRODUCTION" }`) — when present,
   // the Roles page renders a tier badge alongside the permission row.
   conditions?: Record<string, unknown>;
 };
@@ -54,7 +54,7 @@ export type RbacResource = {
   // Extra fields a route may pass for condition-based ability checks —
   // e.g. `envType` for env-tier-scoped rules ("Member can read envvars
   // unless envType === 'PRODUCTION'"). The plugin's ability matcher
-  // (CASL) reads these off the resource object; routes that don't use
+  // reads these off the resource object; routes that don't use
   // conditional rules can keep passing `{ type, id? }`.
   [key: string]: unknown;
 };
@@ -87,6 +87,54 @@ export interface RbacAbility {
   // grants access.
   can(action: string, resource: RbacResource | RbacResource[]): boolean;
   canSuper(): boolean;
+}
+
+/**
+ * Builds an ability from JWT scope strings like "read:runs",
+ * "read:runs:run_abc", "read:all", "admin".
+ *
+ * This is the single source of truth for interpreting public-token scope
+ * strings. Both the host's built-in fallback and any auth plugin import it
+ * from here so a token minted by the host is decoded identically no matter
+ * which auth path serves the request — two copies of this grammar would
+ * drift, and the difference would silently change what a token grants.
+ */
+export function buildJwtAbility(scopes: string[]): RbacAbility {
+  const matches = (action: string, r: RbacResource): boolean =>
+    scopes.some((scope) => {
+      // Only the first two colons are delimiters — everything after the
+      // second colon is the resource id (which may itself contain colons,
+      // e.g. user-provided tags like "env:staging"). Naive
+      // `split(":")` + 3-tuple destructuring truncated such ids to the
+      // first segment and silently failed to match.
+      const parts = scope.split(":");
+      const scopeAction = parts[0];
+      const scopeType = parts[1];
+      const scopeId = parts.length > 2 ? parts.slice(2).join(":") : undefined;
+      // Bare `admin` is the universal wildcard. `admin:<type>` is *not* —
+      // it falls through to normal matching as action="admin" against
+      // resources of that type. Treating `admin:<anything>` as universal
+      // would silently broaden any such tokens beyond the narrow,
+      // route-listed grant they had before scope-based abilities.
+      if (scopeAction === "admin" && !scopeType) return true;
+      if (scopeAction !== action && scopeAction !== "*") return false;
+      if (scopeType === "all") return true;
+      if (scopeType !== r.type) return false;
+      if (!scopeId) return true;
+      return scopeId === r.id;
+    });
+  return {
+    can(action: string, resource: RbacResource | RbacResource[]): boolean {
+      // Array form means "any element passes → authorized", matching the
+      // legacy multi-key authorization semantic.
+      return Array.isArray(resource)
+        ? resource.some((r) => matches(action, r))
+        : matches(action, resource);
+    },
+    canSuper(): boolean {
+      return false;
+    },
+  };
 }
 
 export type BearerAuthResult =
@@ -127,8 +175,8 @@ export type PatAuthResult =
     };
 
 export interface RoleBaseAccessController {
-  // True when a real RBAC plugin is loaded (i.e. cloud); false when the
-  // OSS fallback is in use. Hosts gate behaviour that's only meaningful
+  // True when a real RBAC plugin is loaded; false when the built-in
+  // fallback is in use. Hosts gate behaviour that's only meaningful
   // when the plugin is present (e.g. skipping role-attachment writes,
   // hiding role-pickers in the UI, branching on whether ability checks
   // are authoritative or permissive).
