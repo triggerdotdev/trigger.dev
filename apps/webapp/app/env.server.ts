@@ -127,6 +127,21 @@ const EnvironmentSchema = z
     LOGIN_RATE_LIMITS_ENABLED: BoolEnv.default(true),
     APP_ORIGIN: z.string().default("http://localhost:3030"),
     API_ORIGIN: z.string().optional(),
+    // Origin that the webapp publishes to MANAGED (deployed) runner pods as
+    // both `TRIGGER_API_URL` and (as the first fallback) `TRIGGER_STREAM_URL`.
+    // When self-hosting behind a tracing-enabled gateway (Envoy/Istio/etc.)
+    // that rewrites the W3C `traceparent` on egress, point this at an
+    // in-cluster service URL so runner-to-webapp traffic stays inside the
+    // cluster and the parent->child run link in the trace tree is preserved.
+    // Intentionally NOT used for dev (CLI) task runs, which usually run on a
+    // developer's machine outside the cluster and would lose connectivity if
+    // forced onto an in-cluster URL. Empty string is normalized to unset so
+    // blank `${RUNTIME_API_ORIGIN:-}` passthroughs from caller environments
+    // don't short-circuit the `??` fallback chain.
+    RUNTIME_API_ORIGIN: z
+      .string()
+      .optional()
+      .transform((v) => v || undefined),
     STREAM_ORIGIN: z.string().optional(),
     ELECTRIC_ORIGIN: z.string().default("http://localhost:3060"),
     // A comma separated list of electric origins to shard into different electric instances by environmentId

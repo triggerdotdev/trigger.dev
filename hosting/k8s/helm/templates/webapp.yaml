@@ -186,6 +186,10 @@ spec:
               value: {{ .Values.webapp.loginOrigin | quote }}
             - name: API_ORIGIN
               value: {{ .Values.webapp.apiOrigin | quote }}
+            {{- with .Values.webapp.runtimeApiOrigin }}
+            - name: RUNTIME_API_ORIGIN
+              value: {{ . | quote }}
+            {{- end }}
             - name: ELECTRIC_ORIGIN
               value: {{ include "trigger-v4.electric.url" . | quote }}
             {{- if include "trigger-v4.postgres.useSecretUrl" . }}
