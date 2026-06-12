@@ -281,7 +281,7 @@ Re-calling `POST /api/v1/sessions` with the same `(taskIdentifier, externalId)` 
 
 The `publicAccessToken` returned by `POST /api/v1/sessions` is valid for 60 minutes. Two ways to keep going past that:
 
-1. **Take refreshed tokens from the stream.** Every `turn-complete` control record on `.out` carries a `public-access-token` header with a refreshed JWT (see [`turn-complete` control record](#turn-complete-control-record)). For active conversations this just rolls — replace your stored token whenever the header is present.
+1. **Take refreshed tokens from the stream.** Most `turn-complete` control records on `.out` carry a `public-access-token` header with a refreshed JWT (see [`turn-complete` control record](#turn-complete-control-record)). The header is optional and may be absent on some turns (for example an errored turn), so replace your stored token whenever the header is present rather than expecting it every turn. For active conversations it rolls on its own.
 2. **Re-call `POST /api/v1/sessions`.** Idempotent, returns `isCached: true` and a brand-new 60-minute token. Use this if a chat goes idle long enough that the SSE stream has closed and you need to resume.
 
 <Note>
@@ -1048,7 +1048,7 @@ Yes. `.in` records are processed in arrival order — the agent's stop handler a
 </Expandable>
 
 <Expandable title="What's the format of the optional `X-Part-Id` header?">
-Any opaque ASCII string up to ~64 characters. The built-in clients pass a `nanoid(7)` (e.g. `"V1StGXR"`) generated per request. The server uses it as a per-record idempotency key — re-POSTing the same body with the same `X-Part-Id` produces a single S2 record. If you don't send the header, the server generates one for you and idempotency is per-request only.
+Any opaque ASCII string up to ~64 characters. The built-in clients generate a high-entropy id per logical send (a UUID in the browser, a `nanoid` server-side) and reuse it across auth retries of that send. The server uses it as a per-record idempotency key — re-POSTing the same body with the same `X-Part-Id` produces a single S2 record. If you don't send the header, the server generates one for you and idempotency is per-request only.
 </Expandable>
 
 <Expandable title="What happens on rate-limit (429)?">

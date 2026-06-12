@@ -223,7 +223,7 @@ export const myChat = chat.agent({
 
 ## onValidateMessages
 
-Validate or transform incoming `UIMessage[]` before they are converted to model messages. Fires once per turn with the raw messages from the wire payload (after cleanup of aborted tool parts), **before** accumulation and `toModelMessages()`.
+Validate or transform incoming `UIMessage[]` before they are converted to model messages. Fires on turns that carry incoming messages, with the raw messages from the wire payload (after cleanup of aborted tool parts), **before** accumulation and `toModelMessages()`. Turns with no incoming messages — preload, close, and regenerate with nothing re-sent — skip it.
 
 Return the validated messages array. Throw to abort the turn with an error.
 

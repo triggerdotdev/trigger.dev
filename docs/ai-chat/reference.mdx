@@ -286,6 +286,8 @@ Passed to the `onTurnComplete` callback.
 | `continuation`       | `boolean`                         | Whether this run is continuing an existing chat      |
 | `usage`              | `LanguageModelUsage \| undefined` | Token usage for this turn                            |
 | `totalUsage`         | `LanguageModelUsage`              | Cumulative token usage across all turns              |
+| `finishReason`       | `FinishReason \| undefined`       | Why the LLM stopped (`"stop"`, `"tool-calls"`, `"error"`, …) |
+| `error`              | `unknown`                         | Set when the turn threw; `responseMessage` is then undefined or partial |
 
 ## BeforeTurnCompleteEvent
 
@@ -761,10 +763,10 @@ See [Actions](/ai-chat/actions) for backend setup and [Sending actions](/ai-chat
 Eagerly trigger a run before the first message.
 
 ```ts
-transport.preload(chatId, { idleTimeoutInSeconds?: number }): Promise<void>
+transport.preload(chatId): Promise<void>
 ```
 
-No-op if a session already exists for this chatId. See [Preload](/ai-chat/fast-starts#preload) for full details.
+No-op if a session already exists for this chatId. The preload idle window is set by `preloadIdleTimeoutInSeconds` on the agent, not by this call. See [Preload](/ai-chat/fast-starts#preload) for full details.
 
 ## useTriggerChatTransport
 
