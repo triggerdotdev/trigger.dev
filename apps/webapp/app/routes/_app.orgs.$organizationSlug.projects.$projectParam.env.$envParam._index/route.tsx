@@ -1,8 +1,10 @@
 import { BookOpenIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
-import { type MetaFunction } from "@remix-run/node";
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { json, type MetaFunction } from "@remix-run/node";
+import { useFetcher } from "@remix-run/react";
+import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { TaskRunStatus } from "@trigger.dev/database";
-import { Fragment, Suspense, useMemo } from "react";
+import type { PanelHandle } from "@window-splitter/react";
+import { Fragment, Suspense, useCallback, useMemo, useRef, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -14,18 +16,31 @@ import {
 } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
+import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
+import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { PlusIcon } from "~/assets/icons/PlusIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { CodeBlock } from "~/components/code/CodeBlock";
+import { InlineCode } from "~/components/code/InlineCode";
 import { HasNoTasksDeployed, HasNoTasksDev } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { formatDateTime } from "~/components/primitives/DateTime";
-import { Header3 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
+import {
+  RESIZABLE_PANEL_ANIMATION,
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+  collapsibleHandleClassName,
+} from "~/components/primitives/Resizable";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import {
   ComboboxProvider,
@@ -59,6 +74,11 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import {
+  getUsefulLinksPreference,
+  setUsefulLinksPreference,
+  uiPreferencesStorage,
+} from "~/services/preferences/uiPreferences.server";
 import {
   unifiedTaskListPresenter,
   type HourlyTaskActivity,
@@ -107,7 +127,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       environmentType: environment.type,
     });
 
-    return typeddefer({ items, hourlyActivity, runningStates });
+    const usefulLinksPreference = await getUsefulLinksPreference(request);
+
+    return typeddefer({ items, hourlyActivity, runningStates, usefulLinksPreference });
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -116,6 +138,22 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
   }
 };
+
+export async function action({ request }: ActionFunctionArgs) {
+  const formData = await request.formData();
+  const showUsefulLinks = formData.get("showUsefulLinks") === "true";
+
+  const session = await setUsefulLinksPreference(showUsefulLinks, request);
+
+  return json(
+    { success: true },
+    {
+      headers: {
+        "Set-Cookie": await uiPreferencesStorage.commitSession(session),
+      },
+    }
+  );
+}
 
 const KIND_OPTIONS: { value: UnifiedTaskKind; label: string }[] = [
   { value: "AGENT", label: "Agent tasks" },
@@ -129,8 +167,25 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const { items, hourlyActivity, runningStates } = useTypedLoaderData<typeof loader>();
+  const { items, hourlyActivity, runningStates, usefulLinksPreference } =
+    useTypedLoaderData<typeof loader>();
   const { value, values } = useSearchParams();
+
+  const [showUsefulLinks, setShowUsefulLinks] = useState(usefulLinksPreference ?? true);
+  const usefulLinksPanelRef = useRef<PanelHandle>(null);
+  const fetcher = useFetcher();
+  const fetcherRef = useRef(fetcher);
+  fetcherRef.current = fetcher;
+
+  const toggleUsefulLinks = useCallback((show: boolean) => {
+    setShowUsefulLinks(show);
+    if (show) {
+      usefulLinksPanelRef.current?.expand();
+    } else {
+      usefulLinksPanelRef.current?.collapse();
+    }
+    fetcherRef.current.submit({ showUsefulLinks: show.toString() }, { method: "post" });
+  }, []);
 
   const selectedTypes = useMemo(() => {
     const raw = values("types") as UnifiedTaskKind[];
@@ -177,66 +232,104 @@ export default function Page() {
         </PageAccessories>
       </NavBar>
       <PageBody scrollable={false}>
-        <div className={cn("grid h-full grid-rows-1")}>
-          {hasItems ? (
-            <div className="flex min-w-0 max-w-full flex-col">
-              <div className="max-h-full overflow-hidden">
-                <div className="flex items-center justify-between gap-1.5 p-2">
-                  <div className="flex flex-1 items-center gap-1.5">
-                    <SearchInput placeholder="Search tasks…" autoFocus resetParams={["page"]} />
-                    <TaskTypeFilter />
-                  </div>
-                  <PaginationControls
-                    currentPage={currentPage}
-                    totalPages={totalPages}
-                    showPageNumbers={false}
-                  />
-                </div>
-                <Table containerClassName="max-h-full">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHeaderCell>Task type</TableHeaderCell>
-                      <TableHeaderCell>Task ID</TableHeaderCell>
-                      <TableHeaderCell>File</TableHeaderCell>
-                      <TableHeaderCell>Running</TableHeaderCell>
-                      <TableHeaderCell>Activity (24h)</TableHeaderCell>
-                      <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pagedItems.length > 0 ? (
-                      pagedItems.map((item) => (
-                        <TaskRow
-                          key={item.slug}
-                          item={item}
-                          runningStates={runningStates}
-                          hourlyActivity={hourlyActivity}
-                          organization={organization}
-                          project={project}
-                          environment={environment}
+        <ResizablePanelGroup orientation="horizontal" className="max-h-full">
+          <ResizablePanel id="tasks-main" min="100px" className="max-h-full">
+            <div className={cn("grid h-full grid-rows-1")}>
+              {hasItems ? (
+                <div className="flex min-w-0 max-w-full flex-col">
+                  <div className="max-h-full overflow-hidden">
+                    <div className="flex items-center justify-between gap-1.5 p-2">
+                      <div className="flex flex-1 items-center gap-1.5">
+                        <SearchInput placeholder="Search tasks…" autoFocus resetParams={["page"]} />
+                        <TaskTypeFilter />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {!showUsefulLinks && (
+                          <Button
+                            variant="primary/small"
+                            LeadingIcon={PlusIcon}
+                            leadingIconClassName="-mr-[0.7rem]"
+                            onClick={() => toggleUsefulLinks(true)}
+                            className="pl-1.5"
+                          >
+                            New task
+                          </Button>
+                        )}
+                        <PaginationControls
+                          currentPage={currentPage}
+                          totalPages={totalPages}
+                          showPageNumbers={false}
                         />
-                      ))
-                    ) : (
-                      <TableBlankRow colSpan={6}>
-                        <Paragraph variant="small" className="flex items-center justify-center">
-                          No tasks match your filters
-                        </Paragraph>
-                      </TableBlankRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                      </div>
+                    </div>
+                    <Table containerClassName="max-h-full">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHeaderCell>Task type</TableHeaderCell>
+                          <TableHeaderCell>Task ID</TableHeaderCell>
+                          <TableHeaderCell>File</TableHeaderCell>
+                          <TableHeaderCell>Running</TableHeaderCell>
+                          <TableHeaderCell>Activity (24h)</TableHeaderCell>
+                          <TableHeaderCell hiddenLabel>Go to page</TableHeaderCell>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pagedItems.length > 0 ? (
+                          pagedItems.map((item) => (
+                            <TaskRow
+                              key={item.slug}
+                              item={item}
+                              runningStates={runningStates}
+                              hourlyActivity={hourlyActivity}
+                              organization={organization}
+                              project={project}
+                              environment={environment}
+                            />
+                          ))
+                        ) : (
+                          <TableBlankRow colSpan={6}>
+                            <Paragraph variant="small" className="flex items-center justify-center">
+                              No tasks match your filters
+                            </Paragraph>
+                          </TableBlankRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              ) : environment.type === "DEVELOPMENT" ? (
+                <MainCenteredContainer className="max-w-prose">
+                  <HasNoTasksDev />
+                </MainCenteredContainer>
+              ) : (
+                <MainCenteredContainer className="max-w-prose">
+                  <HasNoTasksDeployed environment={environment} />
+                </MainCenteredContainer>
+              )}
             </div>
-          ) : environment.type === "DEVELOPMENT" ? (
-            <MainCenteredContainer className="max-w-prose">
-              <HasNoTasksDev />
-            </MainCenteredContainer>
-          ) : (
-            <MainCenteredContainer className="max-w-prose">
-              <HasNoTasksDeployed environment={environment} />
-            </MainCenteredContainer>
-          )}
-        </div>
+          </ResizablePanel>
+          <ResizableHandle
+            id="tasks-handle"
+            className={collapsibleHandleClassName(hasItems && showUsefulLinks)}
+          />
+          <ResizablePanel
+            id="tasks-inspector"
+            handle={usefulLinksPanelRef}
+            default="400px"
+            min="400px"
+            max="500px"
+            className="overflow-hidden"
+            collapsible
+            collapsed={!hasItems || !showUsefulLinks}
+            onCollapseChange={() => {}}
+            collapsedSize="0px"
+            collapseAnimation={RESIZABLE_PANEL_ANIMATION}
+          >
+            <div className="h-full" style={{ minWidth: 400 }}>
+              {hasItems && <NewTaskPromptsPanel onClose={() => toggleUsefulLinks(false)} />}
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </PageBody>
     </PageContainer>
   );
@@ -283,11 +376,7 @@ function TaskRow({
             <TaskTriggerSourceIcon source={item.triggerSource} />
           )}
           <span>
-            {item.kind === "AGENT"
-              ? "Agent"
-              : item.kind === "SCHEDULED"
-              ? "Scheduled"
-              : "Standard"}
+            {item.kind === "AGENT" ? "Agent" : item.kind === "SCHEDULED" ? "Scheduled" : "Standard"}
           </span>
           {item.kind === "AGENT" && item.agentType && (
             <Badge variant="extra-small">{formatAgentType(item.agentType)}</Badge>
@@ -535,5 +624,110 @@ function FailedToLoadStats() {
       button={<ExclamationTriangleIcon className="size-4 text-warning" />}
       content="We were unable to load the task stats, please try again later."
     />
+  );
+}
+
+const CHAT_AGENT_CODE = `import { chat } from "@trigger.dev/sdk/ai";
+import { streamText, stepCountIs } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  run: async ({ messages, signal }) => {
+    return streamText({
+      ...chat.toStreamTextOptions(),
+      model: anthropic("claude-sonnet-4-5"),
+      messages,
+      abortSignal: signal,
+      stopWhen: stepCountIs(15),
+    });
+  },
+});`;
+
+const STANDARD_TASK_CODE = `import { task } from "@trigger.dev/sdk";
+
+export const helloWorld = task({
+  id: "hello-world",
+  run: async (payload: { message: string }) => {
+    console.log(payload.message);
+  },
+});`;
+
+const SCHEDULED_TASK_CODE = `import { schedules } from "@trigger.dev/sdk";
+
+export const firstScheduledTask = schedules.task({
+  id: "first-scheduled-task",
+  run: async (payload) => {
+    console.log(payload.timestamp);
+    console.log(payload.lastTimestamp);
+  },
+});`;
+
+function NewTaskPromptsPanel({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
+      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-3 py-2">
+        <Header2>Create a new task</Header2>
+        <Button
+          onClick={onClose}
+          variant="minimal/small"
+          TrailingIcon={ExitIcon}
+          shortcut={{ key: "esc" }}
+          shortcutPosition="before-trailing-icon"
+          className="pl-1"
+        />
+      </div>
+      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+        <Paragraph variant="small/bright" className="mb-6">
+          Copy any example below into your project's{" "}
+          <InlineCode variant="extra-small">trigger/</InlineCode> directory and customize it from
+          there.
+        </Paragraph>
+
+        <PromptCard
+          icon={<CubeSparkleIcon className="size-4.5 shrink-0 text-agents" />}
+          title="Chat agent"
+          description="An AI agent you can chat with from your app. Streams responses, calls tools and keeps context across messages."
+          code={CHAT_AGENT_CODE}
+        />
+        <PromptCard
+          icon={<TaskIcon className="size-4.5 shrink-0 text-tasks" />}
+          title="Standard task"
+          description="A durable background function you can trigger from your code. Runs as long as it needs without timing out."
+          code={STANDARD_TASK_CODE}
+        />
+        <PromptCard
+          icon={<ClockIcon className="size-4.5 shrink-0 text-schedules" />}
+          title="Scheduled task"
+          description="A task that runs automatically on a recurring cron schedule: daily, weekly, or any interval you define."
+          code={SCHEDULED_TASK_CODE}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PromptCard({
+  icon,
+  title,
+  description,
+  code,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  code: string;
+}) {
+  return (
+    <div className="mb-5">
+      <div className="mb-1 flex items-center gap-1.5">
+        {icon}
+        <Header2>{title}</Header2>
+      </div>
+      <Paragraph variant="small" className="mb-2 text-text-dimmed">
+        {description}
+      </Paragraph>
+      <CodeBlock code={code} language="typescript" showCopyButton showLineNumbers={false} />
+    </div>
   );
 }
