@@ -344,6 +344,7 @@
             "pages": [
               "management/overview",
               "management/authentication",
+              "management/multiple-clients",
               "management/errors-and-retries",
               "management/auto-pagination",
               "management/advanced-usage"
