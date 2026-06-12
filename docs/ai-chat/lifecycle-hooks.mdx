@@ -273,7 +273,7 @@ Use this when the backend should be the source of truth for message history: abu
 | `chatId`           | `string`                                              | Chat session ID                                           |
 | `turn`             | `number`                                              | Turn number (0-indexed)                                   |
 | `trigger`          | `"submit-message" \| "regenerate-message" \| "action"` | The trigger type for this turn                           |
-| `incomingMessages` | `UIMessage[]`                                         | Validated wire messages from the frontend — 0-or-1-length (empty for actions, regenerates, and continuations; one element for normal `submit-message` and tool-approval responses) |
+| `incomingMessages` | `UIMessage[]`                                         | Validated incoming messages for this turn. Usually 0-or-1 (empty for actions, regenerates, and continuations; one element for normal `submit-message` and tool-approval responses). On a [Head Start](/ai-chat/fast-starts#with-hydratemessages) first turn, this can contain the route handler's first-turn history. |
 | `previousMessages` | `UIMessage[]`                                         | Accumulated UI messages before this turn (`[]` on turn 0) |
 | `clientData`       | Typed by `clientDataSchema`                           | Custom data from the frontend                             |
 | `continuation`     | `boolean`                                             | Whether this run is continuing an existing chat           |
@@ -289,9 +289,12 @@ export const myChat = chat.agent({
     const stored = record?.messages ?? [];
 
     if (upsertIncomingMessage(stored, { trigger, incomingMessages })) {
-      await db.chat.update({
+      // Upsert, not update: on a head-start first turn no preload ran,
+      // so the row may not exist yet when this hook fires.
+      await db.chat.upsert({
         where: { id: chatId },
-        data: { messages: stored },
+        create: { id: chatId, messages: stored },
+        update: { messages: stored },
       });
     }
 
@@ -320,7 +323,7 @@ After the hook returns, the runtime overlays the wire's tool-state advances (`ou
 </Tip>
 
 <Note>
-  `incomingMessages` is **0-or-1-length** consistently. `submit-message` and tool-approval responses ship a single message; `regenerate-message`, continuations, and actions ship none. Patterns like [tool-result auditing](/ai-chat/patterns/tool-result-auditing) work the same regardless — iterate the array and the loop runs zero or one times.
+  `incomingMessages` is **usually 0-or-1-length**. `submit-message` and tool-approval responses ship a single message; `regenerate-message`, continuations, and actions ship none. The exception is a [Head Start](/ai-chat/fast-starts#with-hydratemessages) first turn, where it carries the route handler's first-turn history. Patterns like [tool-result auditing](/ai-chat/patterns/tool-result-auditing) work the same regardless — iterate the array rather than assuming a single element.
 </Note>
 
 ## onTurnStart
