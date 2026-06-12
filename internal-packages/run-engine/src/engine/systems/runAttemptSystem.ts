@@ -459,29 +459,27 @@ export class RunAttemptSystem {
                 },
               });
 
-              const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(tx, {
-                run,
-                snapshot: {
-                  executionStatus: "EXECUTING",
-                  description: `Attempt created, starting execution${
-                    isWarmStart ? " (warm start)" : ""
-                  }`,
-                },
-                previousSnapshotId: latestSnapshot.id,
-                environmentId: latestSnapshot.environmentId,
-                environmentType: latestSnapshot.environmentType,
-                projectId: latestSnapshot.projectId,
-                organizationId: latestSnapshot.organizationId,
-                batchId: latestSnapshot.batchId ?? undefined,
-                completedWaitpoints: latestSnapshot.completedWaitpoints,
-                workerId,
-                runnerId,
-              });
-
-              if (taskRun.ttl) {
-                //don't expire the run, it's going to execute
-                await this.$.worker.ack(`expireRun:${taskRun.id}`);
-              }
+              const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshotMutation(
+                tx,
+                {
+                  run,
+                  snapshot: {
+                    executionStatus: "EXECUTING",
+                    description: `Attempt created, starting execution${
+                      isWarmStart ? " (warm start)" : ""
+                    }`,
+                  },
+                  previousSnapshotId: latestSnapshot.id,
+                  environmentId: latestSnapshot.environmentId,
+                  environmentType: latestSnapshot.environmentType,
+                  projectId: latestSnapshot.projectId,
+                  organizationId: latestSnapshot.organizationId,
+                  batchId: latestSnapshot.batchId ?? undefined,
+                  completedWaitpoints: latestSnapshot.completedWaitpoints,
+                  workerId,
+                  runnerId,
+                }
+              );
 
               return { updatedRun: run, snapshot: newSnapshot };
             },
@@ -509,6 +507,18 @@ export class RunAttemptSystem {
           }
 
           const { updatedRun, snapshot } = result;
+
+          if (taskRun.ttl) {
+            //don't expire the run, it's going to execute
+            await this.$.worker.ack(`expireRun:${taskRun.id}`);
+          }
+
+          // Side effects must only run against a durably committed snapshot row.
+          await this.executionSnapshotSystem.scheduleSnapshotSideEffects({
+            snapshot,
+            runId: taskRun.id,
+            completedWaitpoints: latestSnapshot.completedWaitpoints,
+          });
 
           this.$.eventBus.emit("runAttemptStarted", {
             time: new Date(),
@@ -690,6 +700,9 @@ export class RunAttemptSystem {
     runId: string;
     snapshotId: string;
     completion: TaskRunSuccessfulExecutionResult;
+    // Note: passing an open transaction as `tx` makes $transaction run inline in it,
+    // which would move this method's post-commit side effects inside the caller's
+    // transaction. Callers must pass a plain client.
     tx: PrismaClientOrTransaction;
     workerId?: string;
     runnerId?: string;
@@ -740,58 +753,100 @@ export class RunAttemptSystem {
             environmentType: latestSnapshot.environmentType,
           });
 
-          const run = await prisma.taskRun.update({
-            where: { id: runId },
-            data: {
-              status: "COMPLETED_SUCCESSFULLY",
-              completedAt,
-              output: completion.output,
-              outputType: completion.outputType,
-              usageDurationMs: updatedUsage.usageDurationMs,
-              costInCents: updatedUsage.costInCents,
-              executionSnapshots: {
-                create: {
-                  executionStatus: "FINISHED",
-                  description: "Task completed successfully",
-                  runStatus: "COMPLETED_SUCCESSFULLY",
-                  attemptNumber: latestSnapshot.attemptNumber,
-                  environmentId: latestSnapshot.environmentId,
-                  environmentType: latestSnapshot.environmentType,
-                  projectId: latestSnapshot.projectId,
-                  organizationId: latestSnapshot.organizationId,
-                  workerId,
-                  runnerId,
+          const completedOutput = completion.output
+            ? { value: completion.output, type: completion.outputType, isError: false as const }
+            : undefined;
+
+          const txResult = await $transaction(
+            prisma,
+            async (tx) => {
+              const run = await tx.taskRun.update({
+                where: { id: runId },
+                data: {
+                  status: "COMPLETED_SUCCESSFULLY",
+                  completedAt,
+                  output: completion.output,
+                  outputType: completion.outputType,
+                  usageDurationMs: updatedUsage.usageDurationMs,
+                  costInCents: updatedUsage.costInCents,
+                  executionSnapshots: {
+                    create: {
+                      executionStatus: "FINISHED",
+                      description: "Task completed successfully",
+                      runStatus: "COMPLETED_SUCCESSFULLY",
+                      attemptNumber: latestSnapshot.attemptNumber,
+                      environmentId: latestSnapshot.environmentId,
+                      environmentType: latestSnapshot.environmentType,
+                      projectId: latestSnapshot.projectId,
+                      organizationId: latestSnapshot.organizationId,
+                      workerId,
+                      runnerId,
+                    },
+                  },
                 },
-              },
-            },
-            select: {
-              id: true,
-              friendlyId: true,
-              status: true,
-              attemptNumber: true,
-              spanId: true,
-              updatedAt: true,
-              associatedWaitpoint: {
                 select: {
                   id: true,
+                  friendlyId: true,
+                  status: true,
+                  attemptNumber: true,
+                  spanId: true,
+                  updatedAt: true,
+                  associatedWaitpoint: {
+                    select: {
+                      id: true,
+                    },
+                  },
+                  project: {
+                    select: {
+                      organizationId: true,
+                    },
+                  },
+                  batchId: true,
+                  createdAt: true,
+                  completedAt: true,
+                  taskEventStore: true,
+                  parentTaskRunId: true,
+                  usageDurationMs: true,
+                  costInCents: true,
+                  runtimeEnvironmentId: true,
+                  projectId: true,
                 },
-              },
-              project: {
-                select: {
-                  organizationId: true,
-                },
-              },
-              batchId: true,
-              createdAt: true,
-              completedAt: true,
-              taskEventStore: true,
-              parentTaskRunId: true,
-              usageDurationMs: true,
-              costInCents: true,
-              runtimeEnvironmentId: true,
-              projectId: true,
+              });
+
+              // Complete the waitpoint if it exists (runs without waiting parents
+              // have no waitpoint). Side effects (continuation jobs, events) are
+              // scheduled after this transaction commits.
+              const completedWaitpoint = run.associatedWaitpoint
+                ? await this.waitpointSystem.completeWaitpointMutation({
+                    id: run.associatedWaitpoint.id,
+                    output: completedOutput,
+                    tx,
+                  })
+                : undefined;
+
+              return { run, completedWaitpoint };
             },
-          });
+            (error) => {
+              this.$.logger.error("RunEngine.attemptSucceeded(): prisma.$transaction error", {
+                code: error.code,
+                meta: error.meta,
+                stack: error.stack,
+                message: error.message,
+                name: error.name,
+              });
+              throw new ServiceValidationError(
+                "Failed to complete task run and associated waitpoint",
+                500
+              );
+            }
+          );
+
+          if (!txResult) {
+            throw new ServiceValidationError("Failed to complete task run attempt", 500);
+          }
+
+          const { run, completedWaitpoint } = txResult;
+
           const newSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
           await this.$.runQueue.acknowledgeMessage(run.project.organizationId, runId);
@@ -808,14 +863,8 @@ export class RunAttemptSystem {
             },
           });
 
-          // Complete the waitpoint if it exists (runs without waiting parents have no waitpoint)
-          if (run.associatedWaitpoint) {
-            await this.waitpointSystem.completeWaitpoint({
-              id: run.associatedWaitpoint.id,
-              output: completion.output
-                ? { value: completion.output, type: completion.outputType, isError: false }
-                : undefined,
-            });
+          if (completedWaitpoint) {
+            await this.waitpointSystem.scheduleWaitpointContinuations(completedWaitpoint);
           }
 
           this.$.eventBus.emit("runSucceeded", {

@@ -1,6 +1,7 @@
 import { timeoutError, tryCatch } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import {
+  $transaction,
   Prisma,
   PrismaClientOrTransaction,
   TaskQueue,
@@ -39,6 +40,22 @@ export type WaitpointContinuationResult =
       waitpoints: Array<WaitpointContinuationWaitpoint>;
     };
 
+export type WaitpointOutput = {
+  value: string;
+  type?: string;
+  isError: boolean;
+};
+
+export type CompletedWaitpointMutationResult = {
+  waitpoint: Waitpoint;
+  affectedTaskRuns: {
+    taskRunId: string;
+    spanIdToComplete: string | null;
+    createdAt: Date;
+  }[];
+  output?: WaitpointOutput;
+};
+
 export class WaitpointSystem {
   private readonly $: SystemResources;
   private readonly executionSnapshotSystem: ExecutionSnapshotSystem;
@@ -74,15 +91,32 @@ export class WaitpointSystem {
     output,
   }: {
     id: string;
-    output?: {
-      value: string;
-      type?: string;
-      isError: boolean;
-    };
+    output?: WaitpointOutput;
   }): Promise<Waitpoint> {
+    const result = await this.completeWaitpointMutation({ id, output });
+    await this.scheduleWaitpointContinuations(result);
+    return result.waitpoint;
+  }
+
+  /** Marks the waitpoint COMPLETED and returns the runs it was blocking.
+   * Pure Postgres mutation — safe to run inside a transaction via `tx`.
+   * Direct callers MUST call scheduleWaitpointContinuations() with the
+   * result AFTER the surrounding transaction commits, otherwise blocked runs
+   * are never continued. */
+  async completeWaitpointMutation({
+    id,
+    output,
+    tx,
+  }: {
+    id: string;
+    output?: WaitpointOutput;
+    tx?: PrismaClientOrTransaction;
+  }): Promise<CompletedWaitpointMutationResult> {
+    const prisma = tx ?? this.$.prisma;
+
     // 1. Complete the Waitpoint (if not completed)
     const [updateError, updateResult] = await tryCatch(
-      this.$.prisma.waitpoint.updateMany({
+      prisma.waitpoint.updateMany({
         where: { id, status: "PENDING" },
         data: {
           status: "COMPLETED",
@@ -106,7 +140,7 @@ export class WaitpointSystem {
       );
     }
 
-    const waitpoint = await this.$.prisma.waitpoint.findFirst({
+    const waitpoint = await prisma.waitpoint.findFirst({
       where: { id },
     });
 
@@ -123,7 +157,7 @@ export class WaitpointSystem {
     }
 
     // 2. Find the TaskRuns blocked by this waitpoint
-    const affectedTaskRuns = await this.$.prisma.taskRunWaitpoint.findMany({
+    const affectedTaskRuns = await prisma.taskRunWaitpoint.findMany({
       where: { waitpointId: id },
       select: { taskRunId: true, spanIdToComplete: true, createdAt: true },
     });
@@ -134,14 +168,25 @@ export class WaitpointSystem {
       });
     }
 
-    // 3. Schedule trying to continue the runs
+    return { waitpoint, affectedTaskRuns, output };
+  }
+
+  /** Post-commit side effects of completing a waitpoint: schedules continuation of
+   * the blocked runs and emits events. Must be called AFTER the mutation committed —
+   * never from inside a transaction. */
+  async scheduleWaitpointContinuations({
+    waitpoint,
+    affectedTaskRuns,
+    output,
+  }: CompletedWaitpointMutationResult): Promise<void> {
+    // Schedule trying to continue the runs
     for (const run of affectedTaskRuns) {
       const jobId = `continueRunIfUnblocked:${run.taskRunId}`;
       //50ms in the future
       const availableAt = new Date(Date.now() + 50);
 
       this.$.logger.debug(`completeWaitpoint: enqueueing continueRunIfUnblocked`, {
-        waitpointId: id,
+        waitpointId: waitpoint.id,
         runId: run.taskRunId,
         jobId,
         availableAt,
@@ -169,8 +214,6 @@ export class WaitpointSystem {
         });
       }
     }
-
-    return waitpoint;
   }
 
   /**
@@ -793,30 +836,72 @@ export class WaitpointSystem {
           };
         }
         case "EXECUTING_WITH_WAITPOINTS": {
-          const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(
+          const completedWaitpointArgs = blockingWaitpoints.map((b) => ({
+            id: b.waitpoint.id,
+            index: b.batchIndex ?? undefined,
+          }));
+
+          const newSnapshot = await $transaction(
             this.$.prisma,
+            async (tx) => {
+              const createdSnapshot =
+                await this.executionSnapshotSystem.createExecutionSnapshotMutation(tx, {
+                  run: {
+                    id: runId,
+                    status: snapshot.runStatus,
+                    attemptNumber: snapshot.attemptNumber,
+                  },
+                  snapshot: {
+                    executionStatus: "EXECUTING",
+                    description: "Run was continued, whilst still executing.",
+                  },
+                  previousSnapshotId: snapshot.id,
+                  environmentId: snapshot.environmentId,
+                  environmentType: snapshot.environmentType,
+                  projectId: snapshot.projectId,
+                  organizationId: snapshot.organizationId,
+                  batchId: snapshot.batchId ?? undefined,
+                  completedWaitpoints: completedWaitpointArgs,
+                });
+
+              // Deleted in the same transaction so the snapshot and unblock are atomic.
+              if (blockingWaitpoints.length > 0) {
+                await tx.taskRunWaitpoint.deleteMany({
+                  where: {
+                    taskRunId: runId,
+                    id: { in: blockingWaitpoints.map((b) => b.id) },
+                  },
+                });
+              }
+
+              return createdSnapshot;
+            },
+            (error) => {
+              this.$.logger.error("continueRunIfUnblocked: prisma.$transaction error", {
+                code: error.code,
+                meta: error.meta,
+                message: error.message,
+                runId,
+              });
+            },
             {
-              run: {
-                id: runId,
-                status: snapshot.runStatus,
-                attemptNumber: snapshot.attemptNumber,
-              },
-              snapshot: {
-                executionStatus: "EXECUTING",
-                description: "Run was continued, whilst still executing.",
-              },
-              previousSnapshotId: snapshot.id,
-              environmentId: snapshot.environmentId,
-              environmentType: snapshot.environmentType,
-              projectId: snapshot.projectId,
-              organizationId: snapshot.organizationId,
-              batchId: snapshot.batchId ?? undefined,
-              completedWaitpoints: blockingWaitpoints.map((b) => ({
-                id: b.waitpoint.id,
-                index: b.batchIndex ?? undefined,
-              })),
+              // the m2m connect inserts one row per blocking waitpoint, so large
+              // batchTriggerAndWait parents need more than the 5s default
+              timeout: 30_000,
+              maxRetries: 2,
             }
           );
+
+          if (!newSnapshot) {
+            throw new Error(`continueRunIfUnblocked: failed to unblock run: ${runId}`);
+          }
+
+          // Side effects must only run against a durably committed snapshot row.
+          await this.executionSnapshotSystem.scheduleSnapshotSideEffects({
+            snapshot: newSnapshot,
+            runId,
+            completedWaitpoints: completedWaitpointArgs,
+          });
 
           this.$.logger.debug(
             `continueRunIfUnblocked: run was still executing, sending notification`,
@@ -833,8 +918,14 @@ export class WaitpointSystem {
             eventBus: this.$.eventBus,
           });
 
-          break;
+          return {
+            status: "unblocked",
+            waitpoints: blockingWaitpoints.map((w) => w.waitpoint),
+          };
         }
+        // Unlike EXECUTING_WITH_WAITPOINTS above, this case is deliberately NOT
+        // wrapped in a single transaction: enqueueRun performs Redis queue work
+        // internally, which must never run inside an open Postgres transaction.
         case "SUSPENDED": {
           if (!snapshot.checkpointId) {
             // A run canceled mid-suspend has its checkpoint cleared by the
@@ -890,6 +981,8 @@ export class WaitpointSystem {
         }
       }
 
+      // Only the SUSPENDED case reaches here — EXECUTING_WITH_WAITPOINTS returns
+      // above after deleting its waitpoints inside its transaction.
       if (blockingWaitpoints.length > 0) {
         //5. Remove the blocking waitpoints
         await this.$.prisma.taskRunWaitpoint.deleteMany({
