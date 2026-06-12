@@ -255,6 +255,30 @@ export async function getCurrentPlan(orgId: string) {
   }
 }
 
+export type SelfServePurchaseBlockReason = "plan_unavailable" | "managed_billing";
+
+/**
+ * When cloud billing is configured, self-serve purchase endpoints must fail closed
+ * if the current plan can't be loaded or the org is on managed billing.
+ */
+export function getSelfServePurchaseBlockReason(
+  currentPlan: Awaited<ReturnType<typeof getCurrentPlan>>
+): SelfServePurchaseBlockReason | undefined {
+  if (!isBillingConfigured()) {
+    return undefined;
+  }
+
+  if (!currentPlan) {
+    return "plan_unavailable";
+  }
+
+  if (currentPlan.v3Subscription?.showSelfServe === false) {
+    return "managed_billing";
+  }
+
+  return undefined;
+}
+
 export async function getLimits(orgId: string) {
   if (!client) return undefined;
 

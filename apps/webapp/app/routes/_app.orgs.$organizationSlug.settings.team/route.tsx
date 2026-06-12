@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
+import { Feedback } from "~/components/Feedback";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -45,11 +46,13 @@ import { Select, SelectItem, SelectLinkItem } from "~/components/primitives/Sele
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { $replica } from "~/db.server";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
 import { removeTeamMember } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
+import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
@@ -210,6 +213,21 @@ export const action = dashboardAction(
         return json({ ok: false, error: "Organization not found" } as const);
       }
 
+      const currentPlan = await getCurrentPlan(orgId);
+      const purchaseBlockReason = getSelfServePurchaseBlockReason(currentPlan);
+      if (purchaseBlockReason === "plan_unavailable") {
+        return json(
+          { ok: false, error: "Unable to verify billing status. Please try again." } as const,
+          { status: 503 }
+        );
+      }
+      if (purchaseBlockReason === "managed_billing") {
+        return json(
+          { ok: false, error: "Contact us to request more seats." } as const,
+          { status: 403 }
+        );
+      }
+
       const submission = parse(formData, { schema: PurchaseSchema });
 
       if (!submission.value || submission.intent !== "submit") {
@@ -310,6 +328,7 @@ export default function Page() {
   const organization = useOrganization();
 
   const plan = useCurrentPlan();
+  const showSelfServe = useShowSelfServe();
   const requiresUpgrade = limits.used >= limits.limit;
   const usageRatio = limits.limit > 0 ? Math.min(limits.used / limits.limit, 1) : 0;
   const canUpgrade =
@@ -515,9 +534,16 @@ export default function Page() {
                   planSeatLimit={planSeatLimit}
                 />
               ) : canUpgrade ? (
-                <LinkButton to={v3BillingPath(organization)} variant="primary/small">
-                  Upgrade
-                </LinkButton>
+                showSelfServe ? (
+                  <LinkButton to={v3BillingPath(organization)} variant="primary/small">
+                    Upgrade
+                  </LinkButton>
+                ) : (
+                  <Feedback
+                    defaultValue="enterprise"
+                    button={<Button variant="secondary/small">Request more</Button>}
+                  />
+                )
               ) : null}
             </div>
           </div>
@@ -841,6 +867,7 @@ export function PurchaseSeatsModal({
   planSeatLimit: number;
   triggerButton?: React.ReactElement;
 }) {
+  const showSelfServe = useShowSelfServe();
   const fetcher = useFetcher();
   const organization = useOrganization();
   const lastSubmission =
@@ -888,6 +915,15 @@ export function PurchaseSeatsModal({
 
   const pricePerSeat = seatPricing.centsPerStep / seatPricing.stepSize / 100;
   const title = extraSeats === 0 ? "Purchase extra seats…" : "Add/remove extra seats…";
+
+  if (!showSelfServe) {
+    return (
+      <Feedback
+        defaultValue="enterprise"
+        button={<Button variant="secondary/small">Request more</Button>}
+      />
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
