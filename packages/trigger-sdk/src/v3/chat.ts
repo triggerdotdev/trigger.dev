@@ -33,7 +33,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { ChatTabCoordinator } from "./chat-tab-coordinator.js";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
-import { slimSubmitMessageForWire } from "./ai-shared.js";
+import { resolveChatStreamBaseURL, slimSubmitMessageForWire } from "./ai-shared.js";
 
 const DEFAULT_BASE_URL = "https://api.trigger.dev";
 const DEFAULT_STREAM_TIMEOUT_SECONDS = 120;
@@ -284,6 +284,11 @@ export type TriggerChatTransportOptions<TClientData = unknown> = {
    * endpoint, or a function called per request that picks a base URL from the
    * endpoint discriminator and chat ID. @default "https://api.trigger.dev"
    *
+   * When a string base URL points at Trigger.dev Cloud (`https://api.trigger.dev`),
+   * the realtime session endpoints (`in`/`out`) are routed to the dedicated
+   * realtime host (`https://realtime.trigger.dev`) automatically. Pass a
+   * resolver function to take full control and opt out of this.
+   *
    * @example Route appends through a proxy, SSE direct:
    * ```ts
    * baseURL: ({ endpoint }) =>
@@ -462,9 +467,19 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       | undefined;
     const baseURLOption = options.baseURL ?? DEFAULT_BASE_URL;
     const streamOverride = options.streamBaseURL;
-    this.resolveBaseURLFn = typeof baseURLOption === "function"
-      ? (ctx) => (ctx.endpoint === "out" && streamOverride ? streamOverride : baseURLOption(ctx))
-      : (ctx) => (ctx.endpoint === "out" && streamOverride ? streamOverride : baseURLOption);
+    // The transport only ever talks to realtime session endpoints (`in`/`out`).
+    // For a string base URL pointing at Trigger.dev Cloud, route those to the
+    // dedicated realtime host (`resolveChatStreamBaseURL`) so the long-lived
+    // SSE reads and input appends don't load the api service. An explicit
+    // `streamBaseURL` (SSE only, deprecated) and a `baseURL` resolver function
+    // are honored verbatim — the customer owns routing in those cases.
+    this.resolveBaseURLFn =
+      typeof baseURLOption === "function"
+        ? (ctx) => (ctx.endpoint === "out" && streamOverride ? streamOverride : baseURLOption(ctx))
+        : (ctx) =>
+            ctx.endpoint === "out" && streamOverride
+              ? streamOverride
+              : resolveChatStreamBaseURL(baseURLOption);
     this.fetchOverride = options.fetch;
     this.extraHeaders = options.headers ?? {};
     this.streamTimeoutSeconds = options.streamTimeoutSeconds ?? DEFAULT_STREAM_TIMEOUT_SECONDS;
