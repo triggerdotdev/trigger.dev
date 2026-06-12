@@ -195,7 +195,7 @@
           {
             "group": "Development",
             "pages": [
-              "cli-dev"
+              "cli-dev-commands"
             ]
           },
           {
@@ -746,6 +746,18 @@
     ]
   },
   "redirects": [
+    {
+      "source": "/cli-dev",
+      "destination": "/cli-dev-commands"
+    },
+    {
+      "source": "/cli-deploy",
+      "destination": "/cli-deploy-commands"
+    },
+    {
+      "source": "/cli-development-commands",
+      "destination": "/cli-dev-commands"
+    },
     {
       "source": "/v3/feature-matrix",
       "destination": "https://feedback.trigger.dev/roadmap"
