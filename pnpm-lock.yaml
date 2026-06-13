@@ -47,6 +47,9 @@ patchedDependencies:
   '@kubernetes/client-node@1.0.0':
     hash: ba1a06f46256cdb8d6faf7167246692c0de2e7cd846a9dc0f13be0137e1c3745
     path: patches/@kubernetes__client-node@1.0.0.patch
+  '@remix-run/router@1.23.2':
+    hash: f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9
+    path: patches/@remix-run__router@1.23.2.patch
   '@sentry/remix@9.46.0':
     hash: 146126b032581925294aaed63ab53ce3f5e0356a755f1763d7a9a76b9846943b
     path: patches/@sentry__remix@9.46.0.patch
@@ -224,6 +227,9 @@ importers:
       dockerode:
         specifier: ^4.0.6
         version: 4.0.6
+      ioredis:
+        specifier: ~5.6.0
+        version: 5.6.1
       p-limit:
         specifier: ^6.2.0
         version: 6.2.0
@@ -240,6 +246,9 @@ importers:
         specifier: 3.25.76
         version: 3.25.76
     devDependencies:
+      '@internal/testcontainers':
+        specifier: workspace:*
+        version: link:../../internal-packages/testcontainers
       '@types/dockerode':
         specifier: ^3.3.33
         version: 3.3.35
@@ -491,7 +500,7 @@ importers:
         version: 2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)
       '@remix-run/router':
         specifier: ^1.23.2
-        version: 1.23.2
+        version: 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       '@remix-run/serve':
         specifier: 2.17.4
         version: 2.17.4(typescript@5.5.4)
@@ -547,8 +556,8 @@ importers:
         specifier: workspace:*
         version: link:../../internal-packages/otlp-importer
       '@trigger.dev/platform':
-        specifier: 1.0.27
-        version: 1.0.27
+        specifier: 1.0.28
+        version: 1.0.28
       '@trigger.dev/rbac':
         specifier: workspace:*
         version: link:../../internal-packages/rbac
@@ -655,8 +664,8 @@ importers:
         specifier: ^1.0.0
         version: 1.0.0
       ioredis:
-        specifier: ^5.3.2
-        version: 5.3.2
+        specifier: ~5.6.0
+        version: 5.6.1
       isbot:
         specifier: ^3.6.5
         version: 3.6.5
@@ -797,7 +806,7 @@ importers:
         version: 0.3.1(@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/server-runtime@2.17.4(typescript@5.5.4))(react@18.2.0)
       remix-utils:
         specifier: ^7.7.0
-        version: 7.7.0(@remix-run/node@2.17.4(typescript@5.5.4))(@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/router@1.23.2)(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.2.0)(zod@3.25.76)
+        version: 7.7.0(@remix-run/node@2.17.4(typescript@5.5.4))(@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/router@1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9))(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.2.0)(zod@3.25.76)
       seedrandom:
         specifier: ^3.0.5
         version: 3.0.5
@@ -1136,13 +1145,13 @@ importers:
       decimal.js:
         specifier: ^10.6.0
         version: 10.6.0
+      prisma:
+        specifier: 6.14.0
+        version: 6.14.0(magicast@0.3.5)(typescript@5.5.4)
     devDependencies:
       '@types/decimal.js':
         specifier: ^7.4.3
         version: 7.4.3
-      prisma:
-        specifier: 6.14.0
-        version: 6.14.0(magicast@0.3.5)(typescript@5.5.4)
       rimraf:
         specifier: 6.0.1
         version: 6.0.1
@@ -1167,9 +1176,6 @@ importers:
       react-dom:
         specifier: ^18.2.0
         version: 18.2.0(react@18.3.1)
-      react-email:
-        specifier: ^6.5.0
-        version: 6.5.0(bufferutil@4.0.9)(react-dom@18.2.0(react@18.3.1))(react@18.3.1)
       resend:
         specifier: ^3.2.0
         version: 3.2.0
@@ -1189,6 +1195,9 @@ importers:
       '@types/react-dom':
         specifier: 18.2.7
         version: 18.2.7
+      react-email:
+        specifier: ^6.5.0
+        version: 6.5.0(bufferutil@4.0.9)(react-dom@18.2.0(react@18.3.1))(react@18.3.1)
 
   internal-packages/llm-model-catalog:
     dependencies:
@@ -1250,8 +1259,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/core
       ioredis:
-        specifier: ^5.3.2
-        version: 5.3.2
+        specifier: ~5.6.0
+        version: 5.6.1
 
   internal-packages/replication:
     dependencies:
@@ -1323,6 +1332,9 @@ importers:
       '@internal/testcontainers':
         specifier: workspace:*
         version: link:../testcontainers
+      '@opentelemetry/sdk-metrics':
+        specifier: 2.7.1
+        version: 2.7.1(@opentelemetry/api@1.9.1)
       '@types/seedrandom':
         specifier: ^3.0.8
         version: 3.0.8
@@ -1398,8 +1410,8 @@ importers:
         specifier: workspace:*
         version: link:../database
       ioredis:
-        specifier: ^5.3.2
-        version: 5.3.2
+        specifier: ~5.6.0
+        version: 5.6.1
     devDependencies:
       '@testcontainers/postgresql':
         specifier: ^11.14.0
@@ -1485,7 +1497,7 @@ importers:
         specifier: ^6.10.0
         version: 6.19.0(magicast@0.3.5)
       '@trigger.dev/core':
-        specifier: workspace:4.5.0-rc.4
+        specifier: workspace:4.5.0-rc.6
         version: link:../core
       mlly:
         specifier: ^1.7.1
@@ -1561,13 +1573,13 @@ importers:
         specifier: ^0.22.10
         version: 0.22.10(supports-color@10.0.0)
       '@trigger.dev/build':
-        specifier: workspace:4.5.0-rc.4
+        specifier: workspace:4.5.0-rc.6
         version: link:../build
       '@trigger.dev/core':
-        specifier: workspace:4.5.0-rc.4
+        specifier: workspace:4.5.0-rc.6
         version: link:../core
       '@trigger.dev/schema-to-json':
-        specifier: workspace:4.5.0-rc.4
+        specifier: workspace:4.5.0-rc.6
         version: link:../schema-to-json
       ansi-escapes:
         specifier: ^7.0.0
@@ -1910,6 +1922,9 @@ importers:
       ai:
         specifier: ^6.0.0
         version: 6.0.3(zod@3.25.76)
+      ai-v7:
+        specifier: npm:ai@7.0.0-canary.159
+        version: ai@7.0.0-canary.159(zod@3.25.76)
       defu:
         specifier: ^6.1.5
         version: 6.1.7
@@ -1954,7 +1969,7 @@ importers:
   packages/python:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:4.5.0-rc.4
+        specifier: workspace:4.5.0-rc.6
         version: link:../core
       tinyexec:
         specifier: ^0.3.2
@@ -1964,10 +1979,10 @@ importers:
         specifier: ^0.15.4
         version: 0.15.4
       '@trigger.dev/build':
-        specifier: workspace:4.5.0-rc.4
+        specifier: workspace:4.5.0-rc.6
         version: link:../build
       '@trigger.dev/sdk':
-        specifier: workspace:4.5.0-rc.4
+        specifier: workspace:4.5.0-rc.6
         version: link:../trigger-sdk
       '@types/node':
         specifier: 20.14.14
@@ -1991,7 +2006,7 @@ importers:
   packages/react-hooks:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^4.5.0-rc.4
+        specifier: workspace:^4.5.0-rc.6
         version: link:../core
       react:
         specifier: ^18.0 || ^19.0 || ^19.0.0-rc
@@ -2025,7 +2040,7 @@ importers:
   packages/redis-worker:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:4.5.0-rc.4
+        specifier: workspace:4.5.0-rc.6
         version: link:../core
       cron-parser:
         specifier: ^4.9.0
@@ -2074,7 +2089,7 @@ importers:
   packages/rsc:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^4.5.0-rc.4
+        specifier: workspace:^4.5.0-rc.6
         version: link:../core
       mlly:
         specifier: ^1.7.1
@@ -2090,7 +2105,7 @@ importers:
         specifier: ^0.15.4
         version: 0.15.4
       '@trigger.dev/build':
-        specifier: workspace:^4.5.0-rc.4
+        specifier: workspace:^4.5.0-rc.6
         version: link:../build
       '@types/node':
         specifier: 20.14.14
@@ -2159,6 +2174,9 @@ importers:
 
   packages/trigger-sdk:
     dependencies:
+      '@ai-sdk/otel':
+        specifier: '>=1.0.0-0 <2'
+        version: 1.0.0-beta.6(zod@3.25.76)
       '@opentelemetry/api':
         specifier: 1.9.1
         version: 1.9.1
@@ -2166,7 +2184,7 @@ importers:
         specifier: 1.41.1
         version: 1.41.1
       '@trigger.dev/core':
-        specifier: workspace:4.5.0-rc.4
+        specifier: workspace:4.5.0-rc.6
         version: link:../core
       chalk:
         specifier: ^5.2.0
@@ -2217,6 +2235,9 @@ importers:
       ai:
         specifier: ^6.0.116
         version: 6.0.116(zod@3.25.76)
+      ai-v7:
+        specifier: npm:ai@7.0.0-canary.159
+        version: ai@7.0.0-canary.159(zod@3.25.76)
       encoding:
         specifier: ^0.1.13
         version: 0.1.13
@@ -2256,11 +2277,27 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
+  '@ai-sdk/gateway@4.0.0-beta.30':
+    resolution: {integrity: sha512-05tWxCb+3SRj5LBY37nRQ8eUdolO5QvKAfsIAUY3zAxg0jc1cBkQNSpZEVwQUR4uFm/Y5fLJ+MIa+6hkol1//A==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/gateway@4.0.0-canary.93':
+    resolution: {integrity: sha512-/d0d/DfJRmdMJJww/ihrYezgKedJhrOCsREuAuSHmd/kVzFB5p2bBuCZH3EBxKFQ8NLtPJpOR+QJxOUmDLD8PA==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
   '@ai-sdk/openai@3.0.41':
     resolution: {integrity: sha512-IZ42A+FO+vuEQCVNqlnAPYQnnUpUfdJIwn1BEDOBywiEHa23fw7PahxVtlX9zm3/zMvTW4JKPzWyvAgDu+SQ2A==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/otel@1.0.0-beta.6':
+    resolution: {integrity: sha512-K5VikyO3EKQkNk77ew9oMjM8FInKF+WWar599LmP8rQ0x0iB+P/DVS+h6zQvmecxMNPtQOOyt0uDQFx/AA0DGw==}
+    engines: {node: '>=18'}
 
   '@ai-sdk/provider-utils@1.0.22':
     resolution: {integrity: sha512-YHK2rpj++wnLVc9vPGzGFP3Pjeld2MwhKinetA0zKXOoHAT/Jit5O8kZsxcSlJPu9wvcGT1UGZEjZrtO7PfFOQ==}
@@ -2289,6 +2326,18 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
+  '@ai-sdk/provider-utils@5.0.0-beta.9':
+    resolution: {integrity: sha512-Ku/S1TV8ibqlweKQHa22eWT9QvKqR4hkl7KMJ0k7kw64Q7XObh12fJUnK4Mh8q+IR5ZeQGm95SLtx++d7FC6XA==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/provider-utils@5.0.0-canary.44':
+    resolution: {integrity: sha512-3h7gp8MEwXACWsW8ZPjzio53ynKq0jTNp4Hwr0BWdychMFzmkRRWyvijhg56JWxye16FU92SqQnfBoe2PN4I2A==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
   '@ai-sdk/provider@0.0.26':
     resolution: {integrity: sha512-dQkfBDs2lTYpKM8389oopPdQgIU007GQyCbuPPrV+K6MtSII3HBfE0stUIMXUb44L+LK1t6GXPP7wjSzjO6uKg==}
     engines: {node: '>=18'}
@@ -2300,6 +2349,14 @@ packages:
   '@ai-sdk/provider@3.0.8':
     resolution: {integrity: sha512-oGMAgGoQdBXbZqNG0Ze56CHjDZ1IDYOwGYxYjO5KLSlz5HiNQ9udIXsPZ61VWaHGZ5XW/jyjmr6t2xz2jGVwbQ==}
     engines: {node: '>=18'}
+
+  '@ai-sdk/provider@4.0.0-beta.5':
+    resolution: {integrity: sha512-+07aGNCVXEKgGXtAXjjROPcpHMudWfvsm5UvlZ4LtTfjX9cT61x7h3W0pSSpWY/H7doymdm8PmuX6Z8AvP03WQ==}
+    engines: {node: '>=18'}
+
+  '@ai-sdk/provider@4.0.0-canary.17':
+    resolution: {integrity: sha512-m/rtalImeIt7deuQGkEHehqlIPOM8Sjb0cF1b1SJ3B6Re+WYgbUkOK9gY2SSro1YO8jYBRgTMPz2qYzPtIzAxQ==}
+    engines: {node: '>=22'}
 
   '@ai-sdk/react@3.0.170':
     resolution: {integrity: sha512-YUDn+mK0c8iUz14rCBf1A0zg6SV5b5aSVUz+azF1bdBd1SFXVI19dKYR+PQSpZY+0+z+zs252AAsacUqiO98Kw==}
@@ -8074,8 +8131,8 @@ packages:
       react: ^18.2.0
       react-dom: 18.2.0
 
-  '@trigger.dev/platform@1.0.27':
-    resolution: {integrity: sha512-gYfYDBnp2RJpgL4V2oOeqzV20flMZg+oGALhxHmmNJdJM01MW4aJSLsFFjoj+dikpL+4/3gocJcoyZk1G02UNg==}
+  '@trigger.dev/platform@1.0.28':
+    resolution: {integrity: sha512-UVb7FlGljThZH5FJtXv5BvQQTGot510OAMZR98UJ1TLFuTvTwKo+NITf0yimYiDW5YaP768p6v1nVERx8MwpNw==}
 
   '@types/acorn@4.0.6':
     resolution: {integrity: sha512-veQTnWP+1D/xbxVrPC3zHnCZRjSrKfhbMUlEA43iMZLu7EsnTtkJklIuwrCPbOi8YkvDQAiW05VQQFvvz9oieQ==}
@@ -8776,6 +8833,9 @@ packages:
     resolution: {integrity: sha512-BgYZfL2ADCXKOw2wJtkM3slhHotawWkgIRRxq4wEybnZQPjvAp71SPX35xepMykTw8gXlzWcWPTY31hlbnRsDA==}
     engines: {node: 18 >=18.20 || 20 || >=22}
 
+  '@workflow/serde@4.1.0':
+    resolution: {integrity: sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ==}
+
   '@xobotyi/scrollbar-width@1.9.5':
     resolution: {integrity: sha512-N8tkAACJx2ww8vFMneJmaAgmjAG1tnVBZJRLRcx061tmsLRZHSEZSLuGWnwPtunsSLvSqXQ2wfp7Mgqg1I+2dQ==}
 
@@ -8889,6 +8949,18 @@ packages:
   ai@6.0.3:
     resolution: {integrity: sha512-OOo+/C+sEyscoLnbY3w42vjQDICioVNyS+F+ogwq6O5RJL/vgWGuiLzFwuP7oHTeni/MkmX8tIge48GTdaV7QQ==}
     engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  ai@7.0.0-beta.60:
+    resolution: {integrity: sha512-grSKE/9kQtElLCnrhwriTLwXlV+5W8Ljco2KzVc5cY9egK1zwSwVyFQo3L3Al+WVxwvVT6fQjLyEdQpqJHLTrA==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  ai@7.0.0-canary.159:
+    resolution: {integrity: sha512-9z8OkZdrISDjS3bguQ/mCYsthmr7mNbB1hTa8cRg8aAp31r1HCxVFqmc+ZXTA0FqhGb8aW46UUcjUuJcwxg5Mw==}
+    engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
@@ -11040,6 +11112,10 @@ packages:
     resolution: {integrity: sha512-Vo1ab+QXPzZ4tCa8SwIHJFaSzy4R6SHf7BY79rFBDf0idraZWAkYrDjDj8uWaSm3S2TK+hJ7/t1CEmZ7jXw+pg==}
     engines: {node: '>=18.0.0'}
 
+  eventsource-parser@3.1.0:
+    resolution: {integrity: sha512-kJezFj9YFAMLeORyi7aCLxLbD5/qWMQnoMVlVPyHIll7lgRJCc3JVln9Vgl9nwQi0YkMnhdGTMNn7CkRRAptMg==}
+    engines: {node: '>=18.0.0'}
+
   eventsource@3.0.5:
     resolution: {integrity: sha512-LT/5J605bx5SNyE+ITBDiM3FxffBiq9un7Vx0EwMDM3vg8sWKx/tO2zC+LMqZ+smAM0F2hblaDZUVZF0te2pSw==}
     engines: {node: '>=18.0.0'}
@@ -11900,8 +11976,8 @@ packages:
     resolution: {integrity: sha512-YFMSV91JNBOSjw1cOfw2tup6hDP7mkz+2AUV7W1L1AM6ntgI75qC1ZeFpjPGMrWp+upmBRTX2fJWQ8c7jsUWpA==}
     engines: {node: '>=14'}
 
-  ioredis@5.3.2:
-    resolution: {integrity: sha512-1DKMMzlIHM02eBBVOFQ1+AolGjs6+xEcM4PDL7NqOS6szq7H9jSaEkIUH6/a5Hl241LzW6JLSiAbNvTQjUupUA==}
+  ioredis@5.6.1:
+    resolution: {integrity: sha512-UxC0Yv1Y4WRJiGQxQkP0hfdL0/5/6YvdfOOClRgJ0qppSarkhneSa6UvkMkms0AkdGimSH3Ikqm+6mkMmX7vGA==}
     engines: {node: '>=12.22.0'}
 
   ip-address@10.0.1:
@@ -15327,8 +15403,9 @@ packages:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
 
-  shell-quote@1.8.1:
-    resolution: {integrity: sha512-6j1W9l1iAs/4xYBI1SYOVZyFcCis9b4KCLQ8fgAGG07QvzaRLVVRQvAy85yNmmZSjYjg4MWh4gNvlPujU/5LpA==}
+  shell-quote@1.8.4:
+    resolution: {integrity: sha512-VsC6n6vz1ihYYyZZwX7YZSF5l5x36ca17OC+a69h94YqB7X6XLwf+5MOgynYir2SLFUbl8gIYvBo8K8RoNQ6bQ==}
+    engines: {node: '>= 0.4'}
 
   shiki@3.23.0:
     resolution: {integrity: sha512-55Dj73uq9ZXL5zyeRPzHQsK7Nbyt6Y10k5s7OjuFZGMhpp4r/rsLBH0o/0fstIzX1Lep9VxefWljK/SKCzygIA==}
@@ -17090,11 +17167,33 @@ snapshots:
       '@vercel/oidc': 3.1.0
       zod: 3.25.76
 
+  '@ai-sdk/gateway@4.0.0-beta.30(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.0-beta.5
+      '@ai-sdk/provider-utils': 5.0.0-beta.9(zod@3.25.76)
+      '@vercel/oidc': 3.2.0
+      zod: 3.25.76
+
+  '@ai-sdk/gateway@4.0.0-canary.93(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.0-canary.17
+      '@ai-sdk/provider-utils': 5.0.0-canary.44(zod@3.25.76)
+      '@vercel/oidc': 3.2.0
+      zod: 3.25.76
+
   '@ai-sdk/openai@3.0.41(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
       '@ai-sdk/provider-utils': 4.0.19(zod@3.25.76)
       zod: 3.25.76
+
+  '@ai-sdk/otel@1.0.0-beta.6(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.0-beta.5
+      '@opentelemetry/api': 1.9.0
+      ai: 7.0.0-beta.60(zod@3.25.76)
+    transitivePeerDependencies:
+      - zod
 
   '@ai-sdk/provider-utils@1.0.22(zod@3.25.76)':
     dependencies:
@@ -17126,6 +17225,21 @@ snapshots:
       eventsource-parser: 3.0.6
       zod: 3.25.76
 
+  '@ai-sdk/provider-utils@5.0.0-beta.9(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.0-beta.5
+      '@standard-schema/spec': 1.1.0
+      eventsource-parser: 3.0.6
+      zod: 3.25.76
+
+  '@ai-sdk/provider-utils@5.0.0-canary.44(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.0-canary.17
+      '@standard-schema/spec': 1.1.0
+      '@workflow/serde': 4.1.0
+      eventsource-parser: 3.1.0
+      zod: 3.25.76
+
   '@ai-sdk/provider@0.0.26':
     dependencies:
       json-schema: 0.4.0
@@ -17135,6 +17249,14 @@ snapshots:
       json-schema: 0.4.0
 
   '@ai-sdk/provider@3.0.8':
+    dependencies:
+      json-schema: 0.4.0
+
+  '@ai-sdk/provider@4.0.0-beta.5':
+    dependencies:
+      json-schema: 0.4.0
+
+  '@ai-sdk/provider@4.0.0-canary.17':
     dependencies:
       json-schema: 0.4.0
 
@@ -23545,7 +23667,7 @@ snapshots:
       '@npmcli/package-json': 4.0.1
       '@remix-run/node': 2.17.4(typescript@5.5.4)
       '@remix-run/react': 2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       '@remix-run/server-runtime': 2.17.4(typescript@5.5.4)
       '@types/mdx': 2.0.5
       '@vanilla-extract/integration': 6.2.1(@types/node@20.14.14)(lightningcss@1.29.2)(terser@5.46.1)
@@ -23660,7 +23782,7 @@ snapshots:
 
   '@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)':
     dependencies:
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       '@remix-run/server-runtime': 2.17.4(typescript@5.5.4)
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
@@ -23670,7 +23792,7 @@ snapshots:
     optionalDependencies:
       typescript: 5.5.4
 
-  '@remix-run/router@1.23.2': {}
+  '@remix-run/router@1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)': {}
 
   '@remix-run/serve@2.17.4(typescript@5.5.4)':
     dependencies:
@@ -23688,7 +23810,7 @@ snapshots:
 
   '@remix-run/server-runtime@2.17.4(typescript@5.5.4)':
     dependencies:
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       '@types/cookie': 0.6.0
       '@web3-storage/multipart-parser': 1.0.0
       cookie: 0.7.2
@@ -23702,7 +23824,7 @@ snapshots:
     dependencies:
       '@remix-run/node': 2.17.4(typescript@5.5.4)
       '@remix-run/react': 2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       react: 18.2.0
       react-router-dom: 6.30.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
     optionalDependencies:
@@ -23988,7 +24110,7 @@ snapshots:
       '@opentelemetry/semantic-conventions': 1.41.1
       '@remix-run/node': 2.17.4(typescript@5.5.4)
       '@remix-run/react': 2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       '@remix-run/server-runtime': 2.17.4(typescript@5.5.4)
       '@sentry/cli': 2.50.2(encoding@0.1.13)
       '@sentry/core': 9.46.0
@@ -25215,7 +25337,7 @@ snapshots:
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
 
-  '@trigger.dev/platform@1.0.27':
+  '@trigger.dev/platform@1.0.28':
     dependencies:
       zod: 3.23.8
 
@@ -26128,6 +26250,8 @@ snapshots:
 
   '@wolfy1339/lru-cache@11.0.2-patch.1': {}
 
+  '@workflow/serde@4.1.0': {}
+
   '@xobotyi/scrollbar-width@1.9.5': {}
 
   '@xtuc/ieee754@1.2.0': {}
@@ -26229,6 +26353,20 @@ snapshots:
       '@ai-sdk/provider': 3.0.0
       '@ai-sdk/provider-utils': 4.0.1(zod@3.25.76)
       '@opentelemetry/api': 1.9.0
+      zod: 3.25.76
+
+  ai@7.0.0-beta.60(zod@3.25.76):
+    dependencies:
+      '@ai-sdk/gateway': 4.0.0-beta.30(zod@3.25.76)
+      '@ai-sdk/provider': 4.0.0-beta.5
+      '@ai-sdk/provider-utils': 5.0.0-beta.9(zod@3.25.76)
+      zod: 3.25.76
+
+  ai@7.0.0-canary.159(zod@3.25.76):
+    dependencies:
+      '@ai-sdk/gateway': 4.0.0-canary.93(zod@3.25.76)
+      '@ai-sdk/provider': 4.0.0-canary.17
+      '@ai-sdk/provider-utils': 5.0.0-canary.44(zod@3.25.76)
       zod: 3.25.76
 
   ajv-formats@2.1.1(ajv@8.20.0):
@@ -28796,6 +28934,8 @@ snapshots:
 
   eventsource-parser@3.0.6: {}
 
+  eventsource-parser@3.1.0: {}
+
   eventsource@3.0.5:
     dependencies:
       eventsource-parser: 3.0.0
@@ -29915,11 +30055,11 @@ snapshots:
 
   intl-parse-accept-language@1.0.0: {}
 
-  ioredis@5.3.2:
+  ioredis@5.6.1:
     dependencies:
       '@ioredis/commands': 1.2.0
       cluster-key-slot: 1.1.2
-      debug: 4.3.7(supports-color@10.0.0)
+      debug: 4.4.3(supports-color@10.0.0)
       denque: 2.1.0
       lodash.defaults: 4.2.0
       lodash.isarguments: 3.1.0
@@ -31788,7 +31928,7 @@ snapshots:
       minimatch: 3.1.5
       pidtree: 0.3.1
       read-pkg: 3.0.0
-      shell-quote: 1.8.1
+      shell-quote: 1.8.4
       string.prototype.padend: 3.1.4
 
   npm-run-path@4.0.1:
@@ -33060,14 +33200,14 @@ snapshots:
 
   react-router-dom@6.30.3(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
     dependencies:
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
       react-router: 6.30.3(react@18.2.0)
 
   react-router@6.30.3(react@18.2.0):
     dependencies:
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       react: 18.2.0
 
   react-smooth@4.0.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0):
@@ -33455,13 +33595,13 @@ snapshots:
       '@remix-run/server-runtime': 2.17.4(typescript@5.5.4)
       react: 18.2.0
 
-  remix-utils@7.7.0(@remix-run/node@2.17.4(typescript@5.5.4))(@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/router@1.23.2)(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.2.0)(zod@3.25.76):
+  remix-utils@7.7.0(@remix-run/node@2.17.4(typescript@5.5.4))(@remix-run/react@2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4))(@remix-run/router@1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9))(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.2.0)(zod@3.25.76):
     dependencies:
       type-fest: 4.33.0
     optionalDependencies:
       '@remix-run/node': 2.17.4(typescript@5.5.4)
       '@remix-run/react': 2.17.4(react-dom@18.2.0(react@18.2.0))(react@18.2.0)(typescript@5.5.4)
-      '@remix-run/router': 1.23.2
+      '@remix-run/router': 1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9)
       crypto-js: 4.2.0
       intl-parse-accept-language: 1.0.0
       react: 18.2.0
@@ -33870,7 +34010,7 @@ snapshots:
 
   shebang-regex@3.0.0: {}
 
-  shell-quote@1.8.1: {}
+  shell-quote@1.8.4: {}
 
   shiki@3.23.0:
     dependencies:

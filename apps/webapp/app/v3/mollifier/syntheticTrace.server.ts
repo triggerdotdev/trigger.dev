@@ -44,11 +44,14 @@ export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
         const offset = millisecondsToNanoseconds(
           n.data.startTime.getTime() - treeRootStartTimeMs
         );
+        // Mirror RunPresenter: raw span events stay server-side, only
+        // timelineEvents ship to the client.
+        const { events: spanEvents, ...data } = n.data;
         return {
           ...n,
           data: {
-            ...n.data,
-            timelineEvents: createTimelineSpanEventsFromSpanEvents(n.data.events, false, treeRootStartTimeMs),
+            ...data,
+            timelineEvents: createTimelineSpanEventsFromSpanEvents(spanEvents, false, treeRootStartTimeMs),
             duration: n.data.isPartial ? null : n.data.duration,
             offset,
             isRoot: n.id === spanId,

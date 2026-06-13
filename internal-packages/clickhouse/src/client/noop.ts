@@ -95,6 +95,17 @@ export class NoopClient implements ClickhouseReader, ClickhouseWriter {
     };
   }
 
+  public queryFastStream<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
+    name: string;
+    query: string;
+    columns: string[];
+    settings?: ClickHouseSettings;
+  }): (params: TParams) => AsyncIterable<TOut> {
+    return async function* () {
+      // Noop: empty stream.
+    };
+  }
+
   public insert<TSchema extends z.ZodSchema<any>>(req: {
     name: string;
     table: string;

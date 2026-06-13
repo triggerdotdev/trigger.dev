@@ -13,13 +13,26 @@ import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
 | Dependency | Supported | Notes |
 |---|---|---|
 | `@trigger.dev/sdk` | `>=4.5.0-rc.0` | The chat agent surface lives in this SDK release. Install with `@trigger.dev/sdk@rc`. |
-| `ai` (Vercel AI SDK) | `^5.0.0 \|\| ^6.0.0` | Declared as a peer. v6 is what we develop against day to day. |
+| `ai` (Vercel AI SDK) | `^5.0.0 \|\| ^6.0.0 \|\| >=7.0.0-canary <8` | Declared as a peer. v6 is what we develop against day to day; v5 and v7 work too (v7 is in canary/beta upstream). Your installed `ai` major drives the chat surface's types. |
+| `@ai-sdk/otel` | `1.x` (v7 only) | Optional. AI SDK 7 moved model-call span emission out of `ai` core into this adapter. Install it alongside `ai@7` and the SDK auto-registers it, so your model calls show up as spans in the run trace. Not needed on v5/v6, where `ai` core emits spans. See [AI SDK 7 telemetry](#ai-sdk-7-telemetry) below. |
 | `@ai-sdk/react` | matches your `ai` major | Pulled in by `useChat`. The transport works with whichever React hook ships in the same major as your `ai` version. |
 | `react` | `^18.0 \|\| ^19.0` | Required only if you use `@trigger.dev/sdk/chat/react` (the frontend transport). Server-only consumers can skip React entirely. |
 | Node.js | `>=18.20.0` | The SDK's engine constraint. The chat agent itself works on any version the SDK supports. |
 | Provider packages (`@ai-sdk/openai`, `@ai-sdk/anthropic`, etc.) | versions that target your `ai` major | Pick a provider package whose `ai` peer matches yours. The chat agent doesn't depend on any specific provider — pass whatever model you want into `streamText`. |
 
 The `ai` peer is **optional** — server-only setups that don't call `streamText` (raw `task()` with chat primitives) can skip the AI SDK entirely.
+
+### AI SDK 7 telemetry
+
+On **AI SDK 7**, model-call spans are emitted by `@ai-sdk/otel` rather than `ai` core. Install it alongside `ai@7`:
+
+```bash
+npm install @ai-sdk/otel
+```
+
+The SDK registers it once per worker at chat agent boot, so the `experimental_telemetry` config wired up by `chat.toStreamTextOptions()` keeps producing spans in your run trace with no extra setup. On v5 and v6 nothing changes: `ai` core emits the spans and `@ai-sdk/otel` isn't needed.
+
+If you (or a library you import) already register `@ai-sdk/otel` yourself, the SDK detects the existing integration and skips its own registration, so you won't get duplicate spans. To opt out of the auto-registration entirely, set `TRIGGER_AI_SDK_OTEL_AUTOREGISTER=0`.
 
 ## ChatAgentOptions
 
@@ -58,7 +71,7 @@ Options for `chat.agent()`.
 | `exitAfterPreloadIdle`        | `boolean`                                                   | `false`                        | Exit run after preload idle timeout instead of suspending. See [exitAfterPreloadIdle](/ai-chat/lifecycle-hooks#exitafterpreloadidle) |
 | `oomMachine`                  | `MachinePresetName`                                         | —                              | Fallback machine when an attempt fails with OOM. Setting it enables a single OOM retry on the larger machine. See [OOM resilience](/ai-chat/patterns/oom-resilience) |
 
-Plus most standard [TaskOptions](/tasks/overview) — `queue`, `machine`, `maxDuration`, **`onWait`**, **`onResume`**, **`onComplete`**, and other lifecycle hooks. Generic `retry` is **not** exposed on `chat.agent`; use `oomMachine` for OOM recovery, or drop down to a raw [`task()`](/ai-chat/backend#raw-task-with-primitives) if you need richer retry semantics. Standard hooks use the same parameter shapes as on a normal `task()` (including `ctx`).
+Plus most standard [TaskOptions](/tasks/overview) — `queue`, `machine`, `maxDuration`, **`onWait`**, **`onResume`**, **`onComplete`**, and other lifecycle hooks. Generic `retry` is **not** exposed on `chat.agent`; use `oomMachine` for OOM recovery, or drop down to a raw [`task()`](/ai-chat/custom-agents) if you need richer retry semantics. Standard hooks use the same parameter shapes as on a normal `task()` (including `ctx`).
 
 ## Task context (`ctx`)
 
@@ -273,6 +286,8 @@ Passed to the `onTurnComplete` callback.
 | `continuation`       | `boolean`                         | Whether this run is continuing an existing chat      |
 | `usage`              | `LanguageModelUsage \| undefined` | Token usage for this turn                            |
 | `totalUsage`         | `LanguageModelUsage`              | Cumulative token usage across all turns              |
+| `finishReason`       | `FinishReason \| undefined`       | Why the LLM stopped (`"stop"`, `"tool-calls"`, `"error"`, …) |
+| `error`              | `unknown`                         | Set when the turn threw; `responseMessage` is then undefined or partial |
 
 ## BeforeTurnCompleteEvent
 
@@ -434,34 +449,40 @@ Return value of `usePendingMessages` hook. See [Pending Messages — Frontend](/
 
 Options for `chat.createSession()`.
 
-| Option                 | Type          | Default  | Description                         |
-| ---------------------- | ------------- | -------- | ----------------------------------- |
-| `signal`               | `AbortSignal` | required | Run-level cancel signal             |
-| `idleTimeoutInSeconds` | `number`      | `30`     | Seconds to stay idle between turns  |
-| `timeout`              | `string`      | `"1h"`   | Duration string for suspend timeout |
-| `maxTurns`             | `number`      | `100`    | Max turns before ending             |
+| Option                 | Type                        | Default     | Description                                                                                                  |
+| ---------------------- | --------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------ |
+| `signal`               | `AbortSignal`               | required    | Run-level cancel signal                                                                                      |
+| `idleTimeoutInSeconds` | `number`                    | `30`        | Seconds to stay idle between turns                                                                           |
+| `timeout`              | `string`                    | `"1h"`      | Duration string for suspend timeout                                                                          |
+| `maxTurns`             | `number`                    | `100`       | Max turns before ending                                                                                      |
+| `compaction`           | `ChatAgentCompactionOptions`| `undefined` | Automatic context [compaction](/ai-chat/compaction) — same options as `chat.agent({ compaction })`           |
+| `pendingMessages`      | `PendingMessagesOptions`    | `undefined` | Mid-execution [message injection](/ai-chat/pending-messages) — same options as `chat.agent({ pendingMessages })` |
 
 ## ChatTurn
 
 Each turn yielded by `chat.createSession()`.
 
-| Field          | Type             | Description                                   |
-| -------------- | ---------------- | --------------------------------------------- |
-| `number`       | `number`         | Turn number (0-indexed)                       |
-| `chatId`       | `string`         | Chat session ID                               |
-| `trigger`      | `string`         | What triggered this turn                      |
-| `clientData`   | `unknown`        | Client data from the transport                |
-| `messages`     | `ModelMessage[]` | Full accumulated model messages               |
-| `uiMessages`   | `UIMessage[]`    | Full accumulated UI messages                  |
-| `signal`       | `AbortSignal`    | Combined stop+cancel signal (fresh each turn) |
-| `stopped`      | `boolean`        | Whether the user stopped generation this turn |
-| `continuation` | `boolean`        | Whether this is a continuation run            |
+| Field               | Type                              | Description                                                |
+| ------------------- | --------------------------------- | ---------------------------------------------------------- |
+| `number`            | `number`                          | Turn number (0-indexed)                                    |
+| `chatId`            | `string`                          | Chat session ID                                            |
+| `trigger`           | `string`                          | What triggered this turn                                   |
+| `clientData`        | `unknown`                         | Client data from the transport                             |
+| `messages`          | `ModelMessage[]`                  | Full accumulated model messages                            |
+| `uiMessages`        | `UIMessage[]`                     | Full accumulated UI messages                               |
+| `signal`            | `AbortSignal`                     | Combined stop+cancel signal (fresh each turn)              |
+| `stopped`           | `boolean`                         | Whether the user stopped generation this turn              |
+| `continuation`      | `boolean`                         | Whether this is a continuation run                         |
+| `previousTurnUsage` | `LanguageModelUsage \| undefined` | Token usage from the previous turn (undefined on turn 0)   |
+| `totalUsage`        | `LanguageModelUsage`              | Cumulative token usage across all completed turns          |
 
-| Method                  | Returns                           | Description                                                  |
-| ----------------------- | --------------------------------- | ------------------------------------------------------------ |
-| `complete(source)`      | `Promise<UIMessage \| undefined>` | Pipe, capture, accumulate, cleanup, and signal turn-complete |
-| `done()`                | `Promise<void>`                   | Signal turn-complete (when you've piped manually)            |
-| `addResponse(response)` | `Promise<void>`                   | Add response to accumulator manually                         |
+| Method                   | Returns                           | Description                                                                                            |
+| ------------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `complete(source)`       | `Promise<UIMessage \| undefined>` | Pipe, capture, accumulate, cleanup, and signal turn-complete                                           |
+| `done()`                 | `Promise<void>`                   | Signal turn-complete (when you've piped manually)                                                      |
+| `addResponse(response)`  | `Promise<void>`                   | Add response to accumulator manually                                                                   |
+| `setMessages(uiMessages)`| `Promise<void>`                   | Replace the accumulated messages (continuation seeding, compaction)                                    |
+| `prepareStep()`          | `function \| undefined`           | `prepareStep` callback wiring compaction + injection — pass to `streamText` when not using `chat.toStreamTextOptions()` |
 
 ## chat namespace
 
@@ -748,10 +769,10 @@ See [Actions](/ai-chat/actions) for backend setup and [Sending actions](/ai-chat
 Eagerly trigger a run before the first message.
 
 ```ts
-transport.preload(chatId, { idleTimeoutInSeconds?: number }): Promise<void>
+transport.preload(chatId): Promise<void>
 ```
 
-No-op if a session already exists for this chatId. See [Preload](/ai-chat/fast-starts#preload) for full details.
+No-op if a session already exists for this chatId. The preload idle window is set by `preloadIdleTimeoutInSeconds` on the agent, not by this call. See [Preload](/ai-chat/fast-starts#preload) for full details.
 
 ## useTriggerChatTransport
 

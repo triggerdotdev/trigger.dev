@@ -287,11 +287,25 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               "POST",
               async () => {
                 const { req, reply, params, body } = ctx;
+                const runnerId = this.runnerIdFromRequest(req);
+
+                // A completion attempt invalidates any pending delayed snapshot
+                // regardless of outcome: the runner has finished executing, so the
+                // suspended state the snapshot was scheduled to capture no longer
+                // exists. Cancel BEFORE the async completion call - the timer
+                // wheel can tick during the await, so cancelling after it leaves
+                // a real window for a due snapshot to dispatch and pause a VM
+                // that has moved on. The runnerId guard keeps a stale duplicate
+                // runner's completion from cancelling a fresh runner's snapshot,
+                // and the runner can't schedule a new suspend until it receives
+                // this route's reply, so nothing legitimate can be cancelled here.
+                this.snapshotService?.cancel(params.runFriendlyId, runnerId);
+
                 const completeResponse = await this.workerClient.completeRunAttempt(
                   params.runFriendlyId,
                   params.snapshotFriendlyId,
                   body,
-                  this.runnerIdFromRequest(req)
+                  runnerId
                 );
 
                 if (!completeResponse.success) {
@@ -727,6 +741,19 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
 
       const runDisconnected = (friendlyId: string, reason: string) => {
         socketLogger.debug("runDisconnected", { ...getSocketMetadata() });
+
+        // The run is gone from this runner (crash, exit, or replaced by a new
+        // run), so a pending delayed snapshot for it is stale. Genuine
+        // waitpoint suspensions keep the socket connected, so this doesn't
+        // cancel a snapshot that's still wanted; the runnerId match guards
+        // against a stale duplicate runner cancelling a fresh runner's
+        // snapshot after the run was reassigned. Caveat: socket.data.runnerId
+        // is frozen at the websocket handshake, so after a same-supervisor
+        // restore (new runner id, socket not recreated) this guard refuses
+        // the cancel - a missed cancel, never a wrong one. The
+        // attempt.complete cancel uses the runner's current HTTP header id
+        // and is unaffected.
+        this.snapshotService?.cancel(friendlyId, socket.data.runnerId);
 
         this.runSockets.delete(friendlyId);
         this.emit("runDisconnected", { run: { friendlyId } });

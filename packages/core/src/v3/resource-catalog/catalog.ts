@@ -14,6 +14,7 @@ export interface ResourceCatalog {
   registerTaskMetadata(task: TaskMetadataWithFunctions): void;
   updateTaskMetadata(id: string, task: Partial<TaskMetadataWithFunctions>): void;
   listTaskManifests(): Array<TaskManifest>;
+  listTaskIdCollisions(): Array<{ id: string; filePaths: string[] }>;
   getTaskManifest(id: string): TaskManifest | undefined;
   getTask(id: string): TaskMetadataWithFunctions | undefined;
   taskExists(id: string): boolean;

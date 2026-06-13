@@ -37,7 +37,7 @@ Standard [task lifecycle hooks](/tasks/overview) such as `onWait`, `onResume`, `
 
 Fires **once per worker process picking up the chat** — for the initial run, for preloaded runs, AND for reactive continuation runs (post-cancel, crash, `endRun`, `requestUpgrade`, OOM retry). Does NOT fire when the same run resumes from snapshot via the idle-window suspend/resume path — use [`onChatResume`](#onchatsuspend--onchatresume) for that.
 
-This is the right place to initialize anything that lives in the JS process for the lifetime of the run: [`chat.local`](/ai-chat/chat-local) state, DB connections, sandboxes, in-memory caches. It runs before `onPreload`, `onChatStart`, the continuation-wait branch, and any turn — so anything you set up here is available everywhere downstream.
+This is the right place to initialize anything that lives in the JS process for the lifetime of the run: [`chat.local`](/ai-chat/chat-local) state, [DB connections](/database-connections), sandboxes, in-memory caches. It runs before `onPreload`, `onChatStart`, the continuation-wait branch, and any turn — so anything you set up here is available everywhere downstream.
 
 <Warning>
   If you initialize `chat.local` only in `onChatStart`, your `run()` will crash on continuation runs with `chat.local can only be modified after initialization`. `onChatStart` is once-per-chat by contract; `chat.local` is per-process and needs `onBoot`.
@@ -223,7 +223,7 @@ export const myChat = chat.agent({
 
 ## onValidateMessages
 
-Validate or transform incoming `UIMessage[]` before they are converted to model messages. Fires once per turn with the raw messages from the wire payload (after cleanup of aborted tool parts), **before** accumulation and `toModelMessages()`.
+Validate or transform incoming `UIMessage[]` before they are converted to model messages. Fires on turns that carry incoming messages, with the raw messages from the wire payload (after cleanup of aborted tool parts), **before** accumulation and `toModelMessages()`. Turns with no incoming messages — preload, close, and regenerate with nothing re-sent — skip it.
 
 Return the validated messages array. Throw to abort the turn with an error.
 
@@ -273,7 +273,7 @@ Use this when the backend should be the source of truth for message history: abu
 | `chatId`           | `string`                                              | Chat session ID                                           |
 | `turn`             | `number`                                              | Turn number (0-indexed)                                   |
 | `trigger`          | `"submit-message" \| "regenerate-message" \| "action"` | The trigger type for this turn                           |
-| `incomingMessages` | `UIMessage[]`                                         | Validated wire messages from the frontend — 0-or-1-length (empty for actions, regenerates, and continuations; one element for normal `submit-message` and tool-approval responses) |
+| `incomingMessages` | `UIMessage[]`                                         | Validated incoming messages for this turn. Usually 0-or-1 (empty for actions, regenerates, and continuations; one element for normal `submit-message` and tool-approval responses). On a [Head Start](/ai-chat/fast-starts#with-hydratemessages) first turn, this can contain the route handler's first-turn history. |
 | `previousMessages` | `UIMessage[]`                                         | Accumulated UI messages before this turn (`[]` on turn 0) |
 | `clientData`       | Typed by `clientDataSchema`                           | Custom data from the frontend                             |
 | `continuation`     | `boolean`                                             | Whether this run is continuing an existing chat           |
@@ -289,9 +289,12 @@ export const myChat = chat.agent({
     const stored = record?.messages ?? [];
 
     if (upsertIncomingMessage(stored, { trigger, incomingMessages })) {
-      await db.chat.update({
+      // Upsert, not update: on a head-start first turn no preload ran,
+      // so the row may not exist yet when this hook fires.
+      await db.chat.upsert({
         where: { id: chatId },
-        data: { messages: stored },
+        create: { id: chatId, messages: stored },
+        update: { messages: stored },
       });
     }
 
@@ -320,7 +323,7 @@ After the hook returns, the runtime overlays the wire's tool-state advances (`ou
 </Tip>
 
 <Note>
-  `incomingMessages` is **0-or-1-length** consistently. `submit-message` and tool-approval responses ship a single message; `regenerate-message`, continuations, and actions ship none. Patterns like [tool-result auditing](/ai-chat/patterns/tool-result-auditing) work the same regardless — iterate the array and the loop runs zero or one times.
+  `incomingMessages` is **usually 0-or-1-length**. `submit-message` and tool-approval responses ship a single message; `regenerate-message`, continuations, and actions ship none. The exception is a [Head Start](/ai-chat/fast-starts#with-hydratemessages) first turn, where it carries the route handler's first-turn history. Patterns like [tool-result auditing](/ai-chat/patterns/tool-result-auditing) work the same regardless — iterate the array rather than assuming a single element.
 </Note>
 
 ## onTurnStart

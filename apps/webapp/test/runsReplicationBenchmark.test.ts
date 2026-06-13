@@ -1,5 +1,5 @@
 import { ClickHouse } from "@internal/clickhouse";
-import { containerTest } from "@internal/testcontainers";
+import { replicationContainerTest } from "@internal/testcontainers";
 import { fork, type ChildProcess } from "node:child_process";
 import { performance, PerformanceObserver } from "node:perf_hooks";
 import { setTimeout } from "node:timers/promises";
@@ -501,7 +501,7 @@ function compareBenchmarks(baseline: BenchmarkResult, comparison: BenchmarkResul
 }
 
 describe("RunsReplicationService Benchmark", () => {
-  containerTest.skipIf(process.env.BENCHMARKS_ENABLED !== "1")(
+  replicationContainerTest.skipIf(process.env.BENCHMARKS_ENABLED !== "1")(
     "should benchmark error fingerprinting performance impact",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       // Enable replica identity for TaskRun table

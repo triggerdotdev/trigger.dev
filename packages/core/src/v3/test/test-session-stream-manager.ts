@@ -16,7 +16,10 @@ type OnceWaiter = {
   abortHandler?: () => void;
 };
 
-type Handler = (data: unknown) => void | Promise<void>;
+// Same contract as the production manager: a handler that synchronously
+// returns `true` CONSUMES the record (not buffered, not re-delivered on a
+// future `on()` attach). See `SessionStreamManager.on` in types.ts.
+type Handler = (data: unknown) => void | boolean | Promise<void>;
 
 function keyFor(sessionId: string, io: SessionChannelIO): string {
   return `${sessionId}:${io}`;
@@ -51,20 +54,32 @@ export class TestSessionStreamManager implements SessionStreamManager {
     }
     set.add(handler);
 
-    // Note: we intentionally do NOT replay buffered records into the
-    // newly-registered handler, and we do NOT drain the buffer. The
-    // buffer is owned by `once()` — registering a passive observer
-    // (`on`) must not consume records destined for a future `once`
-    // waiter. This matches production SSE semantics where handlers
-    // observe records as they arrive, not retroactively.
-    //
-    // Earlier versions drained the buffer here, which caused user
-    // messages buffered during the runtime's `runFn` boot phase to be
-    // silently swallowed by the `stopInput.on()` handler registered at
-    // ai.ts:4806 (the stop handler ignores `kind: "message"` chunks).
-    // The next `messagesInput.waitWithIdleTimeout` then waited 30s for
-    // a record that had already been "delivered" to a handler that
-    // didn't want it.
+    // Selective drain, matching the production manager: offer each
+    // buffered record to the new handler and remove ONLY the ones it
+    // consumed (returned `true`). Records the handler filtered out (other
+    // kinds) stay buffered for a future `once()`. This is the corrected
+    // form of two historical bugs: a blind drain swallowed boot-phase user
+    // messages into the stop facade (which ignores `kind: "message"`),
+    // and no-drain-at-all let production re-deliver already-processed
+    // messages into every newly attached per-turn handler.
+    const buffered = this.buffer.get(key);
+    if (buffered && buffered.length > 0) {
+      const kept: unknown[] = [];
+      for (const data of buffered) {
+        let consumed = false;
+        try {
+          consumed = handler(data) === true;
+        } catch {
+          // Never let a handler error break test state
+        }
+        if (!consumed) kept.push(data);
+      }
+      if (kept.length > 0) {
+        this.buffer.set(key, kept);
+      } else {
+        this.buffer.delete(key);
+      }
+    }
 
     return {
       off: () => {
@@ -212,20 +227,20 @@ export class TestSessionStreamManager implements SessionStreamManager {
   /**
    * Push a record onto the given channel.
    *
-   * Dispatch rules — similar to the production manager, but with a tweak
-   * that makes unit tests deterministic:
+   * Dispatch rules — same as the production manager:
    *
-   * 1. **Handlers always observe** (like production). A session-level `.on`
-   *    is a filter-observer — it fires every time a record arrives,
-   *    regardless of whether a `.once` waiter is also active.
-   * 2. **First waiter consumes** the record if present (like production).
-   * 3. **If no waiter, the record is buffered for the next `.once` call.**
-   *    Production discards records that only match handlers — but in
-   *    production the SSE tail introduces enough latency that the next
-   *    `.once` is usually registered before the next record arrives. Tests
-   *    send synchronously right after `turn-complete`, so without this
-   *    buffer the next `waitWithIdleTimeout` would race and lose the
-   *    message. The buffer is the only deviation from production semantics.
+   * 1. **A pending `.once` waiter consumes first.** Handlers still observe
+   *    a copy.
+   * 2. **Otherwise handlers observe.** A handler that synchronously
+   *    returns `true` consumes the record (kind-filtering facades do this
+   *    for the kinds they own) — it is NOT buffered.
+   * 3. **Records no one consumed are buffered** for the next `.once` call
+   *    or the next consuming `on()` attach.
+   *
+   * Handler promises are awaited before resolving so test code can rely
+   * on async handler work having settled by the time `__sendFromTest`
+   * resolves. Consumption is decided on the synchronous return value,
+   * exactly like production.
    */
   async __sendFromTest(
     sessionId: string,
@@ -234,27 +249,31 @@ export class TestSessionStreamManager implements SessionStreamManager {
   ): Promise<void> {
     const key = keyFor(sessionId, io);
 
-    const handlers = this.handlers.get(key);
-    if (handlers && handlers.size > 0) {
-      // Awaited so test code can rely on handlers having completed by the
-      // time `__sendFromTest` resolves. Wrapped per-handler so a
-      // throwing/rejecting handler doesn't poison Promise.all and break
-      // unrelated test state.
-      await Promise.all(
-        Array.from(handlers).map(async (h) => {
-          try {
-            await h(data);
-          } catch {
-            // Never let a handler error break test state
-          }
-        })
-      );
-    }
-
     const waiters = this.onceWaiters.get(key);
     if (waiters && waiters.length > 0) {
       const w = waiters.shift()!;
       if (waiters.length === 0) this.onceWaiters.delete(key);
+      if (w.timer) clearTimeout(w.timer);
+      if (w.signal && w.abortHandler) {
+        w.signal.removeEventListener("abort", w.abortHandler);
+      }
+      w.resolve({ ok: true, output: data });
+      await this.#invokeHandlers(key, data);
+      return;
+    }
+
+    const consumed = await this.#invokeHandlers(key, data);
+    if (consumed) return;
+
+    // Re-check waiters: handler invocation above is awaited (unlike the
+    // synchronous production dispatch), and the runtime commonly registers
+    // its next `once()` during that window — e.g. the turn loop reaching
+    // `waitWithIdleTimeout` while a handler settles. Without this second
+    // look the record would be buffered while the fresh waiter hangs.
+    const lateWaiters = this.onceWaiters.get(key);
+    if (lateWaiters && lateWaiters.length > 0) {
+      const w = lateWaiters.shift()!;
+      if (lateWaiters.length === 0) this.onceWaiters.delete(key);
       if (w.timer) clearTimeout(w.timer);
       if (w.signal && w.abortHandler) {
         w.signal.removeEventListener("abort", w.abortHandler);
@@ -269,6 +288,34 @@ export class TestSessionStreamManager implements SessionStreamManager {
       this.buffer.set(key, buffered);
     }
     buffered.push(data);
+  }
+
+  /**
+   * Invoke all handlers; resolves once any returned promises settle.
+   * Returns true when any handler synchronously consumed the record.
+   * Wrapped per-handler so a throwing/rejecting handler doesn't poison
+   * Promise.all and break unrelated test state.
+   */
+  async #invokeHandlers(key: string, data: unknown): Promise<boolean> {
+    const handlers = this.handlers.get(key);
+    if (!handlers || handlers.size === 0) return false;
+
+    let consumed = false;
+    await Promise.all(
+      Array.from(handlers).map(async (h) => {
+        try {
+          const result = h(data);
+          if (result === true) {
+            consumed = true;
+            return;
+          }
+          await result;
+        } catch {
+          // Never let a handler error break test state
+        }
+      })
+    );
+    return consumed;
   }
 
   /**

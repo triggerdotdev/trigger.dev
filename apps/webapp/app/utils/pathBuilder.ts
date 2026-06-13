@@ -3,6 +3,7 @@ import { z } from "zod";
 import { type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
+import { RUNS_BULK_INSPECTOR_OPEN_VALUE } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs._index/shouldRevalidateRunsList";
 import { objectToSearchParams } from "./searchParams";
 import { type WaitpointSearchParams } from "~/components/runs/v3/WaitpointTokenFilters";
 export type OrgForPath = Pick<Organization, "slug">;
@@ -404,7 +405,7 @@ export function v3CreateBulkActionPath(
   action?: "replay" | "cancel"
 ) {
   const searchParams = objectToSearchParams(filters) ?? new URLSearchParams();
-  searchParams.set("bulkInspector", "show");
+  searchParams.set("bulkInspector", RUNS_BULK_INSPECTOR_OPEN_VALUE);
   if (mode) {
     searchParams.set("mode", mode);
   }
@@ -503,6 +504,10 @@ export function v3NewSchedulePath(
   environment: EnvironmentForPath
 ) {
   return `${v3EnvironmentPath(organization, project, environment)}/schedules/new`;
+}
+
+export function v3SchedulesAddOnPath(organization: OrgForPath) {
+  return `/resources/orgs/${organizationParam(organization)}/schedules-addon`;
 }
 
 export function v3QueuesPath(

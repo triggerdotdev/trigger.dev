@@ -1,6 +1,6 @@
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Suspense, useCallback, useEffect, useMemo } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { TypedAwait, typeddefer, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { PlusIcon } from "@heroicons/react/20/solid";
@@ -13,6 +13,17 @@ import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Card } from "~/components/primitives/charts/Card";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTrigger,
+} from "~/components/primitives/Dialog";
+import { PurchaseSchedulesModal } from "~/components/schedules/PurchaseSchedulesModal";
+import { SchedulesUsageBar } from "~/components/schedules/SchedulesUsageBar";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
 import { Header2, Header3 } from "~/components/primitives/Headers";
@@ -63,11 +74,13 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { requireUser } from "~/services/session.server";
 import {
   EnvironmentParamSchema,
+  v3BillingPath,
   v3CreateBulkActionPath,
   v3EnvironmentPath,
   v3NewSchedulePath,
   v3RunsPath,
   v3SchedulePath,
+  v3SchedulesAddOnPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
 
@@ -132,7 +145,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const pageRaw = parseInt(url.searchParams.get("page") ?? "1", 10);
   const schedulesPage = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
 
-  const scheduleList = new ScheduleListPresenter()
+  // Resolved synchronously — the bottom usage bar reads `limits` and
+  // `canPurchaseSchedules` directly from it, and the limit-exceeded
+  // intercept on the "Create schedule" button needs the same.
+  const scheduleList = await new ScheduleListPresenter()
     .call({
       userId,
       projectId: project.id,
@@ -191,6 +207,19 @@ export default function Page() {
   );
   const closeCreateSchedule = useCallback(() => search.del("createSchedule"), [search]);
 
+  // Schedules add-on / quota state — drives the bottom usage bar and the
+  // "Create schedule" button's limit-exceeded intercept.
+  const plan = useCurrentPlan();
+  const limits = scheduleList?.limits;
+  const requiresUpgrade =
+    !!plan?.v3Subscription?.plan &&
+    !!limits &&
+    limits.used >= plan.v3Subscription.plan.limits.schedules.number &&
+    !plan.v3Subscription.plan.limits.schedules.canExceed;
+  const canUpgrade =
+    !!plan?.v3Subscription?.plan && !plan.v3Subscription.plan.limits.schedules.canExceed;
+  const isAtLimit = !!limits && limits.used >= limits.limit;
+
   return (
     <PageContainer>
       <NavBar>
@@ -207,20 +236,24 @@ export default function Page() {
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="scheduled-task-main" min="300px">
-            <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+            <div className="grid h-full grid-rows-[auto_1fr_auto] overflow-hidden">
               {/* Top bar — title on the left; actions + TimeFilter + pagination on the right.
                   h-10 matches the right-hand sidebar header height. */}
               <div className="flex h-10 items-center border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
                 <Header2>Runs</Header2>
                 <div className="ml-auto flex items-center gap-1.5">
-                  <Button
-                    variant="primary/small"
-                    LeadingIcon={PlusIcon}
-                    leadingIconClassName="-mx-1"
-                    onClick={openCreateSchedule}
-                  >
-                    Create schedule
-                  </Button>
+                  <CreateScheduleButton
+                    isAtLimit={isAtLimit}
+                    limits={limits}
+                    canUpgrade={canUpgrade}
+                    canPurchaseSchedules={scheduleList?.canPurchaseSchedules ?? false}
+                    extraSchedules={scheduleList?.extraSchedules ?? 0}
+                    maxScheduleQuota={scheduleList?.maxScheduleQuota ?? 0}
+                    planScheduleLimit={scheduleList?.planScheduleLimit ?? 0}
+                    schedulePricing={scheduleList?.schedulePricing ?? null}
+                    onCreate={openCreateSchedule}
+                    disabled={isCreatingSchedule}
+                  />
                   <TimeFilter defaultPeriod="7d" labelName="Runs" />
                   <LinkButton
                     variant="secondary/small"
@@ -298,6 +331,21 @@ export default function Page() {
                   </div>
                 </ResizablePanel>
               </ResizablePanelGroup>
+
+              {/* Schedules usage bar — pinned to the bottom of the main panel
+                  via the grid-rows-[auto_1fr_auto] above. */}
+              {scheduleList ? (
+                <SchedulesUsageBar
+                  limits={scheduleList.limits}
+                  requiresUpgrade={requiresUpgrade}
+                  canUpgrade={canUpgrade}
+                  canPurchaseSchedules={scheduleList.canPurchaseSchedules}
+                  extraSchedules={scheduleList.extraSchedules}
+                  maxScheduleQuota={scheduleList.maxScheduleQuota}
+                  planScheduleLimit={scheduleList.planScheduleLimit}
+                  schedulePricing={scheduleList.schedulePricing}
+                />
+              ) : null}
             </div>
           </ResizablePanel>
 
@@ -336,6 +384,91 @@ export default function Page() {
         onClose={closeCreateSchedule}
       />
     </PageContainer>
+  );
+}
+
+/**
+ * "Create schedule" button with a limit-exceeded intercept. When the project
+ * is already at its schedules limit, clicking opens a dialog explaining the
+ * limit and offering Purchase / Upgrade / Request, mirroring the behavior
+ * that lived on the (now-removed) standalone Schedules listing page.
+ */
+function CreateScheduleButton({
+  isAtLimit,
+  limits,
+  canUpgrade,
+  canPurchaseSchedules,
+  extraSchedules,
+  maxScheduleQuota,
+  planScheduleLimit,
+  schedulePricing,
+  onCreate,
+  disabled,
+}: {
+  isAtLimit: boolean;
+  limits: { used: number; limit: number } | undefined;
+  canUpgrade: boolean;
+  canPurchaseSchedules: boolean;
+  extraSchedules: number;
+  maxScheduleQuota: number;
+  planScheduleLimit: number;
+  schedulePricing: { stepSize: number; centsPerStep: number } | null;
+  onCreate: () => void;
+  disabled?: boolean;
+}) {
+  const organization = useOrganization();
+  const addOnPath = v3SchedulesAddOnPath(organization);
+
+  if (isAtLimit && limits) {
+    return (
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button
+            LeadingIcon={PlusIcon}
+            leadingIconClassName="-mx-1"
+            variant="primary/small"
+            disabled={disabled}
+          >
+            Create schedule
+          </Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>You've exceeded your limit</DialogHeader>
+          <DialogDescription>
+            You've used {limits.used}/{limits.limit} of your schedules.
+          </DialogDescription>
+          <DialogFooter>
+            {canPurchaseSchedules && schedulePricing ? (
+              <PurchaseSchedulesModal
+                actionPath={addOnPath}
+                schedulePricing={schedulePricing}
+                extraSchedules={extraSchedules}
+                usedSchedules={limits.used}
+                maxQuota={maxScheduleQuota}
+                planScheduleLimit={planScheduleLimit}
+                triggerButton={<Button variant="primary/small">Purchase more…</Button>}
+              />
+            ) : canUpgrade ? (
+              <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
+                Upgrade
+              </LinkButton>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Button
+      variant="primary/small"
+      LeadingIcon={PlusIcon}
+      leadingIconClassName="-mx-1"
+      onClick={onCreate}
+      disabled={disabled}
+    >
+      Create schedule
+    </Button>
   );
 }
 
@@ -489,21 +622,15 @@ function ScheduledTaskDetailSidebar({
         <div className="mt-4 flex flex-col gap-2">
           <Header3>Schedules</Header3>
           <div className="-mx-3 overflow-hidden border-y border-grid-dimmed">
-            <Suspense fallback={<TableLoading />}>
-              <TypedAwait resolve={scheduleList} errorElement={<TableLoading />}>
-                {(list) =>
-                  list ? (
-                    <SchedulesMiniTable
-                      schedules={list.schedules}
-                      variant="bright"
-                      onSelectSchedule={onSelectSchedule}
-                    />
-                  ) : (
-                    <TableLoading />
-                  )
-                }
-              </TypedAwait>
-            </Suspense>
+            {scheduleList ? (
+              <SchedulesMiniTable
+                schedules={scheduleList.schedules}
+                variant="bright"
+                onSelectSchedule={onSelectSchedule}
+              />
+            ) : (
+              <TableLoading />
+            )}
           </div>
         </div>
       </div>

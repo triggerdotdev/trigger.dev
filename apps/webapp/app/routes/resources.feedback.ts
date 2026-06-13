@@ -8,19 +8,55 @@ import { sendToPlain } from "~/utils/plain.server";
 
 let client: PlainClient | undefined;
 
-export const feedbackTypeLabel = {
-  bug: "Bug report",
-  feature: "Feature request",
-  help: "Help me out",
-  enterprise: "Enterprise enquiry",
-  feedback: "General feedback",
-  concurrency: "Increase my concurrency",
-  region: "Suggest a new region",
-};
+export const feedbackTypes = {
+  bug: {
+    label: "Bug report",
+    labelTypeId: "lt_01HB920BTPFS36KH1JT9C36YVY",
+    threadTitle: "Contact form: Bug report",
+  },
+  feature: {
+    label: "Feature request",
+    labelTypeId: "lt_01HB920BV8CJGYXVE15WWN6P07",
+    threadTitle: "Contact form: Feature request",
+  },
+  help: {
+    label: "Help me out",
+    labelTypeId: "lt_01KTVCAPZY5ZJ0SS4ACMXWYYT3",
+    threadTitle: "Contact form: Help me out",
+  },
+  enterprise: {
+    label: "Enterprise enquiry",
+    labelTypeId: "lt_01K7PF5EV2877EH4SZYB667FW4",
+    threadTitle: "Contact form: Enterprise enquiry",
+  },
+  feedback: {
+    label: "General feedback",
+    labelTypeId: "lt_01HB920BSRZ3RA1ETHBVEB5ST2",
+    threadTitle: "Contact form: General feedback",
+  },
+  concurrency: {
+    label: "Increase my concurrency",
+    labelTypeId: "lt_01KTVCCY2PDE5V6WV2PQ8N85K2",
+    threadTitle: "Contact form: Increase my concurrency",
+  },
+  region: {
+    label: "Suggest a new region",
+    labelTypeId: "lt_01KTVCDPYYBW6KS9H5V8MTQ0GG",
+    threadTitle: "Contact form: Suggest a new region",
+  },
+  hipaa: {
+    label: "HIPAA BAA request",
+    labelTypeId: "lt_01KS54WBRYKE6DY369KPK2SS4W",
+    threadTitle: "Contact form: HIPAA BAA request",
+  },
+} as const satisfies Record<
+  string,
+  { label: string; labelTypeId?: string; threadTitle: string }
+>;
 
-export type FeedbackType = keyof typeof feedbackTypeLabel;
+export type FeedbackType = keyof typeof feedbackTypes;
 
-const feedbackTypeLiterals = Object.keys(feedbackTypeLabel).map((key) => z.literal(key));
+const feedbackTypeLiterals = Object.keys(feedbackTypes).map((key) => z.literal(key));
 
 const feedbackType = z.union(
   [feedbackTypeLiterals[0], feedbackTypeLiterals[1], ...feedbackTypeLiterals.slice(2)],
@@ -46,16 +82,17 @@ export async function action({ request }: ActionFunctionArgs) {
     return json(submission);
   }
 
-  const title = feedbackTypeLabel[submission.value.feedbackType as FeedbackType];
+  const inquiry = feedbackTypes[submission.value.feedbackType as FeedbackType];
   try {
     await sendToPlain({
       userId: user.id,
       email: user.email,
       name: user.name ?? user.displayName ?? user.email,
-      title,
+      title: inquiry.threadTitle,
+      labelTypeIds: inquiry.labelTypeId ? [inquiry.labelTypeId] : undefined,
       components: [
         uiComponent.text({
-          text: `New ${title} reported by ${user.name} (${user.email})`,
+          text: `New ${inquiry.label} reported by ${user.name} (${user.email})`,
         }),
         uiComponent.divider({ spacingSize: "M" }),
         uiComponent.text({

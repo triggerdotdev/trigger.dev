@@ -45,3 +45,21 @@ async function main() {
 
 main().catch(console.error);
 ```
+
+### Multiple clients in one process
+
+If a single process needs to talk to more than one Trigger.dev project, environment, or preview branch, use `new TriggerClient({...})` for each target instead of `configure()`. Each instance owns its own auth and config, with no shared global state. See [Multiple SDK clients](/management/multiple-clients) for the full pattern.
+
+```ts
+import { TriggerClient } from "@trigger.dev/sdk";
+
+const prod = new TriggerClient({ accessToken: process.env.TRIGGER_PROD_KEY });
+const preview = new TriggerClient({
+  accessToken: process.env.TRIGGER_PREVIEW_KEY,
+  previewBranch: "signup-flow",
+});
+
+const payload = { to: "user@example.com" };
+await prod.tasks.trigger("send-email", payload);
+await preview.runs.list({ status: ["COMPLETED"] });
+```

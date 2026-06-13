@@ -144,6 +144,24 @@ export class StartedClickHouseContainer extends AbstractStartedContainer {
   }
 }
 
+/**
+ * Resets data between tests on a reused ClickHouse container by truncating every base table
+ * (MergeTree etc.) in the migrated database. Views/materialized views are skipped - their target
+ * tables are base tables and get truncated too, which clears MV state. Cheaper than dropping +
+ * re-migrating, and these migrations aren't version-tracked so they can't simply be re-run.
+ */
+export async function truncateClickhouseTables(client: ClickHouseClient, database = "trigger_dev") {
+  const result = await client.query({
+    query: `SELECT name FROM system.tables WHERE database = '${database}' AND engine NOT LIKE '%View%'`,
+    format: "JSONEachRow",
+  });
+  const tables = await result.json<{ name: string }>();
+
+  for (const { name } of tables) {
+    await client.command({ query: `TRUNCATE TABLE \`${database}\`.\`${name}\`` });
+  }
+}
+
 export async function runClickhouseMigrations(client: ClickHouseClient, migrationsPath: string) {
   // Get all the *.sql files in the migrations path
   const queries = await getAllClickhouseMigrationQueries(migrationsPath);

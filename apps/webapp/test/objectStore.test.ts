@@ -4,13 +4,21 @@ import { type PrismaClient } from "@trigger.dev/database";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { env } from "~/env.server";
 import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
+import { ServiceValidationError } from "~/v3/services/common.server";
+import { normalizeObjectStoreLogicalKeyPathname } from "~/v3/objectStoreClient.server";
 import {
+  assertPacketObjectStoreKeyUnderPrefix,
+  assertSafePacketRelativePath,
   downloadPacketFromObjectStore,
   formatStorageUri,
   generatePresignedRequest,
   generatePresignedUrl,
   hasObjectStoreClient,
+  INVALID_PACKET_STORAGE_PATH,
+  jsonPacketPresignFailure,
+  normalizePacketRelativePath,
   parseStorageUri,
+  resolveSafePacketRelativePath,
   resolveStoreProtocolForPacketPresign,
   uploadPacketToObjectStore,
 } from "~/v3/objectStore.server";
@@ -103,6 +111,182 @@ describe("Object Storage", () => {
     it("should format URI without protocol", () => {
       const result = formatStorageUri("run_abc123/payload.json");
       expect(result).toBe("run_abc123/payload.json");
+    });
+  });
+
+  describe("assertSafePacketRelativePath", () => {
+    const expectInvalidPath = (path: string) => {
+      try {
+        assertSafePacketRelativePath(path);
+        expect.unreachable("expected path validation to throw");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ServiceValidationError);
+        expect((error as ServiceValidationError).message).toBe(INVALID_PACKET_STORAGE_PATH);
+        expect((error as ServiceValidationError).status).toBe(400);
+      }
+    };
+
+    it.each([
+      "../file.json",
+      "../../other-env/file.json",
+      "foo/../bar.json",
+      "/absolute/path.json",
+      "foo//bar.json",
+      "foo\\bar.json",
+      ".",
+      "..",
+    ])("rejects unsafe path %s with 400 ServiceValidationError", (path) => {
+      expectInvalidPath(path);
+    });
+
+    it.each([
+      "run/%2e%2e/secret.json",
+      "%2e%2e/secret.json",
+      "%2E%2E/secret.json",
+      "run/%2e./payload.json",
+      "run/%2e%2e",
+      "foo/%2e/bar.json",
+      "foo/%2E/bar.json",
+    ])("rejects percent-encoded traversal %s", (path) => {
+      expectInvalidPath(path);
+    });
+
+    it("allows normal packet paths", () => {
+      expect(() => assertSafePacketRelativePath("run_123/payload.json")).not.toThrow();
+      expect(resolveSafePacketRelativePath("run_123/payload.json")).toBe("run_123/payload.json");
+    });
+
+    it("rejects traversal in protocol-prefixed storage URIs", () => {
+      expect(() => assertSafePacketRelativePath(parseStorageUri("s3://../evil.json").path)).toThrow(
+        ServiceValidationError
+      );
+    });
+  });
+
+  describe("normalizePacketRelativePath", () => {
+    it("collapses redundant segments in safe paths", () => {
+      expect(normalizePacketRelativePath("run/./payload.json")).toBe("run/payload.json");
+    });
+
+    it("collapses encoded parent segments when used without segment decoding (why decode is required)", () => {
+      expect(normalizePacketRelativePath("run/%2e%2e/secret.json")).toBe("secret.json");
+    });
+  });
+
+  describe("double-encoded traversal segments", () => {
+    it("does not decode %252e%252e to .. in URL pathname (stays literal; prefix check still holds)", () => {
+      const path = "%252e%252e/secret.json";
+      expect(() => assertSafePacketRelativePath(path)).not.toThrow();
+
+      const key = `packets/proj_ref/dev/${path}`;
+      const normalized = normalizeObjectStoreLogicalKeyPathname(key);
+      expect(normalized).toBe(`/packets/proj_ref/dev/${path}`);
+      expect(() => assertPacketObjectStoreKeyUnderPrefix(key, "packets/proj_ref/dev")).not.toThrow();
+    });
+  });
+
+  describe("assertPacketObjectStoreKeyUnderPrefix", () => {
+    const prefix = "packets/proj_ref/dev";
+
+    it("accepts keys under the packet prefix after URL normalization", () => {
+      expect(() =>
+        assertPacketObjectStoreKeyUnderPrefix(`${prefix}/run_123/payload.json`, prefix)
+      ).not.toThrow();
+    });
+
+    it("rejects keys whose normalized pathname escapes the packet prefix", () => {
+      const traversalKey = `${prefix}/%2e%2e/secret.json`;
+      const normalized = normalizeObjectStoreLogicalKeyPathname(traversalKey);
+      expect(normalized).toBe("/packets/proj_ref/secret.json");
+
+      expect(() => assertPacketObjectStoreKeyUnderPrefix(traversalKey, prefix)).toThrow(
+        ServiceValidationError
+      );
+    });
+
+    it("rejects env-level traversal via encoded parent segments", () => {
+      const traversalKey = `${prefix}/%2e%2e/secret.json`;
+      expect(normalizeObjectStoreLogicalKeyPathname(traversalKey)).toBe("/packets/proj_ref/secret.json");
+
+      expect(() => assertPacketObjectStoreKeyUnderPrefix(traversalKey, prefix)).toThrow(
+        ServiceValidationError
+      );
+    });
+  });
+
+  describe("normalizeObjectStoreLogicalKeyPathname (Aws4FetchClient behavior)", () => {
+    it("decodes %2e%2e segments into parent directory traversal", () => {
+      const key = "packets/proj_ref/dev/run/%2e%2e/secret.json";
+      expect(normalizeObjectStoreLogicalKeyPathname(key)).toBe(
+        "/packets/proj_ref/dev/secret.json"
+      );
+    });
+  });
+
+  describe("jsonPacketPresignFailure", () => {
+    it("returns 400 for invalid packet path validation failures", async () => {
+      const response = jsonPacketPresignFailure({
+        success: false,
+        error: INVALID_PACKET_STORAGE_PATH,
+        status: 400,
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: INVALID_PACKET_STORAGE_PATH });
+    });
+
+    it("returns 500 for other presign failures", async () => {
+      const response = jsonPacketPresignFailure({
+        success: false,
+        error: "Object store is not configured for protocol: default",
+      });
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({
+        error: "Failed to generate presigned URL: Object store is not configured for protocol: default",
+      });
+    });
+
+    it("prefixes unprefixed internal errors exactly once (no double prefix)", async () => {
+      const response = jsonPacketPresignFailure({
+        success: false,
+        error: "Access Denied",
+      });
+      const body = await response.json();
+      expect(body).toEqual({ error: "Failed to generate presigned URL: Access Denied" });
+      expect(body.error).not.toMatch(/Failed to generate presigned URL: Failed to generate/);
+    });
+  });
+
+  describe("generatePresignedUrl path validation", () => {
+    it.each([
+      "../file.json",
+      "../../other-env/file.json",
+      "foo/../bar.json",
+      "/absolute/path.json",
+      "run/%2e%2e/secret.json",
+      "%2e%2e/secret.json",
+      "%2E%2E/secret.json",
+    ])(
+      "returns 400 failure for unsafe path %s without calling object store",
+      async (filename) => {
+        const result = await generatePresignedUrl("proj_test", "dev", filename, "PUT");
+        expect(result.success).toBe(false);
+        if (result.success) throw new Error("expected presign to fail");
+        expect(result.error).toBe(INVALID_PACKET_STORAGE_PATH);
+        expect(result.status).toBe(400);
+      }
+    );
+
+    it("allows presign for valid packet paths when object store is not configured", async () => {
+      env.OBJECT_STORE_BASE_URL = undefined;
+      env.OBJECT_STORE_ACCESS_KEY_ID = undefined;
+      env.OBJECT_STORE_SECRET_ACCESS_KEY = undefined;
+      env.OBJECT_STORE_DEFAULT_PROTOCOL = undefined;
+
+      const result = await generatePresignedUrl("proj_test", "dev", "run_123/payload.json", "PUT");
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error("expected presign to fail");
+      expect(result.error).toContain("Object store is not configured");
+      expect(result.status).toBeUndefined();
     });
   });
 

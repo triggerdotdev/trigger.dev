@@ -1,5 +1,21 @@
 # @trigger.dev/redis-worker
 
+## 4.5.0-rc.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.6`
+
+## 4.5.0-rc.5
+
+### Patch Changes
+
+- Make mollifier buffer and drainer internals configurable. `MollifierBuffer` now accepts `ackGraceTtlSeconds`, `maxRetriesPerRequest`, `reconnectStepMs`, and `reconnectMaxMs` options, and `MollifierDrainer` accepts `maxBackoffMs` and `backoffFloorMs`. All default to their previous hardcoded values, so existing behaviour is unchanged. ([#3822](https://github.com/triggerdotdev/trigger.dev/pull/3822))
+- `MollifierDrainer` accepts a `drainBatchSize` option (default 1) that controls how many entries are popped per env per tick — in-flight handlers remain capped by the global `concurrency`. `MollifierBuffer` also gains `getDrainingCount()` / `listStaleDraining()`, backed by a new `mollifier:draining` ZSET maintained atomically with pop/ack/fail/requeue (observability-only). ([#3797](https://github.com/triggerdotdev/trigger.dev/pull/3797))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.5`
+
 ## 4.5.0-rc.4
 
 ### Minor Changes

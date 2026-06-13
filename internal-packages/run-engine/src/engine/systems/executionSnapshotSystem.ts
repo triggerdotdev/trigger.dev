@@ -10,6 +10,7 @@ import {
   TaskRunStatus,
   Waitpoint,
 } from "@trigger.dev/database";
+import { ExecutionSnapshotNotFoundError } from "../errors.js";
 import { HeartbeatTimeouts } from "../types.js";
 import { SystemResources } from "./systems.js";
 
@@ -273,12 +274,12 @@ export async function getExecutionSnapshotsSince(
 ): Promise<EnhancedExecutionSnapshot[]> {
   // Step 1: Find the createdAt of the sinceSnapshotId
   const sinceSnapshot = await prisma.taskRunExecutionSnapshot.findFirst({
-    where: { id: sinceSnapshotId },
+    where: { id: sinceSnapshotId, runId },
     select: { createdAt: true },
   });
 
   if (!sinceSnapshot) {
-    throw new Error(`No execution snapshot found for id ${sinceSnapshotId}`);
+    throw new ExecutionSnapshotNotFoundError(sinceSnapshotId);
   }
 
   // Step 2: Fetch snapshots WITHOUT waitpoints to avoid N×M data explosion

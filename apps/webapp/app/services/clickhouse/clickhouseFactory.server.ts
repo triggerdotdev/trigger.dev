@@ -2,6 +2,7 @@ import { ClickHouse } from "@internal/clickhouse";
 import { createHash } from "crypto";
 import { ClickhouseEventRepository } from "~/v3/eventRepository/clickhouseEventRepository.server";
 import { env } from "~/env.server";
+import { clampToEmergencySpanCap } from "~/v3/eventRepository/emergencySpanCap.server";
 import { singleton } from "~/utils/singleton";
 import type { OrganizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistry.server";
 import { type IEventRepository } from "~/v3/eventRepository/eventRepository.types";
@@ -211,6 +212,36 @@ function initializeRunEngineClickhouseClient(): ClickHouse {
   });
 }
 
+/** Realtime runs feed tag/batch id resolution (`REALTIME_BACKEND_NATIVE_CLICKHOUSE_URL`);
+ *  falls back to the default client if unset. */
+const defaultRealtimeClickhouseClient = singleton(
+  "realtimeClickhouseClient",
+  initializeRealtimeClickhouseClient
+);
+
+function initializeRealtimeClickhouseClient(): ClickHouse {
+  if (!env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_URL) {
+    return defaultClickhouseClient;
+  }
+
+  const url = new URL(env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_URL);
+  url.searchParams.delete("secure");
+
+  return new ClickHouse({
+    url: url.toString(),
+    name: "realtime-runs-clickhouse",
+    keepAlive: {
+      enabled: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_LOG_LEVEL,
+    compression: {
+      request: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+    },
+    maxOpenConnections: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+  });
+}
+
 /** Task events (`EVENTS_CLICKHOUSE_URL`); not exported — accessed via factory. */
 const defaultEventsClickhouseClient = singleton(
   "eventsClickhouseClient",
@@ -257,7 +288,8 @@ export type ClientType =
   | "logs"
   | "query"
   | "admin"
-  | "engine";
+  | "engine"
+  | "realtime";
 
 function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHouse {
   const parsed = new URL(url);
@@ -330,6 +362,20 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
         },
         maxOpenConnections: env.RUN_ENGINE_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
       });
+    case "realtime":
+      return new ClickHouse({
+        url: parsed.toString(),
+        name,
+        keepAlive: {
+          enabled: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+          idleSocketTtl: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+        },
+        logLevel: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_LOG_LEVEL,
+        compression: {
+          request: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+        },
+        maxOpenConnections: env.REALTIME_BACKEND_NATIVE_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+      });
     case "standard":
     case "query":
     case "admin":
@@ -398,6 +444,8 @@ export class ClickhouseFactory {
           return defaultAdminClickhouseClient;
         case "engine":
           return defaultRunEngineClickhouseClient;
+        case "realtime":
+          return defaultRealtimeClickhouseClient;
       }
     }
 
@@ -486,9 +534,12 @@ function buildEventRepository(store: string, clickhouse: ClickHouse): Clickhouse
         clickhouse,
         batchSize: env.EVENTS_CLICKHOUSE_BATCH_SIZE,
         flushInterval: env.EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS,
-        maximumTraceSummaryViewCount: env.EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT,
-        maximumTraceDetailedSummaryViewCount:
-          env.EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT,
+        maximumTraceSummaryViewCount: clampToEmergencySpanCap(
+          env.EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT
+        ),
+        maximumTraceDetailedSummaryViewCount: clampToEmergencySpanCap(
+          env.EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT
+        ),
         maximumLiveReloadingSetting: env.EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING,
         insertStrategy: env.EVENTS_CLICKHOUSE_INSERT_STRATEGY,
         waitForAsyncInsert: env.EVENTS_CLICKHOUSE_WAIT_FOR_ASYNC_INSERT === "1",
@@ -510,9 +561,12 @@ function buildEventRepository(store: string, clickhouse: ClickHouse): Clickhouse
         clickhouse: clickhouse,
         batchSize: env.EVENTS_CLICKHOUSE_BATCH_SIZE,
         flushInterval: env.EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS,
-        maximumTraceSummaryViewCount: env.EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT,
-        maximumTraceDetailedSummaryViewCount:
-          env.EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT,
+        maximumTraceSummaryViewCount: clampToEmergencySpanCap(
+          env.EVENTS_CLICKHOUSE_MAX_TRACE_SUMMARY_VIEW_COUNT
+        ),
+        maximumTraceDetailedSummaryViewCount: clampToEmergencySpanCap(
+          env.EVENTS_CLICKHOUSE_MAX_TRACE_DETAILED_SUMMARY_VIEW_COUNT
+        ),
         maximumLiveReloadingSetting: env.EVENTS_CLICKHOUSE_MAX_LIVE_RELOADING_SETTING,
         insertStrategy: env.EVENTS_CLICKHOUSE_INSERT_STRATEGY,
         waitForAsyncInsert: env.EVENTS_CLICKHOUSE_WAIT_FOR_ASYNC_INSERT === "1",

@@ -370,11 +370,25 @@ export const TaskRunV2QueryResult = z.object({
 
 export type TaskRunV2QueryResult = z.infer<typeof TaskRunV2QueryResult>;
 
+// Adds the created_at timestamp (ms since epoch) needed to build composite
+// keyset cursors over (created_at, run_id) — see runsRepository.server.ts.
+// Returned as a JSON number because the client sets
+// output_format_json_quote_64bit_integers: 0. Kept separate from
+// TaskRunV2QueryResult so run_id-only consumers (e.g. the pending-version
+// lookup) aren't forced to select a column they don't need.
+export const TaskRunListQueryResult = z.object({
+  run_id: z.string(),
+  created_at_ms: z.number().int(),
+});
+
+export type TaskRunListQueryResult = z.infer<typeof TaskRunListQueryResult>;
+
 export function getTaskRunsQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
   return ch.queryBuilder({
     name: "getTaskRuns",
-    baseQuery: "SELECT run_id FROM trigger_dev.task_runs_v2 FINAL",
-    schema: TaskRunV2QueryResult,
+    baseQuery:
+      "SELECT run_id, toUnixTimestamp64Milli(created_at) AS created_at_ms FROM trigger_dev.task_runs_v2 FINAL",
+    schema: TaskRunListQueryResult,
     settings,
   });
 }

@@ -197,6 +197,26 @@ export type VercelEnvironmentVariableValue = {
   isSecret: boolean;
 };
 
+/** Minimal shape of a shared (team-level) env var record from `GET /v1/env`. */
+const RawSharedEnvVarSchema = z
+  .object({
+    id: z.string().optional(),
+    key: z.string().optional(),
+    type: z.string().optional(),
+    target: z.union([z.array(z.string()), z.string()]).optional(),
+    value: z.string().optional(),
+    applyToAllCustomEnvironments: z.boolean().optional(),
+  })
+  .passthrough();
+
+type RawSharedEnvVar = z.infer<typeof RawSharedEnvVarSchema>;
+
+/** Page shape of `GET /v1/env` (shared env vars), validated at the boundary. */
+const SharedEnvPageSchema = z.object({
+  data: z.array(RawSharedEnvVarSchema).default([]),
+  pagination: z.object({ next: z.number().nullish() }).nullish(),
+});
+
 /** Narrowed Vercel project type – only id and name. */
 export type VercelProject = Pick<ResponseBodyProjects, "id" | "name">;
 
@@ -298,6 +318,17 @@ export class VercelIntegrationRepository {
   static getVercelClient(
     integration: OrganizationIntegration & { tokenReference: SecretReference }
   ): ResultAsync<Vercel, VercelApiError> {
+    return this.getVercelClientAndToken(integration).map(({ client }) => client);
+  }
+
+  /**
+   * Resolve both the Vercel SDK client and the raw bearer token. The raw token
+   * is needed to paginate shared env vars via `fetch`, since the SDK's
+   * `listSharedEnvVariable` exposes no `until` cursor param.
+   */
+  static getVercelClientAndToken(
+    integration: OrganizationIntegration & { tokenReference: SecretReference }
+  ): ResultAsync<{ client: Vercel; accessToken: string }, VercelApiError> {
     return ResultAsync.fromPromise(
       (async () => {
         const secretStore = getSecretStore(integration.tokenReference.provider);
@@ -308,7 +339,7 @@ export class VercelIntegrationRepository {
         if (!secret) {
           throw new Error("Failed to get Vercel access token");
         }
-        return new Vercel({ bearerToken: secret.accessToken });
+        return { client: new Vercel({ bearerToken: secret.accessToken }), accessToken: secret.accessToken };
       })(),
       (error) => toVercelApiError(error)
     );
@@ -558,8 +589,68 @@ export class VercelIntegrationRepository {
     };
   }
 
+  /**
+   * Fetch ALL shared (team-level) env var records, following pagination.
+   *
+   * Unlike the project env endpoint, the shared endpoint (`/v1/env`) DOES
+   * paginate (≈25/page) and the SDK's `listSharedEnvVariable` exposes no cursor
+   * param — so we walk pages via a raw fetch using `pagination.next` (a
+   * millisecond-timestamp cursor) until it is null. Shared vars are an edge
+   * case, so we load every page up front and return the full set.
+   */
+  static #fetchAllSharedEnvsRaw(params: {
+    accessToken: string;
+    teamId: string;
+    projectId?: string;
+  }): ResultAsync<RawSharedEnvVar[], VercelApiError> {
+    const { accessToken, teamId, projectId } = params;
+    return ResultAsync.fromPromise(
+      (async () => {
+        const all: RawSharedEnvVar[] = [];
+        let until: number | undefined = undefined;
+        const MAX_PAGES = 200; // safety cap (1000-var ceiling / ~25 per page)
+
+        for (let page = 0; page < MAX_PAGES; page++) {
+          const url = new URL("https://api.vercel.com/v1/env");
+          url.searchParams.set("teamId", teamId);
+          if (projectId) url.searchParams.set("projectId", projectId);
+          if (until !== undefined) url.searchParams.set("until", String(until));
+
+          const response = await fetch(url.toString(), {
+            method: "GET",
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+
+          if (!response.ok) {
+            const body = await response.text().catch(() => "");
+            const error = new Error(
+              `Failed to fetch Vercel shared environment variables: ${response.status} ${response.statusText} — ${body}`
+            ) as Error & { status?: number };
+            error.status = response.status;
+            throw error;
+          }
+
+          const json = SharedEnvPageSchema.parse(await response.json());
+          all.push(...json.data);
+
+          // `next` is a millisecond-timestamp cursor; treat 0/null/undefined as "done".
+          const next = json.pagination?.next;
+          if (!next) break;
+          until = next;
+
+          if (page === MAX_PAGES - 1) {
+            logger.warn("Vercel shared env var pagination hit max page cap", { teamId, projectId });
+          }
+        }
+
+        return all;
+      })(),
+      (error) => toVercelApiError(error)
+    );
+  }
+
   static getVercelSharedEnvironmentVariables(
-    client: Vercel,
+    accessToken: string,
     teamId: string,
     projectId?: string // Optional: filter by project
   ): ResultAsync<Array<{
@@ -569,19 +660,9 @@ export class VercelIntegrationRepository {
       isSecret: boolean;
       target: string[];
     }>, VercelApiError> {
-    return wrapVercelCallWithRecovery(
-      client.environment.listSharedEnvVariable({
-        teamId,
-        ...(projectId && { projectId }),
-      }),
-      VercelSchemas.listSharedEnvVariable,
-      "Failed to fetch Vercel shared environment variables",
-      { teamId, projectId },
-      toVercelApiError
-    ).map((response) => {
-      const envVars = response.data || [];
+    return this.#fetchAllSharedEnvsRaw({ accessToken, teamId, projectId }).map((envVars) => {
       return envVars
-        .filter((env): env is typeof env & { id: string; key: string } =>
+        .filter((env): env is RawSharedEnvVar & { id: string; key: string } =>
           typeof env.id === "string" && typeof env.key === "string"
         )
         .map((env) => {
@@ -599,6 +680,7 @@ export class VercelIntegrationRepository {
 
   static getVercelSharedEnvironmentVariableValues(
     client: Vercel,
+    accessToken: string,
     teamId: string,
     projectId?: string // Optional: filter by project
   ): ResultAsync<
@@ -612,17 +694,7 @@ export class VercelIntegrationRepository {
     }>,
     VercelApiError
   > {
-    return wrapVercelCallWithRecovery(
-      client.environment.listSharedEnvVariable({
-        teamId,
-        ...(projectId && { projectId }),
-      }),
-      VercelSchemas.listSharedEnvVariable,
-      "Failed to fetch Vercel shared environment variable values",
-      { teamId, projectId },
-      toVercelApiError
-    ).andThen((listResponse) => {
-      const envVars = listResponse.data || [];
+    return this.#fetchAllSharedEnvsRaw({ accessToken, teamId, projectId }).andThen((envVars) => {
       if (envVars.length === 0) {
         return okAsync([]);
       }
@@ -641,8 +713,8 @@ export class VercelIntegrationRepository {
 
               if (isSecret) return null;
 
-              const listValue = (env as any).value as string | undefined;
-              const applyToAllCustomEnvs = (env as any).applyToAllCustomEnvironments as boolean | undefined;
+              const listValue = env.value;
+              const applyToAllCustomEnvs = env.applyToAllCustomEnvironments;
 
               if (listValue) {
                 return {
@@ -1201,7 +1273,7 @@ export class VercelIntegrationRepository {
       syncEnvVarsMappingKeys: Object.keys(params.syncEnvVarsMapping),
     });
 
-    return this.getVercelClient(params.orgIntegration).andThen((client) =>
+    return this.getVercelClientAndToken(params.orgIntegration).andThen(({ client, accessToken }) =>
       ResultAsync.fromPromise(
         (async () => {
           const errors: string[] = [];
@@ -1267,6 +1339,7 @@ export class VercelIntegrationRepository {
           if (params.teamId) {
             const sharedResult = await this.getVercelSharedEnvironmentVariableValues(
               client,
+              accessToken,
               params.teamId,
               params.vercelProjectId
             );

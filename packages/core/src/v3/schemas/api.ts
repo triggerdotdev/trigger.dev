@@ -81,6 +81,23 @@ export const GetProjectEnvResponse = z.object({
 
 export type GetProjectEnvResponse = z.infer<typeof GetProjectEnvResponse>;
 
+export const ProjectEnvironment = z.object({
+  id: z.string(),
+  /// The slug used as the environment identifier in env var endpoints (e.g. "dev", "stg", "prod", "preview")
+  slug: z.string(),
+  type: z.enum(["DEVELOPMENT", "STAGING", "PREVIEW", "PRODUCTION"]),
+  /// Whether this is the branchable parent (preview); individual branches are not returned
+  isBranchableEnvironment: z.boolean(),
+  branchName: z.string().nullable(),
+  paused: z.boolean(),
+});
+
+export type ProjectEnvironment = z.infer<typeof ProjectEnvironment>;
+
+export const GetProjectEnvironmentsResponseBody = z.array(ProjectEnvironment);
+
+export type GetProjectEnvironmentsResponseBody = z.infer<typeof GetProjectEnvironmentsResponseBody>;
+
 // Zod schema for the response body type
 export const GetWorkerTaskResponse = z.object({
   id: z.string(),
@@ -2034,6 +2051,11 @@ export const ReadSessionStreamRecordsResponseBody = z.object({
       data: z.unknown(),
       id: z.string(),
       seqNum: z.number(),
+      // S2 record headers — present on Trigger control records (e.g.
+      // `trigger-control: turn-complete` plus sibling headers). The
+      // server has always serialized them; older schemas stripped them
+      // client-side, so treat as optional.
+      headers: z.array(z.tuple([z.string(), z.string()])).optional(),
     })
   ),
 });

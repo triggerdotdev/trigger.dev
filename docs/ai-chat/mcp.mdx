@@ -25,7 +25,7 @@ See the [MCP Tools Reference](/mcp-tools#agent-chat-tools) for full details on e
 
 <Steps>
   <Step title="List available agents">
-    Ask your AI assistant to list agents in your project. This calls `list_agents` which returns all tasks created with [`chat.agent()`](/ai-chat/backend#chat-agent) or [`chat.customAgent()`](/ai-chat/backend#raw-task-with-primitives).
+    Ask your AI assistant to list agents in your project. This calls `list_agents` which returns all tasks created with [`chat.agent()`](/ai-chat/backend#chat-agent) or [`chat.customAgent()`](/ai-chat/custom-agents).
   </Step>
   <Step title="Start a chat">
     Start a conversation with an agent using `start_agent_chat`. This triggers a run and optionally preloads the agent so it's ready to respond immediately.
@@ -78,7 +78,7 @@ If you haven't set up the MCP server yet, see the [MCP Server introduction](/mcp
 
 Agent chat tools require:
 - A running dev server (`trigger dev`) or a deployed worker
-- At least one agent defined with [`chat.agent()`](/ai-chat/backend#chat-agent) or [`chat.customAgent()`](/ai-chat/backend#raw-task-with-primitives)
+- At least one agent defined with [`chat.agent()`](/ai-chat/backend#chat-agent) or [`chat.customAgent()`](/ai-chat/custom-agents)
 
 ## How it works
 

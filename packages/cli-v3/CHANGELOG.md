@@ -1,5 +1,35 @@
 # trigger.dev
 
+## 4.5.0-rc.6
+
+### Patch Changes
+
+- `trigger init` now sets up your AI coding assistant as part of project setup: pick the MCP server, the agent skills, or both, then scaffold with the CLI or hand off to your assistant. Adds a new `getting-started` agent skill that teaches assistants how to bootstrap Trigger.dev (install the SDK, write `trigger.config.ts`, create a first task, run `trigger dev`), so the AI-driven setup path works end to end. It ships in the CLI alongside the existing skills, version-matched to your SDK. ([#3872](https://github.com/triggerdotdev/trigger.dev/pull/3872))
+- `dev` and `deploy` now fail with a clear error when two tasks are defined with the same id, including across different task types (e.g. a scheduled task and a regular task sharing an id). Previously the second definition silently overwrote the first, so one of the tasks would vanish with no warning. Task ids are detected as duplicates during indexing (naming each offending id and the files it was found in), and the same rule is enforced server-side when the background worker is registered. ([#3865](https://github.com/triggerdotdev/trigger.dev/pull/3865))
+- `trigger skills` installs Trigger.dev agent skills into your coding agent so it knows how to write tasks, schedules, realtime, and chat.agent code. The skills ship with the CLI and are copied into each tool's native skills directory (Claude Code, Cursor, GitHub Copilot, and Codex / AGENTS.md), and `trigger dev` offers to install them on first run. ([#3868](https://github.com/triggerdotdev/trigger.dev/pull/3868))
+
+  ```bash
+  trigger skills --target claude-code
+  ```
+
+  Replaces the previous `install-rules` command, which stays as an alias.
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.6`
+  - `@trigger.dev/build@4.5.0-rc.6`
+  - `@trigger.dev/schema-to-json@4.5.0-rc.6`
+
+## 4.5.0-rc.5
+
+### Patch Changes
+
+- The MCP server no longer tells the AI agent to wait for a run to complete after every `trigger_task` call. Waiting is now opt-in: the agent only waits when you ask it to (for example "trigger and then wait for it to finish"). This avoids burning tokens polling runs you didn't need to block on and keeps responses clearer. ([#3838](https://github.com/triggerdotdev/trigger.dev/pull/3838))
+- Update the bundled OpenTelemetry packages to their latest releases (`@opentelemetry/sdk-node` 0.218.0, `@opentelemetry/core` 2.7.1, `@opentelemetry/host-metrics` 0.38.3). ([#3810](https://github.com/triggerdotdev/trigger.dev/pull/3810))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.5`
+  - `@trigger.dev/build@4.5.0-rc.5`
+  - `@trigger.dev/schema-to-json@4.5.0-rc.5`
+
 ## 4.5.0-rc.4
 
 ### Patch Changes

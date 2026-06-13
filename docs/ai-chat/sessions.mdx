@@ -1,16 +1,80 @@
 ---
 title: "Sessions"
 sidebarTitle: "Sessions"
-description: "The durable, task-bound, bi-directional I/O primitive that backs chat.agent — sessions.list / open / start / close plus the SessionHandle (in/out) API."
+description: "A Session is a pair of durable streams — input carries your users' messages to the agent, output carries everything the agent produces back — plus orchestration of the runs that process them."
 ---
 
 import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
 
 <RcBanner />
 
-A **Session** is a durable, task-bound, bi-directional I/O channel pair. It outlives any single run: a Session row is keyed on a stable `externalId` (e.g. `chatId`), holds the conversation's identity across run boundaries, and exposes two realtime streams — `.in` (clients → task) and `.out` (task → clients).
+**A Session is a pair of durable streams.** The input stream (`.in`) carries incoming user messages to your task. The output stream (`.out`) carries everything the agent produces back to your clients: AI generation parts (text, reasoning, tool calls) and any custom data parts you write.
+
+Sessions also **orchestrate the runs that process those streams**. A Session is keyed on your stable id (`externalId` — for chat, the `chatId`) and owns its current run: when a run suspends, idles out, or hands off to a new version, the Session starts or swaps to a fresh run and the streams carry on. Clients keep sending and reading against the same id; they never know a run changed underneath.
+
+```mermaid
+flowchart LR
+  C[Browser / backend clients] -- "user messages" --> IN([Session .in])
+  IN --> R["current run<br/>(runs come and go)"]
+  R -- "text, reasoning, tool calls,<br/>data parts" --> OUT([Session .out])
+  OUT --> C
+```
 
 `chat.agent` is built on Sessions. You can also use them directly for any pattern that needs durable bi-directional streaming across runs: long-lived agent inboxes, multi-step approval flows, server-to-server pipelines that survive worker restarts.
+
+## A minimal example
+
+A task that echoes whatever lands on its input stream, and a backend that starts the session, sends a message, and reads the reply:
+
+```ts trigger/inbox.ts
+import { task, sessions } from "@trigger.dev/sdk";
+
+export const inboxAgent = task({
+  id: "inbox-agent",
+  run: async (payload: { sessionId: string }) => {
+    const session = sessions.open(payload.sessionId);
+
+    while (true) {
+      // Suspends the run (no compute billed) until a record arrives.
+      const next = await session.in.wait<{ text: string }>({ timeout: "1h" });
+      if (!next.ok) return;
+      await session.out.append({ type: "reply", text: `echo: ${next.output.text}` });
+    }
+  },
+});
+```
+
+```ts Your backend
+import { sessions } from "@trigger.dev/sdk";
+
+// Atomically create the session AND trigger its first run.
+await sessions.start({
+  type: "inbox",
+  externalId: userId,
+  taskIdentifier: "inbox-agent",
+  triggerConfig: { basePayload: { sessionId: userId } },
+});
+
+const session = sessions.open(userId);
+await session.in.send({ text: "hello" });
+
+const stream = await session.out.read({ signal: AbortSignal.timeout(30_000) });
+for await (const chunk of stream) {
+  console.log(chunk); // { type: "reply", text: "echo: hello" }
+}
+```
+
+The run can suspend, crash, or be replaced between the `send` and the `read` — the streams are durable, so nothing is lost and the client code doesn't change.
+
+## Sessions and runs
+
+One Session spans many runs over its lifetime. The Session row tracks `currentRunId`; the runs do the work:
+
+- **First run**: created atomically by `sessions.start` (no gap where the session exists but nothing is listening).
+- **Idle suspend**: a run blocked on `in.wait` suspends and frees compute. A new record on `.in` wakes it.
+- **Continuation**: when a run ends (idle timeout, `chat.endRun`, a crash, a version upgrade), the next incoming record triggers a fresh run against the same Session. The new run picks up the streams where the old one left off.
+
+This is what makes a Session the durable identity for a conversation: runs are an execution detail, the Session (and its `externalId`) is what your clients address. See [How it works](/ai-chat/how-it-works) for how `chat.agent` drives this loop.
 
 ## When to reach for Sessions directly
 

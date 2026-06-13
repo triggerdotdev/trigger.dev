@@ -261,12 +261,16 @@ export class RunPresenter {
             linkedRunIdBySpanId[n.id] = n.runId;
           }
 
+          // Raw span events are only needed server-side (to derive timelineEvents);
+          // keep them out of the serialized loader payload.
+          const { events: spanEvents, ...data } = n.data;
+
           return {
             ...n,
             data: {
-              ...n.data,
+              ...data,
               timelineEvents: createTimelineSpanEventsFromSpanEvents(
-                n.data.events,
+                spanEvents,
                 user?.admin ?? false,
                 treeRootStartTimeMs
               ),

@@ -84,6 +84,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const service = new StreamBatchItemsService();
     const result = await service.call(authResult.environment, batchId, itemsIterator, {
       maxItemBytes: env.STREAMING_BATCH_ITEM_MAXIMUM_SIZE,
+      concurrency: env.STREAMING_BATCH_INGEST_CONCURRENCY,
     });
 
     return json(result, { status: 200 });

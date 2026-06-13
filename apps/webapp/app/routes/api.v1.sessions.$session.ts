@@ -74,6 +74,24 @@ const { action } = createActionApiRoute(
       return json({ error: "Session not found" }, { status: 404 });
     }
 
+    // The externalId is the canonical addressing key once set: the S2
+    // stream names, the waitpoint cache key, and the minted session PAT
+    // scope all derive from it. Re-keying a session would orphan its
+    // streams (the chat goes silent) and invalidate the PAT's scope, so
+    // reject any change. Same-value PATCHes stay idempotent.
+    if (
+      body.externalId !== undefined &&
+      body.externalId !== existing.externalId
+    ) {
+      return json(
+        {
+          error:
+            "externalId cannot be changed after creation; close this session and create a new one with the desired externalId",
+        },
+        { status: 422 }
+      );
+    }
+
     try {
       const updated = await prisma.session.update({
         where: { id: existing.id },

@@ -591,7 +591,7 @@ export class EnvironmentVariablesRepository implements Repository {
     }
 
     const secretStore = getSecretStore("DATABASE", {
-      prismaClient: this.prismaClient,
+      prismaClient: this.replicaClient,
     });
 
     const storeKeys = Array.from(uniqueItems.values()).map((item) =>

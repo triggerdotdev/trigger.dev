@@ -32,7 +32,7 @@ That's the entire opt-in. With `oomMachine` set, the agent gets:
 - **`retry.outOfMemory.machine: oomMachine`** — the fresh attempt boots on the larger machine.
 - **`session.in` cursor recovery** — the new attempt skips records belonging to turns that already completed on the prior attempt and only re-runs the OOM'd turn.
 
-`chat.agent` does not expose generic `retry` options. OOM recovery is the only retry path because retrying an LLM-driven loop on non-OOM errors tends to be expensive and side-effecting. Drop down to a [raw `task()` with chat primitives](/ai-chat/backend#raw-task-with-primitives) if you need richer retry semantics.
+`chat.agent` does not expose generic `retry` options. OOM recovery is the only retry path because retrying an LLM-driven loop on non-OOM errors tends to be expensive and side-effecting. Drop down to a [raw `task()` with chat primitives](/ai-chat/custom-agents) if you need richer retry semantics.
 
 ## How recovery works
 
@@ -109,7 +109,7 @@ export const sendEmail = tool({
 ## Limitations
 
 - **One OOM retry per run.** `chat.agent` sets `maxAttempts: 2`. If attempt 2 also OOMs, the run fails. Use a sufficiently large `oomMachine` to avoid this.
-- **Single fallback tier.** Only one `oomMachine`. There's no "tiered retry" (small → medium → large). If you need that, drop down to a [raw `task()` with chat primitives](/ai-chat/backend#raw-task-with-primitives) and configure `retry` directly.
+- **Single fallback tier.** Only one `oomMachine`. There's no "tiered retry" (small → medium → large). If you need that, drop down to a [raw `task()` with chat primitives](/ai-chat/custom-agents) and configure `retry` directly.
 - **Non-OOM errors don't retry.** Schema errors, model-call rejections, tool throws, etc. fail the run as before. Out-of-memory is the only retry trigger.
 - **Tools mid-execution are not checkpointed.** A partially-run tool re-runs from scratch on the new attempt. Make them idempotent.
 

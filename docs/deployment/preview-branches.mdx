@@ -66,6 +66,31 @@ async function triggerTask() {
 }
 ```
 
+### Triggering across multiple branches from one process
+
+If a single process needs to trigger runs in several preview branches (or a mix of prod and preview), use `new TriggerClient({...})` for each target instead of mutating global config. Each instance owns its own auth and branch.
+
+```ts
+import { TriggerClient } from "@trigger.dev/sdk";
+
+const signupFlow = new TriggerClient({
+  accessToken: process.env.TRIGGER_PREVIEW_KEY,
+  previewBranch: "signup-flow",
+});
+const checkout = new TriggerClient({
+  accessToken: process.env.TRIGGER_PREVIEW_KEY,
+  previewBranch: "checkout-redesign",
+});
+
+const payload = { to: "user@example.com" };
+await Promise.all([
+  signupFlow.tasks.trigger("send-email", payload),
+  checkout.tasks.trigger("send-email", payload),
+]);
+```
+
+See [Multiple SDK clients](/management/multiple-clients) for the full pattern.
+
 ## Preview branches with GitHub Actions (recommended)
 
 This GitHub Action will:

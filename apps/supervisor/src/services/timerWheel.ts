@@ -121,6 +121,12 @@ export class TimerWheel<T> {
     return true;
   }
 
+  /** Look up a pending item without removing it. */
+  peek(key: string): TimerWheelItem<T> | undefined {
+    const entry = this.entries.get(key);
+    return entry ? { key, data: entry.data } : undefined;
+  }
+
   /** Number of pending items in the wheel. */
   get size(): number {
     return this.entries.size;

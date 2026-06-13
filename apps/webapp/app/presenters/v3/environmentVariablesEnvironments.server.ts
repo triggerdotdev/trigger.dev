@@ -1,5 +1,5 @@
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { type PrismaClient } from "~/db.server";
+import { type PrismaReplicaClient } from "~/db.server";
 import { filterOrphanedEnvironments, sortEnvironments } from "~/utils/environmentSort";
 
 export type EnvironmentVariablesEnvironment = {
@@ -15,7 +15,7 @@ export type EnvironmentVariablesEnvironmentsResult = {
 };
 
 export async function loadEnvironmentVariablesEnvironments(
-  prismaClient: PrismaClient,
+  prismaClient: PrismaReplicaClient,
   { userId, projectId }: { userId: string; projectId: string },
   options?: { skipProjectAccessCheck?: boolean }
 ): Promise<EnvironmentVariablesEnvironmentsResult> {

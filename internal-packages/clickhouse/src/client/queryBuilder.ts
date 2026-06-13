@@ -255,6 +255,24 @@ export class ClickhouseQueryFastBuilder<TOutput extends Record<string, any>> {
     return queryFunction(params);
   }
 
+  /**
+   * Like {@link execute} but streams rows instead of buffering them into an
+   * array. Returns an async iterable so the whole result set is never resident
+   * in memory at once.
+   */
+  executeStream(): AsyncIterable<TOutput> {
+    const { query, params } = this.build();
+
+    const streamFunction = this.reader.queryFastStream<TOutput, Record<string, any>>({
+      name: this.name,
+      query,
+      columns: this.columns,
+      settings: this.settings,
+    });
+
+    return streamFunction(params);
+  }
+
   build(): { query: string; params: QueryParams } {
     let query = `SELECT ${this.buildColumns().join(", ")} FROM ${this.table}`;
     if (this.prewhereClauses.length > 0) {

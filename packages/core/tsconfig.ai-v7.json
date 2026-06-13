@@ -1,0 +1,18 @@
+{
+  // Typechecks core's src against AI SDK 7 (the `ai-v7` aliased devDep). Core's
+  // `ai` surface is small (ChatSnapshotV1's UIMessage constraint, ToolTaskParameters'
+  // Schema), but it ships in the public type surface, so it gets the same v7 gate
+  // as the SDK. See packages/trigger-sdk/tsconfig.ai-v7.json for the `paths`
+  // file-direct rationale.
+  "extends": "./tsconfig.src.json",
+  "compilerOptions": {
+    // noEmit-only gate: disable composite/incremental so this pass never writes or
+    // reads a .tsbuildinfo and can't replay stale module resolution across runs.
+    "composite": false,
+    "incremental": false,
+    "baseUrl": ".",
+    "paths": {
+      "ai": ["./node_modules/ai-v7/dist/index.d.ts"]
+    }
+  }
+}

@@ -11,6 +11,7 @@ name: triggerdotdev-docker
 volumes:
   database-data:
   database-data-alt:
+  database-replica-data:
   redis-data:
   minio-data:
   clickhouse-data:
@@ -44,6 +45,56 @@ services:
       - wal_level=logical
       - -c
       - shared_preload_libraries=pg_partman_bgw
+      # The webapp opens ~50 pooled connections per instance and Electric another
+      # ~40, so the default 100 is exhausted by one webapp + Electric alone. Raise
+      # it so multiple instances / load tests have headroom.
+      - -c
+      - max_connections=500
+
+  # Opt-in streaming read replica with configurable apply lag — a dial-a-lag rig for
+  # testing replica-race behavior (e.g. the realtime read-your-writes gate) locally.
+  # Start with: COMPOSE_PROFILES=replica pnpm run docker
+  # One-time primary prep (allows replication connections; additive, survives restarts):
+  #   docker exec database bash -c 'grep -q "host replication" "$PGDATA/pg_hba.conf" || echo "host replication all all md5" >> "$PGDATA/pg_hba.conf"'
+  #   docker exec database psql -U postgres -c "SELECT pg_reload_conf()"
+  # Then point the webapp at it: DATABASE_READ_REPLICA_URL=postgresql://postgres:postgres@localhost:5433/postgres
+  # Tune the lag via REPLICA_APPLY_DELAY (default 20ms ~ realistic prod lag; crank to 150ms/2s to
+  # shake out replica races). Wipe database-replica-data to re-init.
+  database-replica:
+    container_name: ${CONTAINER_PREFIX:-}database-replica
+    profiles: ["replica"]
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    restart: always
+    depends_on:
+      - database
+    volumes:
+      - ${DB_REPLICA_VOLUME:-database-replica-data}:/var/lib/postgresql/data/
+    environment:
+      PGPASSWORD: postgres
+      REPLICA_APPLY_DELAY: ${REPLICA_APPLY_DELAY:-20ms}
+    networks:
+      - app_network
+    ports:
+      - "${POSTGRES_REPLICA_HOST_PORT:-5433}:5432"
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        set -e
+        if [ ! -s "$$PGDATA/PG_VERSION" ]; then
+          echo "initializing streaming replica from 'database'..."
+          mkdir -p "$$PGDATA"
+          chown postgres:postgres "$$PGDATA"
+          chmod 0700 "$$PGDATA"
+          until gosu postgres pg_basebackup -h database -U postgres -D "$$PGDATA" -Fp -Xs -R; do
+            echo "primary not ready for replication (did you run the one-time pg_hba prep above?); retrying..."
+            rm -rf "$$PGDATA"/* 2>/dev/null || true
+            sleep 2
+          done
+        fi
+        # max_connections must be >= the primary's (hot-standby requirement).
+        exec docker-entrypoint.sh postgres -c hot_standby=on -c max_connections=500 -c "recovery_min_apply_delay=$$REPLICA_APPLY_DELAY"
 
   redis:
     container_name: ${CONTAINER_PREFIX:-}redis

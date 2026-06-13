@@ -1,0 +1,88 @@
+---
+title: Multiple SDK clients
+sidebarTitle: Multiple SDK clients
+description: Use TriggerClient to talk to multiple Trigger.dev projects, environments, or preview branches from a single process.
+---
+
+The global `configure()` API binds the SDK to one set of credentials per process. When a single process needs to talk to more than one Trigger.dev project, environment, or preview branch, use `new TriggerClient({...})` for each target instead. Each instance owns its own auth, baseURL, and preview branch, and concurrent calls across instances stay isolated.
+
+```ts
+import { TriggerClient } from "@trigger.dev/sdk";
+
+const prod = new TriggerClient({ accessToken: process.env.TRIGGER_PROD_KEY });
+const preview = new TriggerClient({
+  accessToken: process.env.TRIGGER_PREVIEW_KEY,
+  previewBranch: "signup-flow",
+});
+
+const payload = { to: "user@example.com" };
+await prod.tasks.trigger("send-email", payload);
+await preview.runs.list({ status: ["COMPLETED"] });
+```
+
+## Configuration
+
+`TriggerClient` accepts the same fields as `configure()`:
+
+| Field           | Description                                                                                              | Env-var fallback                                  |
+| --------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `accessToken`   | Secret key (`tr_dev_*`, `tr_prod_*`, `tr_preview_*`) or personal access token (`tr_pat_*`).              | `TRIGGER_SECRET_KEY`, then `TRIGGER_ACCESS_TOKEN` |
+| `previewBranch` | Preview branch name when using a `tr_preview_*` key.                                                     | `TRIGGER_PREVIEW_BRANCH`, then `VERCEL_GIT_COMMIT_REF` |
+| `baseURL`       | Override the Trigger.dev API URL. Defaults to `https://api.trigger.dev`.                                  | `TRIGGER_API_URL`                                 |
+| `requestOptions`| Request-level options (retry policy, additional headers, etc.) — see the `ApiRequestOptions` type.        | —                                                 |
+
+Fields not passed to the constructor fall back to the matching env var (and then to a sensible default for `baseURL`). Explicit constructor values always win, so you can mix env-var-backed clients and fully explicit clients in the same process.
+
+```ts
+// Picks up TRIGGER_SECRET_KEY / TRIGGER_PREVIEW_BRANCH from env.
+const fromEnv = new TriggerClient();
+
+// Explicit values override env entirely.
+const explicit = new TriggerClient({
+  accessToken: process.env.OTHER_PROJECT_KEY,
+  previewBranch: "feature-x",
+});
+```
+
+If no `accessToken` resolves from either the constructor or env vars, the first API call throws an `ApiClientMissingError` with a clear message.
+
+## What's on a TriggerClient instance
+
+Each instance exposes the management surface as namespaced properties: `tasks`, `runs`, `batch`, `schedules`, `envvars`, `queues`, `deployments`, `prompts`, and `auth`.
+
+```ts
+import type { emailTask } from "./trigger/email";
+
+const client = new TriggerClient();
+
+await client.tasks.trigger<typeof emailTask>("send-email", { to: "user@example.com" });
+await client.runs.list({ status: ["COMPLETED"], limit: 10 });
+await client.schedules.create({ task: "daily-report", cron: "0 9 * * *" });
+await client.envvars.update("proj_1234", "preview", "DATABASE_URL", { value: "..." });
+```
+
+Methods that only make sense inside a running task are not on the instance surface: `tasks.triggerAndWait`, `tasks.batchTriggerAndWait`, `tasks.triggerAndSubscribe`, `batch.triggerAndWait`, `batch.triggerByTaskAndWait`, and the task-definition helpers (`schedules.task`, `prompts.define`).
+
+## Isolation contract
+
+When you make a call through a `TriggerClient` instance, the SDK does not look at the process-wide global config, env vars (other than the constructor-time fallback), or the ambient task context. Two instances pointing at different projects can run in the same process — including in parallel under `Promise.all` — without interfering with each other.
+
+That isolation also means a call from inside a task does not automatically inherit the surrounding task's `parentRunId`, `lockToVersion`, or test flag. If you specifically want a call to inherit those (rare — usually you want a clean external trigger), opt in with `inheritContext: true`:
+
+```ts
+const sameProject = new TriggerClient({
+  accessToken: process.env.TRIGGER_SECRET_KEY,
+  inheritContext: true,
+});
+```
+
+## When to use what
+
+| Scenario                                                                  | Recommended                          |
+| ------------------------------------------------------------------------- | ------------------------------------ |
+| Single process, single project/env                                        | `configure()` (or env vars only)     |
+| Single process talking to multiple projects, envs, or branches            | `new TriggerClient({...})` per target |
+| Short, sequential override (e.g. one batch under a different token)       | `auth.withAuth(config, fn)`          |
+| Inside a task, trigger a run in a different project                       | `new TriggerClient({...})`           |
+
+See [Authentication](/management/authentication) for the underlying token types and the `auth.withAuth` helper.

@@ -1,0 +1,75 @@
+name: Trivy Image Scan (webapp)
+
+# OS-level CVE scan of a published webapp image. Called by the publish pipeline
+# (publish.yml) to scan each build right after it's pushed to GHCR — so every
+# main build and every release is scanned, not rebuilt. Also runnable ad-hoc
+# via workflow_dispatch against any image ref.
+#
+# Report-only: writes a table to the run summary. No SARIF upload, no gate.
+# Library/dependency CVEs are covered by Dependabot, so this is restricted to
+# OS packages (`vuln-type: os`) to avoid double-reporting.
+
+on:
+  workflow_call:
+    inputs:
+      image-ref:
+        description: "Full image ref to scan (e.g. ghcr.io/triggerdotdev/trigger.dev:main)"
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      image-ref:
+        description: "Full image ref to scan"
+        type: string
+        required: false
+        default: "ghcr.io/triggerdotdev/trigger.dev:main"
+
+permissions: {}
+
+concurrency:
+  group: trivy-image-webapp-${{ inputs.image-ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read # pull the image from GHCR
+    steps:
+      # Authenticate to GHCR so the scan also works for private images
+      # (GITHUB_TOKEN isn't forwarded to Docker automatically). Harmless for
+      # public images. Pairs with the packages: read permission above.
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Trivy image scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ inputs.image-ref }}
+          # vuln-type maps to --pkg-types: OS packages only (library deps are
+          # Dependabot's job). ignore-unfixed drops vulns with no patch yet.
+          vuln-type: os
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          format: table
+          output: trivy-image-webapp.txt
+
+      - name: Job summary
+        if: always()
+        env:
+          IMAGE_REF: ${{ inputs.image-ref }}
+        run: |
+          {
+            echo "## Trivy Image Scan (webapp) — \`${IMAGE_REF}\`"
+            echo '```'
+            # GitHub step summary is capped at 1 MiB; truncate large reports.
+            head -c 900000 trivy-image-webapp.txt 2>/dev/null || echo "(no report produced)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

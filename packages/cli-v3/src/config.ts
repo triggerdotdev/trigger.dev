@@ -152,18 +152,9 @@ async function resolveConfig(
   overrides?: Partial<TriggerConfig>,
   warn = true
 ): Promise<ResolvedConfig> {
-  const packageJsonPath = await resolvePackageJSON(cwd);
-  const tsconfigPath = await safeResolveTsConfig(cwd);
-  const lockfilePath = await resolveLockfile(cwd);
-  const workspaceDir = await findWorkspaceDir(cwd);
-
-  const workingDir = result.configFile
-    ? dirname(result.configFile)
-    : packageJsonPath
-    ? dirname(packageJsonPath)
-    : cwd;
-
-  // `trigger.config` is the fallback value set by c12
+  // `trigger.config` is the fallback value set by c12. Bail out with actionable guidance before
+  // touching the filesystem: the pkg-types resolvers below throw raw errors when run outside a
+  // project (e.g. `dev` before `init`), which would mask this message.
   const missingConfigFile = !result.configFile || result.configFile === "trigger.config";
 
   if (missingConfigFile) {
@@ -177,6 +168,17 @@ async function resolveConfig(
       ].join("\n")
     );
   }
+
+  const packageJsonPath = await resolvePackageJSON(cwd);
+  const tsconfigPath = await safeResolveTsConfig(cwd);
+  const lockfilePath = await resolveLockfile(cwd);
+  const workspaceDir = await findWorkspaceDir(cwd);
+
+  const workingDir = result.configFile
+    ? dirname(result.configFile)
+    : packageJsonPath
+    ? dirname(packageJsonPath)
+    : cwd;
 
   const config =
     "config" in result.config ? (result.config.config as TriggerConfig) : result.config;

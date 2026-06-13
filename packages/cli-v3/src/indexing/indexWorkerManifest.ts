@@ -1,5 +1,6 @@
 import { execPathForRuntime } from "@trigger.dev/core/v3/build";
 import {
+  DuplicateTaskIdsError,
   TaskIndexingImportError,
   TaskMetadataParseError,
   UncaughtExceptionError,
@@ -86,6 +87,13 @@ export async function indexWorkerManifest({
           clearTimeout(timeout);
           resolved = true;
           reject(new TaskMetadataParseError(message.payload.zodIssues, message.payload.tasks));
+          child.kill("SIGKILL");
+          break;
+        }
+        case "TASKS_FAILED_TO_INDEX": {
+          clearTimeout(timeout);
+          resolved = true;
+          reject(new DuplicateTaskIdsError(message.payload.collisions));
           child.kill("SIGKILL");
           break;
         }
