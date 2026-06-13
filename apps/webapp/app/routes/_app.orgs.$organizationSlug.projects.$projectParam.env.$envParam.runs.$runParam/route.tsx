@@ -617,7 +617,7 @@ function TraceView({
     ? linkedRunIdBySpanId?.[selectedSpanId]
     : undefined;
   const frozenLinkedRunId = useFrozenValue(selectedSpanLinkedRunId);
-  const displayLinkedRunId = (selectedSpanId ? selectedSpanLinkedRunId : frozenLinkedRunId) ?? undefined;
+  const displayLinkedRunId = selectedSpanId ? selectedSpanLinkedRunId : frozenLinkedRunId;
 
   return (
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
