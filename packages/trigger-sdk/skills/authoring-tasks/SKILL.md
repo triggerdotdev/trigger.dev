@@ -243,11 +243,11 @@ Sibling skills:
 - **realtime-and-frontend** for subscribing to runs and triggering from the frontend with React hooks.
 - **authoring-chat-agent** and **chat-agent-advanced** for building AI chat agents.
 
-Docs:
+Reference docs ship beside this skill in the same package, read them locally (no network), pinned to your installed version. The `sources:` frontmatter above lists every doc this skill draws from, all under `@trigger.dev/sdk/docs/`. Start with:
 
-- [Tasks overview](https://trigger.dev/docs/tasks/overview)
-- [Triggering](https://trigger.dev/docs/triggering)
-- [Configuration file](https://trigger.dev/docs/config/config-file)
+- `@trigger.dev/sdk/docs/tasks/overview.mdx`
+- `@trigger.dev/sdk/docs/triggering.mdx`
+- `@trigger.dev/sdk/docs/config/config-file.mdx`
 
 ## Version
 

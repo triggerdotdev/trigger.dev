@@ -358,7 +358,8 @@ TS helpers `SSEStreamSubscription` and `controlSubtype(headers)` (documented in
   the `useTriggerChatTransport` happy path. Start there before reaching for this skill.
 - `realtime-and-frontend` skill - Realtime hooks and frontend streaming beyond the chat transport.
 - `authoring-tasks` skill - base `task()` semantics, `ctx`, and standard lifecycle hooks.
-- Docs: /ai-chat/sessions, /ai-chat/server-chat, /ai-chat/client-protocol
+
+Reference docs ship beside this skill in the same package, read them locally (no network), pinned to your installed version. The `sources:` frontmatter above lists every doc this skill draws from, all under `@trigger.dev/sdk/docs/ai-chat/` (including `patterns/`). For HITL, sessions, and sub-agents start with `sessions.mdx`, `server-chat.mdx`, `client-protocol.mdx`, `patterns/human-in-the-loop.mdx`, `patterns/sub-agents.mdx`.
 
 ## Version
 

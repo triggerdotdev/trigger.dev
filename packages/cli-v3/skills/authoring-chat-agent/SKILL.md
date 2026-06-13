@@ -17,7 +17,7 @@ library: trigger.dev
 The full, version-pinned reference ships **inside your installed `@trigger.dev/sdk`**. Read it before writing code — it always matches the SDK version in this project, so it never drifts:
 
 - **Skill:** `node_modules/@trigger.dev/sdk/skills/authoring-chat-agent/SKILL.md` — the per-turn run loop, `chat.toStreamTextOptions()`, the two server actions, typed tools/data parts, and the React transport.
-- **Docs:** `node_modules/@trigger.dev/sdk/docs/ai-chat/` — exhaustive detail. Grep for an API, e.g. `grep -rl "toStreamTextOptions" node_modules/@trigger.dev/sdk/docs/`.
+- **Docs:** the full, version-pinned docs ship bundled at `node_modules/@trigger.dev/sdk/docs/ai-chat/`; the skill above lists the exact pages it draws from in its `sources:` frontmatter. Grep for an API, e.g. `grep -rl "toStreamTextOptions" node_modules/@trigger.dev/sdk/docs/`.
 
 If those paths don't exist, `@trigger.dev/sdk` isn't installed yet — install it first. In a non-hoisted layout, resolve the package with `node -p "require.resolve('@trigger.dev/sdk/package.json')"` and read `skills/` + `docs/` beside it.
 

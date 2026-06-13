@@ -286,7 +286,8 @@ There is no API route in this model. The transport replaces the route round-trip
   (`chat.createSession`, `chat.customAgent`, `chat.stream`), compaction, HITL approvals, recovery.
 - `realtime-and-frontend` skill - Realtime hooks and frontend streaming beyond the chat transport.
 - `authoring-tasks` skill - base `task()` semantics, `ctx`, and standard lifecycle hooks.
-- Docs: /ai-chat/quick-start, /ai-chat/backend, /ai-chat/tools, /ai-chat/types, /ai-chat/frontend
+
+Reference docs ship beside this skill in the same package, read them locally (no network), pinned to your installed version. The `sources:` frontmatter above lists every doc this skill draws from, all under `@trigger.dev/sdk/docs/ai-chat/`. Start with `quick-start.mdx`, `backend.mdx`, `tools.mdx`, `types.mdx`, `frontend.mdx`.
 
 ## Version
 

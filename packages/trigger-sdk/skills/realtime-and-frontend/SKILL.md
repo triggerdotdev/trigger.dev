@@ -265,15 +265,11 @@ Sibling skills:
 - `authoring-tasks` for the task side: `streams.define()`, `metadata.set()`, and `wait.createToken`.
 - `authoring-chat-agent` and `chat-agent-advanced` for chat agents, which build on these realtime streams.
 
-Docs:
-- [React hooks: run updates](/realtime/react-hooks/subscribe)
-- [React hooks: streaming](/realtime/react-hooks/streams)
-- [Realtime auth](/realtime/auth)
-
-The realtime run object differs from the management-API run object returned by
-`useRun`; see [run object reference](/realtime/run-object). For the task side
-(`streams.define`, `metadata.set`), see [/tasks/streams](/tasks/streams) and
-[/runs/metadata](/runs/metadata).
+Reference docs ship beside this skill in the same package, read them locally (no network), pinned to your installed version. The `sources:` frontmatter above lists every doc this skill draws from, all under `@trigger.dev/sdk/docs/`. Start with:
+- `@trigger.dev/sdk/docs/realtime/react-hooks/subscribe.mdx`
+- `@trigger.dev/sdk/docs/realtime/react-hooks/streams.mdx`
+- `@trigger.dev/sdk/docs/realtime/auth.mdx`
+- `@trigger.dev/sdk/docs/realtime/run-object.mdx` (the realtime run object differs from the management-API object returned by `useRun`)
 
 ## Version
 

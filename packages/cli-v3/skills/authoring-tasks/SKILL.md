@@ -16,7 +16,7 @@ library: trigger.dev
 The full, version-pinned reference for authoring tasks ships **inside your installed `@trigger.dev/sdk`**. Read it before writing code — it always matches the SDK version in this project, so it never drifts:
 
 - **Skill:** `node_modules/@trigger.dev/sdk/skills/authoring-tasks/SKILL.md` — the complete guide (setup, `schemaTask`, retries, triggering + the Result shape, idempotency, waits, metadata, scheduled tasks, queues/concurrency, `trigger.config.ts`).
-- **Docs:** `node_modules/@trigger.dev/sdk/docs/` — exhaustive detail. Grep for an API, e.g. `grep -rl "schemaTask" node_modules/@trigger.dev/sdk/docs/`.
+- **Docs:** the full, version-pinned docs ship bundled at `node_modules/@trigger.dev/sdk/docs/`; the skill above lists the exact pages it draws from in its `sources:` frontmatter. Grep for an API, e.g. `grep -rl "schemaTask" node_modules/@trigger.dev/sdk/docs/`.
 
 If those paths don't exist, `@trigger.dev/sdk` isn't installed yet — install it first. In a non-hoisted layout, resolve the package with `node -p "require.resolve('@trigger.dev/sdk/package.json')"` and read `skills/` + `docs/` beside it.
 
