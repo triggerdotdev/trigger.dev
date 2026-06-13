@@ -14,6 +14,7 @@ import { env } from "~/env.server";
 import { featuresForUrl } from "~/features.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
 import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.server";
+import { enqueueAttioWorkspaceSync } from "~/services/attio.server";
 export type { Organization };
 
 const nanoid = customAlphabet("1234567890abcdef", 4);
@@ -80,6 +81,16 @@ export async function createOrganization(
     include: {
       members: true,
     },
+  });
+
+  // Fire-and-forget; never blocks org creation.
+  void enqueueAttioWorkspaceSync({
+    orgId: organization.id,
+    title: organization.title,
+    slug: organization.slug,
+    companySize: organization.companySize,
+    createdAt: organization.createdAt,
+    adminUserId: userId,
   });
 
   return { ...organization };
