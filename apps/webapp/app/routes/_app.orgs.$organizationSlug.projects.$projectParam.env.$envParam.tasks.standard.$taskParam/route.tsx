@@ -10,6 +10,7 @@ import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { Card } from "~/components/primitives/charts/Card";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -153,37 +154,43 @@ export default function Page() {
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="task-main" min="300px">
-            <ResizablePanelGroup orientation="vertical" className="max-h-full">
-              {/* Activity chart + filters */}
-              <ResizablePanel id="task-activity" min="144px" default="200px">
-                <div className="flex h-full flex-col gap-3 overflow-hidden bg-background-bright py-2 pl-2 pr-4">
-                  <div className="flex items-center gap-2">
-                    <TimeFilter defaultPeriod="7d" labelName="Runs" />
-                  </div>
-                  <div className="flex min-h-0 flex-1 flex-col">
-                    <Suspense fallback={<ActivityChartSkeleton />}>
-                      <TypedAwait resolve={activity} errorElement={<ActivityChartSkeleton />}>
-                        {(result) => <ActivityChart activity={result} />}
-                      </TypedAwait>
-                    </Suspense>
-                  </div>
+            <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+              {/* Top bar — title on the left; TimeFilter + pagination on the right.
+                  h-10 matches the right-hand sidebar header height. */}
+              <div className="flex h-10 items-center border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
+                <Header2>Runs</Header2>
+                <div className="ml-auto flex items-center gap-1.5">
+                  <TimeFilter defaultPeriod="7d" labelName="Runs" />
+                  <Suspense fallback={null}>
+                    <TypedAwait resolve={runList} errorElement={null}>
+                      {(list) => (list ? <ListPagination list={list} /> : null)}
+                    </TypedAwait>
+                  </Suspense>
                 </div>
-              </ResizablePanel>
+              </div>
 
-              <ResizableHandle id="task-activity-handle" />
-
-              {/* Runs table */}
-              <ResizablePanel id="task-content" min="160px">
-                <div className="grid h-full grid-rows-[2.25rem_1fr] overflow-hidden">
-                  <div className="flex items-center justify-between border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
-                    <Paragraph variant="small/bright">Runs</Paragraph>
-                    <Suspense fallback={null}>
-                      <TypedAwait resolve={runList} errorElement={null}>
-                        {(list) => (list ? <ListPagination list={list} /> : null)}
-                      </TypedAwait>
-                    </Suspense>
+              <ResizablePanelGroup orientation="vertical" className="max-h-full">
+                {/* Activity chart */}
+                <ResizablePanel id="task-activity" min="220px" default="320px">
+                  <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background p-2">
+                    <Card className="h-full overflow-hidden px-0 pb-2 pt-3">
+                      <Card.Header>Runs by status</Card.Header>
+                      <div className="min-h-0 flex-1 px-2">
+                        <Suspense fallback={<ActivityChartSkeleton />}>
+                          <TypedAwait resolve={activity} errorElement={<ActivityChartSkeleton />}>
+                            {(result) => <ActivityChart activity={result} />}
+                          </TypedAwait>
+                        </Suspense>
+                      </div>
+                    </Card>
                   </div>
-                  <div className="min-h-0 overflow-hidden">
+                </ResizablePanel>
+
+                <ResizableHandle id="task-activity-handle" />
+
+                {/* Runs table */}
+                <ResizablePanel id="task-content" min="160px">
+                  <div className="h-full overflow-hidden">
                     <Suspense fallback={<TableLoading />}>
                       <TypedAwait resolve={runList} errorElement={<TableLoading />}>
                         {(list) =>
@@ -196,6 +203,7 @@ export default function Page() {
                                 runs={list.runs}
                                 variant="dimmed"
                                 showTopBorder={false}
+                                stickyHeader
                               />
                             </div>
                           ) : (
@@ -205,9 +213,9 @@ export default function Page() {
                       </TypedAwait>
                     </Suspense>
                   </div>
-                </div>
-              </ResizablePanel>
-            </ResizablePanelGroup>
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            </div>
           </ResizablePanel>
 
           <ResizableHandle id="task-detail-handle" />
@@ -234,7 +242,7 @@ function TaskDetailSidebar({
 
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center gap-2 border-b border-grid-dimmed px-3 py-2">
+      <div className="flex items-center gap-2 border-b border-grid-dimmed py-2 pl-3 pr-2">
         <Header2 className="flex min-w-0 flex-1 items-center gap-1.5">
           <TaskIcon className="size-4.5 shrink-0 text-tasks" />
           <span className="truncate">{task.slug}</span>
