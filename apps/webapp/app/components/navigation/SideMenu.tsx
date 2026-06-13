@@ -37,6 +37,7 @@ import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { SlidersIcon } from "~/assets/icons/SlidersIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { TasksIcon } from "~/assets/icons/TasksIcon";
 import { BellIcon } from "~/assets/icons/BellIcon";
 import { UsageIcon } from "~/assets/icons/UsageIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
@@ -388,7 +389,7 @@ export function SideMenu({
             <div className="w-full space-y-0">
               <SideMenuItem
                 name="Tasks"
-                icon={TaskIcon}
+                icon={TasksIcon}
                 activeIconColor="text-tasks"
                 inactiveIconColor="text-text-dimmed"
                 to={v3EnvironmentPath(organization, project, environment)}
