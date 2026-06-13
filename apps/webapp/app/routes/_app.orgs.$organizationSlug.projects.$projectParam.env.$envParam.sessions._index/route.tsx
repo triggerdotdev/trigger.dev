@@ -2,11 +2,15 @@ import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
+import { InlineCode } from "~/components/code/InlineCode";
 import { ListPagination } from "~/components/ListPagination";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { SessionFilters } from "~/components/sessions/v1/SessionFilters";
 import { SessionsTable } from "~/components/sessions/v1/SessionsTable";
 import { SessionsNone } from "~/components/BlankStatePanels";
@@ -74,16 +78,13 @@ export default function Page() {
   return (
     <>
       <NavBar>
-        <PageTitle
-          title="Sessions"
-          accessory="A session is a pair of streams: input for incoming user messages, and output for everything the agent produces, including AI generation parts (text, reasoning, tool calls, etc.) and custom data parts. Sessions also orchestrate the execution of agent runs."
-        />
+        <PageTitle title="Sessions" accessory={<SessionsHelpTooltip />} />
         <PageAccessories>
           <AdminDebugTooltip />
           <LinkButton
             variant={"docs/small"}
             LeadingIcon={BookOpenIcon}
-            to={docsPath("/ai-chat/overview")}
+            to={docsPath("/ai-chat/sessions")}
           >
             Sessions docs
           </LinkButton>
@@ -111,5 +112,52 @@ export default function Page() {
         )}
       </PageBody>
     </>
+  );
+}
+
+function SessionsHelpTooltip() {
+  return (
+    <SimpleTooltip
+      button={
+        <QuestionMarkIcon className="size-4 text-text-dimmed transition hover:text-text-bright" />
+      }
+      side="bottom"
+      className="max-w-sm p-3"
+      disableHoverableContent
+      content={
+        <div className="flex flex-col gap-3">
+          <div>
+            <Paragraph variant="small/bright">What is a Session?</Paragraph>
+            <Paragraph variant="extra-small" className="mt-1">
+              A session is a pair of streams: input for incoming user messages, and output for
+              everything the agent produces, including AI generation parts (text, reasoning, tool
+              calls, etc.) and any custom data parts your task emits. Sessions also orchestrate
+              the execution of agent runs, so a single conversation can span many task triggers.
+            </Paragraph>
+          </div>
+          <div className="flex flex-col gap-2.5 border-t border-grid-dimmed pt-3">
+            <div>
+              <Paragraph variant="small/bright">
+                <InlineCode>chat.agent</InlineCode>
+              </Paragraph>
+              <Paragraph variant="extra-small" className="mt-1">
+                The high-level chat building block. Built on sessions and handles the chat turn
+                loop for you. Use it for chat apps and conversational AI experiences.
+              </Paragraph>
+            </div>
+            <div>
+              <Paragraph variant="small/bright">
+                <InlineCode>sessions.start()</InlineCode>
+              </Paragraph>
+              <Paragraph variant="extra-small" className="mt-1">
+                The raw sessions API. Use it for non-chat patterns like agent inboxes, approval
+                flows, or server-to-server streaming where you need a durable bi-directional
+                channel.
+              </Paragraph>
+            </div>
+          </div>
+        </div>
+      }
+    />
   );
 }

@@ -1,5 +1,4 @@
 import {
-  ArrowsRightLeftIcon,
   BeakerIcon,
   BellAlertIcon,
   BookOpenIcon,
@@ -194,19 +193,30 @@ export function SessionsNone() {
   return (
     <InfoPanel
       title="Sessions"
-      icon={ArrowsRightLeftIcon}
-      iconClassName="text-teal-500"
+      icon={AIChatIcon}
+      iconClassName="text-sessions"
       panelClassName="max-w-full"
       accessory={
-        <LinkButton to={docsPath("/ai-chat/overview")} variant="docs/small" LeadingIcon={BookOpenIcon}>
+        <LinkButton
+          to={docsPath("/ai-chat/sessions")}
+          variant="docs/small"
+          LeadingIcon={BookOpenIcon}
+        >
           Sessions docs
         </LinkButton>
       }
     >
       <Paragraph spacing variant="small">
-        You have no sessions in this environment. Sessions are durable, typed, bidirectional I/O
-        primitives that outlive a single run — used by <InlineCode>chat.agent</InlineCode> and any
-        long-running task that needs streaming input and output.
+        A session is a pair of streams: input for incoming user messages, and output for
+        everything the agent produces, including AI generation parts (text, reasoning, tool
+        calls, etc.) and any custom data parts your task emits. Sessions also orchestrate the
+        execution of agent runs, so a single conversation can span many task triggers.
+      </Paragraph>
+      <Paragraph spacing variant="small">
+        The easiest way to create one is to trigger a <InlineCode>chat.agent</InlineCode> task,
+        which is built on sessions and handles the chat turn loop for you. You can also call{" "}
+        <InlineCode>sessions.start()</InlineCode> directly for non-chat patterns like agent
+        inboxes, approval flows, or server-to-server streaming.
       </Paragraph>
     </InfoPanel>
   );
