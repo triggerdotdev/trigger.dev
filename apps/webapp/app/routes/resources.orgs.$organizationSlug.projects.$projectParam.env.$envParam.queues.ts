@@ -64,7 +64,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       paused: queue.paused,
     })),
     currentPage: result.pagination.currentPage,
-    hasMore: result.pagination.currentPage < result.pagination.totalPages,
+    hasMore:
+      result.pagination.mode === "filtered"
+        ? result.pagination.hasMore
+        : result.pagination.currentPage < result.pagination.totalPages,
     hasFilters: result.hasFilters,
   };
 }
