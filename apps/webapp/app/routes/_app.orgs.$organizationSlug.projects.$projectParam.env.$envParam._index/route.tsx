@@ -12,6 +12,7 @@ import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { PlusIcon } from "~/assets/icons/PlusIcon";
+import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
@@ -167,10 +168,7 @@ export default function Page() {
   const { value, values } = useSearchParams();
 
   const [showUsefulLinks, setShowUsefulLinks] = useState(usefulLinksPreference ?? true);
-  // While the side panel is animating, swap each row's activity chart for
-  // its blank-state placeholder. Re-rendering ~25 recharts SVGs per frame
-  // during the collapse animation tanks performance; the placeholder
-  // matches the cell size so the table doesn't shift.
+  // Unmount the charts while the side panel animates; 25 SVGs in a reflowing table tanks perf.
   const [isPanelAnimating, setIsPanelAnimating] = useState(false);
   const animatingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const usefulLinksPanelRef = useRef<PanelHandle>(null);
@@ -182,8 +180,7 @@ export default function Page() {
     setShowUsefulLinks(show);
     setIsPanelAnimating(true);
     if (animatingTimerRef.current) clearTimeout(animatingTimerRef.current);
-    // Matches RESIZABLE_PANEL_ANIMATION duration (300ms) + a small buffer
-    // so the charts come back after the panel settles.
+    // 300ms panel anim + 50ms buffer.
     animatingTimerRef.current = setTimeout(() => setIsPanelAnimating(false), 350);
     if (show) {
       usefulLinksPanelRef.current?.expand();
@@ -211,10 +208,7 @@ export default function Page() {
 
   const hasItems = items.length > 0;
 
-  // Client-side pagination. The presenter returns every task because the
-  // search + type filter run client-side too, but we only render PAGE_SIZE
-  // rows at a time. Clamps to the last page if the requested one is past
-  // the end (e.g. after a search narrows the result set).
+  // Client-side pagination — presenter returns all tasks; we slice + clamp here.
   const totalPages = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE));
   const requestedPage = Math.max(1, parseInt(value("page") ?? "1", 10) || 1);
   const currentPage = Math.min(requestedPage, totalPages);
@@ -226,7 +220,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Tasks" />
+        <PageTitle title="Tasks" accessory={<TasksHelpTooltip />} />
         <PageAccessories>
           <LinkButton
             variant={"docs/small"}
@@ -258,7 +252,7 @@ export default function Page() {
                             onClick={() => toggleUsefulLinks(true)}
                             className="pl-1.5"
                           >
-                            New task
+                            New task…
                           </Button>
                         )}
                         <PaginationControls
@@ -401,29 +395,32 @@ function TaskRow({
         <TaskFileName fileName={item.filePath} variant="extra-extra-small" />
       </TableCell>
       <TableCell to={rowPath}>
-        <Suspense fallback={<Spinner color="muted" />}>
+        <Suspense fallback={<Spinner color="blue" className="size-3" />}>
           <TypedAwait resolve={runningStates} errorElement={<FailedToLoadStats />}>
             {(data) => <RunningCell state={data[item.slug]} />}
           </TypedAwait>
         </Suspense>
       </TableCell>
       <TableCell to={rowPath} actionClassName="py-1.5">
-        {isPanelAnimating ? (
-          <TaskActivityBlankState />
-        ) : (
-          <Suspense fallback={<TaskActivityBlankState />}>
-            <TypedAwait resolve={hourlyActivity} errorElement={<FailedToLoadStats />}>
-              {(data) => {
-                const taskData = data[item.slug];
-                return taskData && taskData.length > 0 ? (
-                  <TaskActivityGraph activity={taskData} />
-                ) : (
-                  <TaskActivityBlankState />
-                );
-              }}
-            </TypedAwait>
-          </Suspense>
-        )}
+        {/* Reserve the cell footprint while the chart unmounts during the panel animation. */}
+        <div style={{ width: ACTIVITY_CELL_WIDTH, height: ACTIVITY_CHART_HEIGHT }}>
+          {!isPanelAnimating && (
+            <div className="duration-100 animate-in fade-in">
+              <Suspense fallback={<TaskActivityBlankState />}>
+                <TypedAwait resolve={hourlyActivity} errorElement={<FailedToLoadStats />}>
+                  {(data) => {
+                    const taskData = data[item.slug];
+                    return taskData && taskData.length > 0 ? (
+                      <TaskActivityGraph activity={taskData} />
+                    ) : (
+                      <TaskActivityBlankState />
+                    );
+                  }}
+                </TypedAwait>
+              </Suspense>
+            </div>
+          )}
+        </div>
       </TableCell>
       <TableCellMenu
         isSticky
@@ -445,12 +442,12 @@ function TaskRow({
         }
         hiddenButtons={
           <LinkButton
-            variant="secondary/small"
+            variant="minimal/small"
             LeadingIcon={BeakerIcon}
             leadingIconClassName="-mx-2.5 text-tests"
             to={testPath}
           >
-            Test
+            <span className="text-text-bright">Test</span>
           </LinkButton>
         }
       />
@@ -469,14 +466,11 @@ function TaskTypeFilter() {
   const { values, replace } = useSearchParams();
   const raw = values("types") as UnifiedTaskKind[];
   const isAll = raw.length === 0 || raw.length === KIND_OPTIONS.length;
-  // When no filter is applied, render the popover with every option preselected
-  // so the user sees the "all" state and can uncheck what they don't want.
+  // No filter → preselect everything so users can uncheck from "all".
   const popoverValue = isAll ? KIND_OPTIONS.map((k) => k.value) : raw;
 
   const handleChange = (next: string[]) => {
-    // Empty or fully-selected → clear the URL so the default (all) applies.
-    // Always reset `page` since the filter change probably moves rows out from
-    // under the current page.
+    // Empty or fully-selected → drop the param so the default (all) applies. Always reset page.
     if (next.length === 0 || next.length === KIND_OPTIONS.length) {
       replace({ types: undefined, page: undefined });
     } else {
@@ -543,13 +537,13 @@ const STATUS_BARS: { status: TaskRunStatus; fill: string }[] = [
   { status: "TIMED_OUT", fill: "#F43F5E" },
 ];
 
-// Activity chart dimensions in px — kept fixed so the chart skips the
-// ResponsiveContainer + ResizeObserver path. With ~25 charts on screen,
-// re-rendering them on every frame of the side-panel collapse animation
-// produced visible jank; with fixed dimensions the chart only re-renders
-// when its data prop changes.
+// Fixed px dims skip ResponsiveContainer's ResizeObserver — otherwise every panel resize re-renders all 25 charts.
 const ACTIVITY_CHART_WIDTH = 112;
 const ACTIVITY_CHART_HEIGHT = 24;
+// chart (112) + gap-1.5 (6) + count min-w (28). Reserved so the column stays put while the chart unmounts.
+const ACTIVITY_CELL_WIDTH = 146;
+const ACTIVITY_CHART_COUNT_CLASS =
+  "-mt-1 inline-block min-w-[1.75rem] text-xxs tabular-nums text-text-dimmed";
 
 function TaskActivityGraph({ activity }: { activity: HourlyTaskActivity[string] }) {
   const maxTotal = Math.max(...activity.map((d) => d.total));
@@ -592,18 +586,14 @@ function TaskActivityGraph({ activity }: { activity: HourlyTaskActivity[string] 
       </div>
       <SimpleTooltip
         asChild
-        button={
-          <span className="-mt-1 text-xxs tabular-nums text-text-dimmed">
-            {formatNumberCompact(maxTotal)}
-          </span>
-        }
+        button={<span className={ACTIVITY_CHART_COUNT_CLASS}>{formatNumberCompact(maxTotal)}</span>}
         content="Peak runs in a single hour"
       />
     </div>
   );
 }
 
-// SVG line (not CSS border) so the bottom-edge anti-aliasing matches recharts' y=0 ReferenceLine.
+// SVG line matches recharts' y=0 ReferenceLine anti-aliasing; a CSS border looks too crisp.
 function TaskActivityBlankState() {
   return (
     <div className="flex items-start gap-1.5">
@@ -617,7 +607,7 @@ function TaskActivityBlankState() {
           strokeWidth={1}
         />
       </svg>
-      <span className="-mt-1 text-xxs tabular-nums text-text-dimmed">0</span>
+      <span className={ACTIVITY_CHART_COUNT_CLASS}>0</span>
     </div>
   );
 }
@@ -661,6 +651,64 @@ function FailedToLoadStats() {
     <SimpleTooltip
       button={<ExclamationTriangleIcon className="size-4 text-warning" />}
       content="We were unable to load the task stats, please try again later."
+    />
+  );
+}
+
+function TasksHelpTooltip() {
+  return (
+    <SimpleTooltip
+      button={
+        <QuestionMarkIcon className="size-4 text-text-dimmed transition hover:text-text-bright" />
+      }
+      side="bottom"
+      className="max-w-sm p-3"
+      disableHoverableContent
+      content={
+        <div className="flex flex-col gap-3">
+          <div>
+            <Paragraph variant="small/bright">What is a task?</Paragraph>
+            <Paragraph variant="extra-small" className="mt-1">
+              A task is a durable function that runs in the background. It can run for as long as it
+              needs without timing out, automatically retries on failure, and survives crashes and
+              deploys.
+            </Paragraph>
+          </div>
+          <div className="flex flex-col gap-2.5 border-t border-grid-dimmed pt-3">
+            <div>
+              <div className="flex items-center gap-1.5">
+                <CubeSparkleIcon className="size-4 shrink-0 text-agents" />
+                <Paragraph variant="small/bright">Agent task</Paragraph>
+              </div>
+              <Paragraph variant="extra-small" className="mt-1">
+                A long-lived AI session. Streams LLM responses to your app and keeps context
+                across messages, page refreshes, and deploys.
+              </Paragraph>
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <TaskIcon className="size-4 shrink-0 text-tasks" />
+                <Paragraph variant="small/bright">Standard task</Paragraph>
+              </div>
+              <Paragraph variant="extra-small" className="mt-1">
+                A background function you trigger from your code with a payload. Good for AI
+                workflows, image generation, audio transcription, document processing, and any
+                other long-running work where reliability matters.
+              </Paragraph>
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <ClockIcon className="size-4 shrink-0 text-schedules" />
+                <Paragraph variant="small/bright">Scheduled task</Paragraph>
+              </div>
+              <Paragraph variant="extra-small" className="mt-1">
+                Runs automatically on a recurring cron schedule. Use daily, weekly, or any custom
+                interval you need.
+              </Paragraph>
+            </div>
+          </div>
+        </div>
+      }
     />
   );
 }
