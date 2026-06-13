@@ -68,8 +68,8 @@ async function bundleSdkDocs() {
   const manifest = await collectManifest();
 
   if (manifest.length === 0) {
-    console.warn("[bundleSdkDocs] no doc sources found in skills/*/SKILL.md; skipping");
-    return;
+    // Fail the build rather than silently ship the SDK with stale or missing docs.
+    throw new Error("[bundleSdkDocs] no doc sources found in skills/*/SKILL.md");
   }
 
   // Rebuild from scratch so removed sources don't linger in the package.

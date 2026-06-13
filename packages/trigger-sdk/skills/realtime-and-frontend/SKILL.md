@@ -119,9 +119,9 @@ Public Access Token.
 import { useTaskTrigger } from "@trigger.dev/react-hooks";
 import type { myTask } from "@/trigger/myTask";
 
-export function TriggerButton({ publicAccessToken }: { publicAccessToken: string }) {
+export function TriggerButton({ triggerToken }: { triggerToken: string }) {
   const { submit, handle, isLoading } = useTaskTrigger<typeof myTask>("my-task", {
-    accessToken: publicAccessToken,
+    accessToken: triggerToken,
   });
   if (handle) return <div>Run ID: {handle.id}</div>;
   return (
