@@ -128,7 +128,12 @@ export function SideMenuItem({
           disableHoverableContent
         />
         {!isCollapsed && (
-          <div className="absolute bottom-1 right-1 top-1 flex aspect-square items-center justify-center rounded group-hover/menuitem:bg-charcoal-750">
+          <div
+            className={cn(
+              "absolute bottom-1 right-1 top-1 flex aspect-square items-center justify-center rounded",
+              isActive ? "group-hover/menuitem:bg-tertiary" : "group-hover/menuitem:bg-charcoal-750"
+            )}
+          >
             {action}
           </div>
         )}
