@@ -138,6 +138,7 @@
                   "ai-chat/patterns/persistence-and-replay",
                   "ai-chat/patterns/branching-conversations",
                   "ai-chat/patterns/code-sandbox",
+                  "ai-chat/patterns/ai-sdk-harness",
                   "ai-chat/patterns/human-in-the-loop",
                   "ai-chat/patterns/tool-result-auditing",
                   "ai-chat/patterns/large-payloads",
