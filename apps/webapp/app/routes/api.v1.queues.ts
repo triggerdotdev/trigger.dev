@@ -1,7 +1,11 @@
 import { json } from "@remix-run/server-runtime";
 import { type QueueItem } from "@trigger.dev/core/v3";
 import { z } from "zod";
-import { QueueListPresenter } from "~/presenters/v3/QueueListPresenter.server";
+import {
+  QUEUE_LIST_DEFAULT_ITEMS_PER_PAGE,
+  QueueListPresenter,
+} from "~/presenters/v3/QueueListPresenter.server";
+import { toOffsetLimitQueueListPagination } from "~/presenters/v3/queueListPagination.server";
 import { logger } from "~/services/logger.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
@@ -30,7 +34,16 @@ export const loader = createLoaderApiRoute(
       }
 
       const queues: QueueItem[] = result.queues;
-      return json({ data: queues, pagination: result.pagination }, { status: 200 });
+      return json(
+        {
+          data: queues,
+          pagination: toOffsetLimitQueueListPagination(result.pagination, {
+            itemsOnPage: queues.length,
+            perPage: searchParams.perPage ?? QUEUE_LIST_DEFAULT_ITEMS_PER_PAGE,
+          }),
+        },
+        { status: 200 }
+      );
     } catch (error) {
       if (error instanceof ServiceValidationError) {
         return json({ error: error.message }, { status: 422 });

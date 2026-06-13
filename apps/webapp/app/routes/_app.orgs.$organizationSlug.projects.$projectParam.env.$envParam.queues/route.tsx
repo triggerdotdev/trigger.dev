@@ -440,7 +440,10 @@ export default function Page() {
                 <QueueFilters />
                 <PaginationControls
                   currentPage={pagination.currentPage}
-                  totalPages={pagination.totalPages}
+                  totalPages={pagination.mode === "unfiltered" ? pagination.totalPages : 1}
+                  hasNextPage={
+                    pagination.mode === "filtered" ? pagination.hasMore : undefined
+                  }
                   showPageNumbers={false}
                 />
               </div>

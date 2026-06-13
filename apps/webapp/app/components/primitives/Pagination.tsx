@@ -4,17 +4,25 @@ import { Link, useLocation } from "@remix-run/react";
 import { cn } from "~/utils/cn";
 import { LinkButton } from "./Buttons";
 
+/** Pass `hasNextPage` when the total page count is unknown; use `showPageNumbers={false}` in that case. */
 export function PaginationControls({
   currentPage,
   totalPages,
+  hasNextPage,
   showPageNumbers = true,
 }: {
   currentPage: number;
   totalPages: number;
+  /** When set, navigation uses this instead of `totalPages`. */
+  hasNextPage?: boolean;
   showPageNumbers?: boolean;
 }) {
   const location = useLocation();
-  if (totalPages <= 1) {
+  const hasNextMode = hasNextPage !== undefined;
+  const showPagination = hasNextMode ? currentPage > 1 || hasNextPage : totalPages > 1;
+  const nextDisabled = hasNextMode ? !hasNextPage : currentPage === totalPages;
+
+  if (!showPagination) {
     return null;
   }
 
@@ -42,8 +50,8 @@ export function PaginationControls({
             TrailingIcon={ChevronRightIcon}
             shortcut={{ key: "k" }}
             tooltip="Next"
-            disabled={currentPage === totalPages}
-            className={cn("px-2", currentPage !== totalPages ? "group" : "")}
+            disabled={nextDisabled}
+            className={cn("px-2", !nextDisabled ? "group" : "")}
           />
         </>
       ) : (
@@ -66,23 +74,21 @@ export function PaginationControls({
           <div
             className={cn(
               "order-2 h-6 w-px bg-charcoal-600 transition-colors peer-hover/next:bg-charcoal-550 peer-hover/prev:bg-charcoal-550",
-              currentPage === 1 && currentPage === totalPages && "opacity-30"
+              currentPage === 1 && nextDisabled && "opacity-30"
             )}
           />
 
-          <div
-            className={cn("peer/next order-3", currentPage === totalPages && "pointer-events-none")}
-          >
+          <div className={cn("peer/next order-3", nextDisabled && "pointer-events-none")}>
             <LinkButton
               to={pageUrl(location, currentPage + 1)}
               variant="secondary/small"
               TrailingIcon={ChevronRightIcon}
               shortcut={{ key: "k" }}
               tooltip="Next"
-              disabled={currentPage === totalPages}
+              disabled={nextDisabled}
               className={cn(
                 "flex items-center rounded-l-none border-l-0 pl-[0.5625rem] pr-2",
-                currentPage === totalPages && "cursor-not-allowed opacity-50"
+                nextDisabled && "cursor-not-allowed opacity-50"
               )}
             />
           </div>
