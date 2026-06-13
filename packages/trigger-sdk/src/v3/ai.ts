@@ -160,6 +160,10 @@ const chatTurnContextKey = locals.create<ChatTurnContext>("chat.turnContext");
  * @internal
  */
 const chatSessionHandleKey = locals.create<SessionHandle>("chat.sessionHandle");
+// The external `chatId` from the boot payload — the value `ToolCallExecutionOptions.chatId`
+// is documented to carry. Custom-agent loops never set per-turn context, so subtask tool
+// metadata reads this directly rather than the Session handle id.
+const chatExternalIdKey = locals.create<string>("chat.externalId");
 
 /**
  * S2 seq_num of the most recent `turn-complete` control record written by
@@ -964,12 +968,12 @@ function createTaskToolExecuteHandler<
       toolMeta.clientData = chatCtx.clientData;
     } else {
       // Hand-rolled chat.customAgent loops never set per-turn context, but
-      // the wrapper binds the session handle at run boot — thread the
-      // chatId from it so subtask chat helpers (`chat.stream.writer`
-      // with target "root") can open the parent's session.
-      const sessionHandle = locals.get(chatSessionHandleKey);
-      if (sessionHandle) {
-        toolMeta.chatId = sessionHandle.id;
+      // the wrapper records the boot payload's external chatId at run boot
+      // — thread it so subtask chat helpers (`chat.stream.writer` with
+      // target "root") can open the parent's session.
+      const chatExternalId = locals.get(chatExternalIdKey);
+      if (chatExternalId) {
+        toolMeta.chatId = chatExternalId;
       }
     }
 
@@ -5154,6 +5158,7 @@ function chatCustomAgent<
       // `chat.createStartSessionAction`) before this run is triggered.
       // No client-side upsert needed.
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
+      locals.set(chatExternalIdKey, payload.chatId);
       locals.set(chatAgentRunContextKey, runOptions.ctx);
       // Initialize the turn-complete trim slot so `chat.writeTurnComplete`
       // trims `session.out` back to the previous turn boundary. Without
@@ -5267,6 +5272,7 @@ function chatAgent<
       // `chat.createStartSessionAction` or browser-direct) before this
       // run is triggered — no client-side upsert needed here.
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
+      locals.set(chatExternalIdKey, payload.chatId);
       // Mutable holder; advances in `writeTurnCompleteChunk` after each turn
       // and is the trim target for the NEXT turn's trim record.
       locals.set(lastTurnCompleteSeqNumKey, { value: undefined });
