@@ -14,7 +14,6 @@ import { BatchTriggerV3Service } from "./services/batchTriggerV3.server";
 import { CancelDevSessionRunsService } from "./services/cancelDevSessionRuns.server";
 import { CancelTaskAttemptDependenciesService } from "./services/cancelTaskAttemptDependencies.server";
 import { EnqueueDelayedRunService } from "./services/enqueueDelayedRun.server";
-import { ExecuteTasksWaitingForDeployService } from "./services/executeTasksWaitingForDeploy";
 import { ExpireEnqueuedRunService } from "./services/expireEnqueuedRun.server";
 import { ResumeBatchRunService } from "./services/resumeBatchRun.server";
 import { ResumeTaskDependencyService } from "./services/resumeTaskDependency.server";
@@ -226,8 +225,6 @@ function initializeWorker() {
         await service.call(payload.deploymentId, payload.fromStatus, payload.errorMessage);
       },
       "v3.executeTasksWaitingForDeploy": async ({ payload }) => {
-        const service = new ExecuteTasksWaitingForDeployService();
-        await service.call(payload.backgroundWorkerId);
       },
       "v3.retryAttempt": async ({ payload }) => {
         const service = new RetryAttemptService();
