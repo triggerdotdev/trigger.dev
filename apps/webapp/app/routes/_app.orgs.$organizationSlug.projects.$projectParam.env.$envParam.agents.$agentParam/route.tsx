@@ -100,8 +100,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const time = timeFilterFromTo({ period, from, to, defaultPeriod: "7d" });
 
-  const activity = presenter
+  const runActivity = presenter
     .getActivity({
+      environmentId: environment.id,
+      agentSlug: agent.slug,
+      from: time.from,
+      to: time.to,
+    })
+    .catch(() => ({ data: [], statuses: [] } satisfies AgentActivity));
+
+  const sessionActivity = presenter
+    .getSessionActivity({
       environmentId: environment.id,
       agentSlug: agent.slug,
       from: time.from,
@@ -137,20 +146,27 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return typeddefer({
     agent,
-    activity,
+    runActivity,
+    sessionActivity,
     runList,
     sessionList,
   });
 };
 
+type AgentTab = "sessions" | "runs";
+
 export default function Page() {
-  const { agent, activity, runList, sessionList } = useTypedLoaderData<typeof loader>();
+  const { agent, runActivity, sessionActivity, runList, sessionList } =
+    useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
 
   const playgroundPath = v3PlaygroundAgentPath(organization, project, environment, agent.slug);
   const tasksPath = v3EnvironmentPath(organization, project, environment);
+
+  const [tab, setTab] = useState<AgentTab>("sessions");
+  const tabLabel = tab === "sessions" ? "Sessions" : "Runs";
 
   return (
     <>
@@ -177,30 +193,68 @@ export default function Page() {
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="agent-main" min="300px">
-            <ResizablePanelGroup orientation="vertical" className="max-h-full">
-              {/* Activity chart + filters */}
-              <ResizablePanel id="agent-activity" min="144px" default="200px">
-                <div className="flex h-full flex-col gap-3 overflow-hidden bg-background-bright py-2 pl-2 pr-4">
-                  <div className="flex items-center gap-2">
-                    <TimeFilter defaultPeriod="7d" labelName="Runs" />
-                  </div>
-                  <div className="flex min-h-0 flex-1 flex-col">
-                    <Suspense fallback={<ActivityChartSkeleton />}>
-                      <TypedAwait resolve={activity} errorElement={<ActivityChartSkeleton />}>
-                        {(result) => <ActivityChart activity={result} />}
-                      </TypedAwait>
-                    </Suspense>
-                  </div>
-                </div>
-              </ResizablePanel>
+            <div className="grid h-full grid-rows-[2.25rem_1fr] overflow-hidden">
+              {/* Top tab bar — toggles both the chart above and the table below */}
+              <div className="flex items-center border-b border-grid-dimmed bg-background-bright pl-3">
+                <TabContainer className="-mb-px translate-y-[2px]">
+                  <TabButton
+                    isActive={tab === "sessions"}
+                    layoutId="agent-page-tabs"
+                    onClick={() => setTab("sessions")}
+                  >
+                    Sessions
+                  </TabButton>
+                  <TabButton
+                    isActive={tab === "runs"}
+                    layoutId="agent-page-tabs"
+                    onClick={() => setTab("runs")}
+                  >
+                    Runs
+                  </TabButton>
+                </TabContainer>
+              </div>
 
-              <ResizableHandle id="agent-activity-handle" />
+              <ResizablePanelGroup orientation="vertical" className="max-h-full">
+                {/* Activity chart + filters */}
+                <ResizablePanel id="agent-activity" min="144px" default="200px">
+                  <div className="flex h-full flex-col gap-3 overflow-hidden bg-background-bright py-2 pl-2 pr-4">
+                    <div className="flex items-center gap-2">
+                      <TimeFilter defaultPeriod="7d" labelName={tabLabel} />
+                    </div>
+                    <div className="flex min-h-0 flex-1 flex-col">
+                      {tab === "sessions" ? (
+                        <Suspense fallback={<ActivityChartSkeleton />}>
+                          <TypedAwait
+                            resolve={sessionActivity}
+                            errorElement={<ActivityChartSkeleton />}
+                          >
+                            {(result) => <ActivityChart activity={result} />}
+                          </TypedAwait>
+                        </Suspense>
+                      ) : (
+                        <Suspense fallback={<ActivityChartSkeleton />}>
+                          <TypedAwait resolve={runActivity} errorElement={<ActivityChartSkeleton />}>
+                            {(result) => <ActivityChart activity={result} />}
+                          </TypedAwait>
+                        </Suspense>
+                      )}
+                    </div>
+                  </div>
+                </ResizablePanel>
 
-              {/* Runs / Sessions tabs */}
-              <ResizablePanel id="agent-content" min="160px">
-                <AgentContentTabs sessionList={sessionList} runList={runList} />
-              </ResizablePanel>
-            </ResizablePanelGroup>
+                <ResizableHandle id="agent-activity-handle" />
+
+                {/* Table */}
+                <ResizablePanel id="agent-content" min="160px">
+                  <AgentContentArea
+                    tab={tab}
+                    tabLabel={tabLabel}
+                    sessionList={sessionList}
+                    runList={runList}
+                  />
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            </div>
           </ResizablePanel>
 
           <ResizableHandle id="agent-detail-handle" />
@@ -215,29 +269,17 @@ export default function Page() {
 
 type LoaderData = ReturnType<typeof useTypedLoaderData<typeof loader>>;
 
-function AgentContentTabs({ sessionList, runList }: Pick<LoaderData, "sessionList" | "runList">) {
-  const [tab, setTab] = useState<"sessions" | "runs">("sessions");
-
+function AgentContentArea({
+  tab,
+  tabLabel,
+  sessionList,
+  runList,
+}: { tab: AgentTab; tabLabel: string } & Pick<LoaderData, "sessionList" | "runList">) {
   return (
     <div className="grid h-full grid-rows-[2.25rem_1fr] overflow-hidden">
-      {/* Tab bar + pagination on the same row */}
+      {/* Title + pagination on the same row */}
       <div className="flex items-center justify-between border-b border-grid-dimmed bg-background-bright pl-3 pr-1">
-        <TabContainer className="-mb-px translate-y-[2px]">
-          <TabButton
-            isActive={tab === "sessions"}
-            layoutId="agent-content-tabs"
-            onClick={() => setTab("sessions")}
-          >
-            Sessions
-          </TabButton>
-          <TabButton
-            isActive={tab === "runs"}
-            layoutId="agent-content-tabs"
-            onClick={() => setTab("runs")}
-          >
-            Runs
-          </TabButton>
-        </TabContainer>
+        <Header2>{tabLabel}</Header2>
         {tab === "sessions" ? (
           <Suspense fallback={null}>
             <TypedAwait resolve={sessionList} errorElement={null}>
@@ -253,7 +295,7 @@ function AgentContentTabs({ sessionList, runList }: Pick<LoaderData, "sessionLis
         )}
       </div>
 
-      {/* Tab content */}
+      {/* Table */}
       <div className="min-h-0 overflow-hidden">
         {tab === "sessions" ? (
           <Suspense fallback={<TableLoading />}>
@@ -384,10 +426,15 @@ function AgentDetailSidebar({
 }
 
 const STATUS_COLOR: Record<string, string> = {
+  // Run statuses
   COMPLETED: "#28BF5C",
   RUNNING: "#3B82F6",
   FAILED: "#E11D48",
   CANCELED: "#878C99",
+  // Session statuses
+  ACTIVE: "#3B82F6",
+  CLOSED: "#28BF5C",
+  EXPIRED: "#878C99",
 };
 
 function ActivityChart({ activity }: { activity: AgentActivity }) {
