@@ -1,18 +1,44 @@
 import { type ClickHouse } from "@internal/clickhouse";
+import { type MachinePresetName, RetryOptions } from "@trigger.dev/core/v3";
 import {
   type PrismaClientOrTransaction,
   type RuntimeEnvironmentType,
   type TaskTriggerSource,
 } from "@trigger.dev/database";
 import { z } from "zod";
+import { machinePresetFromConfig } from "~/v3/machinePresets.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
+
+export type TaskDetailQueue = {
+  friendlyId: string;
+  name: string;
+  concurrencyLimit: number | null;
+  paused: boolean;
+};
+
+export type TaskDetailRetry = {
+  maxAttempts?: number;
+  factor?: number;
+  minTimeoutInMs?: number;
+  maxTimeoutInMs?: number;
+  randomize?: boolean;
+};
 
 export type TaskDetail = {
   slug: string;
   filePath: string;
+  exportName: string | null;
+  description: string | null;
   triggerSource: TaskTriggerSource;
   createdAt: Date;
   config: unknown;
+  workerVersion: string | null;
+  queue: TaskDetailQueue | null;
+  machinePreset: MachinePresetName;
+  maxDurationInSeconds: number | null;
+  ttl: string | null;
+  retry: TaskDetailRetry | null;
+  hasPayloadSchema: boolean;
 };
 
 export type TaskActivityPoint = {
@@ -90,19 +116,55 @@ export class TaskDetailPresenter {
       select: {
         slug: true,
         filePath: true,
+        exportName: true,
+        description: true,
         triggerSource: true,
         config: true,
         createdAt: true,
+        machineConfig: true,
+        retryConfig: true,
+        maxDurationInSeconds: true,
+        ttl: true,
+        payloadSchema: true,
+        queue: {
+          select: {
+            friendlyId: true,
+            name: true,
+            concurrencyLimit: true,
+            paused: true,
+          },
+        },
       },
     });
 
     if (!task) return null;
+
+    const retryParsed = RetryOptions.safeParse(task.retryConfig ?? undefined);
+    const retry: TaskDetailRetry | null = retryParsed.success
+      ? {
+          maxAttempts: retryParsed.data.maxAttempts,
+          factor: retryParsed.data.factor,
+          minTimeoutInMs: retryParsed.data.minTimeoutInMs,
+          maxTimeoutInMs: retryParsed.data.maxTimeoutInMs,
+          randomize: retryParsed.data.randomize,
+        }
+      : null;
+
     return {
       slug: task.slug,
       filePath: task.filePath,
+      exportName: task.exportName,
+      description: task.description,
       triggerSource: task.triggerSource,
       createdAt: task.createdAt,
       config: task.config,
+      workerVersion: currentWorker.version,
+      queue: task.queue,
+      machinePreset: machinePresetFromConfig(task.machineConfig ?? {}).name,
+      maxDurationInSeconds: task.maxDurationInSeconds,
+      ttl: task.ttl,
+      retry,
+      hasPayloadSchema: task.payloadSchema !== null && task.payloadSchema !== undefined,
     };
   }
 

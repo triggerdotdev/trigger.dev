@@ -1,10 +1,12 @@
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { Suspense, useMemo } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -21,6 +23,7 @@ import {
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
+import { TextLink } from "~/components/primitives/TextLink";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { $replica } from "~/db.server";
@@ -37,7 +40,12 @@ import {
 } from "~/presenters/v3/TaskDetailPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser } from "~/services/session.server";
-import { EnvironmentParamSchema, v3EnvironmentPath, v3TestTaskPath } from "~/utils/pathBuilder";
+import {
+  EnvironmentParamSchema,
+  v3EnvironmentPath,
+  v3QueuesPath,
+  v3TestTaskPath,
+} from "~/utils/pathBuilder";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const slug = (data as { task?: TaskDetail | null } | undefined)?.task?.slug;
@@ -127,6 +135,7 @@ export default function Page() {
   const testPath = v3TestTaskPath(organization, project, environment, {
     taskIdentifier: task.slug,
   });
+  const queuesPath = v3QueuesPath(organization, project, environment);
 
   return (
     <PageContainer>
@@ -203,7 +212,7 @@ export default function Page() {
 
           <ResizableHandle id="task-detail-handle" />
           <ResizablePanel id="task-detail" min="280px" default="380px" max="500px" isStaticAtRest>
-            <TaskDetailSidebar task={task} testPath={testPath} />
+            <TaskDetailSidebar task={task} testPath={testPath} queuesPath={queuesPath} />
           </ResizablePanel>
         </ResizablePanelGroup>
       </PageBody>
@@ -211,7 +220,18 @@ export default function Page() {
   );
 }
 
-function TaskDetailSidebar({ task, testPath }: { task: TaskDetail; testPath: string }) {
+function TaskDetailSidebar({
+  task,
+  testPath,
+  queuesPath,
+}: {
+  task: TaskDetail;
+  testPath: string;
+  queuesPath: string;
+}) {
+  const showExportName = task.exportName && task.exportName !== task.slug;
+  const retrySummary = formatRetrySummary(task.retry);
+
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
       <div className="flex items-center gap-2 border-b border-grid-dimmed px-3 py-2">
@@ -244,10 +264,87 @@ function TaskDetailSidebar({ task, testPath }: { task: TaskDetail; testPath: str
               <CopyableText value={task.filePath} />
             </Property.Value>
           </Property.Item>
+          {showExportName ? (
+            <Property.Item>
+              <Property.Label>Export name</Property.Label>
+              <Property.Value>
+                <CopyableText value={task.exportName ?? ""} />
+              </Property.Value>
+            </Property.Item>
+          ) : null}
+          {task.description ? (
+            <Property.Item>
+              <Property.Label>Description</Property.Label>
+              <Property.Value>
+                <Paragraph variant="small">{task.description}</Paragraph>
+              </Property.Value>
+            </Property.Item>
+          ) : null}
           <Property.Item>
             <Property.Label>Type</Property.Label>
             <Property.Value>
               <Paragraph variant="small">Standard task</Paragraph>
+            </Property.Value>
+          </Property.Item>
+          {task.workerVersion ? (
+            <Property.Item>
+              <Property.Label>Version</Property.Label>
+              <Property.Value>
+                <Paragraph variant="small" className="font-mono">
+                  {task.workerVersion}
+                </Paragraph>
+              </Property.Value>
+            </Property.Item>
+          ) : null}
+          {task.queue ? (
+            <Property.Item>
+              <Property.Label>Queue</Property.Label>
+              <Property.Value>
+                <div className="flex flex-col gap-0.5">
+                  <TextLink to={queuesPath}>{task.queue.name}</TextLink>
+                  <Paragraph variant="extra-small" className="text-text-dimmed">
+                    Concurrency: {task.queue.concurrencyLimit ?? "Unlimited"}
+                    {task.queue.paused ? " · Paused" : ""}
+                  </Paragraph>
+                </div>
+              </Property.Value>
+            </Property.Item>
+          ) : null}
+          <Property.Item>
+            <Property.Label>Machine</Property.Label>
+            <Property.Value className="-ml-0.5">
+              <MachineLabelCombo preset={task.machinePreset} />
+            </Property.Value>
+          </Property.Item>
+          <Property.Item>
+            <Property.Label>Max duration</Property.Label>
+            <Property.Value>
+              <Paragraph variant="small">
+                {task.maxDurationInSeconds
+                  ? `${task.maxDurationInSeconds}s (${formatDurationMilliseconds(
+                      task.maxDurationInSeconds * 1000,
+                      { style: "short" }
+                    )})`
+                  : "–"}
+              </Paragraph>
+            </Property.Value>
+          </Property.Item>
+          <Property.Item>
+            <Property.Label>TTL</Property.Label>
+            <Property.Value>
+              <Paragraph variant="small">{task.ttl ?? "–"}</Paragraph>
+            </Property.Value>
+          </Property.Item>
+          <Property.Item>
+            <Property.Label>Retry</Property.Label>
+            <Property.Value>
+              <Paragraph variant="small">{retrySummary}</Paragraph>
+            </Property.Value>
+          </Property.Item>
+          <Property.Item>
+            <Property.Label>Payload schema</Property.Label>
+            <Property.Value>
+              <Paragraph variant="small">{task.hasPayloadSchema ? "Yes" : "–"}</Paragraph>
             </Property.Value>
           </Property.Item>
           <Property.Item>
@@ -260,6 +357,12 @@ function TaskDetailSidebar({ task, testPath }: { task: TaskDetail; testPath: str
       </div>
     </div>
   );
+}
+
+function formatRetrySummary(retry: TaskDetail["retry"]): string {
+  if (!retry || retry.maxAttempts === undefined) return "–";
+  if (retry.maxAttempts <= 1) return "Disabled";
+  return `${retry.maxAttempts} attempts`;
 }
 
 const STATUS_COLOR: Record<string, string> = {
