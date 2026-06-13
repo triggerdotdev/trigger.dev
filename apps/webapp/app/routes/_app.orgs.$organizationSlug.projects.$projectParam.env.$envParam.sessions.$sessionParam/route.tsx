@@ -9,8 +9,12 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import simplur from "simplur";
 import { z } from "zod";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
+import { MessageInputIcon } from "~/assets/icons/MessageInputIcon";
+import { MessageOutputIcon } from "~/assets/icons/MessageOutputIcon";
 import { MoveToBottomIcon } from "~/assets/icons/MoveToBottomIcon";
 import { MoveToTopIcon } from "~/assets/icons/MoveToTopIcon";
+import { TextInlineIcon } from "~/assets/icons/TextInlineIcon";
+import { TextWrapIcon } from "~/assets/icons/TextWrapIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -235,8 +239,21 @@ function ConversationUtilityBar({
 
 type MergedChunk = StreamChunk & { source: "in" | "out" };
 
+function formatInlineData(data: unknown): string {
+  if (typeof data === "string") return data;
+  const json = JSON.stringify(data);
+  return json ?? String(data);
+}
+
+function formatWrappedData(data: unknown): string {
+  if (typeof data === "string") return data;
+  const json = JSON.stringify(data, null, 2);
+  return json ?? String(data);
+}
+
 const ROW_NUMBER_COL_MIN_CH = 3;
-const TIME_COL_WIDTH = "9.5rem";
+const TIME_COL_WIDTH = "7rem";
+const TYPE_COL_WIDTH = "5rem";
 
 function RawConversationView({
   inResourcePath,
@@ -269,6 +286,15 @@ function RawConversationView({
     return all;
   }, [inChunks, outChunks]);
 
+  const longestInlineMessage = useMemo(() => {
+    let longest = "";
+    for (const chunk of merged) {
+      const text = formatInlineData(chunk.data);
+      if (text.length > longest.length) longest = text;
+    }
+    return longest;
+  }, [merged]);
+
   const error = inError ?? outError;
   const isConnected = inConnected || outConnected;
   const totalChunks = merged.length;
@@ -278,13 +304,13 @@ function RawConversationView({
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [copied, setCopied] = useState(false);
   const [mouseOver, setMouseOver] = useState(false);
+  const [isWrapped, setIsWrapped] = useState(false);
 
   const getCompactText = useCallback(() => {
     return merged
       .map((chunk) => {
         const prefix = chunk.source === "in" ? "» " : "« ";
-        const text = typeof chunk.data === "string" ? chunk.data : JSON.stringify(chunk.data);
-        return `${prefix}${text}`;
+        return `${prefix}${formatInlineData(chunk.data)}`;
       })
       .join("\n");
   }, [merged]);
@@ -401,6 +427,23 @@ function RawConversationView({
         </Tooltip>
       </TooltipProvider>
       <TooltipProvider>
+        <Tooltip disableHoverableContent>
+          <TooltipTrigger
+            onClick={() => setIsWrapped((w) => !w)}
+            className="text-text-dimmed transition-colors focus-custom hover:cursor-pointer hover:text-text-bright"
+          >
+            {isWrapped ? (
+              <TextInlineIcon className="size-4" />
+            ) : (
+              <TextWrapIcon className="size-4" />
+            )}
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-xs">
+            {isWrapped ? "Show messages on one line" : "Wrap messages"}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <TooltipProvider>
         <Tooltip open={totalChunks === 0 ? false : undefined} disableHoverableContent>
           <TooltipTrigger
             disabled={totalChunks === 0}
@@ -408,7 +451,11 @@ function RawConversationView({
               if (isAtBottom) {
                 scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
               } else {
-                bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+                bottomRef.current?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "end",
+                  inline: "nearest",
+                });
               }
             }}
             className={cn(
@@ -436,71 +483,96 @@ function RawConversationView({
     <>
       <ConversationUtilityBar isRaw={isRaw} onChangeView={onChangeView} right={controls} />
       <div className="flex min-h-0 flex-1 flex-col bg-charcoal-900">
-        <StreamColumnHeader rowNumberWidthCh={rowNumberWidthCh} timeColWidth={TIME_COL_WIDTH} />
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="flex-1 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
         >
-          {error && (
-            <div className="border-b border-error/20 bg-error/10 p-3">
-              <Paragraph variant="small" className="mb-0 text-error">
-                Error: {error.message}
-              </Paragraph>
-            </div>
-          )}
+          <div
+            className="font-mono text-xs leading-tight"
+            style={{ width: isWrapped ? "100%" : "max-content", minWidth: "100%" }}
+          >
+            <StreamColumnHeader
+              rowNumberWidthCh={rowNumberWidthCh}
+              timeColWidth={TIME_COL_WIDTH}
+              typeColWidth={TYPE_COL_WIDTH}
+              className="sticky top-0 z-10"
+            />
 
-          {merged.length === 0 && !error && (
-            <div className="flex h-full items-center justify-center">
-              {isConnected ? (
-                <div className="flex items-center gap-2">
-                  <Spinner />
-                  <Paragraph variant="small" className="mb-0 text-text-dimmed">
-                    Waiting for data…
-                  </Paragraph>
-                </div>
-              ) : (
-                <Paragraph variant="small" className="mb-0 text-text-dimmed">
-                  No data received
+            {error && (
+              <div className="border-b border-error/20 bg-error/10 p-3">
+                <Paragraph variant="small" className="mb-0 text-error">
+                  Error: {error.message}
                 </Paragraph>
-              )}
-            </div>
-          )}
-
-          {merged.length > 0 && (
-            <div className="font-mono text-xs leading-tight">
-              <div
-                style={{
-                  height: `${rowVirtualizer.getTotalSize()}px`,
-                  position: "relative",
-                  minWidth: "100%",
-                }}
-              >
-                {rowVirtualizer.getVirtualItems().map((virtualItem) => {
-                  const chunk = merged[virtualItem.index];
-                  return (
-                    <MergedStreamRow
-                      key={virtualItem.key}
-                      chunk={chunk}
-                      lineNumber={virtualItem.index + 1}
-                      rowNumberWidthCh={rowNumberWidthCh}
-                      timeColWidth={TIME_COL_WIDTH}
-                      start={virtualItem.start}
-                      measure={(el) => rowVirtualizer.measureElement(el)}
-                      index={virtualItem.index}
-                    />
-                  );
-                })}
-                <div
-                  ref={bottomRef}
-                  className="h-px"
-                  style={{
-                    position: "absolute",
-                    top: `${rowVirtualizer.getTotalSize()}px`,
-                  }}
-                />
               </div>
-            </div>
-          )}
+            )}
+
+            {merged.length === 0 && !error && (
+              <div className="flex h-full items-center justify-center py-6">
+                {isConnected ? (
+                  <div className="flex items-center gap-2">
+                    <Spinner />
+                    <Paragraph variant="small" className="mb-0 text-text-dimmed">
+                      Waiting for data…
+                    </Paragraph>
+                  </div>
+                ) : (
+                  <Paragraph variant="small" className="mb-0 text-text-dimmed">
+                    No data received
+                  </Paragraph>
+                )}
+              </div>
+            )}
+
+            {merged.length > 0 && (
+              <>
+                {!isWrapped && longestInlineMessage && (
+                  <div
+                    aria-hidden
+                    className="invisible flex"
+                    style={{ height: 0, overflow: "hidden" }}
+                  >
+                    <div className="flex-none" style={{ width: `${rowNumberWidthCh}ch` }} />
+                    <div className="flex-none px-3" style={{ width: TIME_COL_WIDTH }} />
+                    <div className="flex-none px-3" style={{ width: TYPE_COL_WIDTH }} />
+                    <div className="whitespace-nowrap px-3">{longestInlineMessage}</div>
+                  </div>
+                )}
+                <div
+                  style={{
+                    height: `${rowVirtualizer.getTotalSize()}px`,
+                    position: "relative",
+                    minWidth: "100%",
+                  }}
+                >
+                  {rowVirtualizer.getVirtualItems().map((virtualItem) => {
+                    const chunk = merged[virtualItem.index];
+                    return (
+                      <MergedStreamRow
+                        key={virtualItem.key}
+                        chunk={chunk}
+                        lineNumber={virtualItem.index + 1}
+                        rowNumberWidthCh={rowNumberWidthCh}
+                        timeColWidth={TIME_COL_WIDTH}
+                        typeColWidth={TYPE_COL_WIDTH}
+                        isWrapped={isWrapped}
+                        start={virtualItem.start}
+                        measure={(el) => rowVirtualizer.measureElement(el)}
+                        index={virtualItem.index}
+                      />
+                    );
+                  })}
+                  <div
+                    ref={bottomRef}
+                    className="h-px"
+                    style={{
+                      position: "absolute",
+                      top: `${rowVirtualizer.getTotalSize()}px`,
+                    }}
+                  />
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </>
@@ -510,18 +582,29 @@ function RawConversationView({
 function StreamColumnHeader({
   rowNumberWidthCh,
   timeColWidth,
+  typeColWidth,
+  className,
 }: {
   rowNumberWidthCh: number;
   timeColWidth: string;
+  typeColWidth: string;
+  className?: string;
 }) {
   return (
-    <div className="flex select-none items-center border-b border-grid-dimmed bg-charcoal-900 py-1 text-xs uppercase tracking-wide text-text-dimmed">
+    <div
+      className={cn(
+        "relative flex h-9 select-none items-center bg-charcoal-900 font-sans text-sm font-medium leading-normal text-text-bright after:absolute after:bottom-0 after:left-0 after:right-0 after:h-px after:bg-grid-bright",
+        className
+      )}
+    >
       <div className="flex-none" style={{ width: `${rowNumberWidthCh}ch` }} />
-      <div className="flex-none pl-3" style={{ width: timeColWidth }}>
+      <div className="flex-none px-3" style={{ width: timeColWidth }}>
         Time
       </div>
-      <div className="min-w-0 flex-1 px-3">Input</div>
-      <div className="min-w-0 flex-1 px-3">Output</div>
+      <div className="flex-none px-3" style={{ width: typeColWidth }}>
+        Type
+      </div>
+      <div className="min-w-0 flex-1 px-3">Message</div>
     </div>
   );
 }
@@ -531,6 +614,8 @@ function MergedStreamRow({
   lineNumber,
   rowNumberWidthCh,
   timeColWidth,
+  typeColWidth,
+  isWrapped,
   start,
   measure,
   index,
@@ -539,12 +624,14 @@ function MergedStreamRow({
   lineNumber: number;
   rowNumberWidthCh: number;
   timeColWidth: string;
+  typeColWidth: string;
+  isWrapped: boolean;
   start: number;
   measure: (el: HTMLDivElement | null) => void;
   index: number;
 }) {
-  const formattedData =
-    typeof chunk.data === "string" ? chunk.data : JSON.stringify(chunk.data, null, 2);
+  const wrappedData = formatWrappedData(chunk.data);
+  const inlineData = formatInlineData(chunk.data);
 
   const date = new Date(chunk.timestamp);
   const timeString = date.toLocaleTimeString("en-US", {
@@ -555,6 +642,8 @@ function MergedStreamRow({
   });
   const milliseconds = date.getMilliseconds().toString().padStart(3, "0");
   const timestamp = `${timeString}.${milliseconds}`;
+
+  const isInput = chunk.source === "in";
 
   return (
     <div
@@ -578,11 +667,28 @@ function MergedStreamRow({
       <div className="flex-none select-none pl-3 text-charcoal-500" style={{ width: timeColWidth }}>
         {timestamp}
       </div>
-      <div className="min-w-0 flex-1 whitespace-pre-wrap break-words px-3 text-text-bright">
-        {chunk.source === "in" ? formattedData : null}
+      <div className="flex-none px-3" style={{ width: typeColWidth }}>
+        <span
+          className={cn(
+            "inline-flex items-center gap-1",
+            isInput ? "text-success" : "text-blue-500"
+          )}
+        >
+          {isInput ? (
+            <MessageInputIcon className="size-3.5" />
+          ) : (
+            <MessageOutputIcon className="size-3.5" />
+          )}
+          {isInput ? "Input" : "Output"}
+        </span>
       </div>
-      <div className="min-w-0 flex-1 whitespace-pre-wrap break-words px-3 text-text-bright">
-        {chunk.source === "out" ? formattedData : null}
+      <div
+        className={cn(
+          "min-w-0 flex-1 px-3 text-text-bright",
+          isWrapped ? "whitespace-pre-wrap break-words" : "whitespace-nowrap"
+        )}
+      >
+        {isWrapped ? wrappedData : inlineData}
       </div>
     </div>
   );
