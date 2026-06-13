@@ -91,7 +91,7 @@ import {
   v3UsagePath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
-import { AlphaBadge } from "../AlphaBadge";
+import { AlphaBadge, NewBadge } from "../FeatureBadges";
 import { AskAI } from "../AskAI";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
@@ -412,6 +412,7 @@ export function SideMenu({
                 inactiveIconColor="text-text-dimmed"
                 to={v3SessionsPath(organization, project, environment)}
                 data-action="sessions"
+                badge={<NewBadge />}
                 isCollapsed={isCollapsed}
               />
             </div>
@@ -432,6 +433,7 @@ export function SideMenu({
                   inactiveIconColor="text-text-dimmed"
                   to={v3PromptsPath(organization, project, environment)}
                   data-action="prompts"
+                  badge={<NewBadge />}
                   isCollapsed={isCollapsed}
                 />
                 {(user.admin || user.isImpersonating || featureFlags.hasAiAccess) && (
@@ -442,6 +444,7 @@ export function SideMenu({
                     inactiveIconColor="text-text-dimmed"
                     to={v3ModelsPath(organization, project, environment)}
                     data-action="models"
+                    badge={<NewBadge />}
                     isCollapsed={isCollapsed}
                   />
                 )}
