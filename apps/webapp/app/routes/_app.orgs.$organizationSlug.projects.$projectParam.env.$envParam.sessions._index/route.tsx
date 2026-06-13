@@ -127,12 +127,12 @@ function SessionsHelpTooltip() {
       content={
         <div className="flex flex-col gap-3">
           <div>
-            <Paragraph variant="small/bright">What is a Session?</Paragraph>
-            <Paragraph variant="extra-small" className="mt-1">
+            <Paragraph variant="small/bright">What is a session?</Paragraph>
+            <Paragraph variant="small" className="mt-1">
               A session is a pair of streams: input for incoming user messages, and output for
               everything the agent produces, including AI generation parts (text, reasoning, tool
-              calls, etc.) and any custom data parts your task emits. Sessions also orchestrate
-              the execution of agent runs, so a single conversation can span many task triggers.
+              calls, etc.) and any custom data parts your task emits. Sessions also orchestrate the
+              execution of agent runs, so a single conversation can span many task triggers.
             </Paragraph>
           </div>
           <div className="flex flex-col gap-2.5 border-t border-grid-dimmed pt-3">
@@ -140,16 +140,16 @@ function SessionsHelpTooltip() {
               <Paragraph variant="small/bright">
                 <InlineCode>chat.agent</InlineCode>
               </Paragraph>
-              <Paragraph variant="extra-small" className="mt-1">
-                The high-level chat building block. Built on sessions and handles the chat turn
-                loop for you. Use it for chat apps and conversational AI experiences.
+              <Paragraph variant="small" className="mt-1">
+                The high-level chat building block. Built on sessions and handles the chat turn loop
+                for you. Use it for chat apps and conversational AI experiences.
               </Paragraph>
             </div>
             <div>
               <Paragraph variant="small/bright">
                 <InlineCode>sessions.start()</InlineCode>
               </Paragraph>
-              <Paragraph variant="extra-small" className="mt-1">
+              <Paragraph variant="small" className="mt-1">
                 The raw sessions API. Use it for non-chat patterns like agent inboxes, approval
                 flows, or server-to-server streaming where you need a durable bi-directional
                 channel.

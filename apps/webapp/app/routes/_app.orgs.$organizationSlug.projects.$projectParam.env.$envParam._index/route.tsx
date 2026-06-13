@@ -266,7 +266,16 @@ export default function Page() {
                       <TableHeader>
                         <TableRow>
                           <TableHeaderCell>ID</TableHeaderCell>
-                          <TableHeaderCell>Type</TableHeaderCell>
+                          <TableHeaderCell
+                            tooltip={
+                              <div className="max-w-sm">
+                                <TaskTypeBreakdown />
+                              </div>
+                            }
+                            disableTooltipHoverableContent
+                          >
+                            Type
+                          </TableHeaderCell>
                           <TableHeaderCell>File</TableHeaderCell>
                           <TableHeaderCell>Running</TableHeaderCell>
                           <TableHeaderCell>Activity (24h)</TableHeaderCell>
@@ -655,6 +664,44 @@ function FailedToLoadStats() {
   );
 }
 
+function TaskTypeBreakdown() {
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div>
+        <div className="flex items-center gap-1.5">
+          <CubeSparkleIcon className="size-4.5 shrink-0 text-agents" />
+          <Paragraph variant="small/bright">Agent task</Paragraph>
+        </div>
+        <Paragraph variant="small" className="mt-1">
+          A long-lived AI session. Streams LLM responses to your app and keeps context across
+          messages, page refreshes, and deploys.
+        </Paragraph>
+      </div>
+      <div>
+        <div className="flex items-center gap-1.5">
+          <TaskIcon className="size-4.5 shrink-0 text-tasks" />
+          <Paragraph variant="small/bright">Standard task</Paragraph>
+        </div>
+        <Paragraph variant="small" className="mt-1">
+          A background function you trigger from your code with a payload. Good for AI workflows,
+          image generation, audio transcription, document processing, and any other long-running
+          work where reliability matters.
+        </Paragraph>
+      </div>
+      <div>
+        <div className="flex items-center gap-1.5">
+          <ClockIcon className="size-4.5 shrink-0 text-schedules" />
+          <Paragraph variant="small/bright">Scheduled task</Paragraph>
+        </div>
+        <Paragraph variant="small" className="mt-1">
+          Runs automatically on a recurring cron schedule. Use daily, weekly, or any custom interval
+          you need.
+        </Paragraph>
+      </div>
+    </div>
+  );
+}
+
 function TasksHelpTooltip() {
   return (
     <SimpleTooltip
@@ -668,44 +715,14 @@ function TasksHelpTooltip() {
         <div className="flex flex-col gap-3">
           <div>
             <Paragraph variant="small/bright">What is a task?</Paragraph>
-            <Paragraph variant="extra-small" className="mt-1">
+            <Paragraph variant="small" className="mt-1">
               A task is a durable function that runs in the background. It can run for as long as it
               needs without timing out, automatically retries on failure, and survives crashes and
               deploys.
             </Paragraph>
           </div>
-          <div className="flex flex-col gap-2.5 border-t border-grid-dimmed pt-3">
-            <div>
-              <div className="flex items-center gap-1.5">
-                <CubeSparkleIcon className="size-4 shrink-0 text-agents" />
-                <Paragraph variant="small/bright">Agent task</Paragraph>
-              </div>
-              <Paragraph variant="extra-small" className="mt-1">
-                A long-lived AI session. Streams LLM responses to your app and keeps context
-                across messages, page refreshes, and deploys.
-              </Paragraph>
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <TaskIcon className="size-4 shrink-0 text-tasks" />
-                <Paragraph variant="small/bright">Standard task</Paragraph>
-              </div>
-              <Paragraph variant="extra-small" className="mt-1">
-                A background function you trigger from your code with a payload. Good for AI
-                workflows, image generation, audio transcription, document processing, and any
-                other long-running work where reliability matters.
-              </Paragraph>
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <ClockIcon className="size-4 shrink-0 text-schedules" />
-                <Paragraph variant="small/bright">Scheduled task</Paragraph>
-              </div>
-              <Paragraph variant="extra-small" className="mt-1">
-                Runs automatically on a recurring cron schedule. Use daily, weekly, or any custom
-                interval you need.
-              </Paragraph>
-            </div>
+          <div className="border-t border-grid-dimmed pt-3">
+            <TaskTypeBreakdown />
           </div>
         </div>
       }

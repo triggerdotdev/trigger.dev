@@ -137,26 +137,7 @@ export default function Page() {
   return (
     <>
       <NavBar>
-        <PageTitle
-          title="Runs"
-          accessory={
-            <SimpleTooltip
-              button={<QuestionMarkIcon className="size-4 text-text-dimmed" />}
-              content={
-                <>
-                  A run is a single instance of a task being executed. It's created when you trigger
-                  a task. For example:{" "}
-                  <InlineCode variant="extra-extra-small">
-                    yourTask.trigger({`{ foo: "bar" }`})
-                  </InlineCode>
-                  .
-                </>
-              }
-              className="max-w-xs"
-              disableHoverableContent
-            />
-          }
-        />
+        <PageTitle title="Runs" accessory={<RunsHelpTooltip />} />
         {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
           <DevDisconnectedBanner isConnected={isConnected} />
         )}
@@ -487,5 +468,52 @@ function RunTaskInstructions({ task }: { task?: { slug: string } }) {
         </LinkButton>
       </StepContentContainer>
     </MainCenteredContainer>
+  );
+}
+
+function RunsHelpTooltip() {
+  return (
+    <SimpleTooltip
+      button={
+        <QuestionMarkIcon className="size-4 text-text-dimmed transition hover:text-text-bright" />
+      }
+      side="bottom"
+      className="max-w-sm p-3"
+      disableHoverableContent
+      content={
+        <div className="flex flex-col gap-3">
+          <div>
+            <Paragraph variant="small/bright">What is a run?</Paragraph>
+            <Paragraph variant="small" className="mt-1">
+              A run is a single instance of a task being executed. It's created when you trigger a
+              task, for example{" "}
+              <InlineCode variant="extra-extra-small">
+                yourTask.trigger({`{ foo: "bar" }`})
+              </InlineCode>
+              . Runs are durable, so they survive crashes, deploys, and restarts, and will
+              automatically retry on failure.
+            </Paragraph>
+          </div>
+          <div className="flex flex-col gap-2.5 border-t border-grid-dimmed pt-3">
+            <div>
+              <Paragraph variant="small/bright">
+                <InlineCode>task.trigger()</InlineCode>
+              </Paragraph>
+              <Paragraph variant="small" className="mt-1">
+                Triggered from your backend code, an API call, or another task. Each call creates a
+                single run with the payload you pass in.
+              </Paragraph>
+            </div>
+            <div>
+              <Paragraph variant="small/bright">Scheduled triggers</Paragraph>
+              <Paragraph variant="small" className="mt-1">
+                Runs created automatically from a cron schedule attached to a scheduled task. Use
+                them for recurring jobs like nightly syncs or hourly cleanups.
+              </Paragraph>
+            </div>
+          </div>
+        </div>
+      }
+    />
   );
 }
