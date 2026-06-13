@@ -1,10 +1,10 @@
 import { BookOpenIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { json, type MetaFunction } from "@remix-run/node";
-import { useFetcher } from "@remix-run/react";
+import { useFetcher, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { TaskRunStatus } from "@trigger.dev/database";
 import type { PanelHandle } from "@window-splitter/react";
-import { Fragment, Suspense, useCallback, useMemo, useRef, useState } from "react";
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bar, BarChart, ReferenceLine, Tooltip, type TooltipProps, YAxis } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
@@ -64,6 +64,7 @@ import {
   taskTriggerSourceDescription,
 } from "~/components/runs/v3/TaskTriggerSource";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useEventSource } from "~/hooks/useEventSource";
 import { useFuzzyFilter } from "~/hooks/useFuzzyFilter";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -94,6 +95,7 @@ import {
   v3RunsPath,
   v3ScheduledTaskPath,
   v3StandardTaskPath,
+  v3TasksStreamingPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
 
@@ -166,6 +168,19 @@ export default function Page() {
   const { items, hourlyActivity, runningStates, usefulLinksPreference } =
     useTypedLoaderData<typeof loader>();
   const { value, values } = useSearchParams();
+
+  // Live-reload on WORKER_CREATED.
+  const revalidator = useRevalidator();
+  const streamedEvents = useEventSource(
+    v3TasksStreamingPath(organization, project, environment),
+    { event: "message" }
+  );
+  useEffect(() => {
+    if (streamedEvents !== null) {
+      revalidator.revalidate();
+    }
+    // Don't add `revalidator` to deps — infinite loop.
+  }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [showUsefulLinks, setShowUsefulLinks] = useState(usefulLinksPreference ?? true);
   // Unmount the charts while the side panel animates; 25 SVGs in a reflowing table tanks perf.
