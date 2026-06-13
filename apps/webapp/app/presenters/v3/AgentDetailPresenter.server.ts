@@ -304,4 +304,102 @@ export class AgentDetailPresenter {
 
     return { data: points, statuses: orderedStatuses };
   }
+
+  async getLlmCostActivity(input: {
+    environmentId: string;
+    agentSlug: string;
+    from: Date;
+    to: Date;
+  }): Promise<AgentActivity> {
+    return this.#llmActivity({ ...input, metric: "cost" });
+  }
+
+  async getLlmTokenActivity(input: {
+    environmentId: string;
+    agentSlug: string;
+    from: Date;
+    to: Date;
+  }): Promise<AgentActivity> {
+    return this.#llmActivity({ ...input, metric: "tokens" });
+  }
+
+  async #llmActivity({
+    environmentId,
+    agentSlug,
+    from,
+    to,
+    metric,
+  }: {
+    environmentId: string;
+    agentSlug: string;
+    from: Date;
+    to: Date;
+    metric: "cost" | "tokens";
+  }): Promise<AgentActivity> {
+    const rangeMs = Math.max(1, to.getTime() - from.getTime());
+    const oneHour = 60 * 60 * 1000;
+    const oneDay = 24 * oneHour;
+
+    const bucketSeconds =
+      rangeMs <= oneDay ? 60 * 60 : rangeMs <= 7 * oneDay ? 6 * 60 * 60 : 24 * 60 * 60;
+
+    const seriesKey = metric === "cost" ? "cost" : "tokens";
+    // total_cost is Decimal64(12); cast to Float64 so the JSON wire format is
+    // a plain number rather than a string.
+    const sumExpr = metric === "cost" ? "toFloat64(sum(total_cost))" : "sum(total_tokens)";
+
+    const queryFn = this.clickhouse.reader.query({
+      name: metric === "cost" ? "agentLlmCostActivity" : "agentLlmTokenActivity",
+      query: `SELECT
+          toUnixTimestamp(toStartOfInterval(start_time, INTERVAL {bucketSeconds: UInt32} SECOND)) AS bucket,
+          ${sumExpr} AS val
+        FROM trigger_dev.llm_metrics_v1
+        WHERE environment_id = {environmentId: String}
+          AND task_identifier = {agentSlug: String}
+          AND start_time >= {fromTime: DateTime64(3, 'UTC')}
+          AND start_time < {toTime: DateTime64(3, 'UTC')}
+        GROUP BY bucket
+        ORDER BY bucket`,
+      params: z.object({
+        environmentId: z.string(),
+        agentSlug: z.string(),
+        bucketSeconds: z.number(),
+        fromTime: z.string(),
+        toTime: z.string(),
+      }),
+      schema: z.object({
+        bucket: z.coerce.number(),
+        val: z.coerce.number(),
+      }),
+    });
+
+    const [error, rows] = await queryFn({
+      environmentId,
+      agentSlug,
+      bucketSeconds,
+      fromTime: from.toISOString().slice(0, -1),
+      toTime: to.toISOString().slice(0, -1),
+    });
+
+    if (error) {
+      console.error(`Agent LLM ${metric} activity query failed:`, error);
+      return { data: [], statuses: [] };
+    }
+
+    const bucketMap = new Map<number, number>();
+    for (const row of rows) {
+      const ts = row.bucket * 1000;
+      bucketMap.set(ts, (bucketMap.get(ts) ?? 0) + row.val);
+    }
+
+    const bucketMs = bucketSeconds * 1000;
+    const start = Math.floor(from.getTime() / bucketMs) * bucketMs;
+    const end = Math.ceil(to.getTime() / bucketMs) * bucketMs;
+    const points: AgentActivityPoint[] = [];
+    for (let ts = start; ts < end; ts += bucketMs) {
+      points.push({ bucket: ts, [seriesKey]: bucketMap.get(ts) ?? 0 });
+    }
+
+    return { data: points, statuses: [seriesKey] };
+  }
 }

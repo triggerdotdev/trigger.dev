@@ -36,12 +36,14 @@ import {
 
 type SessionsTableProps = Pick<SessionList, "sessions" | "filters" | "hasFilters"> & {
   showTopBorder?: boolean;
+  stickyHeader?: boolean;
 };
 
 export function SessionsTable({
   sessions,
   hasFilters,
   showTopBorder = true,
+  stickyHeader = false,
 }: SessionsTableProps) {
   const navigation = useNavigation();
   const location = useLocation();
@@ -53,7 +55,11 @@ export function SessionsTable({
   const environment = useEnvironment();
 
   return (
-    <Table className="max-h-full overflow-y-auto" showTopBorder={showTopBorder}>
+    <Table
+      className="max-h-full overflow-y-auto"
+      showTopBorder={showTopBorder}
+      stickyHeader={stickyHeader}
+    >
       <TableHeader>
         <TableRow>
           <TableHeaderCell>ID</TableHeaderCell>

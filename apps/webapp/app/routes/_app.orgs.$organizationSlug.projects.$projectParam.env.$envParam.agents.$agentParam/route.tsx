@@ -1,7 +1,7 @@
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Suspense, useMemo, useState } from "react";
+import { type ReactNode, Suspense, useMemo, useState } from "react";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
@@ -9,6 +9,7 @@ import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { PageBody } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { Card } from "~/components/primitives/charts/Card";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { CopyableText } from "~/components/primitives/CopyableText";
@@ -118,6 +119,24 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     })
     .catch(() => ({ data: [], statuses: [] } satisfies AgentActivity));
 
+  const llmCostActivity = presenter
+    .getLlmCostActivity({
+      environmentId: environment.id,
+      agentSlug: agent.slug,
+      from: time.from,
+      to: time.to,
+    })
+    .catch(() => ({ data: [], statuses: [] } satisfies AgentActivity));
+
+  const llmTokenActivity = presenter
+    .getLlmTokenActivity({
+      environmentId: environment.id,
+      agentSlug: agent.slug,
+      from: time.from,
+      to: time.to,
+    })
+    .catch(() => ({ data: [], statuses: [] } satisfies AgentActivity));
+
   const runList = new NextRunListPresenter($replica, clickhouse)
     .call(project.organizationId, environment.id, {
       userId,
@@ -148,6 +167,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     agent,
     runActivity,
     sessionActivity,
+    llmCostActivity,
+    llmTokenActivity,
     runList,
     sessionList,
   });
@@ -156,8 +177,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 type AgentTab = "sessions" | "runs";
 
 export default function Page() {
-  const { agent, runActivity, sessionActivity, runList, sessionList } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    agent,
+    runActivity,
+    sessionActivity,
+    llmCostActivity,
+    llmTokenActivity,
+    runList,
+    sessionList,
+  } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -193,10 +221,11 @@ export default function Page() {
       <PageBody scrollable={false}>
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="agent-main" min="300px">
-            <div className="grid h-full grid-rows-[2.25rem_1fr] overflow-hidden">
-              {/* Top tab bar — toggles both the chart above and the table below */}
-              <div className="flex items-center border-b border-grid-dimmed bg-background-bright pl-3">
-                <TabContainer className="-mb-px translate-y-[2px]">
+            <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
+              {/* Top bar — tabs on the left; TimeFilter + pagination on the right.
+                  h-10 matches the right-hand sidebar header height. */}
+              <div className="flex h-10 items-end border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
+                <TabContainer className="-mb-px">
                   <TabButton
                     isActive={tab === "sessions"}
                     layoutId="agent-page-tabs"
@@ -212,32 +241,88 @@ export default function Page() {
                     Runs
                   </TabButton>
                 </TabContainer>
+                <div className="ml-auto flex items-center gap-2 self-center">
+                  <TimeFilter defaultPeriod="7d" labelName={tabLabel} />
+                  {tab === "sessions" ? (
+                    <Suspense fallback={null}>
+                      <TypedAwait resolve={sessionList} errorElement={null}>
+                        {(list) => (list ? <ListPagination list={list} /> : null)}
+                      </TypedAwait>
+                    </Suspense>
+                  ) : (
+                    <Suspense fallback={null}>
+                      <TypedAwait resolve={runList} errorElement={null}>
+                        {(list) => (list ? <ListPagination list={list} /> : null)}
+                      </TypedAwait>
+                    </Suspense>
+                  )}
+                </div>
               </div>
 
               <ResizablePanelGroup orientation="vertical" className="max-h-full">
-                {/* Activity chart + filters */}
-                <ResizablePanel id="agent-activity" min="144px" default="200px">
-                  <div className="flex h-full flex-col gap-3 overflow-hidden bg-background-bright py-2 pl-2 pr-4">
-                    <div className="flex items-center gap-2">
-                      <TimeFilter defaultPeriod="7d" labelName={tabLabel} />
-                    </div>
-                    <div className="flex min-h-0 flex-1 flex-col">
-                      {tab === "sessions" ? (
+                {/* Activity / LLM cost / Token charts */}
+                <ResizablePanel id="agent-activity" min="220px" default="320px">
+                  <div className="flex h-full flex-col overflow-hidden bg-background p-2">
+                    <div className="grid min-h-0 flex-1 grid-cols-3 gap-2">
+                      <ChartCard title={tabLabel}>
+                        {tab === "sessions" ? (
+                          <Suspense fallback={<ActivityChartSkeleton />}>
+                            <TypedAwait
+                              resolve={sessionActivity}
+                              errorElement={<ActivityChartSkeleton />}
+                            >
+                              {(result) => <ActivityChart activity={result} />}
+                            </TypedAwait>
+                          </Suspense>
+                        ) : (
+                          <Suspense fallback={<ActivityChartSkeleton />}>
+                            <TypedAwait
+                              resolve={runActivity}
+                              errorElement={<ActivityChartSkeleton />}
+                            >
+                              {(result) => <ActivityChart activity={result} />}
+                            </TypedAwait>
+                          </Suspense>
+                        )}
+                      </ChartCard>
+
+                      <ChartCard title="LLM spend">
                         <Suspense fallback={<ActivityChartSkeleton />}>
                           <TypedAwait
-                            resolve={sessionActivity}
+                            resolve={llmCostActivity}
                             errorElement={<ActivityChartSkeleton />}
                           >
-                            {(result) => <ActivityChart activity={result} />}
+                            {(result) => (
+                              <ScalarActivityChart
+                                activity={result}
+                                seriesKey="cost"
+                                label="Spend"
+                                color="#A855F7"
+                                valueFormatter={formatCurrency}
+                              />
+                            )}
                           </TypedAwait>
                         </Suspense>
-                      ) : (
+                      </ChartCard>
+
+                      <ChartCard title="Tokens">
                         <Suspense fallback={<ActivityChartSkeleton />}>
-                          <TypedAwait resolve={runActivity} errorElement={<ActivityChartSkeleton />}>
-                            {(result) => <ActivityChart activity={result} />}
+                          <TypedAwait
+                            resolve={llmTokenActivity}
+                            errorElement={<ActivityChartSkeleton />}
+                          >
+                            {(result) => (
+                              <ScalarActivityChart
+                                activity={result}
+                                seriesKey="tokens"
+                                label="Tokens"
+                                color="#14B8A6"
+                                valueFormatter={formatTokens}
+                              />
+                            )}
                           </TypedAwait>
                         </Suspense>
-                      )}
+                      </ChartCard>
                     </div>
                   </div>
                 </ResizablePanel>
@@ -246,12 +331,7 @@ export default function Page() {
 
                 {/* Table */}
                 <ResizablePanel id="agent-content" min="160px">
-                  <AgentContentArea
-                    tab={tab}
-                    tabLabel={tabLabel}
-                    sessionList={sessionList}
-                    runList={runList}
-                  />
+                  <AgentContentArea tab={tab} sessionList={sessionList} runList={runList} />
                 </ResizablePanel>
               </ResizablePanelGroup>
             </div>
@@ -271,74 +351,54 @@ type LoaderData = ReturnType<typeof useTypedLoaderData<typeof loader>>;
 
 function AgentContentArea({
   tab,
-  tabLabel,
   sessionList,
   runList,
-}: { tab: AgentTab; tabLabel: string } & Pick<LoaderData, "sessionList" | "runList">) {
+}: { tab: AgentTab } & Pick<LoaderData, "sessionList" | "runList">) {
   return (
-    <div className="grid h-full grid-rows-[2.25rem_1fr] overflow-hidden">
-      {/* Title + pagination on the same row */}
-      <div className="flex items-center justify-between border-b border-grid-dimmed bg-background-bright pl-3 pr-1">
-        <Header2>{tabLabel}</Header2>
-        {tab === "sessions" ? (
-          <Suspense fallback={null}>
-            <TypedAwait resolve={sessionList} errorElement={null}>
-              {(list) => (list ? <ListPagination list={list} /> : null)}
-            </TypedAwait>
-          </Suspense>
-        ) : (
-          <Suspense fallback={null}>
-            <TypedAwait resolve={runList} errorElement={null}>
-              {(list) => (list ? <ListPagination list={list} /> : null)}
-            </TypedAwait>
-          </Suspense>
-        )}
-      </div>
-
-      {/* Table */}
-      <div className="min-h-0 overflow-hidden">
-        {tab === "sessions" ? (
-          <Suspense fallback={<TableLoading />}>
-            <TypedAwait resolve={sessionList} errorElement={<TableLoading />}>
-              {(list) =>
-                list ? (
-                  <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                    <SessionsTable
-                      sessions={list.sessions}
-                      filters={list.filters}
-                      hasFilters={list.hasFilters}
-                      showTopBorder={false}
-                    />
-                  </div>
-                ) : (
-                  <TableLoading />
-                )
-              }
-            </TypedAwait>
-          </Suspense>
-        ) : (
-          <Suspense fallback={<TableLoading />}>
-            <TypedAwait resolve={runList} errorElement={<TableLoading />}>
-              {(list) =>
-                list ? (
-                  <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                    <TaskRunsTable
-                      total={list.runs.length}
-                      hasFilters={list.hasFilters}
-                      filters={list.filters}
-                      runs={list.runs}
-                      variant="dimmed"
-                      showTopBorder={false}
-                    />
-                  </div>
-                ) : (
-                  <TableLoading />
-                )
-              }
-            </TypedAwait>
-          </Suspense>
-        )}
-      </div>
+    <div className="h-full overflow-hidden">
+      {tab === "sessions" ? (
+        <Suspense fallback={<TableLoading />}>
+          <TypedAwait resolve={sessionList} errorElement={<TableLoading />}>
+            {(list) =>
+              list ? (
+                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                  <SessionsTable
+                    sessions={list.sessions}
+                    filters={list.filters}
+                    hasFilters={list.hasFilters}
+                    showTopBorder={false}
+                    stickyHeader
+                  />
+                </div>
+              ) : (
+                <TableLoading />
+              )
+            }
+          </TypedAwait>
+        </Suspense>
+      ) : (
+        <Suspense fallback={<TableLoading />}>
+          <TypedAwait resolve={runList} errorElement={<TableLoading />}>
+            {(list) =>
+              list ? (
+                <div className="h-full overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+                  <TaskRunsTable
+                    total={list.runs.length}
+                    hasFilters={list.hasFilters}
+                    filters={list.filters}
+                    runs={list.runs}
+                    variant="dimmed"
+                    showTopBorder={false}
+                    stickyHeader
+                  />
+                </div>
+              ) : (
+                <TableLoading />
+              )
+            }
+          </TypedAwait>
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -357,7 +417,7 @@ function AgentDetailSidebar({
 
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="flex items-center gap-2 border-b border-grid-dimmed px-3 py-2">
+      <div className="flex items-center gap-2 border-b border-grid-dimmed py-2 pl-3 pr-2">
         <Header2 className="flex min-w-0 flex-1 items-center gap-1.5">
           <CubeSparkleIcon className="size-4.5 shrink-0 text-agents" />
           <span className="truncate">{agent.slug}</span>
@@ -449,69 +509,10 @@ function ActivityChart({ activity }: { activity: AgentActivity }) {
     return cfg;
   }, [activity.statuses]);
 
-  const { xAxisFormatter, xAxisTicks } = useMemo(() => {
-    const data = activity.data;
-    const range = data.length >= 2 ? data[data.length - 1].bucket - data[0].bucket : 0;
-    const oneDay = 24 * 60 * 60 * 1000;
-    const showTime = range <= oneDay;
-
-    // ClickHouse buckets are aligned to UTC, so we format and pick ticks in
-    // UTC. Using local time here causes off-by-one day labels and a tick
-    // filter that matches zero buckets in any timezone other than UTC.
-    const formatter = (value: number) => {
-      const date = new Date(value);
-      return showTime
-        ? date.toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-            timeZone: "UTC",
-          })
-        : date.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            timeZone: "UTC",
-          });
-    };
-
-    // For multi-day ranges with sub-day buckets, only label the midnight
-    // bucket on each day so we don't get repeated "Jun 1" labels across the
-    // multiple 6h buckets within a single day.
-    const ticks = showTime
-      ? undefined
-      : data.filter((d) => new Date(d.bucket).getUTCHours() === 0).map((d) => d.bucket);
-
-    return { xAxisFormatter: formatter, xAxisTicks: ticks };
-  }, [activity.data]);
-
-  const tooltipLabelFormatter = useMemo(() => {
-    const data = activity.data;
-    // Infer bucket size from the data so we can pick a sensible date format.
-    const bucketMs = data.length >= 2 ? data[1].bucket - data[0].bucket : 0;
-    const oneDay = 24 * 60 * 60 * 1000;
-    const isSubDayBucket = bucketMs > 0 && bucketMs < oneDay;
-
-    return (_label: string, payload: { payload?: { bucket?: number } }[]) => {
-      const ts = payload?.[0]?.payload?.bucket;
-      if (typeof ts !== "number" || !Number.isFinite(ts)) return _label;
-      const date = new Date(ts);
-      return isSubDayBucket
-        ? date.toLocaleString("en-US", {
-            month: "short",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-            timeZone: "UTC",
-          })
-        : date.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-            timeZone: "UTC",
-          });
-    };
-  }, [activity.data]);
+  const { xAxisFormatter, xAxisTicks, tooltipLabelFormatter } = useMemo(
+    () => buildTimeAxis(activity.data),
+    [activity.data]
+  );
 
   return (
     <Chart.Root
@@ -526,8 +527,6 @@ function ActivityChart({ activity }: { activity: AgentActivity }) {
         barRadius={0}
         xAxisProps={{
           tickFormatter: xAxisFormatter,
-          // Explicit ticks (one per midnight) on multi-day ranges; recharts
-          // auto-spaces when undefined (sub-day ranges).
           ...(xAxisTicks ? { ticks: xAxisTicks, interval: 0 } : {}),
         }}
         tooltipLabelFormatter={tooltipLabelFormatter}
@@ -552,4 +551,116 @@ function TableLoading() {
       <Spinner className="size-6" />
     </div>
   );
+}
+
+function ChartCard({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <Card className="h-full overflow-hidden px-0 pb-2 pt-3">
+      <Card.Header>{title}</Card.Header>
+      <div className="min-h-0 flex-1 px-2">{children}</div>
+    </Card>
+  );
+}
+
+function ScalarActivityChart({
+  activity,
+  seriesKey,
+  label,
+  color,
+  valueFormatter,
+}: {
+  activity: AgentActivity;
+  seriesKey: string;
+  label: string;
+  color: string;
+  valueFormatter: (value: number) => string;
+}) {
+  const chartConfig: ChartConfig = useMemo(
+    () => ({ [seriesKey]: { label, color } }),
+    [seriesKey, label, color]
+  );
+
+  const { xAxisFormatter, xAxisTicks, tooltipLabelFormatter } = useMemo(
+    () => buildTimeAxis(activity.data),
+    [activity.data]
+  );
+
+  return (
+    <Chart.Root config={chartConfig} data={activity.data} dataKey="bucket" fillContainer>
+      <Chart.Bar
+        barRadius={0}
+        xAxisProps={{
+          tickFormatter: xAxisFormatter,
+          ...(xAxisTicks ? { ticks: xAxisTicks, interval: 0 } : {}),
+        }}
+        tooltipLabelFormatter={tooltipLabelFormatter}
+        tooltipValueFormatter={valueFormatter}
+      />
+    </Chart.Root>
+  );
+}
+
+function buildTimeAxis(data: AgentActivity["data"]) {
+  const range = data.length >= 2 ? data[data.length - 1].bucket - data[0].bucket : 0;
+  const oneDay = 24 * 60 * 60 * 1000;
+  const showTime = range <= oneDay;
+
+  const xAxisFormatter = (value: number) => {
+    const date = new Date(value);
+    return showTime
+      ? date.toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          timeZone: "UTC",
+        })
+      : date.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          timeZone: "UTC",
+        });
+  };
+
+  const xAxisTicks = showTime
+    ? undefined
+    : data.filter((d) => new Date(d.bucket).getUTCHours() === 0).map((d) => d.bucket);
+
+  const bucketMs = data.length >= 2 ? data[1].bucket - data[0].bucket : 0;
+  const isSubDayBucket = bucketMs > 0 && bucketMs < oneDay;
+
+  const tooltipLabelFormatter = (_label: string, payload: { payload?: { bucket?: number } }[]) => {
+    const ts = payload?.[0]?.payload?.bucket;
+    if (typeof ts !== "number" || !Number.isFinite(ts)) return _label;
+    const date = new Date(ts);
+    return isSubDayBucket
+      ? date.toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          timeZone: "UTC",
+        })
+      : date.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          timeZone: "UTC",
+        });
+  };
+
+  return { xAxisFormatter, xAxisTicks, tooltipLabelFormatter };
+}
+
+function formatCurrency(value: number): string {
+  if (value === 0) return "$0";
+  if (value < 0.01) return `$${value.toFixed(4)}`;
+  if (value < 1) return `$${value.toFixed(3)}`;
+  return `$${value.toFixed(2)}`;
+}
+
+function formatTokens(value: number): string {
+  if (value < 1000) return value.toLocaleString();
+  if (value < 1_000_000) return `${(value / 1000).toFixed(1)}k`;
+  return `${(value / 1_000_000).toFixed(1)}M`;
 }

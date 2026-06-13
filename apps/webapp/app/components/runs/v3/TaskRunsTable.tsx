@@ -77,6 +77,7 @@ type RunsTableProps = {
   disableAdjacentRows?: boolean;
   additionalTableState?: Record<string, string>;
   showTopBorder?: boolean;
+  stickyHeader?: boolean;
   childrenStatusesBasePath?: string;
 };
 
@@ -92,6 +93,7 @@ export function TaskRunsTable({
   variant = "dimmed",
   additionalTableState,
   showTopBorder = true,
+  stickyHeader = false,
   childrenStatusesBasePath,
 }: RunsTableProps) {
   const regions = useRegions();
@@ -147,7 +149,12 @@ export function TaskRunsTable({
   );
 
   return (
-    <Table variant={variant} className="max-h-full overflow-y-auto" showTopBorder={showTopBorder}>
+    <Table
+      variant={variant}
+      className="max-h-full overflow-y-auto"
+      showTopBorder={showTopBorder}
+      stickyHeader={stickyHeader}
+    >
       <TableHeader>
         <TableRow>
           {allowSelection && (
