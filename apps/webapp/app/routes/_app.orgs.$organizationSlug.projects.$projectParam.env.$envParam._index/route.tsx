@@ -612,7 +612,7 @@ function HelpfulInfoHasTasks({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="overflow-y-scroll p-3 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-scroll p-3 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
         <div className="mb-2 flex items-center justify-between gap-2 border-b border-grid-dimmed pb-2">
           <Header2 className="flex items-center gap-2">
             <LightBulbIcon className="size-4 min-w-4 text-sun-500" />

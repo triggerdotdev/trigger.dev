@@ -239,7 +239,7 @@ function ReplayForm({
         className="-mx-3 mt-3 w-auto flex-1 border-b border-t border-grid-dimmed"
       >
         <ResizablePanel id="payload" min="300px">
-          <div className="rounded-smbg-charcoal-900 mb-3 h-full min-h-40 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="rounded-smbg-charcoal-900 mb-3 h-full min-h-40 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
             <JSONEditor
               className="h-full"
               autoFocus
@@ -302,7 +302,7 @@ function ReplayForm({
         </ResizablePanel>
         <ResizableHandle />
         <ResizablePanel id="test-task-options" min="300px" default="300px" max="360px">
-          <div className="h-full overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="h-full overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
             <Fieldset className="px-3 py-3">
               <Hint>
                 Options enable you to control the execution behavior of your task.{" "}

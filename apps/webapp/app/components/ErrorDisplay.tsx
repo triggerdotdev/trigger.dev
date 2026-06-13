@@ -43,7 +43,7 @@ type DisplayOptionsProps = {
 
 export function ErrorDisplay({ title, message, button }: DisplayOptionsProps) {
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center bg-[#16181C]">
+    <div className="relative flex min-h-screen flex-col items-center justify-center bg-background-dimmed">
       <div className="z-10 mt-[30vh] flex flex-col items-center gap-8">
         <Header1>{title}</Header1>
         {message && <Paragraph>{message}</Paragraph>}

@@ -171,7 +171,7 @@ SheetContent.displayName = SheetPrimitive.Content.displayName;
 export const SheetBody = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+      "overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300",
       className
     )}
     {...props}

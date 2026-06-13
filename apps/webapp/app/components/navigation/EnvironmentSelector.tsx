@@ -92,7 +92,7 @@ export function EnvironmentSelector({
         disableHoverableContent
       />
       <PopoverContent
-        className="min-w-[14rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="min-w-[14rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
         side={isCollapsed ? "right" : "bottom"}
         sideOffset={isCollapsed ? 8 : 4}
         align="start"
@@ -240,7 +240,7 @@ function Branches({
           </ButtonContent>
         </PopoverTrigger>
         <PopoverContent
-          className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
           align="start"
           style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
           side="right"
