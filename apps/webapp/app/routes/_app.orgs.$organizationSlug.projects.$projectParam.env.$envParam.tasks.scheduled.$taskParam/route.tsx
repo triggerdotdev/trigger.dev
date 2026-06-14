@@ -83,6 +83,7 @@ import {
   v3SchedulesAddOnPath,
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
+import { parseFiniteInt } from "~/utils/searchParams";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const slug = (data as { task?: TaskDetail | null } | undefined)?.task?.slug;
@@ -108,10 +109,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const url = new URL(request.url);
   const period = url.searchParams.get("period") ?? undefined;
-  const fromStr = url.searchParams.get("from");
-  const toStr = url.searchParams.get("to");
-  const from = fromStr ? parseInt(fromStr, 10) : undefined;
-  const to = toStr ? parseInt(toStr, 10) : undefined;
+  const from = parseFiniteInt(url.searchParams.get("from"));
+  const to = parseFiniteInt(url.searchParams.get("to"));
   const cursor = url.searchParams.get("cursor") ?? undefined;
   const directionRaw = url.searchParams.get("direction") ?? undefined;
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
@@ -144,8 +143,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     })
     .catch(() => ({ data: [], statuses: [] } satisfies TaskActivity));
 
-  const pageRaw = parseInt(url.searchParams.get("page") ?? "1", 10);
-  const schedulesPage = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+  const pageRaw = parseFiniteInt(url.searchParams.get("page"));
+  const schedulesPage = pageRaw !== undefined && pageRaw > 0 ? pageRaw : 1;
 
   // Resolved synchronously — the bottom usage bar reads `limits` and
   // `canPurchaseSchedules` directly from it, and the limit-exceeded

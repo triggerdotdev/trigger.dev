@@ -48,6 +48,7 @@ import {
   v3EnvironmentPath,
   v3PlaygroundAgentPath,
 } from "~/utils/pathBuilder";
+import { parseFiniteInt } from "~/utils/searchParams";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const slug = (data as { agent?: AgentDetail | null } | undefined)?.agent?.slug;
@@ -75,10 +76,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const url = new URL(request.url);
   const period = url.searchParams.get("period") ?? undefined;
-  const fromStr = url.searchParams.get("from");
-  const toStr = url.searchParams.get("to");
-  const from = fromStr ? parseInt(fromStr, 10) : undefined;
-  const to = toStr ? parseInt(toStr, 10) : undefined;
+  const from = parseFiniteInt(url.searchParams.get("from"));
+  const to = parseFiniteInt(url.searchParams.get("to"));
   const cursor = url.searchParams.get("cursor") ?? undefined;
   const directionRaw = url.searchParams.get("direction") ?? undefined;
   const direction = directionRaw ? DirectionSchema.parse(directionRaw) : undefined;
