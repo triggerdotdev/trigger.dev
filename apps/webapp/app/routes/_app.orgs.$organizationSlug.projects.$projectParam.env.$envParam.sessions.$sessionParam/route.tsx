@@ -326,6 +326,9 @@ function RawConversationView({
     [getCompactText]
   );
 
+  // Observer + scroll listener attach once on mount. Earlier this effect
+  // depended on `merged.length` and tore down / re-attached on every
+  // streaming chunk, thrashing CPU on hot sessions.
   useEffect(() => {
     const bottomElement = bottomRef.current;
     const scrollElement = scrollRef.current;
@@ -338,38 +341,43 @@ function RawConversationView({
       },
       { root: scrollElement, threshold: 0.1, rootMargin: "0px" }
     );
-
     observer.observe(bottomElement);
 
     let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
     const handleScroll = () => {
-      if (!scrollElement || !bottomElement) return;
       if (scrollTimeout) clearTimeout(scrollTimeout);
       scrollTimeout = setTimeout(() => {
         const scrollBottom = scrollElement.scrollTop + scrollElement.clientHeight;
-        const isNearBottom = scrollElement.scrollHeight - scrollBottom < 50;
-        setIsAtBottom(isNearBottom);
+        setIsAtBottom(scrollElement.scrollHeight - scrollBottom < 50);
       }, 100);
     };
-
     scrollElement.addEventListener("scroll", handleScroll);
-    const scrollBottom = scrollElement.scrollTop + scrollElement.clientHeight;
-    const isNearBottom = scrollElement.scrollHeight - scrollBottom < 50;
-    setIsAtBottom(isNearBottom);
+
+    // Initial state — match the post-mount scroll position.
+    const initialScrollBottom = scrollElement.scrollTop + scrollElement.clientHeight;
+    setIsAtBottom(scrollElement.scrollHeight - initialScrollBottom < 50);
 
     return () => {
       observer.disconnect();
       scrollElement.removeEventListener("scroll", handleScroll);
       if (scrollTimeout) clearTimeout(scrollTimeout);
     };
-  }, [merged.length]);
+  }, []);
 
+  // Stick-to-bottom on new content. Defer the scroll write to the next
+  // animation frame so the virtualizer's layout effect has run and
+  // `scrollHeight` reflects the updated content. Without rAF, the write
+  // races the virtualizer's `getTotalSize()` update and the user gets
+  // "stuck half a row up" while streaming.
   useEffect(() => {
-    if (isAtBottom && scrollRef.current) {
-      const currentScrollLeft = scrollRef.current.scrollLeft;
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      scrollRef.current.scrollLeft = currentScrollLeft;
-    }
+    if (!isAtBottom || !scrollRef.current) return;
+    const el = scrollRef.current;
+    const raf = requestAnimationFrame(() => {
+      const currentScrollLeft = el.scrollLeft;
+      el.scrollTop = el.scrollHeight;
+      el.scrollLeft = currentScrollLeft;
+    });
+    return () => cancelAnimationFrame(raf);
   }, [merged, isAtBottom]);
 
   const rowVirtualizer = useVirtualizer({
