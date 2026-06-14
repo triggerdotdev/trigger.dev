@@ -65,13 +65,18 @@ export function PurchaseSchedulesModal({
 
   const stepSize = schedulePricing.stepSize;
   const [bundles, setBundles] = useState(Math.round(extraSchedules / stepSize));
-  useEffect(() => {
-    setBundles(Math.round(extraSchedules / stepSize));
-  }, [extraSchedules, stepSize]);
   const amountValue = bundles * stepSize;
   const isLoading = fetcher.state !== "idle";
 
   const [open, setOpen] = useState(false);
+  // Reset the bundle stepper to the user's current extra-schedules count on
+  // each open. Earlier this only re-synced when `extraSchedules`/`stepSize`
+  // props changed, so if the user opened the modal, typed a value, cancelled,
+  // and reopened without purchasing, the stale draft persisted.
+  useEffect(() => {
+    if (open) setBundles(Math.round(extraSchedules / stepSize));
+  }, [open, extraSchedules, stepSize]);
+
   useEffect(() => {
     const data = fetcher.data;
     if (
