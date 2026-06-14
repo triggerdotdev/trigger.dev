@@ -159,6 +159,16 @@ const KIND_OPTIONS: { value: UnifiedTaskKind; label: string }[] = [
   { value: "SCHEDULED", label: "Scheduled" },
 ];
 
+const VALID_KINDS = new Set<UnifiedTaskKind>(KIND_OPTIONS.map((o) => o.value));
+
+/** Parse `?types=…` URL values, dropping anything that isn't a known
+ *  `UnifiedTaskKind`. Without this, a shareable URL with a typo would
+ *  produce a filter that matches nothing and the user gets stuck on
+ *  "No tasks match your filters" with no way to recover. */
+function parseTypesParam(values: string[]): UnifiedTaskKind[] {
+  return values.filter((v): v is UnifiedTaskKind => VALID_KINDS.has(v as UnifiedTaskKind));
+}
+
 const PAGE_SIZE = 25;
 
 export default function Page() {
@@ -206,7 +216,7 @@ export default function Page() {
   }, []);
 
   const selectedTypes = useMemo(() => {
-    const raw = values("types") as UnifiedTaskKind[];
+    const raw = parseTypesParam(values("types"));
     return raw.length > 0 ? new Set(raw) : null; // null = all
   }, [values]);
 
@@ -488,7 +498,7 @@ function RunningCell({ state }: { state: UnifiedRunningState | undefined }) {
 
 function TaskTypeFilter() {
   const { values, replace } = useSearchParams();
-  const raw = values("types") as UnifiedTaskKind[];
+  const raw = parseTypesParam(values("types"));
   const isAll = raw.length === 0 || raw.length === KIND_OPTIONS.length;
   // No filter → preselect everything so users can uncheck from "all".
   const popoverValue = isAll ? KIND_OPTIONS.map((k) => k.value) : raw;
