@@ -138,7 +138,7 @@ console.log(session.currentRunId, session.tags, session.closedAt);
 
 ### `sessions.update(idOrExternalId, body, requestOptions?)`
 
-Mutate `tags`, `metadata`, or `externalId` on an existing Session. Pass `externalId: null` to explicitly clear it.
+Mutate `tags` or `metadata` on an existing Session. `externalId` is read-only after create: it cannot be changed or cleared (it keys the session's durable streams and token scope), so sending a different value returns `422`.
 
 ### `sessions.close(idOrExternalId, body?, requestOptions?)`
 

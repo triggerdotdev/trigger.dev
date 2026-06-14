@@ -3350,7 +3350,7 @@ paths:
 
         List rows omit `triggerConfig`; retrieve a single session to read it.
       parameters:
-        - $ref: "#/components/parameters/cursorPagination"
+        - $ref: "#/components/parameters/sessionsCursorPagination"
         - $ref: "#/components/parameters/sessionsFilter"
       responses:
         "200":
@@ -3430,8 +3430,9 @@ paths:
 
 
         Requires a secret key — a session public token cannot update a session.
-        `externalId` is read-only after create: sending a different value returns
-        `422`; sending the same value (or `null` to clear) is accepted.
+        `externalId` is read-only after create: it cannot be changed or cleared.
+        Sending a value different from the current one (including `null` when one is
+        set) returns `422`; sending the same value is accepted as a no-op.
       requestBody:
         required: true
         content:
@@ -3576,6 +3577,30 @@ components:
           before:
             type: string
             description: The ID of the run to start the page before. This will set the direction of the pagination to backward.
+    sessionsCursorPagination:
+      in: query
+      name: page
+      style: deepObject
+      explode: true
+      description: |
+        Paginate the results. Specify the number of sessions per page, and the ID of the session to start the page after or before.
+
+        For object fields like `page`, use the "form" encoding style. For example, to get the next page, use `page[after]=session_1234`.
+      schema:
+        type: object
+        properties:
+          size:
+            type: integer
+            maximum: 100
+            minimum: 1
+            default: 20
+            description: Number of sessions per page. Maximum is 100.
+          after:
+            type: string
+            description: The ID of the session to start the page after. Sets the pagination direction to forward.
+          before:
+            type: string
+            description: The ID of the session to start the page before. Sets the pagination direction to backward.
     runId:
       in: path
       name: runId
@@ -4393,8 +4418,9 @@ components:
           minLength: 1
           maxLength: 256
           description: >-
-            Read-only after create. Sending a value different from the current one
-            returns `422`; sending the same value is idempotent, and `null` clears it.
+            Read-only after create: cannot be changed or cleared. Sending a value
+            different from the current one (including `null` when one is set) returns
+            `422`; sending the same value is idempotent.
     CloseSessionRequestBody:
       type: object
       description: Body for `POST /api/v1/sessions/{session}/close`. Up to 1KB.

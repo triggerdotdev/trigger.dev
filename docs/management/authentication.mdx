@@ -196,7 +196,7 @@ Unlike `TriggerClient` instances (which stay isolated unless you opt in), `auth.
 
 | Scope | Grants |
 | --- | --- |
-| `read:sessions:{id}` | Retrieve and list the session, and subscribe to and drain both its `.in` and `.out` [channels](/management/sessions/channels). |
+| `read:sessions:{id}` | Retrieve the session, list its runs, and subscribe to and drain both its `.in` and `.out` [channels](/management/sessions/channels). |
 | `write:sessions:{id}` | Append to the session's `.in` channel, and create runs on the session (including the create call itself). |
 
 Two boundaries follow from the table, and both are enforced server-side:
