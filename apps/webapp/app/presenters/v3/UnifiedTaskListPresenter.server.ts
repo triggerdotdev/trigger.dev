@@ -244,6 +244,12 @@ function mergeRunningStates(
   }
 
   for (const [slug, state] of Object.entries(activeStates)) {
+    // Guard against slug collisions: a single BackgroundWorker isn't expected
+    // to have both a STANDARD/SCHEDULED task and an AGENT task with the same
+    // slug, but nothing in the schema enforces it. If it ever happened, the
+    // standard-task running count would be silently dropped and the row would
+    // get relabelled as an agent.
+    if (slug in out) continue;
     out[slug] = {
       kind: "agent",
       running: state?.running ?? 0,
