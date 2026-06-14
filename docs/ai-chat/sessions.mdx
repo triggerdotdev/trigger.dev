@@ -138,7 +138,7 @@ console.log(session.currentRunId, session.tags, session.closedAt);
 
 ### `sessions.update(idOrExternalId, body, requestOptions?)`
 
-Mutate `tags`, `metadata`, or `externalId` on an existing Session. Pass `externalId: null` to explicitly clear it.
+Mutate `tags` or `metadata` on an existing Session. `externalId` is read-only after create: it cannot be changed or cleared (it keys the session's durable streams and token scope), so sending a different value returns `422`.
 
 ### `sessions.close(idOrExternalId, body?, requestOptions?)`
 
@@ -197,7 +197,7 @@ The two channels mirror the producer/consumer pair in `streams.define` (out) and
 
 ## `session.out` — task → clients
 
-The output channel. The task writes; external clients (browser, server action, another task) read via SSE.
+The output channel. The task writes; external clients (browser, server action, another task) read via SSE. The underlying HTTP endpoints are documented in [Session channels](/management/sessions/channels) for non-SDK callers.
 
 ### `out.append(value, options?)`
 
@@ -246,7 +246,7 @@ Append an S2 `trim` command. Records with `seq_num < earliestSeqNum` are eventua
 
 ## `session.in` — clients → task
 
-The input channel. External clients call `send`; the task consumes via `on` / `once` / `peek` / `wait` / `waitWithIdleTimeout`.
+The input channel. External clients call `send`; the task consumes via `on` / `once` / `peek` / `wait` / `waitWithIdleTimeout`. The underlying HTTP endpoints are documented in [Session channels](/management/sessions/channels) for non-SDK callers.
 
 ### `in.send(value, requestOptions?)`
 
@@ -319,8 +319,12 @@ Tokens authorize **both** URL forms: `/sessions/{externalId}/...` and `/sessions
 
 For the `chat.agent` transport, `auth.createPublicToken` is wrapped by `accessToken` in `useTriggerChatTransport`; for direct session access from your server, mint a token per request just like any other realtime resource.
 
+See [Session scopes](/management/authentication#session-scopes) for exactly what `read:sessions` and `write:sessions` grant, and why updating, closing, and appending to `.out` require a secret key.
+
 ## See also
 
+- [Sessions HTTP API](/management/sessions/create) — The REST endpoints for creating, listing, retrieving, updating, and closing sessions, plus the [channel endpoints](/management/sessions/channels) for non-SDK callers.
+- [Session scopes](/management/authentication#session-scopes) — The public-token scopes that authorize session and channel access.
 - [How it works](/ai-chat/how-it-works) — How `chat.agent` builds on Sessions.
 - [Backend](/ai-chat/backend) — `chat.agent` / `chat.createSession` / raw `task()` with chat primitives.
 - [Client Protocol](/ai-chat/client-protocol) — The wire-level view of `.in/append` and `.out` SSE.
