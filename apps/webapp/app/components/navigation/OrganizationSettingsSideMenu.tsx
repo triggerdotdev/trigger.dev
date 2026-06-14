@@ -121,26 +121,26 @@ export function OrganizationSettingsSideMenu({
             to={organizationTeamPath(organization)}
             data-action="team"
           />
-          {/* {isUsingPlugin && (  */}
-          {/* {featureFlags.hasPrivateConnections && ( */}
-          <SideMenuItem
-            name="Private Connections"
-            icon={PadlockIcon}
-            activeIconColor="text-text-bright"
-            inactiveIconColor="text-text-dimmed"
-            to={v3PrivateConnectionsPath(organization)}
-            data-action="private-connections"
-          />
-          {/* )} */}
-          <SideMenuItem
-            name="Roles"
-            icon={RolesIcon}
-            activeIconColor="text-text-bright"
-            inactiveIconColor="text-text-dimmed"
-            to={organizationRolesPath(organization)}
-            data-action="roles"
-          />
-          {/* )} */}
+          {featureFlags.hasPrivateConnections && (
+            <SideMenuItem
+              name="Private Connections"
+              icon={PadlockIcon}
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
+              to={v3PrivateConnectionsPath(organization)}
+              data-action="private-connections"
+            />
+          )}
+          {isUsingPlugin && (
+            <SideMenuItem
+              name="Roles"
+              icon={RolesIcon}
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
+              to={organizationRolesPath(organization)}
+              data-action="roles"
+            />
+          )}
           <SideMenuItem
             name="Settings"
             icon={SlidersIcon}
