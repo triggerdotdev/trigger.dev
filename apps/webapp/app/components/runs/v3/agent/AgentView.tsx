@@ -663,6 +663,7 @@ function useAgentSessionMessages({
     // subscription to tear down + replay on every inspector tab click,
     // which appended duplicate parts to any assistant message whose
     // chunks lived past `snapshot.lastOutEventId`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, apiOrigin, orgSlug, projectSlug, envSlug]);
 
   return useMemo(() => {
