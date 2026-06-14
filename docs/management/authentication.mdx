@@ -189,3 +189,36 @@ Unlike `TriggerClient` instances (which stay isolated unless you opt in), `auth.
   concurrency. If you need concurrent multi-target calls there, use
   [`new TriggerClient({...})`](/management/multiple-clients) instances instead.
 </Note>
+
+## Session scopes
+
+[Sessions](/ai-chat/sessions) are addressed by a session-scoped public access token — a short-lived JWT you mint in your backend and pass to frontend or server-side clients. The token carries one or both of two scopes, each pinned to a session by its friendly ID (`session_…`) or your `externalId`:
+
+| Scope | Grants |
+| --- | --- |
+| `read:sessions:{id}` | Retrieve and list the session, and subscribe to and drain both its `.in` and `.out` [channels](/management/sessions/channels). |
+| `write:sessions:{id}` | Append to the session's `.in` channel, and create runs on the session (including the create call itself). |
+
+Two boundaries follow from the table, and both are enforced server-side:
+
+- **`write:sessions` does not grant `.out` append.** The `.out` channel is the task's to write. Appending to `.out` requires a **secret key**; a public token gets `403`.
+- **Updating or closing a session requires a secret key.** A session public token cannot call `PATCH /api/v1/sessions/{session}` or `POST /api/v1/sessions/{session}/close` — those are admin operations.
+
+Mint a token with `auth.createPublicToken` in your backend:
+
+```ts Your backend
+import { auth } from "@trigger.dev/sdk";
+
+const publicToken = await auth.createPublicToken({
+  scopes: {
+    read: { sessions: "session_123" },
+    write: { sessions: "session_123" },
+  },
+});
+```
+
+`sessions` accepts a single ID or an array. The default token TTL is 1 hour. One token authorizes **both** URL forms — pass either your `externalId` or the `session_…` ID in the path.
+
+The `publicAccessToken` returned by [`sessions.start()`](/management/sessions/create) already carries both scopes for the session it created, so you usually don't mint one by hand for the create flow.
+
+For the full channel HTTP surface these scopes authorize, see [Session channels](/management/sessions/channels). For the SDK side, see [Sessions](/ai-chat/sessions). For general public-token usage (expiration formats, trigger tokens, scoping to runs and tasks), see [Realtime authentication](/realtime/auth).
