@@ -335,7 +335,11 @@ function useAgentSessionMessages({
           res.output === undefined &&
           res.errorText === undefined
         ) {
-          return false; // already applied
+          // Already applied. If the part has reached a terminal state, drop
+          // the buffered resolution so the Map doesn't grow unbounded on
+          // long-lived sessions with many tool calls.
+          if (terminal) pendingResolutionsRef.current.delete(toolCallId);
+          return false;
         }
         const next = parts.slice();
         next[idx] = {
@@ -346,6 +350,13 @@ function useAgentSessionMessages({
           state: nextState,
         };
         pendingRef.current.set(mid, { ...msg, parts: next } as UIMessage);
+        // Drop the buffered entry once the part has landed at a terminal
+        // state — no future `.out` chunk will need this resolution.
+        const reachedTerminal =
+          nextState === "output-available" ||
+          nextState === "output-error" ||
+          nextState === "output-denied";
+        if (reachedTerminal) pendingResolutionsRef.current.delete(toolCallId);
         return true;
       }
       return false;
