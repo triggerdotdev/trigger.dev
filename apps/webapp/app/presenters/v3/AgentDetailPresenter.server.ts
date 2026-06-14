@@ -111,11 +111,15 @@ export class AgentDetailPresenter {
   }
 
   async getActivity({
+    organizationId,
+    projectId,
     environmentId,
     agentSlug,
     from,
     to,
   }: {
+    organizationId: string;
+    projectId: string;
     environmentId: string;
     agentSlug: string;
     from: Date;
@@ -139,20 +143,28 @@ export class AgentDetailPresenter {
     // whose taskKind annotation was never set, even for AGENT tasks. We've
     // already verified this task is an agent via `findAgent` (Postgres), so
     // matching on environment_id + task_identifier is sufficient.
+    //
+    // FINAL + _is_deleted = 0 because task_runs_v2 is a ReplacingMergeTree;
+    // org/project filters engage the sort-key prefix for partition pruning.
     const queryFn = this.clickhouse.reader.query({
       name: "agentRunStatusActivity",
       query: `SELECT
           toUnixTimestamp(toStartOfInterval(created_at, INTERVAL {bucketSeconds: UInt32} SECOND)) AS bucket,
           status,
           count() AS val
-        FROM trigger_dev.task_runs_v2
-        WHERE environment_id = {environmentId: String}
+        FROM trigger_dev.task_runs_v2 FINAL
+        WHERE organization_id = {organizationId: String}
+          AND project_id = {projectId: String}
+          AND environment_id = {environmentId: String}
           AND task_identifier = {agentSlug: String}
           AND created_at >= {fromTime: DateTime64(3, 'UTC')}
           AND created_at < {toTime: DateTime64(3, 'UTC')}
+          AND _is_deleted = 0
         GROUP BY bucket, status
         ORDER BY bucket`,
       params: z.object({
+        organizationId: z.string(),
+        projectId: z.string(),
         environmentId: z.string(),
         agentSlug: z.string(),
         bucketSeconds: z.number(),
@@ -167,6 +179,8 @@ export class AgentDetailPresenter {
     });
 
     const [error, rows] = await queryFn({
+      organizationId,
+      projectId,
       environmentId,
       agentSlug,
       bucketSeconds,
@@ -211,11 +225,15 @@ export class AgentDetailPresenter {
   }
 
   async getSessionActivity({
+    organizationId,
+    projectId,
     environmentId,
     agentSlug,
     from,
     to,
   }: {
+    organizationId: string;
+    projectId: string;
     environmentId: string;
     agentSlug: string;
     from: Date;
@@ -234,7 +252,7 @@ export class AgentDetailPresenter {
 
     // FINAL collapses ReplacingMergeTree versions so we see each session's
     // latest state — important since closed_at / expires_at are mutated
-    // post-insert.
+    // post-insert. Org/project filters engage the sort-key prefix.
     const queryFn = this.clickhouse.reader.query({
       name: "agentSessionStatusActivity",
       query: `SELECT
@@ -246,7 +264,9 @@ export class AgentDetailPresenter {
           ) AS status,
           count() AS val
         FROM trigger_dev.sessions_v1 FINAL
-        WHERE environment_id = {environmentId: String}
+        WHERE organization_id = {organizationId: String}
+          AND project_id = {projectId: String}
+          AND environment_id = {environmentId: String}
           AND task_identifier = {agentSlug: String}
           AND _is_deleted = 0
           AND created_at >= {fromTime: DateTime64(3, 'UTC')}
@@ -254,6 +274,8 @@ export class AgentDetailPresenter {
         GROUP BY bucket, status
         ORDER BY bucket`,
       params: z.object({
+        organizationId: z.string(),
+        projectId: z.string(),
         environmentId: z.string(),
         agentSlug: z.string(),
         bucketSeconds: z.number(),
@@ -268,6 +290,8 @@ export class AgentDetailPresenter {
     });
 
     const [error, rows] = await queryFn({
+      organizationId,
+      projectId,
       environmentId,
       agentSlug,
       bucketSeconds,
@@ -306,6 +330,8 @@ export class AgentDetailPresenter {
   }
 
   async getLlmCostActivity(input: {
+    organizationId: string;
+    projectId: string;
     environmentId: string;
     agentSlug: string;
     from: Date;
@@ -315,6 +341,8 @@ export class AgentDetailPresenter {
   }
 
   async getLlmTokenActivity(input: {
+    organizationId: string;
+    projectId: string;
     environmentId: string;
     agentSlug: string;
     from: Date;
@@ -324,12 +352,16 @@ export class AgentDetailPresenter {
   }
 
   async #llmActivity({
+    organizationId,
+    projectId,
     environmentId,
     agentSlug,
     from,
     to,
     metric,
   }: {
+    organizationId: string;
+    projectId: string;
     environmentId: string;
     agentSlug: string;
     from: Date;
@@ -348,19 +380,29 @@ export class AgentDetailPresenter {
     // a plain number rather than a string.
     const sumExpr = metric === "cost" ? "toFloat64(sum(total_cost))" : "sum(total_tokens)";
 
+    // llm_metrics_v1 is partitioned by toDate(inserted_at); filtering on
+    // inserted_at lets ClickHouse prune partitions (start_time alone touches
+    // every monthly partition in the 365d TTL). The writer sets
+    // inserted_at = now64(3) at insert, so inserted_at >= start_time is an
+    // invariant and using `fromTime` here is safe.
     const queryFn = this.clickhouse.reader.query({
       name: metric === "cost" ? "agentLlmCostActivity" : "agentLlmTokenActivity",
       query: `SELECT
           toUnixTimestamp(toStartOfInterval(start_time, INTERVAL {bucketSeconds: UInt32} SECOND)) AS bucket,
           ${sumExpr} AS val
         FROM trigger_dev.llm_metrics_v1
-        WHERE environment_id = {environmentId: String}
+        WHERE organization_id = {organizationId: String}
+          AND project_id = {projectId: String}
+          AND environment_id = {environmentId: String}
           AND task_identifier = {agentSlug: String}
+          AND inserted_at >= {fromTime: DateTime64(3, 'UTC')}
           AND start_time >= {fromTime: DateTime64(3, 'UTC')}
           AND start_time < {toTime: DateTime64(3, 'UTC')}
         GROUP BY bucket
         ORDER BY bucket`,
       params: z.object({
+        organizationId: z.string(),
+        projectId: z.string(),
         environmentId: z.string(),
         agentSlug: z.string(),
         bucketSeconds: z.number(),
@@ -374,6 +416,8 @@ export class AgentDetailPresenter {
     });
 
     const [error, rows] = await queryFn({
+      organizationId,
+      projectId,
       environmentId,
       agentSlug,
       bucketSeconds,

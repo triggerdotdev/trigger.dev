@@ -37,10 +37,12 @@ export class TasksDashboardPresenter {
 
   public async call({
     organizationId,
+    projectId,
     environmentId,
     environmentType,
   }: {
     organizationId: string;
+    projectId: string;
     environmentId: string;
     environmentType: RuntimeEnvironmentType;
   }): Promise<TasksDashboardResult> {
@@ -75,23 +77,35 @@ export class TasksDashboardPresenter {
 
     return {
       counts,
-      series: this.#getDailySeries(clickhouse, environmentId),
+      series: this.#getDailySeries(clickhouse, { organizationId, projectId, environmentId }),
     };
   }
 
-  async #getDailySeries(clickhouse: ClickHouse, environmentId: string) {
+  async #getDailySeries(
+    clickhouse: ClickHouse,
+    args: { organizationId: string; projectId: string; environmentId: string }
+  ) {
+    // FINAL + _is_deleted = 0 because task_runs_v2 is a ReplacingMergeTree;
+    // org/project filters engage the sort-key prefix for partition pruning.
     const queryFn = clickhouse.reader.query({
       name: "tasksDashboardDailySeries",
       query: `SELECT
           task_kind,
           toDate(created_at) AS day,
           count() AS val
-        FROM trigger_dev.task_runs_v2
-        WHERE environment_id = {environmentId: String}
+        FROM trigger_dev.task_runs_v2 FINAL
+        WHERE organization_id = {organizationId: String}
+          AND project_id = {projectId: String}
+          AND environment_id = {environmentId: String}
           AND created_at >= now() - INTERVAL ${DAYS} DAY
+          AND _is_deleted = 0
         GROUP BY task_kind, day
         ORDER BY day`,
-      params: z.object({ environmentId: z.string() }),
+      params: z.object({
+        organizationId: z.string(),
+        projectId: z.string(),
+        environmentId: z.string(),
+      }),
       schema: z.object({
         task_kind: z.string(),
         day: z.string(),
@@ -99,7 +113,7 @@ export class TasksDashboardPresenter {
       }),
     });
 
-    const [error, rows] = await queryFn({ environmentId });
+    const [error, rows] = await queryFn(args);
     if (error) {
       console.error("Tasks dashboard daily series query failed:", error);
       return { agents: [], standard: [], scheduled: [] };

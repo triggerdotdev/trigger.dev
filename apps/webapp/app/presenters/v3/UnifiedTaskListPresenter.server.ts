@@ -69,7 +69,12 @@ export class UnifiedTaskListPresenter {
               args.organizationId,
               "standard"
             );
-            return getHourlyTaskActivity(clickhouse, args.environmentId, allSlugs);
+            return getHourlyTaskActivity(clickhouse, {
+              organizationId: args.organizationId,
+              projectId: args.projectId,
+              environmentId: args.environmentId,
+              slugs: allSlugs,
+            });
           })();
 
     const runningStates: Promise<UnifiedRunningStates> = Promise.all([
@@ -82,11 +87,18 @@ export class UnifiedTaskListPresenter {
 }
 
 /** Query trigger_dev.task_runs_v2 for run counts per (hour, status) over the
- *  past 24h, grouped by task slug. */
+ *  past 24h, grouped by task slug.
+ *
+ *  Uses FINAL + _is_deleted = 0 because task_runs_v2 is a ReplacingMergeTree;
+ *  org/project filters engage the sort-key prefix for partition pruning. */
 async function getHourlyTaskActivity(
   clickhouse: ClickHouse,
-  environmentId: string,
-  slugs: string[]
+  args: {
+    organizationId: string;
+    projectId: string;
+    environmentId: string;
+    slugs: string[];
+  }
 ): Promise<HourlyTaskActivity> {
   const queryFn = clickhouse.reader.query({
     name: "unifiedTaskListHourlyActivity",
@@ -95,13 +107,18 @@ async function getHourlyTaskActivity(
         toStartOfHour(created_at) AS bucket,
         status,
         count() AS val
-      FROM trigger_dev.task_runs_v2
-      WHERE environment_id = {environmentId: String}
+      FROM trigger_dev.task_runs_v2 FINAL
+      WHERE organization_id = {organizationId: String}
+        AND project_id = {projectId: String}
+        AND environment_id = {environmentId: String}
         AND task_identifier IN {slugs: Array(String)}
         AND created_at >= now() - INTERVAL 24 HOUR
+        AND _is_deleted = 0
       GROUP BY task_identifier, bucket, status
       ORDER BY task_identifier, bucket, status`,
     params: z.object({
+      organizationId: z.string(),
+      projectId: z.string(),
       environmentId: z.string(),
       slugs: z.array(z.string()),
     }),
@@ -113,7 +130,7 @@ async function getHourlyTaskActivity(
     }),
   });
 
-  const [error, rows] = await queryFn({ environmentId, slugs });
+  const [error, rows] = await queryFn(args);
   if (error) {
     console.error("Unified task list hourly activity query failed:", error);
     return {};
@@ -160,7 +177,7 @@ async function getHourlyTaskActivity(
   }
 
   const result: HourlyTaskActivity = {};
-  for (const slug of slugs) {
+  for (const slug of args.slugs) {
     const perSlug = slugBuckets.get(slug);
     result[slug] = buckets.map(({ key, date }) => {
       const existing = perSlug?.get(key);

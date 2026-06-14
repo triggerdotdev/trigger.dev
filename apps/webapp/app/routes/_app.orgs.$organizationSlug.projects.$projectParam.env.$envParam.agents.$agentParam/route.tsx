@@ -103,6 +103,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const runActivity = presenter
     .getActivity({
+      organizationId: project.organizationId,
+      projectId: project.id,
       environmentId: environment.id,
       agentSlug: agent.slug,
       from: time.from,
@@ -112,6 +114,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const sessionActivity = presenter
     .getSessionActivity({
+      organizationId: project.organizationId,
+      projectId: project.id,
       environmentId: environment.id,
       agentSlug: agent.slug,
       from: time.from,
@@ -121,6 +125,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const llmCostActivity = presenter
     .getLlmCostActivity({
+      organizationId: project.organizationId,
+      projectId: project.id,
       environmentId: environment.id,
       agentSlug: agent.slug,
       from: time.from,
@@ -130,6 +136,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const llmTokenActivity = presenter
     .getLlmTokenActivity({
+      organizationId: project.organizationId,
+      projectId: project.id,
       environmentId: environment.id,
       agentSlug: agent.slug,
       from: time.from,

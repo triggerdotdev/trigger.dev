@@ -98,6 +98,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const activity = presenter
     .getActivity({
+      organizationId: project.organizationId,
+      projectId: project.id,
       environmentId: environment.id,
       taskSlug: task.slug,
       from: time.from,

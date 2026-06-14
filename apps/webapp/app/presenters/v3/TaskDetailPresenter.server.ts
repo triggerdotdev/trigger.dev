@@ -169,11 +169,15 @@ export class TaskDetailPresenter {
   }
 
   async getActivity({
+    organizationId,
+    projectId,
     environmentId,
     taskSlug,
     from,
     to,
   }: {
+    organizationId: string;
+    projectId: string;
     environmentId: string;
     taskSlug: string;
     from: Date;
@@ -190,20 +194,27 @@ export class TaskDetailPresenter {
         ? 6 * 60 * 60
         : 24 * 60 * 60;
 
+    // FINAL + _is_deleted = 0 because task_runs_v2 is a ReplacingMergeTree;
+    // org/project filters engage the sort-key prefix for partition pruning.
     const queryFn = this.clickhouse.reader.query({
       name: "taskRunStatusActivity",
       query: `SELECT
           toUnixTimestamp(toStartOfInterval(created_at, INTERVAL {bucketSeconds: UInt32} SECOND)) AS bucket,
           status,
           count() AS val
-        FROM trigger_dev.task_runs_v2
-        WHERE environment_id = {environmentId: String}
+        FROM trigger_dev.task_runs_v2 FINAL
+        WHERE organization_id = {organizationId: String}
+          AND project_id = {projectId: String}
+          AND environment_id = {environmentId: String}
           AND task_identifier = {taskSlug: String}
           AND created_at >= {fromTime: DateTime64(3, 'UTC')}
           AND created_at < {toTime: DateTime64(3, 'UTC')}
+          AND _is_deleted = 0
         GROUP BY bucket, status
         ORDER BY bucket`,
       params: z.object({
+        organizationId: z.string(),
+        projectId: z.string(),
         environmentId: z.string(),
         taskSlug: z.string(),
         bucketSeconds: z.number(),
@@ -218,6 +229,8 @@ export class TaskDetailPresenter {
     });
 
     const [error, rows] = await queryFn({
+      organizationId,
+      projectId,
       environmentId,
       taskSlug,
       bucketSeconds,
