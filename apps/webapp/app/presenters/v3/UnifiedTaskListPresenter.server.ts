@@ -108,6 +108,11 @@ async function getHourlyTaskActivity(
     slugs: string[];
   }
 ): Promise<HourlyTaskActivity> {
+  // Align the lower bound to the start of the hour 23h ago so the query
+  // returns exactly 24 distinct hour buckets, matching the JS-side key array.
+  // `now() - INTERVAL 24 HOUR` would let a 25th (oldest) bucket slip in for
+  // any request made past the top of an hour, and those runs would be
+  // silently dropped from the chart.
   const queryFn = clickhouse.reader.query({
     name: "unifiedTaskListHourlyActivity",
     query: `SELECT
@@ -120,7 +125,7 @@ async function getHourlyTaskActivity(
         AND project_id = {projectId: String}
         AND environment_id = {environmentId: String}
         AND task_identifier IN {slugs: Array(String)}
-        AND created_at >= now() - INTERVAL 24 HOUR
+        AND created_at >= toStartOfHour(now() - INTERVAL 23 HOUR)
         AND _is_deleted = 0
       GROUP BY task_identifier, bucket, status
       ORDER BY task_identifier, bucket, status`,
