@@ -9,6 +9,7 @@ import { z } from "zod";
 import { $replica } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { singleton } from "~/utils/singleton";
+import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { agentListPresenter, type AgentActiveState } from "./AgentListPresenter.server";
 import { taskListPresenter, type TaskListItem } from "./TaskListPresenter.server";
 
@@ -53,9 +54,16 @@ export class UnifiedTaskListPresenter {
     hourlyActivity: Promise<HourlyTaskActivity>;
     runningStates: Promise<UnifiedRunningStates>;
   }> {
+    // Share the current-worker lookup across both inner presenters — without
+    // this they'd each do an independent Postgres round-trip for the same row.
+    const currentWorker = await findCurrentWorkerFromEnvironment(
+      { id: args.environmentId, type: args.environmentType },
+      this._replica
+    );
+
     const [taskResult, agentResult] = await Promise.all([
-      taskListPresenter.call(args),
-      agentListPresenter.call(args),
+      taskListPresenter.call({ ...args, currentWorker }),
+      agentListPresenter.call({ ...args, currentWorker }),
     ]);
 
     const items = toUnifiedItems(taskResult.tasks, agentResult.agents);
