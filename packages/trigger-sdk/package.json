@@ -14,7 +14,9 @@
   "type": "module",
   "sideEffects": false,
   "files": [
-    "dist"
+    "dist",
+    "docs",
+    "skills"
   ],
   "tshy": {
     "selfLink": false,
@@ -62,8 +64,9 @@
     }
   },
   "scripts": {
-    "clean": "rimraf dist .tshy .tshy-build .turbo",
-    "build": "tshy && pnpm run update-version",
+    "clean": "rimraf dist docs .tshy .tshy-build .turbo",
+    "build": "tshy && pnpm run update-version && pnpm run bundle-docs",
+    "bundle-docs": "tsx ../../scripts/bundleSdkDocs.ts",
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit",
     "typecheck:ai-v7": "tsc --noEmit -p tsconfig.ai-v7.json",
