@@ -1,7 +1,4 @@
-import type {
-  ActionFunctionArgs,
-  LoaderFunctionArgs,
-} from "@remix-run/node";
+import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
 import { fromPromise } from "neverthrow";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
@@ -21,10 +18,19 @@ import { FormButtons } from "~/components/primitives/FormButtons";
 import { Header1 } from "~/components/primitives/Headers";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow } from "~/components/primitives/Table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+} from "~/components/primitives/Table";
 import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
-import { $transaction, prisma } from "~/db.server";
+import { $replica, $transaction, prisma } from "~/db.server";
 import { requireOrganization } from "~/services/org.server";
+import { rbac } from "~/services/rbac.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { OrganizationParamsSchema } from "~/utils/pathBuilder";
 import { logger } from "~/services/logger.server";
 import { TrashIcon } from "@heroicons/react/20/solid";
@@ -47,8 +53,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
   const url = new URL(request.url);
   const configurationId = url.searchParams.get("configurationId") ?? undefined;
-  const { organization } = await requireOrganization(request, organizationSlug);
-  
+  const { organization, userId } = await requireOrganization(request, organizationSlug);
+
+  // Display flag for the Remove Integration control — the action enforces
+  // write:vercel independently. Permissive in OSS.
+  const sessionAuth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: organization.id,
+  });
+  const canManageVercel = sessionAuth.ok
+    ? sessionAuth.ability.can("write", { type: "vercel" })
+    : true;
+
   // Find Vercel integration for this organization
   let vercelIntegration = await prisma.organizationIntegration.findFirst({
     where: {
@@ -75,6 +91,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       connectedProjects: [],
       teamId: null,
       installationId: null,
+      canManageVercel,
     });
   }
 
@@ -109,6 +126,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     connectedProjects,
     teamId,
     installationId,
+    canManageVercel,
   });
 };
 
@@ -116,111 +134,134 @@ const ActionSchema = z.object({
   intent: z.literal("uninstall"),
 });
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const { organizationSlug } = OrganizationParamsSchema.parse(params);
-  const { organization, userId } = await requireOrganization(request, organizationSlug);
+async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
+  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
+  return org?.id ?? null;
+}
 
-  const formData = await request.formData();
-  const result = ActionSchema.safeParse({ intent: formData.get("intent") });
-  if (!result.success) {
-    return json({ error: "Invalid action" }, { status: 400 });
-  }
-
-  // Find Vercel integration
-  const vercelIntegration = await prisma.organizationIntegration.findFirst({
-    where: {
-      organizationId: organization.id,
-      service: "VERCEL",
-      deletedAt: null,
+export const action = dashboardAction(
+  {
+    params: OrganizationParamsSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
     },
-    include: {
-      tokenReference: true,
-    },
-  });
+    authorization: { action: "write", resource: { type: "vercel" } },
+  },
+  async ({ request, params }) => {
+    const { organizationSlug } = params;
+    const { organization, userId } = await requireOrganization(request, organizationSlug);
 
-  if (!vercelIntegration) {
-    return json({ error: "Vercel integration not found" }, { status: 404 });
-  }
+    const formData = await request.formData();
+    const result = ActionSchema.safeParse({ intent: formData.get("intent") });
+    if (!result.success) {
+      return json({ error: "Invalid action" }, { status: 400 });
+    }
 
-  // Uninstall from Vercel side
-  const uninstallResult = await VercelIntegrationRepository.uninstallVercelIntegration(vercelIntegration);
-
-  if (uninstallResult.isErr()) {
-    logger.error("Failed to uninstall Vercel integration", {
-      organizationId: organization.id,
-      organizationSlug,
-      userId,
-      integrationId: vercelIntegration.id,
-      error: uninstallResult.error.message,
+    // Find Vercel integration
+    const vercelIntegration = await prisma.organizationIntegration.findFirst({
+      where: {
+        organizationId: organization.id,
+        service: "VERCEL",
+        deletedAt: null,
+      },
+      include: {
+        tokenReference: true,
+      },
     });
 
-    return json(
-      { error: "Failed to uninstall Vercel integration. Please try again." },
-      { status: 500 }
-    );
-  }
+    if (!vercelIntegration) {
+      return json({ error: "Vercel integration not found" }, { status: 404 });
+    }
 
-  // Soft-delete the integration and all connected projects in a transaction
-  const txResult = await fromPromise(
-    $transaction(prisma, async (tx) => {
-      await tx.organizationProjectIntegration.updateMany({
-        where: {
-          organizationIntegrationId: vercelIntegration.id,
-          deletedAt: null,
-        },
-        data: { deletedAt: new Date() },
+    // Uninstall from Vercel side
+    const uninstallResult = await VercelIntegrationRepository.uninstallVercelIntegration(
+      vercelIntegration
+    );
+
+    if (uninstallResult.isErr()) {
+      logger.error("Failed to uninstall Vercel integration", {
+        organizationId: organization.id,
+        organizationSlug,
+        userId,
+        integrationId: vercelIntegration.id,
+        error: uninstallResult.error.message,
       });
 
-      await tx.organizationIntegration.update({
-        where: { id: vercelIntegration.id },
-        data: { deletedAt: new Date() },
-      });
-    }),
-    (error) => error
-  );
+      return json(
+        { error: "Failed to uninstall Vercel integration. Please try again." },
+        { status: 500 }
+      );
+    }
 
-  if (txResult.isErr()) {
-    logger.error("Failed to soft-delete Vercel integration records", {
-      organizationId: organization.id,
-      organizationSlug,
-      userId,
-      integrationId: vercelIntegration.id,
-      error: txResult.error instanceof Error ? txResult.error.message : String(txResult.error),
-    });
+    // Soft-delete the integration and all connected projects in a transaction
+    const txResult = await fromPromise(
+      $transaction(prisma, async (tx) => {
+        await tx.organizationProjectIntegration.updateMany({
+          where: {
+            organizationIntegrationId: vercelIntegration.id,
+            deletedAt: null,
+          },
+          data: { deletedAt: new Date() },
+        });
 
-    return json(
-      { error: "Failed to uninstall Vercel integration. Please try again." },
-      { status: 500 }
+        await tx.organizationIntegration.update({
+          where: { id: vercelIntegration.id },
+          data: { deletedAt: new Date() },
+        });
+      }),
+      (error) => error
     );
-  }
 
-  if (uninstallResult.value.authInvalid) {
-    logger.warn("Vercel integration uninstalled with auth error - token invalid", {
-      organizationId: organization.id,
-      organizationSlug,
-      userId,
-      integrationId: vercelIntegration.id,
-    });
-  } else {
-    logger.info("Vercel integration uninstalled successfully", {
-      organizationId: organization.id,
-      organizationSlug,
-      userId,
-      integrationId: vercelIntegration.id,
-    });
-  }
+    if (txResult.isErr()) {
+      logger.error("Failed to soft-delete Vercel integration records", {
+        organizationId: organization.id,
+        organizationSlug,
+        userId,
+        integrationId: vercelIntegration.id,
+        error: txResult.error instanceof Error ? txResult.error.message : String(txResult.error),
+      });
 
-  // Redirect back to organization settings
-  return redirect(`/orgs/${organizationSlug}/settings`);
-};
+      return json(
+        { error: "Failed to uninstall Vercel integration. Please try again." },
+        { status: 500 }
+      );
+    }
+
+    if (uninstallResult.value.authInvalid) {
+      logger.warn("Vercel integration uninstalled with auth error - token invalid", {
+        organizationId: organization.id,
+        organizationSlug,
+        userId,
+        integrationId: vercelIntegration.id,
+      });
+    } else {
+      logger.info("Vercel integration uninstalled successfully", {
+        organizationId: organization.id,
+        organizationSlug,
+        userId,
+        integrationId: vercelIntegration.id,
+      });
+    }
+
+    // Redirect back to organization settings
+    return redirect(`/orgs/${organizationSlug}/settings`);
+  }
+);
 
 export default function VercelIntegrationPage() {
-  const { organization, vercelIntegration, connectedProjects, teamId, installationId } = 
-    useTypedLoaderData<typeof loader>();
+  const {
+    organization,
+    vercelIntegration,
+    connectedProjects,
+    teamId,
+    installationId,
+    canManageVercel,
+  } = useTypedLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
-  const isUninstalling = navigation.state === "submitting" && 
-    navigation.formData?.get("intent") === "uninstall";
+  const isUninstalling =
+    navigation.state === "submitting" && navigation.formData?.get("intent") === "uninstall";
 
   if (!vercelIntegration) {
     return (
@@ -275,7 +316,12 @@ export default function VercelIntegrationPage() {
                   <Button
                     variant="danger/medium"
                     LeadingIcon={TrashIcon}
-                    disabled={isUninstalling}
+                    disabled={isUninstalling || !canManageVercel}
+                    tooltip={
+                      canManageVercel
+                        ? undefined
+                        : "You don't have permission to manage the Vercel integration"
+                    }
                   >
                     Remove Integration
                   </Button>
@@ -285,7 +331,7 @@ export default function VercelIntegrationPage() {
                     <DialogTitle>Remove Vercel Integration</DialogTitle>
                   </DialogHeader>
                   <DialogDescription>
-                    This will permanently remove the Vercel integration and disconnect all projects. 
+                    This will permanently remove the Vercel integration and disconnect all projects.
                     This action cannot be undone.
                   </DialogDescription>
                   <FormButtons
@@ -324,7 +370,7 @@ export default function VercelIntegrationPage() {
           <h2 className="mb-4 text-lg font-medium text-text-bright">
             Connected Projects ({connectedProjects.length})
           </h2>
-          
+
           {connectedProjects.length === 0 ? (
             <div className="rounded-lg border border-grid-bright bg-background-bright p-6 text-center">
               <Paragraph className="text-text-dimmed">
@@ -348,9 +394,7 @@ export default function VercelIntegrationPage() {
                     <TableCell className="font-mono text-xs">
                       {projectIntegration.externalEntityId}
                     </TableCell>
-                    <TableCell>
-                      {formatDate(new Date(projectIntegration.createdAt))}
-                    </TableCell>
+                    <TableCell>{formatDate(new Date(projectIntegration.createdAt))}</TableCell>
                     <TableCell>
                       <LinkButton
                         variant="minimal/small"
