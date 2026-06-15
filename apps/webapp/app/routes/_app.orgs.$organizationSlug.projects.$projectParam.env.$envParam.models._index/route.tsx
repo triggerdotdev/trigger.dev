@@ -1,11 +1,17 @@
 import {
   AdjustmentsHorizontalIcon,
+  ArrowTopRightOnSquareIcon,
   CheckIcon,
   CubeIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import * as Ariakit from "@ariakit/react";
-import { Form, type MetaFunction, useFetcher } from "@remix-run/react";
+import {
+  Form,
+  type MetaFunction,
+  type ShouldRevalidateFunctionArgs,
+  useFetcher,
+} from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -27,7 +33,7 @@ import { InlineCode } from "~/components/code/InlineCode";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Badge } from "~/components/primitives/Badge";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -61,7 +67,13 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
-import { appliedSummary } from "~/components/runs/v3/SharedFilters";
+import {
+  appliedSummary,
+  TimeFilter,
+  type TimeFilterApplyValues,
+  timeFilterFromTo,
+} from "~/components/runs/v3/SharedFilters";
+import { parseFiniteInt } from "~/utils/searchParams";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
@@ -71,6 +83,7 @@ import {
   type ModelCatalogItem,
   type ModelComparisonItem,
   type PopularModel,
+  type ProjectModelUsageItem,
   ModelRegistryPresenter,
 } from "~/presenters/v3/ModelRegistryPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
@@ -78,7 +91,7 @@ import { requireUserId } from "~/services/session.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { EnvironmentParamSchema, v3ModelComparePath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3BuiltInDashboardPath, v3ModelComparePath } from "~/utils/pathBuilder";
 import {
   formatModelPrice,
   formatTokenCount,
@@ -88,6 +101,7 @@ import {
 } from "~/utils/modelFormatters";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import { Spinner } from "~/components/primitives/Spinner";
+import { UsageSparkline } from "~/components/primitives/UsageSparkline";
 import { MetricWidget } from "~/routes/resources.metric";
 import type { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 
@@ -116,9 +130,27 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const presenter = new ModelRegistryPresenter(clickhouse);
   const catalog = await presenter.getModelCatalog();
 
-  const now = new Date();
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const popularModels = await presenter.getPopularModels(sevenDaysAgo, now, 50);
+  // Shared time range for the "Your models" tab (charts, usage table, sparklines).
+  // Mirrors the agent detail page: URL-driven period / from / to via TimeFilter.
+  const url = new URL(request.url);
+  const period = url.searchParams.get("period") ?? undefined;
+  const from = parseFiniteInt(url.searchParams.get("from"));
+  const to = parseFiniteInt(url.searchParams.get("to"));
+  const time = timeFilterFromTo({ period, from, to, defaultPeriod: "7d" });
+
+  // popularModels = cross-tenant aggregate (powers the library's p50 TTFC column).
+  // projectUsage = tenant-scoped models with usage in this env (the "Your models" tab).
+  const [popularModels, projectUsage] = await Promise.all([
+    presenter.getPopularModels(time.from, time.to, 50),
+    presenter.getProjectModelUsage(project.id, environment.id, time.from, time.to),
+  ]);
+
+  const usageSparklines = await presenter.getModelUsageSparklines(
+    environment.id,
+    projectUsage.map((u) => u.responseModel),
+    time.from,
+    time.to
+  );
 
   const allProviders = catalog.map((g) => g.provider);
   const allFeatures = Array.from(
@@ -128,6 +160,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return typedjson({
     catalog,
     popularModels,
+    projectUsage,
+    usageSparklines,
     allProviders,
     allFeatures,
     organizationId: project.organizationId,
@@ -135,6 +169,26 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     environmentId: environment.id,
   });
 };
+
+export function shouldRevalidate({
+  currentUrl,
+  nextUrl,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  // The active tab is persisted in the URL (?tab=), but no loader data depends
+  // on it — so switching tabs must not refetch. Any other param change (period,
+  // from/to, …) revalidates as normal.
+  const normalize = (url: URL) => {
+    const params = new URLSearchParams(url.search);
+    params.delete("tab");
+    params.sort();
+    return params.toString();
+  };
+  if (normalize(currentUrl) === normalize(nextUrl)) {
+    return false;
+  }
+  return defaultShouldRevalidate;
+}
 
 const providerIcons: Record<string, (props: { className?: string }) => JSX.Element> = {
   openai: OpenAIIcon,
@@ -152,6 +206,16 @@ const providerIcons: Record<string, (props: { className?: string }) => JSX.Eleme
 function providerIcon(slug: string) {
   const Icon = providerIcons[slug] ?? CubeIcon;
   return <Icon className="size-4 text-text-dimmed" />;
+}
+
+const NEW_MODEL_WINDOW_DAYS = 7;
+
+/** True if the model was released within the last NEW_MODEL_WINDOW_DAYS. */
+function isNewModel(releaseDate: string | null): boolean {
+  if (!releaseDate) return false;
+  const released = new Date(releaseDate).getTime();
+  if (Number.isNaN(released)) return false;
+  return Date.now() - released <= NEW_MODEL_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 }
 
 // --- Filter Components ---
@@ -468,7 +532,10 @@ function ModelsList({
                 />
               </TableCell>
               <TableCell onClick={select} isTabbableCell>
-                {model.displayId}
+                <span className="flex items-center gap-2">
+                  {model.displayId}
+                  {isNewModel(model.releaseDate) && <Badge variant="outline-rounded">New</Badge>}
+                </span>
               </TableCell>
               <TableCell onClick={select}>
                 <span className="flex items-center gap-1.5">
@@ -768,14 +835,16 @@ function chartConfig(opts: {
   xAxisColumn: string;
   yAxisColumns: string[];
   aggregation?: "sum" | "avg";
+  stacked?: boolean;
+  groupByColumn?: string | null;
 }): QueryWidgetConfig {
   return {
     type: "chart",
     chartType: opts.chartType,
     xAxisColumn: opts.xAxisColumn,
     yAxisColumns: opts.yAxisColumns,
-    groupByColumn: null,
-    stacked: false,
+    groupByColumn: opts.groupByColumn ?? null,
+    stacked: opts.stacked ?? false,
     sortByColumn: null,
     sortDirection: "asc",
     aggregation: opts.aggregation ?? "sum",
@@ -784,17 +853,21 @@ function chartConfig(opts: {
 
 type DetailTab = "overview" | "usage";
 
+type ModelsTab = "yours" | "library";
+
 function ModelDetailPanel({
   model,
   organizationId,
   projectId,
   environmentId,
+  aiMetricsBasePath,
   onClose,
 }: {
   model: ModelCatalogItem;
   organizationId: string;
   projectId: string;
   environmentId: string;
+  aiMetricsBasePath: string;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<DetailTab>("overview");
@@ -840,6 +913,7 @@ function ModelDetailPanel({
             organizationId={organizationId}
             projectId={projectId}
             environmentId={environmentId}
+            aiMetricsBasePath={aiMetricsBasePath}
           />
         )}
       </div>
@@ -947,28 +1021,61 @@ function DetailYourUsageTab({
   organizationId,
   projectId,
   environmentId,
+  aiMetricsBasePath,
 }: {
   modelName: string;
   organizationId: string;
   projectId: string;
   environmentId: string;
+  aiMetricsBasePath: string;
 }) {
+  // Inspector-local range, independent of the page-level "Your models" range.
+  const [range, setRange] = useState<TimeFilterApplyValues>({ period: "7d" });
+
   const widgetProps = {
     organizationId,
     projectId,
     environmentId,
     scope: "environment" as const,
-    period: "7d",
-    from: null,
-    to: null,
+    period: range.from && range.to ? null : range.period ?? "7d",
+    from: range.from ?? null,
+    to: range.to ?? null,
   };
+
+  // Deep-link to the AI metrics dashboard pre-filtered to this model, carrying
+  // the inspector's current range so the dashboard opens on the same window.
+  const dashboardParams = new URLSearchParams({ models: modelName });
+  if (range.from && range.to) {
+    dashboardParams.set("from", range.from);
+    dashboardParams.set("to", range.to);
+  } else if (range.period) {
+    dashboardParams.set("period", range.period);
+  }
+  const aiMetricsHref = `${aiMetricsBasePath}?${dashboardParams.toString()}`;
 
   return (
     <div className="flex flex-col gap-3 py-3">
+      <div className="flex items-center justify-between gap-2">
+        <TimeFilter
+          defaultPeriod="7d"
+          labelName="Period"
+          period={range.period}
+          from={range.from}
+          to={range.to}
+          onValueChange={setRange}
+        />
+        <LinkButton
+          to={aiMetricsHref}
+          variant="secondary/small"
+          TrailingIcon={ArrowTopRightOnSquareIcon}
+        >
+          View in AI metrics
+        </LinkButton>
+      </div>
       <div className="h-[120px]">
         <MetricWidget
           widgetKey={`${modelName}-user-calls`}
-          title="Total calls (7d)"
+          title="Total calls"
           query={`SELECT count() AS total_calls FROM llm_metrics WHERE response_model = '${escapeTSQL(
             modelName
           )}'`}
@@ -979,7 +1086,7 @@ function DetailYourUsageTab({
       <div className="h-[120px]">
         <MetricWidget
           widgetKey={`${modelName}-user-cost`}
-          title="Total cost (7d)"
+          title="Total cost"
           query={`SELECT sum(total_cost) AS total_cost FROM llm_metrics WHERE response_model = '${escapeTSQL(
             modelName
           )}'`}
@@ -1055,23 +1162,204 @@ function DetailYourUsageTab({
   );
 }
 
+// --- Your Models Tab ---
+
+function YourModelsTab({
+  usage,
+  callSparklines,
+  tokenSparklines,
+  organizationId,
+  projectId,
+  environmentId,
+  period,
+  from,
+  to,
+  modelLookup,
+  selectedModelId,
+  onSelectModel,
+  onGoToLibrary,
+}: {
+  usage: ProjectModelUsageItem[];
+  callSparklines: Record<string, number[]>;
+  tokenSparklines: Record<string, number[]>;
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  period: string | null;
+  from: string | null;
+  to: string | null;
+  modelLookup: Map<string, ModelCatalogItem>;
+  selectedModelId: string | null;
+  onSelectModel: (model: ModelCatalogItem) => void;
+  onGoToLibrary: () => void;
+}) {
+  // Drive the charts off the same URL-selected range as the table + sparklines.
+  // period and from/to are mutually exclusive (TimeFilter enforces this).
+  const widgetProps = {
+    organizationId,
+    projectId,
+    environmentId,
+    scope: "environment" as const,
+    period: from && to ? null : period ?? "7d",
+    from,
+    to,
+  };
+
+  return (
+    <div className="overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <div className="h-[260px]">
+          <MetricWidget
+            widgetKey="your-models-cost-time"
+            title="Cost over time"
+            query={`SELECT timeBucket(), sum(total_cost) AS cost FROM llm_metrics GROUP BY timeBucket ORDER BY timeBucket`}
+            config={chartConfig({ chartType: "bar", xAxisColumn: "timebucket", yAxisColumns: ["cost"] })}
+            {...widgetProps}
+          />
+        </div>
+        <div className="h-[260px]">
+          <MetricWidget
+            widgetKey="your-models-tokens-time"
+            title="Tokens over time"
+            query={`SELECT timeBucket(), sum(input_tokens) AS input_tokens, sum(output_tokens) AS output_tokens FROM llm_metrics GROUP BY timeBucket ORDER BY timeBucket`}
+            config={chartConfig({
+              chartType: "bar",
+              xAxisColumn: "timebucket",
+              yAxisColumns: ["input_tokens", "output_tokens"],
+              stacked: true,
+            })}
+            {...widgetProps}
+          />
+        </div>
+        <div className="h-[260px]">
+          <MetricWidget
+            widgetKey="your-models-calls-by-model"
+            title="Calls by model"
+            query={`SELECT response_model, count() AS calls FROM llm_metrics GROUP BY response_model ORDER BY calls DESC LIMIT 10`}
+            config={chartConfig({ chartType: "bar", xAxisColumn: "response_model", yAxisColumns: ["calls"] })}
+            {...widgetProps}
+          />
+        </div>
+      </div>
+
+      <div className="mt-4">
+        {usage.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-12">
+            <p className="max-w-md text-center text-sm text-text-dimmed">
+              No model usage in this environment yet. Models you call from your tasks will appear here
+              with usage metrics.
+            </p>
+            <Button variant="secondary/small" onClick={onGoToLibrary}>
+              Browse the model library
+            </Button>
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHeaderCell>Model</TableHeaderCell>
+                <TableHeaderCell>Provider</TableHeaderCell>
+                <TableHeaderCell alignment="right">Calls</TableHeaderCell>
+                <TableHeaderCell alignment="right">Cost</TableHeaderCell>
+                <TableHeaderCell alignment="right">Avg TTFC</TableHeaderCell>
+                <TableHeaderCell alignment="right">Avg tokens/sec</TableHeaderCell>
+                <TableHeaderCell>Calls trend</TableHeaderCell>
+                <TableHeaderCell>Tokens trend</TableHeaderCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {usage.map((u) => {
+                const catalogItem = modelLookup.get(u.responseModel);
+                const provider = catalogItem?.provider ?? u.genAiSystem;
+                const displayId = catalogItem?.displayId ?? `${provider}:${u.responseModel}`;
+                const select = catalogItem ? () => onSelectModel(catalogItem) : undefined;
+                return (
+                  <TableRow
+                    key={u.responseModel}
+                    isSelected={!!catalogItem && selectedModelId === catalogItem.friendlyId}
+                  >
+                    <TableCell onClick={select} isTabbableCell={!!select}>
+                      {displayId}
+                    </TableCell>
+                    <TableCell onClick={select}>
+                      <span className="flex items-center gap-1.5">
+                        {providerIcon(provider)}
+                        {formatProviderName(provider)}
+                      </span>
+                    </TableCell>
+                    <TableCell onClick={select} alignment="right" className="tabular-nums">
+                      {formatNumberCompact(u.calls)}
+                    </TableCell>
+                    <TableCell onClick={select} alignment="right" className="tabular-nums">
+                      {formatModelCost(u.totalCost)}
+                    </TableCell>
+                    <TableCell onClick={select} alignment="right" className="tabular-nums">
+                      {u.avgTtfc > 0 ? `${u.avgTtfc.toFixed(0)}ms` : "—"}
+                    </TableCell>
+                    <TableCell onClick={select} alignment="right" className="tabular-nums">
+                      {u.avgTps > 0 ? u.avgTps.toFixed(0) : "—"}
+                    </TableCell>
+                    <TableCell onClick={select}>
+                      <UsageSparkline data={callSparklines[u.responseModel]} />
+                    </TableCell>
+                    <TableCell onClick={select}>
+                      <UsageSparkline
+                        data={tokenSparklines[u.responseModel]}
+                        color="#10B981"
+                        unitLabel={{ singular: "token", plural: "tokens" }}
+                        formatTotal={(t) => formatNumberCompact(t)}
+                        totalClassName="text-emerald-400"
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // --- Main Page ---
 
 export default function ModelsPage() {
   const {
     catalog,
     popularModels,
+    projectUsage,
+    usageSparklines,
     allProviders,
     allFeatures,
     organizationId,
     projectId,
     environmentId,
   } = useTypedLoaderData<typeof loader>();
-  const { values: searchValues, value: searchValue } = useSearchParams();
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const aiMetricsBasePath = v3BuiltInDashboardPath(organization, project, environment, "llm");
+  const { values: searchValues, value: searchValue, replace } = useSearchParams();
 
   const search = searchValue("search") ?? "";
   const selectedProviders = searchValues("providers");
   const selectedFeatures = searchValues("features");
+  const periodParam = searchValue("period") ?? null;
+  const fromParam = searchValue("from") ?? null;
+  const toParam = searchValue("to") ?? null;
+  // Active tab is persisted in the URL (?tab=) so it survives refresh and is
+  // shareable. Defaults to "yours" when there's usage, else "library".
+  const tabParam = searchValue("tab");
+  const view: ModelsTab =
+    tabParam === "library"
+      ? "library"
+      : tabParam === "yours"
+      ? "yours"
+      : projectUsage.length > 0
+      ? "yours"
+      : "library";
+  const setView = (next: ModelsTab) => replace({ tab: next });
   const [compareSet, setCompareSet] = useState<Set<string>>(new Set());
   const [showAllDetails, setShowAllDetails] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
@@ -1117,6 +1405,19 @@ export default function ModelsPage() {
   const compareModels = useMemo(() => Array.from(compareSet), [compareSet]);
   const allModels = useMemo(() => catalog.flatMap((g) => g.models), [catalog]);
 
+  // Resolve a used response_model (base or dated variant) to its catalog card,
+  // so a "Your models" row can open the same detail inspector as the library.
+  const modelLookup = useMemo(() => {
+    const map = new Map<string, ModelCatalogItem>();
+    for (const model of allModels) {
+      map.set(model.modelName, model);
+      for (const variant of model.variants) {
+        map.set(variant.modelName, model);
+      }
+    }
+    return map;
+  }, [allModels]);
+
   return (
     <PageContainer>
       <NavBar>
@@ -1126,24 +1427,67 @@ export default function ModelsPage() {
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="models-main" min="100px">
             <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">
-              <FiltersBar
-                allProviders={allProviders}
-                allFeatures={allFeatures}
-                compareSet={compareSet}
-                onCompare={() => setCompareOpen(true)}
-                showAllDetails={showAllDetails}
-                onToggleAllDetails={(checked) => setShowAllDetails(checked)}
-              />
-              <ModelsList
-                models={filteredModels}
-                popularMap={popularMap}
-                compareSet={compareSet}
-                onToggleCompare={toggleCompare}
-                showAllDetails={showAllDetails}
-                allFeatures={allFeatures}
-                selectedModelId={selectedModel?.friendlyId ?? null}
-                onSelectModel={setSelectedModel}
-              />
+              <div className="flex h-fit items-center justify-between gap-2 border-b border-grid-bright px-3 pt-1.5">
+                <TabContainer>
+                  <TabButton
+                    isActive={view === "yours"}
+                    layoutId="models-page-tabs"
+                    onClick={() => setView("yours")}
+                  >
+                    Your models
+                  </TabButton>
+                  <TabButton
+                    isActive={view === "library"}
+                    layoutId="models-page-tabs"
+                    onClick={() => setView("library")}
+                  >
+                    Model library
+                  </TabButton>
+                </TabContainer>
+                {view === "yours" && (
+                  <div className="pb-1.5">
+                    <TimeFilter defaultPeriod="7d" labelName="Period" shortcut={{ key: "t" }} />
+                  </div>
+                )}
+              </div>
+              {view === "yours" ? (
+                <YourModelsTab
+                  usage={projectUsage}
+                  callSparklines={usageSparklines.calls}
+                  tokenSparklines={usageSparklines.tokens}
+                  organizationId={organizationId}
+                  projectId={projectId}
+                  environmentId={environmentId}
+                  period={periodParam}
+                  from={fromParam}
+                  to={toParam}
+                  modelLookup={modelLookup}
+                  selectedModelId={selectedModel?.friendlyId ?? null}
+                  onSelectModel={setSelectedModel}
+                  onGoToLibrary={() => setView("library")}
+                />
+              ) : (
+                <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">
+                  <FiltersBar
+                    allProviders={allProviders}
+                    allFeatures={allFeatures}
+                    compareSet={compareSet}
+                    onCompare={() => setCompareOpen(true)}
+                    showAllDetails={showAllDetails}
+                    onToggleAllDetails={(checked) => setShowAllDetails(checked)}
+                  />
+                  <ModelsList
+                    models={filteredModels}
+                    popularMap={popularMap}
+                    compareSet={compareSet}
+                    onToggleCompare={toggleCompare}
+                    showAllDetails={showAllDetails}
+                    allFeatures={allFeatures}
+                    selectedModelId={selectedModel?.friendlyId ?? null}
+                    onSelectModel={setSelectedModel}
+                  />
+                </div>
+              )}
             </div>
           </ResizablePanel>
           <ResizableHandle
@@ -1172,6 +1516,7 @@ export default function ModelsPage() {
                   organizationId={organizationId}
                   projectId={projectId}
                   environmentId={environmentId}
+                  aiMetricsBasePath={aiMetricsBasePath}
                   onClose={() => setSelectedModel(null)}
                 />
               )}
