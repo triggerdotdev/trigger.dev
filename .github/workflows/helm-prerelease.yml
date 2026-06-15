@@ -68,10 +68,15 @@ jobs:
 
   prerelease:
     needs: lint-and-test
+    # Set the ENABLE_HELM_PRERELEASE repository variable to 'false' to turn off
+    # publishing the chart to GHCR — e.g. forks/mirrors that lack write_package
+    # on the owner's charts namespace. Defaults to enabled; the lint-and-test
+    # job above always runs regardless.
     if: |
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+      vars.ENABLE_HELM_PRERELEASE != 'false' &&
+      ((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
       github.event_name == 'push' ||
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
