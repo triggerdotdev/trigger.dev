@@ -712,10 +712,23 @@ export class ModelRegistryPresenter extends BasePresenter {
     responseModels: string[],
     from: Date,
     to: Date
-  ): Promise<{ calls: Record<string, number[]>; tokens: Record<string, number[]> }> {
-    if (responseModels.length === 0) return { calls: {}, tokens: {} };
-
+  ): Promise<{
+    calls: Record<string, number[]>;
+    tokens: Record<string, number[]>;
+    bucketIntervalMs: number;
+    bucketStartMs: number;
+  }> {
     const intervalSeconds = sparklineBucketSeconds(to.getTime() - from.getTime());
+    const intervalMs = intervalSeconds * 1000;
+    // Epoch-aligned start of the first bucket, matching sparklineBucketKeys and
+    // ClickHouse toStartOfInterval. Returned so the sparkline tooltip can label
+    // each bar with its true time rather than assuming hourly buckets.
+    const bucketStartMs = Math.floor(from.getTime() / intervalMs) * intervalMs;
+
+    if (responseModels.length === 0) {
+      return { calls: {}, tokens: {}, bucketIntervalMs: intervalMs, bucketStartMs };
+    }
+
     const bucketKeys = sparklineBucketKeys(from, to, intervalSeconds);
 
     // intervalSeconds is a server-derived integer from a fixed ladder, so it's
@@ -760,6 +773,8 @@ export class ModelRegistryPresenter extends BasePresenter {
     return {
       calls: this.#buildSparklineMap(callsResult, responseModels, bucketKeys),
       tokens: this.#buildSparklineMap(tokensResult, responseModels, bucketKeys),
+      bucketIntervalMs: intervalMs,
+      bucketStartMs,
     };
   }
 

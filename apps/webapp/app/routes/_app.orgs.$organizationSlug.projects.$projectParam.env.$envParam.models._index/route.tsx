@@ -138,10 +138,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const to = parseFiniteInt(url.searchParams.get("to"));
   const time = timeFilterFromTo({ period, from, to, defaultPeriod: "7d" });
 
-  // popularModels = cross-tenant aggregate (powers the library's p50 TTFC column).
+  // popularModels powers the library tab's cross-tenant p50 TTFC column — a
+  // stable "typical latency" reference, so it always uses a fixed 7-day window
+  // independent of the Your models time selector (the library tab has none).
+  const popularTo = new Date();
+  const popularFrom = new Date(popularTo.getTime() - 7 * 24 * 60 * 60 * 1000);
+
   // projectUsage = tenant-scoped models with usage in this env (the "Your models" tab).
   const [popularModels, projectUsage] = await Promise.all([
-    presenter.getPopularModels(time.from, time.to, 50),
+    presenter.getPopularModels(popularFrom, popularTo, 50),
     presenter.getProjectModelUsage(project.id, environment.id, time.from, time.to),
   ]);
 
@@ -1172,6 +1177,8 @@ function YourModelsTab({
   usage,
   callSparklines,
   tokenSparklines,
+  bucketStartMs,
+  bucketIntervalMs,
   organizationId,
   projectId,
   environmentId,
@@ -1186,6 +1193,8 @@ function YourModelsTab({
   usage: ProjectModelUsageItem[];
   callSparklines: Record<string, number[]>;
   tokenSparklines: Record<string, number[]>;
+  bucketStartMs: number;
+  bucketIntervalMs: number;
   organizationId: string;
   projectId: string;
   environmentId: string;
@@ -1304,11 +1313,17 @@ function YourModelsTab({
                       {u.avgTps > 0 ? u.avgTps.toFixed(0) : "—"}
                     </TableCell>
                     <TableCell onClick={select}>
-                      <UsageSparkline data={callSparklines[u.responseModel]} />
+                      <UsageSparkline
+                        data={callSparklines[u.responseModel]}
+                        bucketStartMs={bucketStartMs}
+                        bucketIntervalMs={bucketIntervalMs}
+                      />
                     </TableCell>
                     <TableCell onClick={select}>
                       <UsageSparkline
                         data={tokenSparklines[u.responseModel]}
+                        bucketStartMs={bucketStartMs}
+                        bucketIntervalMs={bucketIntervalMs}
                         color="#10B981"
                         unitLabel={{ singular: "token", plural: "tokens" }}
                         formatTotal={(t) => formatNumberCompact(t)}
@@ -1459,6 +1474,8 @@ export default function ModelsPage() {
                   usage={projectUsage}
                   callSparklines={usageSparklines.calls}
                   tokenSparklines={usageSparklines.tokens}
+                  bucketStartMs={usageSparklines.bucketStartMs}
+                  bucketIntervalMs={usageSparklines.bucketIntervalMs}
                   organizationId={organizationId}
                   projectId={projectId}
                   environmentId={environmentId}

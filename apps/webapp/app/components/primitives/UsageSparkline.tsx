@@ -17,8 +17,12 @@ type UsageDatum = { date: Date; count: number };
 type UnitLabel = { singular: string; plural: string };
 
 export type UsageSparklineProps = {
-  /** Trailing 24 hourly buckets; the last entry is the most recent hour. */
+  /** Equal-width time buckets, oldest first. */
   data?: number[];
+  /** Epoch ms of the first bucket's start. When omitted, the last bucket is anchored to now. */
+  bucketStartMs?: number;
+  /** Width of each bucket in ms. Defaults to one hour. */
+  bucketIntervalMs?: number;
   /** Bar colour. Defaults to blue. */
   color?: string;
   /** Unit shown in the tooltip (e.g. calls, tokens). */
@@ -36,6 +40,8 @@ export type UsageSparklineProps = {
  */
 export function UsageSparkline({
   data,
+  bucketStartMs,
+  bucketIntervalMs,
   color = "#3B82F6",
   unitLabel = { singular: "call", plural: "calls" },
   formatTotal,
@@ -48,11 +54,13 @@ export function UsageSparkline({
   const total = data.reduce((a, b) => a + b, 0);
   const max = Math.max(...data);
 
-  // Map the 24-bucket array to dated points so the tooltip can show the
-  // hour each bar represents. Bucket i is `23 - i` hours before now.
-  const now = new Date();
+  // Map each bucket to a dated point so the tooltip can show the window it
+  // represents. Buckets are `intervalMs` wide; if the caller didn't pass the
+  // first bucket's start, anchor the last bucket to now (hourly default).
+  const intervalMs = bucketIntervalMs ?? 3600_000;
+  const startMs = bucketStartMs ?? Date.now() - (data.length - 1) * intervalMs;
   const chartData: UsageDatum[] = data.map((count, i) => ({
-    date: new Date(now.getTime() - (data.length - 1 - i) * 3600_000),
+    date: new Date(startMs + i * intervalMs),
     count,
   }));
 
