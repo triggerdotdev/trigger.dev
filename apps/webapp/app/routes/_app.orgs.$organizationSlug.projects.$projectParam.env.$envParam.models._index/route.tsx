@@ -176,15 +176,19 @@ export function shouldRevalidate({
   defaultShouldRevalidate,
 }: ShouldRevalidateFunctionArgs) {
   // The active tab is persisted in the URL (?tab=), but no loader data depends
-  // on it — so switching tabs must not refetch. Any other param change (period,
-  // from/to, …) revalidates as normal.
+  // on it — so switching tabs must not refetch. Any other change (a different
+  // project/environment in the path, or a period/from/to param) revalidates as
+  // normal, since the loader data is scoped to the path params + time range.
   const normalize = (url: URL) => {
     const params = new URLSearchParams(url.search);
     params.delete("tab");
     params.sort();
     return params.toString();
   };
-  if (normalize(currentUrl) === normalize(nextUrl)) {
+  if (
+    currentUrl.pathname === nextUrl.pathname &&
+    normalize(currentUrl) === normalize(nextUrl)
+  ) {
     return false;
   }
   return defaultShouldRevalidate;
