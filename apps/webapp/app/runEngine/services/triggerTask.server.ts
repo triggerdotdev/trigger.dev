@@ -39,6 +39,11 @@ import {
   workerQueueForRun,
 } from "../concerns/workerQueueSplit.server";
 import {
+  parseComputeBackingMap,
+  resolveComputeMigration,
+} from "../concerns/computeMigration.server";
+import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
+import {
   publishClaim as publishMollifierClaim,
   releaseClaim as releaseMollifierClaim,
 } from "~/v3/mollifier/idempotencyClaim.server";
@@ -64,6 +69,8 @@ import {
 import { mollifyTrigger } from "~/v3/mollifier/mollifierMollify.server";
 import { type MollifierBuffer } from "@trigger.dev/redis-worker";
 import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
+
+const COMPUTE_BACKING_MAP = parseComputeBackingMap(env.COMPUTE_BACKING_MAP);
 
 class NoopTriggerRacepointSystem implements TriggerRacepointSystem {
   async waitForRacepoint(options: { racepoint: TriggerRacepoints; id: string }): Promise<void> {
@@ -358,6 +365,23 @@ export class RunEngineTriggerTaskService {
           const baseWorkerQueue = workerQueueResult?.masterQueue;
           const enableFastPath = workerQueueResult?.enableFastPath ?? false;
 
+          // Plan-aware compute migration: rewrite the resolved region to its
+          // compute backing for enrolled orgs. Reads the in-memory global-flags
+          // snapshot (no DB query). Gate the first read on the registry so a cold
+          // replica never serves a default over a real flag value.
+          if (!globalFlagsRegistry.isLoaded) {
+            await globalFlagsRegistry.waitUntilReady(env.GLOBAL_FLAGS_READY_TIMEOUT_MS);
+          }
+          const migratedWorkerQueue = resolveComputeMigration({
+            baseWorkerQueue,
+            planType,
+            orgId: environment.organization.id,
+            orgFeatureFlags: environment.organization.featureFlags as Record<string, unknown> | null,
+            flags: globalFlagsRegistry.current(),
+            envType: environment.type,
+            backingMap: COMPUTE_BACKING_MAP,
+          });
+
           // Build annotations for this run
           const triggerSource = options.triggerSource ?? "api";
           const triggerAction = options.triggerAction ?? "trigger";
@@ -386,13 +410,13 @@ export class RunEngineTriggerTaskService {
               globalDefault: env.TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED === "1",
             });
           const workerQueue =
-            baseWorkerQueue !== undefined
+            migratedWorkerQueue !== undefined
               ? workerQueueForRun({
-                  workerQueue: baseWorkerQueue,
+                  workerQueue: migratedWorkerQueue,
                   rootTriggerSource: annotations.rootTriggerSource,
                   splitEnabled: scheduledQueueSplitEnabled,
                 })
-              : baseWorkerQueue;
+              : migratedWorkerQueue;
 
           try {
             return await this.traceEventConcern.traceRun(
