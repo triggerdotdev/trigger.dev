@@ -159,7 +159,7 @@ return streamText({
 
 The `cacheControl` shorthand is Anthropic-only; `systemProviderOptions` (and `chat.prompt.set`'s `providerOptions`) is the form to reach for on any other breakpoint-based provider.
 
-Usage reporting is normalized. Providers report cache tokens under different names (`cachedPromptTokens`, `cachedContentTokenCount`, `cacheReadInputTokens`), but the AI SDK maps them into the same `inputTokenDetails.cacheReadTokens` / `cacheWriteTokens` that `previousTurnUsage` and `totalUsage` carry and the dashboard shows — so the [verify step](#verify-caching-is-working) is the same regardless of provider.
+Usage reporting is normalized. Each provider reports cache tokens under its own provider-specific field, but the AI SDK maps them into the same `inputTokenDetails.cacheReadTokens` / `cacheWriteTokens` that `previousTurnUsage` and `totalUsage` carry and the dashboard shows — so the [verify step](#verify-caching-is-working) is the same regardless of provider.
 
 ## Verify caching is working
 
