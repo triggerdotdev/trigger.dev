@@ -68,8 +68,8 @@ export class ReplayTaskRunService extends BaseService {
       authenticatedEnvironment.type === "DEVELOPMENT";
     const region = ignoreRegion
       ? undefined
-      : overrideOptions.region ??
-        existingTaskRun.region ??
+      : overrideOptions.region ||
+        existingTaskRun.region ||
         baseWorkerQueue(existingTaskRun.workerQueue);
 
     try {

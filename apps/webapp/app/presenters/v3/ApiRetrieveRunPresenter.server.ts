@@ -522,7 +522,7 @@ async function createCommonRunStructure(run: CommonRelatedRun, apiVersion: API_V
     batchId: run.batch?.friendlyId,
     metadata,
     region:
-      run.region || run.workerQueue ? run.region ?? baseWorkerQueue(run.workerQueue) : undefined,
+      run.region || run.workerQueue ? run.region || baseWorkerQueue(run.workerQueue) : undefined,
   };
 }
 

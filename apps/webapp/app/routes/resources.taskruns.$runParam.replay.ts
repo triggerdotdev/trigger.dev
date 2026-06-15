@@ -215,7 +215,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     region:
       environment.type === "DEVELOPMENT"
         ? undefined
-        : run.region ?? baseWorkerQueue(run.workerQueue),
+        : run.region || baseWorkerQueue(run.workerQueue),
     regions: regionsResult.regions,
     ttlSeconds: run.ttl ? parseDuration(run.ttl, "s") ?? undefined : undefined,
     idempotencyKey: run.idempotencyKey,

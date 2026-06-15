@@ -173,16 +173,30 @@ export class ComputeTemplateCreationService {
     }
     const defaultQueue = project.defaultWorkerGroup?.masterQueue;
     if (defaultQueue && backingForQueue(defaultQueue, workerRegionRegistry.current() ?? [])) {
-      const planType = (await getEntitlement(project.organization.id))?.plan?.type;
       if (!globalFlagsRegistry.isLoaded) {
         await globalFlagsRegistry.waitUntilReady(env.GLOBAL_FLAGS_READY_TIMEOUT_MS);
       }
-      const migrated = isOrgMigrated({
-        planType,
+      const decision = {
         orgId: project.organization.id,
         orgFeatureFlags: project.organization.featureFlags as Record<string, unknown> | null,
         flags: globalFlagsRegistry.current(),
-      });
+      };
+      // Per-org override needs no plan; only the percentage path does. So skip the
+      // external entitlement lookup unless it could matter, and degrade gracefully
+      // if it throws - a shadow-template check must never fail a deploy.
+      let migrated = isOrgMigrated({ ...decision, planType: undefined });
+      if (!migrated && (decision.flags?.computeMigrationEnabled ?? false)) {
+        let planType: string | undefined;
+        try {
+          planType = (await getEntitlement(project.organization.id))?.plan?.type;
+        } catch (error) {
+          logger.warn("compute migration: entitlement lookup failed; skipping shadow template", {
+            organizationId: project.organization.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        migrated = isOrgMigrated({ ...decision, planType });
+      }
       if (migrated) {
         return "shadow";
       }

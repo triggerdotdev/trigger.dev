@@ -303,7 +303,7 @@ export class SpanPresenter extends BasePresenter {
           location: true,
         },
         where: {
-          masterQueue: run.region ?? baseWorkerQueue(run.workerQueue),
+          masterQueue: run.region || baseWorkerQueue(run.workerQueue),
         },
       });
 
