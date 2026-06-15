@@ -595,11 +595,6 @@ function useAgentSessionMessages({
               : payload.message
                 ? [payload.message]
                 : [];
-            const incomingUsers = candidates.filter(
-              (m): m is UIMessage =>
-                m != null && (m as { role?: string }).role === "user" && typeof m.id === "string"
-            );
-            if (incomingUsers.length === 0) continue;
 
             let changed = false;
 
