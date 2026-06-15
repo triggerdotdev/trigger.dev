@@ -42,6 +42,7 @@ import type {
   FinishReason,
   LanguageModelUsage,
   ModelMessage,
+  ProviderOptions,
   Tool,
   ToolSet,
   UIMessage,
@@ -3410,10 +3411,39 @@ export type ChatPromptValue =
 const chatPromptKey = locals.create<ChatPromptValue>("chat.prompt");
 
 /**
+ * @internal Provider options attached to the system message that
+ * `toStreamTextOptions()` builds from the stored prompt — lets a provider cache
+ * the system block. Stored separately so it works for both the `ResolvedPrompt`
+ * and plain-string forms without mutating the prompt object.
+ */
+const chatPromptProviderOptionsKey = locals.create<ProviderOptions>(
+  "chat.prompt.providerOptions"
+);
+
+/**
+ * Options for `chat.prompt.set()`.
+ */
+export type SetChatPromptOptions = {
+  /**
+   * Provider options attached to the system prompt so a provider can cache it.
+   * The most common use is an Anthropic prompt-cache breakpoint on the (large,
+   * stable) system block — see the prompt-caching guide. Carried through to
+   * `chat.toStreamTextOptions()` automatically; a `systemProviderOptions` /
+   * `cacheControl` passed there overrides this.
+   *
+   * @example
+   * chat.prompt.set(SYSTEM_PROMPT, {
+   *   providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+   * });
+   */
+  providerOptions?: ProviderOptions;
+};
+
+/**
  * Store a resolved prompt (or plain string) for the current run.
  * Call from any hook (`onPreload`, `onChatStart`, `onTurnStart`) or `run()`.
  */
-function setChatPrompt(resolved: ResolvedPrompt | string): void {
+function setChatPrompt(resolved: ResolvedPrompt | string, options?: SetChatPromptOptions): void {
   if (typeof resolved === "string") {
     locals.set(chatPromptKey, {
       text: resolved,
@@ -3428,6 +3458,10 @@ function setChatPrompt(resolved: ResolvedPrompt | string): void {
     });
   } else {
     locals.set(chatPromptKey, resolved);
+  }
+
+  if (options?.providerOptions) {
+    locals.set(chatPromptProviderOptionsKey, options.providerOptions);
   }
 }
 
@@ -3620,7 +3654,39 @@ export type ToStreamTextOptionsOptions = {
    * your tools here.
    */
   tools?: Record<string, Tool>;
+  /**
+   * Provider options attached to the system prompt so a provider can cache it.
+   * When set (or when {@link cacheControl} or `chat.prompt.set`'s
+   * `providerOptions` is set), `system` is returned as a structured
+   * `SystemModelMessage` carrying these options instead of a plain string —
+   * letting providers like Anthropic apply prompt caching to the (large,
+   * stable) system block, which is the single highest-value cache target.
+   *
+   * Overrides any `providerOptions` set on `chat.prompt.set()`.
+   *
+   * @example
+   * chat.toStreamTextOptions({
+   *   systemProviderOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+   * });
+   */
+  systemProviderOptions?: ProviderOptions;
+  /**
+   * Anthropic-only convenience for {@link systemProviderOptions}: caches the
+   * system prompt with the given cache breakpoint. Equivalent to
+   * `systemProviderOptions: { anthropic: { cacheControl } }`. For other
+   * providers (e.g. Amazon Bedrock's `cachePoint`), use `systemProviderOptions`.
+   *
+   * @example
+   * chat.toStreamTextOptions({ cacheControl: { type: "ephemeral" } });
+   */
+  cacheControl?: SystemCacheControl;
 };
+
+/**
+ * Anthropic prompt-cache breakpoint shape (`providerOptions.anthropic.cacheControl`).
+ * `ttl` defaults to the 5-minute cache; `"1h"` selects the 1-hour cache.
+ */
+export type SystemCacheControl = { type: "ephemeral"; ttl?: "5m" | "1h" };
 
 /**
  * Returns an options object ready to spread into `streamText()`.
@@ -3642,7 +3708,24 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
   const promptText = prompt?.text ?? "";
   const skillsText = skills && skills.length > 0 ? buildSkillsSystemPrompt(skills) : "";
   if (promptText || skillsText) {
-    result.system = [promptText, skillsText].filter(Boolean).join("\n\n");
+    const systemText = [promptText, skillsText].filter(Boolean).join("\n\n");
+
+    // Resolve system-prompt provider options for caching. Precedence (most
+    // specific wins, no deep merge): explicit `systemProviderOptions` →
+    // `cacheControl` sugar → `providerOptions` stored on `chat.prompt.set()`.
+    const systemProviderOptions: ProviderOptions | undefined =
+      options?.systemProviderOptions ??
+      (options?.cacheControl
+        ? ({ anthropic: { cacheControl: options.cacheControl } } as ProviderOptions)
+        : undefined) ??
+      locals.get(chatPromptProviderOptionsKey);
+
+    // A bare string stays a bare string (the unchanged default). With provider
+    // options, emit a structured `SystemModelMessage` so the provider can cache
+    // the system block — `streamText`'s `system` accepts string | message.
+    result.system = systemProviderOptions
+      ? { role: "system", content: systemText, providerOptions: systemProviderOptions }
+      : systemText;
   }
 
   // Prompt-related options (only if chat.prompt.set() was called)
@@ -10058,6 +10141,9 @@ export const chat = {
    * Store and retrieve a resolved prompt for the current run.
    *
    * - `chat.prompt.set(resolved)` — store a `ResolvedPrompt` or plain string
+   * - `chat.prompt.set(resolved, { providerOptions })` — also attach provider
+   *   options to the system block so a provider can cache it (e.g. Anthropic
+   *   prompt caching). See the prompt-caching guide.
    * - `chat.prompt()` — read the stored prompt (throws if not set)
    */
   prompt: Object.assign(getChatPrompt, { set: setChatPrompt }),
