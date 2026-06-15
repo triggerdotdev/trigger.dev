@@ -48,13 +48,17 @@ export type ReloadingRegistryOptions<T> = {
 export function createReloadingRegistry<T>(opts: ReloadingRegistryOptions<T>): ReloadingRegistry<T> {
   let snapshot: T | undefined;
   let loaded = false;
+  let loadSeq = 0;
   let resolveReady!: () => void;
   const isReady = new Promise<void>((resolve) => {
     resolveReady = resolve;
   });
 
   async function doLoad() {
-    snapshot = await opts.load();
+    const seq = ++loadSeq;
+    const next = await opts.load();
+    if (seq < loadSeq) return; // a newer load started while we were awaiting; don't clobber
+    snapshot = next;
     lastSuccessfulLoadAt.set({ name: opts.name }, Date.now() / 1000);
     if (!loaded) {
       loaded = true;
@@ -110,10 +114,17 @@ export function createReloadingRegistry<T>(opts: ReloadingRegistryOptions<T>): R
     reload: doLoad,
     async waitUntilReady(timeoutMs: number) {
       if (loaded || timeoutMs <= 0) return;
-      await Promise.race([
-        isReady,
-        new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
-      ]);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          isReady,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, timeoutMs);
+          }),
+        ]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
     },
     stop,
   };
