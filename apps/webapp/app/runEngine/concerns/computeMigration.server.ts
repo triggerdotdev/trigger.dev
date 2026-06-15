@@ -7,40 +7,6 @@ export type ComputeMigrationFlags = {
   computeMigrationPaidPercentage?: number;
 };
 
-export type ComputeBackingMap = Record<string, string>;
-
-/**
- * Parse COMPUTE_BACKING_MAP (container-region masterQueue -> compute-backing
- * masterQueue). Never throws: bad JSON or non-string values yield {} so a
- * misconfigured env disables migration rather than breaking triggers.
- */
-export function parseComputeBackingMap(raw: string): ComputeBackingMap {
-  try {
-    const parsed = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return {};
-    const out: ComputeBackingMap = {};
-    for (const [k, v] of Object.entries(parsed)) {
-      if (typeof v === "string") out[k] = v;
-    }
-    return out;
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Inverse of the backing map: given a worker queue, return the user-facing geo
- * region. If the queue is a compute backing (a *value* in the map), return the
- * region it backs; otherwise return the queue unchanged. Used to hide the
- * backing on customer surfaces and to re-derive the region on replay.
- */
-export function regionForBacking(queue: string, backingMap: ComputeBackingMap): string {
-  for (const [region, backing] of Object.entries(backingMap)) {
-    if (backing === queue) return region;
-  }
-  return queue;
-}
-
 type MigrationDecisionInput = {
   planType: string | undefined;
   orgId: string;
@@ -81,7 +47,7 @@ export function isOrgMigrated({
 type ResolveInput = MigrationDecisionInput & {
   baseWorkerQueue: string | undefined;
   envType: string;
-  backingMap: ComputeBackingMap;
+  backing: string | undefined; // the compute backing for this queue's region, or undefined
 };
 
 /**
@@ -93,11 +59,11 @@ type ResolveInput = MigrationDecisionInput & {
 export function resolveComputeMigration({
   baseWorkerQueue,
   envType,
-  backingMap,
+  backing,
   ...decision
 }: ResolveInput): string | undefined {
   if (baseWorkerQueue === undefined) return baseWorkerQueue;
   if (envType === "DEVELOPMENT") return baseWorkerQueue;
   if (!isOrgMigrated(decision)) return baseWorkerQueue;
-  return backingMap[baseWorkerQueue] ?? baseWorkerQueue;
+  return backing ?? baseWorkerQueue;
 }

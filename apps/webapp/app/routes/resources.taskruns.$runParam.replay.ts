@@ -19,8 +19,7 @@ import {
 } from "~/v3/mollifier/syntheticReplayTaskRun.server";
 import parseDuration from "parse-duration";
 import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
-import { regionForBacking } from "~/runEngine/concerns/computeMigration.server";
-import { computeBackingMap } from "~/v3/computeBackingMap.server";
+import { regionForQueue, workerRegionRegistry } from "~/v3/workerRegions.server";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
 import { queueTypeFromType } from "~/presenters/v3/QueueRetrievePresenter.server";
 import { ReplayRunData } from "~/v3/replayTask";
@@ -215,7 +214,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     region:
       environment.type === "DEVELOPMENT"
         ? undefined
-        : regionForBacking(baseWorkerQueue(run.workerQueue), computeBackingMap),
+        : regionForQueue(baseWorkerQueue(run.workerQueue), workerRegionRegistry.current() ?? []),
     regions: regionsResult.regions,
     ttlSeconds: run.ttl ? parseDuration(run.ttl, "s") ?? undefined : undefined,
     idempotencyKey: run.idempotencyKey,

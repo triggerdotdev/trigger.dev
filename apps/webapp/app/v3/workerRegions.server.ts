@@ -45,8 +45,8 @@ export function backingForQueue(queue: string, groups: WorkerGroupRegionRow[]): 
 /**
  * In-memory snapshot of every worker group's (queue, region, type, hidden),
  * refreshed on an interval. Read synchronously on the hot path; callers gate the
- * first read on `waitUntilReady`. Replaces the COMPUTE_BACKING_MAP env var as the
- * source of truth for region<->backing resolution.
+ * first read on `waitUntilReady`. DB-backed source of truth for region<->backing
+ * resolution (replaces the old env-var backing map).
  */
 export const workerRegionRegistry = singleton("workerRegionRegistry", () =>
   createReloadingRegistry<WorkerGroupRegionRow[]>({

@@ -39,7 +39,7 @@ import {
   workerQueueForRun,
 } from "../concerns/workerQueueSplit.server";
 import { resolveComputeMigration } from "../concerns/computeMigration.server";
-import { computeBackingMap } from "~/v3/computeBackingMap.server";
+import { workerRegionRegistry, backingForQueue } from "~/v3/workerRegions.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import {
   publishClaim as publishMollifierClaim,
@@ -368,6 +368,10 @@ export class RunEngineTriggerTaskService {
           if (!globalFlagsRegistry.isLoaded) {
             await globalFlagsRegistry.waitUntilReady(env.GLOBAL_FLAGS_READY_TIMEOUT_MS);
           }
+          if (!workerRegionRegistry.isLoaded) {
+            await workerRegionRegistry.waitUntilReady(env.GLOBAL_FLAGS_READY_TIMEOUT_MS);
+          }
+          const workerGroups = workerRegionRegistry.current() ?? [];
           const migratedWorkerQueue = resolveComputeMigration({
             baseWorkerQueue,
             planType,
@@ -375,7 +379,7 @@ export class RunEngineTriggerTaskService {
             orgFeatureFlags: environment.organization.featureFlags as Record<string, unknown> | null,
             flags: globalFlagsRegistry.current(),
             envType: environment.type,
-            backingMap: computeBackingMap,
+            backing: baseWorkerQueue ? backingForQueue(baseWorkerQueue, workerGroups) : undefined,
           });
 
           // Build annotations for this run

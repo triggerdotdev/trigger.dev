@@ -1,24 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
-  parseComputeBackingMap,
   isOrgMigrated,
   resolveComputeMigration,
-  regionForBacking,
 } from "~/runEngine/concerns/computeMigration.server";
-
-const BACKING = { "us-east-1": "us-east-1-next" };
-
-describe("parseComputeBackingMap", () => {
-  it("parses valid JSON", () => {
-    expect(parseComputeBackingMap('{"us-east-1":"us-east-1-next"}')).toEqual(BACKING);
-  });
-  it("returns {} on invalid JSON without throwing", () => {
-    expect(parseComputeBackingMap("not json")).toEqual({});
-  });
-  it("returns {} on non-string values", () => {
-    expect(parseComputeBackingMap('{"us-east-1":5}')).toEqual({});
-  });
-});
 
 describe("isOrgMigrated", () => {
   const base = {
@@ -83,42 +67,20 @@ describe("resolveComputeMigration", () => {
     orgFeatureFlags: {},
     flags: { computeMigrationEnabled: true, computeMigrationFreePercentage: 100 },
     envType: "PRODUCTION",
-    backingMap: BACKING,
   };
-
   it("swaps to the compute backing for an enrolled free org", () => {
-    expect(resolveComputeMigration({ ...enrolled, baseWorkerQueue: "us-east-1", orgId: "org_x" }))
-      .toBe("us-east-1-next");
+    expect(resolveComputeMigration({ ...enrolled, baseWorkerQueue: "us-east-1", orgId: "org_x", backing: "us-east-1-next" })).toBe("us-east-1-next");
   });
-  it("leaves a region with no backing untouched (EU)", () => {
-    expect(resolveComputeMigration({ ...enrolled, baseWorkerQueue: "eu-central-1", orgId: "org_x" }))
-      .toBe("eu-central-1");
+  it("leaves the queue unchanged when there is no backing for the region (EU)", () => {
+    expect(resolveComputeMigration({ ...enrolled, baseWorkerQueue: "eu-central-1", orgId: "org_x", backing: undefined })).toBe("eu-central-1");
   });
   it("does not migrate DEVELOPMENT", () => {
-    expect(
-      resolveComputeMigration({ ...enrolled, baseWorkerQueue: "us-east-1", orgId: "org_x", envType: "DEVELOPMENT" })
-    ).toBe("us-east-1");
+    expect(resolveComputeMigration({ ...enrolled, baseWorkerQueue: "us-east-1", orgId: "org_x", backing: "us-east-1-next", envType: "DEVELOPMENT" })).toBe("us-east-1");
   });
   it("leaves a non-enrolled org untouched", () => {
-    expect(
-      resolveComputeMigration({ ...enrolled, baseWorkerQueue: "us-east-1", orgId: "org_x", flags: { computeMigrationEnabled: false } })
-    ).toBe("us-east-1");
+    expect(resolveComputeMigration({ ...enrolled, baseWorkerQueue: "us-east-1", orgId: "org_x", backing: "us-east-1-next", flags: { computeMigrationEnabled: false } })).toBe("us-east-1");
   });
   it("undefined baseWorkerQueue passes through", () => {
-    expect(resolveComputeMigration({ ...enrolled, baseWorkerQueue: undefined, orgId: "org_x" }))
-      .toBeUndefined();
-  });
-});
-
-describe("regionForBacking", () => {
-  it("maps a backing to its region", () => {
-    expect(regionForBacking("us-east-1-next", BACKING)).toBe("us-east-1");
-  });
-  it("passes a non-backing queue through unchanged", () => {
-    expect(regionForBacking("us-east-1", BACKING)).toBe("us-east-1");
-    expect(regionForBacking("eu-central-1", BACKING)).toBe("eu-central-1");
-  });
-  it("passes through unchanged with an empty map", () => {
-    expect(regionForBacking("us-east-1-next", {})).toBe("us-east-1-next");
+    expect(resolveComputeMigration({ ...enrolled, baseWorkerQueue: undefined, orgId: "org_x", backing: "us-east-1-next" })).toBeUndefined();
   });
 });

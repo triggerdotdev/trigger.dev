@@ -158,10 +158,6 @@ const EnvironmentSchema = z
     WORKER_SCHEMA: z.string().default("graphile_worker"),
     WORKER_CONCURRENCY: z.coerce.number().int().default(10),
     WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
-    // JSON map of container-region masterQueue -> compute-backing masterQueue.
-    // Absence of an entry means that region is never migrated (e.g. EU until it
-    // has a compute backing). Example: {"us-east-1":"us-east-1-next"}
-    COMPUTE_BACKING_MAP: z.string().default("{}"),
     // How often each replica reloads the global flags snapshot from the DB.
     // Sets kill/ramp propagation latency.
     GLOBAL_FLAGS_RELOAD_INTERVAL_MS: z.coerce.number().int().min(1000).default(5000),

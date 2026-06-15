@@ -9,7 +9,8 @@ import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { ServiceValidationError } from "./baseService.server";
 import { FailDeploymentService } from "./failDeployment.server";
 import { resolveComputeAccess } from "../regionAccess.server";
-import { isOrgMigrated, parseComputeBackingMap } from "~/runEngine/concerns/computeMigration.server";
+import { isOrgMigrated } from "~/runEngine/concerns/computeMigration.server";
+import { backingForQueue, workerRegionRegistry } from "~/v3/workerRegions.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 
@@ -167,9 +168,11 @@ export class ComputeTemplateCreationService {
     // Migrated orgs route runs to the compute backing even though their stored
     // default is still the container region, so they need a compute template too.
     // shadow mode: never fail a deploy over a backing the org didn't opt into.
-    const backingMap = parseComputeBackingMap(env.COMPUTE_BACKING_MAP);
+    if (!workerRegionRegistry.isLoaded) {
+      await workerRegionRegistry.waitUntilReady(env.GLOBAL_FLAGS_READY_TIMEOUT_MS);
+    }
     const defaultQueue = project.defaultWorkerGroup?.masterQueue;
-    if (defaultQueue && backingMap[defaultQueue]) {
+    if (defaultQueue && backingForQueue(defaultQueue, workerRegionRegistry.current() ?? [])) {
       const planType = (await getEntitlement(project.organization.id))?.plan?.type;
       if (!globalFlagsRegistry.isLoaded) {
         await globalFlagsRegistry.waitUntilReady(env.GLOBAL_FLAGS_READY_TIMEOUT_MS);

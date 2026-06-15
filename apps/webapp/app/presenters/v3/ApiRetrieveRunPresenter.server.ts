@@ -16,8 +16,7 @@ import assertNever from "assert-never";
 import { API_VERSIONS, CURRENT_API_VERSION, RunStatusUnspecifiedApiVersion } from "~/api/versions";
 import { $replica, prisma } from "~/db.server";
 import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
-import { regionForBacking } from "~/runEngine/concerns/computeMigration.server";
-import { computeBackingMap } from "~/v3/computeBackingMap.server";
+import { regionForQueue, workerRegionRegistry } from "~/v3/workerRegions.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import {
   findRunByIdWithMollifierFallback,
@@ -523,7 +522,7 @@ async function createCommonRunStructure(run: CommonRelatedRun, apiVersion: API_V
     batchId: run.batch?.friendlyId,
     metadata,
     region: run.workerQueue
-      ? regionForBacking(baseWorkerQueue(run.workerQueue), computeBackingMap)
+      ? regionForQueue(baseWorkerQueue(run.workerQueue), workerRegionRegistry.current() ?? [])
       : undefined,
   };
 }

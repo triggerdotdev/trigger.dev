@@ -16,8 +16,7 @@ import {
 } from "@trigger.dev/core/v3/serverOnly";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
-import { regionForBacking } from "~/runEngine/concerns/computeMigration.server";
-import { computeBackingMap } from "~/v3/computeBackingMap.server";
+import { regionForQueue, workerRegionRegistry } from "~/v3/workerRegions.server";
 import { logger } from "~/services/logger.server";
 import { rehydrateAttribute } from "~/v3/eventRepository/eventRepository.server";
 import { machinePresetFromRun } from "~/v3/machinePresets.server";
@@ -305,7 +304,7 @@ export class SpanPresenter extends BasePresenter {
           location: true,
         },
         where: {
-          masterQueue: regionForBacking(baseWorkerQueue(run.workerQueue), computeBackingMap),
+          masterQueue: regionForQueue(baseWorkerQueue(run.workerQueue), workerRegionRegistry.current() ?? []),
         },
       });
 
