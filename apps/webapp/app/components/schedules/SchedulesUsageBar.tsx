@@ -1,14 +1,9 @@
-import { ArrowUpCircleIcon } from "@heroicons/react/20/solid";
-import { Feedback } from "~/components/Feedback";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { v3BillingPath, v3SchedulesAddOnPath } from "~/utils/pathBuilder";
-import {
-  PurchaseSchedulesModal,
-  type SchedulePricing,
-} from "./PurchaseSchedulesModal";
+import { v3SchedulesAddOnPath } from "~/utils/pathBuilder";
+import { ScheduleLimitActions } from "./ScheduleLimitActions";
+import { type SchedulePricing } from "./PurchaseSchedulesModal";
 
 type Props = {
   limits: { used: number; limit: number };
@@ -81,30 +76,17 @@ export function SchedulesUsageBar({
             </div>
           )}
 
-          {canPurchaseSchedules && schedulePricing ? (
-            <PurchaseSchedulesModal
-              actionPath={actionPath}
-              schedulePricing={schedulePricing}
-              extraSchedules={extraSchedules}
-              usedSchedules={limits.used}
-              maxQuota={maxScheduleQuota}
-              planScheduleLimit={planScheduleLimit}
-            />
-          ) : canUpgrade ? (
-            <LinkButton
-              to={v3BillingPath(organization)}
-              variant="secondary/small"
-              LeadingIcon={ArrowUpCircleIcon}
-              leadingIconClassName="text-indigo-500"
-            >
-              Upgrade
-            </LinkButton>
-          ) : (
-            <Feedback
-              button={<Button variant="secondary/small">Request more</Button>}
-              defaultValue="help"
-            />
-          )}
+          <ScheduleLimitActions
+            actionPath={actionPath}
+            canPurchaseSchedules={canPurchaseSchedules}
+            schedulePricing={schedulePricing}
+            extraSchedules={extraSchedules}
+            limits={limits}
+            maxScheduleQuota={maxScheduleQuota}
+            planScheduleLimit={planScheduleLimit}
+            canUpgrade={canUpgrade}
+            organization={organization}
+          />
         </div>
       </div>
     </div>

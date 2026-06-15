@@ -3,6 +3,7 @@ import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { SetSchedulesAddOnService } from "~/v3/services/setSchedulesAddOn.server";
 
@@ -32,6 +33,21 @@ export async function action({ request, params }: ActionFunctionArgs) {
   });
   if (!organization) {
     return json({ error: "Organization not found" }, { status: 404 });
+  }
+
+  const currentPlan = await getCurrentPlan(organization.id);
+  const purchaseBlockReason = getSelfServePurchaseBlockReason(currentPlan);
+  if (purchaseBlockReason === "plan_unavailable") {
+    return json(
+      { ok: false, error: "Unable to verify billing status. Please try again." } as const,
+      { status: 503 }
+    );
+  }
+  if (purchaseBlockReason === "managed_billing") {
+    return json(
+      { ok: false, error: "Contact us to request more schedules." } as const,
+      { status: 403 }
+    );
   }
 
   const formData = await request.formData();

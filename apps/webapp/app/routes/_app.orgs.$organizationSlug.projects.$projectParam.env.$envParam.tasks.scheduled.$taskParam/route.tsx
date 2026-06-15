@@ -21,7 +21,7 @@ import {
   DialogHeader,
   DialogTrigger,
 } from "~/components/primitives/Dialog";
-import { PurchaseSchedulesModal } from "~/components/schedules/PurchaseSchedulesModal";
+import { ScheduleLimitActions } from "~/components/schedules/ScheduleLimitActions";
 import { SchedulesUsageBar } from "~/components/schedules/SchedulesUsageBar";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { CopyableText } from "~/components/primitives/CopyableText";
@@ -439,21 +439,18 @@ function CreateScheduleButton({
             You've used {limits.used}/{limits.limit} of your schedules.
           </DialogDescription>
           <DialogFooter>
-            {canPurchaseSchedules && schedulePricing ? (
-              <PurchaseSchedulesModal
-                actionPath={addOnPath}
-                schedulePricing={schedulePricing}
-                extraSchedules={extraSchedules}
-                usedSchedules={limits.used}
-                maxQuota={maxScheduleQuota}
-                planScheduleLimit={planScheduleLimit}
-                triggerButton={<Button variant="primary/small">Purchase more…</Button>}
-              />
-            ) : canUpgrade ? (
-              <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
-                Upgrade
-              </LinkButton>
-            ) : null}
+            <ScheduleLimitActions
+              actionPath={addOnPath}
+              canPurchaseSchedules={canPurchaseSchedules}
+              schedulePricing={schedulePricing}
+              extraSchedules={extraSchedules}
+              limits={limits}
+              maxScheduleQuota={maxScheduleQuota}
+              planScheduleLimit={planScheduleLimit}
+              canUpgrade={canUpgrade}
+              organization={organization}
+              variant="dialog"
+            />
           </DialogFooter>
         </DialogContent>
       </Dialog>
