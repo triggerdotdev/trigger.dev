@@ -1219,9 +1219,9 @@ function YourModelsTab({
   };
 
   return (
-    <div className="overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-        <div className="h-[260px]">
+    <div className="overflow-y-auto py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="grid grid-cols-1 gap-3 px-3 lg:grid-cols-3">
+        <div className="h-[312px]">
           <MetricWidget
             widgetKey="your-models-cost-time"
             title="Cost over time"
@@ -1230,7 +1230,7 @@ function YourModelsTab({
             {...widgetProps}
           />
         </div>
-        <div className="h-[260px]">
+        <div className="h-[312px]">
           <MetricWidget
             widgetKey="your-models-tokens-time"
             title="Tokens over time"
@@ -1244,7 +1244,7 @@ function YourModelsTab({
             {...widgetProps}
           />
         </div>
-        <div className="h-[260px]">
+        <div className="h-[312px]">
           <MetricWidget
             widgetKey="your-models-calls-by-model"
             title="Calls by model"
@@ -1267,17 +1267,25 @@ function YourModelsTab({
             </Button>
           </div>
         ) : (
-          <Table>
+          <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHeaderCell>Model</TableHeaderCell>
-                <TableHeaderCell>Provider</TableHeaderCell>
-                <TableHeaderCell alignment="right">Calls</TableHeaderCell>
-                <TableHeaderCell alignment="right">Cost</TableHeaderCell>
-                <TableHeaderCell alignment="right">Avg TTFC</TableHeaderCell>
-                <TableHeaderCell alignment="right">Avg tokens/sec</TableHeaderCell>
-                <TableHeaderCell>Calls trend</TableHeaderCell>
-                <TableHeaderCell>Tokens trend</TableHeaderCell>
+                <TableHeaderCell className="w-[20%]">Model</TableHeaderCell>
+                <TableHeaderCell className="w-[13%]">Provider</TableHeaderCell>
+                <TableHeaderCell className="w-[9%]" alignment="right">
+                  Calls
+                </TableHeaderCell>
+                <TableHeaderCell className="w-[9%]" alignment="right">
+                  Cost
+                </TableHeaderCell>
+                <TableHeaderCell className="w-[10%]" alignment="right">
+                  Avg TTFC
+                </TableHeaderCell>
+                <TableHeaderCell className="w-[12%]" alignment="right">
+                  Avg tokens/sec
+                </TableHeaderCell>
+                <TableHeaderCell className="w-[13.5%]">Calls trend</TableHeaderCell>
+                <TableHeaderCell className="w-[13.5%]">Tokens trend</TableHeaderCell>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1446,8 +1454,8 @@ export default function ModelsPage() {
         <ResizablePanelGroup orientation="horizontal" className="max-h-full">
           <ResizablePanel id="models-main" min="100px">
             <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">
-              <div className="flex h-fit items-center justify-between gap-2 border-b border-grid-bright px-3 pt-1.5">
-                <TabContainer>
+              <div className="flex h-fit items-center justify-between gap-2 border-b border-grid-bright pl-3 pr-1.5 pt-1.5">
+                <TabContainer className="-mb-px">
                   <TabButton
                     isActive={view === "yours"}
                     layoutId="models-page-tabs"
