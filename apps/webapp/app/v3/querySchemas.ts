@@ -197,6 +197,7 @@ export const runsSchema: TableSchema = {
         description: "Region",
         example: "us-east-1",
       }),
+      // No whereTransform: the expression drives WHERE too, so pre-region rows still match.
       expression: "multiIf(region != '', region, startsWith(worker_queue, 'cm'), NULL, worker_queue)",
     },
 

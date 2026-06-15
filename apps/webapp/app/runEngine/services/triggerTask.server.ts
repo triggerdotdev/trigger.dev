@@ -361,10 +361,10 @@ export class RunEngineTriggerTaskService {
           const baseWorkerQueue = workerQueueResult?.masterQueue;
           const enableFastPath = workerQueueResult?.enableFastPath ?? false;
 
-          // Plan-aware compute migration: rewrite the resolved region to its
-          // compute backing for enrolled orgs. Reads the in-memory global-flags
-          // snapshot (no DB query). Gate the first read on the registry so a cold
-          // replica never serves a default over a real flag value.
+          // Rewrite the region to its compute backing for migration-enrolled orgs,
+          // from the in-memory flag snapshot (no DB query). The isLoaded gates only
+          // block during cold start so the first request can't serve a default over
+          // a real flag; once warm they're a synchronous no-op.
           if (!globalFlagsRegistry.isLoaded) {
             await globalFlagsRegistry.waitUntilReady(env.GLOBAL_FLAGS_READY_TIMEOUT_MS);
           }
