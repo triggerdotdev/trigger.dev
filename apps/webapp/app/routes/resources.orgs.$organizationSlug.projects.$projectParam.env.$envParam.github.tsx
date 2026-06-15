@@ -1,10 +1,16 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { CheckCircleIcon, LockClosedIcon, PlusIcon } from "@heroicons/react/20/solid";
-import { Form, useActionData, useNavigation, useNavigate, useSearchParams, useLocation } from "@remix-run/react";
-import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { redirect,
-typedjson, useTypedFetcher } from "remix-typedjson";
+import {
+  Form,
+  useActionData,
+  useNavigation,
+  useNavigate,
+  useSearchParams,
+  useLocation,
+} from "@remix-run/react";
+import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { redirect, typedjson, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
 import { OctoKitty } from "~/components/GitHubLoginButton";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
@@ -43,6 +49,9 @@ import { logger } from "~/services/logger.server";
 import { triggerInitialDeployment } from "~/services/platform.v3.server";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { requireUserId } from "~/services/session.server";
+import { $replica } from "~/db.server";
+import { rbac } from "~/services/rbac.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import {
   githubAppInstallPath,
   EnvironmentParamSchema,
@@ -141,7 +150,17 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Failed to load GitHub settings", { status: 500 });
   }
 
-  return typedjson(resultOrFail.value);
+  // Display flag for the connect/disconnect/configure controls — the action
+  // enforces write:github independently. Permissive in OSS.
+  const sessionAuth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: project.organizationId,
+  });
+  const canManageGithub = sessionAuth.ok
+    ? sessionAuth.ability.can("write", { type: "github" })
+    : true;
+
+  return typedjson({ ...resultOrFail.value, canManageGithub });
 }
 
 // ============================================================================
@@ -164,170 +183,188 @@ function redirectWithMessage(
     : redirectBackWithErrorMessage(request, message);
 }
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
+  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
+  return org?.id ?? null;
+}
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  if (!project) {
-    throw new Response("Not Found", { status: 404 });
-  }
+export const action = dashboardAction(
+  {
+    params: EnvironmentParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "write", resource: { type: "github" } },
+  },
+  async ({ request, params, user }) => {
+    const userId = user.id;
+    const { organizationSlug, projectParam, envParam } = params;
 
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-  if (!environment) {
-    throw new Response("Not Found", { status: 404 });
-  }
+    const project = await findProjectBySlug(organizationSlug, projectParam, userId);
+    if (!project) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
-  const formData = await request.formData();
-  const submission = parse(formData, { schema: GitHubActionSchema });
+    const environment = await findEnvironmentBySlug(project.id, envParam, userId);
+    if (!environment) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
-  }
+    const formData = await request.formData();
+    const submission = parse(formData, { schema: GitHubActionSchema });
 
-  const projectSettingsService = new ProjectSettingsService();
-  const membershipResultOrFail = await projectSettingsService.verifyProjectMembership(
-    organizationSlug,
-    projectParam,
-    userId
-  );
+    if (!submission.value || submission.intent !== "submit") {
+      return json(submission);
+    }
 
-  if (membershipResultOrFail.isErr()) {
-    return json({ errors: { body: membershipResultOrFail.error.type } }, { status: 404 });
-  }
-
-  const { projectId, organizationId } = membershipResultOrFail.value;
-  const { action: actionType } = submission.value;
-
-  // Handle connect-repo action
-  if (actionType === "connect-repo") {
-    const { repositoryId, installationId, redirectUrl } = submission.value;
-
-    const resultOrFail = await projectSettingsService.connectGitHubRepo(
-      projectId,
-      organizationId,
-      repositoryId,
-      installationId
+    const projectSettingsService = new ProjectSettingsService();
+    const membershipResultOrFail = await projectSettingsService.verifyProjectMembership(
+      organizationSlug,
+      projectParam,
+      userId
     );
 
-    if (resultOrFail.isOk()) {
-      // Trigger initial deployment for marketplace flows now that GitHub is connected.
-      // We check the persisted onboardingOrigin on the Vercel integration rather than
-      // the redirectUrl, because the redirect URL loses the marketplace context when
-      // the user installs the GitHub App for the first time (full-page redirect cycle).
-      try {
-        const vercelService = new VercelIntegrationService();
-        const vercelIntegration = await vercelService.getVercelProjectIntegration(projectId);
-        if (
-          vercelIntegration?.parsedIntegrationData.onboardingCompleted &&
-          vercelIntegration.parsedIntegrationData.onboardingOrigin === "marketplace"
-        ) {
-          logger.info("Marketplace flow detected, triggering initial deployment", { projectId });
-          await triggerInitialDeployment(projectId, { environment: "prod" });
+    if (membershipResultOrFail.isErr()) {
+      return json({ errors: { body: membershipResultOrFail.error.type } }, { status: 404 });
+    }
+
+    const { projectId, organizationId } = membershipResultOrFail.value;
+    const { action: actionType } = submission.value;
+
+    // Handle connect-repo action
+    if (actionType === "connect-repo") {
+      const { repositoryId, installationId, redirectUrl } = submission.value;
+
+      const resultOrFail = await projectSettingsService.connectGitHubRepo(
+        projectId,
+        organizationId,
+        repositoryId,
+        installationId
+      );
+
+      if (resultOrFail.isOk()) {
+        // Trigger initial deployment for marketplace flows now that GitHub is connected.
+        // We check the persisted onboardingOrigin on the Vercel integration rather than
+        // the redirectUrl, because the redirect URL loses the marketplace context when
+        // the user installs the GitHub App for the first time (full-page redirect cycle).
+        try {
+          const vercelService = new VercelIntegrationService();
+          const vercelIntegration = await vercelService.getVercelProjectIntegration(projectId);
+          if (
+            vercelIntegration?.parsedIntegrationData.onboardingCompleted &&
+            vercelIntegration.parsedIntegrationData.onboardingOrigin === "marketplace"
+          ) {
+            logger.info("Marketplace flow detected, triggering initial deployment", { projectId });
+            await triggerInitialDeployment(projectId, { environment: "prod" });
+          }
+        } catch (error) {
+          logger.error("Failed to check Vercel integration or trigger initial deployment", {
+            projectId,
+            error,
+          });
         }
-      } catch (error) {
-        logger.error("Failed to check Vercel integration or trigger initial deployment", { projectId, error });
+
+        return redirectWithMessage(
+          request,
+          redirectUrl,
+          "GitHub repository connected successfully",
+          "success"
+        );
       }
 
+      const errorType = resultOrFail.error.type;
+
+      if (errorType === "gh_repository_not_found") {
+        return redirectWithMessage(request, redirectUrl, "GitHub repository not found", "error");
+      }
+
+      if (errorType === "project_already_has_connected_repository") {
+        return redirectWithMessage(
+          request,
+          redirectUrl,
+          "Project already has a connected repository",
+          "error"
+        );
+      }
+
+      logger.error("Failed to connect GitHub repository", { error: resultOrFail.error });
       return redirectWithMessage(
         request,
         redirectUrl,
-        "GitHub repository connected successfully",
-        "success"
-      );
-    }
-
-    const errorType = resultOrFail.error.type;
-
-    if (errorType === "gh_repository_not_found") {
-      return redirectWithMessage(request, redirectUrl, "GitHub repository not found", "error");
-    }
-
-    if (errorType === "project_already_has_connected_repository") {
-      return redirectWithMessage(
-        request,
-        redirectUrl,
-        "Project already has a connected repository",
+        "Failed to connect GitHub repository",
         "error"
       );
     }
 
-    logger.error("Failed to connect GitHub repository", { error: resultOrFail.error });
-    return redirectWithMessage(
-      request,
-      redirectUrl,
-      "Failed to connect GitHub repository",
-      "error"
-    );
-  }
+    // Handle disconnect-repo action
+    if (actionType === "disconnect-repo") {
+      const { redirectUrl } = submission.value;
 
-  // Handle disconnect-repo action
-  if (actionType === "disconnect-repo") {
-    const { redirectUrl } = submission.value;
+      const resultOrFail = await projectSettingsService.disconnectGitHubRepo(projectId);
 
-    const resultOrFail = await projectSettingsService.disconnectGitHubRepo(projectId);
+      if (resultOrFail.isOk()) {
+        return redirectWithMessage(
+          request,
+          redirectUrl,
+          "GitHub repository disconnected successfully",
+          "success"
+        );
+      }
 
-    if (resultOrFail.isOk()) {
+      logger.error("Failed to disconnect GitHub repository", { error: resultOrFail.error });
       return redirectWithMessage(
         request,
         redirectUrl,
-        "GitHub repository disconnected successfully",
-        "success"
+        "Failed to disconnect GitHub repository",
+        "error"
       );
     }
 
-    logger.error("Failed to disconnect GitHub repository", { error: resultOrFail.error });
-    return redirectWithMessage(
-      request,
-      redirectUrl,
-      "Failed to disconnect GitHub repository",
-      "error"
-    );
-  }
+    // Handle update-git-settings action
+    if (actionType === "update-git-settings") {
+      const { productionBranch, stagingBranch, previewDeploymentsEnabled, redirectUrl } =
+        submission.value;
 
-  // Handle update-git-settings action
-  if (actionType === "update-git-settings") {
-    const { productionBranch, stagingBranch, previewDeploymentsEnabled, redirectUrl } =
-      submission.value;
-
-    const resultOrFail = await projectSettingsService.updateGitSettings(
-      projectId,
-      productionBranch,
-      stagingBranch,
-      previewDeploymentsEnabled
-    );
-
-    if (resultOrFail.isOk()) {
-      return redirectWithMessage(
-        request,
-        redirectUrl,
-        "Git settings updated successfully",
-        "success"
+      const resultOrFail = await projectSettingsService.updateGitSettings(
+        projectId,
+        productionBranch,
+        stagingBranch,
+        previewDeploymentsEnabled
       );
+
+      if (resultOrFail.isOk()) {
+        return redirectWithMessage(
+          request,
+          redirectUrl,
+          "Git settings updated successfully",
+          "success"
+        );
+      }
+
+      const errorType = resultOrFail.error.type;
+
+      const errorMessages: Record<string, string> = {
+        github_app_not_enabled: "GitHub app is not enabled",
+        connected_gh_repository_not_found: "Connected GitHub repository not found",
+        production_tracking_branch_not_found: "Production tracking branch not found",
+        staging_tracking_branch_not_found: "Staging tracking branch not found",
+      };
+
+      const message = errorMessages[errorType];
+      if (message) {
+        return redirectWithMessage(request, redirectUrl, message, "error");
+      }
+
+      logger.error("Failed to update Git settings", { error: resultOrFail.error });
+      return redirectWithMessage(request, redirectUrl, "Failed to update Git settings", "error");
     }
 
-    const errorType = resultOrFail.error.type;
-
-    const errorMessages: Record<string, string> = {
-      github_app_not_enabled: "GitHub app is not enabled",
-      connected_gh_repository_not_found: "Connected GitHub repository not found",
-      production_tracking_branch_not_found: "Production tracking branch not found",
-      staging_tracking_branch_not_found: "Staging tracking branch not found",
-    };
-
-    const message = errorMessages[errorType];
-    if (message) {
-      return redirectWithMessage(request, redirectUrl, message, "error");
-    }
-
-    logger.error("Failed to update Git settings", { error: resultOrFail.error });
-    return redirectWithMessage(request, redirectUrl, "Failed to update Git settings", "error");
+    // Exhaustive check - this should never be reached
+    submission.value satisfies never;
+    return redirectBackWithErrorMessage(request, "Failed to process request");
   }
-
-  // Exhaustive check - this should never be reached
-  submission.value satisfies never;
-  return redirectBackWithErrorMessage(request, "Failed to process request");
-}
+);
 
 // ============================================================================
 // Helper: Build resource URL for fetching GitHub data
@@ -587,8 +624,13 @@ export function GitHubConnectionPrompt({
   environmentSlug: string;
   redirectUrl?: string;
 }) {
-
-  const githubInstallationRedirect = redirectUrl || v3ProjectSettingsIntegrationsPath({ slug: organizationSlug }, { slug: projectSlug }, { slug: environmentSlug });
+  const githubInstallationRedirect =
+    redirectUrl ||
+    v3ProjectSettingsIntegrationsPath(
+      { slug: organizationSlug },
+      { slug: projectSlug },
+      { slug: environmentSlug }
+    );
   return (
     <Fieldset>
       <InputGroup fullWidth>
@@ -920,11 +962,8 @@ export function GitHubSettingsPanel({
         redirectUrl={effectiveRedirectUrl}
       />
       {!data.connectedRepository && (
-        <Hint>
-          Connect your GitHub repository to automatically deploy your changes.
-        </Hint>
+        <Hint>Connect your GitHub repository to automatically deploy your changes.</Hint>
       )}
     </div>
-    
   );
 }
