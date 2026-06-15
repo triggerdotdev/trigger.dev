@@ -2,6 +2,7 @@
 import { Prisma, TaskEvent } from "@trigger.dev/database";
 import type { PrismaClient, PrismaReplicaClient } from "~/db.server";
 import { env } from "~/env.server";
+import { clampToEmergencySpanCap } from "~/v3/eventRepository/emergencySpanCap.server";
 
 export type CommonTaskEvent = Omit<TaskEvent, "id">;
 export type TraceEvent = Pick<
@@ -192,7 +193,7 @@ export class TaskEventStore {
               : Prisma.empty
           }
         ORDER BY "startTime" ASC
-        LIMIT ${env.MAXIMUM_TRACE_SUMMARY_VIEW_COUNT}
+        LIMIT ${clampToEmergencySpanCap(env.MAXIMUM_TRACE_SUMMARY_VIEW_COUNT)}
       `;
     } else {
       return await this.readReplica.$queryRaw<TraceEvent[]>`
@@ -220,7 +221,7 @@ export class TaskEventStore {
               : Prisma.empty
           }
         ORDER BY "startTime" ASC
-        LIMIT ${env.MAXIMUM_TRACE_SUMMARY_VIEW_COUNT}
+        LIMIT ${clampToEmergencySpanCap(env.MAXIMUM_TRACE_SUMMARY_VIEW_COUNT)}
       `;
     }
   }
@@ -270,7 +271,7 @@ export class TaskEventStore {
               : Prisma.empty
           }
         ORDER BY "startTime" ASC
-        LIMIT ${env.MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT}
+        LIMIT ${clampToEmergencySpanCap(env.MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT)}
       `;
     } else {
       return await this.readReplica.$queryRaw<DetailedTraceEvent[]>`
@@ -299,7 +300,7 @@ export class TaskEventStore {
               : Prisma.empty
           }
         ORDER BY "startTime" ASC
-        LIMIT ${env.MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT}
+        LIMIT ${clampToEmergencySpanCap(env.MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT)}
       `;
     }
   }

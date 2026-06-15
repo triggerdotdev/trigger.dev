@@ -1,5 +1,17 @@
 # @trigger.dev/sdk
 
+## 4.5.0-rc.6
+
+### Patch Changes
+
+- Reliability fixes for `chat.agent`. A user message sent while the agent is streaming is no longer delivered twice (which could run a duplicate turn), input appends now carry an idempotency key so a retried send can't duplicate a message, stopping a generation clears the streaming state so a page reload doesn't replay the stopped turn, and runs can now carry the full set of dashboard tags instead of being silently truncated. `onTurnComplete` now fires on errored turns (with the thrown error attached) and the failed turn's user message is persisted so it isn't lost on the next run. Custom agents and manual `chat.writeTurnComplete` callers now trim the output stream, sending a custom action no longer leaves a second stream reader running, and a long-lived `watch` subscription no longer grows its dedupe set without bound. ([#3891](https://github.com/triggerdotdev/trigger.dev/pull/3891))
+- Continuation chat boots no longer stall for around 10 seconds before the first turn. The `session.in` resume cursor is now found with a non-blocking records read instead of draining an SSE long-poll (which always waited out its full 5 second inactivity window, twice per boot), the boot reads run concurrently, and chat snapshots carry the cursor so subsequent boots skip the scan entirely. ([#3907](https://github.com/triggerdotdev/trigger.dev/pull/3907))
+- Fix `chat.headStart` when `hydrateMessages` is registered. The warm route's step-1 partial now reaches the agent's accumulator on the hydrate path, so `onTurnComplete` carries the full first turn (the head-start user message included), tool-call handovers resume from step 2 instead of re-running step 1, and the assistant `messageId` stays stable across the handover. ([#3907](https://github.com/triggerdotdev/trigger.dev/pull/3907))
+- Preserve reasoning parts across the `chat.headStart` handover. Extended-thinking models' step-1 reasoning now lands in the durable session history (and `onTurnComplete`) under the same assistant `messageId`, with provider metadata intact so Anthropic thinking signatures survive replays. ([#3907](https://github.com/triggerdotdev/trigger.dev/pull/3907))
+- Fix two `chat.createSession()` bugs: stopping a generation no longer wedges the run (the turn loop raced a `totalUsage` promise that never settles after a stop-abort), and continuation runs now wait for the next message instead of invoking the model with an empty prompt. ([#3920](https://github.com/triggerdotdev/trigger.dev/pull/3920))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.6`
+
 ## 4.5.0-rc.5
 
 ### Patch Changes

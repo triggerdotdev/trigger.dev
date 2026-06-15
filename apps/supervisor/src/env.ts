@@ -114,6 +114,14 @@ const Env = z
     COMPUTE_TRACE_OTLP_ENDPOINT: z.string().url().optional(), // Override for span export (derived from TRIGGER_API_URL if unset)
     COMPUTE_SNAPSHOT_DELAY_MS: z.coerce.number().int().min(0).max(60_000).default(5_000),
     COMPUTE_SNAPSHOT_DISPATCH_LIMIT: z.coerce.number().int().min(1).max(100).default(10),
+    // Instance create retries for transient placement failures (1 = no retries)
+    COMPUTE_INSTANCE_CREATE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+    COMPUTE_INSTANCE_CREATE_RETRY_BASE_DELAY_MS: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(10_000)
+      .default(250),
 
     // Kubernetes settings
     KUBERNETES_FORCE_ENABLED: BoolEnv.default(false),

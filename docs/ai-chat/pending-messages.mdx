@@ -162,12 +162,16 @@ const conversation = new chat.MessageAccumulator({
 });
 
 for (let turn = 0; turn < 100; turn++) {
-  const messages = await conversation.addIncoming(payload.messages, payload.trigger, turn);
+  // The wire payload carries at most one new message per turn.
+  const messages = await conversation.addIncoming(
+    payload.message ? [payload.message] : [],
+    payload.trigger,
+    turn
+  );
 
   // Listen for steering messages during streaming
   const sub = chat.messages.on(async (msg) => {
-    const lastMsg = msg.messages?.[msg.messages.length - 1];
-    if (lastMsg) await conversation.steerAsync(lastMsg);
+    if (msg.message) await conversation.steerAsync(msg.message);
   });
 
   const result = streamText({

@@ -20,6 +20,10 @@ import { createCache, createLRUMemoryStore, DefaultStatefulContext, Namespace } 
 import { singleton } from "~/utils/singleton";
 import type { TaskMetadataCache, TaskMetadataEntry } from "~/services/taskMetadataCache.server";
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
+import {
+  recordTaskMetaResolve,
+  type TaskMetaResolveSource,
+} from "~/services/taskMetadataCacheTelemetry.server";
 
 // LRU cache for environment queue sizes to reduce Redis calls
 const queueSizeCache = singleton("queueSizeCache", () => {
@@ -266,18 +270,41 @@ export class DefaultQueueManager implements QueueManager {
     slug: string
   ): Promise<TaskMetadataEntry | null> {
     const cached = await this.taskMetaCache.getByWorker(workerId, slug);
-    if (cached) return cached;
+    if (cached) {
+      recordTaskMetaResolve("locked", "cache");
+      return cached;
+    }
 
-    const row = await this.replicaPrisma.backgroundWorkerTask.findFirst({
-      where: { workerId, runtimeEnvironmentId: environmentId, slug },
-      select: {
-        ttl: true,
-        triggerSource: true,
-        queue: { select: { id: true, name: true } },
-      },
-    });
+    // Cache miss. Read the row from the replica first; if the replica comes
+    // back empty, re-check the writer before concluding the task is missing.
+    // The locked worker itself was just resolved on the writer (see
+    // triggerTask.server.ts), so a replica that returns no row here is stale,
+    // not authoritative. Trusting a stale-replica negative throws a
+    // non-retryable "not found on locked version" for a task that is in fact
+    // registered. The writer read only runs on this rare miss-then-empty path,
+    // never on the hot path.
+    let row = await this.findLockedTaskRow(this.replicaPrisma, workerId, environmentId, slug);
+    let source: TaskMetaResolveSource = "replica";
 
-    if (!row) return null;
+    if (!row && this.replicaPrisma !== this.prisma) {
+      row = await this.findLockedTaskRow(this.prisma, workerId, environmentId, slug);
+
+      if (row) {
+        source = "writer";
+        logger.warn("Locked task metadata missing on replica but found on writer", {
+          workerId,
+          environmentId,
+          slug,
+        });
+      }
+    }
+
+    if (!row) {
+      recordTaskMetaResolve("locked", "miss");
+      return null;
+    }
+
+    recordTaskMetaResolve("locked", source);
 
     const entry: TaskMetadataEntry = {
       slug,
@@ -294,6 +321,22 @@ export class DefaultQueueManager implements QueueManager {
     return entry;
   }
 
+  private findLockedTaskRow(
+    client: PrismaClientOrTransaction,
+    workerId: string,
+    environmentId: string,
+    slug: string
+  ) {
+    return client.backgroundWorkerTask.findFirst({
+      where: { workerId, runtimeEnvironmentId: environmentId, slug },
+      select: {
+        ttl: true,
+        triggerSource: true,
+        queue: { select: { id: true, name: true } },
+      },
+    });
+  }
+
   /**
    * Resolve task metadata for a non-locked trigger. Reads from the
    * `task-meta:env:{envId}` Redis hash; falls back to
@@ -307,14 +350,20 @@ export class DefaultQueueManager implements QueueManager {
     slug: string
   ): Promise<TaskMetadataEntry | null> {
     const cached = await this.taskMetaCache.getCurrent(environment.id, slug);
-    if (cached) return cached;
+    if (cached) {
+      recordTaskMetaResolve("current", "cache");
+      return cached;
+    }
 
     // Cold cache: discover the current worker for the env. Replica is fine —
     // the adjacent BackgroundWorkerTask lookup below uses `replicaPrisma` too
     // (replica lag for "just deployed" is bounded the same way for both
     // queries; reading from the writer here would only widen the window).
     const worker = await findCurrentWorkerFromEnvironment(environment, this.replicaPrisma);
-    if (!worker) return null;
+    if (!worker) {
+      recordTaskMetaResolve("current", "miss");
+      return null;
+    }
 
     const row = await this.replicaPrisma.backgroundWorkerTask.findFirst({
       where: { workerId: worker.id, runtimeEnvironmentId: environment.id, slug },
@@ -325,7 +374,12 @@ export class DefaultQueueManager implements QueueManager {
       },
     });
 
-    if (!row) return null;
+    if (!row) {
+      recordTaskMetaResolve("current", "miss");
+      return null;
+    }
+
+    recordTaskMetaResolve("current", "replica");
 
     const entry: TaskMetadataEntry = {
       slug,

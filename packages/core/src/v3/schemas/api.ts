@@ -2051,6 +2051,11 @@ export const ReadSessionStreamRecordsResponseBody = z.object({
       data: z.unknown(),
       id: z.string(),
       seqNum: z.number(),
+      // S2 record headers — present on Trigger control records (e.g.
+      // `trigger-control: turn-complete` plus sibling headers). The
+      // server has always serialized them; older schemas stripped them
+      // client-side, so treat as optional.
+      headers: z.array(z.tuple([z.string(), z.string()])).optional(),
     })
   ),
 });

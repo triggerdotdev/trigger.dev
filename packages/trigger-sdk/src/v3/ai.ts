@@ -160,6 +160,10 @@ const chatTurnContextKey = locals.create<ChatTurnContext>("chat.turnContext");
  * @internal
  */
 const chatSessionHandleKey = locals.create<SessionHandle>("chat.sessionHandle");
+// The external `chatId` from the boot payload — the value `ToolCallExecutionOptions.chatId`
+// is documented to carry. Custom-agent loops never set per-turn context, so subtask tool
+// metadata reads this directly rather than the Session handle id.
+const chatExternalIdKey = locals.create<string>("chat.externalId");
 
 /**
  * S2 seq_num of the most recent `turn-complete` control record written by
@@ -183,49 +187,83 @@ const lastTurnCompleteSeqNumKey = locals.create<{ value: number | undefined }>(
  * the `.in` subscription so already-processed user messages don't get
  * replayed from S2.
  *
- * Implementation streams the SSE endpoint and listens for `turn-complete`
- * via the transport's `onControl` callback; the data-chunk for-await is
- * just there to drive the stream. The scan is O(1 turn) because
- * `session.out` is bounded to roughly one turn at steady state — every
- * successful turn-complete is followed by an S2 trim back to the
- * previous one (see `writeTurnCompleteChunk`).
+ * Implementation is a non-blocking records read (`wait=0`) — the
+ * endpoint returns everything currently stored (including pre-trim
+ * records, since S2 trims are eventually consistent) in one shot, and
+ * we keep the LAST matching header. The previous SSE-based scan had to
+ * idle-wait a full 5s window to know it reached the tail, which put a
+ * constant ~6s tax on every continuation boot.
  *
  * Returns `undefined` if no `turn-complete` carrying the header has been
  * written yet — first-turn-ever, first turn post-OOM-with-no-prior-runs,
- * or a `turn-complete` written before this header existed (cross-version
- * boot). Callers fall back to subscribing `.in` from seq 0 in that case;
- * the slim-wire merge handles any dedup against snapshot-restored
- * messages.
+ * a `turn-complete` written before this header existed, or a server old
+ * enough that the records endpoint doesn't serialize headers. Callers
+ * fall back to subscribing `.in` from seq 0 in that case; the slim-wire
+ * merge handles any dedup against snapshot-restored messages.
  * @internal
  */
 async function findLatestSessionInCursor(
   chatId: string
 ): Promise<number | undefined> {
   const apiClient = apiClientManager.clientOrThrow();
+  const response = await apiClient.readSessionStreamRecords(chatId, "out");
   let latestCursor: number | undefined;
-  const stream = await apiClient.subscribeToSessionStream<unknown>(chatId, "out", {
-    // 5s rather than 1s: S2 trim is eventually-consistent (10-60s
-    // window), so a worker booting just after a trim could still see
-    // pre-trim records and need a bit longer to drain them all before
-    // the SSE long-poll closes. Without enough headroom the scan would
-    // fall back to `undefined`, the `.in` cursor wouldn't be seeded,
-    // and the next subscribe would replay messages already processed.
-    timeoutInSeconds: 5,
-    onControl: (event) => {
-      if (event.subtype !== TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) return;
-      const raw = headerValue(event.headers, SESSION_IN_EVENT_ID_HEADER);
-      if (!raw) return;
-      const parsed = Number.parseInt(raw, 10);
-      if (Number.isFinite(parsed)) latestCursor = parsed;
-    },
-  });
-  // Drain the stream so the underlying SSE reader runs to completion. We
-  // don't accumulate chunks; `onControl` fires inline as turn-complete
-  // records arrive.
-  for await (const _ of stream) {
-    // intentionally empty
+  for (const record of response.records) {
+    if (controlSubtype(record.headers) !== TRIGGER_CONTROL_SUBTYPE.TURN_COMPLETE) continue;
+    const raw = headerValue(record.headers, SESSION_IN_EVENT_ID_HEADER);
+    if (!raw) continue;
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed)) latestCursor = parsed;
   }
   return latestCursor;
+}
+
+/** Test-only entry point for the records-based cursor scan. @internal */
+export async function __findLatestSessionInCursorForTests(
+  chatId: string
+): Promise<number | undefined> {
+  return findLatestSessionInCursor(chatId);
+}
+
+/**
+ * Seed the `.in` resume cursor for custom-agent loops (`chat.customAgent`
+ * raw loops and `chat.createSession`) the way `chat.agent`'s boot does.
+ *
+ * MUST run before anything attaches a `.in` listener (`createStopSignal`,
+ * `chat.messages.on`, the first wait): attaching opens the SSE tail with
+ * `Last-Event-ID` from the seeded cursor, so attach-then-seed replays
+ * every record from seq 0 — already-answered user messages get delivered
+ * into the new run's first wait and the loop re-answers them.
+ *
+ * Seeds both cursors: `setLastSeqNum` controls the SSE `Last-Event-ID`,
+ * `setLastDispatchedSeqNum` gates waiter dispatch — seeding only the
+ * former still re-delivers records the manager buffered before the seed.
+ *
+ * No-ops on fresh boots and when a cursor is already seeded (e.g. the
+ * `chatCustomAgent` wrapper ran before a nested `createChatSession`).
+ * @internal
+ */
+async function seedSessionInResumeCursorForCustomLoop(
+  payload: Pick<ChatTaskWirePayload, "chatId" | "continuation">
+): Promise<void> {
+  if (sessionStreams.lastSeqNum(payload.chatId, "in") !== undefined) return;
+  // No continuation/attempt gate: the wire may omit `continuation` on a
+  // run that still has prior turns (chat.agent covers that case via its
+  // snapshot). The scan doubles as the prior-state probe — a fresh
+  // session has no turn-complete on `.out`, returns no cursor, and
+  // seeds nothing. Cost on fresh boots is one non-blocking records read.
+  try {
+    const cursor = await findLatestSessionInCursor(payload.chatId);
+    if (cursor !== undefined) {
+      sessionStreams.setLastSeqNum(payload.chatId, "in", cursor);
+      sessionStreams.setLastDispatchedSeqNum(payload.chatId, "in", cursor);
+    }
+  } catch (error) {
+    logger.warn(
+      "chat session: session.in resume cursor lookup failed; old messages may replay",
+      { error: error instanceof Error ? error.message : String(error) }
+    );
+  }
 }
 
 /**
@@ -928,6 +966,15 @@ function createTaskToolExecuteHandler<
       toolMeta.turn = chatCtx.turn;
       toolMeta.continuation = chatCtx.continuation;
       toolMeta.clientData = chatCtx.clientData;
+    } else {
+      // Hand-rolled chat.customAgent loops never set per-turn context, but
+      // the wrapper records the boot payload's external chatId at run boot
+      // — thread it so subtask chat helpers (`chat.stream.writer` with
+      // target "root") can open the parent's session.
+      const chatExternalId = locals.get(chatExternalIdKey);
+      if (chatExternalId) {
+        toolMeta.chatId = chatExternalId;
+      }
     }
 
     const chatLocals: Record<string, unknown> = {};
@@ -1810,6 +1857,9 @@ const chatHandoverIsFinalKey = locals.create<boolean>("chat.handoverIsFinal");
  * `tool-approval-response` rows are AI-SDK-internal and don't need a
  * UIMessage representation. We map:
  *   - `text` parts → `{ type: "text", text }`
+ *   - `reasoning` parts → `{ type: "reasoning", text, state: "done" }`
+ *      (provider metadata carried so an Anthropic thinking signature
+ *      survives a UIMessage → ModelMessage round trip)
  *   - `tool-call` parts → `{ type: "tool-${name}", toolCallId,
  *      state: "input-available", input }`
  *   - `tool-approval-request` parts → skipped (AI SDK derives the
@@ -1831,9 +1881,17 @@ function synthesizeHandoverUIMessage(
     toolCallId?: string;
     toolName?: string;
     input?: unknown;
+    providerOptions?: unknown;
   }>) {
     if (part.type === "text" && typeof part.text === "string") {
       parts.push({ type: "text", text: part.text } as UIMessage["parts"][number]);
+    } else if (part.type === "reasoning" && typeof part.text === "string") {
+      parts.push({
+        type: "reasoning",
+        text: part.text,
+        state: "done",
+        ...(part.providerOptions ? { providerMetadata: part.providerOptions } : {}),
+      } as unknown as UIMessage["parts"][number]);
     } else if (part.type === "tool-call" && part.toolCallId && part.toolName) {
       parts.push({
         type: `tool-${part.toolName}`,
@@ -5100,6 +5158,7 @@ function chatCustomAgent<
       // `chat.createStartSessionAction`) before this run is triggered.
       // No client-side upsert needed.
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
+      locals.set(chatExternalIdKey, payload.chatId);
       locals.set(chatAgentRunContextKey, runOptions.ctx);
       // Initialize the turn-complete trim slot so `chat.writeTurnComplete`
       // trims `session.out` back to the previous turn boundary. Without
@@ -5109,6 +5168,10 @@ function chatCustomAgent<
       markChatAgentRunForStreamsWarning();
       taskContext.setConversationId(payload.chatId);
       stampConversationIdOnActiveSpan(payload.chatId);
+      // Seed the `.in` resume cursor before user code attaches any `.in`
+      // listener — otherwise a continuation boot replays already-answered
+      // messages into the loop's first wait.
+      await seedSessionInResumeCursorForCustomLoop(payload);
       return userRun(payload, runOptions);
     },
   });
@@ -5209,6 +5272,7 @@ function chatAgent<
       // `chat.createStartSessionAction` or browser-direct) before this
       // run is triggered — no client-side upsert needed here.
       locals.set(chatSessionHandleKey, sessions.open(payload.chatId));
+      locals.set(chatExternalIdKey, payload.chatId);
       // Mutable holder; advances in `writeTurnCompleteChunk` after each turn
       // and is the trim target for the NEXT turn's trim record.
       locals.set(lastTurnCompleteSeqNumKey, { value: undefined });
@@ -5309,6 +5373,12 @@ function chatAgent<
       const couldHavePriorState =
         payload.continuation === true || ctx.attempt.number > 1;
 
+      // `.in` resume cursor, computed at most once per boot. The boot
+      // block below resolves it (snapshot field or records scan) and the
+      // resume-cursor block reuses it instead of re-scanning.
+      let bootInCursor: number | undefined;
+      let bootInCursorResolved = false;
+
       if (!hydrateMessages && couldHavePriorState) {
         // Single parent span for the whole boot read phase — snapshot
         // read, session.out replay, session.in replay. Per-phase timing
@@ -5352,34 +5422,39 @@ function chatAgent<
               }
             }
 
-            // session.out replay
-            const replayOutStart = Date.now();
-            try {
-              const replayResult = await replaySessionOutTail<TUIMessage>(
-                sessionIdForSnapshot,
-                { lastEventId: bootSnapshot?.lastOutEventId }
+            // The `.out` replay and the `.in` cursor + tail read are
+            // independent (both depend only on the snapshot) — run them
+            // concurrently. Each phase keeps its own catch + duration
+            // attribute.
+            const replayOutPhase = async () => {
+              const replayOutStart = Date.now();
+              try {
+                const replayResult = await replaySessionOutTail<TUIMessage>(
+                  sessionIdForSnapshot,
+                  { lastEventId: bootSnapshot?.lastOutEventId }
+                );
+                replayedSettled = replayResult.settled;
+                replayedPartial = replayResult.partial;
+                replayedPartialRaw = replayResult.partialRaw;
+              } catch (error) {
+                logger.warn(
+                  "chat.agent: session.out replay failed; using snapshot only",
+                  {
+                    error: error instanceof Error ? error.message : String(error),
+                    sessionId: sessionIdForSnapshot,
+                  }
+                );
+              }
+              bootSpan.setAttribute(
+                "chat.boot.replay.out.durationMs",
+                Date.now() - replayOutStart
               );
-              replayedSettled = replayResult.settled;
-              replayedPartial = replayResult.partial;
-              replayedPartialRaw = replayResult.partialRaw;
-            } catch (error) {
-              logger.warn(
-                "chat.agent: session.out replay failed; using snapshot only",
-                {
-                  error: error instanceof Error ? error.message : String(error),
-                  sessionId: sessionIdForSnapshot,
-                }
+              bootSpan.setAttribute("chat.boot.replay.out.settledCount", replayedSettled.length);
+              bootSpan.setAttribute(
+                "chat.boot.replay.out.partialPresent",
+                replayedPartial !== undefined
               );
-            }
-            bootSpan.setAttribute(
-              "chat.boot.replay.out.durationMs",
-              Date.now() - replayOutStart
-            );
-            bootSpan.setAttribute("chat.boot.replay.out.settledCount", replayedSettled.length);
-            bootSpan.setAttribute(
-              "chat.boot.replay.out.partialPresent",
-              replayedPartial !== undefined
-            );
+            };
 
             // session.in tail read
             //
@@ -5391,28 +5466,54 @@ function chatAgent<
             // visible via the live SSE subscription — by which point they
             // would arrive AFTER the partial-assistant orphan and look like
             // brand-new turns to the model, producing inverted chains.
-            const replayInStart = Date.now();
-            const lastInEventId = await findLatestSessionInCursor(payload.chatId)
-              .then((cursor) => (cursor !== undefined ? String(cursor) : undefined))
-              .catch(() => undefined);
-            try {
-              replayedInTail = await replaySessionInTail<TUIMessage>(payload.chatId, {
-                lastEventId: lastInEventId,
-              });
-            } catch (error) {
-              logger.warn(
-                "chat.agent: session.in replay failed; in-flight users may not be recovered",
-                { error: error instanceof Error ? error.message : String(error) }
+            //
+            // The cursor comes from the snapshot when present (written
+            // there since `lastInEventId` was added) — otherwise from a
+            // records scan of `.out`'s latest turn-complete header.
+            const replayInPhase = async () => {
+              const replayInStart = Date.now();
+              const snapshotInCursor =
+                bootSnapshot?.lastInEventId !== undefined
+                  ? Number.parseInt(bootSnapshot.lastInEventId, 10)
+                  : undefined;
+              if (snapshotInCursor !== undefined && Number.isFinite(snapshotInCursor)) {
+                bootInCursor = snapshotInCursor;
+                bootInCursorResolved = true;
+              } else {
+                try {
+                  bootInCursor = await findLatestSessionInCursor(payload.chatId);
+                  bootInCursorResolved = true;
+                } catch {
+                  // Transient scan failure: leave unresolved so the
+                  // resume-cursor block below retries the lookup.
+                  bootInCursor = undefined;
+                }
+              }
+              bootSpan.setAttribute(
+                "chat.boot.replay.in.cursorFromSnapshot",
+                snapshotInCursor !== undefined
               );
-            }
-            bootSpan.setAttribute(
-              "chat.boot.replay.in.durationMs",
-              Date.now() - replayInStart
-            );
-            bootSpan.setAttribute(
-              "chat.boot.replay.in.userCount",
-              replayedInTail.length
-            );
+              try {
+                replayedInTail = await replaySessionInTail<TUIMessage>(payload.chatId, {
+                  lastEventId: bootInCursor !== undefined ? String(bootInCursor) : undefined,
+                });
+              } catch (error) {
+                logger.warn(
+                  "chat.agent: session.in replay failed; in-flight users may not be recovered",
+                  { error: error instanceof Error ? error.message : String(error) }
+                );
+              }
+              bootSpan.setAttribute(
+                "chat.boot.replay.in.durationMs",
+                Date.now() - replayInStart
+              );
+              bootSpan.setAttribute(
+                "chat.boot.replay.in.userCount",
+                replayedInTail.length
+              );
+            };
+
+            await Promise.all([replayOutPhase(), replayInPhase()]);
           },
           {
             attributes: {
@@ -5458,7 +5559,12 @@ function chatAgent<
 
       if (needsResumeCursor) {
         try {
-          const cursor = await findLatestSessionInCursor(payload.chatId);
+          // Reuse the cursor the boot block already resolved (snapshot
+          // field or records scan) — only scan here when the boot block
+          // was skipped (hydrateMessages, or snapshot-only signals).
+          const cursor = bootInCursorResolved
+            ? bootInCursor
+            : await findLatestSessionInCursor(payload.chatId);
           if (cursor !== undefined) {
             sessionStreams.setLastSeqNum(payload.chatId, "in", cursor);
             sessionStreams.setLastDispatchedSeqNum(payload.chatId, "in", cursor);
@@ -6362,6 +6468,21 @@ function chatAgent<
 
                   let cleanedUIMessages: TUIMessage[] = cleanedIncomingMessages;
 
+                  // Turn-0 head-start with hydrateMessages: the boot seeding from
+                  // `payload.headStartMessages` is non-hydrate-only, so ship the
+                  // route handler's first-turn history to the hydrate hook as
+                  // incoming messages instead (gated on the pending handover).
+                  if (
+                    turn === 0 &&
+                    hydrateMessages &&
+                    cleanedUIMessages.length === 0 &&
+                    (locals.get(chatHandoverPartialKey)?.length ?? 0) > 0 &&
+                    Array.isArray(payload.headStartMessages) &&
+                    payload.headStartMessages.length > 0
+                  ) {
+                    cleanedUIMessages = payload.headStartMessages as TUIMessage[];
+                  }
+
                   // Validate/transform UIMessages before conversion — catches malformed
                   // messages from storage or untrusted input before they reach the model.
                   // Slim wire: triggers like `regenerate-message` carry no incoming
@@ -6568,32 +6689,40 @@ function chatAgent<
                     // `preload` / `close` / `handover-prepare` and submits
                     // with no incoming message fall through with the boot-
                     // seeded accumulator unchanged.
+                  }
 
-                    if (turn === 0) {
-                      // Head-start handover splice (turn 0 only): the
-                      // `chat.handover` route handler signalled a mid-turn
-                      // handover, so splice its partial assistant response
-                      // (text + pending tool-calls + the synthesized
-                      // tool-approval round) onto the accumulator.
-                      // `streamText` then hits AI SDK's initial-tool-
-                      // execution branch, runs the agent-side tool executes,
-                      // and resumes from step 2 — skipping the first model
-                      // call (already done by the handler).
-                      //
-                      // We also synthesize a UIMessage form of the partial
-                      // assistant and push it to `accumulatedUIMessages` so
-                      // AI SDK's `processUIMessageStream` (invoked when the
-                      // run loop calls `runResult.toUIMessageStream({
-                      // onFinish })`) can initialize `state.message` from
-                      // the trailing assistant in `originalMessages`. Without
-                      // that, the `tool-output-available` chunks emitted by
-                      // the initial-tool-execution branch can't find their
-                      // matching tool-call in state and AI SDK throws
-                      // `UIMessageStreamError: No tool invocation found`.
-                      const pendingHandoverPartial = locals.get(chatHandoverPartialKey);
-                      if (pendingHandoverPartial && pendingHandoverPartial.length > 0) {
+                  if (turn === 0) {
+                    // Head-start handover splice (turn 0 only, BOTH
+                    // accumulation branches — hydrate and default): the
+                    // `chat.handover` route handler signalled a mid-turn
+                    // handover, so splice its partial assistant response
+                    // (text + pending tool-calls + the synthesized
+                    // tool-approval round) onto the accumulator.
+                    // `streamText` then hits AI SDK's initial-tool-
+                    // execution branch, runs the agent-side tool executes,
+                    // and resumes from step 2 — skipping the first model
+                    // call (already done by the handler).
+                    //
+                    // We also synthesize a UIMessage form of the partial
+                    // assistant and push it to `accumulatedUIMessages` so
+                    // AI SDK's `processUIMessageStream` (invoked when the
+                    // run loop calls `runResult.toUIMessageStream({
+                    // onFinish })`) can initialize `state.message` from
+                    // the trailing assistant in `originalMessages`. Without
+                    // that, the `tool-output-available` chunks emitted by
+                    // the initial-tool-execution branch can't find their
+                    // matching tool-call in state and AI SDK throws
+                    // `UIMessageStreamError: No tool invocation found`.
+                    const pendingHandoverPartial = locals.get(chatHandoverPartialKey);
+                    if (pendingHandoverPartial && pendingHandoverPartial.length > 0) {
+                      const handoverMessageId = locals.get(chatHandoverMessageIdKey);
+                      // Skip if the hydrated chain already persisted the
+                      // partial under the handover messageId.
+                      const alreadyInChain =
+                        handoverMessageId !== undefined &&
+                        accumulatedUIMessages.some((m) => m.id === handoverMessageId);
+                      if (!alreadyInChain) {
                         accumulatedMessages.push(...pendingHandoverPartial);
-                        const handoverMessageId = locals.get(chatHandoverMessageIdKey);
                         const partialUI = synthesizeHandoverUIMessage(
                           pendingHandoverPartial,
                           handoverMessageId
@@ -6601,12 +6730,12 @@ function chatAgent<
                         if (partialUI) {
                           accumulatedUIMessages.push(partialUI as TUIMessage);
                         }
-                        locals.set(chatHandoverPartialKey, []); // consume once
                       }
+                      locals.set(chatHandoverPartialKey, []); // consume once
                     }
-
-                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
                   }
+
+                  locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
 
                   } // end if (trigger !== "action")
 
@@ -7394,11 +7523,17 @@ function chatAgent<
                       await tracer.startActiveSpan(
                         "snapshot.write",
                         async () => {
+                          const snapshotInCursor =
+                            getChatSession().in.lastDispatchedSeqNum();
                           await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
                             version: 1,
                             savedAt: Date.now(),
                             messages: accumulatedUIMessages,
                             lastOutEventId: turnCompleteResult?.lastEventId,
+                            lastInEventId:
+                              snapshotInCursor !== undefined
+                                ? String(snapshotInCursor)
+                                : undefined,
                           });
                         },
                         {
@@ -7653,11 +7788,17 @@ function chatAgent<
               // neither the snapshot nor the replayable `.in` tail.
               if (!hydrateMessages) {
                 try {
+                  const errorSnapshotInCursor =
+                    getChatSession().in.lastDispatchedSeqNum();
                   await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
                     version: 1,
                     savedAt: Date.now(),
                     messages: erroredUIMessages,
                     lastOutEventId: errorTurnCompleteResult?.lastEventId,
+                    lastInEventId:
+                      errorSnapshotInCursor !== undefined
+                        ? String(errorSnapshotInCursor)
+                        : undefined,
                   });
                 } catch (error) {
                   logger.warn("chat.agent: error-path snapshot write failed", {
@@ -8532,8 +8673,15 @@ async function pipeChatAndCapture(
     resolveOnFinish = r;
   });
 
+  const resolvedOptions = resolveUIMessageStreamOptions();
   const uiStream = source.toUIMessageStream({
-    ...resolveUIMessageStreamOptions(),
+    ...resolvedOptions,
+    // Stamp a server-generated id on the start chunk, same as chat.agent's
+    // pipe. Without it the AI SDK regenerates the assistant id when a
+    // prepareStep injection (steering) starts a new step mid-stream, and
+    // the frontend replaces the partial message — wiping the
+    // pre-injection text from the UI and the captured response.
+    generateMessageId: resolvedOptions.generateMessageId ?? generateMessageId,
     onFinish: ({ responseMessage }: { responseMessage: UIMessage }) => {
       captured = responseMessage;
       resolveOnFinish!();
@@ -8855,14 +9003,18 @@ export type ChatTurn = {
  * signaling, and idle/suspend between turns. You control: initialization,
  * model/tool selection, persistence, and any custom per-turn logic.
  *
+ * Call from inside a `chat.customAgent()` run — the wrapper binds the
+ * backing Session that the iterator's stop signal and message channels
+ * resolve to. (A plain `task()` does not bind it, so `createSession`
+ * would throw "session handle is not initialized".)
+ *
  * @example
  * ```ts
- * import { task } from "@trigger.dev/sdk";
  * import { chat, type ChatTaskWirePayload } from "@trigger.dev/sdk/ai";
  * import { streamText } from "ai";
  * import { openai } from "@ai-sdk/openai";
  *
- * export const myChat = task({
+ * export const myChat = chat.customAgent({
  *   id: "my-chat",
  *   run: async (payload: ChatTaskWirePayload, { signal }) => {
  *     const session = chat.createSession(payload, { signal });
@@ -8898,28 +9050,54 @@ function createChatSession(
     [Symbol.asyncIterator]() {
       let currentPayload = payload;
       let turn = -1;
-      const stop = createStopSignal();
+      // Created on the first next() call, AFTER the resume-cursor seed —
+      // createStopSignal attaches the `.in` SSE tail, and attaching
+      // before the seed replays every record from seq 0 (the seed is a
+      // no-op when the chatCustomAgent wrapper already ran it).
+      let stop!: ReturnType<typeof createStopSignal>;
+      let booted = false;
       const accumulator = new ChatMessageAccumulator();
       let previousTurnUsage: LanguageModelUsage | undefined;
       let cumulativeUsage: LanguageModelUsage = emptyUsage();
 
       return {
         async next(): Promise<IteratorResult<ChatTurn>> {
+          if (!booted) {
+            booted = true;
+            await seedSessionInResumeCursorForCustomLoop(currentPayload);
+            stop = createStopSignal();
+          }
           turn++;
 
-          // First turn: handle preload — wait for the first real message
-          if (turn === 0 && currentPayload.trigger === "preload") {
+          // First turn: wait when the boot payload carries no message.
+          // Preload boots wait for the first real message; continuation
+          // boots (fresh run via `ensureRunForSession` / end-and-continue)
+          // arrive with the sticky boot-payload fields stripped, so running
+          // a turn immediately would invoke the model with no user input.
+          const isMessagelessContinuationBoot =
+            currentPayload.continuation === true && !currentPayload.message;
+          if (turn === 0 && (currentPayload.trigger === "preload" || isMessagelessContinuationBoot)) {
             const result = await messagesInput.waitWithIdleTimeout({
               idleTimeoutInSeconds:
                 sessionIdleTimeoutOpt ?? currentPayload.idleTimeoutInSeconds ?? 30,
               timeout,
-              spanName: "waiting for first message",
+              spanName:
+                currentPayload.trigger === "preload"
+                  ? "waiting for first message"
+                  : "waiting for first message (continuation)",
             });
             if (!result.ok || runSignal.aborted) {
               stop.cleanup();
               return { done: true, value: undefined };
             }
+            const continuationBoot = isMessagelessContinuationBoot;
             currentPayload = result.output;
+            // Preserve the continuation flag — the wire payload of the next
+            // message doesn't carry it, and `turn.continuation` is how the
+            // user knows to seed history (e.g. `turn.setMessages(stored)`).
+            if (continuationBoot && currentPayload.continuation === undefined) {
+              currentPayload = { ...currentPayload, continuation: true };
+            }
           }
 
           // Subsequent turns: wait for the next message
@@ -9089,14 +9267,22 @@ function createChatSession(
                 }
               }
 
-              // Capture token usage from the streamText result
+              // Capture token usage from the streamText result. Race with a 2s
+              // timeout — on stop-abort the AI SDK's totalUsage promise can hang
+              // indefinitely, which would wedge the turn loop (same guard as
+              // chat.agent's turn loop).
               let turnUsage: LanguageModelUsage | undefined;
               if (typeof (source as any).totalUsage?.then === "function") {
                 try {
-                  const usage: LanguageModelUsage = await (source as any).totalUsage;
-                  turnUsage = usage;
-                  previousTurnUsage = usage;
-                  cumulativeUsage = addUsage(cumulativeUsage, usage);
+                  const usage = (await Promise.race([
+                    (source as any).totalUsage,
+                    new Promise<undefined>((r) => setTimeout(() => r(undefined), 2_000)),
+                  ])) as LanguageModelUsage | undefined;
+                  if (usage) {
+                    turnUsage = usage;
+                    previousTurnUsage = usage;
+                    cumulativeUsage = addUsage(cumulativeUsage, usage);
+                  }
                 } catch {
                   /* non-fatal */
                 }
@@ -9223,7 +9409,8 @@ function createChatSession(
         },
 
         async return() {
-          stop.cleanup();
+          // `stop` only exists once next() has booted the iterator.
+          stop?.cleanup();
           return { done: true, value: undefined };
         },
       };

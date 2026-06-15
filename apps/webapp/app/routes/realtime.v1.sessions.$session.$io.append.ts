@@ -2,13 +2,12 @@ import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { nanoid } from "nanoid";
 import { z } from "zod";
-import { $replica } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { S2RealtimeStreams } from "~/services/realtime/s2realtimeStreams.server";
 import { ensureRunForSession } from "~/services/realtime/sessionRunManager.server";
 import {
   canonicalSessionAddressingKey,
-  resolveSessionByIdOrExternalId,
+  resolveSessionWithWriterFallback,
 } from "~/services/realtime/sessions.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import {
@@ -55,9 +54,10 @@ const { action, loader } = createActionApiRoute(
     // also triggers the first run). The row exists before any caller
     // can reach `.in/append` — no row, no append. Resolved here so the
     // authorization scope can expand to both addressing forms (friendlyId
-    // + externalId) and the handler can skip its own lookup.
+    // + externalId) and the handler can skip its own lookup. Writer
+    // fallback: a first append can land inside the replica apply window.
     findResource: async (params, auth) =>
-      resolveSessionByIdOrExternalId($replica, auth.environment.id, params.session),
+      resolveSessionWithWriterFallback(auth.environment.id, params.session),
     authorization: {
       action: "write",
       // Authorize against the union of the URL form, friendlyId, and

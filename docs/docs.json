@@ -104,7 +104,7 @@
               {
                 "group": "Building agents",
                 "pages": [
-                  "ai-chat/how-it-works",
+                  "ai-chat/anatomy",
                   "ai-chat/backend",
                   "ai-chat/lifecycle-hooks",
                   "ai-chat/tools",
@@ -112,7 +112,9 @@
                   "ai-chat/server-chat",
                   "ai-chat/sessions",
                   "ai-chat/chat-local",
-                  "ai-chat/types"
+                  "ai-chat/types",
+                  "ai-chat/custom-agents",
+                  "ai-chat/how-it-works"
                 ]
               },
               {
@@ -344,6 +346,7 @@
             "pages": [
               "management/overview",
               "management/authentication",
+              "management/multiple-clients",
               "management/errors-and-retries",
               "management/auto-pagination",
               "management/advanced-usage"
@@ -432,6 +435,17 @@
               "management/waitpoints/retrieve",
               "management/waitpoints/complete",
               "management/waitpoints/complete-callback"
+            ]
+          },
+          {
+            "group": "Sessions API",
+            "pages": [
+              "management/sessions/create",
+              "management/sessions/list",
+              "management/sessions/retrieve",
+              "management/sessions/update",
+              "management/sessions/close",
+              "management/sessions/channels"
             ]
           },
           {

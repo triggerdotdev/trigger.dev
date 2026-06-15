@@ -338,6 +338,28 @@ const EnvironmentSchema = z
     // TTL/size of the per-org realtimeBackend flag cache used to pick the serving backend.
     REALTIME_BACKEND_FLAG_CACHE_TTL_MS: z.coerce.number().int().default(30_000),
     REALTIME_BACKEND_FLAG_CACHE_MAX_ENTRIES: z.coerce.number().int().default(50_000),
+    // "1" enables the read-your-writes gate: wake hydrates wait out the measured replica lag
+    // (anchored to the change record's updatedAtMs) and stale reads are retried.
+    REALTIME_BACKEND_NATIVE_REPLICA_LAG_GATE_ENABLED: z.string().default("1"),
+    // Reader-side lag probe cadence while the router is active; probing pauses when idle.
+    REALTIME_BACKEND_NATIVE_REPLICA_LAG_SAMPLE_INTERVAL_MS: z.coerce.number().int().default(250),
+    REALTIME_BACKEND_NATIVE_REPLICA_LAG_IDLE_AFTER_MS: z.coerce.number().int().default(30_000),
+    // The lag estimate is the max sample inside this window (spikes widen it immediately).
+    REALTIME_BACKEND_NATIVE_REPLICA_LAG_WINDOW_MS: z.coerce.number().int().default(5_000),
+    // Estimate before the first sample lands (and the floor when probing is unavailable).
+    REALTIME_BACKEND_NATIVE_REPLICA_LAG_DEFAULT_MS: z.coerce.number().int().default(30),
+    // Safety margin (clock skew + scheduling) added on top of the lag estimate.
+    REALTIME_BACKEND_NATIVE_REPLICA_LAG_MARGIN_MS: z.coerce.number().int().default(10),
+    // Hard cap on any single gate delay — a sick replica degrades freshness, never liveness.
+    REALTIME_BACKEND_NATIVE_REPLICA_LAG_MAX_DELAY_MS: z.coerce.number().int().default(1_000),
+    // Re-hydrate attempts for rows the tripwire still finds stale after the delay.
+    REALTIME_BACKEND_NATIVE_STALE_HYDRATE_RETRIES: z.coerce.number().int().default(3),
+    // How long a tripwire-observed staleness floors the lag estimate (vanilla-PG replicas
+    // can't measure mid-apply lag, so observations carry the estimate between races).
+    REALTIME_BACKEND_NATIVE_REPLICA_LAG_OBSERVED_FLOOR_TTL_MS: z.coerce
+      .number()
+      .int()
+      .default(60_000),
 
     PUBSUB_REDIS_HOST: z
       .string()
@@ -726,6 +748,9 @@ const EnvironmentSchema = z
     MAXIMUM_LIVE_RELOADING_EVENTS: z.coerce.number().int().default(1000),
     MAXIMUM_TRACE_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(25_000),
     MAXIMUM_TRACE_DETAILED_SUMMARY_VIEW_COUNT: z.coerce.number().int().default(10_000),
+    // Emergency circuit breaker: when set, clamps the trace summary and detailed
+    // summary span limits on both event store paths to this value. Unset = disabled.
+    TRACE_VIEW_EMERGENCY_SPAN_CAP: z.coerce.number().int().positive().optional(),
     TASK_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().default(524_288), // 512KB
     BATCH_PAYLOAD_OFFLOAD_THRESHOLD: z.coerce.number().int().optional(), // Defaults to TASK_PAYLOAD_OFFLOAD_THRESHOLD if not set
     TASK_PAYLOAD_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728), // 3MB
@@ -743,6 +768,10 @@ const EnvironmentSchema = z
     // 2-phase batch API settings
     STREAMING_BATCH_MAX_ITEMS: z.coerce.number().int().default(1_000), // Max items in streaming batch
     STREAMING_BATCH_ITEM_MAXIMUM_SIZE: z.coerce.number().int().default(3_145_728),
+    // Number of streamed batch items ingested concurrently in Phase 2. Peak
+    // in-flight memory per request ≈ this × STREAMING_BATCH_ITEM_MAXIMUM_SIZE,
+    // so raise with care. Set to 1 for fully sequential ingestion.
+    STREAMING_BATCH_INGEST_CONCURRENCY: z.coerce.number().int().positive().default(10),
     BATCH_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(100),
     BATCH_RATE_LIMIT_MAX: z.coerce.number().int().default(1200),
     BATCH_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),

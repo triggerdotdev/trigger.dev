@@ -1,5 +1,6 @@
 import { type PrismaClient, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
+import { requireUserId } from "~/services/session.server";
 import { singleton } from "~/utils/singleton";
 import { ABORT_REASON_SEND_ERROR, createSSELoader, SendFunction } from "~/utils/sse";
 import { throttle } from "~/utils/throttle";
@@ -30,9 +31,23 @@ export class RunStreamPresenter {
           throw new Response("Missing runParam", { status: 400 });
         }
 
+        const userId = await requireUserId(context.request);
+
+        // Scope the lookup to organizations the requesting user is a member
+        // of, matching RunPresenter's run lookup. Unauthorized and missing
+        // runs are indistinguishable (both 404).
         const run = await prismaClient.taskRun.findFirst({
           where: {
             friendlyId: runFriendlyId,
+            project: {
+              organization: {
+                members: {
+                  some: {
+                    userId,
+                  },
+                },
+              },
+            },
           },
           select: {
             traceId: true,
@@ -51,7 +66,15 @@ export class RunStreamPresenter {
           if (buffer) {
             try {
               const entry = await buffer.getEntry(runFriendlyId);
-              if (entry) {
+              // Same membership scoping as the PG lookup above — the buffer
+              // entry carries the owning org's id.
+              const isMember = entry
+                ? (await prismaClient.orgMember.findFirst({
+                    where: { organizationId: entry.orgId, userId },
+                    select: { id: true },
+                  })) !== null
+                : false;
+              if (entry && isMember) {
                 // Go through the webapp wrapper so this read-side module
                 // shares a single deserialisation path with readFallback —
                 // see the contract comment in syntheticRedirectInfo.server.ts.

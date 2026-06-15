@@ -7,9 +7,17 @@ type Input = {
   name: string;
   title: string;
   components: ReturnType<typeof uiComponent.text>[];
+  labelTypeIds?: string[];
 };
 
-export async function sendToPlain({ userId, email, name, title, components }: Input) {
+export async function sendToPlain({
+  userId,
+  email,
+  name,
+  title,
+  components,
+  labelTypeIds,
+}: Input) {
   if (!env.PLAIN_API_KEY) {
     return;
   }
@@ -51,6 +59,7 @@ export async function sendToPlain({ userId, email, name, title, components }: In
     },
     title: title,
     components: components,
+    labelTypeIds,
   });
 
   if (createThreadRes.error) {

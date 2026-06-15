@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sdk",
-  "version": "4.5.0-rc.5",
+  "version": "4.5.0-rc.6",
   "description": "trigger.dev Node.JS SDK",
   "license": "MIT",
   "publishConfig": {
@@ -14,7 +14,9 @@
   "type": "module",
   "sideEffects": false,
   "files": [
-    "dist"
+    "dist",
+    "docs",
+    "skills"
   ],
   "tshy": {
     "selfLink": false,
@@ -62,8 +64,9 @@
     }
   },
   "scripts": {
-    "clean": "rimraf dist .tshy .tshy-build .turbo",
-    "build": "tshy && pnpm run update-version",
+    "clean": "rimraf dist docs .tshy .tshy-build .turbo",
+    "build": "tshy && pnpm run update-version && pnpm run bundle-docs",
+    "bundle-docs": "tsx ../../scripts/bundleSdkDocs.ts",
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit",
     "typecheck:ai-v7": "tsc --noEmit -p tsconfig.ai-v7.json",
@@ -74,7 +77,7 @@
   "dependencies": {
     "@opentelemetry/api": "1.9.1",
     "@opentelemetry/semantic-conventions": "1.41.1",
-    "@trigger.dev/core": "workspace:4.5.0-rc.5",
+    "@trigger.dev/core": "workspace:4.5.0-rc.6",
     "chalk": "^5.2.0",
     "cronstrue": "^2.21.0",
     "debug": "^4.3.4",

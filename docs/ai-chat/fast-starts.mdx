@@ -524,7 +524,26 @@ The handler keeps the SSE response open until the agent run signals turn-complet
 | Tool execution runs in | Trigger.dev agent run | Trigger.dev agent run |
 | Step 2+ LLM call runs in | Trigger.dev agent run | Trigger.dev agent run |
 | `onChatStart` / `onTurnStart` fire | After handover signal arrives | Normally |
+| `hydrateMessages` fires (if registered) | After handover, with the first-turn history as `incomingMessages` | Normally |
 | `onTurnComplete` fires | After turn finishes (handover) or skipped (handover-skip) | Normally |
+
+### Persistence and the handover contract
+
+A head-start turn persists exactly like a normal turn — the handover machinery is invisible to your hooks. The guarantees:
+
+- **One stable assistant `messageId` across the whole turn.** The route handler generates the id, the handover signal carries it to the agent, and the agent's step 2+ stream reuses it — so the browser merges step 1 and step 2+ into a single assistant message, and you can merge-by-id when persisting.
+- **`onTurnComplete` is the canonical persistence point**, same as any turn. It carries the full assistant message under that one id: step-1 text, reasoning, and tool calls plus step-2+ tool results and text. The [database persistence](/ai-chat/patterns/database-persistence) patterns apply unchanged.
+- **Reasoning parts survive the handover.** When step 1 runs on an extended-thinking model, the reasoning streamed by your route handler lands in the durable session history (and `onTurnComplete`) under the same `messageId`, with provider metadata intact — Anthropic thinking signatures survive a replay back to the model. Step-2 reasoning appends to the same message rather than replacing it.
+
+#### With `hydrateMessages`
+
+Head Start composes with [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages). On the first turn, the hook receives the route handler's first-turn history as `incomingMessages` — the canonical upsert-and-return pattern persists the user message exactly as it would on a direct-trigger turn. The runtime splices the warm handler's partial assistant onto your hydrated chain after the hook returns, deduplicated by the assistant `messageId`, so your hook never needs to include the in-flight partial.
+
+<Warning>
+  **Hydrate hooks must upsert their conversation row, not update it.** Head-start turns skip preload entirely, so row-creating hooks (`onPreload`, or an `onChatStart` create) have not run when `hydrateMessages` first fires. A bare `UPDATE` against a missing row throws and errors the turn.
+</Warning>
+
+Your hydrate hook shapes **model context**, not the transcript — dropping reasoning-only entries or unresolved tool rows from the returned chain is fine and does not affect what `onTurnComplete` persists or what the UI renders.
 
 ### The `chat.headStart` API
 

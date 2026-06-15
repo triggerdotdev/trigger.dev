@@ -1,11 +1,9 @@
 {
   "name": "@trigger.dev/plugins",
-  "version": "4.5.0-rc.5",
+  "version": "4.5.0-rc.6",
   "description": "Plugin contracts and interfaces for Trigger.dev",
   "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
+  "private": true,
   "repository": {
     "type": "git",
     "url": "https://github.com/triggerdotdev/trigger.dev",
@@ -38,9 +36,15 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "@triggerdotdev/source": "./src/index.ts",
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     }
   }
 }

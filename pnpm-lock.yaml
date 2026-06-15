@@ -556,8 +556,8 @@ importers:
         specifier: workspace:*
         version: link:../../internal-packages/otlp-importer
       '@trigger.dev/platform':
-        specifier: 1.0.27
-        version: 1.0.27
+        specifier: 1.0.28
+        version: 1.0.28
       '@trigger.dev/rbac':
         specifier: workspace:*
         version: link:../../internal-packages/rbac
@@ -1494,7 +1494,7 @@ importers:
         specifier: ^6.10.0
         version: 6.19.0(magicast@0.3.5)
       '@trigger.dev/core':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../core
       mlly:
         specifier: ^1.7.1
@@ -1570,13 +1570,13 @@ importers:
         specifier: ^0.22.10
         version: 0.22.10(supports-color@10.0.0)
       '@trigger.dev/build':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../build
       '@trigger.dev/core':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../core
       '@trigger.dev/schema-to-json':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../schema-to-json
       ansi-escapes:
         specifier: ^7.0.0
@@ -1966,7 +1966,7 @@ importers:
   packages/python:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../core
       tinyexec:
         specifier: ^0.3.2
@@ -1976,10 +1976,10 @@ importers:
         specifier: ^0.15.4
         version: 0.15.4
       '@trigger.dev/build':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../build
       '@trigger.dev/sdk':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../trigger-sdk
       '@types/node':
         specifier: 20.14.14
@@ -2003,7 +2003,7 @@ importers:
   packages/react-hooks:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^4.5.0-rc.5
+        specifier: workspace:^4.5.0-rc.6
         version: link:../core
       react:
         specifier: ^18.0 || ^19.0 || ^19.0.0-rc
@@ -2037,7 +2037,7 @@ importers:
   packages/redis-worker:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../core
       cron-parser:
         specifier: ^4.9.0
@@ -2086,7 +2086,7 @@ importers:
   packages/rsc:
     dependencies:
       '@trigger.dev/core':
-        specifier: workspace:^4.5.0-rc.5
+        specifier: workspace:^4.5.0-rc.6
         version: link:../core
       mlly:
         specifier: ^1.7.1
@@ -2102,7 +2102,7 @@ importers:
         specifier: ^0.15.4
         version: 0.15.4
       '@trigger.dev/build':
-        specifier: workspace:^4.5.0-rc.5
+        specifier: workspace:^4.5.0-rc.6
         version: link:../build
       '@types/node':
         specifier: 20.14.14
@@ -2181,7 +2181,7 @@ importers:
         specifier: 1.41.1
         version: 1.41.1
       '@trigger.dev/core':
-        specifier: workspace:4.5.0-rc.5
+        specifier: workspace:4.5.0-rc.6
         version: link:../core
       chalk:
         specifier: ^5.2.0
@@ -8128,8 +8128,8 @@ packages:
       react: ^18.2.0
       react-dom: 18.2.0
 
-  '@trigger.dev/platform@1.0.27':
-    resolution: {integrity: sha512-gYfYDBnp2RJpgL4V2oOeqzV20flMZg+oGALhxHmmNJdJM01MW4aJSLsFFjoj+dikpL+4/3gocJcoyZk1G02UNg==}
+  '@trigger.dev/platform@1.0.28':
+    resolution: {integrity: sha512-UVb7FlGljThZH5FJtXv5BvQQTGot510OAMZR98UJ1TLFuTvTwKo+NITf0yimYiDW5YaP768p6v1nVERx8MwpNw==}
 
   '@types/acorn@4.0.6':
     resolution: {integrity: sha512-veQTnWP+1D/xbxVrPC3zHnCZRjSrKfhbMUlEA43iMZLu7EsnTtkJklIuwrCPbOi8YkvDQAiW05VQQFvvz9oieQ==}
@@ -15400,8 +15400,9 @@ packages:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
 
-  shell-quote@1.8.1:
-    resolution: {integrity: sha512-6j1W9l1iAs/4xYBI1SYOVZyFcCis9b4KCLQ8fgAGG07QvzaRLVVRQvAy85yNmmZSjYjg4MWh4gNvlPujU/5LpA==}
+  shell-quote@1.8.4:
+    resolution: {integrity: sha512-VsC6n6vz1ihYYyZZwX7YZSF5l5x36ca17OC+a69h94YqB7X6XLwf+5MOgynYir2SLFUbl8gIYvBo8K8RoNQ6bQ==}
+    engines: {node: '>= 0.4'}
 
   shiki@3.23.0:
     resolution: {integrity: sha512-55Dj73uq9ZXL5zyeRPzHQsK7Nbyt6Y10k5s7OjuFZGMhpp4r/rsLBH0o/0fstIzX1Lep9VxefWljK/SKCzygIA==}
@@ -25333,7 +25334,7 @@ snapshots:
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
 
-  '@trigger.dev/platform@1.0.27':
+  '@trigger.dev/platform@1.0.28':
     dependencies:
       zod: 3.23.8
 
@@ -31924,7 +31925,7 @@ snapshots:
       minimatch: 3.1.5
       pidtree: 0.3.1
       read-pkg: 3.0.0
-      shell-quote: 1.8.1
+      shell-quote: 1.8.4
       string.prototype.padend: 3.1.4
 
   npm-run-path@4.0.1:
@@ -34006,7 +34007,7 @@ snapshots:
 
   shebang-regex@3.0.0: {}
 
-  shell-quote@1.8.1: {}
+  shell-quote@1.8.4: {}
 
   shiki@3.23.0:
     dependencies:
