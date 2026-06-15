@@ -7,7 +7,6 @@ import {
 import { type TaskRun } from "@trigger.dev/database";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
-import { regionForQueue, workerRegionRegistry } from "~/v3/workerRegions.server";
 import { logger } from "~/services/logger.server";
 import { BaseService } from "./baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "./triggerTask.server";
@@ -70,7 +69,8 @@ export class ReplayTaskRunService extends BaseService {
     const region = ignoreRegion
       ? undefined
       : overrideOptions.region ??
-        regionForQueue(baseWorkerQueue(existingTaskRun.workerQueue), workerRegionRegistry.current() ?? []);
+        existingTaskRun.region ??
+        baseWorkerQueue(existingTaskRun.workerQueue);
 
     try {
       const taskQueue = await this._prisma.taskQueue.findFirst({

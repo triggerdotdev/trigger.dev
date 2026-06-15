@@ -86,6 +86,25 @@ describe("createReloadingRegistry", () => {
     reg.stop();
   });
 
+  it("autoStart:false stays inert and non-blocking", async () => {
+    let loadCalls = 0;
+    const reg = createReloadingRegistry({
+      name: "test-inert",
+      intervalMs: 10_000,
+      autoStart: false,
+      load: async () => {
+        loadCalls++;
+        return 1;
+      },
+    });
+    expect(reg.isLoaded).toBe(false);
+    expect(reg.current()).toBeUndefined();
+    await reg.waitUntilReady(10_000); // must resolve ~immediately, not wait 10s
+    expect(reg.isLoaded).toBe(false);
+    expect(loadCalls).toBe(0); // never hit the DB/load
+    reg.stop();
+  });
+
   it("waitUntilReady clears its timeout when ready wins", async () => {
     const clearSpy = vi.spyOn(global, "clearTimeout");
     // load resolves only when the test releases it, so waitUntilReady runs the

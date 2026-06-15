@@ -67,20 +67,40 @@ describe("resolveComputeMigration", () => {
     orgFeatureFlags: {},
     flags: { computeMigrationEnabled: true, computeMigrationFreePercentage: 100 },
     envType: "PRODUCTION",
+    baseEnableFastPath: false,
+    region: "us-east-1",
   };
+  const backing = { workerQueue: "us-east-1-next", enableFastPath: true };
+
   it("swaps to the compute backing for an enrolled free org", () => {
-    expect(resolveComputeMigration({ ...enrolled, baseWorkerQueue: "us-east-1", orgId: "org_x", backing: "us-east-1-next" })).toBe("us-east-1-next");
+    expect(
+      resolveComputeMigration({ ...enrolled, baseWorkerQueue: "us-east-1", orgId: "org_x", backing })
+    ).toEqual({ workerQueue: "us-east-1-next", region: "us-east-1", enableFastPath: true });
   });
   it("leaves the queue unchanged when there is no backing for the region (EU)", () => {
-    expect(resolveComputeMigration({ ...enrolled, baseWorkerQueue: "eu-central-1", orgId: "org_x", backing: undefined })).toBe("eu-central-1");
+    expect(
+      resolveComputeMigration({
+        ...enrolled,
+        baseWorkerQueue: "eu-central-1",
+        region: "eu-central-1",
+        orgId: "org_x",
+        backing: undefined,
+      })
+    ).toEqual({ workerQueue: "eu-central-1", region: "eu-central-1", enableFastPath: false });
   });
   it("does not migrate DEVELOPMENT", () => {
-    expect(resolveComputeMigration({ ...enrolled, baseWorkerQueue: "us-east-1", orgId: "org_x", backing: "us-east-1-next", envType: "DEVELOPMENT" })).toBe("us-east-1");
+    expect(
+      resolveComputeMigration({ ...enrolled, baseWorkerQueue: "us-east-1", orgId: "org_x", backing, envType: "DEVELOPMENT" })
+    ).toEqual({ workerQueue: "us-east-1", region: "us-east-1", enableFastPath: false });
   });
   it("leaves a non-enrolled org untouched", () => {
-    expect(resolveComputeMigration({ ...enrolled, baseWorkerQueue: "us-east-1", orgId: "org_x", backing: "us-east-1-next", flags: { computeMigrationEnabled: false } })).toBe("us-east-1");
+    expect(
+      resolveComputeMigration({ ...enrolled, baseWorkerQueue: "us-east-1", orgId: "org_x", backing, flags: { computeMigrationEnabled: false } })
+    ).toEqual({ workerQueue: "us-east-1", region: "us-east-1", enableFastPath: false });
   });
   it("undefined baseWorkerQueue passes through", () => {
-    expect(resolveComputeMigration({ ...enrolled, baseWorkerQueue: undefined, orgId: "org_x", backing: "us-east-1-next" })).toBeUndefined();
+    expect(
+      resolveComputeMigration({ ...enrolled, baseWorkerQueue: undefined, region: undefined, orgId: "org_x", backing })
+    ).toEqual({ workerQueue: undefined, region: undefined, enableFastPath: false });
   });
 });

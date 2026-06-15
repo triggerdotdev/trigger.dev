@@ -192,12 +192,12 @@ export const runsSchema: TableSchema = {
     },
     region: {
       name: "region",
-      clickhouseName: "worker_queue",
+      clickhouseName: "region",
       ...column("String", {
         description: "Region",
         example: "us-east-1",
       }),
-      expression: "if(startsWith(worker_queue, 'cm'), NULL, worker_queue)",
+      expression: "multiIf(region != '', region, startsWith(worker_queue, 'cm'), NULL, worker_queue)",
     },
 
     // Timing

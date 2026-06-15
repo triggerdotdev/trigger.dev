@@ -39,7 +39,7 @@ import {
   workerQueueForRun,
 } from "../concerns/workerQueueSplit.server";
 import { resolveComputeMigration } from "../concerns/computeMigration.server";
-import { workerRegionRegistry, backingForQueue } from "~/v3/workerRegions.server";
+import { workerRegionRegistry, backingForQueue, regionForQueue } from "~/v3/workerRegions.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import {
   publishClaim as publishMollifierClaim,
@@ -372,14 +372,18 @@ export class RunEngineTriggerTaskService {
             await workerRegionRegistry.waitUntilReady(env.GLOBAL_FLAGS_READY_TIMEOUT_MS);
           }
           const workerGroups = workerRegionRegistry.current() ?? [];
-          const migratedWorkerQueue = resolveComputeMigration({
+          const region = baseWorkerQueue ? regionForQueue(baseWorkerQueue, workerGroups) : undefined;
+          const backing = baseWorkerQueue ? backingForQueue(baseWorkerQueue, workerGroups) : undefined;
+          const migrated = resolveComputeMigration({
             baseWorkerQueue,
+            baseEnableFastPath: enableFastPath,
+            region,
+            backing,
             planType,
             orgId: environment.organization.id,
             orgFeatureFlags: environment.organization.featureFlags as Record<string, unknown> | null,
             flags: globalFlagsRegistry.current(),
             envType: environment.type,
-            backing: baseWorkerQueue ? backingForQueue(baseWorkerQueue, workerGroups) : undefined,
           });
 
           // Build annotations for this run
@@ -410,13 +414,13 @@ export class RunEngineTriggerTaskService {
               globalDefault: env.TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED === "1",
             });
           const workerQueue =
-            migratedWorkerQueue !== undefined
+            migrated.workerQueue !== undefined
               ? workerQueueForRun({
-                  workerQueue: migratedWorkerQueue,
+                  workerQueue: migrated.workerQueue,
                   rootTriggerSource: annotations.rootTriggerSource,
                   splitEnabled: scheduledQueueSplitEnabled,
                 })
-              : migratedWorkerQueue;
+              : migrated.workerQueue;
 
           try {
             return await this.traceEventConcern.traceRun(
@@ -515,7 +519,8 @@ export class RunEngineTriggerTaskService {
                       queueName,
                       lockedQueueId,
                       workerQueue,
-                      enableFastPath,
+                      region: migrated.region,
+                      enableFastPath: migrated.enableFastPath,
                       lockedToBackgroundWorker: lockedToBackgroundWorker ?? undefined,
                       delayUntil,
                       ttl,
@@ -593,7 +598,8 @@ export class RunEngineTriggerTaskService {
                   queueName,
                   lockedQueueId,
                   workerQueue,
-                  enableFastPath,
+                  region: migrated.region,
+                  enableFastPath: migrated.enableFastPath,
                   lockedToBackgroundWorker: lockedToBackgroundWorker ?? undefined,
                   delayUntil,
                   ttl,
@@ -742,6 +748,7 @@ export class RunEngineTriggerTaskService {
     queueName: string;
     lockedQueueId?: string;
     workerQueue?: string;
+    region?: string;
     enableFastPath: boolean;
     lockedToBackgroundWorker?: { id: string; version: string; sdkVersion: string; cliVersion: string };
     delayUntil?: Date;
@@ -795,6 +802,7 @@ export class RunEngineTriggerTaskService {
       queue: args.queueName,
       lockedQueueId: args.lockedQueueId,
       workerQueue: args.workerQueue,
+      region: args.region,
       enableFastPath: args.enableFastPath,
       isTest: args.body.options?.test ?? false,
       delayUntil: args.delayUntil,

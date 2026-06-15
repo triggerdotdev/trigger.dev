@@ -45,6 +45,8 @@ import { sessionsReplicationInstance } from "./services/sessionsReplicationInsta
   sessionsReplicationInstance;
 import { globalFlagsRegistry } from "./v3/globalFlagsRegistry.server";
 (globalThis as Record<string, unknown>).__globalFlagsRegistry = globalFlagsRegistry;
+import { workerRegionRegistry } from "./v3/workerRegions.server";
+(globalThis as Record<string, unknown>).__workerRegionRegistry = workerRegionRegistry;
 
 const ABORT_DELAY = 30000;
 

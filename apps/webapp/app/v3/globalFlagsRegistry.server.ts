@@ -14,6 +14,7 @@ export const globalFlagsRegistry = singleton("globalFlagsRegistry", () =>
   createReloadingRegistry<Partial<FeatureFlagCatalog>>({
     name: "global-flags",
     intervalMs: env.GLOBAL_FLAGS_RELOAD_INTERVAL_MS,
+    autoStart: process.env.NODE_ENV !== "test", // only auto-poll outside tests
     load: () => flags(),
   })
 );

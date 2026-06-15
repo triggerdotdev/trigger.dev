@@ -19,7 +19,6 @@ import {
 } from "~/v3/mollifier/syntheticReplayTaskRun.server";
 import parseDuration from "parse-duration";
 import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
-import { regionForQueue, workerRegionRegistry } from "~/v3/workerRegions.server";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
 import { queueTypeFromType } from "~/presenters/v3/QueueRetrievePresenter.server";
 import { ReplayRunData } from "~/v3/replayTask";
@@ -53,6 +52,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       maxDurationInSeconds: true,
       machinePreset: true,
       workerQueue: true,
+      region: true,
       ttl: true,
       idempotencyKey: true,
       runTags: true,
@@ -164,6 +164,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       maxDurationInSeconds: buffered.maxDurationInSeconds ?? null,
       machinePreset: buffered.machinePreset ?? null,
       workerQueue: buffered.workerQueue ?? null,
+      region: buffered.region ?? null,
       ttl: buffered.ttl ?? null,
       idempotencyKey: buffered.idempotencyKey ?? null,
       runTags: buffered.runTags,
@@ -214,7 +215,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     region:
       environment.type === "DEVELOPMENT"
         ? undefined
-        : regionForQueue(baseWorkerQueue(run.workerQueue), workerRegionRegistry.current() ?? []),
+        : run.region ?? baseWorkerQueue(run.workerQueue),
     regions: regionsResult.regions,
     ttlSeconds: run.ttl ? parseDuration(run.ttl, "s") ?? undefined : undefined,
     idempotencyKey: run.idempotencyKey,

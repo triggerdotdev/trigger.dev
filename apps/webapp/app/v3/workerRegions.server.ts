@@ -9,6 +9,7 @@ export type WorkerGroupRegionRow = {
   region: string | null;
   workloadType: WorkloadType;
   hidden: boolean;
+  enableFastPath: boolean;
 };
 
 /**
@@ -26,9 +27,13 @@ export function regionForQueue(queue: string, groups: WorkerGroupRegionRow[]): s
  * Forward map: the compute (MICROVM) backing queue for the region that `queue`
  * belongs to, or undefined if the region has no compute backing. `queue` is the
  * resolved (container) worker queue; we look up its region, then find a visible
- * MICROVM group in the same region.
+ * MICROVM group in the same region. Returns the backing group's queue and its
+ * `enableFastPath` so the caller adopts the backing's fast-path setting.
  */
-export function backingForQueue(queue: string, groups: WorkerGroupRegionRow[]): string | undefined {
+export function backingForQueue(
+  queue: string,
+  groups: WorkerGroupRegionRow[]
+): { workerQueue: string; enableFastPath: boolean } | undefined {
   const self = groups.find((g) => g.masterQueue === queue);
   const region = self?.region;
   if (!region) return undefined;
@@ -39,7 +44,8 @@ export function backingForQueue(queue: string, groups: WorkerGroupRegionRow[]): 
       !g.hidden &&
       g.masterQueue !== queue
   );
-  return backing?.masterQueue;
+  if (!backing) return undefined;
+  return { workerQueue: backing.masterQueue, enableFastPath: backing.enableFastPath };
 }
 
 /**
@@ -52,9 +58,16 @@ export const workerRegionRegistry = singleton("workerRegionRegistry", () =>
   createReloadingRegistry<WorkerGroupRegionRow[]>({
     name: "worker-region",
     intervalMs: env.GLOBAL_FLAGS_RELOAD_INTERVAL_MS,
+    autoStart: process.env.NODE_ENV !== "test", // only auto-poll outside tests
     load: () =>
       prisma.workerInstanceGroup.findMany({
-        select: { masterQueue: true, region: true, workloadType: true, hidden: true },
+        select: {
+          masterQueue: true,
+          region: true,
+          workloadType: true,
+          hidden: true,
+          enableFastPath: true,
+        },
       }),
   })
 );

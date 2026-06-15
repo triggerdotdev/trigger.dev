@@ -36,6 +36,8 @@ export type ReloadingRegistryOptions<T> = {
   intervalMs: number;
   /** Startup retry config; defaults to forever with backoff. */
   retry?: { retries?: number };
+  /** Start the background load + interval at construction. Default true; set false to keep inert (e.g. tests). */
+  autoStart?: boolean;
 };
 
 /**
@@ -48,6 +50,7 @@ export type ReloadingRegistryOptions<T> = {
 export function createReloadingRegistry<T>(opts: ReloadingRegistryOptions<T>): ReloadingRegistry<T> {
   let snapshot: T | undefined;
   let loaded = false;
+  let started = false;
   let loadSeq = 0;
   let resolveReady!: () => void;
   const isReady = new Promise<void>((resolve) => {
@@ -66,41 +69,50 @@ export function createReloadingRegistry<T>(opts: ReloadingRegistryOptions<T>): R
     }
   }
 
-  const startup = pRetry(() => doLoad(), {
-    forever: opts.retry?.retries === undefined,
-    retries: opts.retry?.retries,
-    minTimeout: 1_000,
-    maxTimeout: 60_000,
-    factor: 2,
-    onFailedAttempt: (error) => {
-      loadFailures.inc({ name: opts.name });
-      logger.warn("[ReloadingRegistry] startup load failed, retrying", {
-        name: opts.name,
-        attemptNumber: error.attemptNumber,
-        retriesLeft: error.retriesLeft,
-        error: error.message,
-      });
-    },
-  });
-  startup.catch((err) => {
-    logger.error("[ReloadingRegistry] startup load gave up", {
-      name: opts.name,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  });
+  let interval: ReturnType<typeof setInterval> | undefined;
 
-  const interval = setInterval(() => {
-    doLoad().catch((err) => {
-      loadFailures.inc({ name: opts.name });
-      logger.warn("[ReloadingRegistry] reload failed", {
+  if (opts.autoStart !== false) {
+    started = true;
+
+    const startup = pRetry(() => doLoad(), {
+      forever: opts.retry?.retries === undefined,
+      retries: opts.retry?.retries,
+      minTimeout: 1_000,
+      maxTimeout: 60_000,
+      factor: 2,
+      onFailedAttempt: (error) => {
+        loadFailures.inc({ name: opts.name });
+        logger.warn("[ReloadingRegistry] startup load failed, retrying", {
+          name: opts.name,
+          attemptNumber: error.attemptNumber,
+          retriesLeft: error.retriesLeft,
+          error: error.message,
+        });
+      },
+    });
+    startup.catch((err) => {
+      logger.error("[ReloadingRegistry] startup load gave up", {
         name: opts.name,
         error: err instanceof Error ? err.message : String(err),
       });
     });
-  }, opts.intervalMs);
+
+    interval = setInterval(() => {
+      doLoad().catch((err) => {
+        loadFailures.inc({ name: opts.name });
+        logger.warn("[ReloadingRegistry] reload failed", {
+          name: opts.name,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }, opts.intervalMs);
+    interval.unref(); // never keep the process alive; SIGTERM still clears it
+  } else {
+    resolveReady(); // inert: any direct `await isReady` resolves immediately
+  }
 
   function stop() {
-    clearInterval(interval);
+    if (interval) clearInterval(interval);
   }
   signalsEmitter.on("SIGTERM", stop);
   signalsEmitter.on("SIGINT", stop);
@@ -113,7 +125,7 @@ export function createReloadingRegistry<T>(opts: ReloadingRegistryOptions<T>): R
     current: () => snapshot,
     reload: doLoad,
     async waitUntilReady(timeoutMs: number) {
-      if (loaded || timeoutMs <= 0) return;
+      if (!started || loaded || timeoutMs <= 0) return;
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         await Promise.race([

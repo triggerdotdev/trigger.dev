@@ -46,24 +46,32 @@ export function isOrgMigrated({
 
 type ResolveInput = MigrationDecisionInput & {
   baseWorkerQueue: string | undefined;
+  baseEnableFastPath: boolean;
+  region: string | undefined; // geo of the base queue (same whether migrated or not)
+  backing: { workerQueue: string; enableFastPath: boolean } | undefined;
   envType: string;
-  backing: string | undefined; // the compute backing for this queue's region, or undefined
 };
 
 /**
- * Rewrite the resolved worker queue to its compute backing when the org is
- * migrated and the region has a backing. Same-geo swap (us-east-1 -> us-east-1-next):
- * any explicit placement is a geography preference, honored by staying in-region.
- * Applied after region resolution, mirroring the scheduled-split.
+ * Produce the target descriptor `{ workerQueue, region, enableFastPath }` for a
+ * run. When the org is migrated and the region has a compute backing, the queue
+ * and fast-path setting come from the MICROVM backing group; `region` is the geo
+ * either way. Same-geo swap (us-east-1 -> us-east-1-next): any explicit placement
+ * is a geography preference, honored by staying in-region. Applied after region
+ * resolution, mirroring the scheduled-split.
  */
 export function resolveComputeMigration({
   baseWorkerQueue,
-  envType,
+  baseEnableFastPath,
+  region,
   backing,
+  envType,
   ...decision
-}: ResolveInput): string | undefined {
-  if (baseWorkerQueue === undefined) return baseWorkerQueue;
-  if (envType === "DEVELOPMENT") return baseWorkerQueue;
-  if (!isOrgMigrated(decision)) return baseWorkerQueue;
-  return backing ?? baseWorkerQueue;
+}: ResolveInput): { workerQueue: string | undefined; region: string | undefined; enableFastPath: boolean } {
+  const passthrough = { workerQueue: baseWorkerQueue, region, enableFastPath: baseEnableFastPath };
+  if (baseWorkerQueue === undefined) return passthrough;
+  if (envType === "DEVELOPMENT") return passthrough;
+  if (!isOrgMigrated(decision)) return passthrough;
+  if (!backing) return passthrough;
+  return { workerQueue: backing.workerQueue, region, enableFastPath: backing.enableFastPath };
 }
