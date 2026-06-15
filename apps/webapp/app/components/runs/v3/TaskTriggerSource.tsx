@@ -1,5 +1,6 @@
-import { ClockIcon, CpuChipIcon } from "@heroicons/react/20/solid";
 import type { TaskTriggerSource } from "@trigger.dev/database";
+import { ClockIcon } from "~/assets/icons/ClockIcon";
+import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { cn } from "~/utils/cn";
 
@@ -23,7 +24,9 @@ export function TaskTriggerSourceIcon({
     }
     case "AGENT": {
       return (
-        <CpuChipIcon className={cn("size-[1.125rem] min-w-[1.125rem] text-indigo-500", className)} />
+        <CubeSparkleIcon
+          className={cn("size-[1.125rem] min-w-[1.125rem] text-agents", className)}
+        />
       );
     }
   }
@@ -38,7 +41,7 @@ export function taskTriggerSourceDescription(source: TaskTriggerSource) {
       return "Scheduled task";
     }
     case "AGENT": {
-      return "Agent";
+      return "Agent task";
     }
   }
 }

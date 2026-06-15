@@ -1,5 +1,5 @@
-import { UserMinusIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
+import { UserCrossIcon } from "~/assets/icons/UserCrossIcon";
 import { Button } from "./primitives/Buttons";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./primitives/Tooltip";
 
@@ -13,7 +13,7 @@ export function ImpersonationBanner() {
               <Button
                 type="submit"
                 variant="small-menu-item"
-                LeadingIcon={UserMinusIcon}
+                LeadingIcon={UserCrossIcon}
                 fullWidth
                 textAlignLeft
                 className="text-amber-400"

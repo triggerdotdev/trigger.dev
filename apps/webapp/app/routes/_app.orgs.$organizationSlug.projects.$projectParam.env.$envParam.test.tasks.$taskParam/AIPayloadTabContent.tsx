@@ -1,4 +1,5 @@
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { ClipboardIcon } from "@heroicons/react/24/outline";
 import { AnimatePresence, motion } from "framer-motion";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
@@ -7,6 +8,7 @@ import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
 import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Spinner } from "~/components/primitives/Spinner";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -26,6 +28,7 @@ export function AIPayloadTabContent({
   placeholder,
   examplePromptsOverride,
   isAgent = false,
+  showExamplePromptsHeader = true,
 }: {
   onPayloadGenerated: (payload: string) => void;
   payloadSchema?: unknown;
@@ -35,6 +38,7 @@ export function AIPayloadTabContent({
   placeholder?: string;
   examplePromptsOverride?: string[];
   isAgent?: boolean;
+  showExamplePromptsHeader?: boolean;
 }) {
   const [prompt, setPrompt] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -43,6 +47,7 @@ export function AIPayloadTabContent({
   const [error, setError] = useState<string | null>(null);
   const [showThinking, setShowThinking] = useState(false);
   const [lastResult, setLastResult] = useState<"success" | "error" | null>(null);
+  const [lastPayload, setLastPayload] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -62,6 +67,7 @@ export function AIPayloadTabContent({
       setError(null);
       setShowThinking(true);
       setLastResult(null);
+      setLastPayload(null);
 
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -156,6 +162,7 @@ export function AIPayloadTabContent({
         case "result":
           if (event.success) {
             onPayloadGenerated(event.payload);
+            setLastPayload(event.payload);
             setPrompt("");
             setLastResult("success");
           } else {
@@ -191,20 +198,22 @@ export function AIPayloadTabContent({
     }
   }, [error]);
 
-  const examplePrompts = examplePromptsOverride ?? (payloadSchema
-    ? [
-        "Generate a valid payload",
-        "Generate a payload with edge cases",
-        "Generate a minimal payload with only required fields",
-      ]
-    : [
-        "Generate a simple JSON payload",
-        "Generate a payload with nested objects",
-        "Generate a payload with an array of items",
-      ]);
+  const examplePrompts =
+    examplePromptsOverride ??
+    (payloadSchema
+      ? [
+          "Generate a valid payload",
+          "Generate a payload with edge cases",
+          "Generate a minimal payload with only required fields",
+        ]
+      : [
+          "Generate a simple JSON payload",
+          "Generate a payload with nested objects",
+          "Generate a payload with an array of items",
+        ]);
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-0">
       <div
         className="overflow-hidden rounded-md p-px"
         style={{ background: "linear-gradient(to bottom right, #E543FF, #286399)" }}
@@ -215,7 +224,8 @@ export function AIPayloadTabContent({
               ref={textareaRef}
               name="prompt"
               placeholder={
-                placeholder ?? (payloadSchema
+                placeholder ??
+                (payloadSchema
                   ? "e.g. generate a payload for a new user signup"
                   : "e.g. generate a JSON payload with name, email, and age fields")
               }
@@ -284,62 +294,98 @@ export function AIPayloadTabContent({
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
-            className="overflow-hidden"
+            className="overflow-hidden rounded-b-md border-x border-b border-grid-bright bg-background-bright pb-3"
           >
-            <div className="px-1">
-              <div className="rounded-b-lg border-x border-b border-grid-dimmed bg-charcoal-850 p-3 pb-1">
-                <div className="mb-1 flex items-center justify-between">
-                  <div className="flex items-center gap-1">
-                    {isLoading ? (
-                      <Spinner className="size-4" />
-                    ) : lastResult === "success" ? (
-                      <CheckIcon className="size-4 text-success" />
-                    ) : lastResult === "error" ? (
-                      <XMarkIcon className="size-4 text-error" />
-                    ) : null}
-                    <span className="text-xs font-medium text-text-dimmed">
-                      {isLoading
-                        ? "AI is thinking…"
-                        : lastResult === "success"
-                          ? "Payload generated"
-                          : lastResult === "error"
-                            ? "Generation failed"
-                            : "AI response"}
-                    </span>
-                  </div>
+            <div className="space-y-2 px-2 pt-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
                   {isLoading ? (
-                    <Button
-                      variant="minimal/small"
-                      onClick={() => {
-                        if (abortControllerRef.current) {
-                          abortControllerRef.current.abort();
-                        }
-                        setIsLoading(false);
-                        setShowThinking(false);
-                        setThinking("");
-                      }}
-                      className="text-xs"
-                    >
-                      Cancel
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="minimal/small"
-                      onClick={() => {
-                        setShowThinking(false);
-                        setThinking("");
-                      }}
-                      className="text-xs"
-                    >
-                      Dismiss
-                    </Button>
+                    <Spinner className="size-4" />
+                  ) : lastResult === "success" ? (
+                    <CheckIcon className="size-4 text-success" />
+                  ) : lastResult === "error" ? (
+                    <XMarkIcon className="size-4 text-error" />
+                  ) : null}
+                  <span className="text-xs font-medium text-text-dimmed">
+                    {isLoading
+                      ? "AI is thinking…"
+                      : lastResult === "success"
+                      ? "Payload generated"
+                      : lastResult === "error"
+                      ? "Generation failed"
+                      : "AI response"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-0.5">
+                  {lastResult === "success" && lastPayload && (
+                    <SimpleTooltip
+                      asChild
+                      side="top"
+                      content="Copy"
+                      disableHoverableContent
+                      button={
+                        <button
+                          type="button"
+                          aria-label="Copy"
+                          onClick={() => {
+                            if (lastPayload) {
+                              void navigator.clipboard.writeText(lastPayload);
+                            }
+                          }}
+                          className="rounded p-1 text-text-dimmed transition-colors hover:bg-charcoal-700 hover:text-text-bright"
+                        >
+                          <ClipboardIcon className="size-4" />
+                        </button>
+                      }
+                    />
                   )}
+                  <SimpleTooltip
+                    asChild
+                    side="top"
+                    content="Dismiss"
+                    disableHoverableContent
+                    button={
+                      <button
+                        type="button"
+                        aria-label="Dismiss"
+                        onClick={() => {
+                          if (abortControllerRef.current) {
+                            abortControllerRef.current.abort();
+                          }
+                          setIsLoading(false);
+                          setShowThinking(false);
+                          setThinking("");
+                        }}
+                        className="rounded p-1 text-text-dimmed transition-colors hover:bg-charcoal-700 hover:text-text-bright"
+                      >
+                        <XMarkIcon className="size-4" />
+                      </button>
+                    }
+                  />
                 </div>
-                <div className="streamdown-container max-h-96 overflow-y-auto text-xs text-text-dimmed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-                  <Suspense fallback={<p className="whitespace-pre-wrap">{thinking}</p>}>
-                    <StreamdownRenderer isAnimating={isLoading}>{thinking}</StreamdownRenderer>
-                  </Suspense>
-                </div>
+              </div>
+              <div
+                className={cn(
+                  "streamdown-container max-h-96 overflow-y-auto text-xs text-text-dimmed",
+                  "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+                  // Strip Streamdown's code-block chrome
+                  "[&_[data-streamdown=code-block-header]]:hidden",
+                  "[&_[data-streamdown=code-block]]:!border-0",
+                  "[&_[data-streamdown=code-block]]:!bg-transparent",
+                  "[&_[data-streamdown=code-block]]:!p-0",
+                  "[&_[data-streamdown=code-block]]:!my-0",
+                  "[&_[data-streamdown=code-block]]:!gap-0",
+                  // Strip the inner code-block-body border (it draws a faint inset frame)
+                  "[&_[data-streamdown=code-block-body]]:!border-0",
+                  // Style Streamdown's inner code-block (where the horizontal scrollbar lives)
+                  "[&_[data-streamdown=code-block-body]]:scrollbar-thin",
+                  "[&_[data-streamdown=code-block-body]]:scrollbar-track-transparent",
+                  "[&_[data-streamdown=code-block-body]]:scrollbar-thumb-charcoal-600"
+                )}
+              >
+                <Suspense fallback={<p className="whitespace-pre-wrap">{thinking}</p>}>
+                  <StreamdownRenderer isAnimating={isLoading}>{thinking}</StreamdownRenderer>
+                </Suspense>
               </div>
             </div>
           </motion.div>
@@ -348,7 +394,9 @@ export function AIPayloadTabContent({
 
       {/* Example prompts */}
       <div className="pt-4">
-        <Header3 className="mb-3 text-text-bright">Example prompts</Header3>
+        {showExamplePromptsHeader && (
+          <Header3 className="mb-3 text-text-bright">Example prompts</Header3>
+        )}
         <div className="flex flex-wrap gap-2">
           {examplePrompts.map((example) => (
             <button
@@ -359,7 +407,7 @@ export function AIPayloadTabContent({
                 setPrompt(example);
                 submitGeneration(example);
               }}
-              className="group flex w-fit items-center gap-2 rounded-full border border-dashed border-charcoal-600 px-4 py-2 transition-colors hover:border-solid hover:border-indigo-500 focus-custom focus-visible:!rounded-full disabled:cursor-not-allowed disabled:opacity-50"
+              className="group flex w-fit items-center gap-2 rounded-full border border-dashed border-charcoal-600 px-4 py-2 transition-colors focus-custom hover:border-solid hover:border-indigo-500 focus-visible:!rounded-full disabled:cursor-not-allowed disabled:opacity-50"
             >
               <SparkleListIcon className="size-4 shrink-0 text-text-dimmed transition group-hover:text-indigo-500" />
               <Paragraph

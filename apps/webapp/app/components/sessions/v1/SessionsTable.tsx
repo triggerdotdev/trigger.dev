@@ -1,7 +1,7 @@
 import { ArrowRightIcon } from "@heroicons/react/20/solid";
 import { useLocation, useNavigation } from "@remix-run/react";
 import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
-import { ListBulletIcon } from "~/assets/icons/ListBulletIcon";
+import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
 import { MiddleTruncate } from "~/components/primitives/MiddleTruncate";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -34,9 +34,17 @@ import {
   allSessionStatuses,
 } from "./SessionStatus";
 
-type SessionsTableProps = Pick<SessionList, "sessions" | "filters" | "hasFilters">;
+type SessionsTableProps = Pick<SessionList, "sessions" | "filters" | "hasFilters"> & {
+  showTopBorder?: boolean;
+  stickyHeader?: boolean;
+};
 
-export function SessionsTable({ sessions, hasFilters }: SessionsTableProps) {
+export function SessionsTable({
+  sessions,
+  hasFilters,
+  showTopBorder = true,
+  stickyHeader = false,
+}: SessionsTableProps) {
   const navigation = useNavigation();
   const location = useLocation();
   const isLoading =
@@ -47,7 +55,11 @@ export function SessionsTable({ sessions, hasFilters }: SessionsTableProps) {
   const environment = useEnvironment();
 
   return (
-    <Table className="max-h-full overflow-y-auto">
+    <Table
+      className="max-h-full overflow-y-auto"
+      showTopBorder={showTopBorder}
+      stickyHeader={stickyHeader}
+    >
       <TableHeader>
         <TableRow>
           <TableHeaderCell>ID</TableHeaderCell>
@@ -57,10 +69,10 @@ export function SessionsTable({ sessions, hasFilters }: SessionsTableProps) {
                 {allSessionStatuses.map((status) => (
                   <div
                     key={status}
-                    className="grid grid-cols-[6rem_1fr] gap-x-2 py-2 first:pt-1 last:pb-1"
+                    className="grid grid-cols-[4rem_1fr] gap-x-3 py-2 first:pt-1 last:pb-1"
                   >
                     <div className="mb-0.5 flex items-center gap-1.5 whitespace-nowrap">
-                      <SessionStatusCombo status={status} iconClassName="animate-none" />
+                      <SessionStatusCombo status={status} />
                     </div>
                     <Paragraph variant="extra-small" className="!text-wrap text-text-dimmed">
                       {descriptionForSessionStatus(status)}
@@ -69,11 +81,12 @@ export function SessionsTable({ sessions, hasFilters }: SessionsTableProps) {
                 ))}
               </div>
             }
+            disableTooltipHoverableContent
           >
             Status
           </TableHeaderCell>
           <TableHeaderCell>Type</TableHeaderCell>
-          <TableHeaderCell>Task</TableHeaderCell>
+          <TableHeaderCell>Agent ID</TableHeaderCell>
           <TableHeaderCell>Tags</TableHeaderCell>
           <TableHeaderCell>Created</TableHeaderCell>
           <TableHeaderCell>Duration</TableHeaderCell>
@@ -128,10 +141,7 @@ export function SessionsTable({ sessions, hasFilters }: SessionsTableProps) {
                 </TableCell>
                 <TableCell to={sessionPath}>
                   <div className="w-[24ch]">
-                    <MiddleTruncate
-                      text={session.taskIdentifier}
-                      className="font-mono text-xs"
-                    />
+                    <MiddleTruncate text={session.taskIdentifier} className="font-mono text-xs" />
                   </div>
                 </TableCell>
                 <TableCell to={sessionPath}>
@@ -148,11 +158,7 @@ export function SessionsTable({ sessions, hasFilters }: SessionsTableProps) {
                 <TableCell to={sessionPath}>
                   <DateTime date={session.createdAt} />
                 </TableCell>
-                <TableCell
-                  to={sessionPath}
-                  className="w-[1%]"
-                  actionClassName="pr-0 tabular-nums"
-                >
+                <TableCell to={sessionPath} className="w-[1%]" actionClassName="pr-0 tabular-nums">
                   <SessionDuration session={session} />
                 </TableCell>
                 <SessionActionsCell runPath={runPath} allRunsPath={allRunsPath} />
@@ -181,23 +187,19 @@ function SessionDuration({ session }: { session: SessionListItem }) {
     session.status === "CLOSED"
       ? session.closedAt
       : session.status === "EXPIRED"
-        ? session.expiresAt
-        : undefined;
+      ? session.expiresAt
+      : undefined;
 
   if (endedAt) {
-    return <>{formatDuration(new Date(session.createdAt), new Date(endedAt), { style: "short" })}</>;
+    return (
+      <>{formatDuration(new Date(session.createdAt), new Date(endedAt), { style: "short" })}</>
+    );
   }
 
   return <LiveTimer startTime={new Date(session.createdAt)} />;
 }
 
-function SessionActionsCell({
-  runPath,
-  allRunsPath,
-}: {
-  runPath?: string;
-  allRunsPath: string;
-}) {
+function SessionActionsCell({ runPath, allRunsPath }: { runPath?: string; allRunsPath: string }) {
   return (
     <TableCellMenu
       isSticky
@@ -213,7 +215,7 @@ function SessionActionsCell({
           )}
           <PopoverMenuItem
             to={allRunsPath}
-            icon={ListBulletIcon}
+            icon={RunsIconExtraSmall}
             leadingIconClassName="text-runs"
             title="View all runs"
           />

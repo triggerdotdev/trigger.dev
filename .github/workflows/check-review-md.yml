@@ -14,7 +14,10 @@ concurrency:
 
 jobs:
   audit:
+    # Set the ENABLE_CLAUDE_CODE repository variable to 'false' to turn off Claude
+    # jobs; leave it unset (the default) to keep them enabled.
     if: >-
+      vars.ENABLE_CLAUDE_CODE != 'false' &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest

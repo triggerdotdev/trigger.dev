@@ -9,8 +9,10 @@ import {
   useTypedLoaderData,
 } from "remix-typedjson";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
+import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { DevDisconnectedBanner, useDevPresence } from "~/components/DevPresence";
+import { InlineCode } from "~/components/code/InlineCode";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -32,6 +34,7 @@ import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { TextLink } from "~/components/primitives/TextLink";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { RunsFilters, type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
@@ -72,7 +75,7 @@ export { shouldRevalidateRunsList as shouldRevalidate };
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Runs | Trigger.dev`,
+      title: `Runs metrics | Trigger.dev`,
     },
   ];
 };
@@ -136,7 +139,7 @@ export default function Page() {
   return (
     <>
       <NavBar>
-        <PageTitle title="Runs" />
+        <PageTitle title="Runs" accessory={<RunsHelpTooltip />} />
         {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
           <DevDisconnectedBanner isConnected={isConnected} />
         )}
@@ -450,7 +453,7 @@ function RunTaskInstructions({ task }: { task?: { slug: string } }) {
           }
           variant="secondary/medium"
           LeadingIcon={BeakerIcon}
-          leadingIconClassName="text-lime-500"
+          leadingIconClassName="text-tests"
           className="inline-flex"
         >
           Test
@@ -477,5 +480,52 @@ function RunTaskInstructions({ task }: { task?: { slug: string } }) {
         </LinkButton>
       </StepContentContainer>
     </MainCenteredContainer>
+  );
+}
+
+function RunsHelpTooltip() {
+  return (
+    <SimpleTooltip
+      button={
+        <QuestionMarkIcon className="size-4 text-text-dimmed transition hover:text-text-bright" />
+      }
+      side="bottom"
+      className="max-w-sm p-3"
+      disableHoverableContent
+      content={
+        <div className="flex flex-col gap-3">
+          <div>
+            <Paragraph variant="small/bright">What is a run?</Paragraph>
+            <Paragraph variant="small" className="mt-1">
+              A run is a single instance of a task being executed. It's created when you trigger a
+              task, for example{" "}
+              <InlineCode variant="extra-extra-small">
+                yourTask.trigger({`{ foo: "bar" }`})
+              </InlineCode>
+              . Runs are durable, so they survive crashes, deploys, and restarts, and will
+              automatically retry on failure.
+            </Paragraph>
+          </div>
+          <div className="flex flex-col gap-2.5 border-t border-grid-dimmed pt-3">
+            <div>
+              <Paragraph variant="small/bright">
+                <InlineCode>task.trigger()</InlineCode>
+              </Paragraph>
+              <Paragraph variant="small" className="mt-1">
+                Triggered from your backend code, an API call, or another task. Each call creates a
+                single run with the payload you pass in.
+              </Paragraph>
+            </div>
+            <div>
+              <Paragraph variant="small/bright">Scheduled triggers</Paragraph>
+              <Paragraph variant="small" className="mt-1">
+                Runs created automatically from a cron schedule attached to a scheduled task. Use
+                them for recurring jobs like nightly syncs or hourly cleanups.
+              </Paragraph>
+            </div>
+          </div>
+        </div>
+      }
+    />
   );
 }

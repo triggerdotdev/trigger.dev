@@ -6,7 +6,6 @@ import {
   ChevronRightIcon,
   InformationCircleIcon,
   LockOpenIcon,
-  MagnifyingGlassIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
   StopCircleIcon,
@@ -42,7 +41,7 @@ import { DateTimeShort } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
-import { Input } from "~/components/primitives/Input";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
@@ -617,7 +616,8 @@ function TraceView({
     ? linkedRunIdBySpanId?.[selectedSpanId]
     : undefined;
   const frozenLinkedRunId = useFrozenValue(selectedSpanLinkedRunId);
-  const displayLinkedRunId = (selectedSpanId ? selectedSpanLinkedRunId : frozenLinkedRunId) ?? undefined;
+  const displayLinkedRunId =
+    (selectedSpanId ? selectedSpanLinkedRunId : frozenLinkedRunId) ?? undefined;
 
   return (
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
@@ -908,34 +908,36 @@ function TasksTreeView({
 
   return (
     <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
-      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-2">
+      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-1.5">
         <SearchField onChange={setFilterText} />
-        {isAdmin && (
+        <div className="flex items-center gap-1.5">
+          {isAdmin && (
+            <Switch
+              variant="secondary/small"
+              label="Debug"
+              shortcut={{ modifiers: ["shift"], key: "D" }}
+              checked={showDebug}
+              onCheckedChange={(checked) => {
+                replace({
+                  showDebug: checked ? "true" : "false",
+                });
+              }}
+            />
+          )}
           <Switch
-            variant="small"
-            label="Debug"
-            shortcut={{ modifiers: ["shift"], key: "D" }}
-            checked={showDebug}
-            onCheckedChange={(checked) => {
-              replace({
-                showDebug: checked ? "true" : "false",
-              });
-            }}
+            variant="secondary/small"
+            label="Queue time"
+            checked={showQueueTime}
+            onCheckedChange={(e) => setShowQueueTime(e.valueOf())}
+            shortcut={{ key: "Q" }}
           />
-        )}
-        <Switch
-          variant="small"
-          label="Queue time"
-          checked={showQueueTime}
-          onCheckedChange={(e) => setShowQueueTime(e.valueOf())}
-          shortcut={{ key: "Q" }}
-        />
-        <Switch
-          variant="small"
-          label="Errors only"
-          checked={errorsOnly}
-          onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
-        />
+          <Switch
+            variant="secondary/small"
+            label="Errors only"
+            checked={errorsOnly}
+            onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
+          />
+        </div>
       </div>
       <ResizablePanelGroup autosaveId={resizableSettings.tree.autosaveId} snapshot={treeSnapshot}>
         {/* Tree list */}
@@ -990,7 +992,7 @@ function TasksTreeView({
                 <>
                   <div
                     className={cn(
-                      "flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2",
+                      "group/spannode flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2",
                       state.selected
                         ? "bg-grid-dimmed hover:bg-grid-bright"
                         : "bg-transparent hover:bg-grid-dimmed"
@@ -1041,7 +1043,13 @@ function TasksTreeView({
                     <div className="flex w-full items-center justify-between gap-2 pl-1">
                       <div className="flex items-center gap-1.5 overflow-x-hidden">
                         <RunIcon
-                          name={node.data.style?.icon}
+                          name={
+                            node.data.isAgentRun &&
+                            (node.data.style?.icon === "task" ||
+                              node.data.style?.icon === "task-cached")
+                              ? "agent"
+                              : node.data.style?.icon
+                          }
                           spanName={node.data.message}
                           className="size-5 min-h-5 min-w-5"
                         />
@@ -1463,9 +1471,15 @@ function queueAdjustedNs(timeNs: number, queuedDurationNs: number | undefined) {
 
 function NodeText({ node }: { node: TraceEvent }) {
   const className = "truncate";
+  // Only mark task-level spans as agent so the agents colour applies to
+  // the task row itself, not unrelated sub-spans (wait/log/etc.) that
+  // live underneath an agent run.
+  const isAgentTaskRow =
+    node.data.isAgentRun &&
+    (node.data.style?.icon === "task" || node.data.style?.icon === "task-cached");
   return (
     <Paragraph variant="small" className={cn(className)}>
-      <SpanTitle {...node.data} size="small" />
+      <SpanTitle {...node.data} size="small" isAgentRun={isAgentTaskRow} />
     </Paragraph>
   );
 }
@@ -1882,21 +1896,12 @@ function SearchField({ onChange }: { onChange: (value: string) => void }) {
     onChange(text);
   }, 250);
 
-  const updateValue = useCallback((value: string) => {
-    setValue(value);
-    updateFilterText(value);
+  const updateValue = useCallback((next: string) => {
+    setValue(next);
+    updateFilterText(next);
   }, []);
 
-  return (
-    <Input
-      placeholder="Search log"
-      variant="tertiary"
-      icon={MagnifyingGlassIcon}
-      fullWidth={true}
-      value={value}
-      onChange={(e) => updateValue(e.target.value)}
-    />
-  );
+  return <SearchInput placeholder="Search logs…" value={value} onValueChange={updateValue} />;
 }
 
 function useAdjacentRunPaths({

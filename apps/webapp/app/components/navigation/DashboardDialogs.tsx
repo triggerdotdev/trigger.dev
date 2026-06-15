@@ -90,7 +90,7 @@ export function CreateDashboardButton({
             <DialogTrigger asChild>
               <button
                 type="button"
-                className="flex h-full w-full items-center justify-center rounded text-text-dimmed transition focus-custom hover:bg-charcoal-600 hover:text-text-bright"
+                className="flex h-full w-full items-center justify-center rounded text-text-dimmed focus-custom hover:bg-charcoal-600 hover:text-text-bright"
               >
                 <PlusIcon className="size-4" />
               </button>
@@ -120,20 +120,30 @@ export function CreateDashboardPageButton({
   project,
   environment,
   shortcut,
+  children,
 }: {
   organization: { slug: string };
   project: { slug: string };
   environment: { slug: string };
   shortcut?: ShortcutDefinition;
+  /** Custom trigger element. When omitted, a default primary button is rendered. */
+  children?: React.ReactNode;
 }) {
   const dashboard = useCreateDashboard({ organization, project, environment });
 
   return (
     <Dialog open={dashboard.isOpen} onOpenChange={dashboard.setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="primary/small" LeadingIcon={PlusIcon} shortcut={shortcut} className="pr-2">
-          Create custom dashboard
-        </Button>
+        {children ?? (
+          <Button
+            variant="primary/small"
+            LeadingIcon={PlusIcon}
+            shortcut={shortcut}
+            className="pr-2"
+          >
+            Create custom dashboard
+          </Button>
+        )}
       </DialogTrigger>
       {dashboard.isAtLimit ? (
         <CreateDashboardUpgradeDialog

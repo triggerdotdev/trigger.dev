@@ -6,7 +6,7 @@ import {
   NoSymbolIcon,
   RectangleStackIcon,
 } from "@heroicons/react/20/solid";
-import { BeakerIcon, BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
+import { BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
 import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { useCallback, useRef } from "react";
@@ -62,6 +62,7 @@ import { TaskTriggerSourceIcon } from "./TaskTriggerSource";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import type { TaskTriggerSource } from "@trigger.dev/database";
+import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 
 type RunsTableProps = {
   total: number;
@@ -75,6 +76,8 @@ type RunsTableProps = {
   variant?: TableVariant;
   disableAdjacentRows?: boolean;
   additionalTableState?: Record<string, string>;
+  showTopBorder?: boolean;
+  stickyHeader?: boolean;
   childrenStatusesBasePath?: string;
 };
 
@@ -89,6 +92,8 @@ export function TaskRunsTable({
   allowSelection = false,
   variant = "dimmed",
   additionalTableState,
+  showTopBorder = true,
+  stickyHeader = false,
   childrenStatusesBasePath,
 }: RunsTableProps) {
   const regions = useRegions();
@@ -144,7 +149,12 @@ export function TaskRunsTable({
   );
 
   return (
-    <Table variant={variant} className="max-h-full overflow-y-auto">
+    <Table
+      variant={variant}
+      className="max-h-full overflow-y-auto"
+      showTopBorder={showTopBorder}
+      stickyHeader={stickyHeader}
+    >
       <TableHeader>
         <TableRow>
           {allowSelection && (
@@ -445,28 +455,37 @@ export function TaskRunsTable({
                   <MachineLabelCombo preset={run.machinePreset} />
                 </TableCell>
                 <TableCell to={path}>
-                  <span className="flex items-center gap-1">
-                    {run.queue.type === "task" ? (
-                      <SimpleTooltip
-                        button={<TaskIconSmall className="size-[1.125rem] text-blue-500" />}
-                        content={`This queue was automatically created from your "${run.queue.name}" task`}
-                      />
-                    ) : (
-                      <SimpleTooltip
-                        button={<RectangleStackIcon className="size-[1.125rem] text-purple-500" />}
-                        content={`This is a custom queue you added in your code.`}
-                      />
-                    )}
-                    <span>{run.queue.name}</span>
-                  </span>
+                  {run.queue.type === "task" ? (
+                    <SimpleTooltip
+                      buttonClassName="w-fit"
+                      button={
+                        <span className="flex items-center gap-1">
+                          <TaskIconSmall className="size-[1.125rem] text-blue-500" />
+                          <span>{run.queue.name}</span>
+                        </span>
+                      }
+                      content={`This queue was automatically created from your "${run.queue.name}" task`}
+                      disableHoverableContent
+                    />
+                  ) : (
+                    <SimpleTooltip
+                      buttonClassName="w-fit"
+                      button={
+                        <span className="flex items-center gap-1">
+                          <RectangleStackIcon className="size-[1.125rem] text-purple-500" />
+                          <span>{run.queue.name}</span>
+                        </span>
+                      }
+                      content={`This is a custom queue you added in your code.`}
+                      disableHoverableContent
+                    />
+                  )}
                 </TableCell>
                 {showRegion && (
                   <TableCell to={path}>
                     {run.region ? (
                       <RegionLabel
-                        region={
-                          regionByMasterQueue.get(run.region) ?? { name: run.region }
-                        }
+                        region={regionByMasterQueue.get(run.region) ?? { name: run.region }}
                         iconClassName="size-4"
                       />
                     ) : (
@@ -664,25 +683,6 @@ function BlankState({
         <Paragraph className="w-auto" variant="base/bright" spacing>
           There are no runs for {filters.tasks[0]}
         </Paragraph>
-        <div className="mt-6 flex items-center justify-center gap-2">
-          <LinkButton
-            to={testPath}
-            variant="tertiary/medium"
-            LeadingIcon={BeakerIcon}
-            className="inline-flex"
-          >
-            Create a test run
-          </LinkButton>
-          <Paragraph variant="small">or</Paragraph>
-          <LinkButton
-            to={docsPath("v3/triggering")}
-            variant="tertiary/medium"
-            LeadingIcon={BookOpenIcon}
-            className="inline-flex"
-          >
-            Triggering a task docs
-          </LinkButton>
-        </div>
       </TableBlankRow>
     );
   }
@@ -696,7 +696,7 @@ function BlankState({
         <div className="flex items-center gap-2">
           <Button
             LeadingIcon={ArrowPathIcon}
-            variant="tertiary/medium"
+            variant="secondary/medium"
             onClick={() => {
               window.location.reload();
             }}
@@ -704,7 +704,12 @@ function BlankState({
             Refresh
           </Button>
           <Paragraph>or</Paragraph>
-          <LinkButton LeadingIcon={BeakerIcon} variant="tertiary/medium" to={testPath}>
+          <LinkButton
+            LeadingIcon={BeakerIcon}
+            leadingIconClassName="text-tests"
+            variant="secondary/medium"
+            to={testPath}
+          >
             Run a test
           </LinkButton>
         </div>

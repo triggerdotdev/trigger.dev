@@ -55,6 +55,13 @@ export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
             duration: n.data.isPartial ? null : n.data.duration,
             offset,
             isRoot: n.id === spanId,
+            // Synthetic traces represent buffered/queued/canceled runs that
+            // haven't executed yet — they can't be agent runs. Keeping this
+            // field present (instead of omitting it) keeps the trace shape
+            // structurally identical to `RunPresenter`'s, which downstream
+            // consumers like the agent-icon check in runs/$runParam/route
+            // require to typecheck against the JsonifyObject union.
+            isAgentRun: false,
           },
         };
       })

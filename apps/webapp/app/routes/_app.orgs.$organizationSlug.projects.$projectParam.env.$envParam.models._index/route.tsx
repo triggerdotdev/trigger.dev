@@ -782,7 +782,7 @@ function chartConfig(opts: {
   };
 }
 
-type DetailTab = "overview" | "global" | "usage";
+type DetailTab = "overview" | "usage";
 
 function ModelDetailPanel({
   model,
@@ -830,26 +830,10 @@ function ModelDetailPanel({
           >
             Metrics
           </TabButton>
-          <TabButton
-            isActive={tab === "global"}
-            layoutId="model-detail"
-            onClick={() => setTab("global")}
-            shortcut={{ key: "g" }}
-          >
-            Global metrics
-          </TabButton>
         </TabContainer>
       </div>
       <div className="overflow-y-auto px-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         {tab === "overview" && <DetailOverviewTab model={model} />}
-        {tab === "global" && (
-          <DetailGlobalMetricsTab
-            modelName={model.modelName}
-            organizationId={organizationId}
-            projectId={projectId}
-            environmentId={environmentId}
-          />
-        )}
         {tab === "usage" && (
           <DetailYourUsageTab
             modelName={model.modelName}
@@ -954,87 +938,6 @@ function DetailOverviewTab({ model }: { model: ModelCatalogItem }) {
           </Property.Table>
         </>
       )}
-    </div>
-  );
-}
-
-function DetailGlobalMetricsTab({
-  modelName,
-  organizationId,
-  projectId,
-  environmentId,
-}: {
-  modelName: string;
-  organizationId: string;
-  projectId: string;
-  environmentId: string;
-}) {
-  const widgetProps = {
-    organizationId,
-    projectId,
-    environmentId,
-    scope: "environment" as const,
-    period: "7d",
-    from: null,
-    to: null,
-  };
-
-  return (
-    <div className="flex flex-col gap-3 py-3">
-      <div className="h-[120px]">
-        <MetricWidget
-          widgetKey={`${modelName}-ttfc-p50`}
-          title="p50 TTFC"
-          query={`SELECT round(quantilesMerge(0.5)(ttfc_quantiles)[1], 0) AS ttfc_p50 FROM llm_models WHERE response_model = '${escapeTSQL(
-            modelName
-          )}'`}
-          config={bignumberConfig("ttfc_p50", { aggregation: "avg", suffix: "ms" })}
-          {...widgetProps}
-        />
-      </div>
-      <div className="h-[120px]">
-        <MetricWidget
-          widgetKey={`${modelName}-ttfc-p90`}
-          title="p90 TTFC"
-          query={`SELECT round(quantilesMerge(0.9)(ttfc_quantiles)[1], 0) AS ttfc_p90 FROM llm_models WHERE response_model = '${escapeTSQL(
-            modelName
-          )}'`}
-          config={bignumberConfig("ttfc_p90", { aggregation: "avg", suffix: "ms" })}
-          {...widgetProps}
-        />
-      </div>
-      <div className="h-[120px]">
-        <MetricWidget
-          widgetKey={`${modelName}-tps`}
-          title="Tokens/sec (p50)"
-          query={`SELECT round(quantilesMerge(0.5)(tps_quantiles)[1], 0) AS tps_p50 FROM llm_models WHERE response_model = '${escapeTSQL(
-            modelName
-          )}'`}
-          config={bignumberConfig("tps_p50", { aggregation: "avg" })}
-          {...widgetProps}
-        />
-      </div>
-
-      <div className="h-[400px]">
-        <MetricWidget
-          widgetKey={`${modelName}-ttfc-time`}
-          title="TTFC over time"
-          query={`SELECT timeBucket(), round(quantilesMerge(0.5)(ttfc_quantiles)[1], 0) AS ttfc_p50, round(quantilesMerge(0.9)(ttfc_quantiles)[1], 0) AS ttfc_p90 FROM llm_models WHERE response_model = '${escapeTSQL(
-            modelName
-          )}' GROUP BY timeBucket ORDER BY timeBucket`}
-          config={chartConfig({
-            chartType: "line",
-            xAxisColumn: "timebucket",
-            yAxisColumns: ["ttfc_p50", "ttfc_p90"],
-            aggregation: "avg",
-          })}
-          {...widgetProps}
-        />
-      </div>
-
-      <Callout variant="info">
-        Aggregated across all Trigger.dev users. No tenant-specific data is exposed.
-      </Callout>
     </div>
   );
 }

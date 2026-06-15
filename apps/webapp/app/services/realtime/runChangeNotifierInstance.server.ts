@@ -1,6 +1,7 @@
 import { getMeter } from "@internal/tracing";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
+import { logger } from "../logger.server";
 import { RunChangeNotifier, type ChangeRecordInput } from "./runChangeNotifier.server";
 
 /**
@@ -74,12 +75,24 @@ export function publishChangeRecord(input: ChangeRecordInput): void {
   if (!nativeBackendEnabled) {
     return;
   }
-  getRunChangeNotifier().publish(input);
+  // Publish runs on the run-engine event bus / metadata flush loop; lazy init + encoding happen
+  // before the notifier's own try/catch, so guard the whole call — it must never throw at its caller.
+  try {
+    getRunChangeNotifier().publish(input);
+  } catch (error) {
+    logger.error("[runChangeNotifier] publishChangeRecord threw; dropping notification", { error });
+  }
 }
 
 export function publishManyChangeRecords(inputs: ChangeRecordInput[]): void {
   if (!nativeBackendEnabled) {
     return;
   }
-  getRunChangeNotifier().publishMany(inputs);
+  try {
+    getRunChangeNotifier().publishMany(inputs);
+  } catch (error) {
+    logger.error("[runChangeNotifier] publishManyChangeRecords threw; dropping notifications", {
+      error,
+    });
+  }
 }

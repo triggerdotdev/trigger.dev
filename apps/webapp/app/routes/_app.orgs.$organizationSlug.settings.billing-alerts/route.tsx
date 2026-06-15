@@ -28,7 +28,7 @@ import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { getBillingAlerts, setBillingAlert } from "~/services/platform.v3.server";
+import { getBillingAlerts, getCurrentPlan, setBillingAlert } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
 import {
@@ -36,6 +36,7 @@ import {
   OrganizationParamsSchema,
   organizationPath,
   v3BillingAlertsPath,
+  v3BillingPath,
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
@@ -62,6 +63,11 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   if (!organization) {
     throw new Response(null, { status: 404, statusText: "Organization not found" });
+  }
+
+  const currentPlan = await getCurrentPlan(organization.id);
+  if (currentPlan?.v3Subscription?.showSelfServe === false) {
+    return redirect(v3BillingPath({ slug: organizationSlug }));
   }
 
   const [error, alerts] = await tryCatch(getBillingAlerts(organization.id));
@@ -108,6 +114,23 @@ export const action: ActionFunction = async ({ request, params }) => {
   const userId = await requireUserId(request);
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
 
+  const organization = await prisma.organization.findFirst({
+    where: { slug: organizationSlug, members: { some: { userId } } },
+  });
+
+  if (!organization) {
+    return redirectWithErrorMessage(
+      v3BillingPath({ slug: organizationSlug }),
+      request,
+      "You are not authorized to update billing alerts"
+    );
+  }
+
+  const currentPlan = await getCurrentPlan(organization.id);
+  if (currentPlan?.v3Subscription?.showSelfServe === false) {
+    return redirect(v3BillingPath({ slug: organizationSlug }));
+  }
+
   const formData = await request.formData();
   const submission = parse(formData, { schema });
 
@@ -116,18 +139,6 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   try {
-    const organization = await prisma.organization.findFirst({
-      where: { slug: organizationSlug, members: { some: { userId } } },
-    });
-
-    if (!organization) {
-      return redirectWithErrorMessage(
-        v3BillingAlertsPath({ slug: organizationSlug }),
-        request,
-        "You are not authorized to update billing alerts"
-      );
-    }
-
     const [error, updatedAlert] = await tryCatch(
       setBillingAlert(organization.id, {
         ...submission.value,
