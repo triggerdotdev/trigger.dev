@@ -1,9 +1,8 @@
 import { type WorkloadType } from "@trigger.dev/database";
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
-import { FEATURE_FLAG } from "~/v3/featureFlags";
-import { makeFlag } from "~/v3/featureFlags.server";
 import { defaultVisibilityFilter, resolveComputeAccess } from "~/v3/regionAccess.server";
+import { WorkerGroupService } from "~/v3/services/worker/workerGroupService.server";
 import { BasePresenter } from "./basePresenter.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 
@@ -24,17 +23,18 @@ export class RegionsPresenter extends BasePresenter {
   public async call({
     userId,
     projectSlug,
+    environmentId,
     isAdmin = false,
   }: {
     userId: User["id"];
     projectSlug: Project["slug"];
+    environmentId?: string;
     isAdmin?: boolean;
   }) {
     const project = await this._replica.project.findFirst({
       select: {
         id: true,
         organizationId: true,
-        defaultWorkerGroupId: true,
         allowedWorkerQueues: true,
         organization: {
           select: { featureFlags: true },
@@ -56,14 +56,21 @@ export class RegionsPresenter extends BasePresenter {
       throw new Error("Project not found");
     }
 
-    const getFlag = makeFlag(this._replica);
-    const defaultWorkerInstanceGroupId = await getFlag({
-      key: FEATURE_FLAG.defaultWorkerInstanceGroupId,
-    });
+    const environment = environmentId
+      ? await this._replica.runtimeEnvironment.findFirst({
+          select: { defaultWorkerGroupId: true },
+          where: { id: environmentId, projectId: project.id, archivedAt: null },
+        })
+      : null;
 
-    if (!defaultWorkerInstanceGroupId) {
-      throw new Error("Default worker instance group not found");
-    }
+    // Resolve via the same path the trigger uses (env -> project -> global, each
+    // existence-checked) so the UI default always matches where runs route and can
+    // never point at a deleted region.
+    const defaultWorkerGroup = await new WorkerGroupService().getDefaultWorkerGroupForProject({
+      projectId: project.id,
+      environmentDefaultWorkerGroupId: environment?.defaultWorkerGroupId,
+    });
+    const effectiveDefaultId = defaultWorkerGroup?.id;
 
     const hasComputeAccess = await resolveComputeAccess(
       this._replica,
@@ -103,47 +110,26 @@ export class RegionsPresenter extends BasePresenter {
       cloudProvider: region.cloudProvider ?? undefined,
       location: region.location ?? undefined,
       staticIPs: region.staticIPs ?? undefined,
-      isDefault: region.id === defaultWorkerInstanceGroupId,
+      isDefault: region.id === effectiveDefaultId,
       isHidden: region.hidden,
       workloadType: region.workloadType,
     }));
 
-    if (project.defaultWorkerGroupId) {
-      const defaultWorkerGroup = await this._replica.workerInstanceGroup.findFirst({
-        select: {
-          id: true,
-          name: true,
-          masterQueue: true,
-          description: true,
-          cloudProvider: true,
-          location: true,
-          staticIPs: true,
-          hidden: true,
-          workloadType: true,
-        },
-        where: { id: project.defaultWorkerGroupId },
+    // The default may not be in the visible list (e.g. a hidden region set as the
+    // env/project default) — include the already-resolved group so it still shows.
+    if (defaultWorkerGroup && !regions.some((region) => region.id === defaultWorkerGroup.id)) {
+      regions.push({
+        id: defaultWorkerGroup.id,
+        name: defaultWorkerGroup.name,
+        masterQueue: defaultWorkerGroup.masterQueue,
+        description: defaultWorkerGroup.description ?? undefined,
+        cloudProvider: defaultWorkerGroup.cloudProvider ?? undefined,
+        location: defaultWorkerGroup.location ?? undefined,
+        staticIPs: defaultWorkerGroup.staticIPs ?? undefined,
+        isDefault: true,
+        isHidden: defaultWorkerGroup.hidden,
+        workloadType: defaultWorkerGroup.workloadType,
       });
-
-      if (defaultWorkerGroup) {
-        // Unset the default region
-        const defaultRegion = regions.find((region) => region.isDefault);
-        if (defaultRegion) {
-          defaultRegion.isDefault = false;
-        }
-
-        regions.push({
-          id: defaultWorkerGroup.id,
-          name: defaultWorkerGroup.name,
-          masterQueue: defaultWorkerGroup.masterQueue,
-          description: defaultWorkerGroup.description ?? undefined,
-          cloudProvider: defaultWorkerGroup.cloudProvider ?? undefined,
-          location: defaultWorkerGroup.location ?? undefined,
-          staticIPs: defaultWorkerGroup.staticIPs ?? undefined,
-          isDefault: true,
-          isHidden: defaultWorkerGroup.hidden,
-          workloadType: defaultWorkerGroup.workloadType,
-        });
-      }
     }
 
     // Default first

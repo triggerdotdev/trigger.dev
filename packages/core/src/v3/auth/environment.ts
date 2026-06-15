@@ -57,6 +57,11 @@ export type AuthenticatedEnvironment = {
   createdAt: Date;
   updatedAt: Date;
 
+  // Per-environment default region. Optional so plugins that don't set
+  // it fall back to the project/global default. Read in the trigger hot
+  // path (getWorkerQueue) to route runs.
+  defaultWorkerGroupId?: string | null;
+
   project: {
     id: string;
     slug: string;

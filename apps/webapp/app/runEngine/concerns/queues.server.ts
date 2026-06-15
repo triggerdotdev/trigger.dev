@@ -444,6 +444,7 @@ export class DefaultQueueManager implements QueueManager {
     const [error, workerGroup] = await tryCatch(
       workerGroupService.getDefaultWorkerGroupForProject({
         projectId: environment.projectId,
+        environmentDefaultWorkerGroupId: environment.defaultWorkerGroupId,
         regionOverride,
       })
     );

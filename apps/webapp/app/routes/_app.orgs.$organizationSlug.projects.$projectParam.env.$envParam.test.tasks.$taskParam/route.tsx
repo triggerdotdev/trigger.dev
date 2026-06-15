@@ -119,6 +119,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       new RegionsPresenter().call({
         userId: user.id,
         projectSlug: projectParam,
+        environmentId: environment.id,
         isAdmin: user.admin || user.isImpersonating,
       }),
     ]);

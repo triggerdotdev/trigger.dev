@@ -3,11 +3,11 @@ import { BaseService, ServiceValidationError } from "./baseService.server";
 
 export class SetDefaultRegionService extends BaseService {
   public async call({
-    projectId,
+    environmentId,
     regionId,
     isAdmin = false,
   }: {
-    projectId: string;
+    environmentId: string;
     regionId: string;
     isAdmin?: boolean;
   }) {
@@ -21,23 +21,25 @@ export class SetDefaultRegionService extends BaseService {
       throw new ServiceValidationError("Region not found");
     }
 
-    const project = await this._prisma.project.findFirst({
+    const environment = await this._prisma.runtimeEnvironment.findFirst({
       where: {
-        id: projectId,
+        id: environmentId,
       },
-      include: {
+      select: {
+        id: true,
+        project: { select: { allowedWorkerQueues: true } },
         organization: { select: { featureFlags: true } },
       },
     });
 
-    if (!project) {
-      throw new ServiceValidationError("Project not found");
+    if (!environment) {
+      throw new ServiceValidationError("Environment not found");
     }
 
-    // If their project is restricted, only allow them to set default regions that are allowed
+    // The allowlist stays project-scoped; only the default moves to the environment.
     if (!isAdmin) {
-      if (project.allowedWorkerQueues.length > 0) {
-        if (!project.allowedWorkerQueues.includes(workerGroup.masterQueue)) {
+      if (environment.project.allowedWorkerQueues.length > 0) {
+        if (!environment.project.allowedWorkerQueues.includes(workerGroup.masterQueue)) {
           throw new ServiceValidationError("You're not allowed to set this region as default");
         }
       } else {
@@ -48,7 +50,7 @@ export class SetDefaultRegionService extends BaseService {
         if (workerGroup.workloadType === "MICROVM") {
           const hasComputeAccess = await resolveComputeAccess(
             this._prisma,
-            project.organization.featureFlags
+            environment.organization.featureFlags
           );
 
           if (!isComputeRegionAccessible(workerGroup, hasComputeAccess)) {
@@ -58,9 +60,9 @@ export class SetDefaultRegionService extends BaseService {
       }
     }
 
-    await this._prisma.project.update({
+    await this._prisma.runtimeEnvironment.update({
       where: {
-        id: projectId,
+        id: environmentId,
       },
       data: {
         defaultWorkerGroupId: regionId,
