@@ -226,10 +226,10 @@ export class RunChangeNotifier {
   #ensurePublisher(): RedisClient {
     if (!this.#publisher) {
       // Publishes are fire-and-forget with a consumer-side backstop, so a dropped publish is
-      // latency-only. Fail fast rather than buffer commands in memory during a pub/sub outage.
+      // latency-only. Cap retries (vs ioredis's default 20) so a pub/sub outage rejects publishes
+      // after ~1 reconnect cycle instead of buffering them in memory across the fleet.
       this.#publisher = createRedisClient(`${this.#connectionName}:pub`, {
         ...this.options.redis,
-        enableOfflineQueue: false,
         maxRetriesPerRequest: 1,
       });
     }

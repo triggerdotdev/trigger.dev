@@ -11,9 +11,7 @@ export type RedisWithClusterOptions = {
   clusterMode?: boolean;
   clusterOptions?: Omit<ClusterOptions, "redisOptions">;
   keyPrefix?: string;
-  /** Reject commands immediately when the connection isn't ready instead of buffering them in memory (default: ioredis's `true`). */
-  enableOfflineQueue?: boolean;
-  /** Cap retries for an in-flight command before it rejects; `null` means unlimited (default: ioredis's default of 20). */
+  /** Cap retries for a command before it rejects; `null` means unlimited (default: ioredis's default of 20). */
   maxRetriesPerRequest?: number | null;
 };
 
@@ -41,9 +39,6 @@ export function createRedisClient(
 
     redis = new Redis.Cluster(nodes, {
       ...options.clusterOptions,
-      ...(options.enableOfflineQueue !== undefined
-        ? { enableOfflineQueue: options.enableOfflineQueue }
-        : {}),
       redisOptions: {
         connectionName,
         keyPrefix: options.keyPrefix,
@@ -82,9 +77,6 @@ export function createRedisClient(
       enableAutoPipelining: true,
       keyPrefix: options.keyPrefix,
       reconnectOnError: defaultReconnectOnError,
-      ...(options.enableOfflineQueue !== undefined
-        ? { enableOfflineQueue: options.enableOfflineQueue }
-        : {}),
       ...(options.maxRetriesPerRequest !== undefined
         ? { maxRetriesPerRequest: options.maxRetriesPerRequest }
         : {}),
