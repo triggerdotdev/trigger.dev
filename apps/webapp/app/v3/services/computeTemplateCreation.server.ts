@@ -9,6 +9,9 @@ import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { ServiceValidationError } from "./baseService.server";
 import { FailDeploymentService } from "./failDeployment.server";
 import { resolveComputeAccess } from "../regionAccess.server";
+import { isOrgMigrated, parseComputeBackingMap } from "~/runEngine/concerns/computeMigration.server";
+import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
+import { getEntitlement } from "~/services/platform.v3.server";
 
 type TemplateCreationMode = "required" | "shadow" | "skip";
 
@@ -145,10 +148,10 @@ export class ComputeTemplateCreationService {
       where: { id: projectId },
       select: {
         defaultWorkerGroup: {
-          select: { workloadType: true },
+          select: { workloadType: true, masterQueue: true },
         },
         organization: {
-          select: { featureFlags: true },
+          select: { id: true, featureFlags: true },
         },
       },
     });
@@ -159,6 +162,27 @@ export class ComputeTemplateCreationService {
 
     if (project.defaultWorkerGroup?.workloadType === "MICROVM") {
       return "required";
+    }
+
+    // Migrated orgs route runs to the compute backing even though their stored
+    // default is still the container region, so they need a compute template too.
+    // shadow mode: never fail a deploy over a backing the org didn't opt into.
+    const backingMap = parseComputeBackingMap(env.COMPUTE_BACKING_MAP);
+    const defaultQueue = project.defaultWorkerGroup?.masterQueue;
+    if (defaultQueue && backingMap[defaultQueue]) {
+      const planType = (await getEntitlement(project.organization.id))?.plan?.type;
+      if (!globalFlagsRegistry.isLoaded) {
+        await globalFlagsRegistry.waitUntilReady(env.GLOBAL_FLAGS_READY_TIMEOUT_MS);
+      }
+      const migrated = isOrgMigrated({
+        planType,
+        orgId: project.organization.id,
+        orgFeatureFlags: project.organization.featureFlags as Record<string, unknown> | null,
+        flags: globalFlagsRegistry.current(),
+      });
+      if (migrated) {
+        return "shadow";
+      }
     }
 
     const hasComputeAccess = await resolveComputeAccess(prisma, project.organization.featureFlags);
