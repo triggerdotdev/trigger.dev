@@ -1125,6 +1125,17 @@ function DetailYourUsageTab({
           {...widgetProps}
         />
       </div>
+      <div className="h-[120px]">
+        <MetricWidget
+          widgetKey={`${modelName}-user-cached-tokens`}
+          title="Cached tokens"
+          query={`SELECT sum(cached_read_tokens) AS cached_tokens FROM llm_metrics WHERE response_model = '${escapeTSQL(
+            modelName
+          )}'`}
+          config={bignumberConfig("cached_tokens", { aggregation: "sum", abbreviate: true })}
+          {...widgetProps}
+        />
+      </div>
 
       <div className="h-[400px]">
         <MetricWidget
@@ -1152,6 +1163,22 @@ function DetailYourUsageTab({
             chartType: "bar",
             xAxisColumn: "timebucket",
             yAxisColumns: ["input_tokens", "output_tokens"],
+          })}
+          {...widgetProps}
+        />
+      </div>
+      <div className="h-[400px]">
+        <MetricWidget
+          widgetKey={`${modelName}-user-cache-hit`}
+          title="Cache hit rate over time"
+          query={`SELECT timeBucket(), round(sum(cached_read_tokens) * 100.0 / (sum(input_tokens) + sum(cached_read_tokens)), 1) AS cache_hit_pct FROM llm_metrics WHERE response_model = '${escapeTSQL(
+            modelName
+          )}' GROUP BY timeBucket ORDER BY timeBucket`}
+          config={chartConfig({
+            chartType: "line",
+            xAxisColumn: "timebucket",
+            yAxisColumns: ["cache_hit_pct"],
+            aggregation: "avg",
           })}
           {...widgetProps}
         />
@@ -1246,10 +1273,10 @@ function YourModelsTab({
         </div>
         <div className="h-[312px]">
           <MetricWidget
-            widgetKey="your-models-calls-by-model"
-            title="Calls by model"
-            query={`SELECT response_model, count() AS calls FROM llm_metrics GROUP BY response_model ORDER BY calls DESC LIMIT 10`}
-            config={chartConfig({ chartType: "bar", xAxisColumn: "response_model", yAxisColumns: ["calls"] })}
+            widgetKey="your-models-calls-over-time"
+            title="Calls over time"
+            query={`SELECT timeBucket(), count() AS calls FROM llm_metrics GROUP BY timeBucket ORDER BY timeBucket`}
+            config={chartConfig({ chartType: "bar", xAxisColumn: "timebucket", yAxisColumns: ["calls"] })}
             {...widgetProps}
           />
         </div>
@@ -1270,22 +1297,25 @@ function YourModelsTab({
           <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHeaderCell className="w-[20%]">Model</TableHeaderCell>
-                <TableHeaderCell className="w-[13%]">Provider</TableHeaderCell>
-                <TableHeaderCell className="w-[9%]" alignment="right">
+                <TableHeaderCell className="w-[18%]">Model</TableHeaderCell>
+                <TableHeaderCell className="w-[12%]">Provider</TableHeaderCell>
+                <TableHeaderCell className="w-[8%]" alignment="right">
                   Calls
                 </TableHeaderCell>
-                <TableHeaderCell className="w-[9%]" alignment="right">
+                <TableHeaderCell className="w-[8%]" alignment="right">
                   Cost
                 </TableHeaderCell>
                 <TableHeaderCell className="w-[10%]" alignment="right">
+                  Cache savings
+                </TableHeaderCell>
+                <TableHeaderCell className="w-[9%]" alignment="right">
                   Avg TTFC
                 </TableHeaderCell>
-                <TableHeaderCell className="w-[12%]" alignment="right">
+                <TableHeaderCell className="w-[11%]" alignment="right">
                   Avg tokens/sec
                 </TableHeaderCell>
-                <TableHeaderCell className="w-[13.5%]">Calls trend</TableHeaderCell>
-                <TableHeaderCell className="w-[13.5%]">Tokens trend</TableHeaderCell>
+                <TableHeaderCell className="w-[12%]">Calls trend</TableHeaderCell>
+                <TableHeaderCell className="w-[12%]">Tokens trend</TableHeaderCell>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1294,6 +1324,13 @@ function YourModelsTab({
                 const provider = catalogItem?.provider ?? u.genAiSystem;
                 const displayId = catalogItem?.displayId ?? `${provider}:${u.responseModel}`;
                 const select = catalogItem ? () => onSelectModel(catalogItem) : undefined;
+                // Savings = cached reads valued at the normal input rate minus what
+                // they actually cost. Needs the model's input price from the catalog.
+                const inputPrice = catalogItem?.inputPrice ?? null;
+                const cacheSavings =
+                  inputPrice != null && u.cachedReadTokens > 0
+                    ? Math.max(0, u.cachedReadTokens * inputPrice - u.cachedReadCost)
+                    : null;
                 return (
                   <TableRow
                     key={u.responseModel}
@@ -1313,6 +1350,13 @@ function YourModelsTab({
                     </TableCell>
                     <TableCell onClick={select} alignment="right" className="tabular-nums">
                       {formatModelCost(u.totalCost)}
+                    </TableCell>
+                    <TableCell
+                      onClick={select}
+                      alignment="right"
+                      className="tabular-nums text-emerald-400/80"
+                    >
+                      {cacheSavings != null ? formatModelCost(cacheSavings) : "—"}
                     </TableCell>
                     <TableCell onClick={select} alignment="right" className="tabular-nums">
                       {u.avgTtfc > 0 ? `${u.avgTtfc.toFixed(0)}ms` : "—"}

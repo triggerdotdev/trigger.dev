@@ -229,6 +229,12 @@ export type ProjectModelUsageItem = {
   totalTokens: number;
   avgTtfc: number;
   avgTps: number;
+  /** Input tokens (used as the denominator for the cache read rate). */
+  inputTokens: number;
+  /** Input tokens served from the provider's prompt cache. */
+  cachedReadTokens: number;
+  /** Actual (discounted) cost of those cached read tokens. */
+  cachedReadCost: number;
 };
 
 // --- ClickHouse schemas for user metrics ---
@@ -256,6 +262,9 @@ const ProjectModelUsageRow = z.object({
   total_tokens: z.coerce.number(),
   avg_ttfc: z.coerce.number(),
   avg_tps: z.coerce.number(),
+  input_tokens: z.coerce.number(),
+  cached_read_tokens: z.coerce.number(),
+  cached_read_cost: z.coerce.number(),
 });
 
 const ModelSparklineRow = z.object({
@@ -661,7 +670,10 @@ export class ModelRegistryPresenter extends BasePresenter {
           sum(total_cost) AS total_cost,
           sum(total_tokens) AS total_tokens,
           round(avg(ms_to_first_chunk), 1) AS avg_ttfc,
-          round(avg(tokens_per_second), 1) AS avg_tps
+          round(avg(tokens_per_second), 1) AS avg_tps,
+          sum(input_tokens) AS input_tokens,
+          sum(usage_details['input_cached_tokens']) AS cached_read_tokens,
+          sum(cost_details['input_cached_tokens']) AS cached_read_cost
         FROM trigger_dev.llm_metrics_v1
         WHERE project_id = {projectId: String}
           AND environment_id = {environmentId: String}
@@ -698,6 +710,9 @@ export class ModelRegistryPresenter extends BasePresenter {
       totalTokens: r.total_tokens,
       avgTtfc: r.avg_ttfc,
       avgTps: r.avg_tps,
+      inputTokens: r.input_tokens,
+      cachedReadTokens: r.cached_read_tokens,
+      cachedReadCost: r.cached_read_cost,
     }));
   }
 
