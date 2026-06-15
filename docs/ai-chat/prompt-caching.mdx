@@ -30,6 +30,10 @@ A request renders as `tools` → `system` → `messages`. There are three prefix
 
 The system prompt (your `chat.prompt` text plus any skills preamble) is usually the largest stable block, so it's the first thing to cache. `chat.toStreamTextOptions()` returns `system` as a plain string by default; opt into caching and it returns a structured system message carrying the cache breakpoint instead.
 
+<Note>
+  System-prompt caching needs AI SDK v6 or later, where the `system` parameter accepts a structured message. On AI SDK v5 `system` is a plain string, so these options won't apply a breakpoint to the system block — cache the conversation via `prepareMessages` instead.
+</Note>
+
 Three ways to opt in, depending on where you'd rather express it.
 
 **`cacheControl` at the `streamText` call site** — the Anthropic-flavored one-liner:
