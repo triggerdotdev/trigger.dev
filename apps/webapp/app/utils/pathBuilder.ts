@@ -199,6 +199,14 @@ export function v3EnvironmentPath(
   )}/env/${environmentParam(environment)}`;
 }
 
+export function v3TasksDashboardPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/tasks/dashboard`;
+}
+
 export function v3TasksStreamingPath(
   organization: OrgForPath,
   project: ProjectForPath,
@@ -308,6 +316,14 @@ export function v3BuiltInDashboardPath(
   return `${v3EnvironmentPath(organization, project, environment)}/dashboards/${key}`;
 }
 
+export function v3DashboardsLandingPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/dashboards`;
+}
+
 export function v3TestTaskPath(
   organization: OrgForPath,
   project: ProjectForPath,
@@ -336,12 +352,37 @@ export function v3PlaygroundAgentPath(
   return `${v3PlaygroundPath(organization, project, environment)}/${encodeURIComponent(agentSlug)}`;
 }
 
-export function v3AgentsPath(
+export function v3AgentTaskPath(
   organization: OrgForPath,
   project: ProjectForPath,
-  environment: EnvironmentForPath
+  environment: EnvironmentForPath,
+  agentSlug: string
 ) {
-  return `${v3EnvironmentPath(organization, project, environment)}/agents`;
+  return `${v3EnvironmentPath(organization, project, environment)}/agents/${encodeURIComponent(
+    agentSlug
+  )}`;
+}
+
+export function v3StandardTaskPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  taskSlug: string
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/tasks/standard/${encodeURIComponent(
+    taskSlug
+  )}`;
+}
+
+export function v3ScheduledTaskPath(
+  organization: OrgForPath,
+  project: ProjectForPath,
+  environment: EnvironmentForPath,
+  taskSlug: string
+) {
+  return `${v3EnvironmentPath(organization, project, environment)}/tasks/scheduled/${encodeURIComponent(
+    taskSlug
+  )}`;
 }
 
 export function v3RunsPath(
@@ -435,14 +476,6 @@ export function v3RunIdempotencyKeyResetPath(
   )}/env/${environmentParam(environment)}/runs/${run.friendlyId}/idempotencyKey/reset`;
 }
 
-export function v3SchedulesPath(
-  organization: OrgForPath,
-  project: ProjectForPath,
-  environment: EnvironmentForPath
-) {
-  return `${v3EnvironmentPath(organization, project, environment)}/schedules`;
-}
-
 export function v3SchedulePath(
   organization: OrgForPath,
   project: ProjectForPath,
@@ -471,6 +504,10 @@ export function v3NewSchedulePath(
   environment: EnvironmentForPath
 ) {
   return `${v3EnvironmentPath(organization, project, environment)}/schedules/new`;
+}
+
+export function v3SchedulesAddOnPath(organization: OrgForPath) {
+  return `/resources/orgs/${organizationParam(organization)}/schedules-addon`;
 }
 
 export function v3QueuesPath(

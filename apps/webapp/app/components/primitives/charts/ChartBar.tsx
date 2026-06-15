@@ -14,6 +14,7 @@ import { ChartTooltip, ChartTooltipContent } from "~/components/primitives/chart
 import { useChartContext } from "./ChartContext";
 import { ChartBarInvalid, ChartBarLoading, ChartBarNoData } from "./ChartLoading";
 import { useHasNoData } from "./ChartRoot";
+import { useYAxisWidth } from "./useYAxisWidth";
 import { ZoomTooltip, useZoomHandlers } from "./ChartZoom";
 
 //TODO: fix the first and last bars in a stack not having rounded corners
@@ -40,6 +41,8 @@ export type ChartBarRendererProps = {
   tooltipLabelFormatter?: (label: string, payload: any[]) => string;
   /** Optional formatter for numeric tooltip values (e.g. bytes, duration) */
   tooltipValueFormatter?: (value: number) => string;
+  /** Corner radius for the outermost bars in each stack (defaults to 2). Pass 0 for square corners. */
+  barRadius?: number;
   /** Width injected by ResponsiveContainer */
   width?: number;
   /** Height injected by ResponsiveContainer */
@@ -65,6 +68,7 @@ export function ChartBarRenderer({
   referenceLine,
   tooltipLabelFormatter,
   tooltipValueFormatter,
+  barRadius = 2,
   width,
   height,
 }: ChartBarRendererProps) {
@@ -72,6 +76,7 @@ export function ChartBarRenderer({
   const hasNoData = useHasNoData();
   const zoomHandlers = useZoomHandlers();
   const enableZoom = zoom !== null;
+  const computedYAxisWidth = useYAxisWidth(data, visibleSeries, yAxisPropsProp?.tickFormatter);
 
   const handleBarClick = useCallback(
     (barData: any, e: React.MouseEvent) => {
@@ -146,6 +151,7 @@ export function ChartBarRenderer({
         axisLine={false}
         tickLine={false}
         tickMargin={8}
+        width={computedYAxisWidth}
         tick={{
           fill: "#878C99",
           fontSize: 11,
@@ -202,10 +208,10 @@ export function ChartBarRenderer({
             fill={config[key]?.color}
             radius={
               [
-                index === array.length - 1 ? 2 : 0,
-                index === array.length - 1 ? 2 : 0,
-                index === 0 ? 2 : 0,
-                index === 0 ? 2 : 0,
+                index === array.length - 1 ? barRadius : 0,
+                index === array.length - 1 ? barRadius : 0,
+                index === 0 ? barRadius : 0,
+                index === 0 ? barRadius : 0,
               ] as [number, number, number, number]
             }
             activeBar={false}

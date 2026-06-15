@@ -70,7 +70,11 @@ export function EnvironmentSelector({
                   isCollapsed ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100"
                 )}
               >
-                <EnvironmentLabel environment={environment} className="text-2sm" disableTooltip />
+                <EnvironmentLabel
+                  environment={environment}
+                  className="text-[0.90625rem] font-medium tracking-[-0.01em]"
+                  disableTooltip
+                />
               </span>
             </span>
             <span

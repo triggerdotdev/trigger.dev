@@ -44,7 +44,7 @@ import {
   EnvironmentParamSchema,
   ProjectParamSchema,
   docsPath,
-  v3SchedulesPath,
+  v3EnvironmentPath,
 } from "~/utils/pathBuilder";
 import { CronPattern, UpsertSchedule } from "~/v3/schedules";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
@@ -99,7 +99,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const result = await createSchedule.call(project.id, submission.value);
 
     return redirectWithSuccessMessage(
-      v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
+      v3EnvironmentPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
       request,
       submission.value?.friendlyId === result.id ? "Schedule updated" : "Schedule created"
     );
@@ -108,7 +108,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     const errorMessage = `Something went wrong. Please try again.`;
     return redirectWithErrorMessage(
-      v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
+      v3EnvironmentPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
       request,
       errorMessage
     );
@@ -131,7 +131,15 @@ export function UpsertScheduleForm({
   possibleEnvironments,
   possibleTimezones,
   showGenerateField,
-}: EditableScheduleElements & { showGenerateField: boolean }) {
+  defaultTaskIdentifier,
+}: EditableScheduleElements & {
+  showGenerateField: boolean;
+  /**
+   * Pre-fills the Task select when creating a new schedule (no `schedule`
+   * passed). Ignored when editing.
+   */
+  defaultTaskIdentifier?: string;
+}) {
   const lastSubmission = useActionData();
   const [selectedTimezone, setSelectedTimezone] = useState<string>(schedule?.timezone ?? "UTC");
   const isUtc = selectedTimezone === "UTC";
@@ -197,39 +205,47 @@ export function UpsertScheduleForm({
       {...form.props}
       className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright"
     >
-      <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
-        <Header2 className={cn("whitespace-nowrap")}>
-          {schedule?.friendlyId ? "Edit schedule" : "New schedule"}
+      <div className="mx-3 flex min-w-0 items-center justify-between gap-2 overflow-hidden border-b border-grid-dimmed">
+        <Header2 className="truncate">
+          {schedule?.friendlyId
+            ? "Edit schedule"
+            : defaultTaskIdentifier
+            ? `New schedule for ${defaultTaskIdentifier}`
+            : "New schedule"}
         </Header2>
       </div>
       <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <div className="p-3">
           {schedule && <input type="hidden" name="friendlyId" value={schedule.friendlyId} />}
           <Fieldset>
-            <InputGroup>
-              <Label htmlFor={taskIdentifier.id}>Task</Label>
-              <Select
-                {...conform.select(taskIdentifier)}
-                placeholder="Select a task"
-                defaultValue={schedule?.taskIdentifier}
-                heading={"Filter..."}
-                items={possibleTasks}
-                filter={(task, search) => task.toLowerCase().includes(search.toLowerCase())}
-                dropdownIcon
-                variant="tertiary/medium"
-              >
-                {(matches) => (
-                  <>
-                    {matches?.map((task) => (
-                      <SelectItem key={task} value={task}>
-                        {task}
-                      </SelectItem>
-                    ))}
-                  </>
-                )}
-              </Select>
-              <FormError id={taskIdentifier.errorId}>{taskIdentifier.error}</FormError>
-            </InputGroup>
+            {!schedule && defaultTaskIdentifier ? (
+              <input type="hidden" name={taskIdentifier.name} value={defaultTaskIdentifier} />
+            ) : (
+              <InputGroup>
+                <Label htmlFor={taskIdentifier.id}>Task</Label>
+                <Select
+                  {...conform.select(taskIdentifier)}
+                  placeholder="Select a task"
+                  defaultValue={schedule?.taskIdentifier}
+                  heading={"Filter..."}
+                  items={possibleTasks}
+                  filter={(task, search) => task.toLowerCase().includes(search.toLowerCase())}
+                  dropdownIcon
+                  variant="tertiary/medium"
+                >
+                  {(matches) => (
+                    <>
+                      {matches?.map((task) => (
+                        <SelectItem key={task} value={task}>
+                          {task}
+                        </SelectItem>
+                      ))}
+                    </>
+                  )}
+                </Select>
+                <FormError id={taskIdentifier.errorId}>{taskIdentifier.error}</FormError>
+              </InputGroup>
+            )}
             {showGenerateField && <AIGeneratedCronField onSuccess={setCronPattern} />}
             <InputGroup>
               <Label
@@ -402,7 +418,7 @@ export function UpsertScheduleForm({
       <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
         <div className="flex items-center gap-4">
           <LinkButton
-            to={`${v3SchedulesPath(organization, project, environment)}${location.search}`}
+            to={`${v3EnvironmentPath(organization, project, environment)}${location.search}`}
             variant="secondary/medium"
           >
             Cancel

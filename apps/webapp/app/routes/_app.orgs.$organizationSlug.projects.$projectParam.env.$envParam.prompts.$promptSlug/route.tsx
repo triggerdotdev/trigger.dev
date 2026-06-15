@@ -76,7 +76,7 @@ import { requireUserId } from "~/services/session.server";
 import { PromptService } from "~/v3/services/promptService.server";
 
 import { z } from "zod";
-import { AIPromptsIcon } from "~/assets/icons/AIPromptsIcon";
+import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { InlineCode } from "~/components/code/InlineCode";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
@@ -1419,7 +1419,7 @@ function GenerationsTab({
       <div className="flex h-full items-center justify-center">
         <InfoPanel
           title="No generations yet"
-          icon={AIPromptsIcon}
+          icon={AIChatIcon}
           iconClassName="text-aiPrompts"
           panelClassName="max-w-md"
         >

@@ -9,7 +9,9 @@ import {
 } from "./taskIdentifierCache.server";
 
 function toTriggerSource(source: string | undefined): TaskTriggerSource {
-  if (source === "SCHEDULED" || source === "schedule") return "SCHEDULED";
+  const normalized = source?.toUpperCase();
+  if (normalized === "AGENT") return "AGENT";
+  if (normalized === "SCHEDULED" || normalized === "SCHEDULE") return "SCHEDULED";
   return "STANDARD";
 }
 

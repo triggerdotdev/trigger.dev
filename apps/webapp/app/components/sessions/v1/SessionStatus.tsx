@@ -46,15 +46,22 @@ export function sessionStatusColor(status: SessionStatus): string {
 export function SessionStatusIcon({
   status,
   className,
+  pulse = true,
 }: {
   status: SessionStatus;
   className: string;
+  pulse?: boolean;
 }) {
   switch (status) {
     case "ACTIVE":
       return (
         <span className={cn("inline-flex items-center justify-center", className)}>
-          <span className="size-2 rounded-full bg-pending" />
+          <span className="relative flex size-2">
+            {pulse && (
+              <span className="absolute h-full w-full animate-ping rounded-full border border-pending opacity-100 duration-1000" />
+            )}
+            <span className="size-2 rounded-full bg-pending" />
+          </span>
         </span>
       );
     case "CLOSED":
@@ -74,16 +81,17 @@ export function SessionStatusCombo({
   status,
   className,
   iconClassName,
+  pulse = true,
 }: {
   status: SessionStatus;
   className?: string;
   iconClassName?: string;
+  pulse?: boolean;
 }) {
   return (
     <span className={cn("flex items-center gap-1", className)}>
-      <SessionStatusIcon status={status} className={cn("h-4 w-4", iconClassName)} />
+      <SessionStatusIcon status={status} className={cn("size-4", iconClassName)} pulse={pulse} />
       <SessionStatusLabel status={status} />
     </span>
   );
 }
-

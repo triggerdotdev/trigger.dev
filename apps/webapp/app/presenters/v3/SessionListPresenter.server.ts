@@ -9,6 +9,7 @@ import {
   SessionsRepository,
 } from "~/services/sessionsRepository/sessionsRepository.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
+import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 
 export type SessionListOptions = {
@@ -111,6 +112,28 @@ export class SessionListPresenter {
       return date > now ? now : date;
     }
 
+    // Sessions are produced by chat.agent() tasks. The TaskIdentifier
+    // registry has historically misclassified agent slugs as STANDARD (the
+    // toTriggerSource helper didn't know about "agent" until recently), so
+    // read from BackgroundWorkerTask of the current worker instead — same
+    // source AgentListPresenter uses for the Agents page.
+    const possibleTasksAsync = startActiveSpan(
+      "SessionListPresenter.getPossibleTasks",
+      async () => {
+        const currentWorker = await findCurrentWorkerFromEnvironment(
+          { id: environmentId, type: displayableEnvironment.type },
+          this.replica
+        );
+        if (!currentWorker) return [];
+        const agents = await this.replica.backgroundWorkerTask.findMany({
+          where: { workerId: currentWorker.id, triggerSource: "AGENT" },
+          select: { slug: true },
+          orderBy: { slug: "asc" },
+        });
+        return agents.map((a) => ({ slug: a.slug, isInLatestDeployment: true }));
+      }
+    );
+
     const { sessions, pagination } = await sessionsRepository.listSessions({
       organizationId,
       projectId,
@@ -154,6 +177,8 @@ export class SessionListPresenter {
     const currentRunIds = sessions
       .map((s) => s.currentRunId)
       .filter((id): id is string => Boolean(id));
+
+    const possibleTasks = await possibleTasksAsync;
 
     const currentRuns = await startActiveSpan(
       "SessionListPresenter.findCurrentRuns",
@@ -220,6 +245,7 @@ export class SessionListPresenter {
         from: time.from,
         to: time.to,
       },
+      possibleTasks,
       hasFilters,
       hasAnySessions,
     };

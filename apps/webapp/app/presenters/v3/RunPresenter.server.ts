@@ -1,4 +1,4 @@
-import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
+import { millisecondsToNanoseconds, RunAnnotations } from "@trigger.dev/core/v3";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
 import { prisma, type PrismaClient } from "~/db.server";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
@@ -77,6 +77,7 @@ export class RunPresenter {
         startedAt: true,
         completedAt: true,
         logsDeletedAt: true,
+        annotations: true,
         rootTaskRun: {
           select: {
             friendlyId: true,
@@ -230,6 +231,11 @@ export class RunPresenter {
       },
     });
 
+    // Resolve agent-kind once so the tree renderer can swap icon/colour for
+    // the current run's spans without doing per-row lookups.
+    const isAgentRun =
+      RunAnnotations.safeParse(run.annotations).data?.taskKind === "AGENT";
+
     //this tree starts at the passed in span (hides parent elements if there are any)
     const tree = createTreeFromFlatItems(traceSummary.spans, run.spanId);
 
@@ -272,6 +278,7 @@ export class RunPresenter {
               duration: n.data.isPartial ? null : n.data.duration,
               offset,
               isRoot: n.id === traceSummary.rootSpan.id,
+              isAgentRun: n.runId === run.friendlyId && isAgentRun,
             },
           };
         })

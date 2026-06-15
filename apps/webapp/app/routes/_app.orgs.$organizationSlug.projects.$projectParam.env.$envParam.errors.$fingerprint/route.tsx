@@ -4,7 +4,6 @@ import { type MetaFunction, useFetcher, useRevalidator } from "@remix-run/react"
 import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
   IconAlarmSnooze as IconAlarmSnoozeBase,
-  IconBugFilled,
   IconCircleDotted,
 } from "@tabler/icons-react";
 import { ErrorId } from "@trigger.dev/core/v3/isomorphic";
@@ -23,6 +22,7 @@ import {
 } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { BugIcon } from "~/assets/icons/BugIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
@@ -518,7 +518,7 @@ function ErrorGroupDetail({
               />
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center gap-3">
-                <IconBugFilled className="size-16 text-charcoal-650" />
+                <BugIcon className="size-16 text-charcoal-650" />
                 <Paragraph className="max-w-32 text-center text-text-dimmed">
                   No runs found for this error.
                 </Paragraph>

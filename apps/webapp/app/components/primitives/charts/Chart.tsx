@@ -2,6 +2,7 @@ import * as React from "react";
 import * as RechartsPrimitive from "recharts";
 import { cn } from "~/utils/cn";
 import { AnimatedNumber } from "../AnimatedNumber";
+import TooltipPortal from "../TooltipPortal";
 
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: "", dark: ".dark" } as const;
@@ -162,6 +163,7 @@ const ChartTooltipContent = React.forwardRef<
     const nestLabel = payload.length === 1 && indicator !== "dot";
 
     return (
+      <TooltipPortal active={active}>
       <div
         ref={ref}
         className={cn(
@@ -239,6 +241,7 @@ const ChartTooltipContent = React.forwardRef<
           })}
         </div>
       </div>
+      </TooltipPortal>
     );
   }
 );

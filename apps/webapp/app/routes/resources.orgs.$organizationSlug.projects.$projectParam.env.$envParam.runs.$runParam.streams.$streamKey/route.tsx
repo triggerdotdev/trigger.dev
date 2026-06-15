@@ -29,7 +29,7 @@ import { v3RunStreamParamsSchema } from "~/utils/pathBuilder";
 
 type ViewMode = "list" | "compact";
 
-type StreamChunk = {
+export type StreamChunk = {
   id: string;
   data: unknown;
   timestamp: number;
@@ -104,6 +104,9 @@ export function RealtimeStreamViewer({
   resourcePath: resourcePathOverride,
   headerLabel,
   headerLeft,
+  headerRight,
+  hideViewModeToggle = false,
+  headerClassName,
 }: {
   runId?: string;
   streamKey?: string;
@@ -119,6 +122,16 @@ export function RealtimeStreamViewer({
    * label.
    */
   headerLeft?: React.ReactNode;
+  /**
+   * Extra content appended after the built-in chunks/view-mode/copy
+   * controls on the right side of the header. Use to inline a mode
+   * toggle or other actions alongside the stream controls.
+   */
+  headerRight?: React.ReactNode;
+  /** Hide the "Flow as text" / "View as list" view-mode toggle button. */
+  hideViewModeToggle?: boolean;
+  /** Extra classes applied to the header bar (overrides default styling via tailwind-merge). */
+  headerClassName?: string;
 }) {
   const organization = useOrganization();
   const project = useProject();
@@ -242,7 +255,12 @@ export function RealtimeStreamViewer({
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b border-grid-bright bg-background-bright @container">
+      <div
+        className={cn(
+          "border-b border-grid-bright bg-background-bright @container",
+          headerClassName
+        )}
+      >
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 @[300px]:flex-nowrap">
           <div className="flex min-w-0 items-center gap-3">
             <TooltipProvider>
@@ -276,29 +294,31 @@ export function RealtimeStreamViewer({
               {simplur`${chunks.length} chunk[|s]`}
             </Paragraph>
             <div className="flex items-center gap-3">
-              <TooltipProvider>
-                <Tooltip open={chunks.length === 0 ? false : undefined} disableHoverableContent>
-                  <TooltipTrigger
-                    disabled={chunks.length === 0}
-                    onClick={() => setViewMode(viewMode === "list" ? "compact" : "list")}
-                    className={cn(
-                      "text-text-dimmed transition-colors focus-custom",
-                      chunks.length === 0
-                        ? "cursor-not-allowed opacity-50"
-                        : "hover:cursor-pointer hover:text-text-bright"
-                    )}
-                  >
-                    {viewMode === "list" ? (
-                      <SnakedArrowIcon className="size-4" />
-                    ) : (
-                      <ListBulletIcon className="size-4" />
-                    )}
-                  </TooltipTrigger>
-                  <TooltipContent side="left" className="text-xs">
-                    {viewMode === "list" ? "Flow as text" : "View as list"}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              {!hideViewModeToggle && (
+                <TooltipProvider>
+                  <Tooltip open={chunks.length === 0 ? false : undefined} disableHoverableContent>
+                    <TooltipTrigger
+                      disabled={chunks.length === 0}
+                      onClick={() => setViewMode(viewMode === "list" ? "compact" : "list")}
+                      className={cn(
+                        "text-text-dimmed transition-colors focus-custom",
+                        chunks.length === 0
+                          ? "cursor-not-allowed opacity-50"
+                          : "hover:cursor-pointer hover:text-text-bright"
+                      )}
+                    >
+                      {viewMode === "list" ? (
+                        <SnakedArrowIcon className="size-4" />
+                      ) : (
+                        <ListBulletIcon className="size-4" />
+                      )}
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="text-xs">
+                      {viewMode === "list" ? "Flow as text" : "View as list"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
               <TooltipProvider>
                 <Tooltip
                   open={chunks.length === 0 ? false : copied || mouseOver || undefined}
@@ -359,6 +379,7 @@ export function RealtimeStreamViewer({
                 </Tooltip>
               </TooltipProvider>
             </div>
+            {headerRight}
           </div>
         </div>
       </div>
@@ -504,7 +525,7 @@ function StreamChunkLine({
   );
 }
 
-function useRealtimeStream(resourcePath: string, startIndex?: number) {
+export function useRealtimeStream(resourcePath: string, startIndex?: number) {
   const [chunks, setChunks] = useState<StreamChunk[]>([]);
   const [error, setError] = useState<Error | null>(null);
   const [isConnected, setIsConnected] = useState(false);
