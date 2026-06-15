@@ -86,8 +86,9 @@ export function __setSessionStartImplForTests(impl: SessionStartImpl | undefined
 }
 
 /**
- * Start a {@link Session} — a durable, task-bound, bidirectional I/O
- * primitive. The server creates the row (idempotent on `externalId`)
+ * Start a {@link Session} — a stateful execution of an agent, with
+ * two-way streaming and durable compute, that can span multiple runs.
+ * The server creates the row (idempotent on `externalId`)
  * and triggers the first run from `triggerConfig` in one round-trip.
  * Returns the new run's id and a session-scoped public access token
  * for browser-side use against `.in/append`, `.out` SSE, and
