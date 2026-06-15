@@ -1,7 +1,7 @@
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
-import type { SpanOverride, SpanSummary } from "~/v3/eventRepository/eventRepository.types";
+import type { SpanSummary } from "~/v3/eventRepository/eventRepository.types";
 import type { SyntheticRun } from "./readFallback.server";
 
 // Build a single-span trace for a buffered run so the run-detail page
@@ -79,13 +79,8 @@ export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
     duration: totalDuration,
     rootStartedAt: tree?.data.startTime,
     startedAt: null,
-    // Typed as `number | undefined` (not the literal `undefined`) so the
-    // field survives `typedjson`'s `JsonifyObject` and stays in the route
-    // loader's serialized trace shape — matches `RunPresenter`'s shape.
-    // Buffered runs have no startedAt yet, so the runtime value stays
-    // undefined.
-    queuedDuration: undefined as number | undefined,
-    overridesBySpanId: {} as Record<string, SpanOverride>,
+    queuedDuration: undefined,
+    overridesBySpanId: undefined,
     linkedRunIdBySpanId: {} as Record<string, string>,
   };
 }
