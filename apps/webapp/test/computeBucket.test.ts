@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hashBucket } from "./computeBucket";
+import { hashBucket } from "~/utils/computeBucket";
 
 describe("hashBucket", () => {
   it("returns a stable value in [0, 100) for the same id", () => {
