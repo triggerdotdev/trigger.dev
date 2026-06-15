@@ -30,7 +30,11 @@ export const FeatureFlagCatalog = {
   // globally and per-org (org wins). Defaults to "electric" when unset.
   // "shadow" serves Electric but diffs the native path in the background.
   [FEATURE_FLAG.realtimeBackend]: z.enum(["electric", "native", "shadow"]),
-  [FEATURE_FLAG.computeMigrationEnabled]: z.coerce.boolean(),
+  // Strict z.boolean() (not z.coerce.boolean()): coercion turns the string "false"
+  // into true, which would silently flip this kill switch / per-org exclude the wrong
+  // way if written as a string via the admin PAT route. The admin toggle sends a real
+  // boolean, so this only rejects the dangerous stringified case.
+  [FEATURE_FLAG.computeMigrationEnabled]: z.boolean(),
   [FEATURE_FLAG.computeMigrationFreePercentage]: z.coerce.number().int().min(0).max(100),
   [FEATURE_FLAG.computeMigrationPaidPercentage]: z.coerce.number().int().min(0).max(100),
 };

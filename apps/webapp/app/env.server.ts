@@ -164,10 +164,10 @@ const EnvironmentSchema = z
     COMPUTE_BACKING_MAP: z.string().default("{}"),
     // How often each replica reloads the global flags snapshot from the DB.
     // Sets kill/ramp propagation latency.
-    GLOBAL_FLAGS_RELOAD_INTERVAL_MS: z.coerce.number().int().default(5000),
+    GLOBAL_FLAGS_RELOAD_INTERVAL_MS: z.coerce.number().int().min(1000).default(5000),
     // Max time the first trigger blocks waiting for the initial flags load
     // before falling back to defaults (off = container, the safe direction).
-    GLOBAL_FLAGS_READY_TIMEOUT_MS: z.coerce.number().int().default(5000),
+    GLOBAL_FLAGS_READY_TIMEOUT_MS: z.coerce.number().int().min(0).default(5000),
     WORKER_ENABLED: z.string().default("true"),
     GRACEFUL_SHUTDOWN_TIMEOUT: z.coerce.number().int().default(60000),
     DISABLE_SSE: z.string().optional(),

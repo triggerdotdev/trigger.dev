@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import cuid from "cuid";
 import { hashBucket } from "~/utils/computeBucket";
 
 describe("hashBucket", () => {
@@ -24,5 +25,22 @@ describe("hashBucket", () => {
     const under10 = ids.filter((id) => hashBucket(id) < 10).length;
     expect(under10).toBeGreaterThan(700);
     expect(under10).toBeLessThan(1300);
+  });
+
+  // Org ids are `@default(cuid())` primary keys (e.g. "cjld2cjxh0000qzrmn831i7rn"),
+  // not the synthetic sequential ids above. cuids share a "c" prefix + timestamp/counter
+  // structure, so verify the hash still spreads *real-shaped* ids evenly across deciles
+  // (so a percentage dial maps to ~that fraction of actual orgs, not just of the id space).
+  it("distributes cuids evenly across all 10 deciles", () => {
+    const ids = Array.from({ length: 20000 }, () => cuid());
+    const counts = new Array(10).fill(0);
+    for (const id of ids) {
+      counts[Math.floor(hashBucket(id) / 10)]++;
+    }
+    // Expected ~2000 per decile; allow a wide band so it isn't flaky.
+    for (const count of counts) {
+      expect(count).toBeGreaterThan(1700);
+      expect(count).toBeLessThan(2300);
+    }
   });
 });
