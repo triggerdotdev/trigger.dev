@@ -28,6 +28,19 @@ export function parseComputeBackingMap(raw: string): ComputeBackingMap {
   }
 }
 
+/**
+ * Inverse of the backing map: given a worker queue, return the user-facing geo
+ * region. If the queue is a compute backing (a *value* in the map), return the
+ * region it backs; otherwise return the queue unchanged. Used to hide the
+ * backing on customer surfaces and to re-derive the region on replay.
+ */
+export function regionForBacking(queue: string, backingMap: ComputeBackingMap): string {
+  for (const [region, backing] of Object.entries(backingMap)) {
+    if (backing === queue) return region;
+  }
+  return queue;
+}
+
 type MigrationDecisionInput = {
   planType: string | undefined;
   orgId: string;

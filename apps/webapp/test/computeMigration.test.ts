@@ -3,6 +3,7 @@ import {
   parseComputeBackingMap,
   isOrgMigrated,
   resolveComputeMigration,
+  regionForBacking,
 } from "~/runEngine/concerns/computeMigration.server";
 
 const BACKING = { "us-east-1": "us-east-1-next" };
@@ -106,5 +107,18 @@ describe("resolveComputeMigration", () => {
   it("undefined baseWorkerQueue passes through", () => {
     expect(resolveComputeMigration({ ...enrolled, baseWorkerQueue: undefined, orgId: "org_x" }))
       .toBeUndefined();
+  });
+});
+
+describe("regionForBacking", () => {
+  it("maps a backing to its region", () => {
+    expect(regionForBacking("us-east-1-next", BACKING)).toBe("us-east-1");
+  });
+  it("passes a non-backing queue through unchanged", () => {
+    expect(regionForBacking("us-east-1", BACKING)).toBe("us-east-1");
+    expect(regionForBacking("eu-central-1", BACKING)).toBe("eu-central-1");
+  });
+  it("passes through unchanged with an empty map", () => {
+    expect(regionForBacking("us-east-1-next", {})).toBe("us-east-1-next");
   });
 });

@@ -38,10 +38,8 @@ import {
   resolveScheduledQueueSplitEnabled,
   workerQueueForRun,
 } from "../concerns/workerQueueSplit.server";
-import {
-  parseComputeBackingMap,
-  resolveComputeMigration,
-} from "../concerns/computeMigration.server";
+import { resolveComputeMigration } from "../concerns/computeMigration.server";
+import { computeBackingMap } from "~/v3/computeBackingMap.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import {
   publishClaim as publishMollifierClaim,
@@ -69,8 +67,6 @@ import {
 import { mollifyTrigger } from "~/v3/mollifier/mollifierMollify.server";
 import { type MollifierBuffer } from "@trigger.dev/redis-worker";
 import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
-
-const COMPUTE_BACKING_MAP = parseComputeBackingMap(env.COMPUTE_BACKING_MAP);
 
 class NoopTriggerRacepointSystem implements TriggerRacepointSystem {
   async waitForRacepoint(options: { racepoint: TriggerRacepoints; id: string }): Promise<void> {
@@ -379,7 +375,7 @@ export class RunEngineTriggerTaskService {
             orgFeatureFlags: environment.organization.featureFlags as Record<string, unknown> | null,
             flags: globalFlagsRegistry.current(),
             envType: environment.type,
-            backingMap: COMPUTE_BACKING_MAP,
+            backingMap: computeBackingMap,
           });
 
           // Build annotations for this run

@@ -12,6 +12,8 @@ import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getTaskIdentifiers } from "~/models/task.server";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
+import { regionForBacking } from "~/runEngine/concerns/computeMigration.server";
+import { computeBackingMap } from "~/v3/computeBackingMap.server";
 import { machinePresetFromRun } from "~/v3/machinePresets.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
@@ -260,7 +262,9 @@ export class NextRunListPresenter {
             name: run.queue.replace("task/", ""),
             type: run.queue.startsWith("task/") ? "task" : "custom",
           },
-          region: run.workerQueue ? baseWorkerQueue(run.workerQueue) : undefined,
+          region: run.workerQueue
+            ? regionForBacking(baseWorkerQueue(run.workerQueue), computeBackingMap)
+            : undefined,
           taskKind: RunAnnotations.safeParse(run.annotations).data?.taskKind ?? "STANDARD",
         };
       }),
