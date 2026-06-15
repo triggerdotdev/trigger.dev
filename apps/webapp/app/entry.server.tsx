@@ -43,6 +43,8 @@ import { registerRunChangeNotifierHandlers } from "./services/realtime/runChange
 import { sessionsReplicationInstance } from "./services/sessionsReplicationInstance.server";
 (globalThis as Record<string, unknown>).__sessionsReplicationInstance =
   sessionsReplicationInstance;
+import { globalFlagsRegistry } from "./v3/globalFlagsRegistry.server";
+(globalThis as Record<string, unknown>).__globalFlagsRegistry = globalFlagsRegistry;
 
 const ABORT_DELAY = 30000;
 
