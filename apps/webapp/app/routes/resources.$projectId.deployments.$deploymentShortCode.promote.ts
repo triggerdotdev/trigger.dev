@@ -1,10 +1,10 @@
 import { parse } from "@conform-to/zod";
-import { ActionFunction, json } from "@remix-run/node";
+import { json } from "@remix-run/node";
 import { z } from "zod";
-import { prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { ChangeCurrentDeploymentService } from "~/v3/services/changeCurrentDeployment.server";
 
 export const promoteSchema = z.object({
@@ -16,75 +16,90 @@ const ParamSchema = z.object({
   deploymentShortCode: z.string(),
 });
 
-export const action: ActionFunction = async ({ request, params }) => {
-  const userId = await requireUserId(request);
-  const { projectId, deploymentShortCode } = ParamSchema.parse(params);
+async function resolveOrgIdFromProjectId(projectId: string): Promise<string | null> {
+  const project = await $replica.project.findFirst({
+    where: { id: projectId },
+    select: { organizationId: true },
+  });
+  return project?.organizationId ?? null;
+}
 
-  const formData = await request.formData();
-  const submission = parse(formData, { schema: promoteSchema });
+export const action = dashboardAction(
+  {
+    params: ParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromProjectId(params.projectId);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "write", resource: { type: "deployments" } },
+  },
+  async ({ request, params, user }) => {
+    const { projectId, deploymentShortCode } = params;
 
-  if (!submission.value) {
-    return json(submission);
-  }
+    const formData = await request.formData();
+    const submission = parse(formData, { schema: promoteSchema });
 
-  try {
-    const project = await prisma.project.findUnique({
-      where: {
-        id: projectId,
-        organization: {
-          members: {
-            some: {
-              userId,
+    if (!submission.value) {
+      return json(submission);
+    }
+
+    try {
+      const project = await prisma.project.findFirst({
+        where: {
+          id: projectId,
+          organization: {
+            members: {
+              some: {
+                userId: user.id,
+              },
             },
           },
         },
-      },
-    });
+      });
 
-    if (!project) {
-      return redirectWithErrorMessage(submission.value.redirectUrl, request, "Project not found");
-    }
+      if (!project) {
+        return redirectWithErrorMessage(submission.value.redirectUrl, request, "Project not found");
+      }
 
-    const deployment = await prisma.workerDeployment.findUnique({
-      where: {
-        projectId_shortCode: {
+      const deployment = await prisma.workerDeployment.findFirst({
+        where: {
           projectId: project.id,
           shortCode: deploymentShortCode,
         },
-      },
-    });
+      });
 
-    if (!deployment) {
-      return redirectWithErrorMessage(
+      if (!deployment) {
+        return redirectWithErrorMessage(
+          submission.value.redirectUrl,
+          request,
+          "Deployment not found"
+        );
+      }
+
+      const promoteService = new ChangeCurrentDeploymentService();
+      await promoteService.call(deployment, "promote");
+
+      return redirectWithSuccessMessage(
         submission.value.redirectUrl,
         request,
-        "Deployment not found"
+        `Promoted deployment version ${deployment.version} to current.`
       );
-    }
-
-    const promoteService = new ChangeCurrentDeploymentService();
-    await promoteService.call(deployment, "promote");
-
-    return redirectWithSuccessMessage(
-      submission.value.redirectUrl,
-      request,
-      `Promoted deployment version ${deployment.version} to current.`
-    );
-  } catch (error) {
-    if (error instanceof Error) {
-      logger.error("Failed to promote deployment", {
-        error: {
-          name: error.name,
-          message: error.message,
-          stack: error.stack,
-        },
-      });
-      submission.error = { runParam: [error.message] };
-      return json(submission);
-    } else {
-      logger.error("Failed to promote deployment", { error });
-      submission.error = { runParam: [JSON.stringify(error)] };
-      return json(submission);
+    } catch (error) {
+      if (error instanceof Error) {
+        logger.error("Failed to promote deployment", {
+          error: {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+          },
+        });
+        submission.error = { runParam: [error.message] };
+        return json(submission);
+      } else {
+        logger.error("Failed to promote deployment", { error });
+        submission.error = { runParam: [JSON.stringify(error)] };
+        return json(submission);
+      }
     }
   }
-};
+);
