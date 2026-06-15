@@ -225,7 +225,13 @@ export class RunChangeNotifier {
 
   #ensurePublisher(): RedisClient {
     if (!this.#publisher) {
-      this.#publisher = createRedisClient(`${this.#connectionName}:pub`, this.options.redis);
+      // Publishes are fire-and-forget with a consumer-side backstop, so a dropped publish is
+      // latency-only. Fail fast rather than buffer commands in memory during a pub/sub outage.
+      this.#publisher = createRedisClient(`${this.#connectionName}:pub`, {
+        ...this.options.redis,
+        enableOfflineQueue: false,
+        maxRetriesPerRequest: 1,
+      });
     }
     return this.#publisher;
   }
