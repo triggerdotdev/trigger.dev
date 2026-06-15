@@ -65,6 +65,19 @@ async function collectManifest(): Promise<string[]> {
 }
 
 async function bundleSdkDocs() {
+  // When the SDK is built as a dependency inside a pruned workspace (e.g. the webapp Docker
+  // image), the repo-level docs/ tree is a separate workspace package that isn't part of that
+  // build's dependency graph, so it isn't present. The SDK isn't being published there, so
+  // there's nothing to bundle: skip rather than fail. Publishing always runs from the full
+  // monorepo where docs/ exists, so the missing-docs guard below still protects releases.
+  const docsRoot = path.join(repoRoot, "docs");
+  try {
+    await fs.access(docsRoot);
+  } catch {
+    console.log(`[bundleSdkDocs] docs/ not present at ${docsRoot}; skipping (pruned build)`);
+    return;
+  }
+
   const manifest = await collectManifest();
 
   if (manifest.length === 0) {
