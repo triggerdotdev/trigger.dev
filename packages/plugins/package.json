@@ -14,7 +14,8 @@
     "dist"
   ],
   "dependencies": {
-    "@trigger.dev/core": "workspace:*"
+    "@trigger.dev/core": "workspace:*",
+    "neverthrow": "^8.2.0"
   },
   "scripts": {
     "clean": "rimraf dist .turbo",
