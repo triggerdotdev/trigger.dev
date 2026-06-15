@@ -55,7 +55,7 @@ If you see "Connection error" when running `trigger login` (or "Failed to create
 
 ### Runs never dequeue in dev
 
-If runs sit in the queue and never start while running `trigger.dev dev`, check whether you have more than one dev session connected to the same account. Only one dev session can run per account at a time, so a second session causes runs to be split between them and some appear stuck. Stop the extra session and keep a single `trigger.dev dev` running. [Upvote isolated dev sessions](https://triggerdev.featurebase.app/p/isolated-dev-sessions-for-multiple-local-trigger-dev-instances) if you need to run multiple local instances.
+If runs sit in the queue and never start while running `trigger.dev dev`, check whether you have more than one local instance running against the same project. Each project has a single dev environment, and only one `trigger.dev dev` instance can consume from it at a time, so a second instance causes runs to be split between them and some appear stuck. Keep a single `trigger.dev dev` running per project. [Upvote isolated dev sessions](https://triggerdev.featurebase.app/p/isolated-dev-sessions-for-multiple-local-trigger-dev-instances) if you need to run multiple local instances.
 
 ## Deployment
 
