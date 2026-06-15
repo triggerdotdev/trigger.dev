@@ -16,6 +16,7 @@ import { OctoKitty } from "~/components/GitHubLoginButton";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { PermissionLink } from "~/components/primitives/PermissionLink";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -389,6 +390,7 @@ export function ConnectGitHubRepoModal({
   environmentSlug,
   redirectUrl,
   preventDismiss,
+  canManageGithub = true,
 }: {
   gitHubAppInstallations: GitHubAppInstallation[];
   organizationSlug: string;
@@ -397,6 +399,7 @@ export function ConnectGitHubRepoModal({
   redirectUrl?: string;
   /** When true, prevents closing the modal via Escape key or clicking outside */
   preventDismiss?: boolean;
+  canManageGithub?: boolean;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const lastSubmission = useActionData() as any;
@@ -457,7 +460,17 @@ export function ConnectGitHubRepoModal({
       }}
     >
       <DialogTrigger asChild>
-        <Button type="button" variant={"secondary/medium"} LeadingIcon={OctoKitty}>
+        <Button
+          type="button"
+          variant={"secondary/medium"}
+          LeadingIcon={OctoKitty}
+          disabled={!canManageGithub}
+          tooltip={
+            canManageGithub
+              ? undefined
+              : "You don't have permission to manage the GitHub integration"
+          }
+        >
           Connect GitHub repo
         </Button>
       </DialogTrigger>
@@ -617,12 +630,14 @@ export function GitHubConnectionPrompt({
   projectSlug,
   environmentSlug,
   redirectUrl,
+  canManageGithub = true,
 }: {
   gitHubAppInstallations: GitHubAppInstallation[];
   organizationSlug: string;
   projectSlug: string;
   environmentSlug: string;
   redirectUrl?: string;
+  canManageGithub?: boolean;
 }) {
   const githubInstallationRedirect =
     redirectUrl ||
@@ -635,7 +650,9 @@ export function GitHubConnectionPrompt({
     <Fieldset>
       <InputGroup fullWidth>
         {gitHubAppInstallations.length === 0 && (
-          <LinkButton
+          <PermissionLink
+            hasPermission={canManageGithub}
+            noPermissionTooltip="You don't have permission to manage the GitHub integration"
             to={githubAppInstallPath(
               organizationSlug,
               `${githubInstallationRedirect}?openGithubRepoModal=1`
@@ -644,7 +661,7 @@ export function GitHubConnectionPrompt({
             LeadingIcon={OctoKitty}
           >
             Install GitHub app
-          </LinkButton>
+          </PermissionLink>
         )}
         {gitHubAppInstallations.length !== 0 && (
           <div className="flex items-center gap-3">
@@ -654,6 +671,7 @@ export function GitHubConnectionPrompt({
               projectSlug={projectSlug}
               environmentSlug={environmentSlug}
               redirectUrl={redirectUrl}
+              canManageGithub={canManageGithub}
             />
             <span className="flex items-center gap-1 text-xs text-text-dimmed">
               <CheckCircleIcon className="size-4 text-success" /> GitHub app is installed
@@ -673,6 +691,7 @@ export function ConnectedGitHubRepoForm({
   environmentSlug,
   billingPath,
   redirectUrl,
+  canManageGithub = true,
 }: {
   connectedGitHubRepo: ConnectedGitHubRepo;
   previewEnvironmentEnabled?: boolean;
@@ -681,6 +700,7 @@ export function ConnectedGitHubRepoForm({
   environmentSlug: string;
   billingPath: string;
   redirectUrl?: string;
+  canManageGithub?: boolean;
 }) {
   const lastSubmission = useActionData() as any;
   const navigation = useNavigation();
@@ -747,7 +767,17 @@ export function ConnectedGitHubRepoForm({
         </div>
         <Dialog>
           <DialogTrigger asChild>
-            <Button variant="minimal/small">Disconnect</Button>
+            <Button
+              variant="minimal/small"
+              disabled={!canManageGithub}
+              tooltip={
+                canManageGithub
+                  ? undefined
+                  : "You don't have permission to manage the GitHub integration"
+              }
+            >
+              Disconnect
+            </Button>
           </DialogTrigger>
           <DialogContent className="max-w-md">
             <DialogHeader>Disconnect GitHub repository</DialogHeader>
@@ -876,7 +906,12 @@ export function ConnectedGitHubRepoForm({
                 name="action"
                 value="update-git-settings"
                 variant="secondary/small"
-                disabled={isGitSettingsLoading || !hasGitSettingsChanges}
+                disabled={isGitSettingsLoading || !hasGitSettingsChanges || !canManageGithub}
+                tooltip={
+                  canManageGithub
+                    ? undefined
+                    : "You don't have permission to manage the GitHub integration"
+                }
                 LeadingIcon={isGitSettingsLoading ? SpinnerWhite : undefined}
               >
                 Save
@@ -947,6 +982,7 @@ export function GitHubSettingsPanel({
         environmentSlug={environmentSlug}
         billingPath={billingPath}
         redirectUrl={effectiveRedirectUrl}
+        canManageGithub={data.canManageGithub}
       />
     );
   }
@@ -960,6 +996,7 @@ export function GitHubSettingsPanel({
         projectSlug={projectSlug}
         environmentSlug={environmentSlug}
         redirectUrl={effectiveRedirectUrl}
+        canManageGithub={data.canManageGithub}
       />
       {!data.connectedRepository && (
         <Hint>Connect your GitHub repository to automatically deploy your changes.</Hint>
