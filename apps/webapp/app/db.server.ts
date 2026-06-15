@@ -12,6 +12,10 @@ import { z } from "zod";
 import { env } from "./env.server";
 import { logger } from "./services/logger.server";
 import { isValidDatabaseUrl } from "./utils/db";
+import {
+  captureInfrastructureErrors,
+  logTransactionInfrastructureError,
+} from "./utils/prismaErrors";
 import { singleton } from "./utils/singleton";
 import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
 import { context, Span, trace } from "@opentelemetry/api";
@@ -36,6 +40,22 @@ export async function $transaction<R>(
   options?: PrismaTransactionOptions
 ): Promise<R | undefined>;
 export async function $transaction<R>(
+  prisma: PrismaClientOrTransaction,
+  fnOrName: ((prisma: PrismaTransactionClient) => Promise<R>) | string,
+  fnOrOptions?: ((prisma: PrismaTransactionClient) => Promise<R>) | PrismaTransactionOptions,
+  options?: PrismaTransactionOptions
+): Promise<R | undefined> {
+  try {
+    return await $transactionInner(prisma, fnOrName, fnOrOptions, options);
+  } catch (error) {
+    // transac()'s callback only logs coded Prisma errors; infra errors such as
+    // PrismaClientInitializationError reach the boundary without a `.code`.
+    logTransactionInfrastructureError(error);
+    throw error;
+  }
+}
+
+async function $transactionInner<R>(
   prisma: PrismaClientOrTransaction,
   fnOrName: ((prisma: PrismaTransactionClient) => Promise<R>) | string,
   fnOrOptions?: ((prisma: PrismaTransactionClient) => Promise<R>) | PrismaTransactionOptions,
@@ -116,11 +136,13 @@ function tagDatasource<T extends PrismaClient>(
   }) as unknown as T;
 }
 
-export const prisma = singleton("prisma", () => tagDatasource("writer", getClient()));
+export const prisma = singleton("prisma", () =>
+  captureInfrastructureErrors(tagDatasource("writer", getClient()))
+);
 
 export const $replica: PrismaReplicaClient = singleton("replica", () => {
   const replica = getReplicaClient();
-  return replica ? tagDatasource("replica", replica) : prisma;
+  return replica ? captureInfrastructureErrors(tagDatasource("replica", replica)) : prisma;
 });
 
 function getClient() {
