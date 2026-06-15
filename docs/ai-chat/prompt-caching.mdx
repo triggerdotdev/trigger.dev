@@ -1,0 +1,202 @@
+---
+title: "Prompt caching"
+sidebarTitle: "Prompt caching"
+description: "Cache the stable prefix of your agent's prompt with Anthropic prompt caching to cut token cost and latency on every turn."
+---
+
+import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
+
+<RcBanner />
+
+**Prompt caching lets a provider reuse the unchanged prefix of your prompt across requests, billing it at a fraction of the input price and skipping re-processing.** With Anthropic, cache reads cost ~10% of base input tokens, so a long, stable system prompt or a growing conversation history pays full price once and reads cheaply on every turn after.
+
+Caching is a **byte-exact prefix match**: any change in the prefix invalidates everything after it. A multi-turn agent is the ideal case — the system prompt, tools, and earlier turns are identical turn over turn, so the cacheable prefix only grows. `chat.agent` is built to keep that prefix stable across turns, suspends, and resumes; this page shows how to place the cache breakpoints and verify they're hitting.
+
+Caching is provider-specific. This guide covers Anthropic (`@ai-sdk/anthropic`), where you opt in per breakpoint with `providerOptions.anthropic.cacheControl`. Other providers cache differently, and most cache automatically — see [Other providers](#other-providers).
+
+## What you cache, and where
+
+A request renders as `tools` → `system` → `messages`. There are three prefix regions worth caching, in order:
+
+| Region | How to cache it | Stability |
+| --- | --- | --- |
+| System prompt (+ tools) | `cacheControl` / `systemProviderOptions` on `chat.toStreamTextOptions()`, or `providerOptions` on `chat.prompt.set()` | Set once, never changes — the highest-value target |
+| Conversation history | `prepareMessages` adds a breakpoint to the last message | Grows append-only across turns |
+| Tool definitions | Stable as long as your tool set doesn't change between turns | Render at position 0 — changing them invalidates everything |
+
+`chat.agent` preserves `providerOptions` through message persistence and rehydration, so a breakpoint you place survives a suspend/resume or a page refresh. The recommended way to place message breakpoints is `prepareMessages` (below) rather than baking `cacheControl` into stored messages — `prepareMessages` runs on every prompt-assembly path, including after compaction, so the breakpoint is always in the right place.
+
+## Cache the system prompt
+
+The system prompt (your `chat.prompt` text plus any skills preamble) is usually the largest stable block, so it's the first thing to cache. `chat.toStreamTextOptions()` returns `system` as a plain string by default; opt into caching and it returns a structured system message carrying the cache breakpoint instead.
+
+Three ways to opt in, depending on where you'd rather express it.
+
+**`cacheControl` at the `streamText` call site** — the Anthropic-flavored one-liner:
+
+```ts /trigger/chat.ts
+import { chat } from "@trigger.dev/sdk/ai";
+import { streamText } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+
+export const myChat = chat.agent({
+  id: "my-chat",
+  onChatStart: async () => {
+    chat.prompt.set(SYSTEM_PROMPT); // a large, stable instruction block
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({
+      model: anthropic("claude-sonnet-4-5"),
+      // Caches the system block with a 5-minute breakpoint.
+      ...chat.toStreamTextOptions({ cacheControl: { type: "ephemeral" } }),
+      messages,
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+**`systemProviderOptions`** is the provider-agnostic form — pass the raw `providerOptions` so it composes with any provider:
+
+```ts /trigger/chat.ts
+return streamText({
+  model: anthropic("claude-sonnet-4-5"),
+  ...chat.toStreamTextOptions({
+    systemProviderOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+  }),
+  messages,
+  abortSignal: signal,
+});
+```
+
+**`providerOptions` on `chat.prompt.set()`** co-locates the intent with where the prompt is defined. It carries through to `toStreamTextOptions()` with no call-site change:
+
+```ts /trigger/chat.ts
+onChatStart: async () => {
+  chat.prompt.set(SYSTEM_PROMPT, {
+    providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+  });
+},
+run: async ({ messages, signal }) => {
+  return streamText({
+    model: anthropic("claude-sonnet-4-5"),
+    ...chat.toStreamTextOptions(), // already cached
+    messages,
+    abortSignal: signal,
+  });
+},
+```
+
+If more than one is set, the call-site option wins: `systemProviderOptions` overrides `cacheControl`, and both override `chat.prompt.set`'s `providerOptions`. There's no deep merge — the most specific option replaces the rest.
+
+<Note>
+  Use the 1-hour cache for prefixes that sit idle longer than 5 minutes between turns: `cacheControl: { type: "ephemeral", ttl: "1h" }`. Writes cost more (2× vs 1.25×), so it pays off only when reads span the longer window.
+</Note>
+
+## Cache the conversation history
+
+Place a breakpoint on the last message and the entire conversation prefix up to that point is cached, so the next turn reads it back instead of re-processing it. Do this in [`prepareMessages`](/ai-chat/reference#chatagentoptions) — it transforms model messages once, and `chat.agent` applies it on every path that builds a prompt (each turn, and both compaction rebuild paths), so the breakpoint always lands on the real last message.
+
+```ts /trigger/chat.ts
+export const myChat = chat.agent({
+  id: "my-chat",
+  prepareMessages: async ({ messages }) => {
+    if (messages.length === 0) return messages;
+    const last = messages[messages.length - 1];
+    return [
+      ...messages.slice(0, -1),
+      {
+        ...last,
+        providerOptions: {
+          ...last.providerOptions,
+          anthropic: { cacheControl: { type: "ephemeral" } },
+        },
+      },
+    ];
+  },
+  run: async ({ messages, signal }) => {
+    return streamText({
+      model: anthropic("claude-sonnet-4-5"),
+      ...chat.toStreamTextOptions({ cacheControl: { type: "ephemeral" } }),
+      messages,
+      abortSignal: signal,
+    });
+  },
+});
+```
+
+The system breakpoint and the conversation breakpoint compose: the system block is cached once for the life of the chat, and each turn extends the cached message prefix.
+
+<Note>
+  Anthropic allows **at most 4** cache breakpoints per request, and a prefix must be at least ~1024 tokens (model-dependent) to cache at all — shorter prefixes silently don't cache. One system breakpoint plus one rolling message breakpoint is the typical setup and leaves headroom.
+</Note>
+
+## Caching and compaction
+
+Compaction rewrites the conversation prefix — it replaces earlier turns with a summary — so it necessarily invalidates the cached message prefix at that point. That's a one-time reset, not a regression: because `prepareMessages` also runs on the compaction rebuild and result paths, the new (shorter) prefix gets a fresh breakpoint and re-warms on the next turn. Your system-prompt cache is unaffected — compaction never touches the system block. See [Compaction](/ai-chat/compaction) for how the summary is produced.
+
+## Other providers
+
+Caching is provider-specific, and most providers don't use per-block breakpoints at all:
+
+- **OpenAI** and **Google Gemini** cache automatically. OpenAI caches any prompt prefix over 1024 tokens; Gemini 2.5 caches implicitly (1024 tokens on Flash, 2048 on Pro). Neither needs a breakpoint, so the system-caching options above are a no-op for them — `chat.agent` already gives automatic caching exactly what it needs: a byte-stable prefix that only grows across turns. Keep the system prompt frozen and the prefix over the model's minimum and reads happen on their own. (OpenAI's optional `providerOptions.openai.promptCacheKey` improves hit-routing across requests; it's a top-level option, not a system-block breakpoint.)
+
+- **Anthropic** and **Amazon Bedrock** take an explicit breakpoint on the system block — Anthropic via `cacheControl`, Bedrock via `cachePoint`. Both go through the provider-agnostic `systemProviderOptions`:
+
+```ts /trigger/chat.ts
+// Amazon Bedrock
+return streamText({
+  ...chat.toStreamTextOptions({
+    systemProviderOptions: { bedrock: { cachePoint: { type: "default" } } },
+  }),
+  messages,
+});
+```
+
+The `cacheControl` shorthand is Anthropic-only; `systemProviderOptions` (and `chat.prompt.set`'s `providerOptions`) is the form to reach for on any other breakpoint-based provider.
+
+Usage reporting is normalized. Providers report cache tokens under different names (`cachedPromptTokens`, `cachedContentTokenCount`, `cacheReadInputTokens`), but the AI SDK maps them into the same `inputTokenDetails.cacheReadTokens` / `cacheWriteTokens` that `previousTurnUsage` and `totalUsage` carry and the dashboard shows — so the [verify step](#verify-caching-is-working) is the same regardless of provider.
+
+## Verify caching is working
+
+The turn's usage carries cache token counts. `chat.agent` accumulates them across turns and hands them to `run` as `previousTurnUsage` (last turn) and `totalUsage` (whole chat), both `LanguageModelUsage`:
+
+```ts /trigger/chat.ts
+run: async ({ messages, signal, previousTurnUsage }) => {
+  // After turn 1, cacheReadTokens should be > 0 on a stable prefix.
+  console.log("cache read", previousTurnUsage?.inputTokenDetails?.cacheReadTokens);
+  console.log("cache write", previousTurnUsage?.inputTokenDetails?.cacheWriteTokens);
+
+  return streamText({
+    model: anthropic("claude-sonnet-4-5"),
+    ...chat.toStreamTextOptions({ cacheControl: { type: "ephemeral" } }),
+    messages,
+    abortSignal: signal,
+  });
+},
+```
+
+The first turn writes the cache (`cacheWriteTokens > 0`, `cacheReadTokens` is 0). Every turn after, on an unchanged prefix, reads it (`cacheReadTokens > 0`). The dashboard surfaces the same numbers on the AI span as **Cache write** and **Cache read**, so you can confirm hits per run without logging.
+
+If `cacheReadTokens` stays 0 across turns with an identical prefix, a silent invalidator is shifting the bytes — see below.
+
+<Warning>
+  Anything that changes the prefix between turns silently kills the cache. Keep the system prompt **byte-stable** — never interpolate a timestamp, request ID, or per-turn value into `chat.prompt`. Don't change the **model** or the **tool set** mid-conversation (tools render at position 0, so adding one invalidates everything after). Inject dynamic per-turn context as a late message via [pending messages](/ai-chat/pending-messages) or [background injection](/ai-chat/background-injection), not into the cached prefix.
+</Warning>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Compaction" icon="compress" href="/ai-chat/compaction">
+    Keep long conversations within token limits — and re-warm the cache after.
+  </Card>
+  <Card title="Fast starts" icon="bolt" href="/ai-chat/fast-starts">
+    Cut cold-start latency so a cached prefix is the only thing between a message and a reply.
+  </Card>
+  <Card title="chat.agent reference" icon="book" href="/ai-chat/reference#chatagentoptions">
+    Full option surface, including `prepareMessages` and `toStreamTextOptions`.
+  </Card>
+  <Card title="Building agents: backend" icon="server" href="/ai-chat/backend">
+    The three ways to build a chat backend and when to reach for each.
+  </Card>
+</CardGroup>
