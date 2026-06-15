@@ -3416,7 +3416,7 @@ const chatPromptKey = locals.create<ChatPromptValue>("chat.prompt");
  * the system block. Stored separately so it works for both the `ResolvedPrompt`
  * and plain-string forms without mutating the prompt object.
  */
-const chatPromptProviderOptionsKey = locals.create<ProviderMetadata>(
+const chatPromptProviderOptionsKey = locals.create<ProviderMetadata | undefined>(
   "chat.prompt.providerOptions"
 );
 
@@ -3460,9 +3460,9 @@ function setChatPrompt(resolved: ResolvedPrompt | string, options?: SetChatPromp
     locals.set(chatPromptKey, resolved);
   }
 
-  if (options?.providerOptions) {
-    locals.set(chatPromptProviderOptionsKey, options.providerOptions);
-  }
+  // Always overwrite the slot (even with undefined) so a later prompt.set with
+  // no options clears a previous prompt's cache opt-in rather than leaking it.
+  locals.set(chatPromptProviderOptionsKey, options?.providerOptions);
 }
 
 /**
