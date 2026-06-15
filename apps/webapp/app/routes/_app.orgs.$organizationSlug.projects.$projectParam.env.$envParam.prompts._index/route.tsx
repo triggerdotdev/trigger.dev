@@ -1,12 +1,24 @@
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Bar, BarChart, ResponsiveContainer } from "recharts";
+import {
+  Bar,
+  BarChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  YAxis,
+  type TooltipProps,
+} from "recharts";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { PromptsNone } from "~/components/BlankStatePanels";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
-import { DateTime } from "~/components/primitives/DateTime";
+import { DateTime, formatDateTime } from "~/components/primitives/DateTime";
+import { Header3 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { Paragraph } from "~/components/primitives/Paragraph";
+import TooltipPortal from "~/components/primitives/TooltipPortal";
+import { cn } from "~/utils/cn";
 import {
   Table,
   TableBlankRow,
@@ -97,7 +109,39 @@ export default function PromptsPage() {
               <TableHeaderCell>Slug</TableHeaderCell>
               <TableHeaderCell>Description</TableHeaderCell>
               <TableHeaderCell>Model</TableHeaderCell>
-              <TableHeaderCell>Version</TableHeaderCell>
+              <TableHeaderCell
+                tooltip={
+                  <div className="flex max-w-[16rem] flex-col gap-3 p-1 pb-2">
+                    <div className="flex flex-col gap-2">
+                      <div>
+                        <div className="mb-0.5 flex items-center gap-2">
+                          <span className="size-1.5 shrink-0 rounded-full bg-success" />
+                          <Paragraph variant="small" className="!text-wrap text-text-bright">
+                            Latest version
+                          </Paragraph>
+                        </div>
+                        <Paragraph variant="small" className="!text-wrap pl-3.5 text-text-dimmed">
+                          Running the most recently published version.
+                        </Paragraph>
+                      </div>
+                      <div>
+                        <div className="mb-0.5 flex items-center gap-2">
+                          <span className="size-1.5 shrink-0 rounded-full bg-warning" />
+                          <Paragraph variant="small" className="!text-wrap text-text-bright">
+                            Version overridden
+                          </Paragraph>
+                        </div>
+                        <Paragraph variant="small" className="!text-wrap pl-3.5 text-text-dimmed">
+                          Pinned to an older version instead of the latest.
+                        </Paragraph>
+                      </div>
+                    </div>
+                  </div>
+                }
+                disableTooltipHoverableContent
+              >
+                Version
+              </TableHeaderCell>
               <TableHeaderCell>Usage (24h)</TableHeaderCell>
               <TableHeaderCell alignment="right">Last updated</TableHeaderCell>
             </TableRow>
@@ -164,24 +208,72 @@ export default function PromptsPage() {
   );
 }
 
+type UsageDatum = { date: Date; count: number };
+
 function UsageSparkline({ data }: { data?: number[] }) {
   if (!data || data.every((v) => v === 0)) {
-    return <span className="text-charcoal-500">-</span>;
+    return <span className="text-text-dimmed">–</span>;
   }
 
   const total = data.reduce((a, b) => a + b, 0);
-  const chartData = data.map((value) => ({ value }));
+  const max = Math.max(...data);
+
+  // Map the 24-bucket array to dated points so the tooltip can show the
+  // hour each bar represents. Bucket i is `23 - i` hours before now.
+  const now = new Date();
+  const chartData: UsageDatum[] = data.map((count, i) => ({
+    date: new Date(now.getTime() - (data.length - 1 - i) * 3600_000),
+    count,
+  }));
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="h-6 w-16">
+    <div className="flex items-start gap-2">
+      <div className="h-6 w-[7rem] rounded-sm">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} margin={{ top: 1, right: 0, bottom: 1, left: 0 }}>
-            <Bar dataKey="value" fill="#3b82f6" radius={[1, 1, 0, 0]} isAnimationActive={false} />
+          <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+            <YAxis domain={[0, max || 1]} hide />
+            <Tooltip
+              cursor={{ fill: "rgba(255, 255, 255, 0.06)" }}
+              content={<UsageSparklineTooltip />}
+              allowEscapeViewBox={{ x: true, y: true }}
+              wrapperStyle={{ zIndex: 1000 }}
+              animationDuration={0}
+            />
+            <Bar
+              dataKey="count"
+              fill="#3B82F6"
+              strokeWidth={0}
+              isAnimationActive={false}
+              minPointSize={1}
+            />
+            <ReferenceLine y={0} stroke="#2C3034" strokeWidth={1} />
+            {max > 0 && (
+              <ReferenceLine y={max} stroke="#4D525B" strokeDasharray="4 4" strokeWidth={1} />
+            )}
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <span className="text-xs tabular-nums text-text-dimmed">{total.toLocaleString()}</span>
+      <span className={cn("-mt-1 text-xs tabular-nums text-blue-400")}>
+        {total.toLocaleString()}
+      </span>
     </div>
+  );
+}
+
+function UsageSparklineTooltip({ active, payload }: TooltipProps<number, string>) {
+  if (!active || !payload || payload.length === 0) return null;
+  const entry = payload[0].payload as UsageDatum;
+  const date = entry.date instanceof Date ? entry.date : new Date(entry.date);
+  const formattedDate = formatDateTime(date, "UTC", [], false, true);
+  return (
+    <TooltipPortal active={active}>
+      <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
+        <Header3 className="border-b border-b-charcoal-650 pb-2">{formattedDate}</Header3>
+        <div className="mt-2 text-xs text-text-bright">
+          <span className="tabular-nums">{entry.count.toLocaleString()}</span>{" "}
+          <span className="text-text-dimmed">{entry.count === 1 ? "call" : "calls"}</span>
+        </div>
+      </div>
+    </TooltipPortal>
   );
 }

@@ -27,6 +27,7 @@ import {
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
@@ -189,6 +190,8 @@ function CurrentPlanSection({
   isOnTopPlan: boolean;
   billingPath: string;
 }) {
+  const showSelfServe = useShowSelfServe();
+
   return (
     <div className="flex flex-col gap-3">
       <Header2 className="flex items-center gap-1">
@@ -205,10 +208,15 @@ function CurrentPlanSection({
                   button={<Button variant="secondary/small">Request Enterprise</Button>}
                   defaultValue="help"
                 />
-              ) : (
+              ) : showSelfServe ? (
                 <LinkButton to={billingPath} variant="secondary/small">
                   View plans
                 </LinkButton>
+              ) : (
+                <Feedback
+                  defaultValue="enterprise"
+                  button={<Button variant="secondary/small">Contact us</Button>}
+                />
               )}
             </TableCell>
           </TableRow>
@@ -260,6 +268,8 @@ function RateLimitsSection({
   project: ReturnType<typeof useProject>;
   environment: ReturnType<typeof useEnvironment>;
 }) {
+  const showSelfServe = useShowSelfServe();
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
@@ -325,15 +335,23 @@ function RateLimitsSection({
                 />
               </span>
             </TableHeaderCell>
-            <TableHeaderCell alignment="right">Upgrade</TableHeaderCell>
+            {showSelfServe ? (
+              <TableHeaderCell alignment="right">Upgrade</TableHeaderCell>
+            ) : null}
           </TableRow>
         </TableHeader>
         <TableBody>
-          <RateLimitRow info={rateLimits.api} isOnTopPlan={isOnTopPlan} billingPath={billingPath} />
+          <RateLimitRow
+            info={rateLimits.api}
+            isOnTopPlan={isOnTopPlan}
+            billingPath={billingPath}
+            showSelfServe={showSelfServe}
+          />
           <RateLimitRow
             info={rateLimits.batch}
             isOnTopPlan={isOnTopPlan}
             billingPath={billingPath}
+            showSelfServe={showSelfServe}
           />
         </TableBody>
       </Table>
@@ -345,10 +363,12 @@ function RateLimitRow({
   info,
   isOnTopPlan,
   billingPath,
+  showSelfServe,
 }: {
   info: RateLimitInfo;
   isOnTopPlan: boolean;
   billingPath: string;
+  showSelfServe: boolean;
 }) {
   const maxTokens = info.config.type === "tokenBucket" ? info.config.maxTokens : info.config.tokens;
   const percentage =
@@ -389,27 +409,29 @@ function RateLimitRow({
           <span className="text-text-dimmed">–</span>
         )}
       </TableCell>
-      <TableCell alignment="right">
-        <div className="flex justify-end">
-          {info.name === "Batch rate limit" ? (
-            isOnTopPlan ? (
+      {showSelfServe ? (
+        <TableCell alignment="right">
+          <div className="flex justify-end">
+            {info.name === "Batch rate limit" ? (
+              isOnTopPlan ? (
+                <Feedback
+                  button={<Button variant="secondary/small">Contact us</Button>}
+                  defaultValue="help"
+                />
+              ) : (
+                <LinkButton to={billingPath} variant="secondary/small">
+                  View plans
+                </LinkButton>
+              )
+            ) : (
               <Feedback
                 button={<Button variant="secondary/small">Contact us</Button>}
                 defaultValue="help"
               />
-            ) : (
-              <LinkButton to={billingPath} variant="secondary/small">
-                View plans
-              </LinkButton>
-            )
-          ) : (
-            <Feedback
-              button={<Button variant="secondary/small">Contact us</Button>}
-              defaultValue="help"
-            />
-          )}
-        </div>
-      </TableCell>
+            )}
+          </div>
+        </TableCell>
+      ) : null}
     </TableRow>
   );
 }
@@ -516,6 +538,8 @@ function QuotasSection({
   if (quotas.metricWidgetsPerDashboard) quotaRows.push(quotas.metricWidgetsPerDashboard);
   if (quotas.queryPeriodDays) quotaRows.push(quotas.queryPeriodDays);
 
+  const showSelfServe = useShowSelfServe();
+
   return (
     <div className="flex flex-col gap-3">
       <Header2 className="flex items-center gap-1">
@@ -533,7 +557,9 @@ function QuotasSection({
             <TableHeaderCell alignment="right">Limit</TableHeaderCell>
             <TableHeaderCell alignment="right">Current</TableHeaderCell>
             <TableHeaderCell alignment="right">Source</TableHeaderCell>
-            <TableHeaderCell alignment="right">Upgrade</TableHeaderCell>
+            {showSelfServe ? (
+              <TableHeaderCell alignment="right">Upgrade</TableHeaderCell>
+            ) : null}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -543,6 +569,7 @@ function QuotasSection({
               quota={quota}
               isOnTopPlan={isOnTopPlan}
               billingPath={billingPath}
+              showSelfServe={showSelfServe}
             />
           ))}
         </TableBody>
@@ -555,10 +582,12 @@ function QuotaRow({
   quota,
   isOnTopPlan,
   billingPath,
+  showSelfServe,
 }: {
   quota: QuotaInfo;
   isOnTopPlan: boolean;
   billingPath: string;
+  showSelfServe: boolean;
 }) {
   // For log retention and query period, we don't show current usage as it's a duration, not a count
   // For widgets per dashboard, the usage varies per dashboard so we don't show a single number
@@ -567,7 +596,7 @@ function QuotaRow({
   const isRetentionQuota = isDurationQuota || isPerItemQuota;
   const isQueueSizeQuota = quota.name === "Max queued runs";
   const hideCurrentUsage = isRetentionQuota || isQueueSizeQuota;
-  
+
   const percentage =
     !hideCurrentUsage && quota.limit && quota.limit > 0 ? quota.currentUsage / quota.limit : null;
 
@@ -582,8 +611,8 @@ function QuotaRow({
         </TableCell>
         <TableCell alignment="right" className="font-medium tabular-nums">
           {quota.limit !== null
-              ? `${formatNumber(quota.limit)} ${quota.limit === 1 ? "day" : "days"}`
-              : "Unlimited"}
+            ? `${formatNumber(quota.limit)} ${quota.limit === 1 ? "day" : "days"}`
+            : "Unlimited"}
         </TableCell>
         <TableCell alignment="right" className="tabular-nums text-text-dimmed">
           –
@@ -591,20 +620,22 @@ function QuotaRow({
         <TableCell alignment="right">
           <SourceBadge source={quota.source} />
         </TableCell>
-        <TableCell alignment="right">
-          <div className="flex justify-end">
-            {canUpgrade ? (
-              <LinkButton to={billingPath} variant="secondary/small">
-                View plans
-              </LinkButton>
-            ) : (
-              <Feedback
-                button={<Button variant="secondary/small">Contact us</Button>}
-                defaultValue="help"
-              />
-            )}
-          </div>
-        </TableCell>
+        {showSelfServe ? (
+          <TableCell alignment="right">
+            <div className="flex justify-end">
+              {canUpgrade ? (
+                <LinkButton to={billingPath} variant="secondary/small">
+                  View plans
+                </LinkButton>
+              ) : (
+                <Feedback
+                  button={<Button variant="secondary/small">Contact us</Button>}
+                  defaultValue="help"
+                />
+              )}
+            </div>
+          </TableCell>
+        ) : null}
       </TableRow>
     );
   }
@@ -678,7 +709,7 @@ function QuotaRow({
       <TableCell alignment="right">
         <SourceBadge source={quota.source} />
       </TableCell>
-      <TableCell alignment="right">{renderUpgrade()}</TableCell>
+      {showSelfServe ? <TableCell alignment="right">{renderUpgrade()}</TableCell> : null}
     </TableRow>
   );
 }
@@ -694,6 +725,7 @@ function FeaturesSection({
 }) {
   // For staging environment: show View plans if not enabled (i.e., on Free plan)
   const stagingUpgradeType = features.hasStagingEnvironment.enabled ? "none" : "view-plans";
+  const showSelfServe = useShowSelfServe();
 
   return (
     <div className="flex flex-col gap-3">
@@ -706,7 +738,9 @@ function FeaturesSection({
           <TableRow>
             <TableHeaderCell>Feature</TableHeaderCell>
             <TableHeaderCell alignment="right">Status</TableHeaderCell>
-            <TableHeaderCell alignment="right">Upgrade</TableHeaderCell>
+            {showSelfServe ? (
+              <TableHeaderCell alignment="right">Upgrade</TableHeaderCell>
+            ) : null}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -714,16 +748,19 @@ function FeaturesSection({
             feature={features.hasStagingEnvironment}
             upgradeType={stagingUpgradeType}
             billingPath={billingPath}
+            showSelfServe={showSelfServe}
           />
           <FeatureRow
             feature={features.support}
             upgradeType={isOnTopPlan ? "contact-us" : "view-plans"}
             billingPath={billingPath}
+            showSelfServe={showSelfServe}
           />
           <FeatureRow
             feature={features.includedUsage}
             upgradeType={isOnTopPlan ? "contact-us" : "view-plans"}
             billingPath={billingPath}
+            showSelfServe={showSelfServe}
           />
         </TableBody>
       </Table>
@@ -735,10 +772,12 @@ function FeatureRow({
   feature,
   upgradeType,
   billingPath,
+  showSelfServe,
 }: {
   feature: FeatureInfo;
   upgradeType: "view-plans" | "contact-us" | "none";
   billingPath: string;
+  showSelfServe: boolean;
 }) {
   const displayValue = () => {
     if (feature.name === "Included compute" && typeof feature.value === "number") {
@@ -795,7 +834,7 @@ function FeatureRow({
         <InfoIconTooltip content={feature.description} disableHoverableContent />
       </TableCell>
       <TableCell alignment="right">{displayValue()}</TableCell>
-      <TableCell alignment="right">{renderUpgrade()}</TableCell>
+      {showSelfServe ? <TableCell alignment="right">{renderUpgrade()}</TableCell> : null}
     </TableRow>
   );
 }

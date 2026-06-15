@@ -2,15 +2,15 @@ import { cn } from "~/utils/cn";
 
 const headerVariants = {
   header1: {
-    text: "font-sans text-2xl leading-5 md:leading-6 lg:leading-7 font-medium",
+    text: "font-sans text-2xl leading-5 md:leading-6 lg:leading-7 font-semibold tracking-tight",
     spacing: "mb-2",
   },
   header2: {
-    text: "font-sans text-base leading-6 font-medium",
+    text: "font-sans text-base leading-6 font-semibold tracking-tight",
     spacing: "mb-2",
   },
   header3: {
-    text: "font-sans text-sm leading-5 font-medium",
+    text: "font-sans text-sm leading-5 font-semibold",
     spacing: "mb-2",
   },
 };

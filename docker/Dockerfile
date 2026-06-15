@@ -68,6 +68,7 @@ RUN chmod +x ./scripts/wait-for-it.sh
 RUN chmod +x ./scripts/entrypoint.sh
 COPY --chown=node:node .configs/tsconfig.base.json .configs/tsconfig.base.json
 COPY --chown=node:node scripts/updateVersion.ts scripts/updateVersion.ts
+COPY --chown=node:node scripts/bundleSdkDocs.ts scripts/bundleSdkDocs.ts
 RUN pnpm run generate
 RUN --mount=type=secret,id=sentry_auth_token \
     SENTRY_AUTH_TOKEN=$(cat /run/secrets/sentry_auth_token) \

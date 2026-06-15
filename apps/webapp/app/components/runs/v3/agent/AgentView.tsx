@@ -100,11 +100,11 @@ export function AgentView({ agentView }: { agentView: AgentViewAuth }) {
   const rootRef = useAutoScrollToBottom([messages]);
 
   return (
-    <div ref={rootRef} className="py-3">
+    <div ref={rootRef} className="flex min-h-full flex-col py-3">
       {messages.length === 0 ? (
-        <div className="flex h-full min-h-[12rem] items-center justify-center">
+        <div className="flex flex-1 items-center justify-center">
           <div className="flex flex-col items-center gap-3">
-            <Spinner className="size-5" color="muted" />
+            <Spinner className="size-5" color="blue" />
             <Paragraph variant="small" className="text-text-dimmed">
               Loading conversation…
             </Paragraph>
@@ -249,12 +249,24 @@ function useAgentSessionMessages({
     [initialMessages]
   );
 
+  // The snapshot URL is re-signed by the loader on every navigation
+  // (tab switches in the inspector pane re-run the session loader),
+  // which would otherwise re-trigger the subscription effect below
+  // and replay post-snapshot `.out` chunks on top of the messages we
+  // already accumulated — duplicating any assistant content that
+  // lives past `snapshot.lastOutEventId` (e.g., a canceled run whose
+  // turn never completed). Hold the URL behind a ref and keep it
+  // out of the effect's deps so the effect runs exactly once per
+  // mount.
+  const snapshotUrlRef = useRef(snapshotPresignedUrl);
+  useEffect(() => {
+    snapshotUrlRef.current = snapshotPresignedUrl;
+  }, [snapshotPresignedUrl]);
+
   // `pendingRef` is the authoritative, eagerly-updated message state:
   // chunks mutate this synchronously as they arrive. A throttled flush
   // copies it into React state so UI updates are capped at ~10x/sec.
-  const pendingRef = useRef<Map<string, UIMessage>>(
-    new Map(seedMessages.map((m) => [m.id, m]))
-  );
+  const pendingRef = useRef<Map<string, UIMessage>>(new Map(seedMessages.map((m) => [m.id, m])));
   const timestampsRef = useRef<Map<string, number>>(
     new Map(seedMessages.map((m) => [m.id, INITIAL_PAYLOAD_TIMESTAMP]))
   );
@@ -323,7 +335,11 @@ function useAgentSessionMessages({
           res.output === undefined &&
           res.errorText === undefined
         ) {
-          return false; // already applied
+          // Already applied. If the part has reached a terminal state, drop
+          // the buffered resolution so the Map doesn't grow unbounded on
+          // long-lived sessions with many tool calls.
+          if (terminal) pendingResolutionsRef.current.delete(toolCallId);
+          return false;
         }
         const next = parts.slice();
         next[idx] = {
@@ -334,6 +350,13 @@ function useAgentSessionMessages({
           state: nextState,
         };
         pendingRef.current.set(mid, { ...msg, parts: next } as UIMessage);
+        // Drop the buffered entry once the part has landed at a terminal
+        // state — no future `.out` chunk will need this resolution.
+        const reachedTerminal =
+          nextState === "output-available" ||
+          nextState === "output-error" ||
+          nextState === "output-denied";
+        if (reachedTerminal) pendingResolutionsRef.current.delete(toolCallId);
         return true;
       }
       return false;
@@ -360,9 +383,10 @@ function useAgentSessionMessages({
      * have never completed a turn).
      */
     const loadSnapshot = async (): Promise<string | undefined> => {
-      if (!snapshotPresignedUrl) return undefined;
+      const url = snapshotUrlRef.current;
+      if (!url) return undefined;
       try {
-        const resp = await fetch(snapshotPresignedUrl, { signal: abort.signal });
+        const resp = await fetch(url, { signal: abort.signal });
         if (!resp.ok) return undefined;
         const json = (await resp.json()) as unknown;
         const parsed = ChatSnapshotV1Schema.safeParse(json);
@@ -400,7 +424,7 @@ function useAgentSessionMessages({
         signal: abort.signal,
         timeoutInSeconds: 120,
         ...(lastEventId !== undefined ? { lastEventId } : {}),
-      }) as const;
+      } as const);
 
     const commonSubOptions = {
       signal: abort.signal,
@@ -629,7 +653,13 @@ function useAgentSessionMessages({
         pendingTimerRef.current = null;
       }
     };
-  }, [sessionId, apiOrigin, orgSlug, projectSlug, envSlug, snapshotPresignedUrl]);
+    // `snapshotPresignedUrl` is intentionally NOT in this dep list — see
+    // `snapshotUrlRef` above for the reasoning. Including it caused the
+    // subscription to tear down + replay on every inspector tab click,
+    // which appended duplicate parts to any assistant message whose
+    // chunks lived past `snapshot.lastOutEventId`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, apiOrigin, orgSlug, projectSlug, envSlug]);
 
   return useMemo(() => {
     const timestamps = timestampsRef.current;
@@ -896,10 +926,7 @@ function withNewPart(msg: UIMessage, part: AnyPart): UIMessage {
   } as UIMessage;
 }
 
-function updatePart(
-  msg: UIMessage,
-  updater: (part: AnyPart) => AnyPart | null
-): UIMessage {
+function updatePart(msg: UIMessage, updater: (part: AnyPart) => AnyPart | null): UIMessage {
   const parts = (msg.parts ?? []) as AnyPart[];
   let changed = false;
   const next = parts.map((p) => {

@@ -1,4 +1,3 @@
-import { LockClosedIcon, ShieldCheckIcon, UserCircleIcon } from "@heroicons/react/20/solid";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import type { User } from "@trigger.dev/database";
 import { cn } from "~/utils/cn";
@@ -13,6 +12,9 @@ import { LinkButton } from "../primitives/Buttons";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
+import { AvatarCircleIcon } from "~/assets/icons/AvatarCircleIcon";
+import { ShieldIcon } from "~/assets/icons/ShieldIcon";
+import { PadlockIcon } from "~/assets/icons/PadlockIcon";
 
 export function AccountSideMenu({ user }: { user: User }) {
   return (
@@ -32,26 +34,26 @@ export function AccountSideMenu({ user }: { user: User }) {
           <span className="text-text-bright">Back to app</span>
         </LinkButton>
       </div>
-      <div className="mb-6 flex grow flex-col gap-1 overflow-y-auto px-1 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="mb-6 flex grow flex-col overflow-y-auto px-1 pt-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <SideMenuHeader title="Account" />
         <SideMenuItem
           name="Profile"
-          icon={UserCircleIcon}
-          activeIconColor="text-indigo-500"
+          icon={AvatarCircleIcon}
+          activeIconColor="text-text-bright"
           to={accountPath()}
           data-action="account"
         />
         <SideMenuItem
           name="Personal Access Tokens"
-          icon={ShieldCheckIcon}
-          activeIconColor="text-emerald-500"
+          icon={ShieldIcon}
+          activeIconColor="text-text-bright"
           to={personalAccessTokensPath()}
           data-action="tokens"
         />
         <SideMenuItem
           name="Security"
-          icon={LockClosedIcon}
-          activeIconColor="text-rose-500"
+          icon={PadlockIcon}
+          activeIconColor="text-text-bright"
           to={accountSecurityPath()}
           data-action="security"
         />

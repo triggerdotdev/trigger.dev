@@ -1,16 +1,20 @@
-import {
-  CheckIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
-  ClipboardDocumentIcon,
-  CodeBracketSquareIcon,
-} from "@heroicons/react/20/solid";
+import { ChevronDownIcon, ChevronUpIcon } from "@heroicons/react/20/solid";
+import { Clipboard, ClipboardCheck } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
+import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
+import { TextSquareIcon } from "~/assets/icons/TextSquareIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { StreamdownRenderer } from "~/components/code/StreamdownRenderer";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header3 } from "~/components/primitives/Headers";
 import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "~/components/primitives/Tooltip";
+import { cn } from "~/utils/cn";
 import type { DisplayItem, ToolUse } from "./types";
 
 export type PromptLink = {
@@ -69,13 +73,7 @@ export function ChatBubble({ children }: { children: React.ReactNode }) {
 // System
 // ---------------------------------------------------------------------------
 
-function SystemSection({
-  text,
-  promptLink,
-}: {
-  text: string;
-  promptLink?: PromptLink;
-}) {
+function SystemSection({ text, promptLink }: { text: string; promptLink?: PromptLink }) {
   const [expanded, setExpanded] = useState(false);
   const isLong = text.length > 150;
   const preview = isLong ? text.slice(0, 150) + "..." : text;
@@ -109,7 +107,7 @@ function SystemSection({
         )}
       </div>
       <ChatBubble>
-        <div className="font-sans text-sm font-normal text-text-dimmed streamdown-container">
+        <div className="streamdown-container font-sans text-sm font-normal text-text-dimmed">
           <Suspense fallback={<span className="whitespace-pre-wrap">{displayText}</span>}>
             <StreamdownRenderer>{displayText}</StreamdownRenderer>
           </Suspense>
@@ -128,7 +126,7 @@ function UserSection({ text }: { text: string }) {
     <div className="flex flex-col gap-1.5 py-2.5">
       <SectionHeader label="User" />
       <ChatBubble>
-        <div className="font-sans text-sm font-normal text-text-dimmed streamdown-container">
+        <div className="streamdown-container font-sans text-sm font-normal text-text-dimmed">
           <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
             <StreamdownRenderer>{text}</StreamdownRenderer>
           </Suspense>
@@ -190,22 +188,44 @@ export function AssistantResponse({
       <SectionHeader
         label={headerLabel}
         right={
-          <div className="flex items-center">
-            <Button
-              variant="minimal/small"
-              onClick={() => setMode(mode === "rendered" ? "raw" : "rendered")}
-              LeadingIcon={CodeBracketSquareIcon}
-            >
-              {mode === "rendered" ? "Raw" : "Rendered"}
-            </Button>
-            <Button
-              variant="minimal/small"
-              onClick={handleCopy}
-              LeadingIcon={copied ? CheckIcon : ClipboardDocumentIcon}
-              leadingIconClassName={copied ? "text-green-500" : undefined}
-            >
-              Copy
-            </Button>
+          <div className="flex items-center gap-2">
+            <TooltipProvider>
+              <Tooltip disableHoverableContent>
+                <TooltipTrigger
+                  onClick={() => setMode(mode === "rendered" ? "raw" : "rendered")}
+                  className="text-text-dimmed transition-colors duration-100 focus-custom hover:cursor-pointer hover:text-text-bright"
+                >
+                  {mode === "rendered" ? (
+                    <CodeSquareIcon className="size-4.5" />
+                  ) : (
+                    <TextSquareIcon className="size-4.5" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  {mode === "rendered" ? "Show raw" : "Show rendered"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip open={copied || undefined} disableHoverableContent>
+                <TooltipTrigger
+                  onClick={handleCopy}
+                  className={cn(
+                    "transition-colors duration-100 focus-custom hover:cursor-pointer",
+                    copied ? "text-success" : "text-text-dimmed hover:text-text-bright"
+                  )}
+                >
+                  {copied ? (
+                    <ClipboardCheck className="size-4" />
+                  ) : (
+                    <Clipboard className="size-4" />
+                  )}
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  {copied ? "Copied" : "Copy"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         }
       />
@@ -285,8 +305,18 @@ export function ToolUseRow({ tool }: { tool: ToolUse }) {
     >
       <div className="flex items-center gap-2 px-2.5 py-1.5">
         {hasSubAgent && (
-          <svg className="size-3.5 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 0 0 2.25-2.25V6.75a2.25 2.25 0 0 0-2.25-2.25H6.75A2.25 2.25 0 0 0 4.5 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25Zm.75-12h9v9h-9v-9Z" />
+          <svg
+            className="size-3.5 text-indigo-400"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 0 0 2.25-2.25V6.75a2.25 2.25 0 0 0-2.25-2.25H6.75A2.25 2.25 0 0 0 4.5 6.75v10.5a2.25 2.25 0 0 0 2.25 2.25Zm.75-12h9v9h-9v-9Z"
+            />
           </svg>
         )}
         <code
@@ -327,9 +357,7 @@ export function ToolUseRow({ tool }: { tool: ToolUse }) {
             ))}
           </div>
 
-          {activeTab === "agent" && hasSubAgent && (
-            <SubAgentContent parts={tool.subAgent!.parts} />
-          )}
+          {activeTab === "agent" && hasSubAgent && <SubAgentContent parts={tool.subAgent!.parts} />}
 
           {activeTab === "input" && hasInput && (
             <div className="border-t border-grid-dimmed">
@@ -338,6 +366,7 @@ export function ToolUseRow({ tool }: { tool: ToolUse }) {
                 maxLines={12}
                 showLineNumbers={false}
                 showCopyButton
+                className="rounded-none border-0"
               />
             </div>
           )}
@@ -350,13 +379,12 @@ export function ToolUseRow({ tool }: { tool: ToolUse }) {
                   maxLines={16}
                   showLineNumbers={false}
                   showCopyButton
+                  className="rounded-none border-0"
                 />
               ) : (
-                <div className="p-2.5 font-sans text-sm font-normal text-text-dimmed streamdown-container">
+                <div className="streamdown-container p-2.5 font-sans text-sm font-normal text-text-dimmed">
                   <Suspense
-                    fallback={
-                      <span className="whitespace-pre-wrap">{tool.resultOutput}</span>
-                    }
+                    fallback={<span className="whitespace-pre-wrap">{tool.resultOutput}</span>}
                   >
                     <StreamdownRenderer>{tool.resultOutput!}</StreamdownRenderer>
                   </Suspense>
@@ -380,6 +408,7 @@ export function ToolUseRow({ tool }: { tool: ToolUse }) {
                     maxLines={16}
                     showLineNumbers={false}
                     showCopyButton
+                    className="rounded-none border-0"
                   />
                 </div>
               )}
@@ -393,20 +422,14 @@ export function ToolUseRow({ tool }: { tool: ToolUse }) {
 
 function SubAgentContent({ parts }: { parts: any[] }) {
   // Extract sub-agent run ID from injected metadata part
-  const runPart = parts.find(
-    (p: any) => p.type === "data-subagent-run" && p.data?.runId
-  );
+  const runPart = parts.find((p: any) => p.type === "data-subagent-run" && p.data?.runId);
   const subAgentRunId = runPart?.data?.runId as string | undefined;
 
   return (
     <div className="space-y-2 border-t border-indigo-500/20 p-2.5">
       {subAgentRunId && (
         <div className="flex justify-end">
-          <LinkButton
-            to={`/runs/${subAgentRunId}`}
-            variant="tertiary/small"
-            target="_blank"
-          >
+          <LinkButton to={`/runs/${subAgentRunId}`} variant="tertiary/small" target="_blank">
             View sub-agent run
           </LinkButton>
         </div>

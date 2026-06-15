@@ -37,10 +37,13 @@ export async function action({ request }: ActionFunctionArgs) {
     return json(responseJson);
   } catch (error) {
     if (error instanceof Error) {
-      logger.error("Error getting PersonalAccessToken from AuthorizationCode", {
-        url: request.url,
-        error: error.message,
-      });
+      const expected = error.message === "Invalid authorization code, or code expired";
+      const fields = { url: request.url, error: error.message };
+      if (expected) {
+        logger.warn("Error getting PersonalAccessToken from AuthorizationCode", fields);
+      } else {
+        logger.error("Error getting PersonalAccessToken from AuthorizationCode", fields);
+      }
 
       return json({ error: error.message }, { status: 400 });
     }

@@ -1,6 +1,7 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { ArrowRightIcon, EnvelopeIcon, UserGroupIcon, UserIcon } from "@heroicons/react/20/solid";
+import { ArrowRightIcon, EnvelopeIcon, UserIcon } from "@heroicons/react/20/solid";
+import { UserGroupIcon } from "~/assets/icons/UserGroupIcon";
 import { HandRaisedIcon } from "@heroicons/react/24/solid";
 import { RadioGroup } from "@radix-ui/react-radio-group";
 import { json, type ActionFunction } from "@remix-run/node";

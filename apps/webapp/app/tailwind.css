@@ -207,7 +207,7 @@
     @apply border-l-2 border-charcoal-600 pl-3 my-2 italic;
   }
   & a {
-    @apply text-blue-400 hover:underline;
+    @apply text-text-link hover:underline;
   }
   & strong {
     @apply font-semibold text-text-bright;

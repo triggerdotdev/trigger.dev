@@ -23,6 +23,7 @@ import simplur from "simplur";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
+import { Feedback } from "~/components/Feedback";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import {
   MainHorizontallyCenteredContainer,
@@ -52,6 +53,7 @@ import {
 } from "~/components/primitives/Table";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useFeatures } from "~/hooks/useFeatures";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
@@ -60,7 +62,11 @@ import {
   type ConcurrencyResult,
   type EnvironmentWithConcurrency,
 } from "~/presenters/v3/ManageConcurrencyPresenter.server";
-import { getPlans } from "~/services/platform.v3.server";
+import {
+  getCurrentPlan,
+  getPlans,
+  getSelfServePurchaseBlockReason,
+} from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
 import { concurrencyPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
@@ -184,6 +190,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       request,
       "Concurrency allocated successfully"
     );
+  }
+
+  const currentPlan = await getCurrentPlan(project.organizationId);
+  const purchaseBlockReason = getSelfServePurchaseBlockReason(currentPlan);
+  if (purchaseBlockReason === "plan_unavailable") {
+    submission.error.amount = ["Unable to verify billing status. Please try again."];
+    return json(submission, { status: 503 });
+  }
+  if (purchaseBlockReason === "managed_billing") {
+    submission.error.amount = ["Contact us to request more concurrency."];
+    return json(submission, { status: 403 });
   }
 
   const service = new SetConcurrencyAddOnService();
@@ -530,6 +547,7 @@ function NotUpgradable({ environments }: { environments: EnvironmentWithConcurre
   const { isManagedCloud } = useFeatures();
   const plan = useCurrentPlan();
   const organization = useOrganization();
+  const showSelfServe = useShowSelfServe();
 
   return (
     <div className="flex flex-col gap-3">
@@ -543,9 +561,16 @@ function NotUpgradable({ environments }: { environments: EnvironmentWithConcurre
             upgrade your plan to get more concurrency. You are currently on the{" "}
             {plan?.v3Subscription?.plan?.title ?? "Free"} plan.
           </Paragraph>
-          <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
-            Upgrade for more concurrency
-          </LinkButton>
+          {showSelfServe ? (
+            <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
+              Upgrade for more concurrency
+            </LinkButton>
+          ) : (
+            <Feedback
+              defaultValue="enterprise"
+              button={<Button variant="secondary/small">Contact us</Button>}
+            />
+          )}
         </>
       ) : null}
       <div className="mt-3 flex flex-col gap-3">
@@ -588,6 +613,7 @@ function PurchaseConcurrencyModal({
   maxQuota: number;
   disabled: boolean;
 }) {
+  const showSelfServe = useShowSelfServe();
   const lastSubmission = useActionData();
   const [form, { amount }] = useForm({
     id: "purchase-concurrency",
@@ -628,6 +654,15 @@ function PurchaseConcurrencyModal({
     state === "decrease" ? "text-error" : state === "increase" ? "text-success" : undefined;
 
   const title = extraConcurrency === 0 ? "Purchase extra concurrency" : "Add/remove concurrency";
+
+  if (!showSelfServe) {
+    return (
+      <Feedback
+        defaultValue="enterprise"
+        button={<Button variant="secondary/small">Request more</Button>}
+      />
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

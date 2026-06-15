@@ -25,6 +25,10 @@ permissions:
 jobs:
   alert:
     name: Post critical alerts
+    # Set the ENABLE_DEPENDABOT_ALERTS repository variable to 'false' to turn off
+    # the Dependabot alert/summary notifiers — e.g. forks/mirrors that lack the
+    # DEPENDABOT_ALERTS_TOKEN / SLACK_BOT_TOKEN secrets. Defaults to enabled.
+    if: ${{ vars.ENABLE_DEPENDABOT_ALERTS != 'false' }}
     runs-on: ubuntu-latest
     environment: dependabot-summary
     env:
