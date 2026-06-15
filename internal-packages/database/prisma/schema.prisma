@@ -1532,6 +1532,10 @@ model WorkerInstanceGroup {
 
   workloadType WorkloadType @default(CONTAINER)
 
+  /// Geo region (e.g. "us-east-1"); container + MICROVM groups for one geo share it.
+  /// Set-once while the group has runs - changing it breaks region resolution for them.
+  region String?
+
   /// When true, runs enqueued to this worker queue may skip the intermediate queue
   /// and be pushed directly to the worker queue when concurrency is available.
   enableFastPath Boolean @default(false)
