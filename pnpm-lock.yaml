@@ -1949,6 +1949,9 @@ importers:
       '@trigger.dev/core':
         specifier: workspace:*
         version: link:../core
+      neverthrow:
+        specifier: ^8.2.0
+        version: 8.2.0
     devDependencies:
       '@types/node':
         specifier: 20.14.14
