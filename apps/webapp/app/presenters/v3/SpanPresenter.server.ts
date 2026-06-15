@@ -303,11 +303,17 @@ export class SpanPresenter extends BasePresenter {
           location: true,
         },
         where: {
-          masterQueue: run.region || baseWorkerQueue(run.workerQueue),
+          // masterQueue is unique and IS the run's backing queue, so this finds
+          // the group the run actually ran on.
+          masterQueue: baseWorkerQueue(run.workerQueue),
         },
       });
 
-      region = workerGroup ?? null;
+      // Show the stamped geo region as the name so a migrated run never reveals
+      // its compute backing; fall back to the group name for unstamped runs.
+      region = workerGroup
+        ? { name: run.region ?? workerGroup.name, location: workerGroup.location }
+        : null;
     }
 
     // Only AGENT-tagged runs (chat.agent and friends) can be session-bound,
