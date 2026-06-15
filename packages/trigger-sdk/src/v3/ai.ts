@@ -42,7 +42,7 @@ import type {
   FinishReason,
   LanguageModelUsage,
   ModelMessage,
-  ProviderOptions,
+  ProviderMetadata,
   Tool,
   ToolSet,
   UIMessage,
@@ -3416,7 +3416,7 @@ const chatPromptKey = locals.create<ChatPromptValue>("chat.prompt");
  * the system block. Stored separately so it works for both the `ResolvedPrompt`
  * and plain-string forms without mutating the prompt object.
  */
-const chatPromptProviderOptionsKey = locals.create<ProviderOptions>(
+const chatPromptProviderOptionsKey = locals.create<ProviderMetadata>(
   "chat.prompt.providerOptions"
 );
 
@@ -3436,7 +3436,7 @@ export type SetChatPromptOptions = {
    *   providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
    * });
    */
-  providerOptions?: ProviderOptions;
+  providerOptions?: ProviderMetadata;
 };
 
 /**
@@ -3669,7 +3669,7 @@ export type ToStreamTextOptionsOptions = {
    *   systemProviderOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
    * });
    */
-  systemProviderOptions?: ProviderOptions;
+  systemProviderOptions?: ProviderMetadata;
   /**
    * Anthropic-only convenience for {@link systemProviderOptions}: caches the
    * system prompt with the given cache breakpoint. Equivalent to
@@ -3713,10 +3713,10 @@ function toStreamTextOptions(options?: ToStreamTextOptionsOptions): Record<strin
     // Resolve system-prompt provider options for caching. Precedence (most
     // specific wins, no deep merge): explicit `systemProviderOptions` →
     // `cacheControl` sugar → `providerOptions` stored on `chat.prompt.set()`.
-    const systemProviderOptions: ProviderOptions | undefined =
+    const systemProviderOptions: ProviderMetadata | undefined =
       options?.systemProviderOptions ??
       (options?.cacheControl
-        ? ({ anthropic: { cacheControl: options.cacheControl } } as ProviderOptions)
+        ? ({ anthropic: { cacheControl: options.cacheControl } } as ProviderMetadata)
         : undefined) ??
       locals.get(chatPromptProviderOptionsKey);
 
