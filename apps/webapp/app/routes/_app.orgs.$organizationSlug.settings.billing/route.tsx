@@ -1,5 +1,4 @@
 import { CalendarDaysIcon, CreditCardIcon, StarIcon } from "@heroicons/react/20/solid";
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { type PlanDefinition } from "@trigger.dev/platform";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
@@ -9,10 +8,10 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
-import { requireUserId } from "~/services/session.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import {
   OrganizationParamsSchema,
   organizationPath,
@@ -31,47 +30,78 @@ export const meta: MetaFunction = () => {
   ];
 };
 
-export async function loader({ params, request }: LoaderFunctionArgs) {
-  const userId = await requireUserId(request);
-  const { organizationSlug } = OrganizationParamsSchema.parse(params);
+async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
+  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
+  return org?.id ?? null;
+}
 
-  const { isManagedCloud } = featuresForRequest(request);
-  if (!isManagedCloud) {
-    return redirect(organizationPath({ slug: organizationSlug }));
-  }
+export const loader = dashboardLoader(
+  {
+    params: OrganizationParamsSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "manage", resource: { type: "billing" } },
+  },
+  async ({ params, request, user }) => {
+    const userId = user.id;
+    const { organizationSlug } = params;
 
-  const organization = await prisma.organization.findFirst({
-    where: { slug: organizationSlug, members: { some: { userId } } },
-  });
+    const { isManagedCloud } = featuresForRequest(request);
+    if (!isManagedCloud) {
+      return redirect(organizationPath({ slug: organizationSlug }));
+    }
 
-  if (!organization) {
-    throw new Response(null, { status: 404, statusText: "Organization not found" });
-  }
+    const organization = await prisma.organization.findFirst({
+      where: { slug: organizationSlug, members: { some: { userId } } },
+    });
 
-  const currentPlan = await getCurrentPlan(organization.id);
-  const showSelfServe = currentPlan?.v3Subscription?.showSelfServe !== false;
+    if (!organization) {
+      throw new Response(null, { status: 404, statusText: "Organization not found" });
+    }
 
-  //periods
-  const periodStart = new Date();
-  periodStart.setUTCHours(0, 0, 0, 0);
-  periodStart.setUTCDate(1);
+    const currentPlan = await getCurrentPlan(organization.id);
+    const showSelfServe = currentPlan?.v3Subscription?.showSelfServe !== false;
 
-  const periodEnd = new Date();
-  periodEnd.setUTCMonth(periodEnd.getMonth() + 1);
-  periodEnd.setUTCDate(0);
-  periodEnd.setUTCHours(0, 0, 0, 0);
+    //periods
+    const periodStart = new Date();
+    periodStart.setUTCHours(0, 0, 0, 0);
+    periodStart.setUTCDate(1);
 
-  const daysRemaining = Math.ceil(
-    (periodEnd.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-  );
+    const periodEnd = new Date();
+    periodEnd.setUTCMonth(periodEnd.getMonth() + 1);
+    periodEnd.setUTCDate(0);
+    periodEnd.setUTCHours(0, 0, 0, 0);
 
-  // Extract 'message' from search params
-  const url = new URL(request.url);
-  const message = url.searchParams.get("message");
+    const daysRemaining = Math.ceil(
+      (periodEnd.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+    );
 
-  if (!showSelfServe) {
+    // Extract 'message' from search params
+    const url = new URL(request.url);
+    const message = url.searchParams.get("message");
+
+    if (!showSelfServe) {
+      return typedjson({
+        showSelfServe: false as const,
+        ...currentPlan,
+        organizationSlug,
+        periodStart,
+        periodEnd,
+        daysRemaining,
+        message,
+      });
+    }
+
+    const plans = await getPlans();
+    if (!plans) {
+      throw new Response(null, { status: 404, statusText: "Plans not found" });
+    }
+
     return typedjson({
-      showSelfServe: false as const,
+      showSelfServe: true as const,
+      ...plans,
       ...currentPlan,
       organizationSlug,
       periodStart,
@@ -80,23 +110,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       message,
     });
   }
-
-  const plans = await getPlans();
-  if (!plans) {
-    throw new Response(null, { status: 404, statusText: "Plans not found" });
-  }
-
-  return typedjson({
-    showSelfServe: true as const,
-    ...plans,
-    ...currentPlan,
-    organizationSlug,
-    periodStart,
-    periodEnd,
-    daysRemaining,
-    message,
-  });
-}
+);
 
 export default function ChoosePlanPage() {
   const loaderData = useTypedLoaderData<typeof loader>();

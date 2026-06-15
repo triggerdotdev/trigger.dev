@@ -1,7 +1,7 @@
 import { conform, list, requestIntent, useFieldList, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { Form, useActionData, type MetaFunction } from "@remix-run/react";
-import { json, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -25,11 +25,11 @@ import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/Page
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
-import { prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { getBillingAlerts, getCurrentPlan, setBillingAlert } from "~/services/platform.v3.server";
-import { requireUserId } from "~/services/session.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
 import {
   docsPath,
@@ -48,44 +48,59 @@ export const meta: MetaFunction = () => {
   ];
 };
 
-export async function loader({ params, request }: LoaderFunctionArgs) {
-  const userId = await requireUserId(request);
-  const { organizationSlug } = OrganizationParamsSchema.parse(params);
-
-  const { isManagedCloud } = featuresForRequest(request);
-  if (!isManagedCloud) {
-    return redirect(organizationPath({ slug: organizationSlug }));
-  }
-
-  const organization = await prisma.organization.findFirst({
-    where: { slug: organizationSlug, members: { some: { userId } } },
-  });
-
-  if (!organization) {
-    throw new Response(null, { status: 404, statusText: "Organization not found" });
-  }
-
-  const currentPlan = await getCurrentPlan(organization.id);
-  if (currentPlan?.v3Subscription?.showSelfServe === false) {
-    return redirect(v3BillingPath({ slug: organizationSlug }));
-  }
-
-  const [error, alerts] = await tryCatch(getBillingAlerts(organization.id));
-  if (error) {
-    throw new Response(null, { status: 404, statusText: `Billing alerts error: ${error}` });
-  }
-
-  if (!alerts) {
-    throw new Response(null, { status: 404, statusText: "Billing alerts not found" });
-  }
-
-  return typedjson({
-    alerts: {
-      ...alerts,
-      amount: alerts.amount / 100,
-    },
-  });
+async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
+  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
+  return org?.id ?? null;
 }
+
+export const loader = dashboardLoader(
+  {
+    params: OrganizationParamsSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "manage", resource: { type: "billing" } },
+  },
+  async ({ params, request, user }) => {
+    const userId = user.id;
+    const { organizationSlug } = params;
+
+    const { isManagedCloud } = featuresForRequest(request);
+    if (!isManagedCloud) {
+      return redirect(organizationPath({ slug: organizationSlug }));
+    }
+
+    const organization = await prisma.organization.findFirst({
+      where: { slug: organizationSlug, members: { some: { userId } } },
+    });
+
+    if (!organization) {
+      throw new Response(null, { status: 404, statusText: "Organization not found" });
+    }
+
+    const currentPlan = await getCurrentPlan(organization.id);
+    if (currentPlan?.v3Subscription?.showSelfServe === false) {
+      return redirect(v3BillingPath({ slug: organizationSlug }));
+    }
+
+    const [error, alerts] = await tryCatch(getBillingAlerts(organization.id));
+    if (error) {
+      throw new Response(null, { status: 404, statusText: `Billing alerts error: ${error}` });
+    }
+
+    if (!alerts) {
+      throw new Response(null, { status: 404, statusText: "Billing alerts not found" });
+    }
+
+    return typedjson({
+      alerts: {
+        ...alerts,
+        amount: alerts.amount / 100,
+      },
+    });
+  }
+);
 
 const schema = z.object({
   amount: z
@@ -110,66 +125,76 @@ const schema = z.object({
   }, z.coerce.number().array().nonempty("At least one alert level is required")),
 });
 
-export const action: ActionFunction = async ({ request, params }) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug } = OrganizationParamsSchema.parse(params);
+export const action = dashboardAction(
+  {
+    params: OrganizationParamsSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "manage", resource: { type: "billing" } },
+  },
+  async ({ request, params, user }) => {
+    const userId = user.id;
+    const { organizationSlug } = params;
 
-  const organization = await prisma.organization.findFirst({
-    where: { slug: organizationSlug, members: { some: { userId } } },
-  });
+    const organization = await prisma.organization.findFirst({
+      where: { slug: organizationSlug, members: { some: { userId } } },
+    });
 
-  if (!organization) {
-    return redirectWithErrorMessage(
-      v3BillingPath({ slug: organizationSlug }),
-      request,
-      "You are not authorized to update billing alerts"
-    );
-  }
-
-  const currentPlan = await getCurrentPlan(organization.id);
-  if (currentPlan?.v3Subscription?.showSelfServe === false) {
-    return redirect(v3BillingPath({ slug: organizationSlug }));
-  }
-
-  const formData = await request.formData();
-  const submission = parse(formData, { schema });
-
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
-  }
-
-  try {
-    const [error, updatedAlert] = await tryCatch(
-      setBillingAlert(organization.id, {
-        ...submission.value,
-        amount: submission.value.amount * 100,
-      })
-    );
-    if (error) {
+    if (!organization) {
       return redirectWithErrorMessage(
-        v3BillingAlertsPath({ slug: organizationSlug }),
+        v3BillingPath({ slug: organizationSlug }),
         request,
-        "Failed to update billing alert"
+        "You are not authorized to update billing alerts"
       );
     }
 
-    if (!updatedAlert) {
-      return redirectWithErrorMessage(
-        v3BillingAlertsPath({ slug: organizationSlug }),
-        request,
-        "Failed to update billing alert"
-      );
+    const currentPlan = await getCurrentPlan(organization.id);
+    if (currentPlan?.v3Subscription?.showSelfServe === false) {
+      return redirect(v3BillingPath({ slug: organizationSlug }));
     }
 
-    return redirectWithSuccessMessage(
-      v3BillingAlertsPath({ slug: organizationSlug }),
-      request,
-      "Billing alert updated"
-    );
-  } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+    const formData = await request.formData();
+    const submission = parse(formData, { schema });
+
+    if (!submission.value || submission.intent !== "submit") {
+      return json(submission);
+    }
+
+    try {
+      const [error, updatedAlert] = await tryCatch(
+        setBillingAlert(organization.id, {
+          ...submission.value,
+          amount: submission.value.amount * 100,
+        })
+      );
+      if (error) {
+        return redirectWithErrorMessage(
+          v3BillingAlertsPath({ slug: organizationSlug }),
+          request,
+          "Failed to update billing alert"
+        );
+      }
+
+      if (!updatedAlert) {
+        return redirectWithErrorMessage(
+          v3BillingAlertsPath({ slug: organizationSlug }),
+          request,
+          "Failed to update billing alert"
+        );
+      }
+
+      return redirectWithSuccessMessage(
+        v3BillingAlertsPath({ slug: organizationSlug }),
+        request,
+        "Billing alert updated"
+      );
+    } catch (error: any) {
+      return json({ errors: { body: error.message } }, { status: 400 });
+    }
   }
-};
+);
 
 export default function Page() {
   const { alerts } = useTypedLoaderData<typeof loader>();
