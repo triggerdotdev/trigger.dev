@@ -50,7 +50,7 @@ export const myChat = chat.agent({
   },
   run: async ({ messages, signal }) => {
     return streamText({
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-4-6"),
       // Caches the system block with a 5-minute breakpoint.
       ...chat.toStreamTextOptions({ cacheControl: { type: "ephemeral" } }),
       messages,
@@ -64,7 +64,7 @@ export const myChat = chat.agent({
 
 ```ts /trigger/chat.ts
 return streamText({
-  model: anthropic("claude-sonnet-4-5"),
+  model: anthropic("claude-sonnet-4-6"),
   ...chat.toStreamTextOptions({
     systemProviderOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
   }),
@@ -83,7 +83,7 @@ onChatStart: async () => {
 },
 run: async ({ messages, signal }) => {
   return streamText({
-    model: anthropic("claude-sonnet-4-5"),
+    model: anthropic("claude-sonnet-4-6"),
     ...chat.toStreamTextOptions(), // already cached
     messages,
     abortSignal: signal,
@@ -120,7 +120,7 @@ export const myChat = chat.agent({
   },
   run: async ({ messages, signal }) => {
     return streamText({
-      model: anthropic("claude-sonnet-4-5"),
+      model: anthropic("claude-sonnet-4-6"),
       ...chat.toStreamTextOptions({ cacheControl: { type: "ephemeral" } }),
       messages,
       abortSignal: signal,
@@ -172,7 +172,7 @@ run: async ({ messages, signal, previousTurnUsage }) => {
   console.log("cache write", previousTurnUsage?.inputTokenDetails?.cacheWriteTokens);
 
   return streamText({
-    model: anthropic("claude-sonnet-4-5"),
+    model: anthropic("claude-sonnet-4-6"),
     ...chat.toStreamTextOptions({ cacheControl: { type: "ephemeral" } }),
     messages,
     abortSignal: signal,
