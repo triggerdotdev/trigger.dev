@@ -84,7 +84,7 @@ export default function Page() {
           <LinkButton
             variant={"docs/small"}
             LeadingIcon={BookOpenIcon}
-            to={docsPath("/ai-chat/sessions")}
+            to={docsPath("ai-chat/sessions")}
           >
             Sessions docs
           </LinkButton>

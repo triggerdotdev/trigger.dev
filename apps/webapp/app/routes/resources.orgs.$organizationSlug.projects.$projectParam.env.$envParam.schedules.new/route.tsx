@@ -58,7 +58,6 @@ import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projec
 import { TimezoneList } from "~/components/scheduled/timezones";
 import { logger } from "~/services/logger.server";
 import { Spinner } from "~/components/primitives/Spinner";
-import { cond } from "effect/STM";
 import { useEnvironment } from "~/hooks/useEnvironment";
 
 const cronFormat = `*    *    *    *    *
