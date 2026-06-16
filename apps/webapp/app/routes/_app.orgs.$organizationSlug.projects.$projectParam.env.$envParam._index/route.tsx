@@ -193,7 +193,7 @@ export default function Page() {
   }, [streamedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [showUsefulLinks, setShowUsefulLinks] = useState(usefulLinksPreference ?? true);
-  // Unmount the charts while the side panel animates; 25 SVGs in a reflowing table tanks perf.
+  // Hide (don't unmount) the charts during the panel animation; 25 reflowing SVGs tank the resize.
   const [isPanelAnimating, setIsPanelAnimating] = useState(false);
   const animatingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const usefulLinksPanelRef = useRef<PanelHandle>(null);
@@ -436,24 +436,21 @@ function TaskRow({
         </Suspense>
       </TableCell>
       <TableCell to={rowPath} actionClassName="py-1.5">
-        {/* Reserve the cell footprint while the chart unmounts during the panel animation. */}
         <div style={{ width: ACTIVITY_CELL_WIDTH, height: ACTIVITY_CHART_HEIGHT }}>
-          {!isPanelAnimating && (
-            <div className="duration-100 animate-in fade-in">
-              <Suspense fallback={<TaskActivityBlankState />}>
-                <TypedAwait resolve={hourlyActivity} errorElement={<FailedToLoadStats />}>
-                  {(data) => {
-                    const taskData = data[item.slug];
-                    return taskData && taskData.length > 0 ? (
-                      <TaskActivityGraph activity={taskData} />
-                    ) : (
-                      <TaskActivityBlankState />
-                    );
-                  }}
-                </TypedAwait>
-              </Suspense>
-            </div>
-          )}
+          <div hidden={isPanelAnimating}>
+            <Suspense fallback={<TaskActivityBlankState />}>
+              <TypedAwait resolve={hourlyActivity} errorElement={<FailedToLoadStats />}>
+                {(data) => {
+                  const taskData = data[item.slug];
+                  return taskData && taskData.length > 0 ? (
+                    <TaskActivityGraph activity={taskData} />
+                  ) : (
+                    <TaskActivityBlankState />
+                  );
+                }}
+              </TypedAwait>
+            </Suspense>
+          </div>
         </div>
       </TableCell>
       <TableCellMenu

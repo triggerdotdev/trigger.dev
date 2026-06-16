@@ -47,18 +47,22 @@ export function SearchInput({
   const [text, setText] = useState(initialSearch);
   const [isFocused, setIsFocused] = useState(false);
 
+  // Compare against a ref, not `text`, so the effect stays off the keystroke path.
+  const lastSyncedRef = useRef(initialSearch);
+
   useEffect(() => {
     if (isControlled) {
-      if (controlledValue !== undefined && controlledValue !== text) {
+      if (controlledValue !== undefined && controlledValue !== lastSyncedRef.current) {
+        lastSyncedRef.current = controlledValue;
         setText(controlledValue);
       }
       return;
     }
     const urlSearch = value(paramName) ?? "";
-    if (urlSearch !== text && !isFocused) {
-      setText(urlSearch);
-    }
-  }, [isControlled, controlledValue, value, text, isFocused, paramName]);
+    if (urlSearch === lastSyncedRef.current) return;
+    lastSyncedRef.current = urlSearch;
+    if (!isFocused) setText(urlSearch);
+  }, [isControlled, controlledValue, value, isFocused, paramName]);
 
   const updateText = (next: string) => {
     setText(next);
