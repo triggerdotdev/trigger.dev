@@ -1,0 +1,46 @@
+name: 📚 Publish docs
+
+on:
+  push:
+    tags:
+      - "docs-release-*"
+
+# Only needs to move the docs-live ref; Mintlify's GitHub app deploys from it.
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-docs
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout tagged commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: 📦 Cache npm
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.npm
+          key: |
+            ${{ runner.os }}-mintlify
+          restore-keys: |
+            ${{ runner.os }}-mintlify
+
+      - name: 🔗 Check for broken links
+        working-directory: ./docs
+        run: npx mintlify@4.0.393 broken-links
+
+      - name: 🚀 Fast-forward docs-live to the tagged commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api -X PATCH \
+            "repos/${{ github.repository }}/git/refs/heads/docs-live" \
+            -f sha="${{ github.sha }}" \
+            -F force=false
