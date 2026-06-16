@@ -18,3 +18,26 @@ export type {
 } from "./rbac.js";
 
 export { buildJwtAbility } from "./rbac.js";
+
+export type {
+  SsoPlugin,
+  SsoController,
+  OrgSsoStatus,
+  SsoRouteDecision,
+  SsoFlow,
+  SsoProfile,
+  SsoConnectionState,
+  SsoDomainState,
+  SsoDomainStatus,
+  SsoResolutionDecision,
+  SsoDecisionError,
+  SsoBeginError,
+  SsoCompleteError,
+  SsoMutationError,
+  SsoPortalError,
+  SsoValidateError,
+  SsoWebhookError,
+  SsoWebhookEvent,
+} from "./sso.js";
+
+export { SSO_FLOWS } from "./sso.js";

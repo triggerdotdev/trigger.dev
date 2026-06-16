@@ -1,16 +1,18 @@
 ---
 title: "Sessions"
 sidebarTitle: "Sessions"
-description: "A Session is a pair of durable streams — input carries your users' messages to the agent, output carries everything the agent produces back — plus orchestration of the runs that process them."
+description: "A Session is a stateful execution of an agent, with two-way streaming and durable compute. A single Session can have multiple runs associated with it."
 ---
 
 import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
 
 <RcBanner />
 
-**A Session is a pair of durable streams.** The input stream (`.in`) carries incoming user messages to your task. The output stream (`.out`) carries everything the agent produces back to your clients: AI generation parts (text, reasoning, tool calls) and any custom data parts you write.
+**A Session is a stateful execution of an agent.** It includes two-way streaming and durable compute, and a single Session can have multiple runs associated with it.
 
-Sessions also **orchestrate the runs that process those streams**. A Session is keyed on your stable id (`externalId` — for chat, the `chatId`) and owns its current run: when a run suspends, idles out, or hands off to a new version, the Session starts or swaps to a fresh run and the streams carry on. Clients keep sending and reading against the same id; they never know a run changed underneath.
+The **two-way streaming** is a pair of durable streams. The input stream (`.in`) carries incoming user messages to your task. The output stream (`.out`) carries everything the agent produces back to your clients: AI generation parts (text, reasoning, tool calls) and any custom data parts you write.
+
+The **durable compute** is the runs that process those streams. A Session is keyed on your stable id (`externalId` — for chat, the `chatId`) and owns its current run: when a run suspends, idles out, or hands off to a new version, the Session starts or swaps to a fresh run and the streams carry on. Clients keep sending and reading against the same id; they never know a run changed underneath.
 
 ```mermaid
 flowchart LR

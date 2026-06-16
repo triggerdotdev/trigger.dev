@@ -123,7 +123,11 @@
       "semver@>=5 <5.7.2": "^5.7.2",
       "defu@>=6 <6.1.5": "^6.1.5",
       "fast-uri@<3.1.2": "^3.1.2",
-      "fast-xml-builder@<1.1.7": "^1.1.7"
+      "js-cookie@<3.0.8": "3.0.8",
+      "tmp@<0.2.7": "0.2.7",
+      "brace-expansion@<1.1.13": "1.1.13",
+      "brace-expansion@>=2 <2.0.3": "2.0.3",
+      "brace-expansion@>=5 <5.0.6": "5.0.6"
     },
     "onlyBuiltDependencies": [
       "@depot/cli",

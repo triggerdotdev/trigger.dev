@@ -129,7 +129,12 @@ function SessionsHelpTooltip() {
           <div>
             <Paragraph variant="small/bright">What is a session?</Paragraph>
             <Paragraph variant="small" className="mt-1">
-            A session is a stateful execution of an agent. It includes two-way streaming and durable compute. A session can have multiple “Runs” associated with it.
+              A session is a stateful execution of an agent, with two-way streaming and durable
+              compute. A single session can have multiple runs associated with it, so one
+              conversation can span many task triggers. The input stream carries incoming user
+              messages, and the output stream carries everything the agent produces, including AI
+              generation parts (text, reasoning, tool calls, etc.) and any custom data parts your
+              task emits.
             </Paragraph>
           </div>
           <div className="flex flex-col gap-2.5 border-t border-grid-dimmed pt-3">
