@@ -64,6 +64,21 @@ export function createReloadingRegistry<T>(opts: ReloadingRegistryOptions<T>): R
     resolveReady = resolve;
   });
 
+  let interval: ReturnType<typeof setInterval> | undefined;
+
+  function startReloadInterval() {
+    interval = setInterval(() => {
+      doLoad().catch((err) => {
+        loadFailures.inc({ name: opts.name });
+        logger.warn("[ReloadingRegistry] reload failed", {
+          name: opts.name,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }, opts.intervalMs);
+    interval.unref(); // never keep the process alive; SIGTERM still clears it
+  }
+
   async function doLoad() {
     const seq = ++loadSeq;
     const next = await opts.load();
@@ -74,15 +89,15 @@ export function createReloadingRegistry<T>(opts: ReloadingRegistryOptions<T>): R
       loaded = true;
       registryLoaded.set({ name: opts.name }, 1);
       resolveReady();
+      // Poll only after the first load lands, so the startup retry can't race it.
+      if (opts.autoStart !== false) startReloadInterval();
     }
   }
-
-  let interval: ReturnType<typeof setInterval> | undefined;
 
   if (opts.autoStart !== false) {
     registryLoaded.set({ name: opts.name }, 0); // visible cold series until first load
 
-    const startup = pRetry(() => doLoad(), {
+    pRetry(() => doLoad(), {
       forever: opts.retry?.retries === undefined,
       retries: opts.retry?.retries,
       minTimeout: 1_000,
@@ -97,24 +112,12 @@ export function createReloadingRegistry<T>(opts: ReloadingRegistryOptions<T>): R
           error: error.message,
         });
       },
-    });
-    startup.catch((err) => {
+    }).catch((err) => {
       logger.error("[ReloadingRegistry] startup load gave up", {
         name: opts.name,
         error: err instanceof Error ? err.message : String(err),
       });
     });
-
-    interval = setInterval(() => {
-      doLoad().catch((err) => {
-        loadFailures.inc({ name: opts.name });
-        logger.warn("[ReloadingRegistry] reload failed", {
-          name: opts.name,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
-    }, opts.intervalMs);
-    interval.unref(); // never keep the process alive; SIGTERM still clears it
   } else {
     resolveReady(); // inert: any direct `await isReady` resolves immediately
   }
