@@ -168,6 +168,7 @@ seed()
   })
   .finally(async () => {
     await prisma.$disconnect();
+    process.exit(0);
   });
 
 async function findOrCreateOrganization(
