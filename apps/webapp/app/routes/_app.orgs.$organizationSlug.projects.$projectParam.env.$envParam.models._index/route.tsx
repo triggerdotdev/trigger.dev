@@ -151,6 +151,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   ]);
 
   const usageSparklines = await presenter.getModelUsageSparklines(
+    project.id,
     environment.id,
     projectUsage.map((u) => u.responseModel),
     time.from,

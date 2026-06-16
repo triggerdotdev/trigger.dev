@@ -179,6 +179,7 @@ export class ModelPricingRegistry {
         "cache_creation_input_tokens",
         "input_cache_creation",
         "input_cache_creation_5m",
+        "input_cache_creation_1h",
       ]) ?? inputPrice;
 
     const totalInputTokens = usageDetails["input"] ?? usageDetails["input_tokens"] ?? 0;

@@ -724,6 +724,7 @@ export class ModelRegistryPresenter extends BasePresenter {
    * readable ~24-52 bars regardless of the selected period. Zero-filled.
    */
   async getModelUsageSparklines(
+    projectId: string,
     environmentId: string,
     responseModels: string[],
     from: Date,
@@ -758,7 +759,8 @@ export class ModelRegistryPresenter extends BasePresenter {
             toUnixTimestamp(toStartOfInterval(start_time, INTERVAL ${intervalSeconds} SECOND)) AS bucket,
             ${valueExpr} AS val
           FROM trigger_dev.llm_metrics_v1
-          WHERE environment_id = {environmentId: String}
+          WHERE project_id = {projectId: String}
+            AND environment_id = {environmentId: String}
             AND response_model IN {responseModels: Array(String)}
             AND start_time >= {startTime: String}
             AND start_time <= {endTime: String}
@@ -766,6 +768,7 @@ export class ModelRegistryPresenter extends BasePresenter {
           ORDER BY response_model, bucket
         `,
         params: z.object({
+          projectId: z.string(),
           environmentId: z.string(),
           responseModels: z.array(z.string()),
           startTime: z.string(),
@@ -775,6 +778,7 @@ export class ModelRegistryPresenter extends BasePresenter {
       });
 
     const queryParams = {
+      projectId,
       environmentId,
       responseModels,
       startTime: formatDateForCH(from),
