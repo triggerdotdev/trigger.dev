@@ -598,7 +598,8 @@ function ScheduleSheet({
     if (mode === "edit" && editPath) editFetcher.load(editPath);
   }, [mode, editPath]);
 
-  // Reload inspector data so Enable/Disable label flips; toast on error.
+  // Reload inspector data so Enable/Disable label flips; revalidate the
+  // route loader so the sidebar's list/Overview stay in sync; toast on error.
   useEffect(() => {
     const data = activeToggleFetcher.data;
     if (activeToggleFetcher.state !== "idle" || !data) return;
@@ -606,12 +607,14 @@ function ScheduleSheet({
     handledToggleRef.current = data;
     if (data.ok) {
       if (detailPath) detailFetcher.load(detailPath);
+      revalidator.revalidate();
     } else if (data.message) {
       toast.error(data.message);
     }
-  }, [activeToggleFetcher.state, activeToggleFetcher.data, detailPath, toast]);
+  }, [activeToggleFetcher.state, activeToggleFetcher.data, detailPath, toast, revalidator]);
 
-  // Toast + back to inspect + reload so the inspector reflects the update.
+  // Toast + back to inspect + reload + revalidate so both the inspector
+  // and the sidebar reflect the update.
   useEffect(() => {
     const data = updateFetcher.data;
     if (updateFetcher.state !== "idle" || !data) return;
@@ -621,10 +624,11 @@ function ScheduleSheet({
       toast.success(data.message ?? "Schedule updated");
       setMode("inspect");
       if (detailPath) detailFetcher.load(detailPath);
+      revalidator.revalidate();
     } else if (data.message) {
       toast.error(data.message);
     }
-  }, [updateFetcher.state, updateFetcher.data, detailPath, toast]);
+  }, [updateFetcher.state, updateFetcher.data, detailPath, toast, revalidator]);
 
   // Toast + close + revalidate so the deleted row disappears.
   useEffect(() => {
