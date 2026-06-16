@@ -638,8 +638,18 @@ function ScheduleSheet({
   }, [deleteFetcher.state, deleteFetcher.data, toast, revalidator, onClose]);
 
   const schedule = detailFetcher.data?.schedule;
+  // Treat stale data (previous schedule still in fetcher cache after the
+  // user clicked a different row) as loading — otherwise we briefly flash
+  // the previous schedule's content while the new fetch is in flight.
+  const isStaleSchedule = !!schedule && !!openScheduleId && schedule.friendlyId !== openScheduleId;
   const isDetailLoading =
-    detailFetcher.state === "loading" || (!!openScheduleId && !schedule);
+    detailFetcher.state === "loading" ||
+    isStaleSchedule ||
+    (!!openScheduleId && schedule === undefined);
+  // Distinct from loading: the loader has resolved and the schedule is
+  // genuinely gone (returned `null`, e.g. deleted externally).
+  const isScheduleMissing =
+    !!openScheduleId && !isDetailLoading && detailFetcher.data?.schedule === null;
   const editData = editFetcher.data;
   const isEditLoading =
     mode === "edit" && (editFetcher.state === "loading" || !editData);
@@ -665,9 +675,11 @@ function ScheduleSheet({
               submitFetcher={updateFetcher}
             />
           )
-        ) : isDetailLoading || !schedule ? (
+        ) : isDetailLoading ? (
           <TableLoading />
-        ) : (
+        ) : isScheduleMissing ? (
+          <ScheduleMissingPanel onClose={onClose} />
+        ) : schedule ? (
           <ScheduleInspector
             schedule={schedule}
             actionPath={detailPath}
@@ -675,6 +687,8 @@ function ScheduleSheet({
             activeToggleFetcher={activeToggleFetcher}
             deleteFetcher={deleteFetcher}
           />
+        ) : (
+          <TableLoading />
         )}
       </SheetContent>
     </Sheet>
@@ -1095,6 +1109,19 @@ function TableLoading() {
   return (
     <div className="flex h-full items-center justify-center">
       <Spinner className="size-6" />
+    </div>
+  );
+}
+
+function ScheduleMissingPanel({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 bg-background-bright p-6 text-center">
+      <Paragraph variant="small" className="text-text-bright">
+        This schedule no longer exists.
+      </Paragraph>
+      <Button variant="secondary/small" onClick={onClose}>
+        Close
+      </Button>
     </div>
   );
 }

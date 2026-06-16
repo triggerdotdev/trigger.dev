@@ -85,6 +85,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   });
 
   if (!project) {
+    const message = `No project found with slug ${projectParam}`;
+    if (wantsJson) {
+      return json({ ok: false as const, message }, { status: 404 });
+    }
     return redirectWithErrorMessage(
       v3SchedulePath(
         { slug: organizationSlug },
@@ -93,7 +97,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         { friendlyId: scheduleParam }
       ),
       request,
-      `No project found with slug ${projectParam}`
+      message
     );
   }
 
