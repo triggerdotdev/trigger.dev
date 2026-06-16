@@ -110,6 +110,8 @@ function enrichLlmMetrics(event: CreateEventInput): void {
       "trigger.llm.input_cost": cost.inputCost,
       "trigger.llm.output_cost": cost.outputCost,
       "trigger.llm.total_cost": cost.totalCost,
+      "trigger.llm.cached_cost": cost.costDetails["input_cached_tokens"] ?? 0,
+      "trigger.llm.cache_creation_cost": cost.costDetails["cache_creation_input_tokens"] ?? 0,
       "trigger.llm.matched_model": cost.matchedModelName,
       "trigger.llm.matched_model_id": cost.matchedModelId,
       "trigger.llm.pricing_tier": cost.pricingTierName,
