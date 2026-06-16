@@ -11,7 +11,7 @@ sidebarTitle: "Agent rules"
 
 ## What changed
 
-Trigger.dev used to install per-tool *rule files* (`.cursor/rules/trigger.*.mdc`, regions in `CLAUDE.md`, and so on) fetched from GitHub. That has been replaced by [agent skills](/skills): `SKILL.md` directories in the open [Agent Skills standard](https://agentskills.io) that ship inside the CLI, versioned with it, and load on demand instead of always sitting in your context.
+Trigger.dev used to install per-tool *rule files* (`.cursor/rules/trigger.*.mdc`, regions in `CLAUDE.md`, and so on) fetched from GitHub. That has been replaced by [agent skills](/skills): `SKILL.md` directories in the open [Agent Skills standard](https://agentskills.io) that install with the CLI, draw their API guidance from a version-pinned reference in `@trigger.dev/sdk`, and load on demand instead of always sitting in your context.
 
 The install command is the same, and now installs skills:
 
