@@ -123,6 +123,7 @@
                   "ai/prompts",
                   "ai-chat/fast-starts",
                   "ai-chat/compaction",
+                  "ai-chat/prompt-caching",
                   "ai-chat/pending-messages",
                   "ai-chat/background-injection",
                   "ai-chat/actions",
