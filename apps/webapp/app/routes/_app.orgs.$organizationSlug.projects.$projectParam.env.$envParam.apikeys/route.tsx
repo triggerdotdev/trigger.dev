@@ -1,6 +1,5 @@
 import { BookOpenIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { CodeBlock } from "~/components/code/CodeBlock";
@@ -16,6 +15,7 @@ import {
   PageBody,
   PageContainer,
 } from "~/components/layout/AppLayout";
+import { PermissionDenied } from "~/components/PermissionDenied";
 import {
   Accordion,
   AccordionContent,
@@ -31,9 +31,10 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import * as Property from "~/components/primitives/PropertyTable";
+import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
-import { requireUserId } from "~/services/session.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import { docsPath, EnvironmentParamSchema } from "~/utils/pathBuilder";
 
@@ -45,33 +46,55 @@ export const meta: MetaFunction = () => {
   ];
 };
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { projectParam, envParam } = EnvironmentParamSchema.parse(params);
+async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
+  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
+  return org?.id ?? null;
+}
 
-  try {
-    const presenter = new ApiKeysPresenter();
-    const { environment, hasVercelIntegration } = await presenter.call({
-      userId,
-      projectSlug: projectParam,
-      environmentSlug: envParam,
-    });
+export const loader = dashboardLoader(
+  {
+    params: EnvironmentParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    // No hard authorization: anyone with project access can open the page.
+    // Reading the secret key is gated per environment tier below — a role
+    // that can't read this tier's keys gets the info panel, not the key.
+  },
+  async ({ params, user, ability }) => {
+    const { projectParam, envParam } = params;
 
-    return typedjson({
-      environment,
-      hasVercelIntegration,
-    });
-  } catch (error) {
-    console.error(error);
-    throw new Response(undefined, {
-      status: 400,
-      statusText: "Something went wrong, if this problem persists please contact support.",
-    });
+    try {
+      const presenter = new ApiKeysPresenter();
+      const { environment, hasVercelIntegration } = await presenter.call({
+        userId: user.id,
+        projectSlug: projectParam,
+        environmentSlug: envParam,
+      });
+
+      const canReadApiKeys =
+        !environment || ability.can("read", { type: "apiKeys", envType: environment.type });
+
+      return typedjson({
+        // Never serialize the secret key to the client when the role can't
+        // read it for this environment tier.
+        environment: environment && !canReadApiKeys ? { ...environment, apiKey: "" } : environment,
+        hasVercelIntegration,
+        canReadApiKeys,
+      });
+    } catch (error) {
+      console.error(error);
+      throw new Response(undefined, {
+        status: 400,
+        statusText: "Something went wrong, if this problem persists please contact support.",
+      });
+    }
   }
-};
+);
 
 export default function Page() {
-  const { environment, hasVercelIntegration } = useTypedLoaderData<typeof loader>();
+  const { environment, hasVercelIntegration, canReadApiKeys } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
 
   if (!environment) {
@@ -126,70 +149,78 @@ export default function Page() {
               API keys
             </Header2>
           </div>
-          <div className="flex flex-col gap-6">
-            <InputGroup fullWidth>
-              <div className="flex w-full items-center justify-between">
-                <Label>Secret key</Label>
-                <RegenerateApiKeyModal
-                  id={environment.parentEnvironment?.id ?? environment.id}
-                  title={environmentFullTitle(environment)}
-                  hasVercelIntegration={hasVercelIntegration}
-                  isDevelopment={environment.type === "DEVELOPMENT"}
-                />
-              </div>
-              <ClipboardField
-                className="w-full max-w-none"
-                secure={`tr_${environment.apiKey.split("_")[1]}_••••••••`}
-                value={environment.apiKey}
-                variant={"secondary/small"}
-              />
-              <Hint>
-                Set this as your <InlineCode variant="extra-small">TRIGGER_SECRET_KEY</InlineCode>{" "}
-                env var in your backend.
-              </Hint>
-            </InputGroup>
-            {environment.branchName && (
+          {canReadApiKeys ? (
+            <div className="flex flex-col gap-6">
               <InputGroup fullWidth>
-                <Label>Branch name</Label>
+                <div className="flex w-full items-center justify-between">
+                  <Label>Secret key</Label>
+                  <RegenerateApiKeyModal
+                    id={environment.parentEnvironment?.id ?? environment.id}
+                    title={environmentFullTitle(environment)}
+                    hasVercelIntegration={hasVercelIntegration}
+                    isDevelopment={environment.type === "DEVELOPMENT"}
+                  />
+                </div>
                 <ClipboardField
                   className="w-full max-w-none"
-                  value={environment.branchName}
+                  secure={`tr_${environment.apiKey.split("_")[1]}_••••••••`}
+                  value={environment.apiKey}
                   variant={"secondary/small"}
                 />
                 <Hint>
-                  Set this as your{" "}
-                  <InlineCode variant="extra-small">TRIGGER_PREVIEW_BRANCH</InlineCode> env var in
-                  your backend.
+                  Set this as your <InlineCode variant="extra-small">TRIGGER_SECRET_KEY</InlineCode>{" "}
+                  env var in your backend.
                 </Hint>
               </InputGroup>
-            )}
-            {environment.type === "DEVELOPMENT" && (
-              <Callout variant="info">
-                Every team member gets their own dev Secret key. Make sure you're using the one
-                above otherwise you will trigger runs on your team member's machine.
-              </Callout>
-            )}
+              {environment.branchName && (
+                <InputGroup fullWidth>
+                  <Label>Branch name</Label>
+                  <ClipboardField
+                    className="w-full max-w-none"
+                    value={environment.branchName}
+                    variant={"secondary/small"}
+                  />
+                  <Hint>
+                    Set this as your{" "}
+                    <InlineCode variant="extra-small">TRIGGER_PREVIEW_BRANCH</InlineCode> env var in
+                    your backend.
+                  </Hint>
+                </InputGroup>
+              )}
+              {environment.type === "DEVELOPMENT" && (
+                <Callout variant="info">
+                  Every team member gets their own dev Secret key. Make sure you're using the one
+                  above otherwise you will trigger runs on your team member's machine.
+                </Callout>
+              )}
 
-            <Accordion type="single" collapsible>
-              <AccordionItem value="item-1">
-                <AccordionTrigger>How to set these environment variables</AccordionTrigger>
-                <AccordionContent>
-                  <div className="flex flex-col gap-2">
-                    <div>
-                      You need to set these environment variables in your backend. This allows the
-                      SDK to authenticate with Trigger.dev.
+              <Accordion type="single" collapsible>
+                <AccordionItem value="item-1">
+                  <AccordionTrigger>How to set these environment variables</AccordionTrigger>
+                  <AccordionContent>
+                    <div className="flex flex-col gap-2">
+                      <div>
+                        You need to set these environment variables in your backend. This allows the
+                        SDK to authenticate with Trigger.dev.
+                      </div>
+                      <CodeBlock
+                        language="javascript"
+                        code={envBlock}
+                        showOpenInModal={false}
+                        showLineNumbers={false}
+                      />
                     </div>
-                    <CodeBlock
-                      language="javascript"
-                      code={envBlock}
-                      showOpenInModal={false}
-                      showLineNumbers={false}
-                    />
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </div>
+          ) : (
+            <PermissionDenied
+              message={`With your current role, you can't view the API keys for ${environmentFullTitle(
+                environment
+              )}.`}
+            />
+          )}
         </MainHorizontallyCenteredContainer>
       </PageBody>
     </PageContainer>
