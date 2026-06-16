@@ -1,5 +1,5 @@
 ---
-name: authoring-tasks
+name: trigger-authoring-tasks
 description: >
   Covers writing backend Trigger.dev tasks with @trigger.dev/sdk: defining task() and
   schemaTask(), the run function and its ctx, retries, waits, queues and concurrency,
@@ -200,7 +200,7 @@ export default defineConfig({
 });
 ```
 
-`build.external` controls which packages stay out of the bundle. Build extensions (`additionalFiles`, `prismaExtension`, `puppeteer`, `ffmpeg`, `aptGet`, etc.) come from `@trigger.dev/build`. `telemetry` configures instrumentations and exporters.
+`build.external` controls which packages stay out of the bundle. Build extensions (`additionalFiles`, `prismaExtension`, `puppeteer`, `playwright`, `ffmpeg`, `pythonExtension`, `aptGet`, `syncEnvVars`, etc.) come from `@trigger.dev/build`. `telemetry` configures instrumentations and exporters. Each extension has its own setup doc, all bundled under `@trigger.dev/sdk/docs/config/extensions/` (start with `overview.mdx`); read the one you need before wiring it up rather than guessing the API.
 
 ### Logging
 
@@ -240,8 +240,8 @@ export default defineConfig({
 
 Sibling skills:
 
-- **realtime-and-frontend** for subscribing to runs and triggering from the frontend with React hooks.
-- **authoring-chat-agent** and **chat-agent-advanced** for building AI chat agents.
+- **trigger-realtime-and-frontend** for subscribing to runs and triggering from the frontend with React hooks.
+- **trigger-authoring-chat-agent** and **trigger-chat-agent-advanced** for building AI chat agents.
 
 Reference docs ship beside this skill in the same package, read them locally (no network), pinned to your installed version. The `sources:` frontmatter above lists every doc this skill draws from, all under `@trigger.dev/sdk/docs/`. Start with:
 

@@ -1,5 +1,5 @@
 ---
-name: chat-agent-advanced
+name: trigger-chat-agent-advanced
 description: >
   Advanced and operational chat.agent capabilities for Trigger.dev, loaded on demand. Load this when
   working on the raw Sessions primitive (sessions / SessionHandle), a custom chat transport or the
@@ -8,7 +8,7 @@ description: >
   Start via @trigger.dev/sdk/chat-server), context resilience (compaction, recovery boot, OOM, large
   payloads), chat.local run-scoped state, offline testing with mockChatAgent, or prerelease/version
   upgrades. For the everyday chat.agent({...}) definition and the useTriggerChatTransport happy path,
-  use the authoring-chat-agent skill instead.
+  use the trigger-authoring-chat-agent skill instead.
 type: core
 library: trigger.dev
 sources:
@@ -354,12 +354,14 @@ TS helpers `SSEStreamSubscription` and `controlSubtype(headers)` (documented in
 
 ## References
 
-- `authoring-chat-agent` skill - the everyday `chat.agent({...})` definition, lifecycle hooks, and
+- `trigger-authoring-chat-agent` skill - the everyday `chat.agent({...})` definition, lifecycle hooks, and
   the `useTriggerChatTransport` happy path. Start there before reaching for this skill.
-- `realtime-and-frontend` skill - Realtime hooks and frontend streaming beyond the chat transport.
-- `authoring-tasks` skill - base `task()` semantics, `ctx`, and standard lifecycle hooks.
+- `trigger-realtime-and-frontend` skill - Realtime hooks and frontend streaming beyond the chat transport.
+- `trigger-authoring-tasks` skill - base `task()` semantics, `ctx`, and standard lifecycle hooks.
 
 Reference docs ship beside this skill in the same package, read them locally (no network), pinned to your installed version. The `sources:` frontmatter above lists every doc this skill draws from, all under `@trigger.dev/sdk/docs/ai-chat/` (including `patterns/`). For HITL, sessions, and sub-agents start with `sessions.mdx`, `server-chat.mdx`, `client-protocol.mdx`, `patterns/human-in-the-loop.mdx`, `patterns/sub-agents.mdx`.
+
+For `trigger.config.ts` and build extensions a chat-agent task may need (Prisma, Playwright, Python, etc.), read the bundled config docs under `@trigger.dev/sdk/docs/config/` (`config/extensions/` for the per-extension setup).
 
 ## Version
 
