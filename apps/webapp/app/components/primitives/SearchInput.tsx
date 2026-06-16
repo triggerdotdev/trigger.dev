@@ -60,8 +60,11 @@ export function SearchInput({
     }
     const urlSearch = value(paramName) ?? "";
     if (urlSearch === lastSyncedRef.current) return;
-    lastSyncedRef.current = urlSearch;
-    if (!isFocused) setText(urlSearch);
+    // Only mark synced once we actually apply it, so a URL change during focus still syncs on blur.
+    if (!isFocused) {
+      lastSyncedRef.current = urlSearch;
+      setText(urlSearch);
+    }
   }, [isControlled, controlledValue, value, isFocused, paramName]);
 
   const updateText = (next: string) => {
