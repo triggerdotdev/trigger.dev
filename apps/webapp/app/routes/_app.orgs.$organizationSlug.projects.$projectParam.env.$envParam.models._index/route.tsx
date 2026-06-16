@@ -1171,7 +1171,7 @@ function DetailYourUsageTab({
         <MetricWidget
           widgetKey={`${modelName}-user-cache-hit`}
           title="Cache hit rate over time"
-          query={`SELECT timeBucket(), round(ifNull(sum(cached_read_tokens) * 100.0 / nullIf(sum(input_tokens) + sum(cached_read_tokens), 0), 0), 1) AS cache_hit_pct FROM llm_metrics WHERE response_model = '${escapeTSQL(
+          query={`SELECT timeBucket(), round(ifNull(sum(cached_read_tokens) * 100.0 / nullIf(sum(input_tokens), 0), 0), 1) AS cache_hit_pct FROM llm_metrics WHERE response_model = '${escapeTSQL(
             modelName
           )}' GROUP BY timeBucket ORDER BY timeBucket`}
           config={chartConfig({
