@@ -1761,9 +1761,10 @@ const stopInput: RealtimeDefinedInputStream<{ stop: true; message?: string }> = 
  * with pending tool calls (`"handover"` — agent picks up from tool
  * execution), or it finished pure-text (`"handover-skip"` — agent
  * exits cleanly without making an LLM call).
- * @internal
+ *
+ * Returned by `chat.waitForHandover()` for custom-agent loops.
  */
-type HandoverSignal =
+export type HandoverSignal =
   | {
       kind: "handover";
       partialAssistantMessage: ModelMessage[];
@@ -1807,6 +1808,42 @@ const handoverInput = {
     }
   },
 };
+
+/**
+ * Wait for a `chat.headStart` handover signal inside a custom-agent loop or
+ * `chat.createSession`. Returns:
+ * - `null` — this run is not a `handover-prepare` boot, or the wait idled out /
+ *   the warm handler crashed before signaling. Treat as "no handover".
+ * - `{ kind: "handover-skip" }` — the warm handler aborted; exit without a turn.
+ * - `{ kind: "handover", partialAssistantMessage, messageId?, isFinal }` — splice
+ *   the partial (`chat.MessageAccumulator.applyHandover`) and, when `isFinal` is
+ *   false, fall through to `streamText` to run the handed-over tool round.
+ *
+ * For the common case prefer `accumulator.consumeHandover()`, which also seeds
+ * `payload.headStartMessages` and applies the partial for you.
+ *
+ * Must be called at turn 0 before any `chat.messages.waitWithIdleTimeout` —
+ * that facade consumes and discards non-message chunks, which would swallow the
+ * handover signal.
+ */
+async function waitForHandover(options: {
+  /** The run's wire payload (only `trigger` / `idleTimeoutInSeconds` are read). */
+  payload: { trigger?: string; idleTimeoutInSeconds?: number };
+  idleTimeoutInSeconds?: number;
+  timeout?: string;
+  spanName?: string;
+}): Promise<HandoverSignal | null> {
+  if (options.payload.trigger !== "handover-prepare") return null;
+  const result = await handoverInput.waitWithIdleTimeout({
+    idleTimeoutInSeconds:
+      options.idleTimeoutInSeconds ?? options.payload.idleTimeoutInSeconds ?? 60,
+    timeout: options.timeout,
+    spanName: options.spanName ?? "waiting for handover signal",
+  });
+  // Non-ok = idle timeout or the warm handler crashed without signaling.
+  if (!result.ok) return null;
+  return result.output;
+}
 
 /**
  * Per-turn deferred promises. Registered via `chat.defer()`, awaited
@@ -1916,6 +1953,31 @@ function synthesizeHandoverUIMessage(
     role: "assistant",
     parts,
   } as UIMessage;
+}
+
+/**
+ * Splice a head-start handover partial into an accumulating message pair
+ * (model + UI). Dedups by `messageId` against the UI chain (so a hydrated
+ * history that already persisted the partial isn't doubled), then pushes the
+ * partial into `modelMessages` and the synthesized UIMessage into `uiMessages`.
+ * Shared by the `chat.agent` turn-0 splice and `ChatMessageAccumulator.applyHandover`.
+ * @internal
+ */
+function spliceHandoverPartial(
+  modelMessages: ModelMessage[],
+  uiMessages: UIMessage[],
+  signal: { partialAssistantMessage: ModelMessage[]; messageId?: string }
+): void {
+  if (!signal.partialAssistantMessage || signal.partialAssistantMessage.length === 0) {
+    return;
+  }
+  // Skip if the hydrated chain already persisted the partial under this id.
+  const alreadyInChain =
+    signal.messageId !== undefined && uiMessages.some((m) => m.id === signal.messageId);
+  if (alreadyInChain) return;
+  modelMessages.push(...signal.partialAssistantMessage);
+  const partialUI = synthesizeHandoverUIMessage(signal.partialAssistantMessage, signal.messageId);
+  if (partialUI) uiMessages.push(partialUI);
 }
 
 /**
@@ -6798,22 +6860,10 @@ function chatAgent<
                     // `UIMessageStreamError: No tool invocation found`.
                     const pendingHandoverPartial = locals.get(chatHandoverPartialKey);
                     if (pendingHandoverPartial && pendingHandoverPartial.length > 0) {
-                      const handoverMessageId = locals.get(chatHandoverMessageIdKey);
-                      // Skip if the hydrated chain already persisted the
-                      // partial under the handover messageId.
-                      const alreadyInChain =
-                        handoverMessageId !== undefined &&
-                        accumulatedUIMessages.some((m) => m.id === handoverMessageId);
-                      if (!alreadyInChain) {
-                        accumulatedMessages.push(...pendingHandoverPartial);
-                        const partialUI = synthesizeHandoverUIMessage(
-                          pendingHandoverPartial,
-                          handoverMessageId
-                        );
-                        if (partialUI) {
-                          accumulatedUIMessages.push(partialUI as TUIMessage);
-                        }
-                      }
+                      spliceHandoverPartial(accumulatedMessages, accumulatedUIMessages, {
+                        partialAssistantMessage: pendingHandoverPartial,
+                        messageId: locals.get(chatHandoverMessageIdKey),
+                      });
                       locals.set(chatHandoverPartialKey, []); // consume once
                     }
                   }
@@ -8748,7 +8798,7 @@ async function chatWriteTurnComplete(options?: { publicAccessToken?: string }): 
  */
 async function pipeChatAndCapture(
   source: UIMessageStreamable,
-  options?: { signal?: AbortSignal; spanName?: string }
+  options?: { signal?: AbortSignal; spanName?: string; originalMessages?: UIMessage[] }
 ): Promise<UIMessage | undefined> {
   let captured: UIMessage | undefined;
   let resolveOnFinish: () => void;
@@ -8759,6 +8809,10 @@ async function pipeChatAndCapture(
   const resolvedOptions = resolveUIMessageStreamOptions();
   const uiStream = source.toUIMessageStream({
     ...resolvedOptions,
+    // Thread the prior chain (incl. a spliced handover partial) so a resumed
+    // tool round's tool-output chunks merge into the originating tool-call
+    // instead of throwing "No tool invocation found".
+    ...(options?.originalMessages ? { originalMessages: options.originalMessages } : {}),
     // Stamp a server-generated id on the start chunk, same as chat.agent's
     // pipe. Without it the AI SDK regenerates the assistant id when a
     // prepareStep injection (steering) starts a new step mid-stream, and
@@ -8844,9 +8898,75 @@ class ChatMessageAccumulator {
     this.modelMessages = await toModelMessages(uiMessages);
   }
 
+  /**
+   * Splice a `chat.headStart` handover partial into the accumulator (the warm
+   * step-1 response). Dedups by `messageId` so a seeded/hydrated history that
+   * already carries the partial isn't doubled. Seed any prior history first
+   * (e.g. `setMessages(payload.headStartMessages)`). Low-level — see
+   * `consumeHandover` for the wait+seed+apply convenience.
+   */
+  applyHandover(signal: { partialAssistantMessage: ModelMessage[]; messageId?: string }): void {
+    spliceHandoverPartial(this.modelMessages, this.uiMessages, signal);
+  }
+
+  /**
+   * One-call `chat.headStart` handover for a custom-agent loop: waits for the
+   * handover signal, seeds prior history from `payload.headStartMessages`,
+   * applies the warm step-1 partial, and reports what to do next.
+   *
+   * Returns `{ isFinal, skipped }`:
+   * - `skipped: true` — not a `handover-prepare` run, the wait idled out, or the
+   *   warm handler aborted. Exit the run without a turn.
+   * - `isFinal: true` — step 1 IS the response (pure text). Write turn-complete
+   *   and continue; do not call `streamText`.
+   * - `isFinal: false` — fall through to `streamText`, which runs the pending
+   *   tool round handed over from step 1.
+   */
+  async consumeHandover(options: {
+    payload: {
+      trigger?: string;
+      idleTimeoutInSeconds?: number;
+      headStartMessages?: UIMessage[];
+    };
+    idleTimeoutInSeconds?: number;
+    timeout?: string;
+  }): Promise<{ isFinal: boolean; skipped: boolean }> {
+    const signal = await waitForHandover({
+      payload: options.payload,
+      idleTimeoutInSeconds: options.idleTimeoutInSeconds,
+      timeout: options.timeout,
+    });
+    if (!signal || signal.kind === "handover-skip") {
+      return { isFinal: false, skipped: true };
+    }
+    if (options.payload.headStartMessages && options.payload.headStartMessages.length > 0) {
+      await this.setMessages(options.payload.headStartMessages);
+    }
+    this.applyHandover(signal);
+    return { isFinal: signal.isFinal, skipped: false };
+  }
+
   async addResponse(response: UIMessage): Promise<void> {
     if (!response.id) {
       response = { ...response, id: generateMessageId() };
+    }
+    // Tool-approval and handover-resume continuations reuse the trailing
+    // assistant's ID (via originalMessages on the pipe), so the captured
+    // response can carry the same ID as a message already in the chain
+    // (e.g. a spliced handover partial). Replace in place instead of pushing
+    // a duplicate, mirroring the chat.agent accumulator.
+    const existingIdx = this.uiMessages.findIndex((m) => m.id === response.id);
+    if (existingIdx !== -1) {
+      this.uiMessages[existingIdx] = response;
+      try {
+        // Reconvert all model messages since we replaced rather than appended.
+        this.modelMessages = await toModelMessages(
+          this.uiMessages.map((m) => stripProviderMetadata(m))
+        );
+      } catch {
+        // Conversion failed — leave the existing model messages in place
+      }
+      return;
     }
     this.uiMessages.push(response);
     try {
@@ -9040,6 +9160,13 @@ export type ChatTurn = {
   previousTurnUsage?: LanguageModelUsage;
   /** Cumulative token usage across all completed turns so far. */
   totalUsage: LanguageModelUsage;
+  /**
+   * Set on the first turn of a `chat.headStart` handover; `null` otherwise.
+   * When `isFinal` is true the warm step-1 IS the response — call
+   * `turn.complete()` with no argument (don't call `streamText`). When false,
+   * call `streamText` as usual; it runs the handed-over tool round.
+   */
+  handover: { isFinal: boolean } | null;
 
   /**
    * Replace accumulated messages (for compaction). Takes UIMessages and
@@ -9051,8 +9178,11 @@ export type ChatTurn = {
   /**
    * Easy path: pipe stream, capture response, accumulate it,
    * clean up aborted parts if stopped, and write turn-complete chunk.
+   *
+   * Call with no argument on a head-start final turn (`turn.handover?.isFinal`)
+   * — the warm step-1 partial is already the response, so there's nothing to pipe.
    */
-  complete(source: UIMessageStreamable): Promise<UIMessage | undefined>;
+  complete(source?: UIMessageStreamable): Promise<UIMessage | undefined>;
 
   /**
    * Manual path: just write turn-complete chunk.
@@ -9151,6 +9281,31 @@ function createChatSession(
             stop = createStopSignal();
           }
           turn++;
+
+          // Head-start handover: the server triggered this run with
+          // `trigger: "handover-prepare"` and signals the warm step-1 partial on
+          // `session.in`. Wait for it BEFORE any `messagesInput.waitWithIdleTimeout`
+          // (that facade consumes-and-discards non-message chunks and would swallow
+          // the signal). Turn-0 only — continuation boots never carry this trigger.
+          let handoverThisTurn: { isFinal: boolean } | null = null;
+          let pendingHandoverSignal: HandoverSignal | null = null;
+          if (turn === 0 && currentPayload.trigger === "handover-prepare") {
+            const signal = await waitForHandover({
+              payload: currentPayload,
+              idleTimeoutInSeconds:
+                sessionIdleTimeoutOpt ?? currentPayload.idleTimeoutInSeconds ?? idleTimeoutInSeconds,
+              timeout,
+            });
+            if (!signal || signal.kind === "handover-skip" || runSignal.aborted) {
+              stop.cleanup();
+              return { done: true, value: undefined };
+            }
+            pendingHandoverSignal = signal;
+            handoverThisTurn = { isFinal: signal.isFinal };
+            // Rewrite to a normal first-turn message turn so the rest of the loop
+            // (steering setup, addIncoming, turnObj) runs unchanged.
+            currentPayload = { ...currentPayload, trigger: "submit-message", message: undefined };
+          }
 
           // First turn: wait when the boot payload carries no message.
           // Preload boots wait for the first real message; continuation
@@ -9274,6 +9429,17 @@ function createChatSession(
             turn
           );
 
+          // Apply the head-start handover AFTER addIncoming — turn-0 addIncoming
+          // replaces accumulator state, which would wipe a pre-applied splice.
+          // Seed prior history first, then splice the warm step-1 partial.
+          if (pendingHandoverSignal) {
+            const priorHistory = currentPayload.headStartMessages as UIMessage[] | undefined;
+            if (priorHistory && priorHistory.length > 0) {
+              await accumulator.setMessages(priorHistory);
+            }
+            accumulator.applyHandover(pendingHandoverSignal);
+          }
+
           // chat.requestUpgrade() called before this turn — signal transport and exit
           if (locals.get(chatUpgradeRequestedKey)) {
             await writeUpgradeRequiredChunk();
@@ -9302,15 +9468,31 @@ function createChatSession(
             continuation: currentPayload.continuation ?? false,
             previousTurnUsage,
             totalUsage: cumulativeUsage,
+            handover: handoverThisTurn,
 
             async setMessages(uiMessages: UIMessage[]) {
               await accumulator.setMessages(uiMessages);
             },
 
-            async complete(source: UIMessageStreamable) {
+            async complete(source?: UIMessageStreamable) {
+              // Head-start final turn: the warm step-1 partial is already spliced
+              // into the accumulator and IS the response — nothing to pipe.
+              if (!source) {
+                sessionMsgSub.off();
+                await chatWriteTurnComplete();
+                return accumulator.uiMessages.at(-1);
+              }
               let response: UIMessage | undefined;
               try {
-                response = await pipeChatAndCapture(source, { signal: combinedSignal });
+                response = await pipeChatAndCapture(source, {
+                  signal: combinedSignal,
+                  // On a non-final handover turn, thread the spliced partial so a
+                  // resumed tool round's tool-output chunks merge into the
+                  // handed-over tool-call. Gated on the handover turn only — a
+                  // normal turn must not pass originalMessages (it would merge the
+                  // fresh response into the prior assistant message).
+                  ...(handoverThisTurn ? { originalMessages: accumulator.uiMessages } : {}),
+                });
               } catch (error) {
                 if (error instanceof Error && error.name === "AbortError") {
                   if (runSignal.aborted) {
@@ -9899,8 +10081,8 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     // run-list filter by chat works without the customer having to wire it
     // up. Mirrors the browser-mediated `TriggerChatTransport.doStart` path.
     const userTags = params.triggerConfig?.tags ?? options?.triggerConfig?.tags ?? [];
-    // Platform cap is 10 tags per run; the auto chat tag takes one slot.
-    const tags = [`chat:${params.chatId}`, ...userTags].slice(0, 10);
+    // SessionTriggerConfig.tags allows at most 5; the auto chat tag takes one slot.
+    const tags = [`chat:${params.chatId}`, ...userTags].slice(0, 5);
 
     const clientDataMetadata =
       params.clientData !== undefined ? { metadata: params.clientData } : {};
@@ -9926,6 +10108,22 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
         ? {
             maxAttempts:
               params.triggerConfig?.maxAttempts ?? options?.triggerConfig?.maxAttempts!,
+          }
+        : {}),
+      ...(options?.triggerConfig?.maxDuration !== undefined ||
+      params.triggerConfig?.maxDuration !== undefined
+        ? {
+            maxDuration:
+              params.triggerConfig?.maxDuration ?? options?.triggerConfig?.maxDuration!,
+          }
+        : {}),
+      ...(options?.triggerConfig?.region || params.triggerConfig?.region
+        ? { region: params.triggerConfig?.region ?? options?.triggerConfig?.region }
+        : {}),
+      ...(options?.triggerConfig?.lockToVersion || params.triggerConfig?.lockToVersion
+        ? {
+            lockToVersion:
+              params.triggerConfig?.lockToVersion ?? options?.triggerConfig?.lockToVersion,
           }
         : {}),
       ...(options?.triggerConfig?.idleTimeoutInSeconds !== undefined ||
@@ -10137,6 +10335,13 @@ export const chat = {
   MessageAccumulator: ChatMessageAccumulator,
   /** Create a chat session (async iterator). See {@link createChatSession}. */
   createSession: createChatSession,
+  /**
+   * Wait for a `chat.headStart` handover signal inside a `chat.customAgent`
+   * loop (turn 0). See {@link waitForHandover}. For most loops prefer the
+   * `chat.MessageAccumulator.consumeHandover()` convenience, which also seeds
+   * `payload.headStartMessages` and applies the partial.
+   */
+  waitForHandover,
   /**
    * Store and retrieve a resolved prompt for the current run.
    *
