@@ -7,6 +7,7 @@ import {
 import { generateErrorMessage } from "zod-error";
 import { logger } from "~/services/logger.server";
 import { getPersonalAccessTokenFromAuthorizationCode } from "~/services/personalAccessToken.server";
+import { clientSafeErrorMessage } from "~/utils/prismaErrors";
 
 export async function action({ request }: ActionFunctionArgs) {
   logger.info("Getting PersonalAccessToken from AuthorizationCode", { url: request.url });
@@ -45,7 +46,7 @@ export async function action({ request }: ActionFunctionArgs) {
         logger.error("Error getting PersonalAccessToken from AuthorizationCode", fields);
       }
 
-      return json({ error: error.message }, { status: 400 });
+      return json({ error: clientSafeErrorMessage(error) }, { status: 400 });
     }
 
     return json({ error: "Something went wrong" }, { status: 400 });
