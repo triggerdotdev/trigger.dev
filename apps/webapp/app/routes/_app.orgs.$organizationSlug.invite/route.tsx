@@ -116,7 +116,7 @@ const NO_RBAC_ROLE = "__no_rbac_role__";
 // first), so array index drives the ladder — earlier index = higher
 // rank. Plan-tier filtering happens separately via assignableRoleIds;
 // the ladder is the absolute hierarchy. Custom roles aren't in the
-// table and are refused (TRI-8747's follow-up will handle them).
+// ladder yet, so they're refused for now.
 type LadderRole = { id: string };
 
 function buildRoleLevel(roles: ReadonlyArray<LadderRole>): Record<string, number> {
