@@ -1,7 +1,7 @@
 import { organizationRolesPath } from "~/utils/pathBuilder";
 import { LinkButton } from "./primitives/Buttons";
 import { InfoPanel } from "./primitives/InfoPanel";
-import { LockClosedIcon } from "@heroicons/react/20/solid";
+import { NoSymbolIcon } from "@heroicons/react/20/solid";
 import { useOrganization } from "~/hooks/useOrganizations";
 import React from "react";
 
@@ -10,7 +10,7 @@ export function PermissionDenied({ message }: { message: React.ReactNode }) {
 
   return (
     <InfoPanel
-      icon={LockClosedIcon}
+      icon={NoSymbolIcon}
       iconClassName="text-text-dimmed"
       title="Permission denied"
       accessory={
