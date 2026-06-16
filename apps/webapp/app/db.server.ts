@@ -29,6 +29,22 @@ export type {
   PrismaReplicaClient,
 };
 
+// Boundary logger for transac(): skips an error the client extension already
+// logged (and tagged) at the statement level, so a single failure is logged
+// once. Shared by both $transaction overloads so the guard can't drift.
+function logTransactionPrismaError(error: Prisma.PrismaClientKnownRequestError) {
+  if (infraErrorAlreadyLogged(error)) {
+    return;
+  }
+  logger.error("prisma.$transaction error", {
+    code: error.code,
+    meta: error.meta,
+    stack: error.stack,
+    message: error.message,
+    name: error.name,
+  });
+}
+
 export async function $transaction<R>(
   prisma: PrismaClientOrTransaction,
   name: string,
@@ -84,39 +100,13 @@ async function $transactionInner<R>(
 
       const fn = fnOrOptions as (prisma: PrismaTransactionClient, span: Span) => Promise<R>;
 
-      return transac(
-        prisma,
-        (client) => fn(client, span),
-        (error) => {
-          // Skip if the client extension already logged this at the statement
-          // level — only commit-time errors that bypass it are logged here.
-          if (infraErrorAlreadyLogged(error)) {
-            return;
-          }
-          logger.error("prisma.$transaction error", {
-            code: error.code,
-            meta: error.meta,
-            stack: error.stack,
-            message: error.message,
-            name: error.name,
-          });
-        },
-        options
-      );
+      return transac(prisma, (client) => fn(client, span), logTransactionPrismaError, options);
     });
   } else {
     return transac(
       prisma,
       fnOrName,
-      (error) => {
-        logger.error("prisma.$transaction error", {
-          code: error.code,
-          meta: error.meta,
-          stack: error.stack,
-          message: error.message,
-          name: error.name,
-        });
-      },
+      logTransactionPrismaError,
       typeof fnOrOptions === "function" ? undefined : fnOrOptions
     );
   }

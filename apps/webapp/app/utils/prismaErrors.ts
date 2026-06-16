@@ -49,8 +49,21 @@ export function isInfrastructureError(error: unknown): boolean {
 const INFRA_ERROR_LOGGED: unique symbol = Symbol("prismaInfraErrorLogged");
 
 function markInfraErrorLogged(error: unknown): void {
-  if (typeof error === "object" && error !== null) {
-    (error as Record<symbol, unknown>)[INFRA_ERROR_LOGGED] = true;
+  if (typeof error !== "object" || error === null) {
+    return;
+  }
+  try {
+    // Non-enumerable so error-spreads/serializers can't copy the marker onto a
+    // different error; try/catch so a frozen error object can't make this throw
+    // and mask the original error as it propagates out of the catch.
+    Object.defineProperty(error, INFRA_ERROR_LOGGED, {
+      value: true,
+      enumerable: false,
+      configurable: true,
+      writable: true,
+    });
+  } catch {
+    // best-effort: a sealed/frozen error simply won't be deduped.
   }
 }
 
