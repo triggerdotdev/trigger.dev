@@ -108,7 +108,7 @@ if (payload.trigger === "preload") {
 
 ## Head Start
 
-Head Start runs step 1's LLM call in your warm server process while the chat.agent run boots in parallel. The user sees one continuous turn: text first from your server, then a clean handover to the agent for tool execution and any further steps.
+Head Start runs step 1's LLM call in your warm server process while the agent run boots in parallel. The user sees one continuous turn: text first from your server, then a clean handover to the agent for tool execution and any further steps. The agent you hand off to can be a `chat.agent`, a `chat.customAgent`, or a `chat.createSession` loop (see [Handover with custom agents](#handover-with-custom-agents)).
 
 `chat.headStart` returns a standard [Web Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) handler — `(req: Request) => Promise<Response>` — so it slots into any runtime that speaks Web Fetch.
 
@@ -545,14 +545,84 @@ Head Start composes with [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemes
 
 Your hydrate hook shapes **model context**, not the transcript — dropping reasoning-only entries or unresolved tool rows from the returned chain is fine and does not affect what `onTurnComplete` persists or what the UI renders.
 
+### Handover with custom agents
+
+The route handler is backend-agnostic: `agentId` can point at a `chat.agent`, a [`chat.customAgent`](/ai-chat/custom-agents), or a [`chat.createSession`](/ai-chat/custom-agents#managed-loop-chatcreatesession) loop. With `chat.agent` the handover is consumed for you (the steps above). The two hand-rolled backends consume it explicitly on turn 0.
+
+#### chat.createSession
+
+The turn iterator surfaces the handover as `turn.handover`. On a final (pure-text) handover, call `turn.complete()` with no source to finalize the warm partial without streaming; otherwise stream as usual. The iterator threads the spliced partial as `originalMessages` for you, so a resumed tool round merges into the handed-over assistant.
+
+```ts trigger/chat.ts
+for await (const turn of session) {
+  // Pure-text handover (isFinal): step 1 already IS the response.
+  const result = turn.handover?.isFinal
+    ? undefined
+    : streamText({
+        model: anthropic("claude-sonnet-4-6"),
+        messages: turn.messages,
+        abortSignal: turn.signal,
+        stopWhen: stepCountIs(10),
+      });
+
+  await turn.complete(result); // no source on a final handover
+}
+```
+
+#### chat.customAgent
+
+In a hand-rolled loop, call `conversation.consumeHandover({ payload })` at the top of turn 0. It waits for the handover signal, seeds prior history from `payload.headStartMessages`, splices the warm step-1 partial into the accumulator, and returns `{ isFinal, skipped }`.
+
+```ts trigger/chat.ts
+// Turn 0, gated on a head-start run:
+if (turn === 0 && payload.trigger === "handover-prepare") {
+  const { isFinal, skipped } = await conversation.consumeHandover({ payload });
+  if (skipped) return; // not a head-start run, or the warm handler aborted — exit
+  if (!isFinal) {
+    // The partial carries a pending tool call. Run step 2 to execute it,
+    // passing originalMessages so the tool output merges into the
+    // handed-over assistant instead of starting a new message.
+    const result = streamText({
+      model: anthropic("claude-sonnet-4-6"),
+      messages: conversation.modelMessages,
+      stopWhen: stepCountIs(10),
+    });
+    const response = await chat.pipeAndCapture(result, {
+      originalMessages: conversation.uiMessages,
+    });
+    if (response) await conversation.addResponse(response);
+  }
+  await chat.writeTurnComplete(); // on isFinal the warm partial is already the response
+  return;
+}
+```
+
+Gate the call on `trigger === "handover-prepare"` — `consumeHandover` consumes the warm handover, not a normal first message. See [Custom agents](/ai-chat/custom-agents) for the full loop (continuation seeding, stop handling, persistence). The lower-level `chat.waitForHandover({ payload })` and `accumulator.applyHandover(signal)` are exported if you need to wait and splice in separate steps.
+
+<Note>
+  Always pass `originalMessages: conversation.uiMessages` to `pipeAndCapture` in a custom loop. It keeps assistant message IDs stable across turns and lets a tool-approval or handover resume merge into the trailing assistant — the same threading `chat.agent` does internally.
+</Note>
+
 ### The `chat.headStart` API
 
 ```ts
 chat.headStart<TTools>({
-  agentId: string,                       // The chat.agent({ id }) you're handing off to
+  agentId: string,                       // The chat.agent / chat.customAgent id you're handing off to
   run: (args: HeadStartRunArgs<TTools>) => Promise<StreamTextResult<any, any>>,
   idleTimeoutInSeconds?: number,         // How long the agent waits for the handover signal. Default: 60
+  triggerConfig?: Partial<SessionTriggerConfig>, // Run options for the handover-prepare run
 }): (req: Request) => Promise<Response>
+```
+
+`triggerConfig` sets run options on the auto-triggered handover-prepare run: `tags`, `queue`, `machine`, `maxAttempts`, `maxDuration`, `region`, and `lockToVersion`. The `chat:{chatId}` tag is prepended automatically. Because the session is created once on the first head-start turn (idempotent on the chat id), this is the only place to set those options for a head-start chat's lifetime, mirroring what [`chat.createStartSessionAction`](/ai-chat/sessions) sets for the direct-trigger path.
+
+```ts lib/chat-handler.ts
+export const chatHandler = chat.headStart({
+  agentId: "my-chat",
+  triggerConfig: { tags: ["org:acme"], queue: "chat", machine: "small-2x" },
+  run: async ({ chat: helper }) =>
+    streamText({ ...helper.toStreamTextOptions({ tools: headStartTools }), model, system }),
+});
 ```
 
 The `run` callback receives:
@@ -599,3 +669,4 @@ This is **not** a stock `useChat` `endpoint` — it's not the canonical request 
 - [`chat.headStart` factory and types](/ai-chat/reference) — full signatures for `HeadStartRunArgs`, `HeadStartChatHelper`, `HeadStartSession`, `HeadStartHandlerOptions`.
 - [`headStart` transport option](/ai-chat/reference#triggerchattransport-options) — alongside `accessToken`, `startSession`, etc.
 - [`onPreload` hook](/ai-chat/lifecycle-hooks#onpreload) — the backend hook that fires when a run is preloaded.
+- [Custom agents](/ai-chat/custom-agents) — the `chat.customAgent` and `chat.createSession` loops that `consumeHandover` / `turn.handover` plug into.
