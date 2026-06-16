@@ -207,16 +207,14 @@ export function SessionsNone() {
       }
     >
       <Paragraph spacing variant="small">
-        A session is a pair of streams: input for incoming user messages, and output for
-        everything the agent produces, including AI generation parts (text, reasoning, tool
-        calls, etc.) and any custom data parts your task emits. Sessions also orchestrate the
-        execution of agent runs, so a single conversation can span many task triggers.
+        A session is a stateful execution of an agent. It includes two-way streaming and durable
+        compute. A session can have multiple “Runs” associated with it.
       </Paragraph>
       <Paragraph spacing variant="small">
         The easiest way to create one is to trigger a <InlineCode>chat.agent</InlineCode> task,
         which is built on sessions and handles the chat turn loop for you. You can also call{" "}
-        <InlineCode>sessions.start()</InlineCode> directly for non-chat patterns like agent
-        inboxes, approval flows, or server-to-server streaming.
+        <InlineCode>sessions.start()</InlineCode> directly for non-chat patterns like agent inboxes,
+        approval flows, or server-to-server streaming.
       </Paragraph>
     </InfoPanel>
   );
