@@ -3,6 +3,7 @@ import { type PlanDefinition } from "@trigger.dev/platform";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { Feedback } from "~/components/Feedback";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { PermissionDenied } from "~/components/PermissionDenied";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
@@ -42,15 +43,21 @@ export const loader = dashboardLoader(
       const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
       return organizationId ? { organizationId } : {};
     },
-    authorization: { action: "manage", resource: { type: "billing" } },
+    // No hard authorization block here: a denial should render the page with a
+    // PermissionDenied panel, not blindly redirect away. Enforced via the
+    // canManageBilling check below (the billing mutations are gated separately).
   },
-  async ({ params, request, user }) => {
+  async ({ params, request, user, ability }) => {
     const userId = user.id;
     const { organizationSlug } = params;
 
     const { isManagedCloud } = featuresForRequest(request);
     if (!isManagedCloud) {
       return redirect(organizationPath({ slug: organizationSlug }));
+    }
+
+    if (!ability.can("manage", { type: "billing" })) {
+      return typedjson({ canManageBilling: false as const });
     }
 
     const organization = await prisma.organization.findFirst({
@@ -84,6 +91,7 @@ export const loader = dashboardLoader(
 
     if (!showSelfServe) {
       return typedjson({
+        canManageBilling: true as const,
         showSelfServe: false as const,
         ...currentPlan,
         organizationSlug,
@@ -100,6 +108,7 @@ export const loader = dashboardLoader(
     }
 
     return typedjson({
+      canManageBilling: true as const,
       showSelfServe: true as const,
       ...plans,
       ...currentPlan,
@@ -114,6 +123,22 @@ export const loader = dashboardLoader(
 
 export default function ChoosePlanPage() {
   const loaderData = useTypedLoaderData<typeof loader>();
+
+  if (!loaderData.canManageBilling) {
+    return (
+      <PageContainer>
+        <NavBar>
+          <PageTitle title="Billing" />
+        </NavBar>
+        <PageBody>
+          <MainCenteredContainer>
+            <PermissionDenied message="With your current role, you can't manage billing." />
+          </MainCenteredContainer>
+        </PageBody>
+      </PageContainer>
+    );
+  }
+
   const {
     showSelfServe,
     v3Subscription,

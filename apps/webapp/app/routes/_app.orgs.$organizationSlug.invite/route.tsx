@@ -9,10 +9,11 @@ import {
 import { json } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import { Fragment, useRef, useState } from "react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import simplur from "simplur";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
+import { PermissionDenied } from "~/components/PermissionDenied";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
@@ -52,14 +53,20 @@ export const loader = dashboardLoader(
       const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
       return organizationId ? { organizationId } : {};
     },
-    authorization: { action: "manage", resource: { type: "members" } },
+    // No hard authorization block: a denial renders a PermissionDenied panel
+    // rather than blindly redirecting. Enforced via canManageMembers below
+    // (the invite action gates manage:members independently).
   },
-  async ({ user, context }) => {
+  async ({ user, context, ability }) => {
     const organizationId = context.organizationId;
     if (!organizationId) {
       throw new Response("Not Found", { status: 404 });
     }
     const userId = user.id;
+
+    if (!ability.can("manage", { type: "members" })) {
+      return typedjson({ canManageMembers: false as const });
+    }
 
     const presenter = new TeamPresenter();
     const result = await presenter.call({
@@ -94,7 +101,7 @@ export const loader = dashboardLoader(
           .map((r) => r.id)
       : [];
 
-    return typedjson({ ...result, offerableRoleIds });
+    return typedjson({ canManageMembers: true as const, ...result, offerableRoleIds });
   }
 );
 
@@ -255,7 +262,23 @@ export const action = dashboardAction(
   }
 );
 
+type InviteData = Extract<UseDataFunctionReturn<typeof loader>, { canManageMembers: true }>;
+
 export default function Page() {
+  const loaderData = useTypedLoaderData<typeof loader>();
+
+  if (!loaderData.canManageMembers) {
+    return (
+      <MainCenteredContainer className="max-w-[26rem]">
+        <PermissionDenied message="With your current role, you can't invite team members." />
+      </MainCenteredContainer>
+    );
+  }
+
+  return <InvitePage data={loaderData} />;
+}
+
+function InvitePage({ data }: { data: InviteData }) {
   const {
     limits,
     canPurchaseSeats,
@@ -265,7 +288,7 @@ export default function Page() {
     planSeatLimit,
     roles,
     offerableRoleIds,
-  } = useTypedLoaderData<typeof loader>();
+  } = data;
   const [total, setTotal] = useState(limits.used);
   const organization = useOrganization();
   const lastSubmission = useActionData();
