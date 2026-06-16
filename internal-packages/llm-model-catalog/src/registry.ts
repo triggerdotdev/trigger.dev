@@ -147,7 +147,70 @@ export class ModelPricingRegistry {
     const costDetails: Record<string, number> = {};
     let totalCost = 0;
 
+    // `input_tokens` (the "input" usage value) is the TOTAL prompt token count and is
+    // inclusive of cache-read and cache-creation tokens — providers report it that way and
+    // the AI SDK passes it through (verified: total_tokens == input + output, never the
+    // sum of the decomposed parts). Cache reads/writes are therefore a SUBSET of input, not
+    // additional to it. Charging the full input count at the input price AND charging a
+    // separate cache line double-counts those tokens, so the input price must apply only to
+    // the fresh (non-cached) remainder.
+    const priceByType = new Map(tier.prices.map((p) => [p.usageType, p.price]));
+    const resolvePrice = (aliases: string[]): number | undefined => {
+      for (const alias of aliases) {
+        const price = priceByType.get(alias);
+        if (price !== undefined) return price;
+      }
+      return undefined;
+    };
+
+    const inputPrice = resolvePrice(["input", "input_tokens"]) ?? 0;
+    const cacheReadTokens = usageDetails["input_cached_tokens"] ?? 0;
+    const cacheCreationTokens = usageDetails["cache_creation_input_tokens"] ?? 0;
+
+    // Providers price cache reads/writes under provider-specific keys, but our usage details
+    // normalize them to `input_cached_tokens` / `cache_creation_input_tokens`. Resolve the
+    // matching price across the known aliases, falling back to the input price so cache tokens
+    // are never billed for free and never dropped when a model lacks a dedicated cache price.
+    const cacheReadPrice =
+      resolvePrice(["input_cached_tokens", "input_cache_read", "cache_read_input_tokens"]) ??
+      inputPrice;
+    const cacheCreationPrice =
+      resolvePrice([
+        "cache_creation_input_tokens",
+        "input_cache_creation",
+        "input_cache_creation_5m",
+        "input_cache_creation_1h",
+      ]) ?? inputPrice;
+
+    const totalInputTokens = usageDetails["input"] ?? usageDetails["input_tokens"] ?? 0;
+    const freshInputTokens = Math.max(0, totalInputTokens - cacheReadTokens - cacheCreationTokens);
+
+    const addCost = (usageType: string, tokenCount: number, price: number) => {
+      if (tokenCount <= 0 || price <= 0) return;
+      const cost = tokenCount * price;
+      costDetails[usageType] = (costDetails[usageType] ?? 0) + cost;
+      totalCost += cost;
+    };
+
+    addCost("input", freshInputTokens, inputPrice);
+    addCost("input_cached_tokens", cacheReadTokens, cacheReadPrice);
+    addCost("cache_creation_input_tokens", cacheCreationTokens, cacheCreationPrice);
+
+    // Charge every remaining usage type generically. The input + cache types are handled
+    // above (and their alias keys skipped here) so they are never charged twice.
+    const handledUsageTypes = new Set([
+      "input",
+      "input_tokens",
+      "input_cached_tokens",
+      "input_cache_read",
+      "cache_read_input_tokens",
+      "cache_creation_input_tokens",
+      "input_cache_creation",
+      "input_cache_creation_5m",
+      "input_cache_creation_1h",
+    ]);
     for (const priceEntry of tier.prices) {
+      if (handledUsageTypes.has(priceEntry.usageType)) continue;
       const tokenCount = usageDetails[priceEntry.usageType] ?? 0;
       if (tokenCount === 0) continue;
       const cost = tokenCount * priceEntry.price;
