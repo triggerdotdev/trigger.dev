@@ -18,12 +18,20 @@ const lastSuccessfulLoadAt = new Gauge({
   registers: [metricsRegister],
 });
 
+// 0 until the first successful load, then 1. Starts at 0 (not absent) so a
+// never-loaded registry is an alertable series, distinct from "feature off".
+const registryLoaded = new Gauge({
+  name: "reloading_registry_loaded",
+  help: "1 once the registry has loaded at least once, else 0 (0 = serving cold fallback)",
+  labelNames: ["name"],
+  registers: [metricsRegister],
+});
+
 export type ReloadingRegistry<T> = {
   isReady: Promise<void>;
   readonly isLoaded: boolean;
   current(): T | undefined;
   reload(): Promise<void>;
-  waitUntilReady(timeoutMs: number): Promise<void>;
   stop(): void;
 };
 
@@ -42,15 +50,14 @@ export type ReloadingRegistryOptions<T> = {
 
 /**
  * In-memory snapshot loaded at startup and refreshed on an interval. Reads are
- * synchronous (`current()`); the first read should gate on `waitUntilReady` so a
- * cold replica never serves a default over a real value. Mirrors the datastore /
- * LLM-pricing registries. Interval-only: no pub/sub (a follow-up if sub-second
- * propagation is ever needed).
+ * synchronous (`current()`) and return undefined until the first load completes;
+ * callers must tolerate that (e.g. fall back to a safe default), the same cold-start
+ * contract as the datastore / LLM-pricing registries. Interval-only: no pub/sub
+ * (a follow-up if sub-second propagation is ever needed).
  */
 export function createReloadingRegistry<T>(opts: ReloadingRegistryOptions<T>): ReloadingRegistry<T> {
   let snapshot: T | undefined;
   let loaded = false;
-  let started = false;
   let loadSeq = 0;
   let resolveReady!: () => void;
   const isReady = new Promise<void>((resolve) => {
@@ -65,6 +72,7 @@ export function createReloadingRegistry<T>(opts: ReloadingRegistryOptions<T>): R
     lastSuccessfulLoadAt.set({ name: opts.name }, Date.now() / 1000);
     if (!loaded) {
       loaded = true;
+      registryLoaded.set({ name: opts.name }, 1);
       resolveReady();
     }
   }
@@ -72,7 +80,7 @@ export function createReloadingRegistry<T>(opts: ReloadingRegistryOptions<T>): R
   let interval: ReturnType<typeof setInterval> | undefined;
 
   if (opts.autoStart !== false) {
-    started = true;
+    registryLoaded.set({ name: opts.name }, 0); // visible cold series until first load
 
     const startup = pRetry(() => doLoad(), {
       forever: opts.retry?.retries === undefined,
@@ -124,20 +132,6 @@ export function createReloadingRegistry<T>(opts: ReloadingRegistryOptions<T>): R
     },
     current: () => snapshot,
     reload: doLoad,
-    async waitUntilReady(timeoutMs: number) {
-      if (!started || loaded || timeoutMs <= 0) return;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      try {
-        await Promise.race([
-          isReady,
-          new Promise<void>((resolve) => {
-            timer = setTimeout(resolve, timeoutMs);
-          }),
-        ]);
-      } finally {
-        if (timer) clearTimeout(timer);
-      }
-    },
     stop,
   };
 }

@@ -362,15 +362,8 @@ export class RunEngineTriggerTaskService {
           const enableFastPath = workerQueueResult?.enableFastPath ?? false;
 
           // Rewrite the region to its compute backing for migration-enrolled orgs,
-          // from the in-memory flag snapshot (no DB query). The isLoaded gates only
-          // block during cold start so the first request can't serve a default over
-          // a real flag; once warm they're a synchronous no-op.
-          if (!globalFlagsRegistry.isLoaded) {
-            await globalFlagsRegistry.waitUntilReady(env.GLOBAL_FLAGS_READY_TIMEOUT_MS);
-          }
-          if (!workerRegionRegistry.isLoaded) {
-            await workerRegionRegistry.waitUntilReady(env.GLOBAL_FLAGS_READY_TIMEOUT_MS);
-          }
+          // from the in-memory snapshots (no DB query). A cold read (registry not yet
+          // loaded) returns undefined/[] and the resolver falls back to not-migrated.
           const workerGroups = workerRegionRegistry.current() ?? [];
           const region = baseWorkerQueue ? regionForQueue(baseWorkerQueue, workerGroups) : undefined;
           const backing = baseWorkerQueue ? backingForQueue(baseWorkerQueue, workerGroups) : undefined;

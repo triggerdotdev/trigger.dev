@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { createReloadingRegistry } from "~/utils/reloadingRegistry.server";
 
 describe("createReloadingRegistry", () => {
@@ -12,32 +12,6 @@ describe("createReloadingRegistry", () => {
     await reg.isReady;
     expect(reg.isLoaded).toBe(true);
     expect(reg.current()).toEqual({ value: 42 });
-    reg.stop();
-  });
-
-  it("waitUntilReady resolves once loaded", async () => {
-    const reg = createReloadingRegistry({
-      name: "test-b",
-      intervalMs: 10_000,
-      load: async () => 1,
-    });
-    await reg.waitUntilReady(1000);
-    expect(reg.current()).toBe(1);
-    reg.stop();
-  });
-
-  it("waitUntilReady times out (and stays unloaded) when load never succeeds", async () => {
-    const reg = createReloadingRegistry({
-      name: "test-c",
-      intervalMs: 10_000,
-      retry: { retries: 0 },
-      load: async () => {
-        throw new Error("db down");
-      },
-    });
-    await reg.waitUntilReady(50);
-    expect(reg.isLoaded).toBe(false);
-    expect(reg.current()).toBeUndefined();
     reg.stop();
   });
 
@@ -86,7 +60,7 @@ describe("createReloadingRegistry", () => {
     reg.stop();
   });
 
-  it("autoStart:false stays inert and non-blocking", async () => {
+  it("autoStart:false stays inert (never loads)", async () => {
     let loadCalls = 0;
     const reg = createReloadingRegistry({
       name: "test-inert",
@@ -99,37 +73,7 @@ describe("createReloadingRegistry", () => {
     });
     expect(reg.isLoaded).toBe(false);
     expect(reg.current()).toBeUndefined();
-    await reg.waitUntilReady(10_000); // must resolve ~immediately, not wait 10s
-    expect(reg.isLoaded).toBe(false);
     expect(loadCalls).toBe(0); // never hit the DB/load
-    reg.stop();
-  });
-
-  it("waitUntilReady clears its timeout when ready wins", async () => {
-    const clearSpy = vi.spyOn(global, "clearTimeout");
-    // load resolves only when the test releases it, so waitUntilReady runs the
-    // race while still unloaded (it would return early if already loaded)
-    let releaseLoad!: () => void;
-    const loadGate = new Promise<void>((resolve) => {
-      releaseLoad = resolve;
-    });
-    const reg = createReloadingRegistry({
-      name: "test-f",
-      intervalMs: 10_000,
-      load: async () => {
-        await loadGate;
-        return 1;
-      },
-    });
-
-    // long timeout so isReady is what actually wins the race
-    const waiting = reg.waitUntilReady(10_000);
-    releaseLoad();
-    await reg.isReady;
-    await waiting;
-
-    expect(clearSpy).toHaveBeenCalled();
-    clearSpy.mockRestore();
     reg.stop();
   });
 });

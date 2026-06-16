@@ -168,14 +168,9 @@ export class ComputeTemplateCreationService {
     // Migrated orgs route runs to the compute backing even though their stored
     // default is still the container region, so they need a compute template too.
     // shadow mode: never fail a deploy over a backing the org didn't opt into.
-    if (!workerRegionRegistry.isLoaded) {
-      await workerRegionRegistry.waitUntilReady(env.GLOBAL_FLAGS_READY_TIMEOUT_MS);
-    }
+    // A cold registry read returns no backing, so this is simply skipped until loaded.
     const defaultQueue = project.defaultWorkerGroup?.masterQueue;
     if (defaultQueue && backingForQueue(defaultQueue, workerRegionRegistry.current() ?? [])) {
-      if (!globalFlagsRegistry.isLoaded) {
-        await globalFlagsRegistry.waitUntilReady(env.GLOBAL_FLAGS_READY_TIMEOUT_MS);
-      }
       const decision = {
         orgId: project.organization.id,
         orgFeatureFlags: project.organization.featureFlags as Record<string, unknown> | null,
@@ -198,7 +193,8 @@ export class ComputeTemplateCreationService {
         migrated = isOrgMigrated({ ...decision, planType });
       }
       if (migrated) {
-        return "shadow";
+        // required => template built at deploy (deploy fails on error); off => shadow.
+        return decision.flags?.computeMigrationRequireTemplate ? "required" : "shadow";
       }
     }
 
