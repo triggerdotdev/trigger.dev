@@ -565,7 +565,7 @@ function ScheduleSheet({
   const detailFetcher = useTypedFetcher<typeof scheduleDetailLoader>();
   const editFetcher = useTypedFetcher<typeof scheduleEditLoader>();
   // Embedded enable/disable — stays in the sheet via `_format=json`.
-  const activeToggleFetcher = useFetcher<{ ok: boolean; active?: boolean }>();
+  const activeToggleFetcher = useFetcher<{ ok: boolean; active?: boolean; message?: string }>();
   // Embedded update submission — same idea.
   const updateFetcher = useFetcher<{ ok: boolean; message?: string }>();
   // Embedded delete submission — same idea.
@@ -598,14 +598,18 @@ function ScheduleSheet({
     if (mode === "edit" && editPath) editFetcher.load(editPath);
   }, [mode, editPath]);
 
-  // Reload inspector data so Enable/Disable label flips.
+  // Reload inspector data so Enable/Disable label flips; toast on error.
   useEffect(() => {
     const data = activeToggleFetcher.data;
-    if (activeToggleFetcher.state !== "idle" || !data?.ok || !detailPath) return;
+    if (activeToggleFetcher.state !== "idle" || !data) return;
     if (handledToggleRef.current === data) return;
     handledToggleRef.current = data;
-    detailFetcher.load(detailPath);
-  }, [activeToggleFetcher.state, activeToggleFetcher.data, detailPath]);
+    if (data.ok) {
+      if (detailPath) detailFetcher.load(detailPath);
+    } else if (data.message) {
+      toast.error(data.message);
+    }
+  }, [activeToggleFetcher.state, activeToggleFetcher.data, detailPath, toast]);
 
   // Toast + back to inspect + reload so the inspector reflects the update.
   useEffect(() => {
