@@ -9476,11 +9476,24 @@ function createChatSession(
 
             async complete(source?: UIMessageStreamable) {
               // Head-start final turn: the warm step-1 partial is already spliced
-              // into the accumulator and IS the response — nothing to pipe.
+              // into the accumulator and IS the response — nothing to pipe. Only
+              // valid on a final handover; a missing source on any other turn is a
+              // mistake (it would silently finalize without an assistant response).
               if (!source) {
+                if (!handoverThisTurn?.isFinal) {
+                  throw new Error(
+                    "turn.complete() requires a stream source unless turn.handover.isFinal is true"
+                  );
+                }
+                const response = accumulator.uiMessages.at(-1);
+                if (!response || response.role !== "assistant") {
+                  throw new Error(
+                    "turn.complete() could not find the spliced handover response"
+                  );
+                }
                 sessionMsgSub.off();
                 await chatWriteTurnComplete();
-                return accumulator.uiMessages.at(-1);
+                return response;
               }
               let response: UIMessage | undefined;
               try {
