@@ -96,16 +96,17 @@ function sparklineBucketSeconds(rangeMs: number): number {
 
 /**
  * Generate the ordered bucket-start keys for [from, to] at the given interval,
- * epoch-aligned in UTC to exactly match ClickHouse's
- * `toStartOfInterval(col, INTERVAL n SECOND)` output strings ("YYYY-MM-DD HH:MM:SS").
+ * as epoch seconds to match ClickHouse's
+ * `toUnixTimestamp(toStartOfInterval(col, INTERVAL n SECOND))` — timezone-independent
+ * (a raw DateTime string would depend on the ClickHouse server timezone).
  */
-function sparklineBucketKeys(from: Date, to: Date, intervalSeconds: number): string[] {
+function sparklineBucketKeys(from: Date, to: Date, intervalSeconds: number): number[] {
   const intervalMs = intervalSeconds * 1000;
   const start = Math.floor(from.getTime() / intervalMs) * intervalMs;
   const end = Math.floor(to.getTime() / intervalMs) * intervalMs;
-  const keys: string[] = [];
+  const keys: number[] = [];
   for (let t = start; t <= end; t += intervalMs) {
-    keys.push(new Date(t).toISOString().slice(0, 19).replace("T", " "));
+    keys.push(t / 1000);
   }
   return keys;
 }
@@ -269,7 +270,7 @@ const ProjectModelUsageRow = z.object({
 
 const ModelSparklineRow = z.object({
   response_model: z.string(),
-  bucket: z.string(),
+  bucket: z.coerce.number(),
   val: z.coerce.number(),
 });
 
@@ -754,7 +755,7 @@ export class ModelRegistryPresenter extends BasePresenter {
         query: `
           SELECT
             response_model,
-            toStartOfInterval(start_time, INTERVAL ${intervalSeconds} SECOND) AS bucket,
+            toUnixTimestamp(toStartOfInterval(start_time, INTERVAL ${intervalSeconds} SECOND)) AS bucket,
             ${valueExpr} AS val
           FROM trigger_dev.llm_metrics_v1
           WHERE environment_id = {environmentId: String}
@@ -797,9 +798,9 @@ export class ModelRegistryPresenter extends BasePresenter {
   #buildSparklineMap(
     queryResult:
       | [Error, null]
-      | [null, { response_model: string; bucket: string; val: number }[]],
+      | [null, { response_model: string; bucket: number; val: number }[]],
     keys: string[],
-    bucketKeys: string[]
+    bucketKeys: number[]
   ): Record<string, number[]> {
     const [error, rows] = queryResult;
     if (error || !rows) return {};

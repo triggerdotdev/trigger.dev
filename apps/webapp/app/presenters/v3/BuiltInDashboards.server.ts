@@ -496,7 +496,7 @@ const llmDashboard: BuiltInDashboard = {
       "llm-cache-hit": {
         title: "Cache hit rate over time",
         query:
-          "SELECT timeBucket(), round(sum(cached_read_tokens) * 100.0 / (sum(input_tokens) + sum(cached_read_tokens)), 1) AS cache_hit_pct FROM llm_metrics GROUP BY timeBucket ORDER BY timeBucket",
+          "SELECT timeBucket(), round(ifNull(sum(cached_read_tokens) * 100.0 / nullIf(sum(input_tokens) + sum(cached_read_tokens), 0), 0), 1) AS cache_hit_pct FROM llm_metrics GROUP BY timeBucket ORDER BY timeBucket",
         display: {
           type: "chart",
           chartType: "line",
@@ -528,7 +528,7 @@ const llmDashboard: BuiltInDashboard = {
       "llm-cache-savings": {
         title: "Cache savings over time",
         query:
-          "SELECT timeBucket(), round(sum(cached_read_tokens) * (sum(input_cost) / (sum(input_tokens) + 1)) - sum(cached_read_cost), 4) AS cache_savings FROM llm_metrics WHERE cached_read_tokens > 0 GROUP BY timeBucket ORDER BY timeBucket",
+          "SELECT timeBucket(), round(ifNull(sum(cached_read_tokens) * (sum(input_cost) / nullIf(sum(input_tokens), 0)) - sum(cached_read_cost), 0), 4) AS cache_savings FROM llm_metrics WHERE cached_read_tokens > 0 GROUP BY timeBucket ORDER BY timeBucket",
         display: {
           type: "chart",
           chartType: "bar",
@@ -544,7 +544,7 @@ const llmDashboard: BuiltInDashboard = {
       "llm-cache-by-model": {
         title: "Cache hit rate by model",
         query:
-          "SELECT response_model, round(sum(cached_read_tokens) * 100.0 / (sum(input_tokens) + sum(cached_read_tokens)), 1) AS cache_hit_pct, sum(cached_read_tokens) AS cached_tokens FROM llm_metrics GROUP BY response_model ORDER BY cached_tokens DESC LIMIT 20",
+          "SELECT response_model, round(ifNull(sum(cached_read_tokens) * 100.0 / nullIf(sum(input_tokens) + sum(cached_read_tokens), 0), 0), 1) AS cache_hit_pct, sum(cached_read_tokens) AS cached_tokens FROM llm_metrics GROUP BY response_model ORDER BY cached_tokens DESC LIMIT 20",
         display: { type: "table", prettyFormatting: true, sorting: [] },
       },
     },
