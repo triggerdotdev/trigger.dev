@@ -76,7 +76,14 @@ async function bundleSdkDocs() {
   let copied = 0;
 
   for (const rel of manifest) {
-    const src = path.join(docsRoot, `${rel}.mdx`);
+    // Defensive: nav paths come from our own docs.json, but a fat-fingered `../` entry
+    // shouldn't be able to copy a file from outside docs/ into the package.
+    const safeRel = path.posix.normalize(rel);
+    if (path.isAbsolute(safeRel) || safeRel.startsWith("..")) {
+      throw new Error(`[bundleSdkDocs] invalid nav path "${rel}" under "${DROPDOWN}"`);
+    }
+
+    const src = path.join(docsRoot, `${safeRel}.mdx`);
     try {
       await fs.access(src);
     } catch {
@@ -85,7 +92,7 @@ async function bundleSdkDocs() {
       missing.push(rel);
       continue;
     }
-    const dest = path.join(outDir, `${rel}.mdx`);
+    const dest = path.join(outDir, `${safeRel}.mdx`);
     await fs.mkdir(path.dirname(dest), { recursive: true });
     await fs.copyFile(src, dest);
     copied++;
@@ -96,6 +103,11 @@ async function bundleSdkDocs() {
       `[bundleSdkDocs] ${missing.length} "${DROPDOWN}" nav page(s) have no .mdx and were skipped:\n` +
         missing.map((m) => `  - ${m}`).join("\n")
     );
+  }
+
+  if (copied === 0) {
+    // Every nav page was missing on disk; refuse to ship the SDK with an empty docs bundle.
+    throw new Error(`[bundleSdkDocs] 0 docs copied from the "${DROPDOWN}" nav; refusing empty docs bundle`);
   }
 
   console.log(
