@@ -112,12 +112,11 @@ await auditLog.upsert({
 ## What `extractNewToolResults` returns
 
 ```ts
-type ExtractedToolResult = {
+type ChatNewToolResult = {
   toolCallId: string;
   toolName: string;
-  input: unknown;       // The arguments the model passed when calling the tool
-  output?: unknown;     // The tool's return value (output-available state)
-  errorText?: string;   // Error message (output-error state)
+  output: unknown;      // The tool's return value (carries the resolved value; in output-error state see errorText)
+  errorText?: string;   // Set iff the part is in output-error state
 };
 ```
 
