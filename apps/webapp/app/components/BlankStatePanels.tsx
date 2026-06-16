@@ -198,7 +198,7 @@ export function SessionsNone() {
       panelClassName="max-w-full"
       accessory={
         <LinkButton
-          to={docsPath("/ai-chat/sessions")}
+          to={docsPath("ai-chat/sessions")}
           variant="docs/small"
           LeadingIcon={BookOpenIcon}
         >
