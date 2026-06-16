@@ -1,5 +1,5 @@
 ---
-name: chat-agent-advanced
+name: trigger-chat-agent-advanced
 description: >
   Advanced and operational chat.agent capabilities for Trigger.dev, loaded on demand. Load this when
   working on the raw Sessions primitive (sessions / SessionHandle), a custom chat transport or the
@@ -8,7 +8,7 @@ description: >
   Start via @trigger.dev/sdk/chat-server), context resilience (compaction, recovery boot, OOM, large
   payloads), chat.local run-scoped state, offline testing with mockChatAgent, or prerelease/version
   upgrades. For the everyday chat.agent({...}) definition and the useTriggerChatTransport happy path,
-  use the authoring-chat-agent skill instead.
+  use the trigger-authoring-chat-agent skill instead.
 type: core
 library: trigger.dev
 ---
@@ -17,7 +17,7 @@ library: trigger.dev
 
 The full, version-pinned reference ships **inside your installed `@trigger.dev/sdk`**. Read it before writing code — it always matches the SDK version in this project, so it never drifts:
 
-- **Skill:** `node_modules/@trigger.dev/sdk/skills/chat-agent-advanced/SKILL.md` — Sessions primitive, custom transports/wire protocol, sub-agents, HITL, steering, actions, background injection, fast starts, resilience (compaction/recovery/OOM/large payloads), `chat.local`, testing, upgrades.
+- **Skill:** `node_modules/@trigger.dev/sdk/skills/trigger-chat-agent-advanced/SKILL.md` — Sessions primitive, custom transports/wire protocol, sub-agents, HITL, steering, actions, background injection, fast starts, resilience (compaction/recovery/OOM/large payloads), `chat.local`, testing, upgrades.
 - **Docs:** the full, version-pinned docs ship bundled at `node_modules/@trigger.dev/sdk/docs/ai-chat/` (including `patterns/` for HITL, sub-agents, sessions); the skill above lists the exact pages it draws from in its `sources:` frontmatter. Grep for an API, e.g. `grep -rl "mockChatAgent" node_modules/@trigger.dev/sdk/docs/`.
 
 If those paths don't exist, `@trigger.dev/sdk` isn't installed yet — install it first. In a non-hoisted layout, resolve the package with `node -p "require.resolve('@trigger.dev/sdk/package.json')"` and read `skills/` + `docs/` beside it.
@@ -67,4 +67,4 @@ If those paths don't exist, `@trigger.dev/sdk` isn't installed yet — install i
 
 ## References
 
-Sibling skills: **authoring-chat-agent** (the everyday `chat.agent({...})` happy path), **authoring-tasks** and **realtime-and-frontend** (task + frontend foundations).
+Sibling skills: **trigger-authoring-chat-agent** (the everyday `chat.agent({...})` happy path), **trigger-authoring-tasks** and **trigger-realtime-and-frontend** (task + frontend foundations).

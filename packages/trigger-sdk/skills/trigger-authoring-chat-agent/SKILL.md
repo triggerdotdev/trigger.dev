@@ -1,5 +1,5 @@
 ---
-name: authoring-chat-agent
+name: trigger-authoring-chat-agent
 description: >
   Author and run a durable AI chat agent with chat.agent from @trigger.dev/sdk/ai: the per-turn
   run loop, why you MUST spread ...chat.toStreamTextOptions() first, returning a StreamTextResult
@@ -282,12 +282,14 @@ There is no API route in this model. The transport replaces the route round-trip
 
 ## References
 
-- `chat-agent-advanced` skill - lifecycle hooks in depth, sessions, raw-task primitives
+- `trigger-chat-agent-advanced` skill - lifecycle hooks in depth, sessions, raw-task primitives
   (`chat.createSession`, `chat.customAgent`, `chat.stream`), compaction, HITL approvals, recovery.
-- `realtime-and-frontend` skill - Realtime hooks and frontend streaming beyond the chat transport.
-- `authoring-tasks` skill - base `task()` semantics, `ctx`, and standard lifecycle hooks.
+- `trigger-realtime-and-frontend` skill - Realtime hooks and frontend streaming beyond the chat transport.
+- `trigger-authoring-tasks` skill - base `task()` semantics, `ctx`, and standard lifecycle hooks.
 
 Reference docs ship beside this skill in the same package, read them locally (no network), pinned to your installed version. The `sources:` frontmatter above lists every doc this skill draws from, all under `@trigger.dev/sdk/docs/ai-chat/`. Start with `quick-start.mdx`, `backend.mdx`, `tools.mdx`, `types.mdx`, `frontend.mdx`.
+
+A `chat.agent` is a Trigger.dev task, so it builds and deploys like any other. For `trigger.config.ts` and build extensions (Prisma, Playwright, Python, FFmpeg, etc. — e.g. when a tool needs them), read the bundled config docs under `@trigger.dev/sdk/docs/config/` (extensions are in `config/extensions/`, starting with `overview.mdx`).
 
 ## Version
 

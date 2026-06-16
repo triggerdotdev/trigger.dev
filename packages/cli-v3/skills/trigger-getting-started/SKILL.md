@@ -1,5 +1,5 @@
 ---
-name: getting-started
+name: trigger-getting-started
 description: >
   Bootstrap Trigger.dev into an existing project from scratch: authenticate the
   CLI, install @trigger.dev/sdk and @trigger.dev/build, write trigger.config.ts
@@ -8,7 +8,7 @@ description: >
   server. Load this when a project has no trigger.config.ts yet and the user
   asks to "add Trigger.dev", "set up Trigger.dev", "initialize Trigger.dev", or
   get a first task running, including in a monorepo. Once the project is set up
-  and you are writing task code, switch to the authoring-tasks skill.
+  and you are writing task code, switch to the trigger-authoring-tasks skill.
 type: core
 library: trigger.dev
 library_version: "{{TRIGGER_SDK_VERSION}}"
@@ -198,10 +198,10 @@ See the manual setup docs for full Turborepo examples before scaffolding either.
 
 Sibling skills:
 
-- **authoring-tasks** for writing the tasks themselves once setup is done: retries, waits,
+- **trigger-authoring-tasks** for writing the tasks themselves once setup is done: retries, waits,
   queues, scheduled tasks, triggering, and the full `trigger.config.ts`.
-- **realtime-and-frontend** for showing live run status in a frontend.
-- **authoring-chat-agent** and **chat-agent-advanced** for building AI chat agents.
+- **trigger-realtime-and-frontend** for showing live run status in a frontend.
+- **trigger-authoring-chat-agent** and **trigger-chat-agent-advanced** for building AI chat agents.
 
 Docs:
 
