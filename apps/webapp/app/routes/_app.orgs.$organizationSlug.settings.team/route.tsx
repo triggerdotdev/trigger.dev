@@ -11,7 +11,7 @@ import {
 } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { useEffect, useRef, useState } from "react";
+import { cloneElement, useEffect, useRef, useState } from "react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
@@ -30,6 +30,7 @@ import {
   AlertTrigger,
 } from "~/components/primitives/Alert";
 import { Button, ButtonContent, LinkButton } from "~/components/primitives/Buttons";
+import { PermissionButton } from "~/components/primitives/PermissionButton";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -119,10 +120,12 @@ export const loader = dashboardLoader(
     }
 
     // Pre-compute manage authority server-side so the UI gating matches
-    // the action gating (the action enforces it independently).
+    // the action gating (the action enforces it independently). Seat
+    // purchases are a billing operation, so they gate on manage:billing.
     const canManageMembers = ability.can("manage", { type: "members" });
+    const canManageBilling = ability.can("manage", { type: "billing" });
 
-    return typedjson({ ...result, canManageMembers });
+    return typedjson({ ...result, canManageMembers, canManageBilling });
   }
 );
 
@@ -318,6 +321,7 @@ export default function Page() {
     assignableRoleIds,
     memberRoles,
     canManageMembers,
+    canManageBilling,
   } = useTypedLoaderData<typeof loader>();
   // Build a userId → roleId map so the dropdown's defaultValue matches
   // each member's current assignment without re-querying.
@@ -532,6 +536,7 @@ export default function Page() {
                   usedSeats={limits.used}
                   maxQuota={maxSeatQuota}
                   planSeatLimit={planSeatLimit}
+                  canManageBilling={canManageBilling}
                 />
               ) : canUpgrade ? (
                 showSelfServe ? (
@@ -864,6 +869,7 @@ export function PurchaseSeatsModal({
   maxQuota,
   planSeatLimit,
   triggerButton,
+  canManageBilling = true,
 }: {
   seatPricing: {
     stepSize: number;
@@ -874,6 +880,7 @@ export function PurchaseSeatsModal({
   maxQuota: number;
   planSeatLimit: number;
   triggerButton?: React.ReactElement;
+  canManageBilling?: boolean;
 }) {
   const showSelfServe = useShowSelfServe();
   const fetcher = useFetcher();
@@ -933,15 +940,30 @@ export function PurchaseSeatsModal({
     );
   }
 
+  // Buying seats is a billing action — disable the trigger (and explain why)
+  // when the role can't manage billing. The action enforces it independently.
+  const noBillingTooltip = "You don't have permission to manage billing";
+  const trigger = canManageBilling ? (
+    triggerButton ?? (
+      <Button variant="primary/small" onClick={() => setOpen(true)}>
+        {title}
+      </Button>
+    )
+  ) : triggerButton ? (
+    cloneElement(triggerButton, { disabled: true, tooltip: noBillingTooltip })
+  ) : (
+    <PermissionButton
+      variant="primary/small"
+      hasPermission={false}
+      noPermissionTooltip={noBillingTooltip}
+    >
+      {title}
+    </PermissionButton>
+  );
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {triggerButton ?? (
-          <Button variant="primary/small" onClick={() => setOpen(true)}>
-            {title}
-          </Button>
-        )}
-      </DialogTrigger>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent>
         <DialogHeader>{title}</DialogHeader>
         <fetcher.Form method="post" action={organizationTeamPath(organization)} {...form.props}>
