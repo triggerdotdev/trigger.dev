@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "./logger.server";
 
@@ -49,7 +50,7 @@ class AttioClient {
     return ((await response.json()) as any).data?.id?.record_id as string;
   }
 
-  async upsertWorkspace(payload: AttioWorkspaceSync) {
+  async upsertWorkspace(payload: AttioWorkspaceSync, emailDomain?: string) {
     // The creating user is an admin of the new org — set their role and link them to the workspace.
     const adminRecordId = await this.#assert("users", "user_id", {
       user_id: payload.adminUserId,
@@ -62,6 +63,7 @@ class AttioClient {
       name: payload.title,
       org_slug: payload.slug,
       company_size: payload.companySize ?? undefined,
+      email_domain: emailDomain,
       signup_date: toDate(payload.createdAt),
       plan: "Free",
       account_status: "Active",
@@ -85,6 +87,11 @@ class AttioClient {
 // Attio `date` attributes want a bare YYYY-MM-DD value.
 function toDate(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+// Domain from an email; the cloud-side matcher normalizes it further.
+function domainFromEmail(email: string | undefined): string | undefined {
+  return email?.split("@")[1]?.toLowerCase().trim() || undefined;
 }
 
 export const attioClient = env.ATTIO_API_KEY ? new AttioClient(env.ATTIO_API_KEY) : null;
@@ -112,7 +119,11 @@ export async function enqueueAttioUserSync(payload: AttioUserSync) {
 
 export async function runAttioWorkspaceSync(payload: AttioWorkspaceSync) {
   if (!attioClient) return;
-  await attioClient.upsertWorkspace(payload);
+  const admin = await prisma.user.findUnique({
+    where: { id: payload.adminUserId },
+    select: { email: true },
+  });
+  await attioClient.upsertWorkspace(payload, domainFromEmail(admin?.email));
 }
 
 export async function runAttioUserSync(payload: AttioUserSync) {
