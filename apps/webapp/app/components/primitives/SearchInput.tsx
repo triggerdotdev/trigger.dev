@@ -48,6 +48,8 @@ export function SearchInput({
   const [isFocused, setIsFocused] = useState(false);
 
   // Compare against a ref, not `text`, so the effect stays off the keystroke path.
+  // Trade-off: controlled mode assumes the parent accepts onValueChange; it won't
+  // re-sync `text` if the parent rejects a change and holds `value` unchanged.
   const lastSyncedRef = useRef(initialSearch);
 
   useEffect(() => {
