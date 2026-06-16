@@ -16,7 +16,6 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { v3EnvironmentPath, v3ScheduleParams, v3SchedulePath } from "~/utils/pathBuilder";
-import { throwNotFound } from "~/utils/httpErrors";
 import { DeleteTaskScheduleService } from "~/v3/services/deleteTaskSchedule.server";
 import { SetActiveOnTaskScheduleService } from "~/v3/services/setActiveOnTaskSchedule.server";
 
@@ -45,11 +44,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     environmentId: environment.id,
   });
 
-  if (!result) {
-    throwNotFound("Schedule not found");
-  }
-
-  return typedjson({ schedule: result.schedule });
+  // Return null (not a 404 throw) so fetcher-driven hosts (e.g. the sheet
+  // running this loader after a delete-in-flight) don't surface a
+  // page-level error boundary. The standalone Page below renders a
+  // not-found message when `schedule` is null.
+  return typedjson({ schedule: result?.schedule ?? null });
 };
 
 const schema = z.discriminatedUnion("action", [
@@ -75,6 +74,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   if (!submission.value) {
     return json(submission);
   }
+
+  // `_format=json` → return JSON instead of redirecting; caller stays put.
+  const wantsJson = formData.get("_format") === "json";
 
   const project = await prisma.project.findFirst({
     where: {
@@ -104,12 +106,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           userId,
           friendlyId: scheduleParam,
         });
+        if (wantsJson) {
+          return json({ ok: true as const, message: `${scheduleParam} deleted` });
+        }
         return redirectWithSuccessMessage(
           v3EnvironmentPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
           request,
           `${scheduleParam} deleted`
         );
       } catch (e) {
+        const message = `${scheduleParam} could not be deleted: ${
+          e instanceof Error ? e.message : JSON.stringify(e)
+        }`;
+        if (wantsJson) {
+          return json({ ok: false as const, message }, { status: 500 });
+        }
         return redirectWithErrorMessage(
           v3SchedulePath(
             { slug: organizationSlug },
@@ -118,9 +129,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             { friendlyId: scheduleParam }
           ),
           request,
-          `${scheduleParam} could not be deleted: ${
-            e instanceof Error ? e.message : JSON.stringify(e)
-          }`
+          message
         );
       }
     }
@@ -135,6 +144,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           friendlyId: scheduleParam,
           active,
         });
+        if (wantsJson) {
+          return json({ ok: true as const, active });
+        }
         return redirectWithSuccessMessage(
           v3SchedulePath(
             { slug: organizationSlug },
@@ -146,6 +158,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           `${scheduleParam} ${active ? "enabled" : "disabled"}`
         );
       } catch (e) {
+        const message = e instanceof Error ? e.message : JSON.stringify(e);
+        if (wantsJson) {
+          return json({ ok: false as const, message }, { status: 500 });
+        }
         return redirectWithErrorMessage(
           v3SchedulePath(
             { slug: organizationSlug },
@@ -154,9 +170,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             { friendlyId: scheduleParam }
           ),
           request,
-          `${scheduleParam} could not be ${active ? "enabled" : "disabled"}: ${
-            e instanceof Error ? e.message : JSON.stringify(e)
-          }`
+          `${scheduleParam} could not be ${active ? "enabled" : "disabled"}: ${message}`
         );
       }
     }
@@ -169,6 +183,20 @@ export default function Page() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
+
+  if (!schedule) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 bg-background-bright p-6">
+        <p className="text-sm text-text-bright">Schedule not found.</p>
+        <LinkButton
+          to={`${v3EnvironmentPath(organization, project, environment)}${location.search}`}
+          variant="secondary/small"
+        >
+          Back to tasks
+        </LinkButton>
+      </div>
+    );
+  }
 
   return (
     <ScheduleInspector

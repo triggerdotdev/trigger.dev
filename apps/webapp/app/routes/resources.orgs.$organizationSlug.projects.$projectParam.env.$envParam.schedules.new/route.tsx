@@ -1,7 +1,13 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
+import {
+  type FetcherWithComponents,
+  Form,
+  useActionData,
+  useLocation,
+  useNavigation,
+} from "@remix-run/react";
 import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { parseExpression } from "cron-parser";
@@ -75,6 +81,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return json(submission);
   }
 
+  // `_format=json` → return JSON instead of redirecting; caller toasts.
+  const wantsJson = formData.get("_format") === "json";
+
   try {
     //first check that the user has access to the project
     const project = await prisma.project.findUnique({
@@ -98,15 +107,25 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     const createSchedule = new UpsertTaskScheduleService();
     const result = await createSchedule.call(project.id, submission.value);
 
+    const message =
+      submission.value?.friendlyId === result.id ? "Schedule updated" : "Schedule created";
+
+    if (wantsJson) {
+      return json({ ok: true as const, message });
+    }
+
     return redirectWithSuccessMessage(
       v3EnvironmentPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
       request,
-      submission.value?.friendlyId === result.id ? "Schedule updated" : "Schedule created"
+      message
     );
   } catch (error: any) {
     logger.error("Failed to create schedule", error);
 
     const errorMessage = `Something went wrong. Please try again.`;
+    if (wantsJson) {
+      return json({ ok: false as const, message: errorMessage }, { status: 500 });
+    }
     return redirectWithErrorMessage(
       v3EnvironmentPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
       request,
@@ -132,20 +151,30 @@ export function UpsertScheduleForm({
   possibleTimezones,
   showGenerateField,
   defaultTaskIdentifier,
+  onCancel,
+  submitFetcher,
 }: EditableScheduleElements & {
   showGenerateField: boolean;
-  /**
-   * Pre-fills the Task select when creating a new schedule (no `schedule`
-   * passed). Ignored when editing.
-   */
+  /** Pre-fills the Task field on new schedules. Ignored when editing. */
   defaultTaskIdentifier?: string;
+  /** When set, Cancel calls back instead of navigating. */
+  onCancel?: () => void;
+  /** Submits via this fetcher with `_format=json` so the host can toast/close itself. */
+  submitFetcher?: FetcherWithComponents<unknown>;
 }) {
-  const lastSubmission = useActionData();
+  const actionData = useActionData();
+  // Only feed conform-shaped data (`intent`) to `useForm` — `{ ok, message }`
+  // envelopes lack `payload` and crash conform.
+  const fetcherSubmission =
+    submitFetcher?.data && typeof submitFetcher.data === "object" && "intent" in submitFetcher.data
+      ? submitFetcher.data
+      : undefined;
+  const lastSubmission = submitFetcher ? fetcherSubmission : actionData;
   const [selectedTimezone, setSelectedTimezone] = useState<string>(schedule?.timezone ?? "UTC");
   const isUtc = selectedTimezone === "UTC";
   const [cronPattern, setCronPattern] = useState<string>(schedule?.cron ?? "");
   const navigation = useNavigation();
-  const isLoading = navigation.state !== "idle";
+  const isLoading = submitFetcher ? submitFetcher.state !== "idle" : navigation.state !== "idle";
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -197,13 +226,14 @@ export function UpsertScheduleForm({
   }
 
   const mode = schedule ? "edit" : "new";
+  const FormComponent = submitFetcher?.Form ?? Form;
 
   return (
-    <Form
+    <FormComponent
       method="post"
       action={`/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/schedules/new`}
       {...form.props}
-      className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright"
+      className="grid h-full max-h-full grid-rows-[2.5rem_1fr_auto] overflow-hidden bg-background-bright"
     >
       <div className="mx-3 flex min-w-0 items-center justify-between gap-2 overflow-hidden border-b border-grid-dimmed">
         <Header2 className="truncate">
@@ -216,36 +246,41 @@ export function UpsertScheduleForm({
       </div>
       <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         <div className="p-3">
+          {submitFetcher ? <input type="hidden" name="_format" value="json" /> : null}
           {schedule && <input type="hidden" name="friendlyId" value={schedule.friendlyId} />}
           <Fieldset>
-            {!schedule && defaultTaskIdentifier ? (
-              <input type="hidden" name={taskIdentifier.name} value={defaultTaskIdentifier} />
-            ) : (
-              <InputGroup>
-                <Label htmlFor={taskIdentifier.id}>Task</Label>
-                <Select
-                  {...conform.select(taskIdentifier)}
-                  placeholder="Select a task"
-                  defaultValue={schedule?.taskIdentifier}
-                  heading={"Filter..."}
-                  items={possibleTasks}
-                  filter={(task, search) => task.toLowerCase().includes(search.toLowerCase())}
-                  dropdownIcon
-                  variant="tertiary/medium"
-                >
-                  {(matches) => (
-                    <>
-                      {matches?.map((task) => (
-                        <SelectItem key={task} value={task}>
-                          {task}
-                        </SelectItem>
-                      ))}
-                    </>
-                  )}
-                </Select>
-                <FormError id={taskIdentifier.errorId}>{taskIdentifier.error}</FormError>
-              </InputGroup>
-            )}
+            {(() => {
+              // Lock the task via hidden input when it's implied (sheet on a task page, or editing).
+              const lockedTaskIdentifier = schedule?.taskIdentifier ?? defaultTaskIdentifier;
+              return lockedTaskIdentifier ? (
+                <input type="hidden" name={taskIdentifier.name} value={lockedTaskIdentifier} />
+              ) : (
+                <InputGroup>
+                  <Label htmlFor={taskIdentifier.id}>Task</Label>
+                  <Select
+                    {...conform.select(taskIdentifier)}
+                    placeholder="Select a task"
+                    defaultValue={schedule?.taskIdentifier}
+                    heading={"Filter..."}
+                    items={possibleTasks}
+                    filter={(task, search) => task.toLowerCase().includes(search.toLowerCase())}
+                    dropdownIcon
+                    variant="tertiary/medium"
+                  >
+                    {(matches) => (
+                      <>
+                        {matches?.map((task) => (
+                          <SelectItem key={task} value={task}>
+                            {task}
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                  </Select>
+                  <FormError id={taskIdentifier.errorId}>{taskIdentifier.error}</FormError>
+                </InputGroup>
+              );
+            })()}
             {showGenerateField && <AIGeneratedCronField onSuccess={setCronPattern} />}
             <InputGroup>
               <Label
@@ -415,28 +450,34 @@ export function UpsertScheduleForm({
           </Fieldset>
         </div>
       </div>
-      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
+      <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2 py-2">
         <div className="flex items-center gap-4">
-          <LinkButton
-            to={`${v3EnvironmentPath(organization, project, environment)}${location.search}`}
-            variant="secondary/medium"
-          >
-            Cancel
-          </LinkButton>
+          {onCancel ? (
+            <Button variant="secondary/small" onClick={onCancel} type="button">
+              Cancel
+            </Button>
+          ) : (
+            <LinkButton
+              to={`${v3EnvironmentPath(organization, project, environment)}${location.search}`}
+              variant="secondary/small"
+            >
+              Cancel
+            </LinkButton>
+          )}
         </div>
         <div className="flex items-center gap-4">
           <Button
-            variant="primary/medium"
+            variant="primary/small"
             type="submit"
             disabled={isLoading}
-            shortcut={{ key: "enter", modifiers: ["mod"] }}
+            shortcut={{ key: "enter", modifiers: ["mod"], enabledOnInputElements: true }}
             LeadingIcon={isLoading ? Spinner : undefined}
           >
             {buttonText(mode, isLoading)}
           </Button>
         </div>
       </div>
-    </Form>
+    </FormComponent>
   );
 }
 
