@@ -27,6 +27,7 @@ import {
   envTypeToVercelTarget,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
+import { isReservedForExternalSync } from "~/v3/environmentVariableRules.server";
 import {
   callVercelWithRecovery,
   wrapVercelCallWithRecovery,
@@ -1350,10 +1351,9 @@ export class VercelIntegrationRepository {
           for (const mapping of envMapping) {
             const iterResult = await ResultAsync.fromPromise(
               (async () => {
-                // Build filter to avoid decrypting vars that will be filtered out anyway
-                const excludeKeys = new Set(["TRIGGER_SECRET_KEY", "TRIGGER_VERSION"]);
+                // Exclude reserved keys before decrypting (a reserved-only batch gets rejected).
                 const shouldIncludeKey = (key: string) =>
-                  !excludeKeys.has(key) &&
+                  !isReservedForExternalSync(key) &&
                   shouldSyncEnvVar(params.syncEnvVarsMapping, key, mapping.triggerEnvType as TriggerEnvironmentType);
 
                 const envVarsResult = await this.getVercelEnvironmentVariableValues(
@@ -1399,7 +1399,7 @@ export class VercelIntegrationRepository {
                   if (envVar.isSecret) {
                     return false;
                   }
-                  if (envVar.key === "TRIGGER_SECRET_KEY" || envVar.key === "TRIGGER_VERSION") {
+                  if (isReservedForExternalSync(envVar.key)) {
                     return false;
                   }
                   return shouldSyncEnvVar(
