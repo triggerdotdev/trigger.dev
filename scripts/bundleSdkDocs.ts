@@ -76,10 +76,17 @@ async function bundleSdkDocs() {
   let copied = 0;
 
   for (const rel of manifest) {
-    // Defensive: nav paths come from our own docs.json, but a fat-fingered `../` entry
-    // shouldn't be able to copy a file from outside docs/ into the package.
+    // Defensive: nav paths come from our own docs.json and are URL-style, but a
+    // fat-fingered `../`, a backslash, or an absolute path shouldn't be able to copy a
+    // file from outside docs/ into the package. Reject backslashes (Windows separator)
+    // and both POSIX and Windows absolute forms, then the normalized `..` traversal.
     const safeRel = path.posix.normalize(rel);
-    if (path.isAbsolute(safeRel) || safeRel.startsWith("..")) {
+    if (
+      rel.includes("\\") ||
+      path.posix.isAbsolute(rel) ||
+      path.win32.isAbsolute(rel) ||
+      safeRel.startsWith("..")
+    ) {
       throw new Error(`[bundleSdkDocs] invalid nav path "${rel}" under "${DROPDOWN}"`);
     }
 
