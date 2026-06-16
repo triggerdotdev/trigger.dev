@@ -181,7 +181,9 @@ export function UpsertScheduleForm({
 
   const [form, { taskIdentifier, cron, timezone, externalId, environments, deduplicationKey }] =
     useForm({
-      id: "create-schedule",
+      // Disambiguate per-schedule so both sheets (create + edit) can
+      // coexist without duplicate DOM ids breaking `htmlFor` / conform.
+      id: schedule?.friendlyId ? `edit-schedule-${schedule.friendlyId}` : "create-schedule",
       // TODO: type this
       lastSubmission: lastSubmission as any,
       shouldRevalidate: "onSubmit",

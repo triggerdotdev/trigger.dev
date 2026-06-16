@@ -650,10 +650,11 @@ function ScheduleSheet({
   // user clicked a different row) as loading — otherwise we briefly flash
   // the previous schedule's content while the new fetch is in flight.
   const isStaleSchedule = !!schedule && !!openScheduleId && schedule.friendlyId !== openScheduleId;
+  // Only show the loading spinner when we actually lack good data —
+  // background reloads (e.g. after enable/disable) keep the inspector
+  // visible with its current values until the fresh data arrives.
   const isDetailLoading =
-    detailFetcher.state === "loading" ||
-    isStaleSchedule ||
-    (!!openScheduleId && schedule === undefined);
+    isStaleSchedule || (!!openScheduleId && detailFetcher.data === undefined);
   // Distinct from loading: the loader has resolved and the schedule is
   // genuinely gone (returned `null`, e.g. deleted externally).
   const isScheduleMissing =
