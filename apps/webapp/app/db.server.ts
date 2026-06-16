@@ -14,6 +14,7 @@ import { logger } from "./services/logger.server";
 import { isValidDatabaseUrl } from "./utils/db";
 import {
   captureInfrastructureErrors,
+  infraErrorAlreadyLogged,
   logTransactionInfrastructureError,
 } from "./utils/prismaErrors";
 import { singleton } from "./utils/singleton";
@@ -87,6 +88,11 @@ async function $transactionInner<R>(
         prisma,
         (client) => fn(client, span),
         (error) => {
+          // Skip if the client extension already logged this at the statement
+          // level — only commit-time errors that bypass it are logged here.
+          if (infraErrorAlreadyLogged(error)) {
+            return;
+          }
           logger.error("prisma.$transaction error", {
             code: error.code,
             meta: error.meta,

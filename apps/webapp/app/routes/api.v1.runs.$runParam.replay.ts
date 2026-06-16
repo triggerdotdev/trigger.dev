@@ -8,6 +8,7 @@ import { logger } from "~/services/logger.server";
 import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import { sanitizeTriggerSource } from "~/utils/triggerSource";
+import { clientSafeErrorMessage } from "~/utils/prismaErrors";
 
 const ParamsSchema = z.object({
   /* This is the run friendly ID */
@@ -145,7 +146,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         },
         run: runParam,
       });
-      return json({ error: error.message }, { status: 400 });
+      return json({ error: clientSafeErrorMessage(error) }, { status: 400 });
     } else {
       logger.error("Failed to replay run", { error: JSON.stringify(error), run: runParam });
       return json({ error: JSON.stringify(error) }, { status: 400 });

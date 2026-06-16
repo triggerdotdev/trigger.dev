@@ -4,6 +4,7 @@ import { Prisma, PrismaClient } from "@trigger.dev/database";
 import {
   captureInfrastructureErrors,
   clientSafeErrorMessage,
+  infraErrorAlreadyLogged,
   logTransactionInfrastructureError,
 } from "~/utils/prismaErrors";
 
@@ -117,6 +118,13 @@ describe("captureInfrastructureErrors", () => {
       expect(log.captured[0].message).toBe("prisma infrastructure error");
       expect(log.captured[0].fields?.operation).toBe("findFirst");
       expect(log.captured[0].fields?.model).toBe("SecretStore");
+
+      // Dedupe: the extension tagged it, so a $transaction-boundary logger
+      // seeing the same error must NOT log it a second time.
+      expect(infraErrorAlreadyLogged(error)).toBe(true);
+      const boundaryLog = capturingLogger();
+      expect(logTransactionInfrastructureError(error, boundaryLog)).toBe(false);
+      expect(boundaryLog.captured).toHaveLength(0);
     } finally {
       await unreachable.$disconnect();
     }

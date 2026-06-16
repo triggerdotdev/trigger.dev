@@ -43,6 +43,25 @@ export function isInfrastructureError(error: unknown): boolean {
   return false;
 }
 
+// One-shot marker so a single infra error is logged exactly once: the client
+// extension (statement level) tags it, and the $transaction-boundary loggers
+// skip a tagged error rather than logging the same failure a second time.
+const INFRA_ERROR_LOGGED: unique symbol = Symbol("prismaInfraErrorLogged");
+
+function markInfraErrorLogged(error: unknown): void {
+  if (typeof error === "object" && error !== null) {
+    (error as Record<symbol, unknown>)[INFRA_ERROR_LOGGED] = true;
+  }
+}
+
+export function infraErrorAlreadyLogged(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as Record<symbol, unknown>)[INFRA_ERROR_LOGGED] === true
+  );
+}
+
 // Logs infrastructure failures (P1xxx-class, see isInfrastructureError) and
 // rethrows the ORIGINAL error: callers branch on error.code, and this fires
 // per-statement inside transactions, so converting it would break that.
@@ -66,6 +85,7 @@ export function captureInfrastructureErrors<T extends PrismaClient>(
               message: error instanceof Error ? error.message : String(error),
               stack: error instanceof Error ? error.stack : undefined,
             });
+            markInfraErrorLogged(error);
           }
 
           throw error;
@@ -76,14 +96,15 @@ export function captureInfrastructureErrors<T extends PrismaClient>(
 }
 
 // Logs infrastructure errors that reach the $transaction boundary WITHOUT a
-// Prisma error code (e.g. PrismaClientInitializationError). Coded errors are
-// already logged by transac()'s callback, so they are skipped here to avoid
-// double-logging. Returns whether it logged.
+// Prisma error code (e.g. PrismaClientInitializationError). Coded errors there
+// are already logged by transac()'s callback, and errors that bubbled up from a
+// statement were already logged (and tagged) by the client extension — both are
+// skipped here to avoid double-logging. Returns whether it logged.
 export function logTransactionInfrastructureError(
   error: unknown,
   log: ErrorLogger = logger
 ): boolean {
-  if (!isInfrastructureError(error) || isPrismaKnownError(error)) {
+  if (!isInfrastructureError(error) || isPrismaKnownError(error) || infraErrorAlreadyLogged(error)) {
     return false;
   }
 
