@@ -1626,7 +1626,7 @@ function MetricsTab({
   return (
     <div className="space-y-3">
       {/* Summary big numbers */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-5 gap-3">
         <div className="h-44">
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-generations`}
@@ -1659,7 +1659,7 @@ function MetricsTab({
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-cost`}
             title="Avg input cost"
-            query={`SELECT avg(input_cost) AS avg_cost FROM llm_metrics WHERE 1=1`}
+            query={`SELECT avg(input_cost + cached_read_cost + cache_creation_cost) AS avg_cost FROM llm_metrics WHERE 1=1`}
             config={{
               type: "bignumber",
               column: "avg_cost",
@@ -1680,6 +1680,20 @@ function MetricsTab({
               aggregation: "avg",
               abbreviate: false,
               suffix: "ms",
+            }}
+            {...widgetProps}
+          />
+        </div>
+        <div className="h-44">
+          <MetricWidget
+            widgetKey={`prompt-${prompt.slug}-cached-tokens`}
+            title="Cached tokens"
+            query={`SELECT sum(cached_read_tokens) AS cached_tokens FROM llm_metrics WHERE 1=1`}
+            config={{
+              type: "bignumber",
+              column: "cached_tokens",
+              aggregation: "sum",
+              abbreviate: true,
             }}
             {...widgetProps}
           />
@@ -1808,7 +1822,7 @@ function VersionPerformanceSection({
           <MetricWidget
             widgetKey={`prompt-${promptSlug}-perf-input-cost`}
             title="Input cost per 1k tokens (p50 / p95)"
-            query={`SELECT timeBucket(), prettyFormat(quantile(0.5)(input_cost / input_tokens * 1000), 'costInDollars') AS p50, prettyFormat(quantile(0.95)(input_cost / input_tokens * 1000), 'costInDollars') AS p95 FROM llm_metrics WHERE input_tokens > 0 GROUP BY timeBucket ORDER BY timeBucket`}
+            query={`SELECT timeBucket(), prettyFormat(quantile(0.5)((input_cost + cached_read_cost + cache_creation_cost) / input_tokens * 1000), 'costInDollars') AS p50, prettyFormat(quantile(0.95)((input_cost + cached_read_cost + cache_creation_cost) / input_tokens * 1000), 'costInDollars') AS p95 FROM llm_metrics WHERE input_tokens > 0 GROUP BY timeBucket ORDER BY timeBucket`}
             config={{
               type: "chart",
               chartType: "line",
@@ -1858,6 +1872,45 @@ function VersionPerformanceSection({
               sortByColumn: null,
               sortDirection: "asc",
               aggregation: "avg",
+            }}
+            {...widgetProps}
+          />
+        </div>
+        {/* Row 4: Caching */}
+        <div className="h-96">
+          <MetricWidget
+            widgetKey={`prompt-${promptSlug}-perf-cache-hit`}
+            title="Cache hit rate over time"
+            query={`SELECT timeBucket(), round(ifNull(sum(cached_read_tokens) * 100.0 / nullIf(sum(input_tokens), 0), 0), 1) AS cache_hit_pct FROM llm_metrics WHERE 1=1 GROUP BY timeBucket ORDER BY timeBucket`}
+            config={{
+              type: "chart",
+              chartType: "line",
+              xAxisColumn: "timebucket",
+              yAxisColumns: ["cache_hit_pct"],
+              groupByColumn: null,
+              stacked: false,
+              sortByColumn: null,
+              sortDirection: "asc",
+              aggregation: "avg",
+            }}
+            {...widgetProps}
+          />
+        </div>
+        <div className="h-96">
+          <MetricWidget
+            widgetKey={`prompt-${promptSlug}-perf-cached-tokens`}
+            title="Cached tokens over time"
+            query={`SELECT timeBucket(), sum(cached_read_tokens) AS cache_reads, sum(cache_creation_tokens) AS cache_writes FROM llm_metrics WHERE 1=1 GROUP BY timeBucket ORDER BY timeBucket`}
+            config={{
+              type: "chart",
+              chartType: "bar",
+              xAxisColumn: "timebucket",
+              yAxisColumns: ["cache_reads", "cache_writes"],
+              groupByColumn: null,
+              stacked: true,
+              sortByColumn: null,
+              sortDirection: "asc",
+              aggregation: "sum",
             }}
             {...widgetProps}
           />

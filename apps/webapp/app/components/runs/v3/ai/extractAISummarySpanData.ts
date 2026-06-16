@@ -108,6 +108,8 @@ export function extractAISummarySpanData(
     inputCost: num(triggerLlm.input_cost),
     outputCost: num(triggerLlm.output_cost),
     totalCost: num(triggerLlm.total_cost),
+    cachedCost: num(triggerLlm.cached_cost),
+    cacheCreationCost: num(triggerLlm.cache_creation_cost),
     responseText: str(aiResponse.text) || undefined,
     responseObject: str(aiResponse.object) || undefined,
     toolDefinitions: undefined,

@@ -375,9 +375,13 @@ export function TimeFilter({
   valueClassName,
 }: TimeFilterProps = {}) {
   const { value } = useSearchParams();
-  const periodValue = period ?? value("period");
-  const fromValue = from ?? value("from");
-  const toValue = to ?? value("to");
+  // In controlled mode (onValueChange provided) the caller owns all three values via local
+  // state, so don't fall back to the URL — otherwise selecting a custom date range (which
+  // sets period to undefined) would read the page-level URL period and override the range.
+  const controlled = onValueChange !== undefined;
+  const periodValue = controlled ? period : period ?? value("period");
+  const fromValue = controlled ? from : from ?? value("from");
+  const toValue = controlled ? to : to ?? value("to");
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   useShortcutKeys({
