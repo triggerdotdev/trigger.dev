@@ -651,8 +651,13 @@ function ScheduleSheet({
   const isScheduleMissing =
     !!openScheduleId && !isDetailLoading && detailFetcher.data?.schedule === null;
   const editData = editFetcher.data;
+  // Mirror the detail-fetcher staleness check so the edit form doesn't
+  // briefly flash a previously-edited schedule's data on the first render
+  // after switching schedules.
+  const isStaleEditData =
+    !!editData?.schedule && !!openScheduleId && editData.schedule.friendlyId !== openScheduleId;
   const isEditLoading =
-    mode === "edit" && (editFetcher.state === "loading" || !editData);
+    mode === "edit" && (editFetcher.state === "loading" || !editData || isStaleEditData);
 
   return (
     <Sheet open={!!openScheduleId} onOpenChange={(open) => !open && onClose()}>
