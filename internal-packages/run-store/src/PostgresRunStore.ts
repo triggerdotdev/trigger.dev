@@ -126,18 +126,29 @@ export class PostgresRunStore implements RunStore {
     });
   }
 
-  startAttempt<S extends Prisma.TaskRunSelect>(
-    _runId: string,
-    _data: { attemptNumber: number; executedAt?: Date; isWarmStart: boolean },
-    _args: { select: S },
-    _tx?: PrismaClientOrTransaction
+  async startAttempt<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: { attemptNumber: number; executedAt?: Date; isWarmStart: boolean },
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
-    throw new Error("not implemented");
+    const prisma = tx ?? this.prisma;
+
+    return prisma.taskRun.update({
+      where: { id: runId },
+      data: {
+        status: "EXECUTING",
+        attemptNumber: data.attemptNumber,
+        executedAt: data.executedAt,
+        isWarmStart: data.isWarmStart,
+      },
+      select: args.select,
+    }) as Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   }
 
-  completeAttemptSuccess<S extends Prisma.TaskRunSelect>(
-    _runId: string,
-    _data: {
+  async completeAttemptSuccess<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: {
       completedAt: Date;
       output?: string;
       outputType: string;
@@ -145,65 +156,144 @@ export class PostgresRunStore implements RunStore {
       costInCents: number;
       snapshot: CompletionSnapshotInput;
     },
-    _args: { select: S },
-    _tx?: PrismaClientOrTransaction
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
-    throw new Error("not implemented");
+    const prisma = tx ?? this.prisma;
+
+    return prisma.taskRun.update({
+      where: { id: runId },
+      data: {
+        status: "COMPLETED_SUCCESSFULLY",
+        completedAt: data.completedAt,
+        output: data.output,
+        outputType: data.outputType,
+        usageDurationMs: data.usageDurationMs,
+        costInCents: data.costInCents,
+        executionSnapshots: {
+          create: {
+            executionStatus: data.snapshot.executionStatus,
+            description: data.snapshot.description,
+            runStatus: data.snapshot.runStatus,
+            attemptNumber: data.snapshot.attemptNumber,
+            environmentId: data.snapshot.environmentId,
+            environmentType: data.snapshot.environmentType,
+            projectId: data.snapshot.projectId,
+            organizationId: data.snapshot.organizationId,
+            workerId: data.snapshot.workerId,
+            runnerId: data.snapshot.runnerId,
+          },
+        },
+      },
+      select: args.select,
+    }) as Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   }
 
-  recordRetryOutcome<I extends Prisma.TaskRunInclude>(
-    _runId: string,
-    _data: { machinePreset: string; usageDurationMs: number; costInCents: number },
-    _args: { include: I },
-    _tx?: PrismaClientOrTransaction
+  async recordRetryOutcome<I extends Prisma.TaskRunInclude>(
+    runId: string,
+    data: { machinePreset: string; usageDurationMs: number; costInCents: number },
+    args: { include: I },
+    tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }>> {
-    throw new Error("not implemented");
+    const prisma = tx ?? this.prisma;
+
+    return prisma.taskRun.update({
+      where: { id: runId },
+      data: {
+        machinePreset: data.machinePreset,
+        usageDurationMs: data.usageDurationMs,
+        costInCents: data.costInCents,
+      },
+      include: args.include,
+    }) as Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
   }
 
-  requeueRun<S extends Prisma.TaskRunSelect>(
-    _runId: string,
-    _args: { select: S },
-    _tx?: PrismaClientOrTransaction
+  async requeueRun<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
-    throw new Error("not implemented");
+    const prisma = tx ?? this.prisma;
+
+    return prisma.taskRun.update({
+      where: { id: runId },
+      data: { status: "PENDING" },
+      select: args.select,
+    }) as Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   }
 
-  recordBulkActionMembership(
-    _runId: string,
-    _bulkActionId: string,
-    _tx?: PrismaClientOrTransaction
+  async recordBulkActionMembership(
+    runId: string,
+    bulkActionId: string,
+    tx?: PrismaClientOrTransaction
   ): Promise<void> {
-    throw new Error("not implemented");
+    const prisma = tx ?? this.prisma;
+
+    await prisma.taskRun.update({
+      where: { id: runId },
+      data: {
+        bulkActionGroupIds: {
+          push: bulkActionId,
+        },
+      },
+    });
   }
 
-  cancelRun<S extends Prisma.TaskRunSelect>(
-    _runId: string,
-    _data: {
+  async cancelRun<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: {
       completedAt?: Date;
       error: TaskRunError;
       bulkActionId?: string;
       usageDurationMs?: number;
       costInCents?: number;
     },
-    _args: { select: S },
-    _tx?: PrismaClientOrTransaction
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
-    throw new Error("not implemented");
+    const prisma = tx ?? this.prisma;
+
+    return prisma.taskRun.update({
+      where: { id: runId },
+      data: {
+        status: "CANCELED",
+        ...(data.completedAt !== undefined && { completedAt: data.completedAt }),
+        error: data.error as Prisma.InputJsonValue,
+        ...(data.bulkActionId !== undefined && {
+          bulkActionGroupIds: { push: data.bulkActionId },
+        }),
+        ...(data.usageDurationMs !== undefined && { usageDurationMs: data.usageDurationMs }),
+        ...(data.costInCents !== undefined && { costInCents: data.costInCents }),
+      },
+      select: args.select,
+    }) as Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   }
 
-  failRunPermanently<S extends Prisma.TaskRunSelect>(
-    _runId: string,
-    _data: {
+  async failRunPermanently<S extends Prisma.TaskRunSelect>(
+    runId: string,
+    data: {
       status: TaskRunStatus;
       completedAt: Date;
       error: TaskRunError;
       usageDurationMs: number;
       costInCents: number;
     },
-    _args: { select: S },
-    _tx?: PrismaClientOrTransaction
+    args: { select: S },
+    tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
-    throw new Error("not implemented");
+    const prisma = tx ?? this.prisma;
+
+    return prisma.taskRun.update({
+      where: { id: runId },
+      data: {
+        status: data.status,
+        completedAt: data.completedAt,
+        error: data.error as Prisma.InputJsonValue,
+        usageDurationMs: data.usageDurationMs,
+        costInCents: data.costInCents,
+      },
+      select: args.select,
+    }) as Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   }
 
   expireRun<S extends Prisma.TaskRunSelect>(
