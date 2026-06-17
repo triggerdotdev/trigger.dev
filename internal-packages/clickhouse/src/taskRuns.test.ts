@@ -84,6 +84,7 @@ describe("Task Runs V2", () => {
       ["bulk_action_group_id_1234", "bulk_action_group_id_1235"], // bulk_action_group_ids
       "", // worker_queue
       "", // region
+      "", // plan_type
       null, // max_duration_in_seconds
       "", // trigger_source
       "", // root_trigger_source
@@ -217,6 +218,7 @@ describe("Task Runs V2", () => {
       [], // bulk_action_group_ids
       "", // worker_queue
       "", // region
+      "", // plan_type
       null, // max_duration_in_seconds
       "", // trigger_source
       "", // root_trigger_source
@@ -273,6 +275,7 @@ describe("Task Runs V2", () => {
       [], // bulk_action_group_ids
       "", // worker_queue
       "", // region
+      "", // plan_type
       null, // max_duration_in_seconds
       "", // trigger_source
       "", // root_trigger_source
@@ -376,6 +379,7 @@ describe("Task Runs V2", () => {
         [], // bulk_action_group_ids
         "", // worker_queue
         "", // region
+        "", // plan_type
         null, // max_duration_in_seconds
         "", // trigger_source
         "", // root_trigger_source
@@ -487,6 +491,7 @@ describe("Task Runs V2", () => {
         [], // bulk_action_group_ids
         "", // worker_queue
         "", // region
+        "", // plan_type
         null, // max_duration_in_seconds
         "", // trigger_source
         "", // root_trigger_source
@@ -543,6 +548,7 @@ describe("Task Runs V2", () => {
         [],
         "", // worker_queue
         "", // region
+        "", // plan_type
         null,
         "",
         "",
@@ -605,6 +611,7 @@ describe("Task Runs V2", () => {
         [],
         "", // worker_queue
         "", // region
+        "", // plan_type
         null,
         "",
         "",
@@ -661,6 +668,7 @@ describe("Task Runs V2", () => {
         [],
         "", // worker_queue
         "", // region
+        "", // plan_type
         null,
         "",
         "",
