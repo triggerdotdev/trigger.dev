@@ -179,6 +179,38 @@ for await (const turn of session) {
 }
 ```
 
+## Stopping generation
+
+The frontend stops a turn with [`transport.stopGeneration(chatId)`](/ai-chat/frontend#stop-generation), which writes a stop signal to the session's input stream. It aborts the current turn's generation but keeps the run alive, so the next message continues on the same session.
+
+`turn.signal` is a combined stop-and-cancel `AbortSignal`, fresh each turn. Pass it to `streamText` so the stop reaches the model, then let `turn.complete()` finish the turn:
+
+```ts trigger/my-chat.ts
+for await (const turn of session) {
+  const result = streamText({
+    model: anthropic("claude-sonnet-4-5"),
+    messages: turn.messages,
+    abortSignal: turn.signal, // fires on a user stop OR a run cancel
+    stopWhen: stepCountIs(15),
+  });
+
+  await turn.complete(result);
+
+  if (turn.stopped) {
+    // user stopped this turn — the partial response is already accumulated
+  }
+}
+```
+
+On a stop, `turn.complete()` cleans up the aborted parts of the partial response, accumulates it as its own assistant message, and writes turn-complete. The run does not end — the loop continues to the next turn.
+
+Read `turn.stopped` to tell a user stop from a full run cancel:
+
+- **User stop** (`transport.stopGeneration`): `turn.signal` aborts, `turn.stopped` is `true`, the partial response is accumulated, and the run stays alive for the next message.
+- **Run cancel** (cancelled, expired, or `maxDuration` exceeded): `turn.signal` aborts, `turn.stopped` is `false`, and `turn.complete()` returns without accumulating because the run is ending.
+
+A hand-rolled loop wires this itself with `chat.createStopSignal()` and `chat.cleanupAbortedParts()`. Two things `createSession` handles for you are easy to get wrong there — see the [hand-rolled loop checklist](#hand-rolled-loop-checklist).
+
 ## Hand-rolled loop with primitives
 
 For full control, skip `createSession` and compose the primitives directly:
