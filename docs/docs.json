@@ -193,12 +193,6 @@
             ]
           },
           {
-            "group": "Development",
-            "pages": [
-              "cli-dev-commands"
-            ]
-          },
-          {
             "group": "Deployment",
             "pages": [
               "deployment/overview",
@@ -748,11 +742,13 @@
   "redirects": [
     {
       "source": "/cli-dev",
-      "destination": "/cli-dev-commands"
+      "destination": "/cli-dev-commands",
+      "permanent": true
     },
     {
       "source": "/cli-deploy",
-      "destination": "/cli-deploy-commands"
+      "destination": "/cli-deploy-commands",
+      "permanent": true
     },
     {
       "source": "/cli-development-commands",
