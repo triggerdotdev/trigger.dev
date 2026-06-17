@@ -551,4 +551,381 @@ describe("PostgresRunStore", () => {
     expect(run.usageDurationMs).toBe(150);
     expect(run.costInCents).toBe(3);
   });
+
+  postgresTest(
+    "expireRun sets status to EXPIRED with distinct completedAt/expiredAt, error set, and one FINISHED/EXPIRED snapshot",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_expire_1";
+
+      await store.createRun(
+        buildCreateRunInput({
+          runId,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+        })
+      );
+
+      const completedAt = new Date("2026-06-01T10:00:00.000Z");
+      const expiredAt = new Date("2026-06-01T10:00:01.000Z");
+      const error = { type: "STRING_ERROR" as const, raw: "Run expired because the TTL was reached" };
+
+      const run = await store.expireRun(
+        runId,
+        {
+          error,
+          completedAt,
+          expiredAt,
+          snapshot: {
+            engine: "V2",
+            executionStatus: "FINISHED",
+            description: "Run was expired because the TTL was reached",
+            runStatus: "EXPIRED",
+            environmentId: environment.id,
+            environmentType: "DEVELOPMENT",
+            projectId: project.id,
+            organizationId: organization.id,
+          },
+        },
+        {
+          select: {
+            id: true,
+            status: true,
+            completedAt: true,
+            expiredAt: true,
+            error: true,
+          },
+        }
+      );
+
+      expect(run.id).toBe(runId);
+      expect(run.status).toBe("EXPIRED");
+      expect(run.completedAt).toEqual(completedAt);
+      expect(run.expiredAt).toEqual(expiredAt);
+      // completedAt and expiredAt are distinct
+      expect(run.completedAt?.getTime()).not.toBe(run.expiredAt?.getTime());
+
+      const snapshots = await prisma.taskRunExecutionSnapshot.findMany({
+        where: { runId, executionStatus: "FINISHED", runStatus: "EXPIRED" },
+      });
+      expect(snapshots).toHaveLength(1);
+    }
+  );
+
+  postgresTest(
+    "expireRunsBatch sets EXPIRED status with all four timestamps equal to now and error set; returns correct count",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const runId1 = "run_expire_batch_1";
+      const runId2 = "run_expire_batch_2";
+
+      for (const id of [runId1, runId2]) {
+        await prisma.taskRun.create({
+          data: {
+            id,
+            engine: "V2",
+            status: "PENDING",
+            friendlyId: `run_expire_batch_friendly_${id}`,
+            runtimeEnvironmentId: environment.id,
+            environmentType: "DEVELOPMENT",
+            organizationId: organization.id,
+            projectId: project.id,
+            taskIdentifier: "my-task",
+            payload: "{}",
+            payloadType: "application/json",
+            traceContext: {},
+            traceId: `trace_${id}`,
+            spanId: `span_${id}`,
+            queue: "task/my-task",
+            isTest: false,
+            taskEventStore: "taskEvent",
+            depth: 0,
+          },
+        });
+      }
+
+      const now = new Date("2026-06-01T12:00:00.000Z");
+      const error = { type: "STRING_ERROR" as const, raw: "Run expired because the TTL was reached" };
+
+      const count = await store.expireRunsBatch([runId1, runId2], { error, now });
+
+      expect(count).toBe(2);
+
+      for (const id of [runId1, runId2]) {
+        const row = await prisma.taskRun.findUniqueOrThrow({
+          where: { id },
+          select: { status: true, completedAt: true, expiredAt: true, updatedAt: true },
+        });
+        expect(row.status).toBe("EXPIRED");
+        expect(row.completedAt).toEqual(now);
+        expect(row.expiredAt).toEqual(now);
+        expect(row.updatedAt).toEqual(now);
+      }
+    }
+  );
+
+  postgresTest(
+    "lockRunToWorker sets status to DEQUEUED with lock columns, includes runtimeEnvironment, and creates one PENDING_EXECUTING snapshot",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_lock_1";
+
+      await store.createRun(
+        buildCreateRunInput({
+          runId,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+        })
+      );
+
+      // Seed a background worker task to use as lockedById
+      const backgroundWorker = await prisma.backgroundWorker.create({
+        data: {
+          friendlyId: "worker_friendly_1",
+          version: "20260601.1",
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+          contentHash: "abc123",
+          sdkVersion: "3.0.0",
+          cliVersion: "3.0.0",
+          metadata: {},
+        },
+      });
+
+      const workerTask = await prisma.backgroundWorkerTask.create({
+        data: {
+          friendlyId: "task_friendly_1",
+          slug: "my-task",
+          filePath: "src/my-task.ts",
+          exportName: "myTask",
+          workerId: backgroundWorker.id,
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+        },
+      });
+
+      const queue = await prisma.taskQueue.create({
+        data: {
+          friendlyId: "queue_friendly_1",
+          name: "task/my-task",
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+        },
+      });
+
+      // Seed a prior snapshot to use as previousSnapshotId
+      const priorSnapshot = await prisma.taskRunExecutionSnapshot.create({
+        data: {
+          engine: "V2",
+          executionStatus: "RUN_CREATED",
+          description: "prior",
+          runStatus: "PENDING",
+          environmentId: environment.id,
+          environmentType: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+          runId,
+        },
+      });
+
+      const lockedAt = new Date("2026-06-01T13:00:00.000Z");
+      const startedAt = new Date("2026-06-01T13:00:01.000Z");
+      const snapshotId = "snap_lock_1";
+
+      const locked = await store.lockRunToWorker(runId, {
+        lockedAt,
+        lockedById: workerTask.id,
+        lockedToVersionId: backgroundWorker.id,
+        lockedQueueId: queue.id,
+        startedAt,
+        baseCostInCents: 5,
+        machinePreset: "small-1x",
+        taskVersion: "20260601.1",
+        sdkVersion: "3.0.0",
+        cliVersion: "3.0.0",
+        maxDurationInSeconds: null,
+        snapshot: {
+          id: snapshotId,
+          previousSnapshotId: priorSnapshot.id,
+          environmentId: environment.id,
+          environmentType: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+          completedWaitpointIds: [],
+          completedWaitpointOrder: [],
+        },
+      });
+
+      expect(locked.status).toBe("DEQUEUED");
+      expect(locked.lockedAt).toEqual(lockedAt);
+      expect(locked.lockedById).toBe(workerTask.id);
+      expect(locked.lockedToVersionId).toBe(backgroundWorker.id);
+      expect(locked.lockedQueueId).toBe(queue.id);
+      expect(locked.runtimeEnvironment).toBeDefined();
+      expect(locked.runtimeEnvironment.id).toBe(environment.id);
+
+      const snap = await prisma.taskRunExecutionSnapshot.findUnique({ where: { id: snapshotId } });
+      expect(snap).not.toBeNull();
+      expect(snap?.executionStatus).toBe("PENDING_EXECUTING");
+      expect(snap?.runStatus).toBe("PENDING");
+    }
+  );
+
+  postgresTest("parkPendingVersion sets status to PENDING_VERSION and stores statusReason", async ({ prisma }) => {
+    const { organization, project, environment } = await seedEnvironment(prisma);
+
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+    const runId = "run_park_1";
+
+    await store.createRun(
+      buildCreateRunInput({
+        runId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      })
+    );
+
+    const run = await store.parkPendingVersion(
+      runId,
+      { statusReason: "No background worker found" },
+      { select: { id: true, status: true, statusReason: true } }
+    );
+
+    expect(run.id).toBe(runId);
+    expect(run.status).toBe("PENDING_VERSION");
+    expect(run.statusReason).toBe("No background worker found");
+  });
+
+  postgresTest(
+    "promotePendingVersionRuns flips PENDING_VERSION to PENDING and returns count 1; run in another status returns count 0 and is unchanged",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // Seed a PENDING_VERSION run
+      const pendingVersionId = "run_promote_pv_1";
+      await prisma.taskRun.create({
+        data: {
+          id: pendingVersionId,
+          engine: "V2",
+          status: "PENDING_VERSION",
+          friendlyId: "run_promote_pv_friendly_1",
+          runtimeEnvironmentId: environment.id,
+          environmentType: "DEVELOPMENT",
+          organizationId: organization.id,
+          projectId: project.id,
+          taskIdentifier: "my-task",
+          payload: "{}",
+          payloadType: "application/json",
+          traceContext: {},
+          traceId: "trace_pv1",
+          spanId: "span_pv1",
+          queue: "task/my-task",
+          isTest: false,
+          taskEventStore: "taskEvent",
+          depth: 0,
+        },
+      });
+
+      const result = await store.promotePendingVersionRuns(pendingVersionId);
+
+      expect(result.count).toBe(1);
+
+      const promoted = await prisma.taskRun.findUniqueOrThrow({ where: { id: pendingVersionId }, select: { status: true } });
+      expect(promoted.status).toBe("PENDING");
+
+      // Seed a run NOT in PENDING_VERSION (e.g. EXECUTING)
+      const executingId = "run_promote_exec_1";
+      await prisma.taskRun.create({
+        data: {
+          id: executingId,
+          engine: "V2",
+          status: "EXECUTING",
+          friendlyId: "run_promote_exec_friendly_1",
+          runtimeEnvironmentId: environment.id,
+          environmentType: "DEVELOPMENT",
+          organizationId: organization.id,
+          projectId: project.id,
+          taskIdentifier: "my-task",
+          payload: "{}",
+          payloadType: "application/json",
+          traceContext: {},
+          traceId: "trace_exec1",
+          spanId: "span_exec1",
+          queue: "task/my-task",
+          isTest: false,
+          taskEventStore: "taskEvent",
+          depth: 0,
+        },
+      });
+
+      const result2 = await store.promotePendingVersionRuns(executingId);
+
+      expect(result2.count).toBe(0);
+
+      const unchanged = await prisma.taskRun.findUniqueOrThrow({ where: { id: executingId }, select: { status: true } });
+      expect(unchanged.status).toBe("EXECUTING");
+    }
+  );
+
+  postgresTest("suspendForCheckpoint sets status to WAITING_TO_RESUME", async ({ prisma }) => {
+    const { organization, project, environment } = await seedEnvironment(prisma);
+
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+    const runId = "run_suspend_1";
+
+    await store.createRun(
+      buildCreateRunInput({
+        runId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      })
+    );
+
+    const run = await store.suspendForCheckpoint(runId, {
+      include: { runtimeEnvironment: true },
+    });
+
+    expect(run.id).toBe(runId);
+    expect(run.status).toBe("WAITING_TO_RESUME");
+    expect(run.runtimeEnvironment).toBeDefined();
+  });
+
+  postgresTest("resumeFromCheckpoint sets status to EXECUTING", async ({ prisma }) => {
+    const { organization, project, environment } = await seedEnvironment(prisma);
+
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+    const runId = "run_resume_1";
+
+    await store.createRun(
+      buildCreateRunInput({
+        runId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      })
+    );
+
+    // Suspend first so we start from a realistic state
+    await store.suspendForCheckpoint(runId, { include: {} });
+
+    const run = await store.resumeFromCheckpoint(runId, {
+      select: { id: true, status: true },
+    });
+
+    expect(run.id).toBe(runId);
+    expect(run.status).toBe("EXECUTING");
+  });
 });
