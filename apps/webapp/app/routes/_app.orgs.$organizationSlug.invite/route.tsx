@@ -58,7 +58,7 @@ export const loader = dashboardLoader(
       message: "With your current role, you can't invite team members.",
     },
   },
-  async ({ user, context }) => {
+  async ({ user, context, ability }) => {
     const organizationId = context.organizationId;
     if (!organizationId) {
       throw new Response("Not Found", { status: 404 });
@@ -98,7 +98,11 @@ export const loader = dashboardLoader(
           .map((r) => r.id)
       : [];
 
-    return typedjson({ ...result, offerableRoleIds });
+    // Buying seats is a billing operation: surface whether this user can, so
+    // the purchase modal disables its trigger (the team action enforces it).
+    const canManageBilling = ability.can("manage", { type: "billing" });
+
+    return typedjson({ ...result, offerableRoleIds, canManageBilling });
   }
 );
 
@@ -269,6 +273,7 @@ export default function Page() {
     planSeatLimit,
     roles,
     offerableRoleIds,
+    canManageBilling,
   } = useTypedLoaderData<typeof loader>();
   const [total, setTotal] = useState(limits.used);
   const organization = useOrganization();
@@ -324,6 +329,7 @@ export default function Page() {
                   usedSeats={limits.used}
                   maxQuota={maxSeatQuota}
                   planSeatLimit={planSeatLimit}
+                  canManageBilling={canManageBilling}
                   triggerButton={<Button variant="primary/small">Purchase more seats…</Button>}
                 />
               }

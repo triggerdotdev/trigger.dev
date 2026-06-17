@@ -212,8 +212,9 @@ export default function Page() {
     parentData,
     "Environment variables page loader data must be defined when rendering the create dialog"
   );
-  const { environments, hasStaging, accessibleEnvironmentIds } = parentData;
-  const accessibleEnvironmentIdSet = new Set(accessibleEnvironmentIds);
+  const { environments, hasStaging, writableEnvironmentIds } = parentData;
+  // Creating a variable is a write, so gate the targets on write access.
+  const writableEnvironmentIdSet = new Set(writableEnvironmentIds);
   const lastSubmission = useActionData();
   const navigation = useNavigation();
   const navigate = useNavigate();
@@ -310,7 +311,7 @@ export default function Page() {
               )}
               <div className="flex items-center gap-2">
                 {nonBranchEnvironments.map((environment) =>
-                  accessibleEnvironmentIdSet.has(environment.id) ? (
+                  writableEnvironmentIdSet.has(environment.id) ? (
                     <CheckboxWithLabel
                       key={environment.id}
                       id={environment.id}

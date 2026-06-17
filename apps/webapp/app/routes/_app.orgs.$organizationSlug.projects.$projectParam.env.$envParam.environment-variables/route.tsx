@@ -149,6 +149,12 @@ export const loader = dashboardLoader(
         .map((env) => env.id);
       const accessible = new Set(accessibleEnvironmentIds);
 
+      // Write access is a separate grant from read: gate write controls (edit,
+      // delete, create) on this set, not on read-accessibility.
+      const writableEnvironmentIds = environments
+        .filter((env) => ability.can("write", { type: "envvars", envType: env.type }))
+        .map((env) => env.id);
+
       // Withhold values (and the "who/when" metadata) for environments the
       // role can't read — never serialize them to the client.
       const masked: MaskedEnvironmentVariable[] = environmentVariables.map((variable) =>
@@ -170,6 +176,7 @@ export const loader = dashboardLoader(
         hasStaging,
         vercelIntegration,
         accessibleEnvironmentIds,
+        writableEnvironmentIds,
       });
     } catch (error) {
       console.error(error);

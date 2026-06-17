@@ -267,7 +267,19 @@ async function resolveRunOrganizationId(runParam: string): Promise<string | null
 
   const buffer = getMollifierBuffer();
   const entry = buffer ? await buffer.getEntry(runParam) : null;
-  return entry?.orgId ?? null;
+  if (entry?.orgId) {
+    return entry.orgId;
+  }
+
+  // Replica lag with the buffer entry already drained: the run can exist in
+  // the primary while both lookups above miss. Fall back to the primary so the
+  // RBAC scope is never resolved without an org (which would let the role check
+  // run unscoped under the enterprise plugin).
+  const primaryRun = await prisma.taskRun.findFirst({
+    where: { friendlyId: runParam },
+    select: { project: { select: { organizationId: true } } },
+  });
+  return primaryRun?.project.organizationId ?? null;
 }
 
 export const action = dashboardAction(
@@ -351,7 +363,9 @@ export const action = dashboardAction(
           });
           if (synthetic) {
             const envRow = await prisma.runtimeEnvironment.findFirst({
-              where: { id: entry.envId },
+              // Pin to the buffer entry's org so a malformed entry can't
+              // resolve an environment in a different org.
+              where: { id: entry.envId, project: { organizationId: entry.orgId } },
               select: {
                 slug: true,
                 project: { select: { slug: true, organization: { select: { slug: true } } } },

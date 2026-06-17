@@ -51,7 +51,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { CreateBulkActionPresenter } from "~/presenters/v3/CreateBulkActionPresenter.server";
 import { RUNS_BULK_INSPECTOR_UI_SEARCH_PARAMS } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs._index/shouldRevalidateRunsList";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { checkPermissions } from "~/services/routeBuilders/permissions.server";
@@ -60,7 +60,10 @@ import { EnvironmentParamSchema, v3BulkActionPath } from "~/utils/pathBuilder";
 import { BulkActionService } from "~/v3/services/bulk/BulkActionV2.server";
 
 async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
+  // Resolve from the primary (not the replica) so the RBAC auth scope is never
+  // resolved without an org under replica lag, which would let the role check
+  // run unscoped under the enterprise plugin.
+  const org = await prisma.organization.findFirst({ where: { slug }, select: { id: true } });
   return org?.id ?? null;
 }
 
