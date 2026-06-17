@@ -929,3 +929,555 @@ describe("PostgresRunStore", () => {
     expect(run.status).toBe("EXECUTING");
   });
 });
+
+describe("PostgresRunStore — delayed / debounce / metadata / idempotency / array-append", () => {
+  // Helper: seed a run with idempotency key and expiry set
+  async function seedRunWithIdempotency(
+    prisma: PrismaClient,
+    params: {
+      runId: string;
+      friendlyId: string;
+      organizationId: string;
+      projectId: string;
+      runtimeEnvironmentId: string;
+      taskIdentifier?: string;
+      idempotencyKey: string;
+      idempotencyKeyExpiresAt?: Date;
+      status?: string;
+    }
+  ) {
+    return prisma.taskRun.create({
+      data: {
+        id: params.runId,
+        engine: "V2",
+        status: (params.status as any) ?? "PENDING",
+        friendlyId: params.friendlyId,
+        runtimeEnvironmentId: params.runtimeEnvironmentId,
+        environmentType: "DEVELOPMENT",
+        organizationId: params.organizationId,
+        projectId: params.projectId,
+        taskIdentifier: params.taskIdentifier ?? "my-task",
+        payload: "{}",
+        payloadType: "application/json",
+        traceContext: {},
+        traceId: `trace_${params.runId}`,
+        spanId: `span_${params.runId}`,
+        queue: "task/my-task",
+        isTest: false,
+        taskEventStore: "taskEvent",
+        depth: 0,
+        idempotencyKey: params.idempotencyKey,
+        idempotencyKeyExpiresAt: params.idempotencyKeyExpiresAt ?? null,
+      },
+    });
+  }
+
+  // Helper: seed a plain run (no idempotency)
+  async function seedRun(
+    prisma: PrismaClient,
+    params: {
+      runId: string;
+      friendlyId: string;
+      organizationId: string;
+      projectId: string;
+      runtimeEnvironmentId: string;
+      status?: string;
+      runTags?: string[];
+      realtimeStreams?: string[];
+      metadata?: string;
+      metadataType?: string;
+      metadataVersion?: number;
+    }
+  ) {
+    return prisma.taskRun.create({
+      data: {
+        id: params.runId,
+        engine: "V2",
+        status: (params.status as any) ?? "PENDING",
+        friendlyId: params.friendlyId,
+        runtimeEnvironmentId: params.runtimeEnvironmentId,
+        environmentType: "DEVELOPMENT",
+        organizationId: params.organizationId,
+        projectId: params.projectId,
+        taskIdentifier: "my-task",
+        payload: "{}",
+        payloadType: "application/json",
+        traceContext: {},
+        traceId: `trace_${params.runId}`,
+        spanId: `span_${params.runId}`,
+        queue: "task/my-task",
+        isTest: false,
+        taskEventStore: "taskEvent",
+        depth: 0,
+        runTags: params.runTags ?? [],
+        realtimeStreams: params.realtimeStreams ?? [],
+        ...(params.metadata !== undefined && { metadata: params.metadata }),
+        ...(params.metadataType !== undefined && { metadataType: params.metadataType }),
+        ...(params.metadataVersion !== undefined && { metadataVersion: params.metadataVersion }),
+      },
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // rescheduleRun
+  // ---------------------------------------------------------------------------
+
+  postgresTest(
+    "rescheduleRun with snapshot: writes delayUntil and creates a DELAYED snapshot",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_reschedule_snapshot_1";
+
+      await seedRun(prisma, {
+        runId,
+        friendlyId: "run_reschedule_snap_friendly_1",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        status: "DELAYED",
+      });
+
+      const delayUntil = new Date("2027-01-01T00:00:00.000Z");
+
+      const updated = await store.rescheduleRun(runId, {
+        delayUntil,
+        snapshot: {
+          environmentId: environment.id,
+          environmentType: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+        },
+      });
+
+      expect(updated.id).toBe(runId);
+      expect(updated.delayUntil).toEqual(delayUntil);
+
+      const snapshots = await prisma.taskRunExecutionSnapshot.findMany({
+        where: { runId, executionStatus: "DELAYED" },
+      });
+      expect(snapshots).toHaveLength(1);
+      expect(snapshots[0]?.runStatus).toBe("DELAYED");
+    }
+  );
+
+  postgresTest(
+    "rescheduleRun with queueTimestamp and no snapshot: writes delayUntil + queueTimestamp, no new snapshot",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_reschedule_notimestamp_1";
+
+      await seedRun(prisma, {
+        runId,
+        friendlyId: "run_reschedule_notimestamp_friendly_1",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        status: "DELAYED",
+      });
+
+      const delayUntil = new Date("2027-02-01T00:00:00.000Z");
+      const queueTimestamp = new Date("2027-02-01T00:00:00.000Z");
+
+      const updated = await store.rescheduleRun(runId, { delayUntil, queueTimestamp });
+
+      expect(updated.delayUntil).toEqual(delayUntil);
+      expect(updated.queueTimestamp).toEqual(queueTimestamp);
+
+      const snapshotCount = await prisma.taskRunExecutionSnapshot.count({ where: { runId } });
+      expect(snapshotCount).toBe(0);
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // enqueueDelayedRun
+  // ---------------------------------------------------------------------------
+
+  postgresTest(
+    "enqueueDelayedRun sets status to PENDING and writes queuedAt",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_enqueue_delayed_1";
+
+      await seedRun(prisma, {
+        runId,
+        friendlyId: "run_enqueue_delayed_friendly_1",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        status: "DELAYED",
+      });
+
+      const queuedAt = new Date("2026-06-17T10:00:00.000Z");
+      const updated = await store.enqueueDelayedRun(runId, { queuedAt });
+
+      expect(updated.id).toBe(runId);
+      expect(updated.status).toBe("PENDING");
+      expect(updated.queuedAt).toEqual(queuedAt);
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // rewriteDebouncedRun
+  // ---------------------------------------------------------------------------
+
+  postgresTest(
+    "rewriteDebouncedRun updates the requested columns and returns the run with associatedWaitpoint key",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_rewrite_debounced_1";
+
+      await seedRun(prisma, {
+        runId,
+        friendlyId: "run_rewrite_debounced_friendly_1",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        runTags: ["original-tag"],
+      });
+
+      const result = await store.rewriteDebouncedRun(runId, {
+        payload: '{"key":"newvalue"}',
+        payloadType: "application/json",
+        runTags: ["new-tag"],
+      });
+
+      expect(result.id).toBe(runId);
+      expect(result.payload).toBe('{"key":"newvalue"}');
+      expect(result.runTags).toEqual(["new-tag"]);
+      // associatedWaitpoint key must exist in the result (even if null)
+      expect("associatedWaitpoint" in result).toBe(true);
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // updateMetadata
+  // ---------------------------------------------------------------------------
+
+  postgresTest(
+    "updateMetadata optimistic-lock: matching version writes metadata and returns count 1",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_update_meta_match_1";
+
+      await seedRun(prisma, {
+        runId,
+        friendlyId: "run_update_meta_match_friendly_1",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        metadata: '{"old":"data"}',
+        metadataType: "application/json",
+        metadataVersion: 1,
+      });
+
+      const updatedAt = new Date("2026-06-17T11:00:00.000Z");
+      const result = await store.updateMetadata(
+        runId,
+        {
+          metadata: '{"new":"data"}',
+          metadataType: "application/json",
+          metadataVersion: { increment: 1 },
+          updatedAt,
+        },
+        { expectedMetadataVersion: 1 }
+      );
+
+      expect(result.count).toBe(1);
+
+      const row = await prisma.taskRun.findFirst({
+        where: { id: runId },
+        select: { metadata: true, metadataVersion: true, updatedAt: true },
+      });
+      expect(row?.metadata).toBe('{"new":"data"}');
+      expect(row?.metadataVersion).toBe(2);
+      expect(row?.updatedAt).toEqual(updatedAt);
+    }
+  );
+
+  postgresTest(
+    "updateMetadata optimistic-lock: non-matching version returns count 0, row unchanged",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_update_meta_mismatch_1";
+
+      await seedRun(prisma, {
+        runId,
+        friendlyId: "run_update_meta_mismatch_friendly_1",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        metadata: '{"original":"data"}',
+        metadataType: "application/json",
+        metadataVersion: 5,
+      });
+
+      const result = await store.updateMetadata(
+        runId,
+        {
+          metadata: '{"new":"data"}',
+          metadataVersion: { increment: 1 },
+          updatedAt: new Date(),
+        },
+        { expectedMetadataVersion: 3 } // wrong version
+      );
+
+      expect(result.count).toBe(0);
+
+      const row = await prisma.taskRun.findFirst({
+        where: { id: runId },
+        select: { metadata: true, metadataVersion: true },
+      });
+      expect(row?.metadata).toBe('{"original":"data"}');
+      expect(row?.metadataVersion).toBe(5);
+    }
+  );
+
+  postgresTest(
+    "updateMetadata direct (no expectedMetadataVersion): writes metadata and returns count 1",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_update_meta_direct_1";
+
+      await seedRun(prisma, {
+        runId,
+        friendlyId: "run_update_meta_direct_friendly_1",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        metadataVersion: 0,
+      });
+
+      const result = await store.updateMetadata(
+        runId,
+        {
+          metadata: '{"direct":"write"}',
+          metadataType: "application/json",
+          metadataVersion: { increment: 1 },
+          updatedAt: new Date(),
+        },
+        {}
+      );
+
+      expect(result.count).toBe(1);
+
+      const row = await prisma.taskRun.findFirst({
+        where: { id: runId },
+        select: { metadata: true, metadataVersion: true },
+      });
+      expect(row?.metadata).toBe('{"direct":"write"}');
+      expect(row?.metadataVersion).toBe(1);
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // clearIdempotencyKey
+  // ---------------------------------------------------------------------------
+
+  postgresTest(
+    "clearIdempotencyKey byId: clears both idempotencyKey and idempotencyKeyExpiresAt when key matches",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_clear_idempotency_byid_1";
+      const expiresAt = new Date("2028-01-01T00:00:00.000Z");
+
+      await seedRunWithIdempotency(prisma, {
+        runId,
+        friendlyId: "run_clear_byid_friendly_1",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-key-abc",
+        idempotencyKeyExpiresAt: expiresAt,
+      });
+
+      const result = await store.clearIdempotencyKey({
+        byId: { runId, idempotencyKey: "idem-key-abc" },
+      });
+
+      expect(result.count).toBe(1);
+
+      const row = await prisma.taskRun.findFirst({
+        where: { id: runId },
+        select: { idempotencyKey: true, idempotencyKeyExpiresAt: true },
+      });
+      expect(row?.idempotencyKey).toBeNull();
+      expect(row?.idempotencyKeyExpiresAt).toBeNull();
+    }
+  );
+
+  postgresTest(
+    "clearIdempotencyKey byId: returns count 0 when idempotencyKey does not match",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_clear_byid_mismatch_1";
+
+      await seedRunWithIdempotency(prisma, {
+        runId,
+        friendlyId: "run_clear_byid_mismatch_friendly_1",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-key-real",
+      });
+
+      const result = await store.clearIdempotencyKey({
+        byId: { runId, idempotencyKey: "idem-key-wrong" },
+      });
+
+      expect(result.count).toBe(0);
+
+      // key still set
+      const row = await prisma.taskRun.findFirst({
+        where: { id: runId },
+        select: { idempotencyKey: true },
+      });
+      expect(row?.idempotencyKey).toBe("idem-key-real");
+    }
+  );
+
+  postgresTest(
+    "clearIdempotencyKey byPredicate: clears both columns when predicate matches",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_clear_predicate_1";
+      const expiresAt = new Date("2028-06-01T00:00:00.000Z");
+
+      await seedRunWithIdempotency(prisma, {
+        runId,
+        friendlyId: "run_clear_predicate_friendly_1",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        taskIdentifier: "predicate-task",
+        idempotencyKey: "pred-idem-key",
+        idempotencyKeyExpiresAt: expiresAt,
+      });
+
+      const result = await store.clearIdempotencyKey({
+        byPredicate: {
+          idempotencyKey: "pred-idem-key",
+          taskIdentifier: "predicate-task",
+          runtimeEnvironmentId: environment.id,
+        },
+      });
+
+      expect(result.count).toBe(1);
+
+      const row = await prisma.taskRun.findFirst({
+        where: { id: runId },
+        select: { idempotencyKey: true, idempotencyKeyExpiresAt: true },
+      });
+      expect(row?.idempotencyKey).toBeNull();
+      expect(row?.idempotencyKeyExpiresAt).toBeNull();
+    }
+  );
+
+  postgresTest(
+    "clearIdempotencyKey byFriendlyIds: clears ONLY idempotencyKey, leaves idempotencyKeyExpiresAt intact",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_clear_friendly_1";
+      const expiresAt = new Date("2028-07-01T00:00:00.000Z");
+
+      await seedRunWithIdempotency(prisma, {
+        runId,
+        friendlyId: "run_clear_friendly_friendly_1",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "friendly-idem-key",
+        idempotencyKeyExpiresAt: expiresAt,
+      });
+
+      const result = await store.clearIdempotencyKey({
+        byFriendlyIds: ["run_clear_friendly_friendly_1"],
+      });
+
+      expect(result.count).toBe(1);
+
+      const row = await prisma.taskRun.findFirst({
+        where: { id: runId },
+        select: { idempotencyKey: true, idempotencyKeyExpiresAt: true },
+      });
+      // idempotencyKey cleared
+      expect(row?.idempotencyKey).toBeNull();
+      // idempotencyKeyExpiresAt NOT cleared (byFriendlyIds only clears the key)
+      expect(row?.idempotencyKeyExpiresAt).toEqual(expiresAt);
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // pushTags
+  // ---------------------------------------------------------------------------
+
+  postgresTest(
+    "pushTags appends to existing runTags (seed [a], push [b,c] → [a,b,c]) and returns updatedAt",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_push_tags_1";
+
+      await seedRun(prisma, {
+        runId,
+        friendlyId: "run_push_tags_friendly_1",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        runTags: ["a"],
+      });
+
+      const result = await store.pushTags(runId, ["b", "c"], {
+        runtimeEnvironmentId: environment.id,
+      });
+
+      expect(result.updatedAt).toBeInstanceOf(Date);
+
+      const row = await prisma.taskRun.findFirst({
+        where: { id: runId },
+        select: { runTags: true },
+      });
+      expect(row?.runTags).toEqual(["a", "b", "c"]);
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // pushRealtimeStream
+  // ---------------------------------------------------------------------------
+
+  postgresTest(
+    "pushRealtimeStream appends streamId to existing realtimeStreams",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const runId = "run_push_stream_1";
+
+      await seedRun(prisma, {
+        runId,
+        friendlyId: "run_push_stream_friendly_1",
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        realtimeStreams: ["existing-stream"],
+      });
+
+      await store.pushRealtimeStream(runId, "new-stream");
+
+      const row = await prisma.taskRun.findFirst({
+        where: { id: runId },
+        select: { realtimeStreams: true },
+      });
+      expect(row?.realtimeStreams).toEqual(["existing-stream", "new-stream"]);
+    }
+  );
+});

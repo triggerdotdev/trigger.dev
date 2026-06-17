@@ -460,65 +460,155 @@ export class PostgresRunStore implements RunStore {
     }) as Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   }
 
-  rescheduleRun(
-    _runId: string,
-    _data: { delayUntil: Date; queueTimestamp?: Date; snapshot?: RescheduleSnapshotInput },
-    _tx?: PrismaClientOrTransaction
+  async rescheduleRun(
+    runId: string,
+    data: { delayUntil: Date; queueTimestamp?: Date; snapshot?: RescheduleSnapshotInput },
+    tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
-    throw new Error("not implemented");
+    const prisma = tx ?? this.prisma;
+
+    return prisma.taskRun.update({
+      where: { id: runId },
+      data: {
+        delayUntil: data.delayUntil,
+        ...(data.queueTimestamp !== undefined && { queueTimestamp: data.queueTimestamp }),
+        ...(data.snapshot && {
+          executionSnapshots: {
+            create: {
+              engine: "V2",
+              executionStatus: "DELAYED",
+              description: "Delayed run was rescheduled to a future date",
+              runStatus: "DELAYED",
+              environmentId: data.snapshot.environmentId,
+              environmentType: data.snapshot.environmentType,
+              projectId: data.snapshot.projectId,
+              organizationId: data.snapshot.organizationId,
+            },
+          },
+        }),
+      },
+    });
   }
 
-  enqueueDelayedRun(
-    _runId: string,
-    _data: { queuedAt: Date },
-    _tx?: PrismaClientOrTransaction
+  async enqueueDelayedRun(
+    runId: string,
+    data: { queuedAt: Date },
+    tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
-    throw new Error("not implemented");
+    const prisma = tx ?? this.prisma;
+
+    return prisma.taskRun.update({
+      where: { id: runId },
+      data: {
+        status: "PENDING",
+        queuedAt: data.queuedAt,
+      },
+    });
   }
 
-  rewriteDebouncedRun(
-    _runId: string,
-    _data: RewriteDebouncedRunData,
-    _tx?: PrismaClientOrTransaction
+  async rewriteDebouncedRun(
+    runId: string,
+    data: RewriteDebouncedRunData,
+    tx?: PrismaClientOrTransaction
   ): Promise<TaskRunWithWaitpoint> {
-    throw new Error("not implemented");
+    const prisma = tx ?? this.prisma;
+
+    return prisma.taskRun.update({
+      where: { id: runId },
+      data,
+      include: {
+        associatedWaitpoint: true,
+      },
+    });
   }
 
-  updateMetadata(
-    _runId: string,
-    _data: {
+  async updateMetadata(
+    runId: string,
+    data: {
       metadata: string | null;
       metadataType?: string;
       metadataVersion: { increment: number };
       updatedAt: Date;
     },
-    _options: { expectedMetadataVersion?: number },
-    _tx?: PrismaClientOrTransaction
+    options: { expectedMetadataVersion?: number },
+    tx?: PrismaClientOrTransaction
   ): Promise<{ count: number }> {
-    throw new Error("not implemented");
+    const prisma = tx ?? this.prisma;
+
+    if (options.expectedMetadataVersion !== undefined) {
+      const result = await prisma.taskRun.updateMany({
+        where: { id: runId, metadataVersion: options.expectedMetadataVersion },
+        data,
+      });
+      return { count: result.count };
+    }
+
+    await prisma.taskRun.update({
+      where: { id: runId },
+      data,
+    });
+    return { count: 1 };
   }
 
-  clearIdempotencyKey(
-    _params: ClearIdempotencyKeyInput,
-    _tx?: PrismaClientOrTransaction
+  async clearIdempotencyKey(
+    params: ClearIdempotencyKeyInput,
+    tx?: PrismaClientOrTransaction
   ): Promise<{ count: number }> {
-    throw new Error("not implemented");
+    const prisma = tx ?? this.prisma;
+
+    if (params.byId) {
+      const result = await prisma.taskRun.updateMany({
+        where: { id: params.byId.runId, idempotencyKey: params.byId.idempotencyKey },
+        data: { idempotencyKey: null, idempotencyKeyExpiresAt: null },
+      });
+      return { count: result.count };
+    }
+
+    if (params.byPredicate) {
+      const result = await prisma.taskRun.updateMany({
+        where: {
+          idempotencyKey: params.byPredicate.idempotencyKey,
+          taskIdentifier: params.byPredicate.taskIdentifier,
+          runtimeEnvironmentId: params.byPredicate.runtimeEnvironmentId,
+        },
+        data: { idempotencyKey: null, idempotencyKeyExpiresAt: null },
+      });
+      return { count: result.count };
+    }
+
+    // byFriendlyIds — only clears idempotencyKey, not idempotencyKeyExpiresAt
+    const result = await prisma.taskRun.updateMany({
+      where: { friendlyId: { in: params.byFriendlyIds } },
+      data: { idempotencyKey: null },
+    });
+    return { count: result.count };
   }
 
-  pushTags(
-    _runId: string,
-    _tags: string[],
-    _where: { runtimeEnvironmentId: string },
-    _tx?: PrismaClientOrTransaction
+  async pushTags(
+    runId: string,
+    tags: string[],
+    where: { runtimeEnvironmentId: string },
+    tx?: PrismaClientOrTransaction
   ): Promise<{ updatedAt: Date }> {
-    throw new Error("not implemented");
+    const prisma = tx ?? this.prisma;
+
+    return prisma.taskRun.update({
+      where: { id: runId, runtimeEnvironmentId: where.runtimeEnvironmentId },
+      data: { runTags: { push: tags } },
+      select: { updatedAt: true },
+    });
   }
 
-  pushRealtimeStream(
-    _runId: string,
-    _streamId: string,
-    _tx?: PrismaClientOrTransaction
+  async pushRealtimeStream(
+    runId: string,
+    streamId: string,
+    tx?: PrismaClientOrTransaction
   ): Promise<void> {
-    throw new Error("not implemented");
+    const prisma = tx ?? this.prisma;
+
+    await prisma.taskRun.update({
+      where: { id: runId },
+      data: { realtimeStreams: { push: streamId } },
+    });
   }
 }
