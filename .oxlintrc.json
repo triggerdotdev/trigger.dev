@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "import", "react"],
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/build/**",
+    "**/*.d.ts",
+    "**/seed.js",
+    "**/seedCloud.ts",
+    "**/populate.js"
+  ],
+  "rules": {
+    "consistent-type-imports": [
+      "warn",
+      {
+        "prefer": "type-imports",
+        "disallowTypeAnnotations": true,
+        "fixStyle": "inline-type-imports"
+      }
+    ],
+    "import/no-duplicates": ["warn", { "prefer-inline": true }],
+    "react-hooks/rules-of-hooks": "error"
+  }
+}
