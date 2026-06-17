@@ -73,6 +73,7 @@ import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { NoopPendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
 import { SystemResources } from "./systems/systems.js";
+import { PostgresRunStore, RunStore } from "@internal/run-store";
 import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import {
@@ -102,6 +103,7 @@ export class RunEngine {
 
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
+  runStore: RunStore;
   runQueue: RunQueue;
   eventBus: EventBus = new EventEmitter<EventBusEvents>();
   executionSnapshotSystem: ExecutionSnapshotSystem;
@@ -123,6 +125,7 @@ export class RunEngine {
     this.logger = options.logger ?? new Logger("RunEngine", this.options.logLevel ?? "info");
     this.prisma = options.prisma;
     this.readOnlyPrisma = options.readOnlyPrisma ?? this.prisma;
+    this.runStore = new PostgresRunStore({ prisma: this.prisma, readOnlyPrisma: this.readOnlyPrisma });
     this.runLockRedis = createRedisClient(
       {
         ...options.runLock.redis,
@@ -313,6 +316,7 @@ export class RunEngine {
     const resources: SystemResources = {
       prisma: this.prisma,
       readOnlyPrisma: this.readOnlyPrisma,
+      runStore: this.runStore,
       worker: this.worker,
       eventBus: this.eventBus,
       logger: this.logger,

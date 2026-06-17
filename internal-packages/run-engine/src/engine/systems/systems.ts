@@ -1,4 +1,5 @@
 import { Meter, Tracer } from "@internal/tracing";
+import { RunStore } from "@internal/run-store";
 import { Logger } from "@trigger.dev/core/logger";
 import { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
 import { RunQueue } from "../../run-queue/index.js";
@@ -11,6 +12,7 @@ import { RaceSimulationSystem } from "./raceSimulationSystem.js";
 export type SystemResources = {
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
+  runStore: RunStore;
   worker: EngineWorker;
   eventBus: EventBus;
   logger: Logger;
