@@ -114,10 +114,11 @@ Each turn yielded by the iterator provides:
 | `continuation`      | `boolean`                         | Whether this is a continuation run                       |
 | `previousTurnUsage` | `LanguageModelUsage \| undefined` | Token usage from the previous turn (undefined on turn 0) |
 | `totalUsage`        | `LanguageModelUsage`              | Cumulative token usage across all completed turns        |
+| `handover`          | `{ isFinal: boolean } \| null`    | The [`chat.headStart`](/ai-chat/fast-starts#handover-with-custom-agents) handover for this turn (turn 0 only); `null` otherwise |
 
 | Method                        | Description                                                                                                |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `turn.complete(source)`       | Pipe stream, capture response, accumulate, and signal turn-complete                                        |
+| `turn.complete(source?)`      | Pipe stream, capture response, accumulate, and signal turn-complete. Call with no source on a final head-start handover (`turn.handover.isFinal`), where the warm step-1 partial is already the response |
 | `turn.done()`                 | Signal turn-complete only (when you have piped manually)                                                     |
 | `turn.addResponse(response)`  | Add a response to the accumulator manually                                                                 |
 | `turn.setMessages(uiMessages)`| Replace the accumulated messages — continuation seeding and on-demand compaction                           |

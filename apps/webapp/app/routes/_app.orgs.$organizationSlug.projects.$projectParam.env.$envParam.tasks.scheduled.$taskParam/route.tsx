@@ -1,9 +1,9 @@
-import { type MetaFunction } from "@remix-run/react";
+import { type MetaFunction, useFetcher, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TypedAwait, typeddefer, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { PlusIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
@@ -24,11 +24,16 @@ import {
 import { ScheduleLimitActions } from "~/components/schedules/ScheduleLimitActions";
 import { SchedulesUsageBar } from "~/components/schedules/SchedulesUsageBar";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { InlineCode } from "~/components/code/InlineCode";
 import { CopyableText } from "~/components/primitives/CopyableText";
+import { PaginationControls } from "~/components/primitives/Pagination";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { useToast } from "~/components/primitives/Toast";
 import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
 import { ScheduleInspector } from "~/components/schedules/ScheduleInspector";
@@ -63,6 +68,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { ScheduleListPresenter } from "~/presenters/v3/ScheduleListPresenter.server";
 import type { loader as scheduleDetailLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.$scheduleParam/route";
+import type { loader as scheduleEditLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.edit.$scheduleParam/route";
 import type { loader as scheduleNewLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
 import { UpsertScheduleForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
 import {
@@ -73,9 +79,11 @@ import {
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser } from "~/services/session.server";
 import {
+  docsPath,
   EnvironmentParamSchema,
   v3BillingPath,
   v3CreateBulkActionPath,
+  v3EditSchedulePath,
   v3EnvironmentPath,
   v3NewSchedulePath,
   v3RunsPath,
@@ -156,6 +164,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       environmentId: environment.id,
       tasks: [task.slug],
       page: schedulesPage,
+      pageSize: 25,
     })
     .catch(() => null);
 
@@ -202,10 +211,7 @@ export default function Page() {
   const closeSchedule = useCallback(() => search.del("schedule"), [search]);
 
   const isCreatingSchedule = search.has("createSchedule");
-  const openCreateSchedule = useCallback(
-    () => search.replace({ createSchedule: "1" }),
-    [search]
-  );
+  const openCreateSchedule = useCallback(() => search.replace({ createSchedule: "1" }), [search]);
   const closeCreateSchedule = useCallback(() => search.del("createSchedule"), [search]);
 
   // Schedules add-on / quota state — drives the bottom usage bar and the
@@ -240,9 +246,9 @@ export default function Page() {
             <div className="grid h-full grid-rows-[auto_1fr_auto] overflow-hidden">
               {/* Top bar — title on the left; actions + TimeFilter + pagination on the right.
                   h-10 matches the right-hand sidebar header height. */}
-              <div className="flex h-10 items-center border-b border-grid-dimmed bg-background-bright pl-3 pr-2">
+              <div className="flex min-h-10 items-center gap-2 border-b border-grid-dimmed bg-background-bright py-2 pl-3 pr-2">
                 <Header2>Runs</Header2>
-                <div className="ml-auto flex items-center gap-1.5">
+                <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
                   <CreateScheduleButton
                     isAtLimit={isAtLimit}
                     limits={limits}
@@ -355,7 +361,7 @@ export default function Page() {
             id="scheduled-task-detail"
             min="280px"
             default="380px"
-            max="500px"
+            max="80%"
             isStaticAtRest
           >
             <ScheduledTaskDetailSidebar
@@ -486,11 +492,33 @@ function CreateScheduleSheet({
   onClose: () => void;
 }) {
   const fetcher = useTypedFetcher<typeof scheduleNewLoader>();
+  // Embedded create — stays on this page via `_format=json`.
+  const createFetcher = useFetcher<{ ok: boolean; message?: string }>();
+  const toast = useToast();
+  const revalidator = useRevalidator();
+  // `useRevalidator()` and `onClose` change identity every render — guard
+  // against the dep churn so we only handle each response once.
+  const handledCreateRef = useRef<unknown>(null);
   const newPath = v3NewSchedulePath(organization, project, environment);
 
   useEffect(() => {
     if (open) fetcher.load(newPath);
   }, [open, newPath]);
+
+  // Toast + close + revalidate so the new schedule appears.
+  useEffect(() => {
+    const data = createFetcher.data;
+    if (createFetcher.state !== "idle" || !data) return;
+    if (handledCreateRef.current === data) return;
+    handledCreateRef.current = data;
+    if (data.ok) {
+      toast.success(data.message ?? "Schedule created");
+      revalidator.revalidate();
+      onClose();
+    } else if (data.message) {
+      toast.error(data.message);
+    }
+  }, [createFetcher.state, createFetcher.data, toast, revalidator, onClose]);
 
   const data = fetcher.data;
   const isLoading = fetcher.state === "loading" || (open && !data);
@@ -512,6 +540,8 @@ function CreateScheduleSheet({
             possibleTimezones={data.possibleTimezones}
             showGenerateField={data.showGenerateField}
             defaultTaskIdentifier={defaultTaskIdentifier}
+            onCancel={onClose}
+            submitFetcher={createFetcher}
           />
         )}
       </SheetContent>
@@ -532,17 +562,111 @@ function ScheduleSheet({
   environment: ReturnType<typeof useEnvironment>;
   onClose: () => void;
 }) {
-  const fetcher = useTypedFetcher<typeof scheduleDetailLoader>();
+  const detailFetcher = useTypedFetcher<typeof scheduleDetailLoader>();
+  const editFetcher = useTypedFetcher<typeof scheduleEditLoader>();
+  // Embedded enable/disable — stays in the sheet via `_format=json`.
+  const activeToggleFetcher = useFetcher<{ ok: boolean; active?: boolean; message?: string }>();
+  // Embedded update submission — same idea.
+  const updateFetcher = useFetcher<{ ok: boolean; message?: string }>();
+  // Embedded delete submission — same idea.
+  const deleteFetcher = useFetcher<{ ok: boolean; message?: string }>();
+  const toast = useToast();
+  const revalidator = useRevalidator();
+  // Dedupe response handling against unstable deps (revalidator/onClose).
+  const handledToggleRef = useRef<unknown>(null);
+  const handledUpdateRef = useRef<unknown>(null);
+  const handledDeleteRef = useRef<unknown>(null);
+  const [mode, setMode] = useState<"inspect" | "edit">("inspect");
+
   const detailPath = openScheduleId
     ? v3SchedulePath(organization, project, environment, { friendlyId: openScheduleId })
     : undefined;
+  const editPath = openScheduleId
+    ? v3EditSchedulePath(organization, project, environment, { friendlyId: openScheduleId })
+    : undefined;
+
+  // Always reopen in inspect mode.
+  useEffect(() => {
+    setMode("inspect");
+  }, [openScheduleId]);
 
   useEffect(() => {
-    if (detailPath) fetcher.load(detailPath);
+    if (detailPath) detailFetcher.load(detailPath);
   }, [detailPath]);
 
-  const schedule = fetcher.data?.schedule;
-  const isLoading = fetcher.state === "loading" || (!!openScheduleId && !schedule);
+  useEffect(() => {
+    if (mode === "edit" && editPath) editFetcher.load(editPath);
+  }, [mode, editPath]);
+
+  // Reload inspector data so Enable/Disable label flips; revalidate the
+  // route loader so the sidebar's list/Overview stay in sync; toast on error.
+  useEffect(() => {
+    const data = activeToggleFetcher.data;
+    if (activeToggleFetcher.state !== "idle" || !data) return;
+    if (handledToggleRef.current === data) return;
+    handledToggleRef.current = data;
+    if (data.ok) {
+      if (detailPath) detailFetcher.load(detailPath);
+      revalidator.revalidate();
+    } else if (data.message) {
+      toast.error(data.message);
+    }
+  }, [activeToggleFetcher.state, activeToggleFetcher.data, detailPath, toast, revalidator]);
+
+  // Toast + back to inspect + reload + revalidate so both the inspector
+  // and the sidebar reflect the update.
+  useEffect(() => {
+    const data = updateFetcher.data;
+    if (updateFetcher.state !== "idle" || !data) return;
+    if (handledUpdateRef.current === data) return;
+    handledUpdateRef.current = data;
+    if (data.ok) {
+      toast.success(data.message ?? "Schedule updated");
+      setMode("inspect");
+      if (detailPath) detailFetcher.load(detailPath);
+      revalidator.revalidate();
+    } else if (data.message) {
+      toast.error(data.message);
+    }
+  }, [updateFetcher.state, updateFetcher.data, detailPath, toast, revalidator]);
+
+  // Toast + close + revalidate so the deleted row disappears.
+  useEffect(() => {
+    const data = deleteFetcher.data;
+    if (deleteFetcher.state !== "idle" || !data) return;
+    if (handledDeleteRef.current === data) return;
+    handledDeleteRef.current = data;
+    if (data.ok) {
+      toast.success(data.message ?? "Schedule deleted");
+      revalidator.revalidate();
+      onClose();
+    } else if (data.message) {
+      toast.error(data.message);
+    }
+  }, [deleteFetcher.state, deleteFetcher.data, toast, revalidator, onClose]);
+
+  const schedule = detailFetcher.data?.schedule;
+  // Treat stale data (previous schedule still in fetcher cache after the
+  // user clicked a different row) as loading — otherwise we briefly flash
+  // the previous schedule's content while the new fetch is in flight.
+  const isStaleSchedule = !!schedule && !!openScheduleId && schedule.friendlyId !== openScheduleId;
+  // Only show the loading spinner when we actually lack good data —
+  // background reloads (e.g. after enable/disable) keep the inspector
+  // visible with its current values until the fresh data arrives.
+  const isDetailLoading =
+    isStaleSchedule || (!!openScheduleId && detailFetcher.data === undefined);
+  // Distinct from loading: the loader has resolved and the schedule is
+  // genuinely gone (returned `null`, e.g. deleted externally).
+  const isScheduleMissing =
+    !!openScheduleId && !isDetailLoading && detailFetcher.data?.schedule === null;
+  const editData = editFetcher.data;
+  // Mirror the detail-fetcher staleness check so the edit form doesn't
+  // briefly flash a previously-edited schedule's data on the first render
+  // after switching schedules.
+  const isStaleEditData =
+    !!editData?.schedule && !!openScheduleId && editData.schedule.friendlyId !== openScheduleId;
+  const isEditLoading =
+    mode === "edit" && (editFetcher.state === "loading" || !editData || isStaleEditData);
 
   return (
     <Sheet open={!!openScheduleId} onOpenChange={(open) => !open && onClose()}>
@@ -551,10 +675,34 @@ function ScheduleSheet({
         className="w-[480px] max-w-none border-l border-grid-dimmed bg-background-bright p-0 sm:max-w-none"
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        {isLoading || !schedule ? (
+        {mode === "edit" ? (
+          isEditLoading || !editData ? (
+            <TableLoading />
+          ) : (
+            <UpsertScheduleForm
+              schedule={editData.schedule}
+              possibleTasks={editData.possibleTasks}
+              possibleEnvironments={editData.possibleEnvironments}
+              possibleTimezones={editData.possibleTimezones}
+              showGenerateField={editData.showGenerateField}
+              onCancel={() => setMode("inspect")}
+              submitFetcher={updateFetcher}
+            />
+          )
+        ) : isDetailLoading ? (
           <TableLoading />
+        ) : isScheduleMissing ? (
+          <ScheduleMissingPanel onClose={onClose} />
+        ) : schedule ? (
+          <ScheduleInspector
+            schedule={schedule}
+            actionPath={detailPath}
+            onEdit={() => setMode("edit")}
+            activeToggleFetcher={activeToggleFetcher}
+            deleteFetcher={deleteFetcher}
+          />
         ) : (
-          <ScheduleInspector schedule={schedule} actionPath={detailPath} />
+          <TableLoading />
         )}
       </SheetContent>
     </Sheet>
@@ -572,9 +720,19 @@ function ScheduledTaskDetailSidebar({
   LoaderData,
   "scheduleList"
 >) {
+  const sortedSchedules = useMemo(() => {
+    if (!scheduleList) return [];
+    // DECLARATIVE first; createdAt-desc within each type (stable sort).
+    return [...scheduleList.schedules].sort((a, b) => {
+      if (a.type === b.type) return 0;
+      return a.type === "DECLARATIVE" ? -1 : 1;
+    });
+  }, [scheduleList?.schedules]);
+  const firstSchedule = sortedSchedules[0];
+  const [activeTab, setActiveTab] = useState<"overview" | "schedules">("overview");
   return (
-    <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden bg-background-bright">
-      <div className="flex min-w-0 items-center gap-2 overflow-hidden border-b border-grid-dimmed px-3 py-2">
+    <div className="grid h-full grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden bg-background-bright">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden py-2 pl-3 pr-1.5">
         <Header2 className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
           <ClockIcon className="size-4.5 shrink-0 text-schedules" />
           <span className="truncate">{task.slug}</span>
@@ -590,48 +748,136 @@ function ScheduledTaskDetailSidebar({
           Test schedule
         </LinkButton>
       </div>
-      <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <Property.Table>
-          <Property.Item>
-            <Property.Label>Identifier</Property.Label>
-            <Property.Value>
-              <CopyableText value={task.slug} />
-            </Property.Value>
-          </Property.Item>
-          <Property.Item>
-            <Property.Label>File path</Property.Label>
-            <Property.Value>
-              <CopyableText value={task.filePath} />
-            </Property.Value>
-          </Property.Item>
-          <Property.Item>
-            <Property.Label>Type</Property.Label>
-            <Property.Value>
-              <Paragraph variant="small">Scheduled task</Paragraph>
-            </Property.Value>
-          </Property.Item>
-          <Property.Item>
-            <Property.Label>Created</Property.Label>
-            <Property.Value>
-              <DateTime date={task.createdAt} />
-            </Property.Value>
-          </Property.Item>
-        </Property.Table>
-        <div className="mt-4 flex flex-col gap-2">
-          <Header3>Schedules</Header3>
-          <div className="-mx-3 overflow-hidden border-y border-grid-dimmed">
-            {scheduleList ? (
+      <div className="flex h-8 items-end justify-between gap-2 border-b border-grid-bright pl-3 pr-1.5">
+        <TabContainer className="!border-b-0">
+          <TabButton
+            isActive={activeTab === "overview"}
+            layoutId="scheduled-task-detail-tabs"
+            onClick={() => setActiveTab("overview")}
+            shortcut={{ key: "o" }}
+          >
+            Overview
+          </TabButton>
+          <TabButton
+            isActive={activeTab === "schedules"}
+            layoutId="scheduled-task-detail-tabs"
+            onClick={() => setActiveTab("schedules")}
+            shortcut={{ key: "s" }}
+          >
+            Schedules
+          </TabButton>
+        </TabContainer>
+        {activeTab === "schedules" && scheduleList && scheduleList.totalPages > 1 ? (
+          <div className="pb-1.5">
+            <PaginationControls
+              currentPage={scheduleList.currentPage}
+              totalPages={scheduleList.totalPages}
+              showPageNumbers={false}
+            />
+          </div>
+        ) : null}
+      </div>
+      {activeTab === "overview" ? (
+        <div className="overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <Property.Table>
+            <Property.Item>
+              <Property.Label>Identifier</Property.Label>
+              <Property.Value>
+                <CopyableText value={task.slug} />
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>File path</Property.Label>
+              <Property.Value>
+                <CopyableText value={task.filePath} />
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Schedule ID</Property.Label>
+              <Property.Value>
+                {firstSchedule ? (
+                  <CopyableText value={firstSchedule.friendlyId} />
+                ) : (
+                  <span className="text-text-dimmed">–</span>
+                )}
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>CRON</Property.Label>
+              <Property.Value>
+                {firstSchedule ? (
+                  <div className="space-y-2">
+                    <InlineCode variant="extra-small">{firstSchedule.cron}</InlineCode>
+                    <Paragraph variant="small">{firstSchedule.cronDescription}</Paragraph>
+                  </div>
+                ) : (
+                  <span className="text-text-dimmed">–</span>
+                )}
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Created</Property.Label>
+              <Property.Value>
+                <DateTime date={task.createdAt} />
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Next run</Property.Label>
+              <Property.Value>
+                {firstSchedule ? (
+                  <RelativeDateTime date={firstSchedule.nextRun} />
+                ) : (
+                  <span className="text-text-dimmed">–</span>
+                )}
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Last run</Property.Label>
+              <Property.Value>
+                {firstSchedule?.lastRun ? (
+                  <RelativeDateTime date={firstSchedule.lastRun} />
+                ) : (
+                  <span className="text-text-dimmed">Never</span>
+                )}
+              </Property.Value>
+            </Property.Item>
+            <Property.Item>
+              <Property.Label>Status</Property.Label>
+              <Property.Value>
+                {firstSchedule ? (
+                  <EnabledStatus enabled={firstSchedule.active} />
+                ) : (
+                  <span className="text-text-dimmed">–</span>
+                )}
+              </Property.Value>
+            </Property.Item>
+          </Property.Table>
+          {scheduleList && sortedSchedules.length === 0 ? (
+            <div className="mt-4">
+              <NoSchedulesAttachedPanel />
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          {scheduleList ? (
+            sortedSchedules.length === 0 ? (
+              <div className="p-3">
+                <NoSchedulesAttachedPanel />
+              </div>
+            ) : (
               <SchedulesMiniTable
-                schedules={scheduleList.schedules}
+                schedules={sortedSchedules}
                 variant="bright"
                 onSelectSchedule={onSelectSchedule}
+                showTopBorder={false}
               />
-            ) : (
-              <TableLoading />
-            )}
-          </div>
+            )
+          ) : (
+            <TableLoading />
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -652,14 +898,16 @@ function SchedulesMiniTable({
   schedules,
   variant,
   onSelectSchedule,
+  showTopBorder = true,
 }: {
   schedules: ScheduleRow[];
   variant?: TableVariant;
   onSelectSchedule: (friendlyId: string) => void;
+  showTopBorder?: boolean;
 }) {
   if (schedules.length === 0) {
     return (
-      <Table variant={variant}>
+      <Table variant={variant} showTopBorder={showTopBorder}>
         <TableBody>
           <TableBlankRow colSpan={6}>
             <Paragraph variant="small" className="flex items-center justify-center">
@@ -672,7 +920,7 @@ function SchedulesMiniTable({
   }
 
   return (
-    <Table variant={variant}>
+    <Table variant={variant} showTopBorder={showTopBorder}>
       <TableHeader>
         <TableRow>
           <TableHeaderCell>Schedule ID</TableHeaderCell>
@@ -839,10 +1087,55 @@ function ActivityChartSkeleton() {
   );
 }
 
+function NoSchedulesAttachedPanel() {
+  return (
+    <InfoPanel
+      title="No schedules attached"
+      icon={ClockIcon}
+      iconClassName="text-schedules"
+      panelClassName="max-w-full"
+      accessory={
+        <LinkButton
+          to={docsPath("v3/tasks-scheduled")}
+          variant="docs/small"
+          LeadingIcon={BookOpenIcon}
+        >
+          Read the docs
+        </LinkButton>
+      }
+    >
+      <Paragraph spacing variant="small">
+        Scheduled tasks only run automatically when a schedule is attached. There are two types:
+      </Paragraph>
+      <Paragraph spacing variant="small">
+        <span className="font-medium text-text-bright">Declarative</span> — defined directly on your{" "}
+        <InlineCode>schedules.task</InlineCode> and synced when you run dev or deploy.
+      </Paragraph>
+      <Paragraph variant="small">
+        <span className="font-medium text-text-bright">Imperative</span> — created dynamically from
+        the dashboard or via the SDK with <InlineCode>schedules.create()</InlineCode>.
+      </Paragraph>
+    </InfoPanel>
+  );
+}
+
 function TableLoading() {
   return (
     <div className="flex h-full items-center justify-center">
       <Spinner className="size-6" />
+    </div>
+  );
+}
+
+function ScheduleMissingPanel({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 bg-background-bright p-6 text-center">
+      <Paragraph variant="small" className="text-text-bright">
+        This schedule no longer exists.
+      </Paragraph>
+      <Button variant="secondary/small" onClick={onClose}>
+        Close
+      </Button>
     </div>
   );
 }

@@ -79,6 +79,16 @@ const Env = z
     TRIGGER_CHECKPOINT_URL: z.string().optional(),
     TRIGGER_METADATA_URL: z.string().optional(),
 
+    // Warm-start delivery verification: after a warm-start hit, probe the
+    // platform and cold-start the run if no runner acted on the dispatch
+    TRIGGER_WARM_START_VERIFY_ENABLED: BoolEnv.default(false),
+    TRIGGER_WARM_START_VERIFY_DELAY_MS: z.coerce
+      .number()
+      .int()
+      .min(1_000)
+      .max(60_000)
+      .default(10_000),
+
     // Used by the resource monitor
     RESOURCE_MONITOR_ENABLED: BoolEnv.default(false),
     RESOURCE_MONITOR_OVERRIDE_CPU_TOTAL: z.coerce.number().optional(),

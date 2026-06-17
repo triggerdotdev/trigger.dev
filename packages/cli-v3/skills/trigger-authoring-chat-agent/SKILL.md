@@ -1,5 +1,5 @@
 ---
-name: authoring-chat-agent
+name: trigger-authoring-chat-agent
 description: >
   Author and run a durable AI chat agent with chat.agent from @trigger.dev/sdk/ai: the per-turn
   run loop, why you MUST spread ...chat.toStreamTextOptions() first, returning a StreamTextResult
@@ -16,7 +16,7 @@ library: trigger.dev
 
 The full, version-pinned reference ships **inside your installed `@trigger.dev/sdk`**. Read it before writing code — it always matches the SDK version in this project, so it never drifts:
 
-- **Skill:** `node_modules/@trigger.dev/sdk/skills/authoring-chat-agent/SKILL.md` — the per-turn run loop, `chat.toStreamTextOptions()`, the two server actions, typed tools/data parts, and the React transport.
+- **Skill:** `node_modules/@trigger.dev/sdk/skills/trigger-authoring-chat-agent/SKILL.md` — the per-turn run loop, `chat.toStreamTextOptions()`, the two server actions, typed tools/data parts, and the React transport.
 - **Docs:** the full, version-pinned docs ship bundled at `node_modules/@trigger.dev/sdk/docs/ai-chat/`; the skill above lists the exact pages it draws from in its `sources:` frontmatter. Grep for an API, e.g. `grep -rl "toStreamTextOptions" node_modules/@trigger.dev/sdk/docs/`.
 
 If those paths don't exist, `@trigger.dev/sdk` isn't installed yet — install it first. In a non-hoisted layout, resolve the package with `node -p "require.resolve('@trigger.dev/sdk/package.json')"` and read `skills/` + `docs/` beside it.
@@ -57,4 +57,4 @@ If those paths don't exist, `@trigger.dev/sdk` isn't installed yet — install i
 
 ## References
 
-Sibling skills: **chat-agent-advanced** (Sessions primitive, custom transports, sub-agents, HITL, fast starts, resilience, testing, upgrades), **authoring-tasks** and **realtime-and-frontend** (the task + frontend foundations chat builds on).
+Sibling skills: **trigger-chat-agent-advanced** (Sessions primitive, custom transports, sub-agents, HITL, fast starts, resilience, testing, upgrades), **trigger-authoring-tasks** and **trigger-realtime-and-frontend** (the task + frontend foundations chat builds on).

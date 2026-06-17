@@ -1,5 +1,5 @@
 ---
-name: realtime-and-frontend
+name: trigger-realtime-and-frontend
 description: >
   Trigger.dev client/frontend surface: subscribe to runs in realtime
   (runs.subscribeToRun and the @trigger.dev/react-hooks hook useRealtimeRun),
@@ -10,7 +10,7 @@ description: >
   Load when wiring a frontend (React/Next.js/Remix) or backend-for-frontend to
   show live run progress, status badges, token streams, trigger buttons, or
   wait-token approval UIs. NOT for writing the backend task itself (streams.define
-  / metadata.set is authoring-tasks territory); this is the consumer side.
+  / metadata.set is trigger-authoring-tasks territory); this is the consumer side.
 type: core
 library: trigger.dev
 ---
@@ -19,7 +19,7 @@ library: trigger.dev
 
 The full, version-pinned reference ships **inside your installed `@trigger.dev/sdk`**. Read it before writing code — it always matches the SDK version in this project, so it never drifts:
 
-- **Skill:** `node_modules/@trigger.dev/sdk/skills/realtime-and-frontend/SKILL.md` — run subscriptions, `@trigger.dev/react-hooks`, streams, frontend triggering, and scoped tokens.
+- **Skill:** `node_modules/@trigger.dev/sdk/skills/trigger-realtime-and-frontend/SKILL.md` — run subscriptions, `@trigger.dev/react-hooks`, streams, frontend triggering, and scoped tokens.
 - **Docs:** the full, version-pinned docs ship bundled at `node_modules/@trigger.dev/sdk/docs/realtime/`; the skill above lists the exact pages it draws from in its `sources:` frontmatter. Grep for a hook, e.g. `grep -rl "useRealtimeRun" node_modules/@trigger.dev/sdk/docs/`.
 
 If those paths don't exist, `@trigger.dev/sdk` isn't installed yet — install it first. In a non-hoisted layout, resolve the package with `node -p "require.resolve('@trigger.dev/sdk/package.json')"` and read `skills/` + `docs/` beside it.
@@ -55,4 +55,4 @@ If those paths don't exist, `@trigger.dev/sdk` isn't installed yet — install i
 
 ## References
 
-Sibling skills: **authoring-tasks** (the task side: `streams.define()`, `metadata.set()`, `wait.createToken`), **authoring-chat-agent** and **chat-agent-advanced** (chat agents build on these realtime streams).
+Sibling skills: **trigger-authoring-tasks** (the task side: `streams.define()`, `metadata.set()`, `wait.createToken`), **trigger-authoring-chat-agent** and **trigger-chat-agent-advanced** (chat agents build on these realtime streams).

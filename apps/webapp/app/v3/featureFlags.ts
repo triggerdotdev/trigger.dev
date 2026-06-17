@@ -11,6 +11,10 @@ export const FEATURE_FLAG = {
   mollifierEnabled: "mollifierEnabled",
   workerQueueScheduledSplitEnabled: "workerQueueScheduledSplitEnabled",
   realtimeBackend: "realtimeBackend",
+  computeMigrationEnabled: "computeMigrationEnabled",
+  computeMigrationFreePercentage: "computeMigrationFreePercentage",
+  computeMigrationPaidPercentage: "computeMigrationPaidPercentage",
+  computeMigrationRequireTemplate: "computeMigrationRequireTemplate",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -27,6 +31,16 @@ export const FeatureFlagCatalog = {
   // globally and per-org (org wins). Defaults to "electric" when unset.
   // "shadow" serves Electric but diffs the native path in the background.
   [FEATURE_FLAG.realtimeBackend]: z.enum(["electric", "native", "shadow"]),
+  // Strict z.boolean() (not z.coerce.boolean()): coercion turns the string "false"
+  // into true, which would silently flip this kill switch / per-org exclude the wrong
+  // way if written as a string via the admin PAT route. The admin toggle sends a real
+  // boolean, so this only rejects the dangerous stringified case.
+  [FEATURE_FLAG.computeMigrationEnabled]: z.boolean(),
+  [FEATURE_FLAG.computeMigrationFreePercentage]: z.coerce.number().int().min(0).max(100),
+  [FEATURE_FLAG.computeMigrationPaidPercentage]: z.coerce.number().int().min(0).max(100),
+  // When on, migrated orgs build their compute template in required mode at deploy
+  // (fails the deploy on error) instead of shadow. Strict boolean (see above).
+  [FEATURE_FLAG.computeMigrationRequireTemplate]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

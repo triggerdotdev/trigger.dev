@@ -1,5 +1,5 @@
 ---
-name: realtime-and-frontend
+name: trigger-realtime-and-frontend
 description: >
   Trigger.dev client/frontend surface: subscribe to runs in realtime
   (runs.subscribeToRun and the @trigger.dev/react-hooks hook useRealtimeRun),
@@ -10,7 +10,7 @@ description: >
   Load when wiring a frontend (React/Next.js/Remix) or backend-for-frontend to
   show live run progress, status badges, token streams, trigger buttons, or
   wait-token approval UIs. NOT for writing the backend task itself (streams.define
-  / metadata.set is authoring-tasks territory); this is the consumer side.
+  / metadata.set is trigger-authoring-tasks territory); this is the consumer side.
 type: core
 library: trigger.dev
 sources:
@@ -262,8 +262,8 @@ for await (const run of runs.subscribeToRun<typeof myTask>(handle.id)) {
 ## References
 
 Sibling skills:
-- `authoring-tasks` for the task side: `streams.define()`, `metadata.set()`, and `wait.createToken`.
-- `authoring-chat-agent` and `chat-agent-advanced` for chat agents, which build on these realtime streams.
+- `trigger-authoring-tasks` for the task side: `streams.define()`, `metadata.set()`, and `wait.createToken`.
+- `trigger-authoring-chat-agent` and `trigger-chat-agent-advanced` for chat agents, which build on these realtime streams.
 
 Reference docs ship beside this skill in the same package, read them locally (no network), pinned to your installed version. The `sources:` frontmatter above lists every doc this skill draws from, all under `@trigger.dev/sdk/docs/`. Start with:
 - `@trigger.dev/sdk/docs/realtime/react-hooks/subscribe.mdx`

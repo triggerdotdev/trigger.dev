@@ -11,7 +11,7 @@ sidebarTitle: "Agent rules"
 
 ## What changed
 
-Trigger.dev used to install per-tool *rule files* (`.cursor/rules/trigger.*.mdc`, regions in `CLAUDE.md`, and so on) fetched from GitHub. That has been replaced by [agent skills](/skills): `SKILL.md` directories in the open [Agent Skills standard](https://agentskills.io) that ship inside the CLI, versioned with it, and load on demand instead of always sitting in your context.
+Trigger.dev used to install per-tool *rule files* (`.cursor/rules/trigger.*.mdc`, regions in `CLAUDE.md`, and so on) fetched from GitHub. That has been replaced by [agent skills](/skills): `SKILL.md` directories in the open [Agent Skills standard](https://agentskills.io) that install with the CLI, draw their API guidance from a version-pinned reference in `@trigger.dev/sdk`, and load on demand instead of always sitting in your context.
 
 The install command is the same, and now installs skills:
 
@@ -21,7 +21,7 @@ npx trigger.dev@latest skills
 
 `npx trigger.dev@latest install-rules` still works as an alias, and `trigger dev` offers to install the skills on first run.
 
-The old task and realtime guidance now lives in the `authoring-tasks` and `realtime-and-frontend` skills, alongside two new skills for building `chat.agent` AI agents. See [Skills](/skills) for the full list and supported assistants.
+The old task and realtime guidance now lives in the `trigger-authoring-tasks` and `trigger-realtime-and-frontend` skills, alongside two new skills for building `chat.agent` AI agents. See [Skills](/skills) for the full list and supported assistants.
 
 ## Next steps
 

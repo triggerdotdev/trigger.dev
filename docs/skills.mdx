@@ -18,22 +18,17 @@ Each skill is a directory containing a `SKILL.md` file: YAML frontmatter (name, 
 
 ## Installation
 
-The skills ship inside the `trigger.dev` CLI and are versioned with it. Run:
+Run the installer with the CLI:
 
 ```bash
 npx trigger.dev@latest skills
 ```
 
-The CLI detects your installed AI tools, lets you pick which skills to install, and copies each one into that tool's native skills directory (`.claude/skills/`, `.cursor/skills/`, `.github/skills/`, `.agents/skills/`). It also writes a one-line pointer into your primary instructions file (`CLAUDE.md`, `.cursor/rules`, etc.) so your assistant always knows the skills are there and loads the right one on demand.
+The CLI detects your installed AI tools, lets you pick which skills to install, and writes each one into that tool's native skills directory (`.claude/skills/`, `.cursor/skills/`, `.github/skills/`, `.agents/skills/`). It also adds a one-line pointer to your primary instructions file (`CLAUDE.md`, `.cursor/rules`, etc.) so your assistant always knows the skills are there and loads the right one on demand.
 
 When you run `trigger dev` for the first time, the CLI offers to install the skills for you.
 
-<Note>
-  Because the skills are bundled with the CLI, the guidance your assistant gets is pinned to the CLI
-  version that installs them. To keep it matched to the Trigger.dev version you are building
-  against, run the CLI pinned in your project (`pnpm exec trigger skills`) instead of
-  `npx trigger.dev@latest`.
-</Note>
+The installed skills are lightweight. Most point to the full, version-pinned reference that ships inside `@trigger.dev/sdk`, which your assistant reads straight from `node_modules`. The API guidance it follows always matches the `@trigger.dev/sdk` version installed in your project, with no extra step on your part. The `trigger-getting-started` skill is self-contained, since it runs before the SDK is installed.
 
 ### Non-interactive install
 
@@ -47,12 +42,13 @@ npx trigger.dev@latest skills --target claude-code --target cursor -y
 
 | Skill                  | Use for                                                        | Covers                                                                       |
 | ---------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `authoring-tasks`      | Writing background and scheduled tasks                         | `task`/`schemaTask`, retries, queues, waits, idempotency, metadata, triggering, cron, `trigger.config.ts` |
-| `realtime-and-frontend`| Live run updates and triggering from the browser               | `runs.subscribeToRun`, `@trigger.dev/react-hooks`, public access tokens, streams |
-| `authoring-chat-agent` | Building durable AI chat agents                                | `chat.agent` run loop, `toStreamTextOptions`, server actions, `useChat` transport, tools, lifecycle hooks |
-| `chat-agent-advanced`  | Advanced chat.agent patterns                                   | sessions, human-in-the-loop, sub-agents, compaction, fast starts, resilience, version upgrades |
+| `trigger-authoring-tasks`      | Writing background and scheduled tasks                         | `task`/`schemaTask`, retries, queues, waits, idempotency, metadata, triggering, cron, `trigger.config.ts` |
+| `trigger-realtime-and-frontend`| Live run updates and triggering from the browser               | `runs.subscribeToRun`, `@trigger.dev/react-hooks`, public access tokens, streams |
+| `trigger-authoring-chat-agent` | Building durable AI chat agents                                | `chat.agent` run loop, `toStreamTextOptions`, server actions, `useChat` transport, tools, lifecycle hooks |
+| `trigger-chat-agent-advanced`  | Advanced chat.agent patterns                                   | sessions, human-in-the-loop, sub-agents, compaction, fast starts, resilience, version upgrades |
+| `trigger-cost-savings`         | Auditing and reducing compute spend                            | right-sizing machines, `maxDuration`, batch vs sequential, debounce, schedule frequency, MCP run analysis |
 
-Not sure which to install? Pick `authoring-tasks`; it covers the most common patterns for writing Trigger.dev tasks.
+Not sure which to install? Pick `trigger-authoring-tasks`; it covers the most common patterns for writing Trigger.dev tasks.
 
 ## Supported AI assistants
 
@@ -69,7 +65,7 @@ Using a tool that does not support skills yet? Select "Unsupported target" in th
 
 ## Keeping skills updated
 
-Skills are pinned to your installed CLI version. To refresh them after upgrading Trigger.dev, run `npx trigger.dev@latest skills` again, or accept the prompt that `trigger dev` shows when a newer version is available. Re-running overwrites the installed skill files in place without creating duplicates.
+The API guidance updates on its own: it lives in `@trigger.dev/sdk` and is read from `node_modules`, so upgrading the SDK in your project upgrades the guidance with it. Re-run `npx trigger.dev@latest skills` (or accept the prompt that `trigger dev` shows when a newer version is available) only to add skills or refresh the installed pointer files. Re-running overwrites them in place without creating duplicates.
 
 ## Next steps
 

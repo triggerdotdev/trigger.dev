@@ -170,6 +170,8 @@ export const loader = createLoaderApiRoute(
               inputCost: aiData.inputCost,
               outputCost: aiData.outputCost,
               totalCost: aiData.totalCost,
+              cachedCost: aiData.cachedCost,
+              cacheCreationCost: aiData.cacheCreationCost,
               tokensPerSecond: aiData.tokensPerSecond,
               msToFirstChunk: aiData.msToFirstChunk,
               durationMs: aiData.durationMs,

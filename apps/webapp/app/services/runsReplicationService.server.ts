@@ -1122,7 +1122,8 @@ export class RunsReplicationService {
       event === "delete" ? 1 : 0, // _is_deleted
       run.concurrencyKey ?? "", // concurrency_key
       run.bulkActionGroupIds ?? [], // bulk_action_group_ids
-      baseWorkerQueue(run.masterQueue ?? ""), // worker_queue (region; strip any split suffix like `:scheduled`)
+      baseWorkerQueue(run.masterQueue ?? ""), // worker_queue (raw - operators slice by this)
+      run.region ?? "", // region (geo for customers)
       run.maxDurationInSeconds ?? null, // max_duration_in_seconds
       annotations?.triggerSource ?? "", // trigger_source
       annotations?.rootTriggerSource ?? "", // root_trigger_source

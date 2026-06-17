@@ -38,6 +38,9 @@ import {
   resolveScheduledQueueSplitEnabled,
   workerQueueForRun,
 } from "../concerns/workerQueueSplit.server";
+import { resolveComputeMigration } from "../concerns/computeMigration.server";
+import { workerRegionRegistry, backingForQueue, regionForQueue } from "~/v3/workerRegions.server";
+import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import {
   publishClaim as publishMollifierClaim,
   releaseClaim as releaseMollifierClaim,
@@ -358,6 +361,24 @@ export class RunEngineTriggerTaskService {
           const baseWorkerQueue = workerQueueResult?.masterQueue;
           const enableFastPath = workerQueueResult?.enableFastPath ?? false;
 
+          // Rewrite the region to its compute backing for migration-enrolled orgs,
+          // from the in-memory snapshots (no DB query). A cold read (registry not yet
+          // loaded) returns undefined/[] and the resolver falls back to not-migrated.
+          const workerGroups = workerRegionRegistry.current() ?? [];
+          const region = baseWorkerQueue ? regionForQueue(baseWorkerQueue, workerGroups) : undefined;
+          const backing = baseWorkerQueue ? backingForQueue(baseWorkerQueue, workerGroups) : undefined;
+          const migrated = resolveComputeMigration({
+            baseWorkerQueue,
+            baseEnableFastPath: enableFastPath,
+            region,
+            backing,
+            planType,
+            orgId: environment.organization.id,
+            orgFeatureFlags: environment.organization.featureFlags as Record<string, unknown> | null,
+            flags: globalFlagsRegistry.current(),
+            envType: environment.type,
+          });
+
           // Build annotations for this run
           const triggerSource = options.triggerSource ?? "api";
           const triggerAction = options.triggerAction ?? "trigger";
@@ -386,13 +407,13 @@ export class RunEngineTriggerTaskService {
               globalDefault: env.TRIGGER_WORKER_QUEUE_SCHEDULED_SPLIT_ENABLED === "1",
             });
           const workerQueue =
-            baseWorkerQueue !== undefined
+            migrated.workerQueue !== undefined
               ? workerQueueForRun({
-                  workerQueue: baseWorkerQueue,
+                  workerQueue: migrated.workerQueue,
                   rootTriggerSource: annotations.rootTriggerSource,
                   splitEnabled: scheduledQueueSplitEnabled,
                 })
-              : baseWorkerQueue;
+              : migrated.workerQueue;
 
           try {
             return await this.traceEventConcern.traceRun(
@@ -491,7 +512,8 @@ export class RunEngineTriggerTaskService {
                       queueName,
                       lockedQueueId,
                       workerQueue,
-                      enableFastPath,
+                      region: migrated.region,
+                      enableFastPath: migrated.enableFastPath,
                       lockedToBackgroundWorker: lockedToBackgroundWorker ?? undefined,
                       delayUntil,
                       ttl,
@@ -569,7 +591,8 @@ export class RunEngineTriggerTaskService {
                   queueName,
                   lockedQueueId,
                   workerQueue,
-                  enableFastPath,
+                  region: migrated.region,
+                  enableFastPath: migrated.enableFastPath,
                   lockedToBackgroundWorker: lockedToBackgroundWorker ?? undefined,
                   delayUntil,
                   ttl,
@@ -718,6 +741,7 @@ export class RunEngineTriggerTaskService {
     queueName: string;
     lockedQueueId?: string;
     workerQueue?: string;
+    region?: string;
     enableFastPath: boolean;
     lockedToBackgroundWorker?: { id: string; version: string; sdkVersion: string; cliVersion: string };
     delayUntil?: Date;
@@ -771,6 +795,7 @@ export class RunEngineTriggerTaskService {
       queue: args.queueName,
       lockedQueueId: args.lockedQueueId,
       workerQueue: args.workerQueue,
+      region: args.region,
       enableFastPath: args.enableFastPath,
       isTest: args.body.options?.test ?? false,
       delayUntil: args.delayUntil,
