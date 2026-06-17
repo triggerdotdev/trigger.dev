@@ -2,18 +2,10 @@ import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
-import {
-  type UseDataFunctionReturn,
-  typedjson,
-  useTypedLoaderData,
-  useTypedFetcher,
-} from "remix-typedjson";
+import { typedjson, useTypedLoaderData, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
-import {
-  MainCenteredContainer,
-  MainHorizontallyCenteredContainer,
-} from "~/components/layout/AppLayout";
-import { PermissionDenied } from "~/components/PermissionDenied";
+import { MainHorizontallyCenteredContainer } from "~/components/layout/AppLayout";
+import { PermissionDeniedBoundary, throwPermissionDenied } from "~/components/PermissionDenied";
 import { $replica } from "~/db.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { Button } from "~/components/primitives/Buttons";
@@ -71,7 +63,7 @@ export const loader = dashboardLoader(
       ability.can("write", { type: "github" }) || ability.can("write", { type: "vercel" });
 
     if (!canManageIntegrations) {
-      return typedjson({ canManageIntegrations: false as const });
+      throwPermissionDenied("With your current role, you can't manage integrations.");
     }
 
     const projectSettingsPresenter = new ProjectSettingsPresenter();
@@ -107,7 +99,6 @@ export const loader = dashboardLoader(
     const { gitHubApp, buildSettings } = resultOrFail.value;
 
     return typedjson({
-      canManageIntegrations: true as const,
       githubAppEnabled: gitHubApp.enabled,
       buildSettings,
       vercelIntegrationEnabled: OrgIntegrationRepository.isVercelSupported,
@@ -213,27 +204,11 @@ export const action = dashboardAction(
   }
 );
 
-type IntegrationsData = Extract<
-  UseDataFunctionReturn<typeof loader>,
-  { canManageIntegrations: true }
->;
+export { PermissionDeniedBoundary as ErrorBoundary };
 
 export default function IntegrationsSettingsPage() {
-  const data = useTypedLoaderData<typeof loader>();
-
-  if (!data.canManageIntegrations) {
-    return (
-      <MainCenteredContainer>
-        <PermissionDenied message="With your current role, you can't manage integrations." />
-      </MainCenteredContainer>
-    );
-  }
-
-  return <IntegrationsSettings data={data} />;
-}
-
-function IntegrationsSettings({ data }: { data: IntegrationsData }) {
-  const { githubAppEnabled, buildSettings, vercelIntegrationEnabled } = data;
+  const { githubAppEnabled, buildSettings, vercelIntegrationEnabled } =
+    useTypedLoaderData<typeof loader>();
   const project = useProject();
   const organization = useOrganization();
   const environment = useEnvironment();
