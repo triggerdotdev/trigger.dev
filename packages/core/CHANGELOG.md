@@ -1,5 +1,11 @@
 # internal-platform
 
+## 4.5.0-rc.7
+
+### Patch Changes
+
+- The run span API response now includes `cachedCost` and `cacheCreationCost` on the `ai` object, alongside the existing `inputCost` / `outputCost` / `totalCost`. `inputCost` reflects only the non-cached input, so these fields let you reconstruct the full cost breakdown for prompt-cached calls. ([#3958](https://github.com/triggerdotdev/trigger.dev/pull/3958))
+
 ## 4.5.0-rc.6
 
 ### Patch Changes
