@@ -19,6 +19,9 @@
       }
     ],
     "import/no-duplicates": ["warn", { "prefer-inline": true }],
-    "react-hooks/rules-of-hooks": "error"
+    // Disabled for now: oxlint treats any use*()/use() call as a React hook,
+    // producing false positives in async/test code (testcontainers, cli-v3 e2e).
+    // Re-enable (ideally scoped to React packages) once those are addressed.
+    "react-hooks/rules-of-hooks": "off"
   }
 }
