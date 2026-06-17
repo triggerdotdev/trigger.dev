@@ -96,15 +96,16 @@ export async function authenticateAndAuthorize<TParams, TSearchParams, TContext 
   }
 
   if (options.authorization && !isAuthorized(auth.ability, options.authorization)) {
-    // Logged in but lacking the permission. By default throw a
-    // permission-denied 403 — both loader and action wrappers throw this
-    // response, so it bubbles to the nearest route ErrorBoundary, where
-    // RouteErrorDisplay renders the permission panel. Routes that prefer a
-    // redirect (e.g. credential endpoints with no UI) opt out by setting
-    // unauthorizedRedirect.
-    if (options.unauthorizedRedirect) {
-      return { ok: false, response: redirect(options.unauthorizedRedirect) };
+    // Super-admin gates must not reveal that the route exists, so they redirect
+    // away rather than render the panel. A redirect is also used by routes that
+    // opt in via unauthorizedRedirect (e.g. credential endpoints with no UI).
+    const isSuperGate = "requireSuper" in options.authorization;
+    if (options.unauthorizedRedirect || isSuperGate) {
+      return { ok: false, response: redirect(options.unauthorizedRedirect ?? "/") };
     }
+    // Role-based denial: throw a permission-denied 403. Both loader and action
+    // wrappers throw this, so it bubbles to the nearest route ErrorBoundary,
+    // where RouteErrorDisplay renders the permission panel.
     return { ok: false, response: permissionDeniedResponse(options.authorization.message) };
   }
 
