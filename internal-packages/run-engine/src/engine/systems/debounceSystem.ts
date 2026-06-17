@@ -1160,13 +1160,7 @@ return 0
       updatePayload.runTags = updateData.tags;
     }
 
-    const updatedRun = await prisma.taskRun.update({
-      where: { id: runId },
-      data: updatePayload,
-      include: {
-        associatedWaitpoint: true,
-      },
-    });
+    const updatedRun = await this.$.runStore.rewriteDebouncedRun(runId, updatePayload, prisma);
 
     return updatedRun;
   }
