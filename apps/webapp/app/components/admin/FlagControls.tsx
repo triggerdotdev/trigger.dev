@@ -99,6 +99,41 @@ export function WorkerGroupControl({
   );
 }
 
+export function NumberControl({
+  value,
+  onChange,
+  min,
+  max,
+  dimmed,
+}: {
+  value: number | undefined;
+  onChange: (val: number | undefined) => void;
+  min?: number;
+  max?: number;
+  dimmed: boolean;
+}) {
+  // Number and string fields share the same input shape; surface the range
+  // (or "number") as the placeholder so an unset field still signals its type.
+  const placeholder = min !== undefined && max !== undefined ? `${min}-${max}` : "number";
+  return (
+    <Input
+      type="number"
+      variant="small"
+      // Empty string when unset so the placeholder shows instead of "0".
+      value={value ?? ""}
+      min={min}
+      max={max}
+      step={1}
+      onChange={(e) => {
+        const next = e.target.valueAsNumber;
+        onChange(Number.isNaN(next) ? undefined : next);
+      }}
+      placeholder={placeholder}
+      className={cn("w-40", dimmed && "opacity-50")}
+    />
+  );
+}
+
 export function StringControl({
   value,
   onChange,
