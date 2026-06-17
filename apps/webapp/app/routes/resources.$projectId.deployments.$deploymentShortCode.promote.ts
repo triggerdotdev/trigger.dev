@@ -93,11 +93,11 @@ export const action = dashboardAction(
             stack: error.stack,
           },
         });
-        submission.error = { runParam: [error.message] };
+        submission.error = { "": [error.message] };
         return json(submission);
       } else {
         logger.error("Failed to promote deployment", { error });
-        submission.error = { runParam: [JSON.stringify(error)] };
+        submission.error = { "": [JSON.stringify(error)] };
         return json(submission);
       }
     }
