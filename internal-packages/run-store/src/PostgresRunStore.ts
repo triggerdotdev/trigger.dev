@@ -191,7 +191,7 @@ export class PostgresRunStore implements RunStore {
 
   async recordRetryOutcome<I extends Prisma.TaskRunInclude>(
     runId: string,
-    data: { machinePreset: string; usageDurationMs: number; costInCents: number },
+    data: { machinePreset?: string; usageDurationMs: number; costInCents: number },
     args: { include: I },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }>> {
