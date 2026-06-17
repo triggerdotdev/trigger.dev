@@ -75,7 +75,7 @@ export type RunAssociatedWaitpointInput = {
   type: "RUN";
   status: "PENDING";
   idempotencyKey: string;
-  userProvidedIdempotencyKey: false;
+  userProvidedIdempotencyKey: boolean;
   projectId: string;
   environmentId: string;
 };
@@ -92,7 +92,7 @@ export type CreateRunData = {
   projectId: string;
   idempotencyKey?: string;
   idempotencyKeyExpiresAt?: Date;
-  idempotencyKeyOptions?: string[];
+  idempotencyKeyOptions?: Prisma.InputJsonValue;
   taskIdentifier: string;
   payload: string;
   payloadType: string;
@@ -113,7 +113,7 @@ export type CreateRunData = {
   delayUntil?: Date;
   queuedAt?: Date;
   maxAttempts?: number;
-  taskEventStore: string;
+  taskEventStore?: string;
   priorityMs?: number;
   queueTimestamp?: Date;
   ttl?: string;
@@ -124,7 +124,7 @@ export type CreateRunData = {
   replayedFromTaskRunFriendlyId?: string;
   batchId?: string;
   resumeParentOnCompletion?: boolean;
-  depth: number;
+  depth?: number;
   metadata?: string;
   metadataType?: string;
   seedMetadata?: string;
@@ -137,7 +137,7 @@ export type CreateRunData = {
   bulkActionGroupIds?: string[];
   planType?: string;
   realtimeStreamsVersion?: string;
-  streamBasinName?: string;
+  streamBasinName?: string | null;
   debounce?: Prisma.InputJsonValue;
   annotations?: Prisma.InputJsonValue;
 };
@@ -179,7 +179,7 @@ export type CreateFailedRunData = {
   depth: number;
   batchId?: string;
   resumeParentOnCompletion?: boolean;
-  taskEventStore: string;
+  taskEventStore?: string;
 };
 
 export type CreateFailedRunInput = {
