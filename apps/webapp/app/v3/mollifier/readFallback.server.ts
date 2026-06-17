@@ -85,6 +85,7 @@ export type SyntheticRun = {
   runtimeEnvironmentId: string | undefined;
   engine: "V2";
   workerQueue: string | undefined;
+  region: string | undefined;
   queue: string | undefined;
   concurrencyKey: string | undefined;
   machinePreset: string | undefined;
@@ -222,6 +223,7 @@ export async function findRunByIdWithMollifierFallback(
         asString(environment?.id) ?? entry.envId,
       engine: "V2",
       workerQueue: asString(snapshot.workerQueue),
+      region: asString(snapshot.region),
       queue: asString(snapshot.queue),
       concurrencyKey: asString(snapshot.concurrencyKey),
       machinePreset: asString(snapshot.machine),

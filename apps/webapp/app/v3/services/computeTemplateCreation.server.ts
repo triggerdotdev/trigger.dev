@@ -9,6 +9,10 @@ import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { ServiceValidationError } from "./baseService.server";
 import { FailDeploymentService } from "./failDeployment.server";
 import { resolveComputeAccess } from "../regionAccess.server";
+import { isOrgMigrated } from "~/runEngine/concerns/computeMigration.server";
+import { backingForQueue, workerRegionRegistry } from "~/v3/workerRegions.server";
+import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
+import { getEntitlement } from "~/services/platform.v3.server";
 
 type TemplateCreationMode = "required" | "shadow" | "skip";
 
@@ -145,10 +149,10 @@ export class ComputeTemplateCreationService {
       where: { id: projectId },
       select: {
         defaultWorkerGroup: {
-          select: { workloadType: true },
+          select: { workloadType: true, masterQueue: true },
         },
         organization: {
-          select: { featureFlags: true },
+          select: { id: true, featureFlags: true },
         },
       },
     });
@@ -159,6 +163,39 @@ export class ComputeTemplateCreationService {
 
     if (project.defaultWorkerGroup?.workloadType === "MICROVM") {
       return "required";
+    }
+
+    // Migrated orgs route runs to the compute backing even though their stored
+    // default is still the container region, so they need a compute template too.
+    // shadow mode: never fail a deploy over a backing the org didn't opt into.
+    // A cold registry read returns no backing, so this is simply skipped until loaded.
+    const defaultQueue = project.defaultWorkerGroup?.masterQueue;
+    if (defaultQueue && backingForQueue(defaultQueue, workerRegionRegistry.current() ?? [])) {
+      const decision = {
+        orgId: project.organization.id,
+        orgFeatureFlags: project.organization.featureFlags as Record<string, unknown> | null,
+        flags: globalFlagsRegistry.current(),
+      };
+      // Per-org override needs no plan; only the percentage path does. So skip the
+      // external entitlement lookup unless it could matter, and degrade gracefully
+      // if it throws - a shadow-template check must never fail a deploy.
+      let migrated = isOrgMigrated({ ...decision, planType: undefined });
+      if (!migrated && (decision.flags?.computeMigrationEnabled ?? false)) {
+        let planType: string | undefined;
+        try {
+          planType = (await getEntitlement(project.organization.id))?.plan?.type;
+        } catch (error) {
+          logger.warn("compute migration: entitlement lookup failed; skipping shadow template", {
+            organizationId: project.organization.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        migrated = isOrgMigrated({ ...decision, planType });
+      }
+      if (migrated) {
+        // required => template built at deploy (deploy fails on error); off => shadow.
+        return decision.flags?.computeMigrationRequireTemplate ? "required" : "shadow";
+      }
     }
 
     const hasComputeAccess = await resolveComputeAccess(prisma, project.organization.featureFlags);
