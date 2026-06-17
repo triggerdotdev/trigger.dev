@@ -1,5 +1,6 @@
 import { Outlet } from "@remix-run/react";
 import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { updateCurrentProjectEnvironmentId } from "~/services/dashboardPreferences.server";
@@ -89,4 +90,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export default function Page() {
   return <Outlet />;
+}
+
+// Caught here (inside the project SideMenu's Outlet) rather than at the project
+// layout, so a permission denial or error on any env-scoped page renders in the
+// content pane with the SideMenu intact. RouteErrorDisplay renders the
+// permission panel for a 403 and the generic error otherwise.
+export function ErrorBoundary() {
+  return <RouteErrorDisplay />;
 }

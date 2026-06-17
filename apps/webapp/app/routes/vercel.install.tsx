@@ -27,6 +27,9 @@ export const loader = dashboardLoader(
       return organizationId ? { organizationId } : {};
     },
     authorization: { action: "write", resource: { type: "vercel" } },
+    // Redirect endpoint (no UI): keep redirecting on denial rather than
+    // throwing the permission panel.
+    unauthorizedRedirect: "/",
   },
   async ({ request, user }) => {
     const searchParams = new URL(request.url).searchParams;

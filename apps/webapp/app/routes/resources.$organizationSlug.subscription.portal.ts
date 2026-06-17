@@ -18,6 +18,9 @@ export const loader = dashboardLoader(
       return organizationId ? { organizationId } : {};
     },
     authorization: { action: "manage", resource: { type: "billing" } },
+    // Redirect endpoint (no UI): keep redirecting on denial rather than
+    // throwing the permission panel.
+    unauthorizedRedirect: "/",
   },
   async ({ request, params, user }) => {
     const { organizationSlug } = params;

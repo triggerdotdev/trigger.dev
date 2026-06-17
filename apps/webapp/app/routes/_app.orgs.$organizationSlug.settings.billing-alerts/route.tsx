@@ -13,12 +13,10 @@ import {
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import {
-  MainCenteredContainer,
   MainHorizontallyCenteredContainer,
   PageBody,
   PageContainer,
 } from "~/components/layout/AppLayout";
-import { PermissionDenied } from "~/components/PermissionDenied";
 import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -67,21 +65,19 @@ export const loader = dashboardLoader(
       const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
       return organizationId ? { organizationId } : {};
     },
-    // No hard authorization block: a denial renders a PermissionDenied panel
-    // instead of blindly redirecting. Enforced via canManageBilling below (the
-    // form mutations are gated independently in the action).
+    authorization: {
+      action: "manage",
+      resource: { type: "billing" },
+      message: "With your current role, you can't manage billing alerts.",
+    },
   },
-  async ({ params, request, user, ability }) => {
+  async ({ params, request, user }) => {
     const userId = user.id;
     const { organizationSlug } = params;
 
     const { isManagedCloud } = featuresForRequest(request);
     if (!isManagedCloud) {
       return redirect(organizationPath({ slug: organizationSlug }));
-    }
-
-    if (!ability.can("manage", { type: "billing" })) {
-      return typedjson({ canManageBilling: false as const });
     }
 
     const organization = await prisma.organization.findFirst({
@@ -107,7 +103,6 @@ export const loader = dashboardLoader(
     }
 
     return typedjson({
-      canManageBilling: true as const,
       alerts: {
         ...alerts,
         amount: alerts.amount / 100,
@@ -116,7 +111,7 @@ export const loader = dashboardLoader(
   }
 );
 
-type BillingAlertsData = Extract<UseDataFunctionReturn<typeof loader>, { canManageBilling: true }>;
+type BillingAlertsData = UseDataFunctionReturn<typeof loader>;
 
 const schema = z.object({
   amount: z
@@ -214,21 +209,6 @@ export const action = dashboardAction(
 
 export default function Page() {
   const loaderData = useTypedLoaderData<typeof loader>();
-
-  if (!loaderData.canManageBilling) {
-    return (
-      <PageContainer>
-        <NavBar>
-          <PageTitle title="Billing alerts" />
-        </NavBar>
-        <PageBody>
-          <MainCenteredContainer>
-            <PermissionDenied message="With your current role, you can't manage billing alerts." />
-          </MainCenteredContainer>
-        </PageBody>
-      </PageContainer>
-    );
-  }
 
   return <BillingAlerts alerts={loaderData.alerts} />;
 }

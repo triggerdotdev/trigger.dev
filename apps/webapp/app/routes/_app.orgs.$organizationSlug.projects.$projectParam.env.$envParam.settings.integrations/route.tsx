@@ -5,7 +5,7 @@ import { json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
 import { MainHorizontallyCenteredContainer } from "~/components/layout/AppLayout";
-import { PermissionDeniedBoundary, throwPermissionDenied } from "~/components/PermissionDenied";
+import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { $replica } from "~/db.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { Button } from "~/components/primitives/Buttons";
@@ -203,8 +203,6 @@ export const action = dashboardAction(
     return redirectBackWithSuccessMessage(request, "Build settings updated successfully");
   }
 );
-
-export { PermissionDeniedBoundary as ErrorBoundary };
 
 export default function IntegrationsSettingsPage() {
   const { githubAppEnabled, buildSettings, vercelIntegrationEnabled } =

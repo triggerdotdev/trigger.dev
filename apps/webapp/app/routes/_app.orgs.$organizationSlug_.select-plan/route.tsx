@@ -22,6 +22,9 @@ export const loader = dashboardLoader(
       return organizationId ? { organizationId } : {};
     },
     authorization: { action: "manage", resource: { type: "billing" } },
+    // Full-screen subscribe gate outside the org layout: keep redirecting on
+    // denial rather than throwing the permission panel.
+    unauthorizedRedirect: "/",
   },
   async ({ params, request }) => {
     const { organizationSlug } = params;
