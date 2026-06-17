@@ -78,18 +78,52 @@ export class PostgresRunStore implements RunStore {
     });
   }
 
-  createCancelledRun(
-    _params: CreateCancelledRunInput,
-    _tx?: PrismaClientOrTransaction
+  async createCancelledRun(
+    params: CreateCancelledRunInput,
+    tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
-    throw new Error("not implemented");
+    const client = tx ?? this.prisma;
+
+    return client.taskRun.create({
+      data: {
+        ...params.data,
+        executionSnapshots: {
+          create: {
+            engine: params.snapshot.engine,
+            executionStatus: params.snapshot.executionStatus,
+            description: params.snapshot.description,
+            runStatus: params.snapshot.runStatus,
+            environmentId: params.snapshot.environmentId,
+            environmentType: params.snapshot.environmentType,
+            projectId: params.snapshot.projectId,
+            organizationId: params.snapshot.organizationId,
+            workerId: params.snapshot.workerId,
+            runnerId: params.snapshot.runnerId,
+          },
+        },
+      },
+    });
   }
 
-  createFailedRun(
-    _params: CreateFailedRunInput,
-    _tx?: PrismaClientOrTransaction
+  async createFailedRun(
+    params: CreateFailedRunInput,
+    tx?: PrismaClientOrTransaction
   ): Promise<TaskRunWithWaitpoint> {
-    throw new Error("not implemented");
+    const client = tx ?? this.prisma;
+
+    return client.taskRun.create({
+      include: {
+        associatedWaitpoint: true,
+      },
+      data: {
+        ...params.data,
+        associatedWaitpoint: params.associatedWaitpoint
+          ? {
+              create: params.associatedWaitpoint,
+            }
+          : undefined,
+      },
+    });
   }
 
   startAttempt<S extends Prisma.TaskRunSelect>(
