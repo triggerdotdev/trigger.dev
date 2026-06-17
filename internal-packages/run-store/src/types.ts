@@ -199,7 +199,7 @@ export type LockRunData = {
   taskVersion: string;
   sdkVersion: string | null;
   cliVersion: string | null;
-  maxDurationInSeconds: number | null;
+  maxDurationInSeconds: number | null | undefined;
   maxAttempts?: number;
   snapshot: LockSnapshotInput;
 };
