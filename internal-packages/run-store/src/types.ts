@@ -71,6 +71,7 @@ export type LockSnapshotInput = {
 
 export type RunAssociatedWaitpointInput = {
   id: string;
+  friendlyId: string;
   type: "RUN";
   status: "PENDING";
   idempotencyKey: string;
