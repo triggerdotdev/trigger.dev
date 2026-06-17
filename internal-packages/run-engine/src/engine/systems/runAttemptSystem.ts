@@ -397,67 +397,67 @@ export class RunAttemptSystem {
           const result = await $transaction(
             prisma,
             async (tx) => {
-              const run = await tx.taskRun.update({
-                where: {
-                  id: taskRun.id,
-                },
-                data: {
-                  status: "EXECUTING",
+              const run = await this.$.runStore.startAttempt(
+                taskRun.id,
+                {
                   attemptNumber: nextAttemptNumber,
                   executedAt: taskRun.attemptNumber === null ? new Date() : undefined,
                   isWarmStart: isWarmStart ?? false,
                 },
-                select: {
-                  id: true,
-                  createdAt: true,
-                  updatedAt: true,
-                  executedAt: true,
-                  baseCostInCents: true,
-                  projectId: true,
-                  organizationId: true,
-                  friendlyId: true,
-                  lockedById: true,
-                  lockedQueueId: true,
-                  queue: true,
-                  attemptNumber: true,
-                  status: true,
-                  ttl: true,
-                  metadata: true,
-                  metadataType: true,
-                  machinePreset: true,
-                  payload: true,
-                  payloadType: true,
-                  runTags: true,
-                  isTest: true,
-                  replayedFromTaskRunFriendlyId: true,
-                  idempotencyKey: true,
-                  idempotencyKeyOptions: true,
-                  startedAt: true,
-                  maxAttempts: true,
-                  taskVersion: true,
-                  maxDurationInSeconds: true,
-                  usageDurationMs: true,
-                  costInCents: true,
-                  traceContext: true,
-                  priorityMs: true,
-                  batchId: true,
-                  realtimeStreamsVersion: true,
-                  runtimeEnvironment: {
-                    select: {
-                      id: true,
-                      slug: true,
-                      type: true,
-                      branchName: true,
-                      git: true,
-                      organizationId: true,
+                {
+                  select: {
+                    id: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    executedAt: true,
+                    baseCostInCents: true,
+                    projectId: true,
+                    organizationId: true,
+                    friendlyId: true,
+                    lockedById: true,
+                    lockedQueueId: true,
+                    queue: true,
+                    attemptNumber: true,
+                    status: true,
+                    ttl: true,
+                    metadata: true,
+                    metadataType: true,
+                    machinePreset: true,
+                    payload: true,
+                    payloadType: true,
+                    runTags: true,
+                    isTest: true,
+                    replayedFromTaskRunFriendlyId: true,
+                    idempotencyKey: true,
+                    idempotencyKeyOptions: true,
+                    startedAt: true,
+                    maxAttempts: true,
+                    taskVersion: true,
+                    maxDurationInSeconds: true,
+                    usageDurationMs: true,
+                    costInCents: true,
+                    traceContext: true,
+                    priorityMs: true,
+                    batchId: true,
+                    realtimeStreamsVersion: true,
+                    runtimeEnvironment: {
+                      select: {
+                        id: true,
+                        slug: true,
+                        type: true,
+                        branchName: true,
+                        git: true,
+                        organizationId: true,
+                      },
                     },
+                    parentTaskRunId: true,
+                    rootTaskRunId: true,
+                    workerQueue: true,
+                    taskEventStore: true,
                   },
-                  parentTaskRunId: true,
-                  rootTaskRunId: true,
-                  workerQueue: true,
-                  taskEventStore: true,
                 },
-              });
+                tx
+              );
 
               const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(tx, {
                 run,
@@ -740,58 +740,58 @@ export class RunAttemptSystem {
             environmentType: latestSnapshot.environmentType,
           });
 
-          const run = await prisma.taskRun.update({
-            where: { id: runId },
-            data: {
-              status: "COMPLETED_SUCCESSFULLY",
+          const run = await this.$.runStore.completeAttemptSuccess(
+            runId,
+            {
               completedAt,
               output: completion.output,
               outputType: completion.outputType,
               usageDurationMs: updatedUsage.usageDurationMs,
               costInCents: updatedUsage.costInCents,
-              executionSnapshots: {
-                create: {
-                  executionStatus: "FINISHED",
-                  description: "Task completed successfully",
-                  runStatus: "COMPLETED_SUCCESSFULLY",
-                  attemptNumber: latestSnapshot.attemptNumber,
-                  environmentId: latestSnapshot.environmentId,
-                  environmentType: latestSnapshot.environmentType,
-                  projectId: latestSnapshot.projectId,
-                  organizationId: latestSnapshot.organizationId,
-                  workerId,
-                  runnerId,
-                },
+              snapshot: {
+                executionStatus: "FINISHED",
+                description: "Task completed successfully",
+                runStatus: "COMPLETED_SUCCESSFULLY",
+                attemptNumber: latestSnapshot.attemptNumber,
+                environmentId: latestSnapshot.environmentId,
+                environmentType: latestSnapshot.environmentType,
+                projectId: latestSnapshot.projectId,
+                organizationId: latestSnapshot.organizationId,
+                workerId,
+                runnerId,
               },
             },
-            select: {
-              id: true,
-              friendlyId: true,
-              status: true,
-              attemptNumber: true,
-              spanId: true,
-              updatedAt: true,
-              associatedWaitpoint: {
-                select: {
-                  id: true,
+            {
+              select: {
+                id: true,
+                friendlyId: true,
+                status: true,
+                attemptNumber: true,
+                spanId: true,
+                updatedAt: true,
+                associatedWaitpoint: {
+                  select: {
+                    id: true,
+                  },
                 },
-              },
-              project: {
-                select: {
-                  organizationId: true,
+                project: {
+                  select: {
+                    organizationId: true,
+                  },
                 },
+                batchId: true,
+                createdAt: true,
+                completedAt: true,
+                taskEventStore: true,
+                parentTaskRunId: true,
+                usageDurationMs: true,
+                costInCents: true,
+                runtimeEnvironmentId: true,
+                projectId: true,
               },
-              batchId: true,
-              createdAt: true,
-              completedAt: true,
-              taskEventStore: true,
-              parentTaskRunId: true,
-              usageDurationMs: true,
-              costInCents: true,
-              runtimeEnvironmentId: true,
-              projectId: true,
             },
-          });
+            prisma
+          );
           const newSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
           await this.$.runQueue.acknowledgeMessage(run.project.organizationId, runId);
@@ -997,25 +997,26 @@ export class RunAttemptSystem {
                 environmentType: latestSnapshot.environmentType,
               });
 
-              const run = await prisma.taskRun.update({
-                where: {
-                  id: runId,
-                },
-                data: {
+              const run = await this.$.runStore.recordRetryOutcome(
+                runId,
+                {
                   machinePreset: retryResult.machine,
                   usageDurationMs: updatedUsage.usageDurationMs,
                   costInCents: updatedUsage.costInCents,
                 },
-                include: {
-                  runtimeEnvironment: {
-                    include: {
-                      project: true,
-                      organization: true,
-                      orgMember: true,
+                {
+                  include: {
+                    runtimeEnvironment: {
+                      include: {
+                        project: true,
+                        organization: true,
+                        orgMember: true,
+                      },
                     },
                   },
                 },
-              });
+                this.$.prisma
+              );
 
               const nextAttemptNumber =
                 latestSnapshot.attemptNumber === null ? 1 : latestSnapshot.attemptNumber + 1;
@@ -1250,19 +1251,17 @@ export class RunAttemptSystem {
         return { wasRequeued: false, ...result };
       }
 
-      const requeuedRun = await prisma.taskRun.update({
-        where: {
-          id: run.id,
+      const requeuedRun = await this.$.runStore.requeueRun(
+        run.id,
+        {
+          select: {
+            id: true,
+            status: true,
+            attemptNumber: true,
+          },
         },
-        data: {
-          status: "PENDING",
-        },
-        select: {
-          id: true,
-          status: true,
-          attemptNumber: true,
-        },
-      });
+        prisma
+      );
 
       const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
         run: requeuedRun,
@@ -1338,14 +1337,7 @@ export class RunAttemptSystem {
         //already finished, do nothing
         if (latestSnapshot.executionStatus === "FINISHED") {
           if (bulkActionId) {
-            await prisma.taskRun.update({
-              where: { id: runId },
-              data: {
-                bulkActionGroupIds: {
-                  push: bulkActionId,
-                },
-              },
-            });
+            await this.$.runStore.recordBulkActionMembership(runId, bulkActionId, prisma);
           }
           return {
             alreadyFinished: true,
@@ -1398,52 +1390,50 @@ export class RunAttemptSystem {
           });
         }
 
-        const run = await prisma.taskRun.update({
-          where: { id: runId },
-          data: {
-            status: "CANCELED",
+        const run = await this.$.runStore.cancelRun(
+          runId,
+          {
             completedAt: finalizeRun ? completedAt ?? new Date() : completedAt,
             error,
-            bulkActionGroupIds: bulkActionId
-              ? {
-                  push: bulkActionId,
-                }
-              : undefined,
+            ...(bulkActionId && { bulkActionId }),
             ...(usageUpdate && {
               usageDurationMs: usageUpdate.usageDurationMs,
               costInCents: usageUpdate.costInCents,
             }),
           },
-          select: {
-            id: true,
-            friendlyId: true,
-            status: true,
-            attemptNumber: true,
-            spanId: true,
-            batchId: true,
-            createdAt: true,
-            completedAt: true,
-            taskEventStore: true,
-            parentTaskRunId: true,
-            delayUntil: true,
-            updatedAt: true,
-            runtimeEnvironment: {
-              select: {
-                organizationId: true,
+          {
+            select: {
+              id: true,
+              friendlyId: true,
+              status: true,
+              attemptNumber: true,
+              spanId: true,
+              batchId: true,
+              createdAt: true,
+              completedAt: true,
+              taskEventStore: true,
+              parentTaskRunId: true,
+              delayUntil: true,
+              updatedAt: true,
+              runtimeEnvironment: {
+                select: {
+                  organizationId: true,
+                },
               },
-            },
-            associatedWaitpoint: {
-              select: {
-                id: true,
+              associatedWaitpoint: {
+                select: {
+                  id: true,
+                },
               },
-            },
-            childRuns: {
-              select: {
-                id: true,
+              childRuns: {
+                select: {
+                  id: true,
+                },
               },
             },
           },
-        });
+          prisma
+        );
 
         //if the run is delayed and hasn't started yet, we need to prevent it being added to the queue in future
         if (isInitialState(latestSnapshot.executionStatus) && run.delayUntil) {
@@ -1612,51 +1602,52 @@ export class RunAttemptSystem {
       });
 
       //run permanently failed
-      const run = await prisma.taskRun.update({
-        where: {
-          id: runId,
-        },
-        data: {
+      const run = await this.$.runStore.failRunPermanently(
+        runId,
+        {
           status,
           completedAt: failedAt,
           error: truncatedError,
           usageDurationMs: updatedUsage.usageDurationMs,
           costInCents: updatedUsage.costInCents,
         },
-        select: {
-          id: true,
-          friendlyId: true,
-          status: true,
-          attemptNumber: true,
-          spanId: true,
-          batchId: true,
-          parentTaskRunId: true,
-          updatedAt: true,
-          usageDurationMs: true,
-          costInCents: true,
-          associatedWaitpoint: {
-            select: {
-              id: true,
+        {
+          select: {
+            id: true,
+            friendlyId: true,
+            status: true,
+            attemptNumber: true,
+            spanId: true,
+            batchId: true,
+            parentTaskRunId: true,
+            updatedAt: true,
+            usageDurationMs: true,
+            costInCents: true,
+            associatedWaitpoint: {
+              select: {
+                id: true,
+              },
             },
-          },
-          runtimeEnvironment: {
-            select: {
-              id: true,
-              type: true,
-              organizationId: true,
-              project: {
-                select: {
-                  id: true,
-                  organizationId: true,
+            runtimeEnvironment: {
+              select: {
+                id: true,
+                type: true,
+                organizationId: true,
+                project: {
+                  select: {
+                    id: true,
+                    organizationId: true,
+                  },
                 },
               },
             },
+            taskEventStore: true,
+            createdAt: true,
+            completedAt: true,
           },
-          taskEventStore: true,
-          createdAt: true,
-          completedAt: true,
         },
-      });
+        this.$.prisma
+      );
 
       const newSnapshot = await this.executionSnapshotSystem.createExecutionSnapshot(prisma, {
         run,
