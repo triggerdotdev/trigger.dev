@@ -408,10 +408,10 @@ export class BatchTriggerV3Service extends BaseService {
 
     // Expire the cached runs that are no longer valid
     if (expiredRunIds.size) {
-      await this._prisma.taskRun.updateMany({
-        where: { friendlyId: { in: Array.from(expiredRunIds) } },
-        data: { idempotencyKey: null },
-      });
+      await this.runStore.clearIdempotencyKey(
+        { byFriendlyIds: Array.from(expiredRunIds) },
+        this._prisma
+      );
     }
 
     return runs;
