@@ -82,6 +82,8 @@ describe("RunsReplicationService (part 1/7)", () => {
           traceId: "1234",
           spanId: "1234",
           queue: "test",
+          workerQueue: "us-east-1-next",
+          region: "us-east-1",
           runtimeEnvironmentId: runtimeEnvironment.id,
           projectId: project.id,
           organizationId: organization.id,
@@ -121,6 +123,9 @@ describe("RunsReplicationService (part 1/7)", () => {
           trigger_source: "api",
           root_trigger_source: "dashboard",
           is_warm_start: 1,
+          // worker_queue stays the raw backing (operators); region is the geo (customers)
+          worker_queue: "us-east-1-next",
+          region: "us-east-1",
         })
       );
 

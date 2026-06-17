@@ -204,6 +204,7 @@ export class ClickHouseRunsRepository implements IRunsRepository {
         machinePreset: true,
         queue: true,
         workerQueue: true,
+        region: true,
         annotations: true,
       },
     });
@@ -377,7 +378,9 @@ function applyRunFiltersToQueryBuilder<T>(
   }
 
   if (options.regions && options.regions.length > 0) {
-    queryBuilder.where("worker_queue IN {regions: Array(String)}", { regions: options.regions });
+    queryBuilder.where("if(region != '', region, worker_queue) IN {regions: Array(String)}", {
+      regions: options.regions,
+    });
   }
 
   if (options.machines && options.machines.length > 0) {

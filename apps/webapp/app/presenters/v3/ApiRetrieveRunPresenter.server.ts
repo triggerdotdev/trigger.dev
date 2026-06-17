@@ -15,7 +15,7 @@ import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/databa
 import assertNever from "assert-never";
 import { API_VERSIONS, CURRENT_API_VERSION, RunStatusUnspecifiedApiVersion } from "~/api/versions";
 import { $replica, prisma } from "~/db.server";
-import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
+import { regionForDisplay } from "~/runEngine/concerns/workerQueueSplit.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import {
   findRunByIdWithMollifierFallback,
@@ -49,6 +49,7 @@ const commonRunSelect = {
   depth: true,
   scheduleId: true,
   workerQueue: true,
+  region: true,
   lockedToVersion: {
     select: {
       version: true,
@@ -520,7 +521,7 @@ async function createCommonRunStructure(run: CommonRelatedRun, apiVersion: API_V
     triggerFunction: resolveTriggerFunction(run),
     batchId: run.batch?.friendlyId,
     metadata,
-    region: run.workerQueue ? baseWorkerQueue(run.workerQueue) : undefined,
+    region: regionForDisplay(run.region, run.workerQueue),
   };
 }
 
@@ -684,6 +685,7 @@ export function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
     // API response's `region` to undefined instead of advertising a
     // misleading "main" region for a not-yet-assigned buffered run).
     workerQueue: buffered.workerQueue ?? "",
+    region: buffered.region ?? "",
     parentTaskRun: null,
     rootTaskRun: null,
     childRuns: [],
