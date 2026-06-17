@@ -1,6 +1,6 @@
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
 import { TaskRunError } from "@trigger.dev/core/v3/schemas";
-import { Prisma, PrismaClientOrTransaction, TaskRunStatus } from "@trigger.dev/database";
+import { PrismaClientOrTransaction, TaskRunStatus } from "@trigger.dev/database";
 import { isExecuting } from "../statuses.js";
 import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
 import { SystemResources } from "./systems.js";
@@ -61,51 +61,51 @@ export class TtlSystem {
         raw: `Run expired because the TTL (${run.ttl}) was reached`,
       };
 
-      const updatedRun = await prisma.taskRun.update({
-        where: { id: runId },
-        data: {
-          status: "EXPIRED",
+      const updatedRun = await this.$.runStore.expireRun(
+        runId,
+        {
+          error,
           completedAt: new Date(),
           expiredAt: new Date(),
-          error,
-          executionSnapshots: {
-            create: {
-              engine: "V2",
-              executionStatus: "FINISHED",
-              description: "Run was expired because the TTL was reached",
-              runStatus: "EXPIRED",
-              environmentId: snapshot.environmentId,
-              environmentType: snapshot.environmentType,
-              projectId: snapshot.projectId,
-              organizationId: snapshot.organizationId,
-            },
+          snapshot: {
+            engine: "V2",
+            executionStatus: "FINISHED",
+            description: "Run was expired because the TTL was reached",
+            runStatus: "EXPIRED",
+            environmentId: snapshot.environmentId,
+            environmentType: snapshot.environmentType,
+            projectId: snapshot.projectId,
+            organizationId: snapshot.organizationId,
           },
         },
-        select: {
-          id: true,
-          spanId: true,
-          ttl: true,
-          updatedAt: true,
-          associatedWaitpoint: {
-            select: {
-              id: true,
+        {
+          select: {
+            id: true,
+            spanId: true,
+            ttl: true,
+            updatedAt: true,
+            associatedWaitpoint: {
+              select: {
+                id: true,
+              },
             },
-          },
-          runtimeEnvironment: {
-            select: {
-              organizationId: true,
-              projectId: true,
-              id: true,
+            runtimeEnvironment: {
+              select: {
+                organizationId: true,
+                projectId: true,
+                id: true,
+              },
             },
+            createdAt: true,
+            completedAt: true,
+            taskEventStore: true,
+            parentTaskRunId: true,
+            expiredAt: true,
+            status: true,
           },
-          createdAt: true,
-          completedAt: true,
-          taskEventStore: true,
-          parentTaskRunId: true,
-          expiredAt: true,
-          status: true,
         },
-      });
+        prisma
+      );
 
       await this.$.runQueue.acknowledgeMessage(
         updatedRun.runtimeEnvironment.organizationId,
@@ -228,15 +228,7 @@ export class TtlSystem {
           raw: "Run expired because the TTL was reached",
         };
 
-        await this.$.prisma.$executeRaw`
-          UPDATE "TaskRun"
-          SET "status" = 'EXPIRED'::"TaskRunStatus",
-              "completedAt" = ${now},
-              "expiredAt" = ${now},
-              "updatedAt" = ${now},
-              "error" = ${JSON.stringify(error)}::jsonb
-          WHERE "id" IN (${Prisma.join(runIdsToExpire)})
-        `;
+        await this.$.runStore.expireRunsBatch(runIdsToExpire, { error, now }, this.$.prisma);
 
         // Process each run: enqueue waitpoint completion jobs and emit events
         await pMap(
