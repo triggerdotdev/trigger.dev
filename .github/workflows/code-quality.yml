@@ -60,7 +60,7 @@ jobs:
           FILES: ${{ steps.changes.outputs.files }}
         # Unquoted $FILES intentionally word-splits the newline-separated list
         # into separate path args. Safe given the has_files guard above.
-        run: pnpm exec oxfmt --check $FILES
+        run: "pnpm exec oxfmt --check $FILES"
 
       # TODO update this so lint failures fail CI
       # Informational only — lint findings are surfaced in the logs but never
@@ -70,4 +70,4 @@ jobs:
         continue-on-error: true
         env:
           FILES: ${{ steps.changes.outputs.files }}
-        run: pnpm exec oxlint $FILES
+        run: "pnpm exec oxlint $FILES"
