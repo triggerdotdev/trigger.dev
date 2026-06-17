@@ -21,5 +21,7 @@
     "**/storybook-static/",
     "**/.changeset/",
     "**/dist/",
+    "**/*.yaml",
+    "internal-packages/tsql/src/grammar/"
   ]
 }
