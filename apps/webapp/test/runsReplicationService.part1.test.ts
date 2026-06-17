@@ -84,6 +84,7 @@ describe("RunsReplicationService (part 1/7)", () => {
           queue: "test",
           workerQueue: "us-east-1-next",
           region: "us-east-1",
+          planType: "free",
           runtimeEnvironmentId: runtimeEnvironment.id,
           projectId: project.id,
           organizationId: organization.id,
@@ -126,6 +127,7 @@ describe("RunsReplicationService (part 1/7)", () => {
           // worker_queue stays the raw backing (operators); region is the geo (customers)
           worker_queue: "us-east-1-next",
           region: "us-east-1",
+          plan_type: "free",
         })
       );
 
