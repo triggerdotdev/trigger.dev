@@ -42,6 +42,7 @@ export function configureUpdateCommand(program: Command) {
 }
 
 const triggerPackageFilter = /^@trigger\.dev/;
+const packageManagerProtocolFilter = /^(catalog|workspace|file|link|portal|patch):/;
 
 export async function updateCommand(dir: string, options: UpdateCommandOptions) {
   await updateTriggerPackages(dir, options, false);
@@ -110,45 +111,6 @@ export async function updateTriggerPackages(
   const triggerDependencies = await getTriggerDependencies(packageJson, packageJsonPath);
 
   logger.debug("Resolved trigger deps", { triggerDependencies });
-
-  function getVersionMismatches(
-    deps: Dependency[],
-    targetVersion: string
-  ): {
-    mismatches: Dependency[];
-    isDowngrade: boolean;
-  } {
-    logger.debug("Checking for version mismatches", { deps, targetVersion });
-
-    const mismatches: Dependency[] = [];
-
-    for (const dep of deps) {
-      if (
-        dep.version === targetVersion ||
-        dep.version.startsWith("https://pkg.pr.new") ||
-        dep.version.startsWith("0.0.0")
-      ) {
-        continue;
-      }
-
-      mismatches.push(dep);
-    }
-
-    const isDowngrade = mismatches.some((dep) => {
-      const depMinVersion = semver.minVersion(dep.version);
-
-      if (!depMinVersion) {
-        return false;
-      }
-
-      return semver.gt(depMinVersion, targetVersion);
-    });
-
-    return {
-      mismatches,
-      isDowngrade,
-    };
-  }
 
   const { mismatches, isDowngrade } = getVersionMismatches(triggerDependencies, cliVersion);
 
@@ -309,13 +271,59 @@ export async function updateTriggerPackages(
   return hasOutput;
 }
 
-type Dependency = {
+export type Dependency = {
   type: "dependencies" | "devDependencies";
   name: string;
   version: string;
 };
 
-async function getTriggerDependencies(
+export function getVersionMismatches(
+  deps: Dependency[],
+  targetVersion: string
+): {
+  mismatches: Dependency[];
+  isDowngrade: boolean;
+} {
+  logger.debug("Checking for version mismatches", { deps, targetVersion });
+
+  const mismatches: Dependency[] = [];
+
+  for (const dep of deps) {
+    if (
+      dep.version === targetVersion ||
+      dep.version.startsWith("https://pkg.pr.new") ||
+      dep.version.startsWith("0.0.0")
+    ) {
+      continue;
+    }
+
+    mismatches.push(dep);
+  }
+
+  const isDowngrade = mismatches.some((dep) => {
+    if (!semver.validRange(dep.version)) {
+      logger.debug("Skipping downgrade check for non-semver dependency specifier", {
+        dep,
+      });
+      return false;
+    }
+
+    const depMinVersion = semver.minVersion(dep.version);
+
+    if (!depMinVersion) {
+      return false;
+    }
+
+    return semver.gt(depMinVersion, targetVersion);
+  });
+
+  return {
+    mismatches,
+    isDowngrade,
+  };
+}
+
+export async function getTriggerDependencies(
   packageJson: PackageJson,
   packageJsonPath: string
 ): Promise<Dependency[]> {
@@ -324,10 +332,6 @@ async function getTriggerDependencies(
   for (const type of ["dependencies", "devDependencies"] as const) {
     for (const [name, version] of Object.entries(packageJson[type] ?? {})) {
       if (!version) {
-        continue;
-      }
-
-      if (version.startsWith("workspace")) {
         continue;
       }
 
@@ -343,7 +347,21 @@ async function getTriggerDependencies(
 
       const $version = await tryResolveTriggerPackageVersion(name, dirname(packageJsonPath));
 
-      deps.push({ type, name, version: $version ?? version });
+      if ($version) {
+        deps.push({ type, name, version: $version });
+        continue;
+      }
+
+      if (packageManagerProtocolFilter.test(version)) {
+        logger.debug("Skipping unresolved package-manager dependency specifier", {
+          type,
+          name,
+          version,
+        });
+        continue;
+      }
+
+      deps.push({ type, name, version });
     }
   }
 
