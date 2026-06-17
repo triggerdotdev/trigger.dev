@@ -85,6 +85,7 @@ export function validatePartialFeatureFlags(values: Record<string, unknown>) {
 export type FlagControlType =
   | { type: "boolean" }
   | { type: "enum"; options: string[] }
+  | { type: "number"; min?: number; max?: number }
   | { type: "string" };
 
 export function getFlagControlType(schema: z.ZodTypeAny): FlagControlType {
@@ -96,6 +97,15 @@ export function getFlagControlType(schema: z.ZodTypeAny): FlagControlType {
 
   if (typeName === "ZodEnum") {
     return { type: "enum", options: schema._def.values as string[] };
+  }
+
+  // z.coerce.number() reports as ZodNumber; pull min/max out of its checks
+  // so the UI can render a constrained number input instead of free text.
+  if (typeName === "ZodNumber") {
+    const checks = (schema._def.checks ?? []) as Array<{ kind: string; value?: number }>;
+    const min = checks.find((c) => c.kind === "min")?.value;
+    const max = checks.find((c) => c.kind === "max")?.value;
+    return { type: "number", min, max };
   }
 
   return { type: "string" };
