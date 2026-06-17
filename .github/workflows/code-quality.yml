@@ -31,43 +31,8 @@ jobs:
       - name: 📥 Download deps
         run: pnpm install --frozen-lockfile
 
-      # Gate only on files this PR adds/modifies (ratchet) — the repo is not
-      # fully formatted/linted yet, so a whole-repo check would fail every PR.
-      - name: 🔍 Determine changed files
-        id: changes
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          FILES=$(git diff --name-only --diff-filter=ACMR "$BASE_SHA"...HEAD -- \
-            '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs')
-          echo "Changed code files:"
-          echo "${FILES:-<none>}"
-          {
-            echo "files<<EOF"
-            echo "$FILES"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-          if [ -z "$FILES" ]; then
-            echo "has_files=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_files=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      # TODO enable format check for ALL code
       - name: 💅 Check formatting
-        if: steps.changes.outputs.has_files == 'true'
-        env:
-          FILES: ${{ steps.changes.outputs.files }}
-        # Unquoted $FILES intentionally word-splits the newline-separated list
-        # into separate path args. Safe given the has_files guard above.
-        run: "pnpm exec oxfmt --check $FILES"
+        run: pnpm exec oxfmt --check .
 
-      # TODO update this so lint failures fail CI
-      # Informational only — lint findings are surfaced in the logs but never
-      # fail the job. Only the formatting check above blocks the PR.
-      - name: 🔎 Lint (informational, non-blocking)
-        if: steps.changes.outputs.has_files == 'true'
-        continue-on-error: true
-        env:
-          FILES: ${{ steps.changes.outputs.files }}
-        run: "pnpm exec oxlint $FILES"
+      - name: 🔎 Lint
+        run: pnpm exec oxlint .
