@@ -262,8 +262,8 @@ export default function Page() {
             <div className={cn("grid h-full grid-rows-1")}>
               {hasItems ? (
                 <div className="flex min-w-0 max-w-full flex-col">
-                  <div className="max-h-full overflow-hidden">
-                    <div className="flex items-center justify-between gap-1.5 p-2">
+                  <div className="flex h-full flex-col overflow-hidden">
+                    <div className="flex shrink-0 items-center justify-between gap-1.5 p-2">
                       <div className="flex flex-1 items-center gap-1.5">
                         <SearchInput placeholder="Search tasks…" autoFocus resetParams={["page"]} />
                         <TaskTypeFilter />
@@ -287,7 +287,7 @@ export default function Page() {
                         />
                       </div>
                     </div>
-                    <Table containerClassName="max-h-full">
+                    <Table containerClassName="min-h-0 flex-1">
                       <TableHeader>
                         <TableRow>
                           <TableHeaderCell>ID</TableHeaderCell>
