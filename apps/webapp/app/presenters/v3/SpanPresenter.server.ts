@@ -35,6 +35,7 @@ import {
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import { buildSyntheticSpanRun } from "~/v3/mollifier/syntheticSpanRun.server";
+import { runStore } from "~/v3/runStore.server";
 
 export type PromptSpanData = {
   slug: string;
@@ -132,20 +133,23 @@ export class SpanPresenter extends BasePresenter {
       throw new Error("Project not found");
     }
 
-    const parentRun = await this._prisma.taskRun.findFirst({
-      select: {
-        traceId: true,
-        runtimeEnvironmentId: true,
-        projectId: true,
-        taskEventStore: true,
-        createdAt: true,
-        completedAt: true,
-      },
-      where: {
+    const parentRun = await runStore.findRun(
+      {
         friendlyId: runFriendlyId,
         projectId: project.id,
       },
-    });
+      {
+        select: {
+          traceId: true,
+          runtimeEnvironmentId: true,
+          projectId: true,
+          taskEventStore: true,
+          createdAt: true,
+          completedAt: true,
+        },
+      },
+      this._prisma
+    );
 
     if (!parentRun) {
       // PG miss → fall back to the mollifier buffer. Without this the
@@ -494,7 +498,17 @@ export class SpanPresenter extends BasePresenter {
     spanId: string;
     environmentId: string;
   }) {
-    const run = await this._replica.taskRun.findFirst({
+    const run = await runStore.findRun(
+      originalRunId
+        ? {
+            friendlyId: originalRunId,
+            runtimeEnvironmentId: environmentId,
+          }
+        : {
+            spanId,
+            runtimeEnvironmentId: environmentId,
+          },
+      {
       select: {
         id: true,
         spanId: true,
@@ -608,16 +622,9 @@ export class SpanPresenter extends BasePresenter {
           },
         },
       },
-      where: originalRunId
-        ? {
-            friendlyId: originalRunId,
-            runtimeEnvironmentId: environmentId,
-          }
-        : {
-            spanId,
-            runtimeEnvironmentId: environmentId,
-          },
-    });
+      },
+      this._replica
+    );
 
     return run;
   }
@@ -655,18 +662,21 @@ export class SpanPresenter extends BasePresenter {
       return;
     }
 
-    const triggeredRuns = await this._replica.taskRun.findMany({
-      select: {
-        friendlyId: true,
-        taskIdentifier: true,
-        spanId: true,
-        createdAt: true,
-        status: true,
+    const triggeredRuns = await runStore.findRuns(
+      {
+        where: {
+          parentSpanId: spanId,
+        },
+        select: {
+          friendlyId: true,
+          taskIdentifier: true,
+          spanId: true,
+          createdAt: true,
+          status: true,
+        },
       },
-      where: {
-        parentSpanId: spanId,
-      },
-    });
+      this._replica
+    );
 
     const data = {
       spanId: span.spanId,

@@ -13,6 +13,7 @@ import { getTaskIdentifiers } from "~/models/task.server";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { regionForDisplay } from "~/runEngine/concerns/workerQueueSplit.server";
 import { machinePresetFromRun } from "~/v3/machinePresets.server";
+import { runStore } from "~/v3/runStore.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
 
@@ -206,11 +207,12 @@ export class NextRunListPresenter {
     let hasAnyRuns = runs.length > 0;
 
     if (!hasAnyRuns) {
-      const firstRun = await this.replica.taskRun.findFirst({
-        where: {
+      const firstRun = await runStore.findRun(
+        {
           runtimeEnvironmentId: environmentId,
         },
-      });
+        this.replica
+      );
 
       if (firstRun) {
         hasAnyRuns = true;

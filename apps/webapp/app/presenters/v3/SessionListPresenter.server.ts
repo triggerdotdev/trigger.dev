@@ -10,6 +10,7 @@ import {
 } from "~/services/sessionsRepository/sessionsRepository.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
+import { runStore } from "~/v3/runStore.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 
 export type SessionListOptions = {
@@ -189,14 +190,17 @@ export class SessionListPresenter {
         // pointer could surface another tenant's run. The list query above
         // is already env-scoped; the run lookup needs the same fence.
         return currentRunIds.length > 0
-          ? this.replica.taskRun.findMany({
-              where: {
-                id: { in: currentRunIds },
-                projectId,
-                runtimeEnvironmentId: environmentId,
+          ? runStore.findRuns(
+              {
+                where: {
+                  id: { in: currentRunIds },
+                  projectId,
+                  runtimeEnvironmentId: environmentId,
+                },
+                select: { id: true, friendlyId: true },
               },
-              select: { id: true, friendlyId: true },
-            })
+              this.replica
+            )
           : [];
       }
     );
