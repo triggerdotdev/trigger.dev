@@ -114,6 +114,8 @@ export type EnvironmentVariablesPageLoaderData = {
   vercelIntegration: PageVercelIntegration | null;
   // Environment ids whose env vars the current role can read.
   accessibleEnvironmentIds: string[];
+  // Environment ids whose env vars the current role can write (create/edit/delete).
+  writableEnvironmentIds: string[];
 };
 
 export const environmentVariablesRouteId =

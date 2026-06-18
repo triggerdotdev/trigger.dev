@@ -130,8 +130,16 @@ export const action = dashboardAction(
       return organizationId ? { organizationId } : {};
     },
   },
-  async ({ request, params, user, ability }) => {
+  async ({ request, params, user, ability, context }) => {
     const { organizationSlug, projectParam, envParam, promptSlug } = params;
+
+    // This action checks permissions per intent inline (below) rather than via
+    // a top-level authorization block, so the builder's fail-closed scope guard
+    // doesn't run. Enforce it here: without a resolved org the inline
+    // ability.can checks would evaluate an unscoped ability.
+    if (!context.organizationId) {
+      return json({ error: "Unauthorized" }, { status: 403 });
+    }
 
     const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
     if (!project) return json({ error: "Project not found" }, { status: 404 });
