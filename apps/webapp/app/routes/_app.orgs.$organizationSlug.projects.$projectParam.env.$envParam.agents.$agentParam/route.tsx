@@ -293,7 +293,7 @@ export default function Page() {
                         )}
                       </ChartCard>
 
-                      <ChartCard title="LLM spend">
+                      <ChartCard title="LLM spend ($)">
                         <Suspense fallback={<ActivityChartSkeleton />}>
                           <TypedAwait
                             resolve={llmCostActivity}
