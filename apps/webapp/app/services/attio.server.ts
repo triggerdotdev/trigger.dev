@@ -119,7 +119,7 @@ export async function enqueueAttioUserSync(payload: AttioUserSync) {
 
 export async function runAttioWorkspaceSync(payload: AttioWorkspaceSync) {
   if (!attioClient) return;
-  const admin = await prisma.user.findUnique({
+  const admin = await prisma.user.findFirst({
     where: { id: payload.adminUserId },
     select: { email: true },
   });
