@@ -47,7 +47,11 @@ class AttioClient {
       throw new Error(`Attio assert ${object} failed with status ${response.status}`);
     }
 
-    return ((await response.json()) as any).data?.id?.record_id as string;
+    const recordId = ((await response.json()) as any).data?.id?.record_id;
+    if (typeof recordId !== "string") {
+      throw new Error(`Attio assert ${object}: response missing data.id.record_id`);
+    }
+    return recordId;
   }
 
   async upsertWorkspace(payload: AttioWorkspaceSync, emailDomain?: string) {
