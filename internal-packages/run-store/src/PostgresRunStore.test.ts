@@ -671,6 +671,53 @@ describe("PostgresRunStore", () => {
   );
 
   postgresTest(
+    "expireRunsBatch returns 0 and writes nothing when runIds is empty",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const runId = "run_expire_batch_empty";
+      await prisma.taskRun.create({
+        data: {
+          id: runId,
+          engine: "V2",
+          status: "PENDING",
+          friendlyId: "run_expire_batch_empty_friendly",
+          runtimeEnvironmentId: environment.id,
+          environmentType: "DEVELOPMENT",
+          organizationId: organization.id,
+          projectId: project.id,
+          taskIdentifier: "my-task",
+          payload: "{}",
+          payloadType: "application/json",
+          traceContext: {},
+          traceId: "trace_empty",
+          spanId: "span_empty",
+          queue: "task/my-task",
+          isTest: false,
+          taskEventStore: "taskEvent",
+          depth: 0,
+        },
+      });
+
+      const error = { type: "STRING_ERROR" as const, raw: "unused" };
+
+      // Must not throw (Prisma.join([]) would build an invalid `IN ()` clause).
+      const count = await store.expireRunsBatch([], { error, now: new Date() });
+
+      expect(count).toBe(0);
+
+      const row = await prisma.taskRun.findUniqueOrThrow({
+        where: { id: runId },
+        select: { status: true, expiredAt: true },
+      });
+      expect(row.status).toBe("PENDING");
+      expect(row.expiredAt).toBeNull();
+    }
+  );
+
+  postgresTest(
     "lockRunToWorker sets status to DEQUEUED with lock columns, includes runtimeEnvironment, and creates one PENDING_EXECUTING snapshot",
     async ({ prisma }) => {
       const { organization, project, environment } = await seedEnvironment(prisma);

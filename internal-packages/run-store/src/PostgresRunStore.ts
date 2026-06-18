@@ -335,6 +335,12 @@ export class PostgresRunStore implements RunStore {
   ): Promise<number> {
     const prisma = tx ?? this.prisma;
 
+    // Nothing to do for an empty set, and Prisma.join would build an invalid
+    // `IN ()` clause, so short-circuit before touching the database.
+    if (runIds.length === 0) {
+      return 0;
+    }
+
     return prisma.$executeRaw`
       UPDATE "TaskRun"
       SET "status" = 'EXPIRED'::"TaskRunStatus",
