@@ -14,6 +14,35 @@ export type EnsureOrgMemberParams = {
 
 export type EnsureOrgMemberResult = { created: boolean; orgMemberId: string };
 
+// Completes a JIT role assignment for an ALREADY-existing membership whose
+// RBAC role never got applied. This is a no-op when a role is already
+// assigned, so it can never demote a deliberately-set role — it only fills
+// in the gap left by an interrupted provision (see `ensureOrgMember`). Always
+// best-effort: a valid membership already exists, so a failure here is logged
+// and swallowed rather than thrown.
+async function healMissingRoleAssignment(params: {
+  userId: string;
+  organizationId: string;
+  roleId: string;
+  source: EnsureOrgMemberParams["source"];
+}): Promise<void> {
+  const { userId, organizationId, roleId, source } = params;
+
+  const currentRole = await rbac.getUserRole({ userId, organizationId });
+  if (currentRole !== null) return;
+
+  const result = await rbac.setUserRole({ userId, organizationId, roleId });
+  if (!result.ok) {
+    logger.warn("ensureOrgMember.setUserRole failed while healing unassigned membership", {
+      source,
+      userId,
+      organizationId,
+      roleId,
+      error: result.error,
+    });
+  }
+}
+
 // Idempotent OrgMember upsert. If the (userId, organizationId) row
 // already exists this is a no-op (returns `{ created: false }`); we do
 // NOT touch the existing role to avoid demoting a user that JIT happens
@@ -33,6 +62,22 @@ export async function ensureOrgMember(
     select: { id: true },
   });
   if (existing) {
+    // Existing membership is normally a pure no-op: we don't re-touch the
+    // role, since a user JIT fires for again may have been deliberately
+    // promoted and must not be demoted back to the JIT default.
+    //
+    // The one exception is self-healing a half-provisioned row. The create +
+    // setUserRole + compensating delete below are not transactional (the RBAC
+    // plugin writes on its own connection, so a single DB transaction isn't
+    // possible). If setUserRole failed AND that compensating delete also
+    // failed, the placeholder MEMBER row is orphaned — and this findFirst
+    // would short-circuit every future login, stranding the user on the
+    // placeholder role forever. So when a JIT role is requested but the RBAC
+    // layer shows no role assigned, complete the assignment now. It's gated on
+    // "no role assigned", so it can never demote a real one.
+    if (roleId !== null) {
+      await healMissingRoleAssignment({ userId, organizationId, roleId, source });
+    }
     return { created: false, orgMemberId: existing.id };
   }
 
