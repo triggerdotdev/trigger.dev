@@ -37,7 +37,7 @@ configure({
 });
 
 async function main() {
-  const runs = await runs.list({
+  const completedRuns = await runs.list({
     limit: 10,
     status: ["COMPLETED"],
   });
