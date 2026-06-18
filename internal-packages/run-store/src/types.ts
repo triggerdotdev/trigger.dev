@@ -109,6 +109,7 @@ export type CreateRunData = {
   queue: string;
   lockedQueueId?: string;
   workerQueue?: string;
+  region?: string | null;
   isTest: boolean;
   delayUntil?: Date;
   queuedAt?: Date;

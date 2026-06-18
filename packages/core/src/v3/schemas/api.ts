@@ -1993,6 +1993,8 @@ export const RetrieveSpanDetailResponseBody = z.object({
       inputCost: z.number().optional(),
       outputCost: z.number().optional(),
       totalCost: z.number().optional(),
+      cachedCost: z.number().optional(),
+      cacheCreationCost: z.number().optional(),
       tokensPerSecond: z.number().optional(),
       msToFirstChunk: z.number().optional(),
       durationMs: z.number(),

@@ -83,6 +83,8 @@ describe("Task Runs V2", () => {
       "concurrency_key_1234", // concurrency_key
       ["bulk_action_group_id_1234", "bulk_action_group_id_1235"], // bulk_action_group_ids
       "", // worker_queue
+      "", // region
+      "", // plan_type
       null, // max_duration_in_seconds
       "", // trigger_source
       "", // root_trigger_source
@@ -215,6 +217,8 @@ describe("Task Runs V2", () => {
       "", // concurrency_key
       [], // bulk_action_group_ids
       "", // worker_queue
+      "", // region
+      "", // plan_type
       null, // max_duration_in_seconds
       "", // trigger_source
       "", // root_trigger_source
@@ -270,6 +274,8 @@ describe("Task Runs V2", () => {
       "", // concurrency_key
       [], // bulk_action_group_ids
       "", // worker_queue
+      "", // region
+      "", // plan_type
       null, // max_duration_in_seconds
       "", // trigger_source
       "", // root_trigger_source
@@ -372,6 +378,8 @@ describe("Task Runs V2", () => {
         "", // concurrency_key
         [], // bulk_action_group_ids
         "", // worker_queue
+        "", // region
+        "", // plan_type
         null, // max_duration_in_seconds
         "", // trigger_source
         "", // root_trigger_source
@@ -482,6 +490,8 @@ describe("Task Runs V2", () => {
         "", // concurrency_key
         [], // bulk_action_group_ids
         "", // worker_queue
+        "", // region
+        "", // plan_type
         null, // max_duration_in_seconds
         "", // trigger_source
         "", // root_trigger_source
@@ -536,7 +546,9 @@ describe("Task Runs V2", () => {
         0,
         "",
         [],
-        "",
+        "", // worker_queue
+        "", // region
+        "", // plan_type
         null,
         "",
         "",
@@ -597,7 +609,9 @@ describe("Task Runs V2", () => {
         0,
         "",
         [],
-        "",
+        "", // worker_queue
+        "", // region
+        "", // plan_type
         null,
         "",
         "",
@@ -652,7 +666,9 @@ describe("Task Runs V2", () => {
         0,
         "",
         [],
-        "",
+        "", // worker_queue
+        "", // region
+        "", // plan_type
         null,
         "",
         "",

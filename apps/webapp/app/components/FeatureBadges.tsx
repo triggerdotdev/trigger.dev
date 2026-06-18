@@ -56,17 +56,11 @@ export function BetaTitle({ children }: { children: React.ReactNode }) {
 
 export function NewBadge({ inline = false, className }: { inline?: boolean; className?: string }) {
   return (
-    <SimpleTooltip
-      button={
-        <Badge
-          variant="extra-small"
-          className={cn("text-success", inline ? "inline-grid" : "", className)}
-        >
-          New
-        </Badge>
-      }
-      content="This feature is new"
-      disableHoverableContent
-    />
+    <Badge
+      variant="extra-small"
+      className={cn("text-success", inline ? "inline-grid" : "", className)}
+    >
+      New
+    </Badge>
   );
 }

@@ -104,6 +104,8 @@ export type AISpanData = {
   inputCost?: number;
   outputCost?: number;
   totalCost?: number;
+  cachedCost?: number;
+  cacheCreationCost?: number;
 
   // Response text (final assistant output)
   responseText?: string;

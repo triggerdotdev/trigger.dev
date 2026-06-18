@@ -110,6 +110,8 @@ export function extractAISpanData(
     inputCost: num(triggerLlm.input_cost),
     outputCost: num(triggerLlm.output_cost),
     totalCost: num(triggerLlm.total_cost),
+    cachedCost: num(triggerLlm.cached_cost),
+    cacheCreationCost: num(triggerLlm.cache_creation_cost),
     responseText: isV7
       ? extractGenAiAssistantText(gOutput.messages) || undefined
       : str(aiResponse.text) || undefined,

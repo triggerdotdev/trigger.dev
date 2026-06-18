@@ -15,7 +15,7 @@ export default function Page() {
   const searchSuffix = search ? `?search=${encodeURIComponent(search)}` : "";
 
   return (
-    <div className="h-full w-full">
+    <div className="flex h-full w-full flex-col">
       <div className="flex items-center justify-between p-4">
         <Tabs
           tabs={[
@@ -59,7 +59,11 @@ export default function Page() {
           Back to me
         </LinkButton>
       </div>
-      <Outlet />
+      {/* min-h-0 lets the page's own scroll container bound itself to the
+          space below the tabs instead of overflowing past the viewport. */}
+      <div className="min-h-0 flex-1">
+        <Outlet />
+      </div>
     </div>
   );
 }

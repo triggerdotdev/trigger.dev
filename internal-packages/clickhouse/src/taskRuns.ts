@@ -48,6 +48,8 @@ export const TaskRunV2 = z.object({
   concurrency_key: z.string().default(""),
   bulk_action_group_ids: z.array(z.string()).default([]),
   worker_queue: z.string().default(""),
+  region: z.string().default(""),
+  plan_type: z.string().default(""),
   max_duration_in_seconds: z.number().int().nullish(),
   trigger_source: z.string().default(""),
   root_trigger_source: z.string().default(""),
@@ -108,6 +110,8 @@ export const TASK_RUN_COLUMNS = [
   "concurrency_key",
   "bulk_action_group_ids",
   "worker_queue",
+  "region",
+  "plan_type",
   "max_duration_in_seconds",
   "trigger_source",
   "root_trigger_source",
@@ -175,6 +179,8 @@ export type TaskRunFieldTypes = {
   concurrency_key: string;
   bulk_action_group_ids: string[];
   worker_queue: string;
+  region: string;
+  plan_type: string;
   max_duration_in_seconds: number | null;
   trigger_source: string;
   root_trigger_source: string;
@@ -313,6 +319,8 @@ export type TaskRunInsertArray = [
   concurrency_key: string,
   bulk_action_group_ids: string[],
   worker_queue: string,
+  region: string,
+  plan_type: string,
   max_duration_in_seconds: number | null,
   trigger_source: string,
   root_trigger_source: string,

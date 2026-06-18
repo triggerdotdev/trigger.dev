@@ -108,6 +108,7 @@ export type ListedRun = Prisma.TaskRunGetPayload<{
     machinePreset: true;
     queue: true;
     workerQueue: true;
+    region: true;
     annotations: true;
   };
 }>;

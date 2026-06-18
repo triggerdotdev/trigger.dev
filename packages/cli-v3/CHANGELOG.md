@@ -1,5 +1,17 @@
 # trigger.dev
 
+## 4.5.0-rc.7
+
+### Patch Changes
+
+- `@trigger.dev/sdk` now bundles the Trigger.dev agent skills and a curated snapshot of the docs those skills reference. The skills that `trigger skills` installs into your coding agent read this content from node_modules, so the guidance your AI assistant follows is pinned to the SDK version installed in your project and stays current across upgrades instead of going stale until the next reinstall. ([#3937](https://github.com/triggerdotdev/trigger.dev/pull/3937))
+- Running a CLI command like `dev`, `deploy`, `preview`, or `update` before initializing a project no longer crashes with a raw `Cannot find matching package.json` stack trace. The CLI now detects the missing project and points you to `npx trigger.dev@latest init` instead. ([#3929](https://github.com/triggerdotdev/trigger.dev/pull/3929))
+- The agent skills installed by `trigger skills` are now namespaced with a `trigger-` prefix (e.g. `trigger-authoring-tasks`, `trigger-getting-started`) so they don't collide with unrelated skills in your coding agent's skills directory. Adds a `trigger-cost-savings` skill for auditing and reducing compute spend (right-sizing machines, `maxDuration`, batching, debounce), and `@trigger.dev/sdk` now bundles the full Trigger.dev documentation so your agent can read the complete, version-pinned reference directly from node_modules. ([#3970](https://github.com/triggerdotdev/trigger.dev/pull/3970))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.7`
+  - `@trigger.dev/build@4.5.0-rc.7`
+  - `@trigger.dev/schema-to-json@4.5.0-rc.7`
+
 ## 4.5.0-rc.6
 
 ### Patch Changes

@@ -3,6 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import { ScheduleObject, UpdateScheduleOptions } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { Prisma, prisma } from "~/db.server";
+import { clientSafeErrorMessage } from "~/utils/prismaErrors";
 import { scheduleUniqWhereClause } from "~/models/schedules.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
@@ -54,7 +55,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         // Check if it's a Prisma error
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
           return json(
-            { error: error.code === "P2025" ? "Schedule not found" : error.message },
+            { error: error.code === "P2025" ? "Schedule not found" : clientSafeErrorMessage(error) },
             { status: error.code === "P2025" ? 404 : 422 }
           );
         } else {

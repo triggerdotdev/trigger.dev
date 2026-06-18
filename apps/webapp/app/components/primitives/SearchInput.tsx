@@ -47,18 +47,27 @@ export function SearchInput({
   const [text, setText] = useState(initialSearch);
   const [isFocused, setIsFocused] = useState(false);
 
+  // Compare against a ref, not `text`, so the effect stays off the keystroke path.
+  // Trade-off: controlled mode assumes the parent accepts onValueChange; it won't
+  // re-sync `text` if the parent rejects a change and holds `value` unchanged.
+  const lastSyncedRef = useRef(initialSearch);
+
   useEffect(() => {
     if (isControlled) {
-      if (controlledValue !== undefined && controlledValue !== text) {
+      if (controlledValue !== undefined && controlledValue !== lastSyncedRef.current) {
+        lastSyncedRef.current = controlledValue;
         setText(controlledValue);
       }
       return;
     }
     const urlSearch = value(paramName) ?? "";
-    if (urlSearch !== text && !isFocused) {
+    if (urlSearch === lastSyncedRef.current) return;
+    // Only mark synced once we actually apply it, so a URL change during focus still syncs on blur.
+    if (!isFocused) {
+      lastSyncedRef.current = urlSearch;
       setText(urlSearch);
     }
-  }, [isControlled, controlledValue, value, text, isFocused, paramName]);
+  }, [isControlled, controlledValue, value, isFocused, paramName]);
 
   const updateText = (next: string) => {
     setText(next);

@@ -237,9 +237,9 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
       if (!isCancel(setupChoice) && setupChoice === "ai") {
         outro(
           installedSkills && installedMcp
-            ? "Your AI tooling is ready. Ask your assistant to set up Trigger.dev; it can use the getting-started skill and the MCP server to add the SDK, config, and your first task."
+            ? "Your AI tooling is ready. Ask your assistant to set up Trigger.dev; it can use the trigger-getting-started skill and the MCP server to add the SDK, config, and your first task."
             : installedSkills
-              ? "Your AI tooling is ready. Ask your assistant to set up Trigger.dev and it will use the getting-started skill to add the SDK, config, and your first task."
+              ? "Your AI tooling is ready. Ask your assistant to set up Trigger.dev and it will use the trigger-getting-started skill to add the SDK, config, and your first task."
               : "The MCP server is installed. Ask your assistant to set up Trigger.dev using the MCP server."
         );
         return;

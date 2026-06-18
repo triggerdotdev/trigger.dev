@@ -14,6 +14,7 @@ import {
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError } from "~/v3/services/triggerTask.server";
 import { sanitizeTriggerSource } from "~/utils/triggerSource";
+import { clientSafeErrorMessage } from "~/utils/prismaErrors";
 import { HeadersSchema } from "./api.v1.tasks.$taskId.trigger";
 import { determineRealtimeStreamsVersion } from "~/services/realtime/v1StreamsGlobal.server";
 import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
@@ -190,7 +191,7 @@ const { action, loader } = createActionApiRoute(
 
       if (error instanceof Error) {
         return json(
-          { error: error.message },
+          { error: clientSafeErrorMessage(error) },
           { status: 500, headers: { "x-should-retry": "false" } }
         );
       }

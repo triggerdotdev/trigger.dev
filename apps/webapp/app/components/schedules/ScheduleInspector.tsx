@@ -6,7 +6,7 @@ import {
   TrashIcon,
 } from "@heroicons/react/20/solid";
 import { DialogDescription } from "@radix-ui/react-dialog";
-import { Form, useLocation } from "@remix-run/react";
+import { type FetcherWithComponents, Form, useLocation } from "@remix-run/react";
 import { type ReactNode } from "react";
 import { InlineCode } from "~/components/code/InlineCode";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -76,9 +76,22 @@ type Props = {
    * is rendered somewhere else (e.g. in a sheet on a different page).
    */
   actionPath?: string;
+  /** When set, Edit calls back instead of navigating to the standalone edit page. */
+  onEdit?: () => void;
+  /** Submits enable/disable via this fetcher with `_format=json` so the host stays put. */
+  activeToggleFetcher?: FetcherWithComponents<unknown>;
+  /** Submits delete via this fetcher with `_format=json` so the host stays put. */
+  deleteFetcher?: FetcherWithComponents<unknown>;
 };
 
-export function ScheduleInspector({ schedule, headerActions, actionPath }: Props) {
+export function ScheduleInspector({
+  schedule,
+  headerActions,
+  actionPath,
+  onEdit,
+  activeToggleFetcher,
+  deleteFetcher,
+}: Props) {
   const location = useLocation();
   const organization = useOrganization();
   const project = useProject();
@@ -91,7 +104,7 @@ export function ScheduleInspector({ schedule, headerActions, actionPath }: Props
     <div
       className={cn(
         "grid h-full max-h-full overflow-hidden bg-background-bright",
-        isImperative ? "grid-rows-[2.5rem_1fr_3.25rem]" : "grid-rows-[2.5rem_1fr]"
+        isImperative ? "grid-rows-[2.5rem_1fr_auto]" : "grid-rows-[2.5rem_1fr]"
       )}
     >
       <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
@@ -244,30 +257,38 @@ export function ScheduleInspector({ schedule, headerActions, actionPath }: Props
         </div>
       </div>
       {isImperative && (
-        <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
+        <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2 py-2">
           <div className="flex items-center gap-2">
-            <Form method="post" action={actionPath}>
-              <Button
-                type="submit"
-                variant="tertiary/medium"
-                LeadingIcon={schedule.active ? BoltSlashIcon : BoltIcon}
-                leadingIconClassName={schedule.active ? "text-dimmed" : "text-success"}
-                name="action"
-                value={schedule.active ? "disable" : "enable"}
-              >
-                {schedule.active ? "Disable" : "Enable"}
-              </Button>
-            </Form>
+            {(() => {
+              const ToggleForm = activeToggleFetcher?.Form ?? Form;
+              const isSubmitting = activeToggleFetcher?.state === "submitting";
+              return (
+                <ToggleForm method="post" action={actionPath}>
+                  {activeToggleFetcher ? <input type="hidden" name="_format" value="json" /> : null}
+                  <Button
+                    type="submit"
+                    variant="secondary/small"
+                    LeadingIcon={schedule.active ? BoltSlashIcon : BoltIcon}
+                    leadingIconClassName={schedule.active ? "text-dimmed" : "text-success"}
+                    name="action"
+                    value={schedule.active ? "disable" : "enable"}
+                    disabled={isSubmitting}
+                  >
+                    {schedule.active ? "Disable" : "Enable"}
+                  </Button>
+                </ToggleForm>
+              );
+            })()}
             <Dialog>
               <DialogTrigger asChild>
                 <Button
                   type="submit"
-                  variant="danger/medium"
+                  variant="danger/small"
                   LeadingIcon={TrashIcon}
                   name="action"
                   value="delete"
                 >
-                  Delete
+                  Delete…
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-sm">
@@ -276,31 +297,45 @@ export function ScheduleInspector({ schedule, headerActions, actionPath }: Props
                   Are you sure you want to delete this schedule? This can't be reversed.
                 </DialogDescription>
                 <DialogFooter className="sm:justify-end">
-                  <Form method="post" action={actionPath}>
-                    <Button
-                      type="submit"
-                      variant="danger/medium"
-                      LeadingIcon={TrashIcon}
-                      name="action"
-                      value="delete"
-                    >
-                      Delete
-                    </Button>
-                  </Form>
+                  {(() => {
+                    const DeleteForm = deleteFetcher?.Form ?? Form;
+                    const isSubmitting = deleteFetcher?.state === "submitting";
+                    return (
+                      <DeleteForm method="post" action={actionPath}>
+                        {deleteFetcher ? <input type="hidden" name="_format" value="json" /> : null}
+                        <Button
+                          type="submit"
+                          variant="danger/medium"
+                          LeadingIcon={TrashIcon}
+                          name="action"
+                          value="delete"
+                          disabled={isSubmitting}
+                        >
+                          Delete
+                        </Button>
+                      </DeleteForm>
+                    );
+                  })()}
                 </DialogFooter>
               </DialogContent>
             </Dialog>
           </div>
           <div className="flex items-center gap-4">
-            <LinkButton
-              variant="tertiary/medium"
-              to={`${v3EditSchedulePath(organization, project, environment, schedule)}${
-                location.search
-              }`}
-              LeadingIcon={PencilSquareIcon}
-            >
-              Edit schedule
-            </LinkButton>
+            {onEdit ? (
+              <Button variant="secondary/small" LeadingIcon={PencilSquareIcon} onClick={onEdit}>
+                Edit schedule…
+              </Button>
+            ) : (
+              <LinkButton
+                variant="secondary/small"
+                to={`${v3EditSchedulePath(organization, project, environment, schedule)}${
+                  location.search
+                }`}
+                LeadingIcon={PencilSquareIcon}
+              >
+                Edit schedule…
+              </LinkButton>
+            )}
           </div>
         </div>
       )}

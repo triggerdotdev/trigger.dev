@@ -18,6 +18,7 @@ import {
   UNSET_VALUE,
   BooleanControl,
   EnumControl,
+  NumberControl,
   StringControl,
   WorkerGroupControl,
   type WorkerGroup,
@@ -235,6 +236,20 @@ export function FeatureFlagsDialog({
                           options={control.options}
                           onChange={(val) => {
                             if (val === UNSET_VALUE) {
+                              unsetFlag(key);
+                            } else {
+                              setFlagValue(key, val);
+                            }
+                          }}
+                          dimmed={!isOverridden}
+                        />
+                      ) : control.type === "number" ? (
+                        <NumberControl
+                          value={isOverridden ? (overrides[key] as number) : undefined}
+                          min={control.min}
+                          max={control.max}
+                          onChange={(val) => {
+                            if (val === undefined) {
                               unsetFlag(key);
                             } else {
                               setFlagValue(key, val);

@@ -68,7 +68,9 @@ export class ReplayTaskRunService extends BaseService {
       authenticatedEnvironment.type === "DEVELOPMENT";
     const region = ignoreRegion
       ? undefined
-      : overrideOptions.region ?? baseWorkerQueue(existingTaskRun.workerQueue);
+      : overrideOptions.region ||
+        existingTaskRun.region ||
+        baseWorkerQueue(existingTaskRun.workerQueue);
 
     try {
       const taskQueue = await this._prisma.taskQueue.findFirst({

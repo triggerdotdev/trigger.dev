@@ -69,12 +69,59 @@ const claudeSonnet: LlmModelWithPricing = {
   ],
 };
 
+// Prices cache reads under the Anthropic-style alias `cache_read_input_tokens` (not
+// `input_cached_tokens`) plus a cache-creation price, to exercise alias resolution.
+const claudeWithCache: LlmModelWithPricing = {
+  id: "model-claude-with-cache",
+  friendlyId: "llm_model_claude_with_cache",
+  modelName: "claude-with-cache",
+  matchPattern: "^claude-with-cache$",
+  startDate: null,
+  pricingTiers: [
+    {
+      id: "tier-claude-with-cache",
+      name: "Standard",
+      isDefault: true,
+      priority: 0,
+      conditions: [],
+      prices: [
+        { usageType: "input", price: 0.000003 },
+        { usageType: "output", price: 0.000015 },
+        { usageType: "cache_read_input_tokens", price: 0.0000003 },
+        { usageType: "cache_creation_input_tokens", price: 0.00000375 },
+      ],
+    },
+  ],
+};
+
+// No cache prices at all — cached tokens should fall back to the input price.
+const noCachePrice: LlmModelWithPricing = {
+  id: "model-no-cache-price",
+  friendlyId: "llm_model_no_cache_price",
+  modelName: "no-cache-price",
+  matchPattern: "^no-cache-price$",
+  startDate: null,
+  pricingTiers: [
+    {
+      id: "tier-no-cache-price",
+      name: "Standard",
+      isDefault: true,
+      priority: 0,
+      conditions: [],
+      prices: [
+        { usageType: "input", price: 0.000003 },
+        { usageType: "output", price: 0.000015 },
+      ],
+    },
+  ],
+};
+
 describe("ModelPricingRegistry", () => {
   let registry: TestableRegistry;
 
   beforeEach(() => {
     registry = new TestableRegistry(null as any);
-    registry.loadPatterns([gpt4o, claudeSonnet]);
+    registry.loadPatterns([gpt4o, claudeSonnet, claudeWithCache, noCachePrice]);
   });
 
   describe("match", () => {
@@ -129,7 +176,10 @@ describe("ModelPricingRegistry", () => {
       expect(result!.totalCost).toBeCloseTo(0.0035);
     });
 
-    it("should include cached token costs", () => {
+    it("should include cached token costs and charge input only on the fresh portion", () => {
+      // input_tokens (500) is inclusive of the 200 cached read tokens, so the input price
+      // applies to the 300 fresh tokens and the cache price to the 200 cached tokens — the
+      // cached tokens must not be billed twice.
       const result = registry.calculateCost("gpt-4o", {
         input: 500,
         output: 50,
@@ -137,10 +187,57 @@ describe("ModelPricingRegistry", () => {
       });
 
       expect(result).not.toBeNull();
-      expect(result!.costDetails["input"]).toBeCloseTo(0.00125); // 500 * 0.0000025
+      expect(result!.costDetails["input"]).toBeCloseTo(0.00075); // (500 - 200) * 0.0000025
       expect(result!.costDetails["output"]).toBeCloseTo(0.0005); // 50 * 0.00001
       expect(result!.costDetails["input_cached_tokens"]).toBeCloseTo(0.00025); // 200 * 0.00000125
-      expect(result!.totalCost).toBeCloseTo(0.002);
+      expect(result!.totalCost).toBeCloseTo(0.0015);
+    });
+
+    it("should not double-charge cache creation tokens (subset of input)", () => {
+      // input (1000) is inclusive of both the 400 cache-read and 300 cache-creation tokens.
+      const result = registry.calculateCost("claude-with-cache", {
+        input: 1000,
+        output: 100,
+        input_cached_tokens: 400,
+        cache_creation_input_tokens: 300,
+      });
+
+      expect(result).not.toBeNull();
+      // fresh input = 1000 - 400 - 300 = 300
+      expect(result!.costDetails["input"]).toBeCloseTo(0.0009); // 300 * 0.000003
+      expect(result!.costDetails["input_cached_tokens"]).toBeCloseTo(0.00012); // 400 * 0.0000003
+      expect(result!.costDetails["cache_creation_input_tokens"]).toBeCloseTo(0.001125); // 300 * 0.00000375
+      expect(result!.costDetails["output"]).toBeCloseTo(0.0015); // 100 * 0.000015
+      // 0.0009 + 0.00012 + 0.001125 + 0.0015
+      expect(result!.totalCost).toBeCloseTo(0.003645);
+    });
+
+    it("should apply the cache-read discount when priced under a provider alias key", () => {
+      // The usage is normalized to `input_cached_tokens` but this model prices cache reads
+      // under `cache_read_input_tokens` — the discount must still apply.
+      const result = registry.calculateCost("claude-with-cache", {
+        input: 1000,
+        input_cached_tokens: 400,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.costDetails["input"]).toBeCloseTo(0.0018); // (1000 - 400) * 0.000003
+      expect(result!.costDetails["input_cached_tokens"]).toBeCloseTo(0.00012); // 400 * 0.0000003
+      expect(result!.totalCost).toBeCloseTo(0.00192);
+    });
+
+    it("should fall back to the input price for cache tokens when no cache price exists", () => {
+      // no-cache-price model has only input/output prices; cached tokens must still be billed
+      // (at the input price) — never free, never double-charged. Total equals input * price.
+      const result = registry.calculateCost("no-cache-price", {
+        input: 1000,
+        input_cached_tokens: 400,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.costDetails["input"]).toBeCloseTo(0.0018); // (1000 - 400) * 0.000003
+      expect(result!.costDetails["input_cached_tokens"]).toBeCloseTo(0.0012); // 400 * 0.000003
+      expect(result!.totalCost).toBeCloseTo(0.003); // 1000 * 0.000003 — unchanged from no-cache behavior
     });
 
     it("should return null for unknown model", () => {
