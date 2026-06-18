@@ -7,6 +7,7 @@ import {
   anyResource,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
+import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -18,19 +19,22 @@ export const loader = createLoaderApiRoute(
     allowJWT: true,
     corsStrategy: "all",
     findResource: async (params, authentication) => {
-      return $replica.taskRun.findFirst({
-        where: {
+      return runStore.findRun(
+        {
           friendlyId: params.runId,
           runtimeEnvironmentId: authentication.environment.id,
         },
-        include: {
-          batch: {
-            select: {
-              friendlyId: true,
+        {
+          include: {
+            batch: {
+              select: {
+                friendlyId: true,
+              },
             },
           },
         },
-      });
+        $replica
+      );
     },
     authorization: {
       action: "read",

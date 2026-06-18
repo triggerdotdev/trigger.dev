@@ -7,6 +7,7 @@ import { LogDetailPresenter } from "~/presenters/v3/LogDetailPresenter.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { $replica } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import type { TaskRunStatus } from "@trigger.dev/database";
 
@@ -70,13 +71,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Look up the run status from Postgres
   let runStatus: TaskRunStatus | undefined;
   if (result.runId) {
-    const run = await $replica.taskRun.findFirst({
-      select: { status: true },
-      where: {
+    const run = await runStore.findRun(
+      {
         friendlyId: result.runId,
         runtimeEnvironmentId: environment.id,
       },
-    });
+      { select: { status: true } },
+      $replica
+    );
     runStatus = run?.status;
   }
 

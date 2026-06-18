@@ -2,6 +2,7 @@ import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { type TaskRun } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { logger } from "~/services/logger.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { runsReplicationInstance } from "~/services/runsReplicationInstance.server";
@@ -25,14 +26,17 @@ export async function action({ request }: ActionFunctionArgs) {
     const runs: TaskRun[] = [];
     for (let i = 0; i < runIds.length; i += MAX_BATCH_SIZE) {
       const batch = runIds.slice(i, i + MAX_BATCH_SIZE);
-      const batchRuns = await prisma.taskRun.findMany({
-        where: {
-          id: { in: batch },
-          status: {
-            in: FINAL_RUN_STATUSES,
+      const batchRuns = await runStore.findRuns(
+        {
+          where: {
+            id: { in: batch },
+            status: {
+              in: FINAL_RUN_STATUSES,
+            },
           },
         },
-      });
+        prisma
+      );
       runs.push(...batchRuns);
     }
 

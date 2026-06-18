@@ -17,6 +17,7 @@ import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { applyMetadataMutationToBufferedRun } from "~/v3/mollifier/applyMetadataMutation.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
+import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -39,10 +40,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const env = authenticationResult.environment;
 
-  const pgRun = await $replica.taskRun.findFirst({
-    where: { friendlyId: parsed.data.runId, runtimeEnvironmentId: env.id },
-    select: { metadata: true, metadataType: true },
-  });
+  const pgRun = await runStore.findRun(
+    { friendlyId: parsed.data.runId, runtimeEnvironmentId: env.id },
+    { select: { metadata: true, metadataType: true } },
+    $replica
+  );
   if (pgRun) {
     return json({ metadata: pgRun.metadata, metadataType: pgRun.metadataType }, { status: 200 });
   }

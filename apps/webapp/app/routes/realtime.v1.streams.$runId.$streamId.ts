@@ -8,6 +8,7 @@ import {
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -25,23 +26,26 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const { runId, streamId } = parsedParams.data;
 
   // Look up the run without environment scoping for backwards compatibility
-  const run = await $replica.taskRun.findFirst({
-    where: {
+  const run = await runStore.findRun(
+    {
       friendlyId: runId,
     },
-    select: {
-      id: true,
-      friendlyId: true,
-      streamBasinName: true,
-      runtimeEnvironment: {
-        include: {
-          project: true,
-          organization: true,
-          orgMember: true,
+    {
+      select: {
+        id: true,
+        friendlyId: true,
+        streamBasinName: true,
+        runtimeEnvironment: {
+          include: {
+            project: true,
+            organization: true,
+            orgMember: true,
+          },
         },
       },
     },
-  });
+    $replica
+  );
 
   if (!run) {
     return new Response("Run not found", { status: 404 });
@@ -87,25 +91,28 @@ export const loader = createLoaderApiRoute(
     allowJWT: true,
     corsStrategy: "all",
     findResource: async (params, auth) => {
-      const run = await $replica.taskRun.findFirst({
-        where: {
+      const run = await runStore.findRun(
+        {
           friendlyId: params.runId,
           runtimeEnvironmentId: auth.environment.id,
         },
-        select: {
-          id: true,
-          friendlyId: true,
-          taskIdentifier: true,
-          runTags: true,
-          realtimeStreamsVersion: true,
-          streamBasinName: true,
-          batch: {
-            select: {
-              friendlyId: true,
+        {
+          select: {
+            id: true,
+            friendlyId: true,
+            taskIdentifier: true,
+            runTags: true,
+            realtimeStreamsVersion: true,
+            streamBasinName: true,
+            batch: {
+              select: {
+                friendlyId: true,
+              },
             },
           },
         },
-      });
+        $replica
+      );
       return run;
     },
     authorization: {

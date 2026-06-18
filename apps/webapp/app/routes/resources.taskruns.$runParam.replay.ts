@@ -23,6 +23,7 @@ import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server
 import { queueTypeFromType } from "~/presenters/v3/QueueRetrievePresenter.server";
 import { ReplayRunData } from "~/v3/replayTask";
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
+import { runStore } from "~/v3/runStore.server";
 
 const ParamSchema = z.object({
   runParam: z.string(),
@@ -40,61 +41,64 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     Object.fromEntries(new URL(request.url).searchParams)
   );
 
-  let run = await $replica.taskRun.findFirst({
-    select: {
-      payload: true,
-      payloadType: true,
-      seedMetadata: true,
-      seedMetadataType: true,
-      runtimeEnvironmentId: true,
-      concurrencyKey: true,
-      maxAttempts: true,
-      maxDurationInSeconds: true,
-      machinePreset: true,
-      workerQueue: true,
-      region: true,
-      ttl: true,
-      idempotencyKey: true,
-      runTags: true,
-      queue: true,
-      taskIdentifier: true,
-      project: {
-        select: {
-          slug: true,
-          environments: {
-            select: {
-              id: true,
-              type: true,
-              slug: true,
-              branchName: true,
-              orgMember: {
-                select: {
-                  user: true,
+  let run = await runStore.findRun(
+    { friendlyId: runParam, project: { organization: { members: { some: { userId } } } } },
+    {
+      select: {
+        payload: true,
+        payloadType: true,
+        seedMetadata: true,
+        seedMetadataType: true,
+        runtimeEnvironmentId: true,
+        concurrencyKey: true,
+        maxAttempts: true,
+        maxDurationInSeconds: true,
+        machinePreset: true,
+        workerQueue: true,
+        region: true,
+        ttl: true,
+        idempotencyKey: true,
+        runTags: true,
+        queue: true,
+        taskIdentifier: true,
+        project: {
+          select: {
+            slug: true,
+            environments: {
+              select: {
+                id: true,
+                type: true,
+                slug: true,
+                branchName: true,
+                orgMember: {
+                  select: {
+                    user: true,
+                  },
                 },
               },
-            },
-            where: {
-              archivedAt: null,
-              OR: [
-                {
-                  type: {
-                    in: ["PREVIEW", "STAGING", "PRODUCTION"],
+              where: {
+                archivedAt: null,
+                OR: [
+                  {
+                    type: {
+                      in: ["PREVIEW", "STAGING", "PRODUCTION"],
+                    },
                   },
-                },
-                {
-                  type: "DEVELOPMENT",
-                  orgMember: {
-                    userId,
+                  {
+                    type: "DEVELOPMENT",
+                    orgMember: {
+                      userId,
+                    },
                   },
-                },
-              ],
+                ],
+              },
             },
           },
         },
       },
     },
-    where: { friendlyId: runParam, project: { organization: { members: { some: { userId } } } } },
-  });
+    $replica
+  );
 
   let synthetic:
     | (Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>> & { __synth: true })
@@ -272,8 +276,8 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   try {
-    const pgRun = await prisma.taskRun.findFirst({
-      where: {
+    const pgRun = await runStore.findRun(
+      {
         friendlyId: runParam,
         project: {
           organization: {
@@ -285,19 +289,22 @@ export const action: ActionFunction = async ({ request, params }) => {
           },
         },
       },
-      include: {
-        runtimeEnvironment: {
-          select: {
-            slug: true,
+      {
+        include: {
+          runtimeEnvironment: {
+            select: {
+              slug: true,
+            },
           },
-        },
-        project: {
-          include: {
-            organization: true,
+          project: {
+            include: {
+              organization: true,
+            },
           },
         },
       },
-    });
+      prisma
+    );
 
     // Mollifier read-fallback: if the original isn't in PG yet,
     // synthesise a TaskRun from the buffered snapshot. The B4-extended

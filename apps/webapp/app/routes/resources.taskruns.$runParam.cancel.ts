@@ -7,6 +7,7 @@ import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
 import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
+import { runStore } from "~/v3/runStore.server";
 
 export const cancelSchema = z.object({
   redirectUrl: z.string(),
@@ -28,8 +29,8 @@ export const action: ActionFunction = async ({ request, params }) => {
   }
 
   try {
-    const taskRun = await prisma.taskRun.findFirst({
-      where: {
+    const taskRun = await runStore.findRun(
+      {
         friendlyId: runParam,
         project: {
           organization: {
@@ -41,7 +42,8 @@ export const action: ActionFunction = async ({ request, params }) => {
           },
         },
       },
-    });
+      prisma
+    );
 
     if (taskRun) {
       const cancelRunService = new CancelTaskRunService();

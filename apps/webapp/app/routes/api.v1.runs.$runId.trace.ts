@@ -10,6 +10,7 @@ import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import { buildSyntheticTraceBody } from "~/v3/mollifier/syntheticApiResponses.server";
+import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
   runId: z.string(), // This is the run friendly ID
@@ -26,9 +27,10 @@ type ResolvedRun =
   | { source: "buffer"; run: NonNullable<Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>>> };
 
 async function findPgRun(runId: string, environmentId: string) {
-  return $replica.taskRun.findFirst({
-    where: { friendlyId: runId, runtimeEnvironmentId: environmentId },
-  });
+  return runStore.findRun(
+    { friendlyId: runId, runtimeEnvironmentId: environmentId },
+    $replica
+  );
 }
 
 export const loader = createLoaderApiRoute(

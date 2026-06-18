@@ -1,6 +1,7 @@
 import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
 import { impersonate, rootPath, v3RunPath, v3RunSpanPath } from "~/utils/pathBuilder";
@@ -28,29 +29,32 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     );
   }
 
-  const run = await prisma.taskRun.findFirst({
-    where: {
+  const run = await runStore.findRun(
+    {
       friendlyId: runParam,
     },
-    select: {
-      spanId: true,
-      runtimeEnvironment: {
-        select: {
-          slug: true,
+    {
+      select: {
+        spanId: true,
+        runtimeEnvironment: {
+          select: {
+            slug: true,
+          },
         },
-      },
-      project: {
-        select: {
-          slug: true,
-          organization: {
-            select: {
-              slug: true,
+        project: {
+          select: {
+            slug: true,
+            organization: {
+              select: {
+                slug: true,
+              },
             },
           },
         },
       },
     },
-  });
+    prisma
+  );
 
   if (!run) {
     // Admin impersonation route — bypass org membership so admins can

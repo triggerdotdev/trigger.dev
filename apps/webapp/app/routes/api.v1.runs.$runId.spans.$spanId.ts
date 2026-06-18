@@ -11,6 +11,7 @@ import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import { buildSyntheticSpanDetailBody } from "~/v3/mollifier/syntheticApiResponses.server";
+import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -28,9 +29,10 @@ type ResolvedRun =
   | { source: "buffer"; run: NonNullable<Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>>> };
 
 async function findPgRun(runId: string, environmentId: string) {
-  return $replica.taskRun.findFirst({
-    where: { friendlyId: runId, runtimeEnvironmentId: environmentId },
-  });
+  return runStore.findRun(
+    { friendlyId: runId, runtimeEnvironmentId: environmentId },
+    $replica
+  );
 }
 
 export const loader = createLoaderApiRoute(
@@ -121,19 +123,22 @@ export const loader = createLoaderApiRoute(
         ? extractAISpanData(span.properties as Record<string, unknown>, durationMs)
         : undefined;
 
-    const triggeredRuns = await $replica.taskRun.findMany({
-      take: 50,
-      select: {
-        friendlyId: true,
-        taskIdentifier: true,
-        status: true,
-        createdAt: true,
+    const triggeredRuns = await runStore.findRuns(
+      {
+        take: 50,
+        select: {
+          friendlyId: true,
+          taskIdentifier: true,
+          status: true,
+          createdAt: true,
+        },
+        where: {
+          runtimeEnvironmentId: authentication.environment.id,
+          parentSpanId: params.spanId,
+        },
       },
-      where: {
-        runtimeEnvironmentId: authentication.environment.id,
-        parentSpanId: params.spanId,
-      },
-    });
+      $replica
+    );
 
     const properties =
       span.properties &&

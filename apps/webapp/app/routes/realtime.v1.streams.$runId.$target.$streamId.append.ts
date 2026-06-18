@@ -27,26 +27,29 @@ const { action } = createActionApiRoute(
     maxContentLength: MAX_APPEND_BODY_BYTES,
   },
   async ({ request, params, authentication }) => {
-    const run = await $replica.taskRun.findFirst({
-      where: {
+    const run = await runStore.findRun(
+      {
         friendlyId: params.runId,
         runtimeEnvironmentId: authentication.environment.id,
       },
-      select: {
-        id: true,
-        friendlyId: true,
-        parentTaskRun: {
-          select: {
-            friendlyId: true,
+      {
+        select: {
+          id: true,
+          friendlyId: true,
+          parentTaskRun: {
+            select: {
+              friendlyId: true,
+            },
           },
-        },
-        rootTaskRun: {
-          select: {
-            friendlyId: true,
+          rootTaskRun: {
+            select: {
+              friendlyId: true,
+            },
           },
         },
       },
-    });
+      $replica
+    );
 
     if (!run) {
       return new Response("Run not found", { status: 404 });
@@ -63,19 +66,22 @@ const { action } = createActionApiRoute(
       return new Response("Target not found", { status: 404 });
     }
 
-    const targetRun = await prisma.taskRun.findFirst({
-      where: {
+    const targetRun = await runStore.findRun(
+      {
         friendlyId: targetId,
         runtimeEnvironmentId: authentication.environment.id,
       },
-      select: {
-        realtimeStreams: true,
-        realtimeStreamsVersion: true,
-        completedAt: true,
-        id: true,
-        streamBasinName: true,
+      {
+        select: {
+          realtimeStreams: true,
+          realtimeStreamsVersion: true,
+          completedAt: true,
+          id: true,
+          streamBasinName: true,
+        },
       },
-    });
+      prisma
+    );
 
     if (!targetRun) {
       return new Response("Run not found", { status: 404 });

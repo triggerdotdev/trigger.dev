@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
+import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -34,14 +35,17 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return new Response("Not found", { status: 404 });
   }
 
-  const run = await prisma.taskRun.findUnique({
-    where: {
+  const run = await runStore.findRun(
+    {
       friendlyId: validatedParams.runParam,
     },
-    include: {
-      runtimeEnvironment: true,
+    {
+      include: {
+        runtimeEnvironment: true,
+      },
     },
-  });
+    prisma
+  );
 
   if (!run) {
     throw new Response("Not found", { status: 404 });
