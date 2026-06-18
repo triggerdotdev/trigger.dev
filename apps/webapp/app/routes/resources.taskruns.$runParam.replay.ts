@@ -382,6 +382,31 @@ export const action = dashboardAction(
         return redirectWithErrorMessage(submission.value.failedRedirect, request, "Run not found");
       }
 
+      // A replay can target a different environment, but only within the source
+      // run's own project. The override id is user-supplied and the downstream
+      // service looks it up without scoping, so confirm it belongs to this
+      // project before triggering, otherwise a run could be created in another
+      // tenant's environment.
+      if (submission.value.environment) {
+        const overrideEnvironment = await prisma.runtimeEnvironment.findFirst({
+          where: {
+            id: submission.value.environment,
+            project: {
+              slug: taskRun.project.slug,
+              organization: { slug: taskRun.project.organization.slug },
+            },
+          },
+          select: { id: true },
+        });
+        if (!overrideEnvironment) {
+          return redirectWithErrorMessage(
+            submission.value.failedRedirect,
+            request,
+            "Environment not found"
+          );
+        }
+      }
+
       const replayRunService = new ReplayTaskRunService();
       const newRun = await replayRunService.call(taskRun, {
         environmentId: submission.value.environment,

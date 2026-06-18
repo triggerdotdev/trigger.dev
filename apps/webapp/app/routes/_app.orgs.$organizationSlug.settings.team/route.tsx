@@ -253,17 +253,24 @@ export const action = dashboardAction(
       return json(submission);
     }
 
-    // Default intent: remove a member or leave the org. Self-leave (the
-    // actor removing their own membership) is always allowed. Removing
-    // another member requires `manage:members` — pre-RBAC the
-    // `removeTeamMember` model fn only verified the actor was a member
-    // of the target org, so any org member could remove any other
-    // member by id; this gate fixes that latent permissions hole.
+    // Default intent: remove a member or leave the org. Scope the target to
+    // the actor's organization: an orgMember id is a globally unique key, so an
+    // unscoped lookup (plus an unscoped delete in the model) would let a
+    // manager in one org remove members of another by submitting a foreign id.
+    // Self-leave is always allowed; removing someone else requires
+    // manage:members.
+    const orgId = context.organizationId;
+    if (!orgId) {
+      return json({ ok: false, error: "Organization not found" } as const, { status: 404 });
+    }
     const targetMember = await $replica.orgMember.findFirst({
-      where: { id: submission.value.memberId },
+      where: { id: submission.value.memberId, organizationId: orgId },
       select: { userId: true },
     });
-    const isSelfLeave = targetMember?.userId === userId;
+    if (!targetMember) {
+      return json({ ok: false, error: "Member not found" } as const, { status: 404 });
+    }
+    const isSelfLeave = targetMember.userId === userId;
     if (!isSelfLeave && !ability.can("manage", { type: "members" })) {
       return json({ ok: false, error: "Unauthorized" } as const, { status: 403 });
     }

@@ -132,12 +132,11 @@ function isAtOrBelow(
   inviterRoleId: string | null,
   invitedRoleId: string
 ): boolean {
-  // No RBAC role on inviter (e.g. the runtime fallback couldn't derive
-  // one) → fall back to the legacy OrgMember.role check the calling
-  // code already enforces. Allow the invite to proceed; the action
-  // would have already failed earlier if the inviter wasn't allowed
-  // to invite at all.
-  if (!inviterRoleId) return true;
+  // No resolvable role for the inviter → fail closed: we can't confirm a
+  // target role is at or below an unknown level, so refuse it. The invite
+  // itself still proceeds (it's gated by manage:members); only assigning an
+  // explicit role is refused, and the picker offers nothing in this case.
+  if (!inviterRoleId) return false;
   const level = buildRoleLevel(roles);
   const inviter = level[inviterRoleId];
   const invited = level[invitedRoleId];

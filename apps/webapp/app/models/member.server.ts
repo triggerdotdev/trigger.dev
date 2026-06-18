@@ -73,15 +73,24 @@ export async function removeTeamMember({
     throw new Error("User does not have access to this organization");
   }
 
-  return prisma.orgMember.delete({
-    where: {
-      id: memberId,
-    },
+  // Scope the target to this org. A member id is a globally unique key, so
+  // deleting by id alone would remove members of other orgs; bind it to the
+  // resolved org and reject a foreign id.
+  const member = await prisma.orgMember.findFirst({
+    where: { id: memberId, organizationId: org.id },
     include: {
       organization: true,
       user: true,
     },
   });
+
+  if (!member) {
+    throw new Error("Member not found in this organization");
+  }
+
+  await prisma.orgMember.delete({ where: { id: member.id } });
+
+  return member;
 }
 
 export async function inviteMembers({
