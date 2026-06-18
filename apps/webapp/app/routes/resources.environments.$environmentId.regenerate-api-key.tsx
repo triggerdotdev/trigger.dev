@@ -1,56 +1,86 @@
-import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
+import { $replica } from "~/db.server";
 import { regenerateApiKey } from "~/models/api-key.server";
-import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
 import { jsonWithErrorMessage, jsonWithSuccessMessage } from "~/models/message.server";
-import { requireUserId } from "~/services/session.server";
+import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
 import { logger } from "~/services/logger.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 
 const ParamsSchema = z.object({
   environmentId: z.string(),
 });
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  // Ensure this is a POST request
-  if (request.method.toUpperCase() !== "POST") {
-    return { status: 405, body: "Method Not Allowed" };
-  }
+export const action = dashboardAction(
+  {
+    params: ParamsSchema,
+    context: async (params) => {
+      const environment = await $replica.runtimeEnvironment.findFirst({
+        where: { id: params.environmentId },
+        select: { organizationId: true },
+      });
+      return environment ? { organizationId: environment.organizationId } : {};
+    },
+    // Env-tier write:apiKeys is enforced in the handler — the target
+    // environment's tier isn't known until we resolve it from the id.
+  },
+  async ({ request, params, user, ability }) => {
+    if (request.method.toUpperCase() !== "POST") {
+      throw new Response("Method Not Allowed", { status: 405 });
+    }
 
-  const userId = await requireUserId(request);
+    const { environmentId } = params;
 
-  const { environmentId } = ParamsSchema.parse(params);
+    const environment = await $replica.runtimeEnvironment.findFirst({
+      where: { id: environmentId },
+      select: { type: true },
+    });
+    if (!environment) {
+      return jsonWithErrorMessage({ ok: false }, request, "Environment not found");
+    }
 
-  const formData = await request.formData();
-  const syncToVercel = formData.get("syncToVercel") === "on";
-
-  try {
-    const updatedEnvironment = await regenerateApiKey({ userId, environmentId });
-
-    // Sync the regenerated API key to Vercel only when requested and not for DEVELOPMENT
-    if (syncToVercel && updatedEnvironment.type !== "DEVELOPMENT") {
-      await syncApiKeyToVercel(
-        updatedEnvironment.projectId,
-        updatedEnvironment.type as "PRODUCTION" | "STAGING" | "PREVIEW",
-        updatedEnvironment.apiKey
+    // Gate the regenerate even on a direct POST: a role that can't write
+    // this tier's API keys can't rotate them. The disabled UI control is
+    // not the boundary; this check is.
+    if (!ability.can("write", { type: "apiKeys", envType: environment.type })) {
+      return jsonWithErrorMessage(
+        { ok: false },
+        request,
+        "You don't have permission to regenerate API keys for this environment."
       );
     }
 
-    return jsonWithSuccessMessage(
-      { ok: true },
-      request,
-      `API keys regenerated for ${environmentFullTitle(updatedEnvironment)} environment`
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
+    const formData = await request.formData();
+    const syncToVercel = formData.get("syncToVercel") === "on";
 
-    return jsonWithErrorMessage(
-      { ok: false },
-      request,
-      `API keys could not be regenerated: ${message}`
-    );
+    try {
+      const updatedEnvironment = await regenerateApiKey({ userId: user.id, environmentId });
+
+      // Sync the regenerated API key to Vercel only when requested and not for DEVELOPMENT
+      if (syncToVercel && updatedEnvironment.type !== "DEVELOPMENT") {
+        await syncApiKeyToVercel(
+          updatedEnvironment.projectId,
+          updatedEnvironment.type as "PRODUCTION" | "STAGING" | "PREVIEW",
+          updatedEnvironment.apiKey
+        );
+      }
+
+      return jsonWithSuccessMessage(
+        { ok: true },
+        request,
+        `API keys regenerated for ${environmentFullTitle(updatedEnvironment)} environment`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+
+      return jsonWithErrorMessage(
+        { ok: false },
+        request,
+        `API keys could not be regenerated: ${message}`
+      );
+    }
   }
-}
+);
 
 /**
  * Sync the API key to Vercel.

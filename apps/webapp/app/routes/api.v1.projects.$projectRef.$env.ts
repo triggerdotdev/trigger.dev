@@ -8,6 +8,7 @@ import {
   branchNameFromRequest,
 } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -26,7 +27,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const { projectRef, env } = parsedParams.data;
 
   try {
-    const authenticationResult = await authenticateRequest(request);
+    const authenticationResult = await authenticateRequest(request, {
+      personalAccessToken: true,
+      organizationAccessToken: true,
+      apiKey: true,
+    });
 
     if (!authenticationResult) {
       return json({ error: "Invalid or Missing API key" }, { status: 401 });
@@ -38,6 +43,20 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       env,
       branchNameFromRequest(request)
     );
+
+    // This endpoint hands the caller the environment's secret key. For a PAT
+    // (a user), gate it on env-tier read:apiKeys — so a restricted role can't
+    // pull deployed credentials (and therefore can't deploy) via the CLI.
+    const denied = await authorizePatEnvironmentAccess({
+      request,
+      authType: authenticationResult.type,
+      organizationId: environment.organizationId,
+      projectId: environment.project.id,
+      envType: environment.type,
+      resource: "apiKeys",
+      action: "read",
+    });
+    if (denied) return denied;
 
     const result: GetProjectEnvResponse = {
       apiKey: environment.apiKey,

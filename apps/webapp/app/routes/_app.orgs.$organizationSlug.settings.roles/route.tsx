@@ -3,6 +3,7 @@ import { type MetaFunction } from "@remix-run/react";
 import { useState } from "react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
@@ -21,8 +22,8 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { cn } from "~/utils/cn";
-import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
@@ -40,14 +41,6 @@ const Params = z.object({
   organizationSlug: z.string(),
 });
 
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({
-    where: { slug },
-    select: { id: true },
-  });
-  return org?.id ?? null;
-}
-
 export const loader = dashboardLoader(
   {
     params: Params,
@@ -57,13 +50,13 @@ export const loader = dashboardLoader(
     },
     authorization: { action: "read", resource: { type: "members" } },
   },
-  async ({ context }) => {
+  async ({ context, user }) => {
     const orgId = context.organizationId;
     if (!orgId) {
       throw new Response("Not Found", { status: 404 });
     }
 
-    const [roles, assignableRoleIds, allPermissions, systemRoles, isUsingPlugin] =
+    const [roles, assignableRoleIds, allPermissions, systemRoles, isUsingPlugin, currentRole] =
       await Promise.all([
         rbac.allRoles(orgId),
         rbac.getAssignableRoleIds(orgId),
@@ -71,6 +64,7 @@ export const loader = dashboardLoader(
         rbac.systemRoles(orgId),
         // OSS self-host has no RBAC plugin.
         rbac.isUsingPlugin(),
+        rbac.getUserRole({ userId: user.id, organizationId: orgId }),
       ]);
 
     return typedjson({
@@ -79,6 +73,7 @@ export const loader = dashboardLoader(
       allPermissions,
       systemRoles,
       isUsingPlugin,
+      currentRoleName: currentRole?.name ?? null,
     });
   }
 );
@@ -92,7 +87,7 @@ type RolePermission = LoaderRole["permissions"][number];
 const FALLBACK_GROUP = "Other";
 
 export default function Page() {
-  const { roles, assignableRoleIds, allPermissions, systemRoles, isUsingPlugin } =
+  const { roles, assignableRoleIds, allPermissions, systemRoles, isUsingPlugin, currentRoleName } =
     useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const showSelfServe = useShowSelfServe();
@@ -122,19 +117,24 @@ export default function Page() {
         {isUsingPlugin && showSelfServe ? <RequestCustomRoles /> : null}
       </NavBar>
       <PageBody scrollable={false}>
-        <div className="grid max-h-full min-h-full grid-rows-[auto_1fr]">
+        <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">
           <div className="border-b border-grid-bright px-4 py-6">
             <Paragraph variant="small">
               Roles control what each team member can do in <strong>{organization.title}</strong>.
               Compare what each role grants below; assign a role to a team member from the{" "}
               <TextLink to={`/orgs/${organization.slug}/settings/team`}>Team page</TextLink>.
             </Paragraph>
+            {currentRoleName ? (
+              <Paragraph variant="small" className="mt-2">
+                Your role is <strong className="text-text-bright">{currentRoleName}</strong>.
+              </Paragraph>
+            ) : null}
           </div>
-          <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="min-h-0 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             {columns.length === 0 ? (
               <EmptyState isUsingPlugin={isUsingPlugin} showSelfServe={showSelfServe} />
             ) : (
-              <Table containerClassName="border-t-0">
+              <Table stickyHeader containerClassName="border-t-0">
                 <TableHeader>
                   <TableRow>
                     <TableHeaderCell>Permission</TableHeaderCell>
@@ -287,6 +287,18 @@ function RoleCell({
 
   const conditionalDeny = denied.find((p) => p.conditions);
   if (conditionalDeny?.conditions) {
+    const allowedEnvTypes = allowedEnvTypesFromDeny(conditionalDeny.conditions);
+    if (allowedEnvTypes) {
+      // Conditional grant: show the environments the permission is allowed in.
+      return (
+        <div className="flex flex-col items-start gap-1">
+          {allowedEnvTypes.map((type) => (
+            <EnvironmentCombo key={type} environment={{ type }} className="text-xs" />
+          ))}
+        </div>
+      );
+    }
+    // Conditions we can't map to environments fall back to a text label.
     return (
       <span className="text-xs text-text-dimmed">{conditionLabel(conditionalDeny.conditions)}</span>
     );
@@ -296,6 +308,28 @@ function RoleCell({
       <CheckIcon className="size-4" />
     </span>
   );
+}
+
+const ENV_TYPES = ["DEVELOPMENT", "STAGING", "PREVIEW", "PRODUCTION"] as const;
+type EnvType = (typeof ENV_TYPES)[number];
+
+// A conditional `cannot` rule denies the permission where the resource matches
+// its condition, so the permission stays allowed everywhere else. Translate the
+// envType condition into the set of environments where it's still allowed, or
+// null when we can't interpret it (caller falls back to a text label).
+function allowedEnvTypesFromDeny(conditions: Record<string, unknown>): EnvType[] | null {
+  const envType = conditions.envType;
+  // Equality, e.g. { envType: "PRODUCTION" } → denied in prod, allowed elsewhere.
+  if (typeof envType === "string") {
+    return ENV_TYPES.includes(envType as EnvType) ? ENV_TYPES.filter((t) => t !== envType) : null;
+  }
+  // Negation, e.g. { envType: { $ne: "DEVELOPMENT" } } → denied everywhere except
+  // DEVELOPMENT, so allowed only in DEVELOPMENT.
+  if (envType && typeof envType === "object" && "$ne" in envType) {
+    const ne = (envType as { $ne: unknown }).$ne;
+    return typeof ne === "string" && ENV_TYPES.includes(ne as EnvType) ? [ne as EnvType] : null;
+  }
+  return null;
 }
 
 // Only `envType` is supported today.
