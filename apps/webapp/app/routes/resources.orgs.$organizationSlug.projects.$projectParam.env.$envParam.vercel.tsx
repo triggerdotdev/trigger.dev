@@ -27,11 +27,11 @@ import {
   redirectWithSuccessMessage,
   redirectWithErrorMessage,
 } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
-import { $replica } from "~/db.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { sanitizeVercelNextUrl } from "~/v3/vercel/vercelUrls.server";
@@ -226,11 +226,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     organizationId: project.organizationId,
     canManageVercel,
   });
-}
-
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
-  return org?.id ?? null;
 }
 
 export const action = dashboardAction(

@@ -6,7 +6,6 @@ import { typedjson, useTypedLoaderData, useTypedFetcher } from "remix-typedjson"
 import { z } from "zod";
 import { MainHorizontallyCenteredContainer } from "~/components/layout/AppLayout";
 import { throwPermissionDenied } from "~/utils/permissionDenied";
-import { $replica } from "~/db.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
@@ -39,12 +38,8 @@ import {
   VercelOnboardingModal,
 } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import type { loader as vercelLoader } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
-
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
-  return org?.id ?? null;
-}
 
 export const loader = dashboardLoader(
   {

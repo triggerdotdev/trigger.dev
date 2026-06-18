@@ -29,6 +29,7 @@ import { env } from "~/env.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { inviteMembers } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { scheduleEmail } from "~/services/scheduleEmail.server";
 import { rbac } from "~/services/rbac.server";
@@ -39,11 +40,6 @@ import { PurchaseSeatsModal } from "../_app.orgs.$organizationSlug.settings.team
 const Params = z.object({
   organizationSlug: z.string(),
 });
-
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
-  return org?.id ?? null;
-}
 
 export const loader = dashboardLoader(
   {

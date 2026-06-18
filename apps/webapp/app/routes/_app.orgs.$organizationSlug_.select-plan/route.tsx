@@ -2,17 +2,13 @@ import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
 import { AppContainer, MainBody, PageBody } from "~/components/layout/AppLayout";
 import { Header1 } from "~/components/primitives/Headers";
-import { $replica, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
-
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
-  return org?.id ?? null;
-}
 
 export const loader = dashboardLoader(
   {

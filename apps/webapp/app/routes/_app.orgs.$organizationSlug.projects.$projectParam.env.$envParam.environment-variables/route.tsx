@@ -59,6 +59,7 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import {
   type EnvironmentVariableWithSetValues,
   EnvironmentVariablesPresenter,
@@ -117,11 +118,6 @@ export type EnvironmentVariablesPageLoaderData = {
 
 export const environmentVariablesRouteId =
   "routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables";
-
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await prisma.organization.findFirst({ where: { slug }, select: { id: true } });
-  return org?.id ?? null;
-}
 
 export const loader = dashboardLoader(
   {

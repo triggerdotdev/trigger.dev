@@ -66,12 +66,12 @@ import {
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import {
   type DeploymentListItem,
   DeploymentListPresenter,
 } from "~/presenters/v3/DeploymentListPresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { $replica } from "~/db.server";
 import { rbac } from "~/services/rbac.server";
 import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { titleCase } from "~/utils";
@@ -100,11 +100,6 @@ const SearchParams = z.object({
   page: z.coerce.number().optional(),
   version: z.string().optional(),
 });
-
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
-  return org?.id ?? null;
-}
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);

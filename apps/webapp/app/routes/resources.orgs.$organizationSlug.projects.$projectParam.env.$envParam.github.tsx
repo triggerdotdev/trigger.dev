@@ -43,6 +43,7 @@ import {
   redirectWithErrorMessage,
   redirectWithSuccessMessage,
 } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { ProjectSettingsService } from "~/services/projectSettings.server";
@@ -50,7 +51,6 @@ import { logger } from "~/services/logger.server";
 import { triggerInitialDeployment } from "~/services/platform.v3.server";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { requireUserId } from "~/services/session.server";
-import { $replica } from "~/db.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import {
@@ -182,11 +182,6 @@ function redirectWithMessage(
   return redirectUrl
     ? redirectWithErrorMessage(redirectUrl, request, message)
     : redirectBackWithErrorMessage(request, message);
-}
-
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
-  return org?.id ?? null;
 }
 
 export const action = dashboardAction(

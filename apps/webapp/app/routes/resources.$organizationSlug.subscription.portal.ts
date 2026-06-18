@@ -1,14 +1,10 @@
 import { redirect } from "remix-typedjson";
-import { $replica, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { customerPortalUrl } from "~/services/platform.v3.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { OrganizationParamsSchema, v3BillingPath } from "~/utils/pathBuilder";
-
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
-  return org?.id ?? null;
-}
 
 export const loader = dashboardLoader(
   {

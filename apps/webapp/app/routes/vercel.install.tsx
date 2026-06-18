@@ -3,6 +3,7 @@ import { z } from "zod";
 import { $replica } from "~/db.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { logger } from "~/services/logger.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 import { generateVercelOAuthState } from "~/v3/vercel/vercelOAuthState.server";
 import { findProjectBySlug } from "~/models/project.server";
@@ -11,11 +12,6 @@ const QuerySchema = z.object({
   org_slug: z.string(),
   project_slug: z.string(),
 });
-
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
-  return org?.id ?? null;
-}
 
 export const loader = dashboardLoader(
   {

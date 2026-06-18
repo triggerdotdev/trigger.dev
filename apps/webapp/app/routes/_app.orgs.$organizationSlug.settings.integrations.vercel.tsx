@@ -26,8 +26,9 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
-import { $replica, $transaction, prisma } from "~/db.server";
+import { $transaction, prisma } from "~/db.server";
 import { requireOrganization } from "~/services/org.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
@@ -133,11 +134,6 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 const ActionSchema = z.object({
   intent: z.literal("uninstall"),
 });
-
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
-  return org?.id ?? null;
-}
 
 export const action = dashboardAction(
   {

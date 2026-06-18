@@ -1,6 +1,7 @@
 import { redirect } from "remix-typedjson";
 import { z } from "zod";
 import { $replica } from "~/db.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { createGitHubAppInstallSession } from "~/services/gitHubSession.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { newOrganizationPath } from "~/utils/pathBuilder";
@@ -13,11 +14,6 @@ const QuerySchema = z.object({
     message: "Invalid redirect path",
   }),
 });
-
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
-  return org?.id ?? null;
-}
 
 export const loader = dashboardLoader(
   {

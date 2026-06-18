@@ -22,8 +22,8 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { cn } from "~/utils/cn";
-import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
@@ -40,14 +40,6 @@ export const meta: MetaFunction = () => {
 const Params = z.object({
   organizationSlug: z.string(),
 });
-
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({
-    where: { slug },
-    select: { id: true },
-  });
-  return org?.id ?? null;
-}
 
 export const loader = dashboardLoader(
   {
@@ -329,9 +321,7 @@ function allowedEnvTypesFromDeny(conditions: Record<string, unknown>): EnvType[]
   const envType = conditions.envType;
   // Equality, e.g. { envType: "PRODUCTION" } → denied in prod, allowed elsewhere.
   if (typeof envType === "string") {
-    return ENV_TYPES.includes(envType as EnvType)
-      ? ENV_TYPES.filter((t) => t !== envType)
-      : null;
+    return ENV_TYPES.includes(envType as EnvType) ? ENV_TYPES.filter((t) => t !== envType) : null;
   }
   // Negation, e.g. { envType: { $ne: "DEVELOPMENT" } } → denied everywhere except
   // DEVELOPMENT, so allowed only in DEVELOPMENT.

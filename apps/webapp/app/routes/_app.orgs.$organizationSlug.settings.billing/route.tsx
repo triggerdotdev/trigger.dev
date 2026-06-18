@@ -8,8 +8,9 @@ import { DateTime } from "~/components/primitives/DateTime";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { $replica, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import {
@@ -29,11 +30,6 @@ export const meta: MetaFunction = () => {
     },
   ];
 };
-
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
-  return org?.id ?? null;
-}
 
 export const loader = dashboardLoader(
   {

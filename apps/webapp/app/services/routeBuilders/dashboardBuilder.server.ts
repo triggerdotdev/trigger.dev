@@ -95,18 +95,31 @@ export async function authenticateAndAuthorize<TParams, TSearchParams, TContext 
     return { ok: false, response: redirect(options.unauthorizedRedirect ?? "/") };
   }
 
-  if (options.authorization && !isAuthorized(auth.ability, options.authorization)) {
-    // Super-admin gates must not reveal that the route exists, so they redirect
-    // away rather than render the panel. A redirect is also used by routes that
-    // opt in via unauthorizedRedirect (e.g. credential endpoints with no UI).
+  if (options.authorization) {
     const isSuperGate = "requireSuper" in options.authorization;
-    if (options.unauthorizedRedirect || isSuperGate) {
-      return { ok: false, response: redirect(options.unauthorizedRedirect ?? "/") };
+    // Every catalogue resource is org- or project-scoped; requireSuper is the
+    // only global gate. An org/project-scoped check with no resolved scope
+    // would evaluate an unscoped ability, making the authorization a silent
+    // no-op for a missing org. Fail closed instead of relying on the ability
+    // to happen to deny.
+    const hasScope = Boolean(ctx.organizationId || ctx.projectId);
+    const denied = isSuperGate
+      ? !isAuthorized(auth.ability, options.authorization)
+      : !hasScope || !isAuthorized(auth.ability, options.authorization);
+
+    if (denied) {
+      // Super-admin gates must not reveal that the route exists, so they
+      // redirect away rather than render the panel. A redirect is also used by
+      // routes that opt in via unauthorizedRedirect (credential endpoints with
+      // no UI).
+      if (options.unauthorizedRedirect || isSuperGate) {
+        return { ok: false, response: redirect(options.unauthorizedRedirect ?? "/") };
+      }
+      // Role-based denial: throw a permission-denied 403. Both loader and
+      // action wrappers throw this, so it bubbles to the nearest route
+      // ErrorBoundary, where RouteErrorDisplay renders the permission panel.
+      return { ok: false, response: permissionDeniedResponse(options.authorization.message) };
     }
-    // Role-based denial: throw a permission-denied 403. Both loader and action
-    // wrappers throw this, so it bubbles to the nearest route ErrorBoundary,
-    // where RouteErrorDisplay renders the permission panel.
-    return { ok: false, response: permissionDeniedResponse(options.authorization.message) };
   }
 
   return {

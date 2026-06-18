@@ -31,8 +31,8 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import * as Property from "~/components/primitives/PropertyTable";
-import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { ApiKeysPresenter } from "~/presenters/v3/ApiKeysPresenter.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
@@ -45,11 +45,6 @@ export const meta: MetaFunction = () => {
     },
   ];
 };
-
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
-  return org?.id ?? null;
-}
 
 export const loader = dashboardLoader(
   {

@@ -52,6 +52,7 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
 import { removeTeamMember } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
@@ -80,19 +81,6 @@ export const meta: MetaFunction = () => {
 const Params = z.object({
   organizationSlug: z.string(),
 });
-
-// Resolve slug → orgId in the dashboardLoader's context callback so the
-// rbac.authenticateSession call gets a real organizationId. The result
-// is cached for the duration of the request and reused by the handler
-// below (we re-find by slug there to get a typed value — the context
-// only sees the loosely typed return type).
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({
-    where: { slug },
-    select: { id: true },
-  });
-  return org?.id ?? null;
-}
 
 export const loader = dashboardLoader(
   {
@@ -225,10 +213,9 @@ export const action = dashboardAction(
         );
       }
       if (purchaseBlockReason === "managed_billing") {
-        return json(
-          { ok: false, error: "Contact us to request more seats." } as const,
-          { status: 403 }
-        );
+        return json({ ok: false, error: "Contact us to request more seats." } as const, {
+          status: 403,
+        });
       }
 
       const submission = parse(formData, { schema: PurchaseSchema });

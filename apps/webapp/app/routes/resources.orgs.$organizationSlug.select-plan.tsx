@@ -37,8 +37,9 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { TextArea } from "~/components/primitives/TextArea";
 import { TextLink } from "~/components/primitives/TextLink";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { $replica, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { logger } from "~/services/logger.server";
 import { setPlan } from "~/services/platform.v3.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
@@ -59,11 +60,6 @@ const schema = z.object({
   reasons: z.union([z.string(), z.array(z.string())]).optional(),
   message: z.string().optional(),
 });
-
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
-  return org?.id ?? null;
-}
 
 export const action = dashboardAction(
   {

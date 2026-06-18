@@ -56,12 +56,13 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextArea } from "~/components/primitives/TextArea";
 import { TimeFilter } from "~/components/runs/v3/SharedFilters";
-import { $replica, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useInterval } from "~/hooks/useInterval";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type GenerationRow, PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
@@ -120,11 +121,6 @@ const ActionSchema = z.discriminatedUnion("intent", [
     versionId: z.string(),
   }),
 ]);
-
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({ where: { slug }, select: { id: true } });
-  return org?.id ?? null;
-}
 
 export const action = dashboardAction(
   {

@@ -47,6 +47,7 @@ import { useList } from "~/hooks/useList";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import {
@@ -100,11 +101,6 @@ const schema = z.object({
     return i;
   }, Variable.array().nonempty("At least one variable is required")),
 });
-
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await prisma.organization.findFirst({ where: { slug }, select: { id: true } });
-  return org?.id ?? null;
-}
 
 export const action = dashboardAction(
   {
