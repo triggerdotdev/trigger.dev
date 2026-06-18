@@ -6,6 +6,10 @@ import { ApiBatchResultsPresenter } from "~/presenters/v3/ApiBatchResultsPresent
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { seedTestEnvironment } from "../helpers/seedTestEnvironment";
 
+// Neutralize the db.server singleton so importing the presenter (via BasePresenter) does not try
+// to connect to the env database; the test uses the injected testcontainer prisma for all reads.
+vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
+
 vi.setConfig({ testTimeout: 60_000 });
 
 const idGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", 21);
