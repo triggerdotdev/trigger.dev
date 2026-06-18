@@ -1683,4 +1683,92 @@ describe("PostgresRunStore — read", () => {
     expect(run?.id).toBe(runId);
     expect(run?.status).toBe("PENDING");
   });
+
+  postgresTest("findRun by id with no projection returns the whole row", async ({ prisma }) => {
+    const { organization, project, environment } = await seedEnvironment(prisma);
+
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+    const runId = "run_find_full_row_1";
+
+    await store.createRun(
+      buildCreateRunInput({
+        runId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      })
+    );
+
+    const run = await store.findRun({ id: runId });
+
+    expect(run?.id).toBe(runId);
+    expect(run?.friendlyId).toBe("run_friendly_1");
+    expect(run?.status).toBe("PENDING");
+    expect(run?.taskIdentifier).toBe("my-task");
+    // The whole-row variant returns the full scalar set, not a projection.
+    expect(run?.payload).toBe("{}");
+    expect(run?.payloadType).toBe("application/json");
+  });
+
+  postgresTest("findRunOrThrow with no projection throws when no row matches", async ({ prisma }) => {
+    await seedEnvironment(prisma);
+
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+    await expect(store.findRunOrThrow({ id: "missing" })).rejects.toThrow();
+  });
+
+  postgresTest("findRuns with no projection returns whole rows", async ({ prisma }) => {
+    const { organization, project, environment } = await seedEnvironment(prisma);
+
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+    const earliest = new Date("2026-07-01T00:00:00.000Z");
+    const latest = new Date("2026-07-02T00:00:00.000Z");
+
+    const rows: Array<{ id: string; createdAt: Date }> = [
+      { id: "run_find_full_many_earliest", createdAt: earliest },
+      { id: "run_find_full_many_latest", createdAt: latest },
+    ];
+
+    for (const row of rows) {
+      await prisma.taskRun.create({
+        data: {
+          id: row.id,
+          engine: "V2",
+          status: "PENDING",
+          friendlyId: `${row.id}_friendly`,
+          runtimeEnvironmentId: environment.id,
+          environmentType: "DEVELOPMENT",
+          organizationId: organization.id,
+          projectId: project.id,
+          taskIdentifier: "my-task",
+          payload: "{}",
+          payloadType: "application/json",
+          traceContext: {},
+          traceId: `trace_${row.id}`,
+          spanId: `span_${row.id}`,
+          queue: "task/my-task",
+          isTest: false,
+          taskEventStore: "taskEvent",
+          depth: 0,
+          createdAt: row.createdAt,
+        },
+      });
+    }
+
+    const found = await store.findRuns({
+      where: { projectId: project.id },
+      orderBy: { createdAt: "desc" },
+    });
+
+    expect(found).toHaveLength(2);
+    expect(found.map((r) => r.id)).toEqual([
+      "run_find_full_many_latest",
+      "run_find_full_many_earliest",
+    ]);
+    // Whole rows include full scalar columns.
+    expect(found[0]?.taskIdentifier).toBe("my-task");
+    expect(found[0]?.payloadType).toBe("application/json");
+  });
 });

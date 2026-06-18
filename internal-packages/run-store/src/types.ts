@@ -331,6 +331,7 @@ export interface RunStore {
     args: { include: I },
     client?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }> | null>;
+  findRun(where: Prisma.TaskRunWhereInput, client?: PrismaClientOrTransaction): Promise<TaskRun | null>;
 
   findRunOrThrow<S extends Prisma.TaskRunSelect>(
     where: Prisma.TaskRunWhereInput,
@@ -342,6 +343,7 @@ export interface RunStore {
     args: { include: I },
     client?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  findRunOrThrow(where: Prisma.TaskRunWhereInput, client?: PrismaClientOrTransaction): Promise<TaskRun>;
 
   findRuns<S extends Prisma.TaskRunSelect>(
     args: {
@@ -365,4 +367,14 @@ export interface RunStore {
     },
     client?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }>[]>;
+  findRuns(
+    args: {
+      where: Prisma.TaskRunWhereInput;
+      orderBy?: Prisma.TaskRunOrderByWithRelationInput | Prisma.TaskRunOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+      cursor?: Prisma.TaskRunWhereUniqueInput;
+    },
+    client?: PrismaClientOrTransaction
+  ): Promise<TaskRun[]>;
 }
