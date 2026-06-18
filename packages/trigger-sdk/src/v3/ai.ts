@@ -18,6 +18,7 @@ import {
   type PipeStreamResult,
   type RealtimeDefinedInputStream,
   type RealtimeDefinedStream,
+  type ApiClientConfiguration,
   type ReadStreamOptions,
   SemanticInternalAttributes,
   type SendInputStreamOptions,
@@ -9989,6 +9990,12 @@ export type CreateChatStartSessionActionOptions = {
    * custom retry. Applies to both session-create and JWT-claims POSTs.
    */
   fetch?: ChatStartSessionFetchOverride;
+  /**
+   * API client config (baseURL / accessToken) to scope this action to a specific
+   * environment, for callers that can't set a global `TRIGGER_SECRET_KEY`. The
+   * returned action runs under this config.
+   */
+  apiClient?: ApiClientConfiguration;
 };
 
 /**
@@ -10078,6 +10085,15 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     if (!params.chatId) {
       throw new Error(
         "chat.createStartSessionAction: params.chatId is required — used as the session externalId."
+      );
+    }
+
+    // Scope the action to `apiClient`'s env: re-enter without it so the body
+    // runs once, under that config (read via apiClientManager.accessToken/.baseURL).
+    if (options?.apiClient) {
+      const { apiClient, ...rest } = options;
+      return apiClientManager.runWithConfig(apiClient, () =>
+        createChatStartSessionAction<TChat>(taskId, rest)(params)
       );
     }
 
