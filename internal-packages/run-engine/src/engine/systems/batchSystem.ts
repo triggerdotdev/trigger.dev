@@ -87,16 +87,19 @@ export class BatchSystem {
         return;
       }
 
-      const runs = await this.$.prisma.taskRun.findMany({
-        select: {
-          id: true,
-          status: true,
+      const runs = await this.$.runStore.findRuns(
+        {
+          select: {
+            id: true,
+            status: true,
+          },
+          where: {
+            batchId,
+            runtimeEnvironmentId: batch.runtimeEnvironmentId,
+          },
         },
-        where: {
-          batchId,
-          runtimeEnvironmentId: batch.runtimeEnvironmentId,
-        },
-      });
+        this.$.prisma
+      );
 
       if (runs.every((r) => isFinalRunStatus(r.status))) {
         this.$.logger.debug("#tryCompleteBatch: All runs are completed", { batchId });

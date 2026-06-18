@@ -650,7 +650,7 @@ export class RunEngine {
             "createCancelledRun: row already exists, returning existing (idempotent)",
             { friendlyId: snapshot.friendlyId },
           );
-          const existing = await prisma.taskRun.findFirst({ where: { id } });
+          const existing = await this.runStore.findRun({ id }, prisma);
           if (existing) {
             // Only treat the conflict as idempotent when the existing
             // row is ALREADY canceled. If a non-canceled row landed
@@ -2325,16 +2325,19 @@ export class RunEngine {
           });
 
           //the run didn't start executing, we need to requeue it
-          const run = await prisma.taskRun.findFirst({
-            where: { id: runId },
-            include: {
-              runtimeEnvironment: {
-                include: {
-                  organization: true,
+          const run = await this.runStore.findRun(
+            { id: runId },
+            {
+              include: {
+                runtimeEnvironment: {
+                  include: {
+                    organization: true,
+                  },
                 },
               },
             },
-          });
+            prisma
+          );
 
           if (!run) {
             this.logger.error(
@@ -2629,12 +2632,15 @@ export class RunEngine {
             snapshotId,
           });
 
-          const taskRun = await this.prisma.taskRun.findFirst({
-            where: { id: runId },
-            select: {
-              queue: true,
+          const taskRun = await this.runStore.findRun(
+            { id: runId },
+            {
+              select: {
+                queue: true,
+              },
             },
-          });
+            this.prisma
+          );
 
           if (!taskRun) {
             this.logger.error(
@@ -2708,7 +2714,7 @@ export class RunEngine {
     runIds: string[],
     completedAtOffsetMs: number = 1000 * 60 * 10
   ): Promise<Array<{ id: string; orgId: string }>> {
-    const runs = await this.readOnlyPrisma.taskRun.findMany({
+    const runs = await this.runStore.findRuns({
       where: {
         id: { in: runIds },
         completedAt: {

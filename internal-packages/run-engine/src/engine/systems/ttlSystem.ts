@@ -33,7 +33,7 @@ export class TtlSystem {
       }
 
       //only expire "PENDING" runs
-      const run = await prisma.taskRun.findFirst({ where: { id: runId } });
+      const run = await this.$.runStore.findRun({ id: runId }, prisma);
 
       if (!run) {
         this.$.logger.debug("Could not find enqueued run to expire", {
@@ -171,7 +171,7 @@ export class TtlSystem {
         const skipped: { runId: string; reason: string }[] = [];
 
         // Fetch all runs in a single query (no snapshot data needed)
-        const runs = await this.$.readOnlyPrisma.taskRun.findMany({
+        const runs = await this.$.runStore.findRuns({
           where: { id: { in: runIds } },
           select: {
             id: true,
