@@ -617,4 +617,89 @@ export class PostgresRunStore implements RunStore {
       data: { realtimeStreams: { push: streamId } },
     });
   }
+
+  findRun<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S },
+    client?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }> | null>;
+  findRun<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I },
+    client?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }> | null>;
+  async findRun(
+    where: Prisma.TaskRunWhereInput,
+    args: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude },
+    client?: PrismaClientOrTransaction
+  ): Promise<unknown> {
+    const prisma = client ?? this.readOnlyPrisma;
+
+    return prisma.taskRun.findFirst({
+      where,
+      ...args,
+    });
+  }
+
+  findRunOrThrow<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S },
+    client?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  findRunOrThrow<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I },
+    client?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  async findRunOrThrow(
+    where: Prisma.TaskRunWhereInput,
+    args: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude },
+    client?: PrismaClientOrTransaction
+  ): Promise<unknown> {
+    const prisma = client ?? this.readOnlyPrisma;
+
+    return prisma.taskRun.findFirstOrThrow({
+      where,
+      ...args,
+    });
+  }
+
+  findRuns<S extends Prisma.TaskRunSelect>(
+    args: {
+      where: Prisma.TaskRunWhereInput;
+      select: S;
+      orderBy?: Prisma.TaskRunOrderByWithRelationInput | Prisma.TaskRunOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+      cursor?: Prisma.TaskRunWhereUniqueInput;
+    },
+    client?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>[]>;
+  findRuns<I extends Prisma.TaskRunInclude>(
+    args: {
+      where: Prisma.TaskRunWhereInput;
+      include: I;
+      orderBy?: Prisma.TaskRunOrderByWithRelationInput | Prisma.TaskRunOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+      cursor?: Prisma.TaskRunWhereUniqueInput;
+    },
+    client?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>[]>;
+  async findRuns(
+    args: {
+      where: Prisma.TaskRunWhereInput;
+      select?: Prisma.TaskRunSelect;
+      include?: Prisma.TaskRunInclude;
+      orderBy?: Prisma.TaskRunOrderByWithRelationInput | Prisma.TaskRunOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+      cursor?: Prisma.TaskRunWhereUniqueInput;
+    },
+    client?: PrismaClientOrTransaction
+  ): Promise<unknown> {
+    const prisma = client ?? this.readOnlyPrisma;
+
+    return prisma.taskRun.findMany(args);
+  }
 }

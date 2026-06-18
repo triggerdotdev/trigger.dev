@@ -1528,3 +1528,159 @@ describe("PostgresRunStore — delayed / debounce / metadata / idempotency / arr
     }
   );
 });
+
+describe("PostgresRunStore — read", () => {
+  postgresTest("findRun by id with select returns the projected row", async ({ prisma }) => {
+    const { organization, project, environment } = await seedEnvironment(prisma);
+
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+    const runId = "run_find_select_id_1";
+
+    await store.createRun(
+      buildCreateRunInput({
+        runId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      })
+    );
+
+    const run = await store.findRun({ id: runId }, { select: { friendlyId: true } });
+
+    expect(run).toEqual({ friendlyId: "run_friendly_1" });
+  });
+
+  postgresTest("findRun by friendlyId with select returns the matching row", async ({ prisma }) => {
+    const { organization, project, environment } = await seedEnvironment(prisma);
+
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+    const runId = "run_find_select_friendly_1";
+
+    await store.createRun(
+      buildCreateRunInput({
+        runId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      })
+    );
+
+    const run = await store.findRun({ friendlyId: "run_friendly_1" }, { select: { id: true } });
+
+    expect(run?.id).toBe(runId);
+  });
+
+  postgresTest("findRun returns null when no row matches", async ({ prisma }) => {
+    await seedEnvironment(prisma);
+
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+    const run = await store.findRun({ id: "missing" }, { select: { id: true } });
+
+    expect(run).toBeNull();
+  });
+
+  postgresTest("findRunOrThrow throws when no row matches", async ({ prisma }) => {
+    await seedEnvironment(prisma);
+
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+    await expect(store.findRunOrThrow({ id: "missing" }, { select: { id: true } })).rejects.toThrow();
+  });
+
+  postgresTest("findRun with include hydrates the relation", async ({ prisma }) => {
+    const { organization, project, environment } = await seedEnvironment(prisma);
+
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+    const runId = "run_find_include_1";
+
+    await store.createRun(
+      buildCreateRunInput({
+        runId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      })
+    );
+
+    const run = await store.findRun({ id: runId }, { include: { runtimeEnvironment: true } });
+
+    expect(run?.id).toBe(runId);
+    expect(run?.runtimeEnvironment).toBeDefined();
+    expect(run?.runtimeEnvironment.id).toBe(environment.id);
+  });
+
+  postgresTest("findRuns applies where/orderBy/take and returns ordered, limited rows", async ({ prisma }) => {
+    const { organization, project, environment } = await seedEnvironment(prisma);
+
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+    const earliest = new Date("2026-06-01T00:00:00.000Z");
+    const middle = new Date("2026-06-02T00:00:00.000Z");
+    const latest = new Date("2026-06-03T00:00:00.000Z");
+
+    const rows: Array<{ id: string; createdAt: Date }> = [
+      { id: "run_find_many_earliest", createdAt: earliest },
+      { id: "run_find_many_middle", createdAt: middle },
+      { id: "run_find_many_latest", createdAt: latest },
+    ];
+
+    for (const row of rows) {
+      await prisma.taskRun.create({
+        data: {
+          id: row.id,
+          engine: "V2",
+          status: "PENDING",
+          friendlyId: `${row.id}_friendly`,
+          runtimeEnvironmentId: environment.id,
+          environmentType: "DEVELOPMENT",
+          organizationId: organization.id,
+          projectId: project.id,
+          taskIdentifier: "my-task",
+          payload: "{}",
+          payloadType: "application/json",
+          traceContext: {},
+          traceId: `trace_${row.id}`,
+          spanId: `span_${row.id}`,
+          queue: "task/my-task",
+          isTest: false,
+          taskEventStore: "taskEvent",
+          depth: 0,
+          createdAt: row.createdAt,
+        },
+      });
+    }
+
+    const found = await store.findRuns({
+      where: { projectId: project.id },
+      select: { id: true },
+      orderBy: { createdAt: "desc" },
+      take: 2,
+    });
+
+    expect(found).toEqual([{ id: "run_find_many_latest" }, { id: "run_find_many_middle" }]);
+  });
+
+  postgresTest("findRun reads a just-written row when passed the writer client", async ({ prisma }) => {
+    const { organization, project, environment } = await seedEnvironment(prisma);
+
+    // Use a NoopRunStore-style read replica that must NOT be hit: pass the writer
+    // (prisma) explicitly so reads go through it for read-after-write consistency.
+    const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+    const runId = "run_find_read_after_write_1";
+
+    await store.createRun(
+      buildCreateRunInput({
+        runId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      })
+    );
+
+    const run = await store.findRun({ id: runId }, { select: { id: true, status: true } }, prisma);
+
+    expect(run?.id).toBe(runId);
+    expect(run?.status).toBe("PENDING");
+  });
+});

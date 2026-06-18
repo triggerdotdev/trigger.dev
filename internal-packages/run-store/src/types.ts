@@ -319,4 +319,50 @@ export interface RunStore {
   clearIdempotencyKey(params: ClearIdempotencyKeyInput, tx?: PrismaClientOrTransaction): Promise<{ count: number }>;
   pushTags(runId: string, tags: string[], where: { runtimeEnvironmentId: string }, tx?: PrismaClientOrTransaction): Promise<{ updatedAt: Date }>;
   pushRealtimeStream(runId: string, streamId: string, tx?: PrismaClientOrTransaction): Promise<void>;
+
+  // Read
+  findRun<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S },
+    client?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }> | null>;
+  findRun<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I },
+    client?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }> | null>;
+
+  findRunOrThrow<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S },
+    client?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  findRunOrThrow<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I },
+    client?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+
+  findRuns<S extends Prisma.TaskRunSelect>(
+    args: {
+      where: Prisma.TaskRunWhereInput;
+      select: S;
+      orderBy?: Prisma.TaskRunOrderByWithRelationInput | Prisma.TaskRunOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+      cursor?: Prisma.TaskRunWhereUniqueInput;
+    },
+    client?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>[]>;
+  findRuns<I extends Prisma.TaskRunInclude>(
+    args: {
+      where: Prisma.TaskRunWhereInput;
+      include: I;
+      orderBy?: Prisma.TaskRunOrderByWithRelationInput | Prisma.TaskRunOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+      cursor?: Prisma.TaskRunWhereUniqueInput;
+    },
+    client?: PrismaClientOrTransaction
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>[]>;
 }
