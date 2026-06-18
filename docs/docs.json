@@ -752,7 +752,8 @@
     },
     {
       "source": "/cli-development-commands",
-      "destination": "/cli-dev-commands"
+      "destination": "/cli-dev-commands",
+      "permanent": true
     },
     {
       "source": "/v3/feature-matrix",
