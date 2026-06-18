@@ -17,8 +17,9 @@ import {
 } from "~/services/dashboardAgent.server";
 import { dashboardAgentDb } from "~/services/dashboardAgentDb.server";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 
 const ActionBody = z.object({
   intent: z.enum(["start", "token", "rename", "pin", "delete"]),
@@ -30,8 +31,13 @@ const ActionBody = z.object({
 
 // History list, or — with ?chatId= — the stored transcript + session for resume.
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
+  const userId = user.id;
   const { organizationSlug, projectParam } = EnvironmentParamSchema.parse(params);
+
+  if (!(await canAccessDashboardAgent({ userId, isAdmin: user.admin, isImpersonating: user.isImpersonating, organizationSlug }))) {
+    return json({ error: "Not found" }, { status: 404 });
+  }
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) return json({ error: "Project not found" }, { status: 404 });
@@ -53,8 +59,13 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const userId = await requireUserId(request);
+  const user = await requireUser(request);
+  const userId = user.id;
   const { organizationSlug, projectParam } = EnvironmentParamSchema.parse(params);
+
+  if (!(await canAccessDashboardAgent({ userId, isAdmin: user.admin, isImpersonating: user.isImpersonating, organizationSlug }))) {
+    return json({ error: "Not found" }, { status: 404 });
+  }
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) return json({ error: "Project not found" }, { status: 404 });

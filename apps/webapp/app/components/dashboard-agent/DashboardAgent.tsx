@@ -1,5 +1,7 @@
 import { SparklesIcon } from "@heroicons/react/20/solid";
 import { useState } from "react";
+import { useFeatureFlags } from "~/hooks/useFeatureFlags";
+import { useHasAdminAccess } from "~/hooks/useUser";
 import { DashboardAgentPanel } from "./DashboardAgentPanel";
 
 /**
@@ -7,9 +9,19 @@ import { DashboardAgentPanel } from "./DashboardAgentPanel";
  * the env-scoped layout: when open it's a 380px side panel that pushes content;
  * when closed it's a floating launcher. The panel only mounts while open, so the
  * chat transport isn't created until the user opens it.
+ *
+ * Gated behind the `hasDashboardAgentAccess` flag (org override or global
+ * default), with admins/impersonators always allowed. The resource route
+ * enforces the same check server-side.
  */
 export function DashboardAgent() {
+  const hasAdminAccess = useHasAdminAccess();
+  const { hasDashboardAgentAccess } = useFeatureFlags();
   const [open, setOpen] = useState(false);
+
+  if (!hasAdminAccess && !hasDashboardAgentAccess) {
+    return null;
+  }
 
   if (open) {
     return <DashboardAgentPanel onClose={() => setOpen(false)} />;

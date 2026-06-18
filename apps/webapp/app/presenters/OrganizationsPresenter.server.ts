@@ -160,6 +160,7 @@ export class OrganizationsPresenter {
     const globalFlags = await flags({
       defaultValues: {
         hasAiAccess: env.AI_FEATURES_ENABLED === "1",
+        hasDashboardAgentAccess: env.DASHBOARD_AGENT_ENABLED === "1",
         hasPrivateConnections: env.PRIVATE_CONNECTIONS_ENABLED === "1",
       },
     });
