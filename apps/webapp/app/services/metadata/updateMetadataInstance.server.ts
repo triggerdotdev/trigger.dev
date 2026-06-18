@@ -2,6 +2,7 @@ import { singleton } from "~/utils/singleton";
 import { env } from "~/env.server";
 import { UpdateMetadataService } from "./updateMetadata.server";
 import { prisma } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { publishChangeRecord } from "~/services/realtime/runChangeNotifierInstance.server";
 
 export const updateMetadataService = singleton(
@@ -9,6 +10,7 @@ export const updateMetadataService = singleton(
   () =>
     new UpdateMetadataService({
       prisma,
+      runStore,
       flushIntervalMs: env.BATCH_METADATA_OPERATIONS_FLUSH_INTERVAL_MS,
       flushEnabled: env.BATCH_METADATA_OPERATIONS_FLUSH_ENABLED === "1",
       flushLoggingEnabled: env.BATCH_METADATA_OPERATIONS_FLUSH_LOGGING_ENABLED === "1",

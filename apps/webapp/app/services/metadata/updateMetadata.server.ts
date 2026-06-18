@@ -14,7 +14,6 @@ import { type RuntimeFiber } from "effect/Fiber";
 import { setTimeout } from "timers/promises";
 import { Logger, LogLevel } from "@trigger.dev/core/logger";
 import type { RunStore } from "@internal/run-store";
-import { runStore as defaultRunStore } from "~/v3/runStore.server";
 
 const RUN_UPDATABLE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
@@ -26,7 +25,7 @@ type BufferedRunMetadataChangeOperation = {
 
 export type UpdateMetadataServiceOptions = {
   prisma: PrismaClientOrTransaction;
-  runStore?: RunStore;
+  runStore: RunStore;
   flushIntervalMs?: number;
   flushEnabled?: boolean;
   flushLoggingEnabled?: boolean;
@@ -61,7 +60,7 @@ export class UpdateMetadataService {
 
   constructor(private readonly options: UpdateMetadataServiceOptions) {
     this._prisma = options.prisma;
-    this._runStore = options.runStore ?? defaultRunStore;
+    this._runStore = options.runStore;
     this.flushIntervalMs = options.flushIntervalMs ?? 5000;
     this.flushEnabled = options.flushEnabled ?? true;
     this.flushLoggingEnabled = options.flushLoggingEnabled ?? true;
