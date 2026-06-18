@@ -8,6 +8,9 @@ import { chats, chatSessions, type ChatSession } from "./schema.js";
  * callers can't forget the `where`. Shared by the agent task and the webapp.
  */
 
+/** Placeholder title for a chat with no generated or user-set title yet. */
+export const DEFAULT_CHAT_TITLE = "New chat";
+
 export interface ChatListItem {
   id: string;
   title: string;
@@ -115,7 +118,7 @@ export async function createChat(
       id: params.id,
       organizationId: params.organizationId,
       userId: params.userId,
-      title: params.title ?? "New chat",
+      title: params.title ?? DEFAULT_CHAT_TITLE,
       metadata: params.metadata ?? {},
     })
     .onConflictDoNothing();
@@ -133,6 +136,27 @@ export async function renameChat(
     .update(chats)
     .set({ title: params.title, updatedAt: sql`now()` })
     .where(and(eq(chats.id, params.chatId), eq(chats.userId, params.userId)));
+}
+
+/**
+ * #5 Set an auto-generated title, but only while the chat still has the default
+ * title. Conditional on `DEFAULT_CHAT_TITLE` so the background title write can't
+ * clobber a user rename, and so it's a safe no-op if it runs more than once.
+ */
+export async function setChatTitleIfDefault(
+  db: DashboardAgentDb,
+  params: { chatId: string; title: string }
+): Promise<void> {
+  await db
+    .update(chats)
+    .set({ title: params.title, updatedAt: sql`now()` })
+    .where(
+      and(
+        eq(chats.id, params.chatId),
+        eq(chats.title, DEFAULT_CHAT_TITLE),
+        isNull(chats.deletedAt)
+      )
+    );
 }
 
 /** #5 Pin / unpin. */

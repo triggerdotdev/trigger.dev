@@ -6,7 +6,7 @@
   "types": "./src/index.ts",
   "type": "module",
   "dependencies": {
-    "@ai-sdk/openai": "^3.0.0",
+    "@ai-sdk/anthropic": "^3.0.0",
     "@internal/dashboard-agent-db": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "ai": "^6.0.116",
