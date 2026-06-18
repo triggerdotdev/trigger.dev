@@ -67,6 +67,7 @@ apps/**/public/build
 **/.claude/settings.local.json
 .claude/architecture/
 .claude/docs-plans/
+.claude/plans/
 .claude/review-guides/
 .claude/scheduled_tasks.lock
 .mcp.log

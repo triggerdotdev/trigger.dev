@@ -97,6 +97,15 @@ const EnvironmentSchema = z
     DATABASE_CONNECTION_LIMIT: z.coerce.number().int().default(10),
     DATABASE_POOL_TIMEOUT: z.coerce.number().int().default(60),
     DATABASE_CONNECTION_TIMEOUT: z.coerce.number().int().default(20),
+    // Dashboard-agent conversation store. Cloud points this at the dedicated
+    // PlanetScale database; when unset it falls back to DATABASE_URL (OSS), where
+    // the tables live in the isolated `trigger_dashboard_agent` schema.
+    DASHBOARD_AGENT_DATABASE_URL: z.string().optional(),
+    // The secret key (tr_*) for the runtime environment the dashboard-agent task
+    // is deployed to. The chat session is created in that environment via the
+    // standard chat.agent SDK flow. When unset, the live agent is disabled — the
+    // conversation store / History still work, no chat can start.
+    DASHBOARD_AGENT_SECRET_KEY: z.string().optional(),
     DIRECT_URL: z
       .string()
       .refine(

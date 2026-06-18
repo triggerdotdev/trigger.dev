@@ -1,0 +1,21 @@
+{
+  "name": "@internal/dashboard-agent-db",
+  "private": true,
+  "version": "0.0.1",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "type": "module",
+  "dependencies": {
+    "drizzle-orm": "^0.45.0",
+    "postgres": "^3.4.0"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
+  }
+}

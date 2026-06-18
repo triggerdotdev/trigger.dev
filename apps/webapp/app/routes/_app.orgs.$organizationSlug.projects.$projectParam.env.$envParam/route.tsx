@@ -1,6 +1,7 @@
 import { Outlet } from "@remix-run/react";
 import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
+import { DashboardAgent } from "~/components/dashboard-agent/DashboardAgent";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { updateCurrentProjectEnvironmentId } from "~/services/dashboardPreferences.server";
@@ -89,7 +90,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  return <Outlet />;
+  return (
+    <div className="flex h-full min-h-0">
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <Outlet />
+      </div>
+      <DashboardAgent />
+    </div>
+  );
 }
 
 // Caught here (inside the project SideMenu's Outlet) rather than at the project
