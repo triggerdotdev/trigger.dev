@@ -53,6 +53,10 @@ If you see "Connection error" when running `trigger login` (or "Failed to create
 2. **VPN or firewall:** Disconnect from VPN or check firewall/proxy; try `npx trigger.dev@latest login --log-level debug` for more detail.
 3. **TLS / certificate store:** Node may use a different CA store than your OS (e.g. `curl` works but the CLI fails). Try `export NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem` (macOS/Linux) then login again, or reinstall Node so it gets updated certs. Behind a corporate proxy or custom CA? Set `NODE_EXTRA_CA_CERTS` to that CA file.
 
+### Runs never dequeue in dev
+
+If runs sit in the queue and never start while running `trigger.dev dev`, check whether you have more than one local instance running against the same project. Each project has a single dev environment, and only one `trigger.dev dev` instance can consume from it at a time, so a second instance causes runs to be split between them and some appear stuck. Keep a single `trigger.dev dev` running per project. [Upvote isolated dev sessions](https://triggerdev.featurebase.app/p/isolated-dev-sessions-for-multiple-local-trigger-dev-instances) if you need to run multiple local instances.
+
 ## Deployment
 
 Running the [trigger.dev deploy] command builds and deploys your code. Sometimes there can be issues building your code.

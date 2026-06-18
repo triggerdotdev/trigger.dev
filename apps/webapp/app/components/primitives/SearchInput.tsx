@@ -14,6 +14,19 @@ export type SearchInputProps = {
   /** Additional URL params to reset when searching or clearing (e.g. pagination). Defaults to ["cursor", "direction"]. */
   resetParams?: string[];
   autoFocus?: boolean;
+  /**
+   * Controlled value. When provided alongside `onValueChange`, the input
+   * skips URL params entirely and acts as a controlled component — useful
+   * for client-side filters (e.g. tree filtering) that don't round-trip
+   * to the server.
+   */
+  value?: string;
+  /**
+   * Called on every keystroke and on clear when in controlled mode. The
+   * presence of this prop is what switches the input into controlled
+   * mode; `paramName`/`resetParams` are ignored when it's set.
+   */
+  onValueChange?: (value: string) => void;
 };
 
 export function SearchInput({
@@ -21,24 +34,53 @@ export function SearchInput({
   paramName = "search",
   resetParams = ["cursor", "direction"],
   autoFocus,
+  value: controlledValue,
+  onValueChange,
 }: SearchInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { value, replace, del } = useSearchParams();
+  const isControlled = onValueChange !== undefined;
 
-  const initialSearch = value(paramName) ?? "";
+  const initialSearch = isControlled ? controlledValue ?? "" : value(paramName) ?? "";
 
   const [text, setText] = useState(initialSearch);
   const [isFocused, setIsFocused] = useState(false);
 
+  // Compare against a ref, not `text`, so the effect stays off the keystroke path.
+  // Trade-off: controlled mode assumes the parent accepts onValueChange; it won't
+  // re-sync `text` if the parent rejects a change and holds `value` unchanged.
+  const lastSyncedRef = useRef(initialSearch);
+
   useEffect(() => {
+    if (isControlled) {
+      if (controlledValue !== undefined && controlledValue !== lastSyncedRef.current) {
+        lastSyncedRef.current = controlledValue;
+        setText(controlledValue);
+      }
+      return;
+    }
     const urlSearch = value(paramName) ?? "";
-    if (urlSearch !== text && !isFocused) {
+    if (urlSearch === lastSyncedRef.current) return;
+    // Only mark synced once we actually apply it, so a URL change during focus still syncs on blur.
+    if (!isFocused) {
+      lastSyncedRef.current = urlSearch;
       setText(urlSearch);
     }
-  }, [value, text, isFocused, paramName]);
+  }, [isControlled, controlledValue, value, isFocused, paramName]);
+
+  const updateText = (next: string) => {
+    setText(next);
+    if (isControlled) {
+      onValueChange?.(next);
+    }
+  };
 
   const handleSubmit = () => {
+    if (isControlled) {
+      // Live updates already fired through onValueChange; submit is a no-op.
+      return;
+    }
     const resetValues = Object.fromEntries(resetParams.map((p) => [p, undefined]));
     if (text.trim()) {
       replace({ [paramName]: text.trim(), ...resetValues });
@@ -49,7 +91,11 @@ export function SearchInput({
 
   const handleClear = () => {
     setText("");
-    del([paramName, ...resetParams]);
+    if (isControlled) {
+      onValueChange?.("");
+    } else {
+      del([paramName, ...resetParams]);
+    }
   };
 
   return (
@@ -70,7 +116,7 @@ export function SearchInput({
           variant="secondary-small"
           placeholder={placeholder}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => updateText(e.target.value)}
           fullWidth
           autoFocus={autoFocus}
           className={cn("", isFocused && "placeholder:text-text-dimmed/70")}
@@ -94,7 +140,13 @@ export function SearchInput({
           accessory={
             text.length > 0 ? (
               <div className="-mr-1 flex items-center gap-1.5">
-                <ShortcutKey shortcut={{ key: "enter" }} variant="medium" className="border-none" />
+                {!isControlled && (
+                  <ShortcutKey
+                    shortcut={{ key: "enter" }}
+                    variant="medium"
+                    className="border-none"
+                  />
+                )}
                 <SimpleTooltip
                   asChild
                   button={

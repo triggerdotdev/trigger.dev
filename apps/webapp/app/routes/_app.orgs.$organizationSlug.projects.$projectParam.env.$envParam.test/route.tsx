@@ -95,7 +95,13 @@ export default function Page() {
           <MainCenteredContainer className="max-w-md">
             <TestHasNoTasks />
           </MainCenteredContainer>
+        ) : taskParam ? (
+          // Task selected via URL → skip the picker; the child route owns the page.
+          <Outlet key={taskParam} />
         ) : (
+          // No task in URL: show the picker as a fallback so users landing on
+          // /test (e.g. from the runs blank state with multiple task filters)
+          // can still choose one.
           <div className={cn("grid h-full max-h-full grid-cols-1")}>
             <ResizablePanelGroup orientation="horizontal" className="h-full max-h-full">
               <ResizablePanel id="test-selector" min="200px" default="20%">
@@ -205,7 +211,10 @@ function TaskRow({ task }: { task: TaskListItem }) {
       >
         <div className="flex items-center gap-1.5">
           <TaskTriggerSourceIcon source={task.triggerSource} />
-          <Paragraph variant="extra-small" className="text-text-dimmed">
+          <Paragraph
+            variant="extra-small"
+            className="text-text-dimmed group-hover/table-row:text-text-bright"
+          >
             {task.taskIdentifier}
           </Paragraph>
         </div>

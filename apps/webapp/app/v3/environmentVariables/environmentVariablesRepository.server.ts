@@ -577,6 +577,42 @@ export class EnvironmentVariablesRepository implements Repository {
     return results;
   }
 
+  async getVariableValuesForKeys(
+    projectId: string,
+    items: Array<{ environmentId: string; key: string }>
+  ): Promise<Map<string, string>> {
+    if (items.length === 0) {
+      return new Map();
+    }
+
+    const uniqueItems = new Map<string, { environmentId: string; key: string }>();
+    for (const item of items) {
+      uniqueItems.set(`${item.environmentId}:${item.key}`, item);
+    }
+
+    const secretStore = getSecretStore("DATABASE", {
+      prismaClient: this.replicaClient,
+    });
+
+    const storeKeys = Array.from(uniqueItems.values()).map((item) =>
+      secretKey(projectId, item.environmentId, item.key)
+    );
+
+    const secrets = await secretStore.getSecretsByKeys(SecretValue, storeKeys);
+    const secretsByStoreKey = new Map(secrets.map((secret) => [secret.key, secret.value.secret]));
+
+    const values = new Map<string, string>();
+    for (const item of uniqueItems.values()) {
+      const storeKey = secretKey(projectId, item.environmentId, item.key);
+      const value = secretsByStoreKey.get(storeKey);
+      if (value !== undefined) {
+        values.set(`${item.environmentId}:${item.key}`, value);
+      }
+    }
+
+    return values;
+  }
+
   async getEnvironmentWithRedactedSecrets(
     projectId: string,
     environmentId: string,

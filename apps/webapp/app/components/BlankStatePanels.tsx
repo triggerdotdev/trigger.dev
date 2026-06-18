@@ -1,5 +1,4 @@
 import {
-  ArrowsRightLeftIcon,
   BeakerIcon,
   BellAlertIcon,
   BookOpenIcon,
@@ -12,7 +11,7 @@ import {
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
 import { useLocation } from "react-use";
-import { AIPromptsIcon } from "~/assets/icons/AIPromptsIcon";
+import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import openBulkActionsPanel from "~/assets/images/open-bulk-actions-panel.png";
@@ -194,19 +193,31 @@ export function SessionsNone() {
   return (
     <InfoPanel
       title="Sessions"
-      icon={ArrowsRightLeftIcon}
-      iconClassName="text-teal-500"
+      icon={AIChatIcon}
+      iconClassName="text-sessions"
       panelClassName="max-w-full"
       accessory={
-        <LinkButton to={docsPath("/ai-chat/overview")} variant="docs/small" LeadingIcon={BookOpenIcon}>
+        <LinkButton
+          to={docsPath("ai-chat/sessions")}
+          variant="docs/small"
+          LeadingIcon={BookOpenIcon}
+        >
           Sessions docs
         </LinkButton>
       }
     >
       <Paragraph spacing variant="small">
-        You have no sessions in this environment. Sessions are durable, typed, bidirectional I/O
-        primitives that outlive a single run — used by <InlineCode>chat.agent</InlineCode> and any
-        long-running task that needs streaming input and output.
+        A session is a stateful execution of an agent, with two-way streaming and durable
+        compute. A single session can have multiple runs associated with it, so one conversation
+        can span many task triggers. The input stream carries incoming user messages, and the
+        output stream carries everything the agent produces, including AI generation parts (text,
+        reasoning, tool calls, etc.) and any custom data parts your task emits.
+      </Paragraph>
+      <Paragraph spacing variant="small">
+        The easiest way to create one is to trigger a <InlineCode>chat.agent</InlineCode> task,
+        which is built on sessions and handles the chat turn loop for you. You can also call{" "}
+        <InlineCode>sessions.start()</InlineCode> directly for non-chat patterns like agent
+        inboxes, approval flows, or server-to-server streaming.
       </Paragraph>
     </InfoPanel>
   );
@@ -424,7 +435,7 @@ export function NoWaitpointTokens() {
   );
 }
 
-export function BranchesNoBranchableEnvironment() {
+export function BranchesNoBranchableEnvironment({ showSelfServe }: { showSelfServe: boolean }) {
   const { isManagedCloud } = useFeatures();
   const organization = useOrganization();
 
@@ -452,9 +463,16 @@ export function BranchesNoBranchableEnvironment() {
       iconClassName="text-preview"
       panelClassName="max-w-full"
       accessory={
-        <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
-          Upgrade
-        </LinkButton>
+        showSelfServe ? (
+          <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
+            Upgrade
+          </LinkButton>
+        ) : (
+          <Feedback
+            button={<Button variant="secondary/small">Request more</Button>}
+            defaultValue="enterprise"
+          />
+        )
       }
     >
       <Paragraph spacing variant="small">
@@ -473,10 +491,12 @@ export function BranchesNoBranches({
   parentEnvironment,
   limits,
   canUpgrade,
+  showSelfServe,
 }: {
   parentEnvironment: { id: string };
   limits: { used: number; limit: number };
   canUpgrade: boolean;
+  showSelfServe: boolean;
 }) {
   const organization = useOrganization();
 
@@ -488,14 +508,18 @@ export function BranchesNoBranches({
         iconClassName="text-preview"
         panelClassName="max-w-full"
         accessory={
-          canUpgrade ? (
+          showSelfServe && canUpgrade ? (
             <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
               Upgrade
             </LinkButton>
           ) : (
             <Feedback
-              button={<Button variant="primary/small">Request more</Button>}
-              defaultValue="help"
+              button={
+                <Button variant={showSelfServe ? "primary/small" : "secondary/small"}>
+                  Request more
+                </Button>
+              }
+              defaultValue={showSelfServe ? "help" : "enterprise"}
             />
           )
         }
@@ -716,7 +740,7 @@ export function PromptsNone() {
   return (
     <InfoPanel
       title="Define your first prompt"
-      icon={AIPromptsIcon}
+      icon={AIChatIcon}
       iconClassName="text-aiPrompts"
       panelClassName="max-w-lg"
       accessory={

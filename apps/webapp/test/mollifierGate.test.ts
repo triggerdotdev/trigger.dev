@@ -27,7 +27,12 @@ type Spies = {
   evaluatorCalls: number;
   logShadowCalls: Array<{ inputs: GateInputs; decision: Extract<TripDecision, { divert: true }> }>;
   logMollifiedCalls: Array<{ inputs: GateInputs; decision: Extract<TripDecision, { divert: true }> }>;
-  recordDecisionCalls: Array<{ outcome: DecisionOutcome; reason?: DecisionReason }>;
+  recordDecisionCalls: Array<{
+    outcome: DecisionOutcome;
+    reason?: DecisionReason;
+    enrolled?: boolean;
+    orgId?: string;
+  }>;
 };
 
 type Toggles = {
@@ -58,8 +63,13 @@ function makeDeps(toggles: Toggles): { deps: GateDependencies; spies: Spies } {
     logMollified: (inputs, decision) => {
       spies.logMollifiedCalls.push({ inputs, decision });
     },
-    recordDecision: (outcome, reason) => {
-      spies.recordDecisionCalls.push({ outcome, reason });
+    recordDecision: (outcome, opts) => {
+      spies.recordDecisionCalls.push({
+        outcome,
+        reason: opts.reason,
+        enrolled: opts.enrolled,
+        orgId: opts.orgId,
+      });
     },
   };
   return { deps, spies };
@@ -152,6 +162,12 @@ describe("evaluateGate cascade — exhaustive truth table", () => {
       expect(spies.recordDecisionCalls).toHaveLength(1);
       expect(spies.recordDecisionCalls[0].outcome).toBe(row.expected.recordedOutcome);
       expect(spies.recordDecisionCalls[0].reason).toBe(row.expected.expectedReason);
+      // enrolled label = the resolved per-org flag, now hoisted above the
+      // bypasses so it's set on every decision. orgId is always passed by the
+      // gate; the telemetry layer drops it for non-enrolled (covered in
+      // mollifierDecisionLabels.test.ts).
+      expect(spies.recordDecisionCalls[0].enrolled).toBe(row.flag);
+      expect(spies.recordDecisionCalls[0].orgId).toBe(inputs.orgId);
     },
   );
 
@@ -254,8 +270,13 @@ describe("evaluateGate — fail open on evaluator error", () => {
       logMollified: (inputs, decision) => {
         spies.logMollifiedCalls.push({ inputs, decision });
       },
-      recordDecision: (outcome, reason) => {
-        spies.recordDecisionCalls.push({ outcome, reason });
+      recordDecision: (outcome, opts) => {
+        spies.recordDecisionCalls.push({
+          outcome,
+          reason: opts.reason,
+          enrolled: opts.enrolled,
+          orgId: opts.orgId,
+        });
       },
     };
 
@@ -265,7 +286,13 @@ describe("evaluateGate — fail open on evaluator error", () => {
     expect(spies.evaluatorCalls).toBe(1);
     expect(spies.logMollifiedCalls).toHaveLength(0);
     expect(spies.logShadowCalls).toHaveLength(0);
-    expect(spies.recordDecisionCalls).toEqual([{ outcome: "pass_through", reason: undefined }]);
+    expect(spies.recordDecisionCalls).toHaveLength(1);
+    expect(spies.recordDecisionCalls[0]).toMatchObject({
+      outcome: "pass_through",
+      reason: undefined,
+      enrolled: true,
+      orgId: inputs.orgId,
+    });
   });
 });
 
@@ -293,8 +320,13 @@ describe("evaluateGate — fail open on resolveOrgFlag error", () => {
       logMollified: (inputs, decision) => {
         spies.logMollifiedCalls.push({ inputs, decision });
       },
-      recordDecision: (outcome, reason) => {
-        spies.recordDecisionCalls.push({ outcome, reason });
+      recordDecision: (outcome, opts) => {
+        spies.recordDecisionCalls.push({
+          outcome,
+          reason: opts.reason,
+          enrolled: opts.enrolled,
+          orgId: opts.orgId,
+        });
       },
     };
 
@@ -302,7 +334,13 @@ describe("evaluateGate — fail open on resolveOrgFlag error", () => {
 
     expect(outcome.action).toBe("pass_through");
     expect(spies.evaluatorCalls).toBe(0);
-    expect(spies.recordDecisionCalls).toEqual([{ outcome: "pass_through", reason: undefined }]);
+    expect(spies.recordDecisionCalls).toHaveLength(1);
+    expect(spies.recordDecisionCalls[0]).toMatchObject({
+      outcome: "pass_through",
+      reason: undefined,
+      enrolled: false,
+      orgId: inputs.orgId,
+    });
   });
 });
 
@@ -333,8 +371,13 @@ describe("evaluateGate — per-org isolation via Organization.featureFlags", () 
       logMollified: (inputs, decision) => {
         spies.logMollifiedCalls.push({ inputs, decision });
       },
-      recordDecision: (outcome, reason) => {
-        spies.recordDecisionCalls.push({ outcome, reason });
+      recordDecision: (outcome, opts) => {
+        spies.recordDecisionCalls.push({
+          outcome,
+          reason: opts.reason,
+          enrolled: opts.enrolled,
+          orgId: opts.orgId,
+        });
       },
     };
     return { deps, spies };
@@ -430,5 +473,84 @@ describe("evaluateGate — per-org isolation via Organization.featureFlags", () 
     expect(inheritsDeps.spies.evaluatorCalls).toBe(0);
     expect(emptyDeps.spies.evaluatorCalls).toBe(0);
     expect(unrelatedDeps.spies.evaluatorCalls).toBe(0);
+  });
+});
+
+// Bypasses: the three categories of trigger that the mollifier never
+// intercepts, regardless of the per-org flag or the trip-evaluator decision.
+describe("evaluateGate — debounce / OTU / triggerAndWait bypasses", () => {
+  it("debounce triggers pass through without invoking the evaluator", async () => {
+    const { deps, spies } = makeDeps({
+      enabled: true,
+      shadow: false,
+      flag: true,
+      decision: trippedDecision,
+    });
+    const outcome = await evaluateGate(
+      { ...inputs, options: { debounce: { key: "k" } } },
+      deps,
+    );
+    expect(outcome).toEqual({ action: "pass_through" });
+    expect(spies.evaluatorCalls).toBe(0);
+  });
+
+  it("oneTimeUseToken triggers pass through without invoking the evaluator", async () => {
+    const { deps, spies } = makeDeps({
+      enabled: true,
+      shadow: false,
+      flag: true,
+      decision: trippedDecision,
+    });
+    const outcome = await evaluateGate(
+      { ...inputs, options: { oneTimeUseToken: "jwt-otu" } },
+      deps,
+    );
+    expect(outcome).toEqual({ action: "pass_through" });
+    expect(spies.evaluatorCalls).toBe(0);
+  });
+
+  it("single triggerAndWait (parentTaskRunId + resumeParentOnCompletion) passes through", async () => {
+    const { deps, spies } = makeDeps({
+      enabled: true,
+      shadow: false,
+      flag: true,
+      decision: trippedDecision,
+    });
+    const outcome = await evaluateGate(
+      {
+        ...inputs,
+        options: { parentTaskRunId: "run_parent", resumeParentOnCompletion: true },
+      },
+      deps,
+    );
+    expect(outcome).toEqual({ action: "pass_through" });
+    expect(spies.evaluatorCalls).toBe(0);
+  });
+
+  it("parentTaskRunId alone (no resumeParentOnCompletion) does NOT bypass — must be both", async () => {
+    const { deps, spies } = makeDeps({
+      enabled: true,
+      shadow: false,
+      flag: true,
+      decision: trippedDecision,
+    });
+    const outcome = await evaluateGate(
+      { ...inputs, options: { parentTaskRunId: "run_parent" } },
+      deps,
+    );
+    expect(outcome.action).toBe("mollify");
+    expect(spies.evaluatorCalls).toBe(1);
+  });
+
+  it("bypass records pass_through decision (so observability counters stay accurate)", async () => {
+    const { deps, spies } = makeDeps({
+      enabled: true,
+      shadow: false,
+      flag: true,
+      decision: trippedDecision,
+    });
+    await evaluateGate({ ...inputs, options: { debounce: { key: "k" } } }, deps);
+    expect(spies.recordDecisionCalls).toHaveLength(1);
+    expect(spies.recordDecisionCalls[0].outcome).toBe("pass_through");
   });
 });

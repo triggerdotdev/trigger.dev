@@ -104,3 +104,10 @@ export class RunOneTimeUseTokenError extends Error {
     this.name = "RunOneTimeUseTokenError";
   }
 }
+
+export class ExecutionSnapshotNotFoundError extends Error {
+  constructor(public readonly snapshotId: string) {
+    super(`No execution snapshot found for id ${snapshotId}`);
+    this.name = "ExecutionSnapshotNotFoundError";
+  }
+}

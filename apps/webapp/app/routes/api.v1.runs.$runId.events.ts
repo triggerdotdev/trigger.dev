@@ -38,6 +38,16 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ resource: run, authentication }) => {
+    // Short-circuit for mollifier-buffered runs. The drainer hasn't
+    // materialised execution events yet (the gate intercepts before
+    // any trace event is written), so a ClickHouse round-trip is
+    // guaranteed to come back empty. `findRun` now sets `isBuffered`
+    // explicitly on its return value — gate on that rather than
+    // probing surrogate fields like `traceId === ""`.
+    if (run.isBuffered) {
+      return json({ events: [] }, { status: 200 });
+    }
+
     const eventRepository = await getEventRepositoryForStore(
       run.taskEventStore,
       authentication.environment.organization.id

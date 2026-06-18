@@ -1,7 +1,7 @@
-ARG NODE_IMAGE=node:20.20-bullseye-slim@sha256:d6c3903e556d4161f63af4550e76244908b6668e1a7d2983eff4873a0c2b0413
+ARG NODE_IMAGE=node:20.20.2-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0
 
-FROM golang:1.23-alpine AS goose_builder
-RUN go install github.com/pressly/goose/v3/cmd/goose@v3.26.0
+FROM golang:1.26-alpine AS goose_builder
+RUN go install github.com/pressly/goose/v3/cmd/goose@v3.27.1
 
 FROM ${NODE_IMAGE} AS pruner
 
@@ -13,7 +13,7 @@ RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
 
 # Base strategy to have layer caching
 FROM ${NODE_IMAGE} AS base
-RUN apt-get update && apt-get install -y openssl dumb-init
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends openssl dumb-init && rm -rf /var/lib/apt/lists/*
 WORKDIR /triggerdotdev
 COPY --chown=node:node .gitignore .gitignore
 COPY --from=pruner --chown=node:node /triggerdotdev/out/json/ .
@@ -43,7 +43,7 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install
 ## Builder (builds the webapp)
 FROM base AS builder
 # This is needed for the sentry-cli binary while building the webapp
-RUN apt-get update && apt-get install -y openssl dumb-init ca-certificates
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends openssl dumb-init ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /triggerdotdev
 # Corepack is used to install pnpm with the exact version from packageManager
 RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
@@ -68,6 +68,7 @@ RUN chmod +x ./scripts/wait-for-it.sh
 RUN chmod +x ./scripts/entrypoint.sh
 COPY --chown=node:node .configs/tsconfig.base.json .configs/tsconfig.base.json
 COPY --chown=node:node scripts/updateVersion.ts scripts/updateVersion.ts
+COPY --chown=node:node scripts/bundleSdkDocs.ts scripts/bundleSdkDocs.ts
 RUN pnpm run generate
 RUN --mount=type=secret,id=sentry_auth_token \
     SENTRY_AUTH_TOKEN=$(cat /run/secrets/sentry_auth_token) \
@@ -75,7 +76,7 @@ RUN --mount=type=secret,id=sentry_auth_token \
 
 # Runner
 FROM ${NODE_IMAGE} AS runner
-RUN apt-get update && apt-get install -y openssl netcat-openbsd ca-certificates
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends openssl netcat-openbsd ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /triggerdotdev
 ENV NODE_ENV=production
 

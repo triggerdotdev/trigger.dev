@@ -8,6 +8,11 @@ on:
         type: string
         required: false
         default: ""
+      image_registry:
+        description: The registry namespace to publish under (e.g. ghcr.io/<owner>)
+        type: string
+        required: false
+        default: ""
   push:
     tags:
       - "re2-test-*"
@@ -65,24 +70,28 @@ jobs:
       - name: 📛 Set tags to push
         id: set_tags
         run: |
-          ref_without_tag=ghcr.io/triggerdotdev/${STEPS_GET_REPOSITORY_OUTPUTS_REPO}
+          # Resolved by the caller when invoked from publish.yml; falls back to the
+          # IMAGE_REGISTRY repository variable (or ghcr.io/<owner>) for the direct
+          # push triggers above, so a fork publishes to its own namespace.
+          ref_without_tag=${IMAGE_REGISTRY}/${STEPS_GET_REPOSITORY_OUTPUTS_REPO}
           image_tags=$ref_without_tag:${STEPS_GET_TAG_OUTPUTS_TAG}
 
           echo "image_tags=${image_tags}" >> "$GITHUB_OUTPUT"
         env:
+          IMAGE_REGISTRY: ${{ inputs.image_registry || vars.IMAGE_REGISTRY || format('ghcr.io/{0}', github.repository_owner) }}
           STEPS_GET_REPOSITORY_OUTPUTS_REPO: ${{ steps.get_repository.outputs.repo }}
           STEPS_GET_TAG_OUTPUTS_TAG: ${{ steps.get_tag.outputs.tag }}
           STEPS_GET_TAG_OUTPUTS_IS_SEMVER: ${{ steps.get_tag.outputs.is_semver }}
 
       - name: 🐙 Login to GitHub Container Registry
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 🐳 Build image and push to GitHub Container Registry
-        uses: depot/build-push-action@5f3b3c2e5a00f0093de47f657aeaefcedff27d18 # v1.17.0
+        uses: depot/build-push-action@98e78adca7817480b8185f474a400b451d74e287 # v1.18.0
         with:
           file: ./apps/${{ matrix.package }}/Containerfile
           platforms: linux/amd64,linux/arm64

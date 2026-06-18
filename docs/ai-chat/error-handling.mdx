@@ -131,17 +131,17 @@ To persist errors for debugging or undo, use `onTurnComplete` (which fires even 
 
 ### Using `onTurnComplete`
 
-`onTurnComplete` fires after every turn — successful **or** errored. The `responseMessage` will be undefined or partial on errors. Use this to mark the turn as failed:
+`onTurnComplete` fires after every turn — successful **or** errored. On an errored turn `responseMessage` is undefined or partial and `error` carries the thrown value (with `finishReason` set to `"error"`). Use this to mark the turn as failed:
 
 ```ts
-onTurnComplete: async ({ chatId, uiMessages, responseMessage, stopped }) => {
+onTurnComplete: async ({ chatId, uiMessages, responseMessage, stopped, error }) => {
   // Persist the messages regardless of error state
   await db.chat.update({
     where: { id: chatId },
     data: {
       messages: uiMessages,
-      // Mark the chat as errored if no response message
-      lastTurnStatus: responseMessage ? "ok" : stopped ? "stopped" : "errored",
+      // `error` is set when the turn threw
+      lastTurnStatus: error ? "errored" : stopped ? "stopped" : "ok",
     },
   });
 },

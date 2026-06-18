@@ -255,6 +255,30 @@ export async function getCurrentPlan(orgId: string) {
   }
 }
 
+export type SelfServePurchaseBlockReason = "plan_unavailable" | "managed_billing";
+
+/**
+ * When cloud billing is configured, self-serve purchase endpoints must fail closed
+ * if the current plan can't be loaded or the org is on managed billing.
+ */
+export function getSelfServePurchaseBlockReason(
+  currentPlan: Awaited<ReturnType<typeof getCurrentPlan>>
+): SelfServePurchaseBlockReason | undefined {
+  if (!isBillingConfigured()) {
+    return undefined;
+  }
+
+  if (!currentPlan) {
+    return "plan_unavailable";
+  }
+
+  if (currentPlan.v3Subscription?.showSelfServe === false) {
+    return "managed_billing";
+  }
+
+  return undefined;
+}
+
 export async function getLimits(orgId: string) {
   if (!client) return undefined;
 
@@ -474,6 +498,22 @@ export async function setBranchesAddOn(organizationId: string, amount: number) {
     return result;
   } catch (e) {
     recordPlatformFailure("setBranchesAddOn", "caught");
+    return undefined;
+  }
+}
+
+export async function setSchedulesAddOn(organizationId: string, amount: number) {
+  if (!client) return undefined;
+
+  try {
+    const result = await client.setAddOn(organizationId, { type: "schedules", amount });
+    if (!result.success) {
+      recordPlatformFailure("setSchedulesAddOn", "no_success");
+      return undefined;
+    }
+    return result;
+  } catch (e) {
+    recordPlatformFailure("setSchedulesAddOn", "caught");
     return undefined;
   }
 }

@@ -1,19 +1,19 @@
-import { BookOpenIcon, CpuChipIcon } from "@heroicons/react/20/solid";
+import { BookOpenIcon, ChevronUpDownIcon, CpuChipIcon } from "@heroicons/react/20/solid";
 import { json, type MetaFunction } from "@remix-run/node";
 import { Outlet, useNavigate, useParams, useLoaderData } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { InlineCode } from "~/components/code/InlineCode";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import {
-  Select,
-  SelectItem,
-} from "~/components/primitives/Select";
+import { Select, SelectItem } from "~/components/primitives/Select";
+import { Table, TableBody, TableCell, TableRow } from "~/components/primitives/Table";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -23,7 +23,12 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { playgroundPresenter } from "~/presenters/v3/PlaygroundPresenter.server";
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { requireUser } from "~/services/session.server";
-import { docsPath, EnvironmentParamSchema, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
+import {
+  docsPath,
+  EnvironmentParamSchema,
+  v3PlaygroundAgentPath,
+  v3PlaygroundPath,
+} from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [{ title: "Playground | Trigger.dev" }];
@@ -74,15 +79,21 @@ export default function PlaygroundPage() {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
-  const navigate = useNavigate();
   const params = useParams();
+  const navigate = useNavigate();
   const selectedAgent = params.agentParam ?? "";
+  const selectedAgentType = (() => {
+    if (!selectedAgent) return null;
+    const agent = agents.find((a) => a.slug === selectedAgent);
+    const config = (agent?.config ?? null) as { type?: string } | null;
+    return config?.type ?? null;
+  })();
 
   if (agents.length === 0) {
     return (
       <PageContainer>
         <NavBar>
-          <PageTitle title="Playground" />
+          <PageTitle title="Test" />
         </NavBar>
         <PageBody>
           <MainCenteredContainer className="max-w-2xl">
@@ -102,12 +113,11 @@ export default function PlaygroundPage() {
               }
             >
               <Paragraph spacing variant="small">
-                The Playground lets you test your AI agents with an interactive chat interface,
-                realtime streaming, and conversation history.
+                Test lets you exercise your AI agents with an interactive chat interface, realtime
+                streaming, and conversation history.
               </Paragraph>
               <Paragraph spacing variant="small">
-                Define a chat agent using{" "}
-                <InlineCode variant="small">chat.agent()</InlineCode>:
+                Define a chat agent using <InlineCode variant="small">chat.agent()</InlineCode>:
               </Paragraph>
               <CodeBlock
                 code={`import { chat } from "@trigger.dev/sdk/ai";
@@ -140,50 +150,90 @@ export const myAgent = chat.agent({
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Playground" />
+        {selectedAgent ? (
+          <PageTitle
+            title={
+              <div className="flex items-center gap-1">
+                <Select
+                  value={selectedAgent}
+                  setValue={(slug) => {
+                    if (slug && typeof slug === "string" && slug !== selectedAgent) {
+                      navigate(v3PlaygroundAgentPath(organization, project, environment, slug));
+                    }
+                  }}
+                  icon={<CubeSparkleIcon className="mr-1 size-4 text-agents" />}
+                  text={(val) => val || undefined}
+                  variant="minimal/small"
+                  items={agents}
+                  filter={(item, search) => item.slug.toLowerCase().includes(search.toLowerCase())}
+                  className="-ml-2"
+                  dropdownIcon={
+                    <ChevronUpDownIcon className="size-4 flex-none text-text-dimmed transition group-hover:text-text-bright group-focus:text-text-bright" />
+                  }
+                >
+                  {(matches) =>
+                    matches.map((a) => (
+                      <SelectItem key={a.slug} value={a.slug}>
+                        <div className="flex items-center gap-2">
+                          <CubeSparkleIcon className="size-4 text-agents" />
+                          <span className="text-text-bright">{a.slug}</span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  }
+                </Select>
+                {selectedAgentType && (
+                  <Badge variant="extra-small">{formatAgentType(selectedAgentType)}</Badge>
+                )}
+              </div>
+            }
+          />
+        ) : (
+          <PageTitle title="Test" />
+        )}
       </NavBar>
-      <PageBody scrollable={false}>
+      <PageBody scrollable={!selectedAgent}>
         {selectedAgent ? (
           <Outlet />
         ) : (
-          <MainCenteredContainer>
-            <div className="flex flex-col items-center gap-4 py-20">
-              <CpuChipIcon className="size-10 text-indigo-500/50" />
-              <Header2 className="text-text-dimmed">Select an agent</Header2>
-              <Paragraph variant="small" className="mb-2 max-w-md text-center text-text-dimmed">
-                Choose an agent to start a conversation.
-              </Paragraph>
-              <Select
-                value={selectedAgent}
-                setValue={(slug) => {
-                  if (slug && typeof slug === "string") {
-                    navigate(v3PlaygroundAgentPath(organization, project, environment, slug));
-                  }
-                }}
-                icon={<CpuChipIcon className="size-4 text-indigo-500" />}
-                text={(val) => val || undefined}
-                placeholder="Select an agent..."
-                variant="tertiary/small"
-                items={agents}
-                filter={(item, search) =>
-                  item.slug.toLowerCase().includes(search.toLowerCase())
-                }
-              >
-                {(matches) =>
-                  matches.map((agent) => (
-                    <SelectItem key={agent.slug} value={agent.slug}>
-                      <div className="flex items-center gap-2">
-                        <CpuChipIcon className="size-3.5 text-indigo-500" />
-                        <span>{agent.slug}</span>
-                      </div>
-                    </SelectItem>
-                  ))
-                }
-              </Select>
+          <MainCenteredContainer className="max-w-xl">
+            <div className="flex flex-col gap-4 py-8">
+              <Header2>Choose an agent to start a conversation</Header2>
+              <Table containerClassName="overflow-hidden rounded-md border-l border-r border-b border-grid-dimmed [&_tbody_tr:last-child]:after:hidden">
+                <TableBody>
+                  {agents.map((agent) => {
+                    const path = v3PlaygroundAgentPath(
+                      organization,
+                      project,
+                      environment,
+                      agent.slug
+                    );
+                    return (
+                      <TableRow key={agent.slug}>
+                        <TableCell to={path} isTabbableCell>
+                          <div className="flex items-center gap-2">
+                            <CubeSparkleIcon className="size-5 text-agents" />
+                            <span className="text-sm">{agent.slug}</span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           </MainCenteredContainer>
         )}
       </PageBody>
     </PageContainer>
   );
+}
+
+function formatAgentType(type: string): string {
+  switch (type) {
+    case "ai-sdk-chat":
+      return "AI SDK Chat";
+    default:
+      return type;
+  }
 }

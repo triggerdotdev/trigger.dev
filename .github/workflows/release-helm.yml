@@ -63,6 +63,11 @@ jobs:
 
   release:
     needs: lint-and-test
+    # Set the ENABLE_HELM_PRERELEASE repository variable to 'false' to turn off
+    # publishing the chart to GHCR — e.g. forks/mirrors that lack write_package
+    # on the owner's charts namespace. Defaults to enabled; the lint-and-test
+    # job above always runs regardless.
+    if: ${{ vars.ENABLE_HELM_PRERELEASE != 'false' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write # for gh-release
@@ -87,7 +92,7 @@ jobs:
           for file in ./charts/*.tgz; do echo "Extracting $file"; tar -xzf "$file" -C ./charts; done
 
       - name: Log in to Container Registry
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}

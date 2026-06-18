@@ -1,7 +1,7 @@
-import { BellAlertIcon } from "@heroicons/react/20/solid";
 import { useFetcher } from "@remix-run/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
+import { NotificationIcon } from "~/assets/icons/NotificationIcon";
 import { Button } from "~/components/primitives/Buttons";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
@@ -129,15 +129,9 @@ export function NotificationPanel({
               <div className="relative">
                 <PopoverTrigger asChild>
                   <Button variant="small-menu-item" className="h-8 w-[2.1875rem] justify-center">
-                    <BellAlertIcon className="size-5" />
+                    <NotificationIcon className="size-5 text-success" />
                   </Button>
                 </PopoverTrigger>
-                <span
-                  className="pointer-events-none absolute -top-[0.2rem] right-0 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.625rem] font-medium text-text-bright"
-                  style={{ backgroundColor: "#6366f1" }}
-                >
-                  {visibleNotifications.length}
-                </span>
               </div>
             }
             content={simplur`${visibleNotifications.length} notification[|s]`}

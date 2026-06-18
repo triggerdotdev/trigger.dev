@@ -15,6 +15,7 @@ import {
   getUserProvidedIdempotencyKey,
 } from "@trigger.dev/core/v3/serverOnly";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
+import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
 import { logger } from "~/services/logger.server";
 import { rehydrateAttribute } from "~/v3/eventRepository/eventRepository.server";
 import { machinePresetFromRun } from "~/v3/machinePresets.server";
@@ -32,6 +33,8 @@ import {
   extractAIEmbedData,
 } from "~/components/runs/v3/ai";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
+import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
+import { buildSyntheticSpanRun } from "~/v3/mollifier/syntheticSpanRun.server";
 
 export type PromptSpanData = {
   slug: string;
@@ -72,9 +75,21 @@ function extractPromptSpanData(properties: Record<string, unknown>): PromptSpanD
   };
 }
 
+// SpanRun is grounded in the PG-path `getRun` method rather than
+// inferred from `call`'s return type. The buffered branch of `call`
+// routes through `buildSyntheticSpanRun`, and that helper is annotated
+// `Promise<SpanRun>` — if SpanRun were derived from `call` it would
+// close a loop TS no longer tolerates ("Type alias 'Result' circularly
+// references itself"). `getRun` is the canonical source for the shape
+// (the synthetic helper just rebuilds the same shape from a buffer
+// snapshot), and it doesn't recurse, so grounding here breaks the
+// cycle while keeping Span available off `call` (Span's path through
+// `#getSpan` has no synthetic indirection).
+export type SpanRun = NonNullable<
+  Awaited<ReturnType<InstanceType<typeof SpanPresenter>["getRun"]>>
+>;
 type Result = Awaited<ReturnType<SpanPresenter["call"]>>;
 export type Span = NonNullable<NonNullable<Result>["span"]>;
-export type SpanRun = NonNullable<NonNullable<Result>["run"]>;
 type FindRunResult = NonNullable<
   Awaited<ReturnType<InstanceType<typeof SpanPresenter>["findRun"]>>
 >;
@@ -84,12 +99,18 @@ export class SpanPresenter extends BasePresenter {
   public async call({
     userId,
     projectSlug,
+    envSlug,
     spanId,
     runFriendlyId,
     linkedRunId,
   }: {
     userId: string;
     projectSlug: string;
+    // Optional for backwards compatibility, required for the mollifier
+    // buffer fallback when the parent run isn't yet in PG — we need to
+    // resolve the env id to satisfy `findRunByIdWithMollifierFallback`'s
+    // auth check.
+    envSlug?: string;
     spanId: string;
     runFriendlyId: string;
     linkedRunId?: string;
@@ -127,7 +148,32 @@ export class SpanPresenter extends BasePresenter {
     });
 
     if (!parentRun) {
-      return;
+      // PG miss → fall back to the mollifier buffer. Without this the
+      // right-side span detail panel on the run-detail page never
+      // resolves for buffered runs: `call()` returns undefined, the
+      // resource route redirects with an "Event not found" toast, the
+      // run-detail page reloads, the toast fires again — a perpetual
+      // spin until the drainer materialises the row. Synthesise a
+      // SpanRun straight from the buffer snapshot, reusing
+      // `buildSyntheticSpanRun` (the same helper the run-detail
+      // loader's header fallback already uses).
+      if (!envSlug) return;
+      const envRow = await this._replica.runtimeEnvironment.findFirst({
+        where: { project: { id: project.id }, slug: envSlug },
+        select: { id: true, slug: true, type: true, organizationId: true },
+      });
+      if (!envRow) return;
+      const buffered = await findRunByIdWithMollifierFallback({
+        runId: runFriendlyId,
+        environmentId: envRow.id,
+        organizationId: envRow.organizationId,
+      });
+      if (!buffered) return;
+      const synth = await buildSyntheticSpanRun({
+        run: buffered,
+        environment: { id: envRow.id, slug: envRow.slug, type: envRow.type },
+      });
+      return { type: "run" as const, run: synth };
     }
 
     const { traceId } = parentRun;
@@ -257,11 +303,17 @@ export class SpanPresenter extends BasePresenter {
           location: true,
         },
         where: {
-          masterQueue: run.workerQueue,
+          // masterQueue is unique and IS the run's backing queue, so this finds
+          // the group the run actually ran on.
+          masterQueue: baseWorkerQueue(run.workerQueue),
         },
       });
 
-      region = workerGroup ?? null;
+      // Show the stamped geo region as the name so a migrated run never reveals
+      // its compute backing; fall back to the group name for unstamped runs.
+      region = workerGroup
+        ? { name: run.region ?? workerGroup.name, location: workerGroup.location }
+        : null;
     }
 
     // Only AGENT-tagged runs (chat.agent and friends) can be session-bound,
@@ -373,6 +425,7 @@ export class SpanPresenter extends BasePresenter {
       traceId: run.traceId,
       spanId: run.spanId,
       isCached: !!linkedRunId,
+      isBuffered: false,
       machinePreset: machine?.name,
       taskEventStore: run.taskEventStore,
       externalTraceId,
@@ -466,6 +519,7 @@ export class SpanPresenter extends BasePresenter {
         },
         engine: true,
         workerQueue: true,
+        region: true,
         error: true,
         output: true,
         outputType: true,

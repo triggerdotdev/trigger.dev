@@ -1,5 +1,40 @@
 # @trigger.dev/react-hooks
 
+## 4.5.0-rc.7
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.7`
+
+## 4.5.0-rc.6
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.6`
+
+## 4.5.0-rc.5
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.5`
+
+## 4.5.0-rc.4
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.4`
+
+## 4.5.0-rc.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.3`
+
 ## 4.5.0-rc.2
 
 ### Patch Changes

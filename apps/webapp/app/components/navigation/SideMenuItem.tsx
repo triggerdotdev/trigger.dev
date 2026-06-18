@@ -19,6 +19,9 @@ export function SideMenuItem({
   target,
   isCollapsed = false,
   action,
+  disableIconHover = false,
+  indented = false,
+  "data-action": dataAction,
 }: {
   icon?: RenderIcon;
   activeIconColor?: string;
@@ -32,17 +35,32 @@ export function SideMenuItem({
   target?: AnchorHTMLAttributes<HTMLAnchorElement>["target"];
   isCollapsed?: boolean;
   action?: ReactNode;
+  disableIconHover?: boolean;
+  /**
+   * Visually indented variant — same item, just pushed further from
+   * the left edge so it reads as a child of the row above. Used for
+   * grouped sub-items like the Tasks > (Agents / Standard / Scheduled)
+   * cluster. The indent is only applied when the side menu is expanded.
+   */
+  indented?: boolean;
+  "data-action"?: string;
 }) {
   const pathName = usePathName();
   const isActive = pathName === to;
 
-  const link = (
+  const isIndented = indented && !isCollapsed;
+
+  const linkElement = (
     <Link
       to={to}
       target={target}
+      data-action={dataAction}
       className={cn(
-        "flex h-8 w-full items-center gap-2 overflow-hidden rounded pr-2 pl-[0.4375rem] text-text-bright transition-colors hover:bg-charcoal-750 group-hover/menuitem:bg-charcoal-750",
-        isActive ? "bg-tertiary" : ""
+        "group/menulink flex h-8 items-center gap-2 overflow-hidden rounded pl-[0.4375rem] pr-2",
+        isIndented ? "min-w-0 flex-1" : "w-full",
+        isActive
+          ? "bg-tertiary text-text-bright"
+          : "text-text-dimmed group-hover/menuitem:bg-charcoal-750 group-hover/menuitem:text-text-bright hover:bg-charcoal-750 hover:text-text-bright"
       )}
     >
       <Icon
@@ -50,6 +68,9 @@ export function SideMenuItem({
         className={cn(
           "size-5 shrink-0",
           isActive ? activeIconColor : inactiveIconColor ?? "text-text-dimmed",
+          !isActive &&
+            !disableIconHover &&
+            "group-hover/menuitem:text-text-bright group-hover/menulink:text-text-bright",
           iconClassName
         )}
       />
@@ -62,7 +83,9 @@ export function SideMenuItem({
         }}
         transition={{ duration: 0.2, ease: "easeOut" }}
       >
-        <span className="truncate select-none text-2sm">{name}</span>
+        <span className="select-none truncate text-[0.90625rem] font-medium tracking-[-0.01em]">
+          {name}
+        </span>
         {badge && !isCollapsed && (
           <motion.div
             className="ml-1 flex shrink-0 items-center gap-1"
@@ -76,13 +99,19 @@ export function SideMenuItem({
           </motion.div>
         )}
         {trailingIcon && !isCollapsed && (
-          <Icon
-            icon={trailingIcon}
-            className={cn("ml-1 size-4 shrink-0", trailingIconClassName)}
-          />
+          <Icon icon={trailingIcon} className={cn("ml-1 size-4 shrink-0", trailingIconClassName)} />
         )}
       </motion.div>
     </Link>
+  );
+
+  const link = isIndented ? (
+    <div className="flex w-full">
+      <div aria-hidden className="w-3 shrink-0" />
+      {linkElement}
+    </div>
+  ) : (
+    linkElement
   );
 
   if (action) {
@@ -99,7 +128,12 @@ export function SideMenuItem({
           disableHoverableContent
         />
         {!isCollapsed && (
-          <div className="absolute top-1 right-1 bottom-1 flex aspect-square items-center justify-center rounded group-hover/menuitem:bg-charcoal-750">
+          <div
+            className={cn(
+              "absolute bottom-1 right-1 top-1 flex aspect-square items-center justify-center rounded",
+              isActive ? "group-hover/menuitem:bg-tertiary" : "group-hover/menuitem:bg-charcoal-750"
+            )}
+          >
             {action}
           </div>
         )}

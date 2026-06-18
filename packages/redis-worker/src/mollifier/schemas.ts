@@ -27,6 +27,10 @@ const stringToDate = z.string().transform((v, ctx) => {
   return d;
 });
 
+const stringToBool = z
+  .union([z.literal("true"), z.literal("false")])
+  .transform((v) => v === "true");
+
 const stringToError = z.string().transform((v, ctx) => {
   try {
     return BufferEntryError.parse(JSON.parse(v));
@@ -44,6 +48,27 @@ export const BufferEntrySchema = z.object({
   status: BufferEntryStatus,
   attempts: stringToInt,
   createdAt: stringToDate,
+  // Microsecond epoch of accept time, kept as a hash field for dwell
+  // metrics. Not a queue sort key (the queue is a FIFO LIST). Defaulted
+  // so an entry written by an accept Lua predating this field — or one
+  // surviving across the deploy that introduced it — still parses instead
+  // of being silently dropped on pop.
+  createdAtMicros: stringToInt.default("0"),
+  // Drainer-ack flag: `true` once the drainer has materialised this run
+  // into PG. The hash persists for a short grace TTL after ack so direct
+  // reads (retrieve, trace, etc.) still resolve while PG replica lag
+  // settles. Absent on pre-ack entries.
+  materialised: stringToBool.default("false"),
+  // Denormalised pointer to the Redis idempotency lookup key (set when
+  // the run was accepted with an idempotency key, empty otherwise). The
+  // ack Lua reads this to DEL the lookup atomically with marking the
+  // entry materialised.
+  idempotencyLookupKey: z.string().optional().default(""),
+  // Optimistic-lock counter for the snapshot's `metadata` field.
+  // Incremented atomically by the CAS metadata Lua. Matches the
+  // semantic of `TaskRun.metadataVersion` on the PG side (which the
+  // UpdateMetadataService uses for the same retry-on-conflict pattern).
+  metadataVersion: stringToInt.default("0"),
   lastError: stringToError.optional(),
 });
 

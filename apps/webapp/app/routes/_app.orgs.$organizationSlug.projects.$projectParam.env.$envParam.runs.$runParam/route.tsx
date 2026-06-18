@@ -6,7 +6,6 @@ import {
   ChevronRightIcon,
   InformationCircleIcon,
   LockOpenIcon,
-  MagnifyingGlassIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
   StopCircleIcon,
@@ -42,7 +41,7 @@ import { DateTimeShort } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
-import { Input } from "~/components/primitives/Input";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Popover, PopoverArrowTrigger, PopoverContent } from "~/components/primitives/Popover";
@@ -88,15 +87,24 @@ import { useReplaceSearchParams } from "~/hooks/useReplaceSearchParams";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { type Shortcut, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { useHasAdminAccess } from "~/hooks/useUser";
+import { env } from "~/env.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
-import { RunEnvironmentMismatchError, RunPresenter } from "~/presenters/v3/RunPresenter.server";
+import {
+  RunEnvironmentMismatchError,
+  RunNotInPgError,
+  RunPresenter,
+} from "~/presenters/v3/RunPresenter.server";
+import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
+import { buildSyntheticRunHeader } from "~/v3/mollifier/syntheticRunHeader.server";
+import { buildSyntheticTraceForBufferedRun } from "~/v3/mollifier/syntheticTrace.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getImpersonationId } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
+import { rbac } from "~/services/rbac.server";
 import { cn } from "~/utils/cn";
 import { lerp } from "~/utils/lerp";
 import {
@@ -182,7 +190,10 @@ async function getRunsListFromTableState({
       return null;
     }
 
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      project.organizationId,
+      "standard"
+    );
     const runsListPresenter = new NextRunListPresenter($replica, clickhouse);
     const currentPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
       userId,
@@ -246,6 +257,15 @@ async function getRunsListFromTableState({
   }
 }
 
+// Display-only write:runs flags for the Replay/Cancel controls. The cancel
+// and replay action routes enforce write:runs independently; this mirrors the
+// result so the buttons disable for roles that lack it. Permissive in OSS.
+async function runWritePermissions(request: Request, userId: string, organizationId: string) {
+  const auth = await rbac.authenticateSession(request, { userId, organizationId });
+  const canWriteRun = auth.ok ? auth.ability.can("write", { type: "runs" }) : true;
+  return { canReplayRun: canWriteRun, canCancelRun: canWriteRun };
+}
+
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const impersonationId = await getImpersonationId(request);
@@ -277,7 +297,69 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       );
     }
 
+    // Only fall back to the mollifier buffer on a genuine PG miss. Any
+    // other error (DB timeout during trace queries, event-repository
+    // failure, etc.) means the run WAS in PG but a downstream lookup
+    // failed — falling back to the buffer here would either return a
+    // stale synth entry if one happens to exist in the brief drainer-
+    // materialisation race window, or quietly mask the real failure.
+    // `RunNotInPgError` is the typed signal RunPresenter throws for the
+    // route loader's specific case (`RunPresenter.server.ts:130`).
+    if (!(error instanceof RunNotInPgError)) {
+      throw error;
+    }
+
+    // PG miss → try the mollifier buffer. When the gate diverts a trigger
+    // the run sits in Redis until the drainer materialises it; without
+    // this fallback the run-detail page 404s for the brief buffered window
+    // even though the API has accepted the trigger and returned an id.
+    const buffered = await tryMollifiedRunFallback({
+      runFriendlyId: runParam,
+      organizationSlug,
+      projectSlug: projectParam,
+      envSlug: envParam,
+      userId,
+    });
+
+    if (buffered) {
+      // Preselect the root span on the initial page load when the URL
+      // doesn't already carry `?span=`. The sibling redirect routes
+      // (runs.$runParam.ts, @.runs.$runParam.ts,
+      // projects.v3.$projectRef.runs.$runParam.ts) all do this, but
+      // direct navigation to the canonical project-scoped URL never
+      // hit those redirects — leaving the right detail panel collapsed.
+      // Skip on `_data` requests (Remix data fetches): they're
+      // client-driven follow-ups and the client URL is what matters,
+      // not the loader's view of it.
+      if (!url.searchParams.has("span") && !url.searchParams.has("_data") && buffered.run.spanId) {
+        url.searchParams.set("span", buffered.run.spanId);
+        throw redirect(url.pathname + "?" + url.searchParams.toString());
+      }
+
+      const parent = await getResizableSnapshot(request, resizableSettings.parent.autosaveId);
+      const tree = await getResizableSnapshot(request, resizableSettings.tree.autosaveId);
+
+      return json({
+        run: buffered.run,
+        trace: buffered.trace,
+        maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
+        resizable: { parent, tree },
+        runsList: null,
+        ...(await runWritePermissions(request, userId, buffered.run.environment.organizationId)),
+      });
+    }
+
     throw error;
+  }
+
+  // Preselect the root span on the initial page load when the URL
+  // doesn't already carry `?span=`. See the comment on the equivalent
+  // block in the buffered fallback above — the sibling redirect routes
+  // do this, but direct navigation to the canonical project-scoped URL
+  // never hits them, leaving the right detail panel collapsed.
+  if (!url.searchParams.has("span") && !url.searchParams.has("_data") && result.run.spanId) {
+    url.searchParams.set("span", result.run.spanId);
+    throw redirect(url.pathname + "?" + url.searchParams.toString());
   }
 
   //resizable settings
@@ -302,14 +384,55 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       tree,
     },
     runsList,
+    ...(await runWritePermissions(request, userId, result.run.environment.organizationId)),
   });
 };
+
+async function tryMollifiedRunFallback(args: {
+  runFriendlyId: string;
+  organizationSlug: string;
+  projectSlug: string;
+  envSlug: string;
+  userId: string;
+}) {
+  const project = await findProjectBySlug(args.organizationSlug, args.projectSlug, args.userId);
+  if (!project) return null;
+  const environment = await findEnvironmentBySlug(project.id, args.envSlug, args.userId);
+  if (!environment) return null;
+
+  const buffered = await findRunByIdWithMollifierFallback({
+    runId: args.runFriendlyId,
+    environmentId: environment.id,
+    organizationId: project.organizationId,
+  });
+  if (!buffered) return null;
+
+  return {
+    run: buildSyntheticRunHeader({
+      run: buffered,
+      environment: {
+        id: environment.id,
+        organizationId: project.organizationId,
+        type: environment.type,
+        slug: environment.slug,
+      },
+    }),
+    trace: buildSyntheticTraceForBufferedRun(buffered),
+  };
+}
 
 type LoaderData = SerializeFrom<typeof loader>;
 
 export default function Page() {
-  const { run, trace, maximumLiveReloadingSetting, runsList, resizable } =
-    useLoaderData<typeof loader>();
+  const {
+    run,
+    trace,
+    maximumLiveReloadingSetting,
+    runsList,
+    resizable,
+    canReplayRun,
+    canCancelRun,
+  } = useLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -391,6 +514,8 @@ export default function Page() {
                 LeadingIcon={ArrowUturnLeftIcon}
                 shortcut={{ key: "R" }}
                 className="pr-2"
+                disabled={!canReplayRun}
+                tooltip={canReplayRun ? undefined : "You don't have permission to replay runs"}
               >
                 Replay run
               </Button>
@@ -407,23 +532,18 @@ export default function Page() {
             />
           </Dialog>
           {run.isFinished ? null : (
-            <Dialog key={`cancel-${run.friendlyId}`}>
-              <DialogTrigger asChild>
-                <Button variant="danger/small" LeadingIcon={StopCircleIcon} shortcut={{ key: "C" }}>
-                  Cancel run…
-                </Button>
-              </DialogTrigger>
-              <CancelRunDialog
-                runFriendlyId={run.friendlyId}
-                redirectPath={v3RunSpanPath(
-                  organization,
-                  project,
-                  environment,
-                  { friendlyId: run.friendlyId },
-                  { spanId: run.spanId }
-                )}
-              />
-            </Dialog>
+            <ControlledCancelRunDialog
+              key={`cancel-${run.friendlyId}`}
+              canCancel={canCancelRun}
+              runFriendlyId={run.friendlyId}
+              redirectPath={v3RunSpanPath(
+                organization,
+                project,
+                environment,
+                { friendlyId: run.friendlyId },
+                { spanId: run.spanId }
+              )}
+            />
           )}
         </PageAccessories>
       </NavBar>
@@ -513,7 +633,8 @@ function TraceView({
     ? linkedRunIdBySpanId?.[selectedSpanId]
     : undefined;
   const frozenLinkedRunId = useFrozenValue(selectedSpanLinkedRunId);
-  const displayLinkedRunId = (selectedSpanId ? selectedSpanLinkedRunId : frozenLinkedRunId) ?? undefined;
+  const displayLinkedRunId =
+    (selectedSpanId ? selectedSpanLinkedRunId : frozenLinkedRunId) ?? undefined;
 
   return (
     <div className={cn("grid h-full max-h-full grid-cols-1 overflow-hidden")}>
@@ -587,6 +708,43 @@ function TraceView({
   );
 }
 
+// Controlled wrapper around the cancel dialog. Owns the Radix open state
+// so the dialog closes itself once the cancel action transitions through
+// submission. We can't `<DialogClose asChild>`-wrap the submit button
+// because Radix's onClick handler swallows the button's name=value pair
+// that the form action depends on for `redirectUrl`.
+function ControlledCancelRunDialog({
+  runFriendlyId,
+  redirectPath,
+  canCancel,
+}: {
+  runFriendlyId: string;
+  redirectPath: string;
+  canCancel: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          variant="danger/small"
+          LeadingIcon={StopCircleIcon}
+          shortcut={{ key: "C" }}
+          disabled={!canCancel}
+          tooltip={canCancel ? undefined : "You don't have permission to cancel runs"}
+        >
+          Cancel run…
+        </Button>
+      </DialogTrigger>
+      <CancelRunDialog
+        runFriendlyId={runFriendlyId}
+        redirectPath={redirectPath}
+        onCancelSubmitted={() => setOpen(false)}
+      />
+    </Dialog>
+  );
+}
+
 function NoLogsView({ run, resizable }: Pick<LoaderData, "run" | "resizable">) {
   const plan = useCurrentPlan();
   const organization = useOrganization();
@@ -616,6 +774,11 @@ function NoLogsView({ run, resizable }: Pick<LoaderData, "run" | "resizable">) {
         >
           <div className="grid h-full place-items-center">
             {daysSinceCompleted === undefined ? (
+              // NoLogsView only renders when the loader returns no trace.
+              // Buffered runs always carry a synthetic trace (see
+              // buildSyntheticTraceForBufferedRun) so they never reach
+              // this branch — the message here is the pre-mollifier
+              // copy for runs with no completedAt and no logs.
               <InfoPanel variant="info" icon={InformationCircleIcon} title="We delete old logs">
                 <Paragraph variant="small">
                   We tidy up older logs to keep things running smoothly.
@@ -770,34 +933,36 @@ function TasksTreeView({
 
   return (
     <div className="grid h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden">
-      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-2">
+      <div className="flex items-center justify-between gap-2 border-b border-grid-dimmed px-1.5">
         <SearchField onChange={setFilterText} />
-        {isAdmin && (
+        <div className="flex items-center gap-1.5">
+          {isAdmin && (
+            <Switch
+              variant="secondary/small"
+              label="Debug"
+              shortcut={{ modifiers: ["shift"], key: "D" }}
+              checked={showDebug}
+              onCheckedChange={(checked) => {
+                replace({
+                  showDebug: checked ? "true" : "false",
+                });
+              }}
+            />
+          )}
           <Switch
-            variant="small"
-            label="Debug"
-            shortcut={{ modifiers: ["shift"], key: "D" }}
-            checked={showDebug}
-            onCheckedChange={(checked) => {
-              replace({
-                showDebug: checked ? "true" : "false",
-              });
-            }}
+            variant="secondary/small"
+            label="Queue time"
+            checked={showQueueTime}
+            onCheckedChange={(e) => setShowQueueTime(e.valueOf())}
+            shortcut={{ key: "Q" }}
           />
-        )}
-        <Switch
-          variant="small"
-          label="Queue time"
-          checked={showQueueTime}
-          onCheckedChange={(e) => setShowQueueTime(e.valueOf())}
-          shortcut={{ key: "Q" }}
-        />
-        <Switch
-          variant="small"
-          label="Errors only"
-          checked={errorsOnly}
-          onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
-        />
+          <Switch
+            variant="secondary/small"
+            label="Errors only"
+            checked={errorsOnly}
+            onCheckedChange={(e) => setErrorsOnly(e.valueOf())}
+          />
+        </div>
       </div>
       <ResizablePanelGroup autosaveId={resizableSettings.tree.autosaveId} snapshot={treeSnapshot}>
         {/* Tree list */}
@@ -852,7 +1017,7 @@ function TasksTreeView({
                 <>
                   <div
                     className={cn(
-                      "flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2",
+                      "group/spannode flex h-8 cursor-pointer items-center overflow-hidden rounded-l-sm pr-2",
                       state.selected
                         ? "bg-grid-dimmed hover:bg-grid-bright"
                         : "bg-transparent hover:bg-grid-dimmed"
@@ -903,7 +1068,13 @@ function TasksTreeView({
                     <div className="flex w-full items-center justify-between gap-2 pl-1">
                       <div className="flex items-center gap-1.5 overflow-x-hidden">
                         <RunIcon
-                          name={node.data.style?.icon}
+                          name={
+                            node.data.isAgentRun &&
+                            (node.data.style?.icon === "task" ||
+                              node.data.style?.icon === "task-cached")
+                              ? "agent"
+                              : node.data.style?.icon
+                          }
                           spanName={node.data.message}
                           className="size-5 min-h-5 min-w-5"
                         />
@@ -1325,9 +1496,15 @@ function queueAdjustedNs(timeNs: number, queuedDurationNs: number | undefined) {
 
 function NodeText({ node }: { node: TraceEvent }) {
   const className = "truncate";
+  // Only mark task-level spans as agent so the agents colour applies to
+  // the task row itself, not unrelated sub-spans (wait/log/etc.) that
+  // live underneath an agent run.
+  const isAgentTaskRow =
+    node.data.isAgentRun &&
+    (node.data.style?.icon === "task" || node.data.style?.icon === "task-cached");
   return (
     <Paragraph variant="small" className={cn(className)}>
-      <SpanTitle {...node.data} size="small" />
+      <SpanTitle {...node.data} size="small" isAgentRun={isAgentTaskRow} />
     </Paragraph>
   );
 }
@@ -1744,21 +1921,12 @@ function SearchField({ onChange }: { onChange: (value: string) => void }) {
     onChange(text);
   }, 250);
 
-  const updateValue = useCallback((value: string) => {
-    setValue(value);
-    updateFilterText(value);
+  const updateValue = useCallback((next: string) => {
+    setValue(next);
+    updateFilterText(next);
   }, []);
 
-  return (
-    <Input
-      placeholder="Search log"
-      variant="tertiary"
-      icon={MagnifyingGlassIcon}
-      fullWidth={true}
-      value={value}
-      onChange={(e) => updateValue(e.target.value)}
-    />
-  );
+  return <SearchInput placeholder="Search logs…" value={value} onValueChange={updateValue} />;
 }
 
 function useAdjacentRunPaths({

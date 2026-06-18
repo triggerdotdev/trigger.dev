@@ -3,6 +3,7 @@ import { WorkerApiContinueRunExecutionRequestBody } from "@trigger.dev/core/v3/w
 import { z } from "zod";
 import { logger } from "~/services/logger.server";
 import { createLoaderWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { clientSafeErrorMessage } from "~/utils/prismaErrors";
 
 export const loader = createLoaderWorkerApiRoute(
   {
@@ -31,7 +32,7 @@ export const loader = createLoaderWorkerApiRoute(
     } catch (error) {
       logger.warn("Failed to suspend run", { runFriendlyId, snapshotFriendlyId, error });
       if (error instanceof Error) {
-        throw json({ error: error.message }, { status: 422 });
+        throw json({ error: clientSafeErrorMessage(error) }, { status: 422 });
       }
 
       throw json({ error: "Failed to continue run execution" }, { status: 422 });

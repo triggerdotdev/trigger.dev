@@ -162,12 +162,12 @@ const queues = colors.purple[500];
 const query = colors.blue[500];
 const metrics = colors.green[500];
 const customDashboards = charcoal[400];
-const deployments = colors.green[500];
+const deployments = colors.blue[500];
 const concurrency = colors.amber[500];
 const limits = colors.purple[500];
 const regions = colors.green[500];
 const logs = colors.pink[500];
-const tests = colors.lime[500];
+const tests = colors.pink[500];
 const apiKeys = colors.amber[500];
 const environmentVariables = colors.pink[500];
 const alerts = colors.red[500];
@@ -178,6 +178,11 @@ const bulkActions = colors.emerald[500];
 const aiPrompts = colors.blue[500];
 const aiMetrics = colors.green[500];
 const errors = colors.amber[500];
+const agents = colors.purple[500];
+const sessions = colors.pink[500];
+const playgrounds = colors.fuchsia[500];
+const models = colors.violet[500];
+const previewBranches = colors.yellow[500];
 
 /** Other variables */
 const radius = "0.5rem";
@@ -264,6 +269,11 @@ module.exports = {
         aiPrompts,
         aiMetrics,
         errors,
+        agents,
+        sessions,
+        playgrounds,
+        models,
+        previewBranches,
         // shadcn/ui color tokens used by streamdown's internal components
         // (link safety modal, code block actions, etc.)
         // Values are defined via CSS variables in .streamdown-container

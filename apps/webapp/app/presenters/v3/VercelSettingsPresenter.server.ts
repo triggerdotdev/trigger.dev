@@ -10,6 +10,7 @@ import {
 } from "~/models/vercelIntegration.server";
 import { type GitHubAppInstallation } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
+import { isReservedForExternalSync } from "~/v3/environmentVariableRules.server";
 import {
   VercelProjectIntegrationDataSchema,
   VercelProjectIntegrationData,
@@ -458,7 +459,7 @@ export class VercelSettingsPresenter extends BasePresenter {
           };
         }
 
-        const clientResult = await VercelIntegrationRepository.getVercelClient(orgIntegration);
+        const clientResult = await VercelIntegrationRepository.getVercelClientAndToken(orgIntegration);
         if (clientResult.isErr()) {
           return {
             customEnvironments: [],
@@ -473,7 +474,7 @@ export class VercelSettingsPresenter extends BasePresenter {
             isOnboardingComplete: false,
           };
         }
-        const client = clientResult.value;
+        const { client, accessToken } = clientResult.value;
         const teamId = await VercelIntegrationRepository.getTeamIdFromIntegration(orgIntegration);
 
         const projectIntegration = await (this._replica as PrismaClient).organizationProjectIntegration.findFirst({
@@ -531,7 +532,7 @@ export class VercelSettingsPresenter extends BasePresenter {
         // Only fetch shared env vars if teamId is available
           teamId
             ? VercelIntegrationRepository.getVercelSharedEnvironmentVariables(
-                client,
+                accessToken,
                 teamId,
                 projectIntegration.externalEntityId
               )
@@ -567,12 +568,11 @@ export class VercelSettingsPresenter extends BasePresenter {
         const projectEnvVars = projectEnvVarsResult.isOk() ? projectEnvVarsResult.value : [];
         const sharedEnvVars = sharedEnvVarsResult.isOk() ? sharedEnvVarsResult.value : [];
 
-        // Filter out TRIGGER_SECRET_KEY and TRIGGER_VERSION (managed by Trigger.dev) and merge project + shared env vars
-        const excludedKeys = new Set(["TRIGGER_SECRET_KEY", "TRIGGER_VERSION"]);
+        // Hide platform-managed reserved keys from the onboarding preview.
         const projectEnvVarKeys = new Set(projectEnvVars.map((v) => v.key));
         const mergedEnvVars: VercelEnvironmentVariable[] = [
           ...projectEnvVars
-            .filter((v) => !excludedKeys.has(v.key))
+            .filter((v) => !isReservedForExternalSync(v.key))
             .map((v) => {
               const envVar = { ...v };
               if (vercelEnvironmentId && (v as any).customEnvironmentIds?.includes(vercelEnvironmentId)) {
@@ -581,7 +581,7 @@ export class VercelSettingsPresenter extends BasePresenter {
               return envVar;
             }),
           ...sharedEnvVars
-            .filter((v) => !projectEnvVarKeys.has(v.key) && !excludedKeys.has(v.key))
+            .filter((v) => !projectEnvVarKeys.has(v.key) && !isReservedForExternalSync(v.key))
             .map((v) => {
               const envVar = {
                 id: v.id,

@@ -22,11 +22,20 @@ export type SessionChannelIO = "out" | "in";
  * `.on` / `.once` / `.peek` / `.wait` / `.waitWithIdleTimeout`.
  */
 export interface SessionStreamManager {
-  /** Register a handler that fires every time data arrives on the given channel. */
+  /**
+   * Register a handler that fires every time data arrives on the given channel.
+   *
+   * A handler that synchronously returns `true` CONSUMES the record: it is
+   * not buffered for a later `once()` and the committed-consume cursor
+   * advances past it. Any other return value (including a Promise) leaves
+   * the record available to other consumers. Kind-filtering facades return
+   * `true` for the kinds they own so the same record is never delivered
+   * twice — once to the handler and again via a buffer drain.
+   */
   on(
     sessionId: string,
     io: SessionChannelIO,
-    handler: (data: unknown) => void | Promise<void>
+    handler: (data: unknown) => void | boolean | Promise<void>
   ): { off: () => void };
 
   /** Wait for the next record on the given channel (buffered or live). */

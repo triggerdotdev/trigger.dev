@@ -1,5 +1,129 @@
 # @trigger.dev/sdk
 
+## 4.5.0-rc.7
+
+### Patch Changes
+
+- `@trigger.dev/sdk` now bundles the Trigger.dev agent skills and a curated snapshot of the docs those skills reference. The skills that `trigger skills` installs into your coding agent read this content from node_modules, so the guidance your AI assistant follows is pinned to the SDK version installed in your project and stays current across upgrades instead of going stale until the next reinstall. ([#3937](https://github.com/triggerdotdev/trigger.dev/pull/3937))
+- `chat.headStart` now works with the `chat.customAgent` and `chat.createSession` backends, not only `chat.agent`. The warm step-1 response hands over to your loop the same way it does for a managed agent. ([#3963](https://github.com/triggerdotdev/trigger.dev/pull/3963))
+
+  In a `chat.customAgent` loop, consume the handover on turn 0:
+
+  ```ts
+  const conversation = new chat.MessageAccumulator();
+  const { isFinal, skipped } = await conversation.consumeHandover({ payload });
+  if (skipped) return; // warm handler aborted, so exit without a turn
+  if (isFinal) {
+    await chat.writeTurnComplete(); // step 1 is the response, no streamText
+  } else {
+    const result = streamText({ model, messages: conversation.modelMessages, tools });
+    // Pass originalMessages so the handed-over tool round merges into the
+    // step-1 assistant instead of starting a new message.
+    const response = await chat.pipeAndCapture(result, {
+      originalMessages: conversation.uiMessages,
+    });
+    if (response) await conversation.addResponse(response);
+  }
+  ```
+
+  With `chat.createSession`, the iterator surfaces it as `turn.handover`; call `turn.complete()` with no argument on a final handover. The lower-level `chat.waitForHandover()` and `accumulator.applyHandover()` are also exported for hand-rolled loops.
+
+- Add `triggerConfig` support to `chat.headStart()` and `chat.openSession()`, so the auto-triggered handover-prepare run inherits tags, queue, machine, and other session trigger options the same way `chat.createStartSessionAction()` does. The `chat:{chatId}` tag is prepended automatically. ([#3963](https://github.com/triggerdotdev/trigger.dev/pull/3963))
+
+  ```ts
+  export const POST = chat.headStart({
+    agentId: "my-agent",
+    triggerConfig: { tags: ["org:acme"], queue: "chat" },
+    run: async ({ chat }) => streamText({ ...chat.toStreamTextOptions(), model }),
+  });
+  ```
+
+  Because the session is created once on the first head-start turn and is idempotent on the chat id, this is the only place to set those options for a head-start chat's lifetime. `chat.createStartSessionAction()` now also forwards `maxDuration`, `region`, and `lockToVersion` so both session entry points stay consistent.
+
+- Cache your chat agent's system prompt with Anthropic prompt caching. `chat.toStreamTextOptions()` now emits the system prompt as a cacheable message when you opt in, so a large, stable system block is billed at cache-read rates on every turn instead of full price. ([#3952](https://github.com/triggerdotdev/trigger.dev/pull/3952))
+
+  ```ts
+  // at the streamText call site (Anthropic sugar)
+  streamText({
+    ...chat.toStreamTextOptions({ cacheControl: { type: "ephemeral" } }),
+    messages,
+  });
+
+  // provider-agnostic equivalent
+  chat.toStreamTextOptions({
+    systemProviderOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+  });
+
+  // or where the prompt is defined
+  chat.prompt.set(SYSTEM_PROMPT, {
+    providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+  });
+  ```
+
+  Without an option, `system` stays a plain string. Pairs with a `prepareMessages` cache breakpoint to cache the conversation prefix across turns too.
+
+- Three fixes for custom agent loops (`chat.customAgent`, `chat.createSession`, and hand-rolled `MessageAccumulator` loops): ([#3936](https://github.com/triggerdotdev/trigger.dev/pull/3936))
+
+  - Continuation runs no longer replay already-answered user messages into the first turn. The `.in` resume cursor is now seeded before any listener attaches (the same boot logic `chat.agent` uses), so a chat that continues after a cancel, crash, or upgrade only sees genuinely new messages.
+  - Steering a hand-rolled loop mid-stream no longer wipes the in-flight assistant response. `chat.pipeAndCapture` now stamps a server-generated message id on the stream, so a `prepareStep` injection keeps the partial text instead of replacing the message.
+  - Task-backed tools (`ai.toolExecute`) now work from custom agent loops: the parent's session is threaded to the child run, so child tasks can stream progress into the chat with `chat.stream.writer({ target: "root" })` instead of failing with "session handle is not initialized".
+
+- The agent skills installed by `trigger skills` are now namespaced with a `trigger-` prefix (e.g. `trigger-authoring-tasks`, `trigger-getting-started`) so they don't collide with unrelated skills in your coding agent's skills directory. Adds a `trigger-cost-savings` skill for auditing and reducing compute spend (right-sizing machines, `maxDuration`, batching, debounce), and `@trigger.dev/sdk` now bundles the full Trigger.dev documentation so your agent can read the complete, version-pinned reference directly from node_modules. ([#3970](https://github.com/triggerdotdev/trigger.dev/pull/3970))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.7`
+
+## 4.5.0-rc.6
+
+### Patch Changes
+
+- Reliability fixes for `chat.agent`. A user message sent while the agent is streaming is no longer delivered twice (which could run a duplicate turn), input appends now carry an idempotency key so a retried send can't duplicate a message, stopping a generation clears the streaming state so a page reload doesn't replay the stopped turn, and runs can now carry the full set of dashboard tags instead of being silently truncated. `onTurnComplete` now fires on errored turns (with the thrown error attached) and the failed turn's user message is persisted so it isn't lost on the next run. Custom agents and manual `chat.writeTurnComplete` callers now trim the output stream, sending a custom action no longer leaves a second stream reader running, and a long-lived `watch` subscription no longer grows its dedupe set without bound. ([#3891](https://github.com/triggerdotdev/trigger.dev/pull/3891))
+- Continuation chat boots no longer stall for around 10 seconds before the first turn. The `session.in` resume cursor is now found with a non-blocking records read instead of draining an SSE long-poll (which always waited out its full 5 second inactivity window, twice per boot), the boot reads run concurrently, and chat snapshots carry the cursor so subsequent boots skip the scan entirely. ([#3907](https://github.com/triggerdotdev/trigger.dev/pull/3907))
+- Fix `chat.headStart` when `hydrateMessages` is registered. The warm route's step-1 partial now reaches the agent's accumulator on the hydrate path, so `onTurnComplete` carries the full first turn (the head-start user message included), tool-call handovers resume from step 2 instead of re-running step 1, and the assistant `messageId` stays stable across the handover. ([#3907](https://github.com/triggerdotdev/trigger.dev/pull/3907))
+- Preserve reasoning parts across the `chat.headStart` handover. Extended-thinking models' step-1 reasoning now lands in the durable session history (and `onTurnComplete`) under the same assistant `messageId`, with provider metadata intact so Anthropic thinking signatures survive replays. ([#3907](https://github.com/triggerdotdev/trigger.dev/pull/3907))
+- Fix two `chat.createSession()` bugs: stopping a generation no longer wedges the run (the turn loop raced a `totalUsage` promise that never settles after a stop-abort), and continuation runs now wait for the next message instead of invoking the model with an empty prompt. ([#3920](https://github.com/triggerdotdev/trigger.dev/pull/3920))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.6`
+
+## 4.5.0-rc.5
+
+### Patch Changes
+
+- Adds AI SDK 7 support. The `ai` peer range now includes v7, and the `chat.agent` / chat surfaces work against v7's ESM-only build. On v7, install `@ai-sdk/otel` alongside `ai` and the SDK registers it for you so `experimental_telemetry` spans keep flowing into your run traces (v7 stopped emitting them from `ai` core). v5 and v6 keep working unchanged. ([#3833](https://github.com/triggerdotdev/trigger.dev/pull/3833))
+- `useTriggerChatTransport` now recovers when restored session state points at a session that no longer exists in the current environment ([#3816](https://github.com/triggerdotdev/trigger.dev/pull/3816))
+- Offload large trigger payloads to object storage before sending the trigger API request. The SDK uploads packets at or above the existing 128KB limit and sends an `application/store` pointer instead of embedding large JSON in the request body. `TriggerTaskRequestBody` now validates that `application/store` payloads are non-empty storage paths. ([#3785](https://github.com/triggerdotdev/trigger.dev/pull/3785))
+
+  Payload uploads use the same resolved `ApiClient` as the trigger call (including `requestOptions.clientConfig`), not only the global `apiClientManager.client` — so custom `baseURL`, access token, and preview branch apply to both presign and trigger.
+
+- Update the bundled OpenTelemetry packages to their latest releases (`@opentelemetry/sdk-node` 0.218.0, `@opentelemetry/core` 2.7.1, `@opentelemetry/host-metrics` 0.38.3). ([#3810](https://github.com/triggerdotdev/trigger.dev/pull/3810))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.5`
+
+## 4.5.0-rc.4
+
+### Patch Changes
+
+- Add a `tools` option to `chat.agent`. Declaring your tools here threads them into the SDK's internal `convertToModelMessages`, so each tool's `toModelOutput` is re-applied when prior-turn history is re-converted. ([#3790](https://github.com/triggerdotdev/trigger.dev/pull/3790))
+
+  ```ts
+  chat.agent({
+    tools: { readFile, search },
+    run: async ({ messages, tools, signal }) =>
+      streamText({ model, messages, tools, abortSignal: signal }),
+  });
+  ```
+
+  Also exports `InferChatUIMessageFromTools<typeof tools>` to derive the chat `UIMessage` type (typed tool parts) directly from a tool set.
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.4`
+
+## 4.5.0-rc.3
+
+### Patch Changes
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.3`
+
 ## 4.5.0-rc.2
 
 ### Patch Changes

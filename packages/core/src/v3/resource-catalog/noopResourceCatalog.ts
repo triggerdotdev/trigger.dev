@@ -30,6 +30,10 @@ export class NoopResourceCatalog implements ResourceCatalog {
     return [];
   }
 
+  listTaskIdCollisions(): Array<{ id: string; filePaths: string[] }> {
+    return [];
+  }
+
   getTaskManifest(id: string): TaskManifest | undefined {
     return undefined;
   }

@@ -3,7 +3,10 @@ import "../src/v3/test/index.js";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiClientManager } from "@trigger.dev/core/v3";
-import { __replaySessionInTailProductionPathForTests as replaySessionInTail } from "../src/v3/ai.js";
+import {
+  __findLatestSessionInCursorForTests as findLatestSessionInCursor,
+  __replaySessionInTailProductionPathForTests as replaySessionInTail,
+} from "../src/v3/ai.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -133,5 +136,80 @@ describe("replaySessionInTail", () => {
 
     const result = await replaySessionInTail("sess");
     expect(result).toEqual([]);
+  });
+});
+
+// ── Cursor scan (non-blocking records read, not an SSE drain) ──────────
+
+function stubReadRecordsWithHeaders(
+  records: Array<{ data?: unknown; headers?: Array<[string, string]> }>
+) {
+  const shaped = records.map((r, i) => ({
+    data: r.data ?? "",
+    id: `evt-${i + 1}`,
+    seqNum: i + 1,
+    headers: r.headers,
+  }));
+  const spy = vi.fn(async () => ({ records: shaped }));
+  vi.spyOn(apiClientManager, "clientOrThrow").mockReturnValue({
+    readSessionStreamRecords: spy,
+  } as never);
+  return spy;
+}
+
+describe("findLatestSessionInCursor", () => {
+  it("returns the LAST turn-complete's session-in-event-id", async () => {
+    const spy = stubReadRecordsWithHeaders([
+      { data: { type: "text-delta", delta: "hi" } },
+      {
+        headers: [
+          ["trigger-control", "turn-complete"],
+          ["session-in-event-id", "3"],
+        ],
+      },
+      { data: { type: "text-delta", delta: "again" } },
+      {
+        headers: [
+          ["trigger-control", "turn-complete"],
+          ["session-in-event-id", "7"],
+        ],
+      },
+    ]);
+
+    const cursor = await findLatestSessionInCursor("sess");
+    expect(cursor).toBe(7);
+    // Non-blocking records read on `.out`, no SSE subscribe.
+    expect(spy).toHaveBeenCalledWith("sess", "out");
+  });
+
+  it("ignores other control subtypes and turn-completes without the header", async () => {
+    stubReadRecordsWithHeaders([
+      {
+        headers: [
+          ["trigger-control", "upgrade-required"],
+          ["session-in-event-id", "99"],
+        ],
+      },
+      { headers: [["trigger-control", "turn-complete"]] },
+      {
+        headers: [
+          ["trigger-control", "turn-complete"],
+          ["session-in-event-id", "4"],
+        ],
+      },
+    ]);
+
+    const cursor = await findLatestSessionInCursor("sess");
+    expect(cursor).toBe(4);
+  });
+
+  it("returns undefined when records carry no headers (older server)", async () => {
+    stubReadRecordsWithHeaders([
+      { data: { type: "text-delta", delta: "hi" } },
+      { data: { type: "finish" } },
+    ]);
+
+    const cursor = await findLatestSessionInCursor("sess");
+    expect(cursor).toBeUndefined();
   });
 });

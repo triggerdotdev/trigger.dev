@@ -18,7 +18,10 @@ import {
   type SessionTriggerConfig,
 } from "~/services/realtime/sessionRunManager.server";
 import { chatSnapshotStoragePathForSession } from "~/services/realtime/chatSnapshot.server";
-import { serializeSession } from "~/services/realtime/sessions.server";
+import {
+  serializeSession,
+  serializeSessionsWithFriendlyRunIds,
+} from "~/services/realtime/sessions.server";
 import { SessionsRepository } from "~/services/sessionsRepository/sessionsRepository.server";
 import {
   anyResource,
@@ -91,17 +94,29 @@ export const loader = createLoaderApiRoute(
       },
     });
 
-    return json<ListSessionsResponseBody>({
-      data: rows.map((row) =>
-        serializeSession({
-          ...row,
-          // Columns the list query doesn't select — filled so `serializeSession`
-          // can operate on a narrowed payload without type errors.
-          projectId: authentication.environment.projectId,
-          environmentType: authentication.environment.type,
-          organizationId: authentication.environment.organizationId,
-        } as Session)
+    // Batched friendlyId translation: `currentRunId` on the wire is the
+    // public `run_*` form, matching the single-session routes. One `IN`
+    // lookup per page.
+    const data = await serializeSessionsWithFriendlyRunIds(
+      rows.map(
+        (row) =>
+          ({
+            ...row,
+            // Columns the list query doesn't select — filled so the
+            // serializer can operate on a narrowed payload without type errors.
+            projectId: authentication.environment.projectId,
+            environmentType: authentication.environment.type,
+            organizationId: authentication.environment.organizationId,
+          }) as Session
       ),
+      {
+        projectId: authentication.environment.projectId,
+        runtimeEnvironmentId: authentication.environment.id,
+      }
+    );
+
+    return json<ListSessionsResponseBody>({
+      data,
       pagination: {
         ...(pagination.nextCursor ? { next: pagination.nextCursor } : {}),
         ...(pagination.previousCursor ? { previous: pagination.previousCursor } : {}),
@@ -221,6 +236,17 @@ const { action } = createActionApiRoute(
       if (session.closedAt) {
         return json(
           { error: "Session is closed; use a different externalId to create a new session" },
+          { status: 409 }
+        );
+      }
+
+      // Same guard as the append / end-and-continue handlers: an expired
+      // row must not spawn a run, because every subsequent `.in/append`
+      // would 400 on the expiry check — a run boots but the chat can
+      // never receive input.
+      if (session.expiresAt && session.expiresAt.getTime() < Date.now()) {
+        return json(
+          { error: "Session is expired; use a different externalId to create a new session" },
           { status: 409 }
         );
       }

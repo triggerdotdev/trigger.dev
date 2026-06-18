@@ -2,6 +2,8 @@ import { clickhouseTest } from "@internal/testcontainers";
 import { z } from "zod";
 import { ClickhouseClient } from "./client/client.js";
 import {
+  TASK_RUN_INDEX,
+  getChildRunStatusCounts,
   getTaskRunsQueryBuilder,
   insertRawTaskRunPayloadsCompactArrays,
   insertTaskRunsCompactArrays,
@@ -81,6 +83,8 @@ describe("Task Runs V2", () => {
       "concurrency_key_1234", // concurrency_key
       ["bulk_action_group_id_1234", "bulk_action_group_id_1235"], // bulk_action_group_ids
       "", // worker_queue
+      "", // region
+      "", // plan_type
       null, // max_duration_in_seconds
       "", // trigger_source
       "", // root_trigger_source
@@ -213,6 +217,8 @@ describe("Task Runs V2", () => {
       "", // concurrency_key
       [], // bulk_action_group_ids
       "", // worker_queue
+      "", // region
+      "", // plan_type
       null, // max_duration_in_seconds
       "", // trigger_source
       "", // root_trigger_source
@@ -268,6 +274,8 @@ describe("Task Runs V2", () => {
       "", // concurrency_key
       [], // bulk_action_group_ids
       "", // worker_queue
+      "", // region
+      "", // plan_type
       null, // max_duration_in_seconds
       "", // trigger_source
       "", // root_trigger_source
@@ -370,6 +378,8 @@ describe("Task Runs V2", () => {
         "", // concurrency_key
         [], // bulk_action_group_ids
         "", // worker_queue
+        "", // region
+        "", // plan_type
         null, // max_duration_in_seconds
         "", // trigger_source
         "", // root_trigger_source
@@ -413,6 +423,319 @@ describe("Task Runs V2", () => {
 
       expect(queryError2).toBeNull();
       expect(result2).toEqual([]);
+    }
+  );
+
+  clickhouseTest(
+    "should aggregate child status counts with FINAL and ignore deleted rows",
+    async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRunsCompactArrays(client, {
+        async_insert: 0, // turn off async insert for this test
+      });
+
+      const baseCreatedAt = new Date("2025-05-01T12:00:00.000Z").getTime();
+      const oldCreatedAt = new Date("2025-04-15T12:00:00.000Z").getTime();
+      const since = baseCreatedAt - 60_000;
+
+      const rootRun: TaskRunInsertArray = [
+        "env_agg", // environment_id
+        "org_agg", // organization_id
+        "project_agg", // project_id
+        "root_run_1", // run_id
+        baseCreatedAt, // updated_at
+        baseCreatedAt, // created_at
+        "EXECUTING", // status
+        "DEVELOPMENT", // environment_type
+        "run_root_1", // friendly_id
+        1, // attempt
+        "V2", // engine
+        "root-task", // task_identifier
+        "task/root-task", // queue
+        "", // schedule_id
+        "", // batch_id
+        null, // completed_at
+        baseCreatedAt, // started_at
+        null, // executed_at
+        null, // delay_until
+        baseCreatedAt, // queued_at
+        null, // expired_at
+        0, // usage_duration_ms
+        0, // cost_in_cents
+        0, // base_cost_in_cents
+        { data: null }, // output
+        { data: null }, // error
+        "", // error_fingerprint
+        [], // tags
+        "", // task_version
+        "", // sdk_version
+        "", // cli_version
+        "", // machine_preset
+        "", // root_run_id
+        "", // parent_run_id
+        0, // depth
+        "span_root", // span_id
+        "trace_root", // trace_id
+        "", // idempotency_key
+        "", // idempotency_key_user
+        "", // idempotency_key_scope
+        "", // expiration_ttl
+        true, // is_test
+        "1", // _version
+        0, // _is_deleted
+        "", // concurrency_key
+        [], // bulk_action_group_ids
+        "", // worker_queue
+        "", // region
+        "", // plan_type
+        null, // max_duration_in_seconds
+        "", // trigger_source
+        "", // root_trigger_source
+        "", // task_kind
+        null, // is_warm_start
+      ];
+
+      const childA_v1: TaskRunInsertArray = [
+        "env_agg",
+        "org_agg",
+        "project_agg",
+        "child_a",
+        baseCreatedAt + 1_000,
+        baseCreatedAt + 1_000,
+        "PENDING",
+        "DEVELOPMENT",
+        "run_child_a",
+        1,
+        "V2",
+        "child-task",
+        "task/child-task",
+        "",
+        "",
+        null,
+        null,
+        null,
+        null,
+        baseCreatedAt + 1_000,
+        null,
+        0,
+        0,
+        0,
+        { data: null },
+        { data: null },
+        "",
+        [],
+        "",
+        "",
+        "",
+        "",
+        "root_run_1",
+        "root_run_1",
+        1,
+        "span_child_a",
+        "trace_root",
+        "",
+        "",
+        "",
+        "",
+        true,
+        "1",
+        0,
+        "",
+        [],
+        "", // worker_queue
+        "", // region
+        "", // plan_type
+        null,
+        "",
+        "",
+        "",
+        null,
+      ];
+
+      const childA_v2: TaskRunInsertArray = [
+        ...childA_v1,
+      ];
+      childA_v2[TASK_RUN_INDEX.status] = "COMPLETED_SUCCESSFULLY";
+      childA_v2[TASK_RUN_INDEX._version] = "2";
+
+      const childB: TaskRunInsertArray = [
+        "env_agg",
+        "org_agg",
+        "project_agg",
+        "child_b",
+        baseCreatedAt + 2_000,
+        baseCreatedAt + 2_000,
+        "EXECUTING",
+        "DEVELOPMENT",
+        "run_child_b",
+        1,
+        "V2",
+        "child-task",
+        "task/child-task",
+        "",
+        "",
+        null,
+        baseCreatedAt + 2_000,
+        null,
+        null,
+        baseCreatedAt + 2_000,
+        null,
+        0,
+        0,
+        0,
+        { data: null },
+        { data: null },
+        "",
+        [],
+        "",
+        "",
+        "",
+        "",
+        "root_run_1",
+        "root_run_1",
+        1,
+        "span_child_b",
+        "trace_root",
+        "",
+        "",
+        "",
+        "",
+        true,
+        "1",
+        0,
+        "",
+        [],
+        "", // worker_queue
+        "", // region
+        "", // plan_type
+        null,
+        "",
+        "",
+        "",
+        null,
+      ];
+
+      const childDeleted_v1: TaskRunInsertArray = [
+        "env_agg",
+        "org_agg",
+        "project_agg",
+        "child_deleted",
+        baseCreatedAt + 3_000,
+        baseCreatedAt + 3_000,
+        "PENDING",
+        "DEVELOPMENT",
+        "run_child_deleted",
+        1,
+        "V2",
+        "child-task",
+        "task/child-task",
+        "",
+        "",
+        null,
+        null,
+        null,
+        null,
+        baseCreatedAt + 3_000,
+        null,
+        0,
+        0,
+        0,
+        { data: null },
+        { data: null },
+        "",
+        [],
+        "",
+        "",
+        "",
+        "",
+        "root_run_1",
+        "root_run_1",
+        1,
+        "span_child_deleted",
+        "trace_root",
+        "",
+        "",
+        "",
+        "",
+        true,
+        "1",
+        0,
+        "",
+        [],
+        "", // worker_queue
+        "", // region
+        "", // plan_type
+        null,
+        "",
+        "",
+        "",
+        null,
+      ];
+
+      const childDeleted_v2: TaskRunInsertArray = [
+        ...childDeleted_v1,
+      ];
+      childDeleted_v2[TASK_RUN_INDEX._version] = "2";
+      childDeleted_v2[TASK_RUN_INDEX._is_deleted] = 1;
+
+      const childWrongRoot: TaskRunInsertArray = [
+        ...childB,
+      ];
+      childWrongRoot[TASK_RUN_INDEX.run_id] = "child_wrong_root";
+      childWrongRoot[TASK_RUN_INDEX.friendly_id] = "run_child_wrong_root";
+      childWrongRoot[TASK_RUN_INDEX.root_run_id] = "other_root";
+      childWrongRoot[TASK_RUN_INDEX.parent_run_id] = "other_root";
+      childWrongRoot[TASK_RUN_INDEX.span_id] = "span_child_wrong_root";
+
+      const childOld: TaskRunInsertArray = [
+        ...childB,
+      ];
+      childOld[TASK_RUN_INDEX.run_id] = "child_old";
+      childOld[TASK_RUN_INDEX.created_at] = oldCreatedAt;
+      childOld[TASK_RUN_INDEX.updated_at] = oldCreatedAt;
+      childOld[TASK_RUN_INDEX.started_at] = oldCreatedAt;
+      childOld[TASK_RUN_INDEX.queued_at] = oldCreatedAt;
+      childOld[TASK_RUN_INDEX.friendly_id] = "run_child_old";
+      childOld[TASK_RUN_INDEX.span_id] = "span_child_old";
+
+      const [insertError] = await insert([
+        rootRun,
+        childA_v1,
+        childA_v2,
+        childB,
+        childDeleted_v1,
+        childDeleted_v2,
+        childWrongRoot,
+        childOld,
+      ]);
+
+      expect(insertError).toBeNull();
+
+      const [queryError, result] = await getChildRunStatusCounts(client)({
+        organizationId: "org_agg",
+        projectId: "project_agg",
+        environmentId: "env_agg",
+        rootRunIds: ["root_run_1"],
+        since,
+      });
+
+      expect(queryError).toBeNull();
+      expect(result).toEqual([
+        {
+          root_run_id: "root_run_1",
+          status: "COMPLETED_SUCCESSFULLY",
+          count: 1,
+        },
+        {
+          root_run_id: "root_run_1",
+          status: "EXECUTING",
+          count: 1,
+        },
+      ]);
     }
   );
 

@@ -35,6 +35,7 @@ import {
   UNSET_VALUE,
   BooleanControl,
   EnumControl,
+  NumberControl,
   StringControl,
   WorkerGroupControl,
   type WorkerGroup,
@@ -352,6 +353,22 @@ export default function AdminFeatureFlagsRoute() {
                         />
                       )}
 
+                      {control.type === "number" && (
+                        <NumberControl
+                          value={isSet ? (values[key] as number) : undefined}
+                          min={control.min}
+                          max={control.max}
+                          onChange={(val) => {
+                            if (val === undefined) {
+                              unsetFlag(key);
+                            } else {
+                              setFlagValue(key, val);
+                            }
+                          }}
+                          dimmed={!isSet}
+                        />
+                      )}
+
                       {control.type === "string" && (
                         <StringControl
                           value={isSet ? (values[key] as string) : ""}
@@ -400,6 +417,7 @@ export default function AdminFeatureFlagsRoute() {
         lockedKeys={unlocked ? [] : GLOBAL_LOCKED_FLAGS}
         onConfirm={handleSave}
         isSaving={isSaving}
+        saveError={saveError}
       />
     </main>
   );
@@ -467,6 +485,7 @@ function ConfirmDialog({
   lockedKeys,
   onConfirm,
   isSaving,
+  saveError,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -476,6 +495,7 @@ function ConfirmDialog({
   lockedKeys: readonly string[];
   onConfirm: () => void;
   isSaving: boolean;
+  saveError: string | null;
 }) {
   const editableKeys = Object.keys(controlTypes)
     .filter((key) => !lockedKeys.includes(key))
@@ -519,7 +539,7 @@ function ConfirmDialog({
           These changes affect all organizations globally. Please review carefully.
         </DialogDescription>
 
-        <div className="flex flex-col gap-2 pb-2">
+        <div className="flex max-h-[50vh] flex-col gap-2 overflow-y-auto pb-2">
           {changes.length === 0 ? (
             <p className="text-sm text-text-dimmed">No changes to apply.</p>
           ) : (
@@ -545,6 +565,8 @@ function ConfirmDialog({
             ))
           )}
         </div>
+
+        {saveError && <Callout variant="error">{saveError}</Callout>}
 
         <DialogFooter>
           <Button variant="tertiary/small" onClick={() => onOpenChange(false)}>

@@ -12,6 +12,7 @@ import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
 import { BranchesNoBranchableEnvironment, BranchesNoBranches } from "~/components/BlankStatePanels";
+import { Feedback } from "~/components/Feedback";
 import { GitMetadata } from "~/components/GitMetadata";
 import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
@@ -56,6 +57,7 @@ import {
 } from "~/components/primitives/Table";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useEnvironment } from "~/hooks/useEnvironment";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 
@@ -63,6 +65,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { BranchesPresenter } from "~/presenters/v3/BranchesPresenter.server";
 import { logger } from "~/services/logger.server";
+import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import { UpsertBranchService } from "~/services/upsertBranch.server";
 import { cn } from "~/utils/cn";
@@ -155,6 +158,21 @@ export async function action({ request, params }: ActionFunctionArgs) {
       throw redirectWithErrorMessage(redirectPath, request, "Project not found");
     }
 
+    const currentPlan = await getCurrentPlan(project.organizationId);
+    const purchaseBlockReason = getSelfServePurchaseBlockReason(currentPlan);
+    if (purchaseBlockReason === "plan_unavailable") {
+      return json(
+        { ok: false, error: "Unable to verify billing status. Please try again." } as const,
+        { status: 503 }
+      );
+    }
+    if (purchaseBlockReason === "managed_billing") {
+      return json(
+        { ok: false, error: "Contact us to request more branches." } as const,
+        { status: 403 }
+      );
+    }
+
     const submission = parse(formData, { schema: PurchaseSchema });
 
     if (!submission.value || submission.intent !== "submit") {
@@ -237,6 +255,7 @@ export default function Page() {
   const environment = useEnvironment();
 
   const plan = useCurrentPlan();
+  const showSelfServe = useShowSelfServe();
   const requiresUpgrade =
     plan?.v3Subscription?.plan &&
     limits.used >= plan.v3Subscription.plan.limits.branches.number &&
@@ -254,7 +273,7 @@ export default function Page() {
         </NavBar>
         <PageBody>
           <MainCenteredContainer className="max-w-md">
-            <BranchesNoBranchableEnvironment />
+            <BranchesNoBranchableEnvironment showSelfServe={showSelfServe} />
           </MainCenteredContainer>
         </PageBody>
       </PageContainer>
@@ -322,6 +341,7 @@ export default function Page() {
                 parentEnvironment={branchableEnvironment}
                 limits={limits}
                 canUpgrade={canUpgrade ?? false}
+                showSelfServe={showSelfServe}
               />
             </MainCenteredContainer>
           ) : (
@@ -484,19 +504,26 @@ export default function Page() {
                         planBranchLimit={planBranchLimit}
                       />
                     ) : canUpgrade ? (
-                      <div className="flex items-center gap-3">
-                        <Paragraph variant="small" className="whitespace-nowrap text-text-dimmed">
-                          Upgrade plan for more Preview Branches
-                        </Paragraph>
-                        <LinkButton
-                          to={v3BillingPath(organization)}
-                          variant="secondary/small"
-                          LeadingIcon={ArrowUpCircleIcon}
-                          leadingIconClassName="text-indigo-500"
-                        >
-                          Upgrade
-                        </LinkButton>
-                      </div>
+                      showSelfServe ? (
+                        <div className="flex items-center gap-3">
+                          <Paragraph variant="small" className="whitespace-nowrap text-text-dimmed">
+                            Upgrade plan for more Preview Branches
+                          </Paragraph>
+                          <LinkButton
+                            to={v3BillingPath(organization)}
+                            variant="secondary/small"
+                            LeadingIcon={ArrowUpCircleIcon}
+                            leadingIconClassName="text-indigo-500"
+                          >
+                            Upgrade
+                          </LinkButton>
+                        </div>
+                      ) : (
+                        <Feedback
+                          defaultValue="enterprise"
+                          button={<Button variant="secondary/small">Request more</Button>}
+                        />
+                      )
                     ) : null}
                   </div>
                 </div>
@@ -559,6 +586,7 @@ function UpgradePanel({
   planBranchLimit: number;
 }) {
   const organization = useOrganization();
+  const showSelfServe = useShowSelfServe();
 
   if (canPurchaseBranches && branchPricing) {
     return (
@@ -604,9 +632,16 @@ function UpgradePanel({
         </div>
         <DialogFooter>
           {canUpgrade ? (
-            <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
-              Upgrade
-            </LinkButton>
+            showSelfServe ? (
+              <LinkButton variant="primary/small" to={v3BillingPath(organization)}>
+                Upgrade
+              </LinkButton>
+            ) : (
+              <Feedback
+                defaultValue="enterprise"
+                button={<Button variant="secondary/small">Request more</Button>}
+              />
+            )
           ) : null}
         </DialogFooter>
       </DialogContent>
@@ -632,6 +667,7 @@ function PurchaseBranchesModal({
   planBranchLimit: number;
   triggerButton?: React.ReactNode;
 }) {
+  const showSelfServe = useShowSelfServe();
   const fetcher = useFetcher();
   const lastSubmission =
     fetcher.data && typeof fetcher.data === "object" && "intent" in fetcher.data
@@ -678,6 +714,15 @@ function PurchaseBranchesModal({
 
   const pricePerBranch = branchPricing.centsPerStep / branchPricing.stepSize / 100;
   const title = extraBranches === 0 ? "Purchase extra branches…" : "Add/remove extra branches…";
+
+  if (!showSelfServe) {
+    return (
+      <Feedback
+        defaultValue="enterprise"
+        button={<Button variant="secondary/small">Request more</Button>}
+      />
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

@@ -31,24 +31,31 @@ export class AgentListPresenter {
     projectId,
     environmentId,
     environmentType,
+    currentWorker: preloadedCurrentWorker,
   }: {
     organizationId: string;
     projectId: string;
     environmentId: string;
     environmentType: RuntimeEnvironmentType;
+    /** Optional: pass the pre-resolved current worker to skip the lookup. Used
+     *  by `UnifiedTaskListPresenter` to share one lookup across both presenters. */
+    currentWorker?: Awaited<ReturnType<typeof findCurrentWorkerFromEnvironment>>;
   }) {
     const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
       organizationId,
       "standard"
     );
 
-    const currentWorker = await findCurrentWorkerFromEnvironment(
-      {
-        id: environmentId,
-        type: environmentType,
-      },
-      this._replica
-    );
+    const currentWorker =
+      preloadedCurrentWorker !== undefined
+        ? preloadedCurrentWorker
+        : await findCurrentWorkerFromEnvironment(
+            {
+              id: environmentId,
+              type: environmentType,
+            },
+            this._replica
+          );
 
     if (!currentWorker) {
       return {

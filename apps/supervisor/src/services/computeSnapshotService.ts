@@ -6,6 +6,15 @@ import { type SnapshotCallbackPayload } from "@internal/compute";
 import type { ComputeWorkloadManager } from "../workloadManager/compute.js";
 import { TimerWheel } from "./timerWheel.js";
 import type { OtlpTraceService } from "./otlpTraceService.js";
+import {
+  emitOneShot,
+  fromContext,
+  recordPhaseSince,
+  runWideEvent,
+  setExtra,
+  setMeta,
+  type WideEventOptions,
+} from "../wideEvents/index.js";
 
 type DelayedSnapshot = {
   runnerId: string;
@@ -24,6 +33,7 @@ export type ComputeSnapshotServiceOptions = {
   computeManager: ComputeWorkloadManager;
   workerClient: SupervisorHttpClient;
   tracing?: OtlpTraceService;
+  wideEventOpts: WideEventOptions;
 };
 
 export class ComputeSnapshotService {
@@ -37,11 +47,13 @@ export class ComputeSnapshotService {
   private readonly computeManager: ComputeWorkloadManager;
   private readonly workerClient: SupervisorHttpClient;
   private readonly tracing?: OtlpTraceService;
+  private readonly wideEventOpts: WideEventOptions;
 
   constructor(opts: ComputeSnapshotServiceOptions) {
     this.computeManager = opts.computeManager;
     this.workerClient = opts.workerClient;
     this.tracing = opts.tracing;
+    this.wideEventOpts = opts.wideEventOpts;
 
     this.dispatchLimit = pLimit(this.computeManager.snapshotDispatchLimit);
     this.timerWheel = new TimerWheel<DelayedSnapshot>({
@@ -62,6 +74,17 @@ export class ComputeSnapshotService {
   /** Schedule a delayed snapshot for a run. Replaces any pending snapshot for the same run. */
   schedule(runFriendlyId: string, data: DelayedSnapshot) {
     this.timerWheel.submit(runFriendlyId, data);
+    emitOneShot({
+      ...this.wideEventOpts,
+      op: "snapshot.schedule",
+      kind: "event",
+      populate: (state) => {
+        state.meta.run_id = runFriendlyId;
+        state.meta.snapshot_id = data.snapshotFriendlyId;
+        state.extras.runner_id = data.runnerId;
+        state.extras.delay_ms = this.computeManager.snapshotDelayMs;
+      },
+    });
     this.logger.debug("Snapshot scheduled", {
       runFriendlyId,
       snapshotFriendlyId: data.snapshotFriendlyId,
@@ -69,10 +92,29 @@ export class ComputeSnapshotService {
     });
   }
 
-  /** Cancel a pending delayed snapshot. Returns true if one was cancelled. */
-  cancel(runFriendlyId: string): boolean {
+  /**
+   * Cancel a pending delayed snapshot. Returns true if one was cancelled.
+   * When `runnerId` is given, only a snapshot scheduled for that same runner
+   * is cancelled - a stale runner for a run that has since been reassigned
+   * must not cancel the new runner's pending snapshot.
+   */
+  cancel(runFriendlyId: string, runnerId?: string): boolean {
+    if (runnerId) {
+      const pending = this.timerWheel.peek(runFriendlyId);
+      if (pending && pending.data.runnerId !== runnerId) {
+        return false;
+      }
+    }
     const cancelled = this.timerWheel.cancel(runFriendlyId);
     if (cancelled) {
+      emitOneShot({
+        ...this.wideEventOpts,
+        op: "snapshot.canceled",
+        kind: "event",
+        populate: (state) => {
+          state.meta.run_id = runFriendlyId;
+        },
+      });
       this.logger.debug("Snapshot cancelled", { runFriendlyId });
     }
     return cancelled;
@@ -81,6 +123,23 @@ export class ComputeSnapshotService {
   /** Handle the callback from the gateway after a snapshot completes or fails. */
   async handleCallback(body: SnapshotCallbackPayload) {
     const snapshotId = body.status === "completed" ? body.snapshot_id : undefined;
+    const runId = body.metadata?.runId;
+    const snapshotFriendlyId = body.metadata?.snapshotFriendlyId;
+
+    // Enrich the wrapping route's wide event with snapshot metadata. The
+    // `/api/v1/compute/snapshot-complete` route is registered with `wideRoute`,
+    // so `fromContext()` returns the State of that route and these calls
+    // become extras/meta on the same wide event - no nested emission.
+    const state = fromContext();
+    if (state) {
+      state.extras["snapshot.status"] = body.status;
+      if (body.instance_id) state.extras["snapshot.instance_id"] = body.instance_id;
+      if (body.duration_ms !== undefined) state.extras["snapshot.duration_ms"] = body.duration_ms;
+      if (snapshotId) state.extras["snapshot.id"] = snapshotId;
+      if (body.status === "failed" && body.error) state.extras["snapshot.error"] = body.error;
+    }
+    if (runId) setMeta(state, "run_id", runId);
+    if (snapshotFriendlyId) setMeta(state, "snapshot_id", snapshotFriendlyId);
 
     this.logger.debug("Snapshot callback", {
       snapshotId,
@@ -91,9 +150,6 @@ export class ComputeSnapshotService {
       durationMs: body.duration_ms,
     });
 
-    const runId = body.metadata?.runId;
-    const snapshotFriendlyId = body.metadata?.snapshotFriendlyId;
-
     if (!runId || !snapshotFriendlyId) {
       this.logger.error("Snapshot callback missing metadata", { body });
       return { ok: false as const, status: 400 };
@@ -102,6 +158,7 @@ export class ComputeSnapshotService {
     this.#emitSnapshotSpan(runId, body.duration_ms, snapshotId);
 
     if (body.status === "completed") {
+      const submitStart = performance.now();
       const result = await this.workerClient.submitSuspendCompletion({
         runId,
         snapshotId: snapshotFriendlyId,
@@ -113,6 +170,11 @@ export class ComputeSnapshotService {
           },
         },
       });
+      recordPhaseSince(
+        "submit_completion",
+        submitStart,
+        result.success ? undefined : new Error(String(result.error))
+      );
 
       if (result.success) {
         this.logger.debug("Suspend completion submitted", {
@@ -121,6 +183,7 @@ export class ComputeSnapshotService {
           snapshotId: body.snapshot_id,
         });
       } else {
+        setExtra(state, "submit_completion.error", String(result.error));
         this.logger.error("Failed to submit suspend completion", {
           runId,
           snapshotFriendlyId,
@@ -128,6 +191,7 @@ export class ComputeSnapshotService {
         });
       }
     } else {
+      const submitStart = performance.now();
       const result = await this.workerClient.submitSuspendCompletion({
         runId,
         snapshotId: snapshotFriendlyId,
@@ -136,8 +200,14 @@ export class ComputeSnapshotService {
           error: body.error ?? "Snapshot failed",
         },
       });
+      recordPhaseSince(
+        "submit_completion",
+        submitStart,
+        result.success ? undefined : new Error(String(result.error))
+      );
 
       if (!result.success) {
+        setExtra(state, "submit_completion.error", String(result.error));
         this.logger.error("Failed to submit suspend failure", {
           runId,
           snapshotFriendlyId,
@@ -184,20 +254,31 @@ export class ComputeSnapshotService {
 
   /** Dispatch a snapshot request to the gateway. */
   private async dispatch(snapshot: DelayedSnapshot): Promise<void> {
-    const result = await this.computeManager.snapshot({
-      runnerId: snapshot.runnerId,
-      metadata: {
-        runId: snapshot.runFriendlyId,
-        snapshotFriendlyId: snapshot.snapshotFriendlyId,
+    await runWideEvent(
+      {
+        ...this.wideEventOpts,
+        op: "snapshot.dispatch",
+        kind: "scheduled",
+        setup: (state) => {
+          state.meta.run_id = snapshot.runFriendlyId;
+          state.meta.snapshot_id = snapshot.snapshotFriendlyId;
+          state.extras.runner_id = snapshot.runnerId;
+        },
       },
-    });
+      async () => {
+        const result = await this.computeManager.snapshot({
+          runnerId: snapshot.runnerId,
+          metadata: {
+            runId: snapshot.runFriendlyId,
+            snapshotFriendlyId: snapshot.snapshotFriendlyId,
+          },
+        });
 
-    if (!result) {
-      this.logger.error("Failed to request snapshot", {
-        runId: snapshot.runFriendlyId,
-        runnerId: snapshot.runnerId,
-      });
-    }
+        if (!result) {
+          throw new Error("Snapshot dispatch returned no result");
+        }
+      }
+    );
   }
 
   #emitSnapshotSpan(runFriendlyId: string, durationMs?: number, snapshotId?: string) {

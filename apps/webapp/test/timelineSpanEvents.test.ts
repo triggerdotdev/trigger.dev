@@ -28,7 +28,7 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
         event: "import",
         duration: 67,
         entryPoint:
-          "/Users/eric/code/triggerdotdev/trigger.dev/references/d3-chat/.trigger/tmp/build-AL7zTl/references/d3-chat/src/trigger/chat.mjs",
+          "/project/.trigger/tmp/build-AL7zTl/src/trigger/chat.mjs",
       },
     },
   ];
@@ -53,7 +53,7 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
         event: "import",
         duration: 67,
         entryPoint:
-          "/Users/eric/code/triggerdotdev/trigger.dev/references/d3-chat/.trigger/tmp/build-AL7zTl/references/d3-chat/src/trigger/chat.mjs",
+          "/project/.trigger/tmp/build-AL7zTl/src/trigger/chat.mjs",
       },
     },
   ];
@@ -179,6 +179,15 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
     expect(result.find((e) => e.name === "Importing task file")?.helpText).toBe(
       "A task file was imported"
     );
+  });
+
+  test("should not attach raw span event properties to timeline events", () => {
+    const result = createTimelineSpanEventsFromSpanEvents(sampleSpanEvents, true);
+
+    expect(result.length).toBeGreaterThan(0);
+    for (const event of result) {
+      expect(event).not.toHaveProperty("properties");
+    }
   });
 
   test("should preserve duration from span events", () => {

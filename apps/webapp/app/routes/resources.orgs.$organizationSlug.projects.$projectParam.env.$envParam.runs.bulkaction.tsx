@@ -2,7 +2,6 @@ import { parse } from "@conform-to/zod";
 import { ArrowPathIcon, InformationCircleIcon } from "@heroicons/react/20/solid";
 import { XCircleIcon } from "@heroicons/react/24/outline";
 import { Form } from "@remix-run/react";
-import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/router";
 import { tryCatch } from "@trigger.dev/core";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
@@ -23,7 +22,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "~/components/primitives/Accordion";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import {
   Dialog,
@@ -48,40 +47,57 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useUser } from "~/hooks/useUser";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { CreateBulkActionPresenter } from "~/presenters/v3/CreateBulkActionPresenter.server";
+import { RUNS_BULK_INSPECTOR_UI_SEARCH_PARAMS } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs._index/shouldRevalidateRunsList";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { cn } from "~/utils/cn";
-import { EnvironmentParamSchema, v3BulkActionPath, v3RunsPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3BulkActionPath } from "~/utils/pathBuilder";
 import { BulkActionService } from "~/v3/services/bulk/BulkActionV2.server";
 
-export async function loader({ request, params }: LoaderFunctionArgs) {
-  const userId = await requireUserId(request);
+export const loader = dashboardLoader(
+  {
+    params: EnvironmentParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "read", resource: { type: "runs" } },
+  },
+  async ({ request, params, user, ability }) => {
+    const { organizationSlug, projectParam, envParam } = params;
 
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+    const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+    if (!project) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  if (!project) {
-    throw new Response("Not Found", { status: 404 });
+    const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
+    if (!environment) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    const presenter = new CreateBulkActionPresenter();
+    const data = await presenter.call({
+      organizationId: project.organizationId,
+      projectId: project.id,
+      environmentId: environment.id,
+      request,
+    });
+
+    // Display flag for the inspector's Cancel/Replay controls — the action
+    // below enforces write:runs independently.
+    const { canCreateBulkAction } = checkPermissions(ability, {
+      canCreateBulkAction: { action: "write", resource: { type: "runs" } },
+    });
+
+    return typedjson({ ...data, canCreateBulkAction });
   }
-
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-  if (!environment) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const presenter = new CreateBulkActionPresenter();
-  const data = await presenter.call({
-    organizationId: project.organizationId,
-    projectId: project.id,
-    environmentId: environment.id,
-    request,
-  });
-
-  return typedjson(data);
-}
+);
 
 export const CreateBulkActionSearchParams = z.object({
   mode: BulkActionMode.default("filter"),
@@ -111,67 +127,75 @@ export const CreateBulkActionPayload = z.discriminatedUnion("mode", [
 ]);
 export type CreateBulkActionPayload = z.infer<typeof CreateBulkActionPayload>;
 
-export async function action({ params, request }: ActionFunctionArgs) {
-  const userId = await requireUserId(request);
+export const action = dashboardAction(
+  {
+    params: EnvironmentParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "write", resource: { type: "runs" } },
+  },
+  async ({ request, params, user }) => {
+    const { organizationSlug, projectParam, envParam } = params;
 
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+    const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+    if (!project) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  if (!project) {
-    throw new Response("Not Found", { status: 404 });
-  }
+    const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
+    if (!environment) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-  if (!environment) {
-    throw new Response("Not Found", { status: 404 });
-  }
+    const formData = await request.formData();
+    const submission = parse(formData, { schema: CreateBulkActionPayload });
 
-  const formData = await request.formData();
-  const submission = parse(formData, { schema: CreateBulkActionPayload });
+    if (!submission.value) {
+      logger.error("Invalid bulk action", {
+        submission,
+        formData: Object.fromEntries(formData),
+      });
+      return redirectWithErrorMessage("/", request, "Invalid bulk action");
+    }
 
-  if (!submission.value) {
-    logger.error("Invalid bulk action", {
-      submission,
-      formData: Object.fromEntries(formData),
-    });
-    return redirectWithErrorMessage("/", request, "Invalid bulk action");
-  }
+    const service = new BulkActionService();
+    const [error, result] = await tryCatch(
+      service.create(
+        project.organizationId,
+        project.id,
+        environment.id,
+        user.id,
+        submission.value,
+        request
+      )
+    );
 
-  const service = new BulkActionService();
-  const [error, result] = await tryCatch(
-    service.create(
-      project.organizationId,
-      project.id,
-      environment.id,
-      userId,
-      submission.value,
-      request
-    )
-  );
+    if (error) {
+      logger.error("Failed to create bulk action", {
+        error,
+      });
 
-  if (error) {
-    logger.error("Failed to create bulk action", {
-      error,
-    });
+      return redirectWithErrorMessage(
+        submission.value.failedRedirect,
+        request,
+        `Failed to create bulk action: ${error.message}`
+      );
+    }
 
-    return redirectWithErrorMessage(
-      submission.value.failedRedirect,
+    return redirectWithSuccessMessage(
+      v3BulkActionPath(
+        { slug: organizationSlug },
+        { slug: projectParam },
+        { slug: envParam },
+        { friendlyId: result.bulkActionId }
+      ),
       request,
-      `Failed to create bulk action: ${error.message}`
+      "Bulk action started"
     );
   }
-
-  return redirectWithSuccessMessage(
-    v3BulkActionPath(
-      { slug: organizationSlug },
-      { slug: projectParam },
-      { slug: envParam },
-      { friendlyId: result.bulkActionId }
-    ),
-    request,
-    "Bulk action started"
-  );
-}
+);
 
 export function CreateBulkActionInspector({
   filters,
@@ -187,7 +211,7 @@ export function CreateBulkActionInspector({
   const project = useProject();
   const environment = useEnvironment();
   const fetcher = useTypedFetcher<typeof loader>();
-  const { value, replace } = useSearchParams();
+  const { value, replace, del } = useSearchParams();
   const [action, setAction] = useState<BulkActionAction>(
     bulkActionActionFromString(value("action"))
   );
@@ -208,8 +232,8 @@ export function CreateBulkActionInspector({
 
   const data = fetcher.data != null ? fetcher.data : undefined;
 
-  const closedSearchParams = new URLSearchParams(location.search);
-  closedSearchParams.delete("bulkInspector");
+  // Permissive while the fetcher is loading; the action enforces write:runs.
+  const canCreateBulkAction = data?.canCreateBulkAction ?? true;
 
   const impactedCountElement =
     mode === "selected" ? selectedItems.size : <EstimatedCount count={data?.count} />;
@@ -225,13 +249,10 @@ export function CreateBulkActionInspector({
       <div className="grid h-full max-h-full grid-rows-[2.5rem_1fr_3.25rem] overflow-hidden bg-background-bright">
         <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
           <Header2 className="whitespace-nowrap">Create a bulk action</Header2>
-          <LinkButton
-            to={`${v3RunsPath(
-              organization,
-              project,
-              environment
-            )}?${closedSearchParams.toString()}`}
+          <Button
+            type="button"
             variant="minimal/small"
+            onClick={() => del([...RUNS_BULK_INSPECTOR_UI_SEARCH_PARAMS])}
             TrailingIcon={ExitIcon}
             shortcut={{ key: "esc" }}
             shortcutPosition="before-trailing-icon"
@@ -374,7 +395,12 @@ export function CreateBulkActionInspector({
                   key: "enter",
                   enabledOnInputElements: true,
                 }}
-                disabled={impactedCountElement === 0 || isDialogOpen}
+                disabled={impactedCountElement === 0 || isDialogOpen || !canCreateBulkAction}
+                tooltip={
+                  canCreateBulkAction
+                    ? undefined
+                    : "You don't have permission to create bulk actions"
+                }
               >
                 {action === "replay" ? (
                   <span className="text-text-bright">Replay {impactedCountElement} runs…</span>

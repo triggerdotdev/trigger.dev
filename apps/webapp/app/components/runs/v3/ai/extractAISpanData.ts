@@ -26,6 +26,10 @@ export function extractAISpanData(
   const gRequest = rec(g.request);
   const gUsage = rec(g.usage);
   const gOperation = rec(g.operation);
+  const gProvider = rec(g.provider);
+  const gInput = rec(g.input);
+  const gOutput = rec(g.output);
+  const gTool = rec(g.tool);
   const aiModel = rec(ai.model);
   const aiResponse = rec(ai.response);
   const aiPrompt = rec(ai.prompt);
@@ -49,7 +53,17 @@ export function extractAISpanData(
       ? Math.round((outputTokens / (durationMs / 1000)) * 10) / 10
       : undefined);
 
-  const toolDefs = parseToolDefinitions(aiPrompt.tools);
+  // AI SDK 7 moves span emission into `@ai-sdk/otel`, which emits OTel GenAI
+  // semantic-convention attributes (gen_ai.input/output.messages, gen_ai.provider.name,
+  // gen_ai.tool.definitions, gen_ai.response.finish_reasons). AI SDK 6 emits the older
+  // `ai.*` keys (ai.prompt.messages, ai.response.text/toolCalls/finishReason). Customers
+  // run either major, so detect the shape and read both.
+  const isV7 =
+    typeof gInput.messages === "string" ||
+    typeof gOutput.messages === "string" ||
+    typeof gProvider.name === "string";
+
+  const toolDefs = parseToolDefinitions(isV7 ? gTool.definitions : aiPrompt.tools);
   const providerMeta = parseProviderMetadata(aiResponse.providerMetadata);
   const aiTelemetry = rec(ai.telemetry);
   const telemetryMetaRaw = rec(aiTelemetry.metadata);
@@ -63,15 +77,15 @@ export function extractAISpanData(
 
   return {
     model,
-    provider: str(g.system) ?? "unknown",
+    provider: str(gProvider.name) ?? str(g.system) ?? str(aiModel.provider) ?? "unknown",
     operationName: str(gOperation.name) ?? str(ai.operationId) ?? "",
     responseId: str(gResponse.id) || undefined,
-    finishReason: str(aiResponse.finishReason),
+    finishReason: isV7 ? firstFinishReason(gResponse.finish_reasons) : str(aiResponse.finishReason),
     serviceTier: providerMeta?.serviceTier,
     resolvedProvider: providerMeta?.resolvedProvider,
     toolChoice: parseToolChoice(aiPrompt.toolChoice),
     toolCount: toolDefs?.length,
-    messageCount: countMessages(aiPrompt.messages),
+    messageCount: isV7 ? countGenAiMessages(gInput.messages) : countMessages(aiPrompt.messages),
     telemetryMetadata: telemetryMeta,
     promptSlug: promptSlug || undefined,
     promptVersion: promptVersion || undefined,
@@ -81,9 +95,14 @@ export function extractAISpanData(
     inputTokens,
     outputTokens,
     totalTokens,
-    cachedTokens: num(aiUsage.cachedInputTokens) ?? num(gUsage.cache_read_input_tokens),
+    cachedTokens:
+      num(aiUsage.cachedInputTokens) ??
+      num(gUsage.cache_read_input_tokens) ??
+      num(rec(gUsage.cache_read).input_tokens),
     cacheCreationTokens:
-      num(aiUsage.cacheCreationInputTokens) ?? num(gUsage.cache_creation_input_tokens),
+      num(aiUsage.cacheCreationInputTokens) ??
+      num(gUsage.cache_creation_input_tokens) ??
+      num(rec(gUsage.cache_creation).input_tokens),
     reasoningTokens: num(aiUsage.reasoningTokens) ?? num(gUsage.reasoning_tokens),
     tokensPerSecond,
     msToFirstChunk: num(aiResponse.msToFirstChunk),
@@ -91,10 +110,16 @@ export function extractAISpanData(
     inputCost: num(triggerLlm.input_cost),
     outputCost: num(triggerLlm.output_cost),
     totalCost: num(triggerLlm.total_cost),
-    responseText: str(aiResponse.text) || undefined,
+    cachedCost: num(triggerLlm.cached_cost),
+    cacheCreationCost: num(triggerLlm.cache_creation_cost),
+    responseText: isV7
+      ? extractGenAiAssistantText(gOutput.messages) || undefined
+      : str(aiResponse.text) || undefined,
     responseObject: str(aiResponse.object) || undefined,
     toolDefinitions: toolDefs,
-    items: buildDisplayItems(aiPrompt.messages, aiResponse.toolCalls, toolDefs),
+    items: isV7
+      ? buildGenAiDisplayItems(g.system_instructions, gInput.messages, gOutput.messages, toolDefs)
+      : buildDisplayItems(aiPrompt.messages, aiResponse.toolCalls, toolDefs),
   };
 }
 
@@ -447,6 +472,216 @@ function countMessages(raw: unknown): number | undefined {
     return parsed.length > 0 ? parsed.length : undefined;
   } catch {
     return undefined;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// AI SDK 7 — @ai-sdk/otel GenAI semantic-convention shape
+// ---------------------------------------------------------------------------
+//
+// v7 moved span emission out of `ai` core into `@ai-sdk/otel`, which emits OTel
+// GenAI semantic-convention attributes instead of the v6 `ai.*` keys:
+//   gen_ai.input.messages        JSON string: [{ role, parts: [...] }]
+//   gen_ai.output.messages       JSON string: [{ role:"assistant", parts, finish_reason }]
+//   gen_ai.system_instructions   system prompt (plain string, or [{ type:"text", content }])
+// Message parts (per @ai-sdk/otel's convertMessagePartToSemConv):
+//   { type:"text" | "reasoning", content }
+//   { type:"tool_call", id, name, arguments }
+//   { type:"tool_call_response", id, response }   // response already unwrapped from the AI SDK envelope
+// Media / approval / custom parts are not surfaced in the display yet.
+
+type GenAiMessage = { role: string; parts: Record<string, unknown>[]; finishReason?: string };
+
+function parseGenAiMessages(raw: unknown): GenAiMessage[] | undefined {
+  if (typeof raw !== "string") return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return undefined;
+    return parsed.map((m) => {
+      const o = rec(m);
+      return {
+        role: str(o.role) ?? "user",
+        parts: Array.isArray(o.parts) ? o.parts.map(rec) : [],
+        finishReason: str(o.finish_reason),
+      };
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+/** `gen_ai.response.finish_reasons` arrives as a JSON array string (e.g. `["stop"]`); take the first. */
+function firstFinishReason(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      const first = parsed.find((r) => typeof r === "string");
+      return typeof first === "string" ? first : undefined;
+    }
+    if (typeof parsed === "string") return parsed || undefined;
+  } catch {
+    return raw || undefined;
+  }
+  return undefined;
+}
+
+function countGenAiMessages(raw: unknown): number | undefined {
+  const msgs = parseGenAiMessages(raw);
+  return msgs && msgs.length > 0 ? msgs.length : undefined;
+}
+
+/** Concatenated text of all `text` parts across the assistant output messages. */
+function extractGenAiAssistantText(outputRaw: unknown): string {
+  const msgs = parseGenAiMessages(outputRaw);
+  if (!msgs) return "";
+  const texts: string[] = [];
+  for (const m of msgs) {
+    if (m.role !== "assistant") continue;
+    for (const p of m.parts) {
+      if (p.type === "text" && typeof p.content === "string") texts.push(p.content);
+    }
+  }
+  return texts.join("\n");
+}
+
+/** Plain text of a message's `text` parts (reasoning parts aren't surfaced yet). */
+function genAiMessageText(parts: Record<string, unknown>[]): string {
+  const texts: string[] = [];
+  for (const p of parts) {
+    if (p.type === "text" && typeof p.content === "string") texts.push(p.content);
+  }
+  return texts.join("\n");
+}
+
+/** Parse `gen_ai.system_instructions` (plain string, or a JSON array of `{ type:"text", content }`). */
+function parseSystemInstructions(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        const text = parsed
+          .map((p) => str(rec(p).content))
+          .filter((t): t is string => Boolean(t))
+          .join("\n");
+        return text || undefined;
+      }
+    } catch {
+      // fall through to raw
+    }
+  }
+  return raw || undefined;
+}
+
+/**
+ * Build display items from the v7 GenAI message attributes: the system prompt,
+ * the input message history, and the assistant's output for this span. Assistant
+ * tool_call parts are paired with tool_call_response parts from following tool messages.
+ */
+function buildGenAiDisplayItems(
+  systemInstructionsRaw: unknown,
+  inputMessagesRaw: unknown,
+  outputMessagesRaw: unknown,
+  toolDefs?: ToolDefinition[]
+): DisplayItem[] | undefined {
+  const items: DisplayItem[] = [];
+
+  const systemText = parseSystemInstructions(systemInstructionsRaw);
+  if (systemText) items.push({ type: "system", text: systemText });
+
+  const messages = [
+    ...(parseGenAiMessages(inputMessagesRaw) ?? []),
+    ...(parseGenAiMessages(outputMessagesRaw) ?? []),
+  ];
+  appendGenAiMessages(items, messages);
+
+  if (toolDefs && toolDefs.length > 0) {
+    const defsByName = new Map(toolDefs.map((d) => [d.name, d]));
+    for (const item of items) {
+      if (item.type === "tool-use") {
+        for (const tool of item.tools) {
+          const def = defsByName.get(tool.toolName);
+          if (def) {
+            tool.description = def.description;
+            tool.parametersJson = def.parametersJson;
+          }
+        }
+      }
+    }
+  }
+
+  return items.length > 0 ? items : undefined;
+}
+
+function appendGenAiMessages(items: DisplayItem[], messages: GenAiMessage[]): void {
+  let i = 0;
+  while (i < messages.length) {
+    const msg = messages[i];
+
+    if (msg.role === "system") {
+      const text = genAiMessageText(msg.parts);
+      if (text) items.push({ type: "system", text });
+      i++;
+      continue;
+    }
+
+    if (msg.role === "user") {
+      const text = genAiMessageText(msg.parts);
+      if (text) items.push({ type: "user", text });
+      i++;
+      continue;
+    }
+
+    if (msg.role === "assistant") {
+      const text = genAiMessageText(msg.parts);
+      if (text) items.push({ type: "assistant", text });
+
+      const toolCalls = msg.parts.filter((p) => p.type === "tool_call");
+      if (toolCalls.length > 0) {
+        // Collect tool_call_response parts from the tool messages that follow.
+        const responsesById = new Map<string, unknown>();
+        let j = i + 1;
+        while (j < messages.length && messages[j].role === "tool") {
+          for (const p of messages[j].parts) {
+            if (p.type === "tool_call_response") {
+              const id = str(p.id);
+              if (id) responsesById.set(id, p.response);
+            }
+          }
+          j++;
+        }
+
+        const tools: ToolUse[] = toolCalls.map((tc) => {
+          const id = str(tc.id) ?? "";
+          let resultSummary: string | undefined;
+          let resultOutput: string | undefined;
+          if (id && responsesById.has(id)) {
+            const summarized = summarizeToolOutput(responsesById.get(id));
+            resultSummary = summarized.summary;
+            resultOutput = summarized.formattedOutput;
+          }
+          return {
+            toolCallId: id,
+            toolName: str(tc.name) ?? "",
+            inputJson: JSON.stringify(tc.arguments ?? {}, null, 2),
+            resultSummary,
+            resultOutput,
+          };
+        });
+
+        items.push({ type: "tool-use", tools });
+        i = j;
+        continue;
+      }
+
+      i++;
+      continue;
+    }
+
+    // tool-role messages are consumed via the assistant pairing above; skip stragglers.
+    i++;
   }
 }
 

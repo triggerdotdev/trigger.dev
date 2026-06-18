@@ -104,14 +104,17 @@
               {
                 "group": "Building agents",
                 "pages": [
-                  "ai-chat/how-it-works",
+                  "ai-chat/anatomy",
                   "ai-chat/backend",
                   "ai-chat/lifecycle-hooks",
+                  "ai-chat/tools",
                   "ai-chat/frontend",
                   "ai-chat/server-chat",
                   "ai-chat/sessions",
                   "ai-chat/chat-local",
-                  "ai-chat/types"
+                  "ai-chat/types",
+                  "ai-chat/custom-agents",
+                  "ai-chat/how-it-works"
                 ]
               },
               {
@@ -120,6 +123,7 @@
                   "ai/prompts",
                   "ai-chat/fast-starts",
                   "ai-chat/compaction",
+                  "ai-chat/prompt-caching",
                   "ai-chat/pending-messages",
                   "ai-chat/background-injection",
                   "ai-chat/actions",
@@ -186,12 +190,6 @@
                   "config/extensions/custom"
                 ]
               }
-            ]
-          },
-          {
-            "group": "Development",
-            "pages": [
-              "cli-dev"
             ]
           },
           {
@@ -289,6 +287,7 @@
             "group": "Troubleshooting",
             "pages": [
               "troubleshooting",
+              "database-connections",
               "how-to-reduce-your-spend",
               "troubleshooting-debugging-in-vscode",
               "upgrading-packages",
@@ -342,6 +341,7 @@
             "pages": [
               "management/overview",
               "management/authentication",
+              "management/multiple-clients",
               "management/errors-and-retries",
               "management/auto-pagination",
               "management/advanced-usage"
@@ -430,6 +430,17 @@
               "management/waitpoints/retrieve",
               "management/waitpoints/complete",
               "management/waitpoints/complete-callback"
+            ]
+          },
+          {
+            "group": "Sessions API",
+            "pages": [
+              "management/sessions/create",
+              "management/sessions/list",
+              "management/sessions/retrieve",
+              "management/sessions/update",
+              "management/sessions/close",
+              "management/sessions/channels"
             ]
           },
           {
@@ -729,6 +740,21 @@
     ]
   },
   "redirects": [
+    {
+      "source": "/cli-dev",
+      "destination": "/cli-dev-commands",
+      "permanent": true
+    },
+    {
+      "source": "/cli-deploy",
+      "destination": "/cli-deploy-commands",
+      "permanent": true
+    },
+    {
+      "source": "/cli-development-commands",
+      "destination": "/cli-dev-commands",
+      "permanent": true
+    },
     {
       "source": "/v3/feature-matrix",
       "destination": "https://feedback.trigger.dev/roadmap"

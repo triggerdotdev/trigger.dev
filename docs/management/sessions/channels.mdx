@@ -1,0 +1,128 @@
+---
+title: "Session channels"
+sidebarTitle: "Channels"
+description: "The raw HTTP endpoints behind a session's .in and .out streams: append records, read them over SSE, and drain them non-streaming."
+---
+
+Every session has two durable streams: `.in` carries records from your clients to the task, `.out` carries records from the task back to your clients. The [`sessions` SDK](/ai-chat/sessions) wraps these as `session.in.*` and `session.out.*`. This page documents the underlying HTTP endpoints for callers that aren't using the TypeScript SDK.
+
+All channel endpoints live under `/realtime/v1/sessions/{session}/{io}`, where:
+
+- `{session}` is the session's friendly ID (`session_…`) or your `externalId`. One token authorizes both forms.
+- `{io}` is either `in` or `out`.
+
+Authorize requests with a secret key or a [session public token](/management/authentication#session-scopes). The token's scopes decide what you can do — see [Authorization](#authorization) below.
+
+## Append a record
+
+Append a single record to a channel.
+
+```bash Append to .in
+curl -X POST "https://api.trigger.dev/realtime/v1/sessions/{session}/in/append" \
+  -H "Authorization: Bearer $TRIGGER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "X-Part-Id: 0f8c2b1e-..." \
+  --data '{"type":"user-message","text":"hello"}'
+```
+
+The body is the raw record — any text up to 1MiB (records over the per-record cap return `413`). The response is `{ "ok": true }`.
+
+Set the `X-Part-Id` header to a unique value per record to make the append idempotent: replaying the same `X-Part-Id` does not duplicate the record. Appending to a closed or expired session returns `400`.
+
+<Warning>
+  Appending to `.out` requires a **secret key**. A session public token (even one with
+  `write:sessions`) can only append to `.in` — appending to `.out` with a public token returns
+  `403`. The `.out` stream is the task's to write.
+</Warning>
+
+## Read a channel over SSE
+
+Subscribe to a channel as a Server-Sent Events stream. New records are delivered as they arrive.
+
+```bash Read .out
+curl -N "https://api.trigger.dev/realtime/v1/sessions/{session}/out" \
+  -H "Authorization: Bearer $TRIGGER_TOKEN" \
+  -H "Last-Event-ID: 42" \
+  -H "Timeout-Seconds: 60"
+```
+
+| Header | Direction | Description |
+| --- | --- | --- |
+| `Last-Event-ID` | request | Resume after this sequence number. Set it to the last `id:` you received to pick up exactly where you left off after a disconnect. |
+| `Timeout-Seconds` | request | How long the server holds the stream open with no new records before closing, `1`–`600`. |
+
+Each SSE event carries:
+
+- `id:` — the record's sequence number. Use the most recent one as `Last-Event-ID` to resume.
+- `data:` — a JSON record `{ "data": <record>, "id": <id> }`. For `.out` on a `chat.agent` session, `data` is a UI message chunk (text, reasoning, tool call, or a custom data part).
+
+```text
+id: 42
+data: {"data":{"type":"text","text":"echo: hello"},"id":42}
+```
+
+### Control records
+
+Some `.out` events are **control records** rather than data. A control record has an empty body and carries a `trigger-control` header naming its subtype:
+
+| Subtype | Meaning |
+| --- | --- |
+| `turn-complete` | The current turn finished. Carries sibling headers `public-access-token` (a refreshed session token), `session-in-event-id`, and `last-event-id`. |
+| `upgrade-required` | The session needs to hand off to a run on a newer deployed version. |
+
+Route control records by their subtype instead of treating them as message content. The TypeScript SDK does this for you — `session.out.read` filters control records out of the chunk stream and surfaces them through `onControl`.
+
+## Drain records non-streaming
+
+Fetch a batch of records without holding an SSE connection open. Useful for polling or for reading a tail at startup.
+
+```bash Drain .out
+curl "https://api.trigger.dev/realtime/v1/sessions/{session}/out/records?afterEventId=42" \
+  -H "Authorization: Bearer $TRIGGER_TOKEN"
+```
+
+Pass `afterEventId` to return only records after that sequence number; omit it to read from the start of the retained window. The response is:
+
+```json
+{
+  "records": [
+    { "data": { "type": "text", "text": "echo: hello" }, "id": 43, "seqNum": 43 }
+  ]
+}
+```
+
+Each record carries `data`, `id`, `seqNum`, and an optional `headers` array (present on control records). Page forward by passing the highest `seqNum` you received as the next `afterEventId`.
+
+## Authorization
+
+The action you can take depends on your token and the channel:
+
+| Action | Endpoint | Required authorization |
+| --- | --- | --- |
+| Subscribe (SSE) | `GET .../{io}` | `read:sessions:{id}` — works on both `.in` and `.out` |
+| Drain records | `GET .../{io}/records` | `read:sessions:{id}` — works on both `.in` and `.out` |
+| Append to `.in` | `POST .../in/append` | `write:sessions:{id}` |
+| Append to `.out` | `POST .../out/append` | Secret key only |
+
+Reads work in both directions for a `read:sessions` token. Writes split by direction: a `write:sessions` token can append to `.in`, but `.out` is reserved for the task and requires a secret key. See [session scopes](/management/authentication#session-scopes) for how to mint a token.
+
+## Using the SDK instead
+
+If you're writing TypeScript, the [`sessions` SDK](/ai-chat/sessions) is the ergonomic path. `sessions.open(idOrExternalId)` returns a `SessionHandle` whose `session.in` and `session.out` channels call these endpoints for you, with auto-retry, `Last-Event-ID` resume, and control-record routing built in:
+
+```ts Your backend
+import { sessions } from "@trigger.dev/sdk";
+
+const session = sessions.open(chatId);
+
+// append to .in
+await session.in.send({ type: "user-message", text: "hello" });
+
+// read .out over SSE
+const stream = await session.out.read({ signal: AbortSignal.timeout(30_000) });
+for await (const chunk of stream) {
+  console.log(chunk);
+}
+```
+
+See [`session.in`](/ai-chat/sessions#session-in-—-clients-→-task) and [`session.out`](/ai-chat/sessions#session-out-—-task-→-clients) for the full handle API.

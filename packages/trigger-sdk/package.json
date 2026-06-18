@@ -1,6 +1,6 @@
 {
   "name": "@trigger.dev/sdk",
-  "version": "4.5.0-rc.2",
+  "version": "4.5.0-rc.7",
   "description": "trigger.dev Node.JS SDK",
   "license": "MIT",
   "publishConfig": {
@@ -14,7 +14,9 @@
   "type": "module",
   "sideEffects": false,
   "files": [
-    "dist"
+    "dist",
+    "docs",
+    "skills"
   ],
   "tshy": {
     "selfLink": false,
@@ -62,18 +64,20 @@
     }
   },
   "scripts": {
-    "clean": "rimraf dist .tshy .tshy-build .turbo",
-    "build": "tshy && pnpm run update-version",
+    "clean": "rimraf dist docs .tshy .tshy-build .turbo",
+    "build": "tshy && pnpm run update-version && pnpm run bundle-docs",
+    "bundle-docs": "tsx ../../scripts/bundleSdkDocs.ts",
     "dev": "tshy --watch",
     "typecheck": "tsc --noEmit",
+    "typecheck:ai-v7": "tsc --noEmit -p tsconfig.ai-v7.json",
     "test": "vitest",
     "update-version": "tsx ../../scripts/updateVersion.ts",
     "check-exports": "attw --pack ."
   },
   "dependencies": {
-    "@opentelemetry/api": "1.9.0",
-    "@opentelemetry/semantic-conventions": "1.36.0",
-    "@trigger.dev/core": "workspace:4.5.0-rc.2",
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/semantic-conventions": "1.41.1",
+    "@trigger.dev/core": "workspace:4.5.0-rc.7",
     "chalk": "^5.2.0",
     "cronstrue": "^2.21.0",
     "debug": "^4.3.4",
@@ -91,6 +95,7 @@
     "@types/slug": "^5.0.3",
     "@types/ws": "^8.5.3",
     "ai": "^6.0.116",
+    "ai-v7": "npm:ai@7.0.0-canary.159",
     "encoding": "^0.1.13",
     "rimraf": "^6.0.1",
     "tshy": "^3.0.2",
@@ -99,11 +104,15 @@
     "zod": "3.25.76"
   },
   "peerDependencies": {
-    "ai": "^5.0.0 || ^6.0.0",
+    "@ai-sdk/otel": ">=1.0.0-0 <2",
+    "ai": "^5.0.0 || ^6.0.0 || >=7.0.0-canary <8",
     "react": "^18.0 || ^19.0",
     "zod": "^3.0.0 || ^4.0.0"
   },
   "peerDependenciesMeta": {
+    "@ai-sdk/otel": {
+      "optional": true
+    },
     "ai": {
       "optional": true
     },

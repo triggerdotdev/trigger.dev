@@ -86,6 +86,19 @@ function isAuthError(error: unknown): boolean {
 }
 
 /**
+ * Detect a 404 from a session-PAT-authed call — i.e. the session doesn't
+ * exist in the current environment. Happens when hydrated session state
+ * (the `sessions` option / a customer's persisted record) was created in a
+ * different trigger environment, or predates the upgrade to the sessions
+ * model, so there's no real Session row behind the cached PAT.
+ */
+function isSessionNotFoundError(error: unknown): boolean {
+  if (error === null || typeof error !== "object") return false;
+  const e = error as { name?: string; status?: number };
+  return e.name === "TriggerApiError" && e.status === 404;
+}
+
+/**
  * Parses an SSE byte/text stream of `data: <UIMessageChunk JSON>\n\n`
  * frames back into `UIMessageChunk` objects. Used by the handover
  * first-turn path to convert the customer's route handler response
@@ -602,11 +615,15 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
 
     const state = await this.ensureSessionState(chatId);
 
+    // Generated outside the closure so auth-retries reuse the same part id
+    // and the server-side dedupe sees one logical append.
+    const partId = crypto.randomUUID();
     const sendChatMessage = async (token: string) => {
       await this.appendInputChunk(
         chatId,
         token,
-        this.serializeInputChunk({ kind: "message", payload: wirePayload })
+        this.serializeInputChunk({ kind: "message", payload: wirePayload }),
+        partId
       );
     };
 
@@ -787,11 +804,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       metadata: mergedMetadata,
     };
 
+    const partId = crypto.randomUUID();
     const send = async (token: string) => {
       await this.appendInputChunk(
         chatId,
         token,
-        this.serializeInputChunk({ kind: "message", payload: wirePayload })
+        this.serializeInputChunk({ kind: "message", payload: wirePayload }),
+        partId
       );
     };
 
@@ -846,8 +865,14 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     const state = this.sessions.get(chatId);
     if (!state) return false;
 
+    const partId = crypto.randomUUID();
     const send = async (token: string) => {
-      await this.appendInputChunk(chatId, token, this.serializeInputChunk({ kind: "stop" }));
+      await this.appendInputChunk(
+        chatId,
+        token,
+        this.serializeInputChunk({ kind: "stop" }),
+        partId
+      );
     };
 
     try {
@@ -863,6 +888,13 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       activeStream.abort();
       this.activeStreams.delete(chatId);
     }
+
+    // The turn won't reach its turn-complete on this client (we just
+    // aborted the reader), so clear the streaming flag here and persist —
+    // otherwise a reload resumes mid-turn and replays the chunks the user
+    // explicitly stopped.
+    state.isStreaming = false;
+    this.notifySessionChange(chatId, state);
     return true;
   };
 
@@ -895,11 +927,27 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     };
 
     const body = this.serializeInputChunk({ kind: "message", payload: wirePayload });
+    const partId = crypto.randomUUID();
     const send = async (token: string) => {
-      await this.appendInputChunk(chatId, token, body);
+      await this.appendInputChunk(chatId, token, body, partId);
     };
 
     await this.callWithAuthRetry(chatId, state, send);
+
+    // Supersede any in-flight reader before subscribing — same as
+    // `sendMessages`. Two concurrent readers both write `state.lastEventId`
+    // and the slower one can regress the cursor, replaying records on the
+    // next reconnect.
+    const activeStream = this.activeStreams.get(chatId);
+    if (activeStream) {
+      activeStream.abort();
+      this.activeStreams.delete(chatId);
+    }
+
+    // Mark streaming + persist so a reload mid-action resumes (reconnectToStream
+    // no-ops when the persisted session says isStreaming: false).
+    state.isStreaming = true;
+    this.notifySessionChange(chatId, state);
 
     return this.subscribeToSessionStream(state, undefined, chatId);
   };
@@ -1072,14 +1120,22 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     return this.fetchOverride ? this.fetchOverride(url, init, ctx) : fetch(url, init);
   }
 
-  private async appendInputChunk(chatId: string, token: string, body: string): Promise<void> {
+  private async appendInputChunk(
+    chatId: string,
+    token: string,
+    body: string,
+    partId?: string
+  ): Promise<void> {
     const ctx: ChatTransportEndpointContext = { endpoint: "in", chatId };
     const url = `${this.resolveBaseURL(ctx)}/realtime/v1/sessions/${encodeURIComponent(chatId)}/in/append`;
+    // extraHeaders first so the fixed headers below win — a transport-wide
+    // X-Part-Id must not override the per-append idempotency key.
     const headers: Record<string, string> = {
+      ...this.extraHeaders,
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
       "x-trigger-source": "sdk",
-      ...this.extraHeaders,
+      "X-Part-Id": partId ?? crypto.randomUUID(),
     };
     const response = await this.doFetch(ctx, url, { method: "POST", headers, body });
     if (!response.ok) {
@@ -1099,17 +1155,66 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     state: ChatSessionState,
     op: (token: string) => Promise<void>
   ): Promise<void> {
+    // 1) Try with the current PAT.
     try {
       await op(state.publicAccessToken);
       return;
     } catch (err) {
+      if (isSessionNotFoundError(err)) {
+        // The cached PAT authenticated but the session doesn't exist here —
+        // recreate it and retry.
+        await this.recreateSession(chatId, state);
+        await op(state.publicAccessToken);
+        return;
+      }
       if (!isAuthError(err)) throw err;
     }
 
+    // 2) Auth error — refresh the PAT and retry. (A cross-environment cached
+    //    PAT fails auth here because it was signed by another env's keys.)
     const fresh = await this.resolveAccessToken({ chatId });
     state.publicAccessToken = fresh;
     this.notifySessionChange(chatId, state);
-    await op(fresh);
+    try {
+      await op(fresh);
+      return;
+    } catch (err) {
+      if (!isSessionNotFoundError(err)) throw err;
+    }
+
+    // 3) PAT is now valid but the session still 404s — the hydrated session
+    //    state is stale (created in a different environment, or before the
+    //    sessions upgrade). Recreate the session and retry once.
+    await this.recreateSession(chatId, state);
+    await op(state.publicAccessToken);
+  }
+
+  /**
+   * Repair a stale/phantom hydrated session. The cached state pointed at a
+   * session that doesn't exist in the current environment (404) — typically
+   * because it was persisted against a different trigger environment, or
+   * predates the upgrade to the sessions model. Recreate the session via
+   * `startSession` and overwrite the cached state **in place** so callers
+   * holding a reference (e.g. `sendMessages` before it opens the SSE) pick
+   * up the new PAT. The stale `lastEventId` resume cursor is dropped — it
+   * pointed at a different environment's stream.
+   */
+  private async recreateSession(chatId: string, state: ChatSessionState): Promise<void> {
+    if (!this.resolveStartSession) {
+      throw new Error(
+        "TriggerChatTransport: session not found and no `startSession` configured to recreate it. The stored session state for this chat may be stale (e.g. created in a different environment) — provide `startSession` or clear the stored session so a fresh one can be created."
+      );
+    }
+    const { publicAccessToken } = await this.resolveStartSession({
+      taskId: this.taskId,
+      chatId,
+      clientData: (this.defaultMetadata ?? {}) as Record<string, unknown>,
+    });
+    state.publicAccessToken = publicAccessToken;
+    state.lastEventId = undefined;
+    state.isStreaming = false;
+    this.sessions.set(chatId, state);
+    this.notifySessionChange(chatId, state);
   }
 
   /**

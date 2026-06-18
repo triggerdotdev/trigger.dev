@@ -11,10 +11,11 @@ import {
 } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { useEffect, useRef, useState } from "react";
+import { cloneElement, useEffect, useRef, useState } from "react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
+import { Feedback } from "~/components/Feedback";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
@@ -29,6 +30,7 @@ import {
   AlertTrigger,
 } from "~/components/primitives/Alert";
 import { Button, ButtonContent, LinkButton } from "~/components/primitives/Buttons";
+import { PermissionButton } from "~/components/primitives/PermissionButton";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -45,11 +47,14 @@ import { Select, SelectItem, SelectLinkItem } from "~/components/primitives/Sele
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { $replica } from "~/db.server";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useUser } from "~/hooks/useUser";
 import { removeTeamMember } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
+import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
@@ -77,19 +82,6 @@ const Params = z.object({
   organizationSlug: z.string(),
 });
 
-// Resolve slug → orgId in the dashboardLoader's context callback so the
-// rbac.authenticateSession call gets a real organizationId. The result
-// is cached for the duration of the request and reused by the handler
-// below (we re-find by slug there to get a typed value — the context
-// only sees the loosely typed return type).
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({
-    where: { slug },
-    select: { id: true },
-  });
-  return org?.id ?? null;
-}
-
 export const loader = dashboardLoader(
   {
     params: Params,
@@ -116,10 +108,12 @@ export const loader = dashboardLoader(
     }
 
     // Pre-compute manage authority server-side so the UI gating matches
-    // the action gating (the action enforces it independently).
+    // the action gating (the action enforces it independently). Seat
+    // purchases are a billing operation, so they gate on manage:billing.
     const canManageMembers = ability.can("manage", { type: "members" });
+    const canManageBilling = ability.can("manage", { type: "billing" });
 
-    return typedjson({ ...result, canManageMembers });
+    return typedjson({ ...result, canManageMembers, canManageBilling });
   }
 );
 
@@ -210,6 +204,20 @@ export const action = dashboardAction(
         return json({ ok: false, error: "Organization not found" } as const);
       }
 
+      const currentPlan = await getCurrentPlan(orgId);
+      const purchaseBlockReason = getSelfServePurchaseBlockReason(currentPlan);
+      if (purchaseBlockReason === "plan_unavailable") {
+        return json(
+          { ok: false, error: "Unable to verify billing status. Please try again." } as const,
+          { status: 503 }
+        );
+      }
+      if (purchaseBlockReason === "managed_billing") {
+        return json({ ok: false, error: "Contact us to request more seats." } as const, {
+          status: 403,
+        });
+      }
+
       const submission = parse(formData, { schema: PurchaseSchema });
 
       if (!submission.value || submission.intent !== "submit") {
@@ -245,17 +253,24 @@ export const action = dashboardAction(
       return json(submission);
     }
 
-    // Default intent: remove a member or leave the org. Self-leave (the
-    // actor removing their own membership) is always allowed. Removing
-    // another member requires `manage:members` — pre-RBAC the
-    // `removeTeamMember` model fn only verified the actor was a member
-    // of the target org, so any org member could remove any other
-    // member by id; this gate fixes that latent permissions hole.
+    // Default intent: remove a member or leave the org. Scope the target to
+    // the actor's organization: an orgMember id is a globally unique key, so an
+    // unscoped lookup (plus an unscoped delete in the model) would let a
+    // manager in one org remove members of another by submitting a foreign id.
+    // Self-leave is always allowed; removing someone else requires
+    // manage:members.
+    const orgId = context.organizationId;
+    if (!orgId) {
+      return json({ ok: false, error: "Organization not found" } as const, { status: 404 });
+    }
     const targetMember = await $replica.orgMember.findFirst({
-      where: { id: submission.value.memberId },
+      where: { id: submission.value.memberId, organizationId: orgId },
       select: { userId: true },
     });
-    const isSelfLeave = targetMember?.userId === userId;
+    if (!targetMember) {
+      return json({ ok: false, error: "Member not found" } as const, { status: 404 });
+    }
+    const isSelfLeave = targetMember.userId === userId;
     if (!isSelfLeave && !ability.can("manage", { type: "members" })) {
       return json({ ok: false, error: "Unauthorized" } as const, { status: 403 });
     }
@@ -300,6 +315,7 @@ export default function Page() {
     assignableRoleIds,
     memberRoles,
     canManageMembers,
+    canManageBilling,
   } = useTypedLoaderData<typeof loader>();
   // Build a userId → roleId map so the dropdown's defaultValue matches
   // each member's current assignment without re-querying.
@@ -310,6 +326,7 @@ export default function Page() {
   const organization = useOrganization();
 
   const plan = useCurrentPlan();
+  const showSelfServe = useShowSelfServe();
   const requiresUpgrade = limits.used >= limits.limit;
   const usageRatio = limits.limit > 0 ? Math.min(limits.used / limits.limit, 1) : 0;
   const canUpgrade =
@@ -404,8 +421,8 @@ export default function Page() {
                           </Paragraph>
                         </div>
                         <div className="flex grow items-center justify-end gap-x-2">
-                          <ResendButton invite={invite} />
-                          <RevokeButton invite={invite} />
+                          <ResendButton invite={invite} canManageMembers={canManageMembers} />
+                          <RevokeButton invite={invite} canManageMembers={canManageMembers} />
                         </div>
                       </li>
                     ))}
@@ -513,11 +530,19 @@ export default function Page() {
                   usedSeats={limits.used}
                   maxQuota={maxSeatQuota}
                   planSeatLimit={planSeatLimit}
+                  canManageBilling={canManageBilling}
                 />
               ) : canUpgrade ? (
-                <LinkButton to={v3BillingPath(organization)} variant="primary/small">
-                  Upgrade
-                </LinkButton>
+                showSelfServe ? (
+                  <LinkButton to={v3BillingPath(organization)} variant="primary/small">
+                    Upgrade
+                  </LinkButton>
+                ) : (
+                  <Feedback
+                    defaultValue="enterprise"
+                    button={<Button variant="secondary/small">Request more</Button>}
+                  />
+                )
               ) : null}
             </div>
           </div>
@@ -746,7 +771,7 @@ function initialCooldown(updatedAt: Date | string): number {
   return remaining > 0 ? remaining : 0;
 }
 
-function ResendButton({ invite }: { invite: Invite }) {
+function ResendButton({ invite, canManageMembers }: { invite: Invite; canManageMembers: boolean }) {
   const navigation = useNavigation();
   const isSubmitting =
     navigation.state === "submitting" &&
@@ -780,12 +805,17 @@ function ResendButton({ invite }: { invite: Invite }) {
     return () => clearInterval(intervalRef.current);
   }, [cooldownActive]);
 
-  const isDisabled = isSubmitting || cooldown > 0;
+  const isDisabled = isSubmitting || cooldown > 0 || !canManageMembers;
 
   return (
     <Form method="post" action={resendInvitePath()} className="flex">
       <input type="hidden" value={invite.id} name="inviteId" />
-      <Button type="submit" variant="secondary/small" disabled={isDisabled}>
+      <Button
+        type="submit"
+        variant="secondary/small"
+        disabled={isDisabled}
+        tooltip={canManageMembers ? undefined : "You don't have permission to manage team members"}
+      >
         {isSubmitting ? (
           "Sending…"
         ) : cooldown > 0 ? (
@@ -798,7 +828,7 @@ function ResendButton({ invite }: { invite: Invite }) {
   );
 }
 
-function RevokeButton({ invite }: { invite: Invite }) {
+function RevokeButton({ invite, canManageMembers }: { invite: Invite; canManageMembers: boolean }) {
   const organization = useOrganization();
 
   return (
@@ -813,9 +843,12 @@ function RevokeButton({ invite }: { invite: Invite }) {
             LeadingIcon={NoSymbolIcon}
             leadingIconClassName="text-white"
             aria-label="Revoke invite"
+            disabled={!canManageMembers}
           />
         }
-        content="Revoke invite"
+        content={
+          canManageMembers ? "Revoke invite" : "You don't have permission to manage team members"
+        }
         disableHoverableContent
         asChild
       />
@@ -830,6 +863,7 @@ export function PurchaseSeatsModal({
   maxQuota,
   planSeatLimit,
   triggerButton,
+  canManageBilling = true,
 }: {
   seatPricing: {
     stepSize: number;
@@ -840,7 +874,9 @@ export function PurchaseSeatsModal({
   maxQuota: number;
   planSeatLimit: number;
   triggerButton?: React.ReactElement;
+  canManageBilling?: boolean;
 }) {
+  const showSelfServe = useShowSelfServe();
   const fetcher = useFetcher();
   const organization = useOrganization();
   const lastSubmission =
@@ -889,15 +925,39 @@ export function PurchaseSeatsModal({
   const pricePerSeat = seatPricing.centsPerStep / seatPricing.stepSize / 100;
   const title = extraSeats === 0 ? "Purchase extra seats…" : "Add/remove extra seats…";
 
+  if (!showSelfServe) {
+    return (
+      <Feedback
+        defaultValue="enterprise"
+        button={<Button variant="secondary/small">Request more</Button>}
+      />
+    );
+  }
+
+  // Buying seats is a billing action — disable the trigger (and explain why)
+  // when the role can't manage billing. The action enforces it independently.
+  const noBillingTooltip = "You don't have permission to manage billing";
+  const trigger = canManageBilling ? (
+    triggerButton ?? (
+      <Button variant="primary/small" onClick={() => setOpen(true)}>
+        {title}
+      </Button>
+    )
+  ) : triggerButton ? (
+    cloneElement(triggerButton, { disabled: true, tooltip: noBillingTooltip })
+  ) : (
+    <PermissionButton
+      variant="primary/small"
+      hasPermission={false}
+      noPermissionTooltip={noBillingTooltip}
+    >
+      {title}
+    </PermissionButton>
+  );
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {triggerButton ?? (
-          <Button variant="primary/small" onClick={() => setOpen(true)}>
-            {title}
-          </Button>
-        )}
-      </DialogTrigger>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent>
         <DialogHeader>{title}</DialogHeader>
         <fetcher.Form method="post" action={organizationTeamPath(organization)} {...form.props}>

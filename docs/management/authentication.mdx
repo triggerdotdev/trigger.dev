@@ -19,7 +19,7 @@ import { configure, runs } from "@trigger.dev/sdk";
 
 // Using secretKey authentication
 configure({
-  secretKey: process.env["TRIGGER_SECRET_KEY"], // starts with tr_dev_ or tr_prod_
+  secretKey: process.env["TRIGGER_SECRET_KEY"], // starts with tr_dev_, tr_prod_, or tr_preview_
 });
 
 function secretKeyExample() {
@@ -159,9 +159,12 @@ await envvars.update("proj_1234", "preview", "DATABASE_URL", {
 });
 ```
 
-### Scoped authentication with `auth.withAuth`
+### Talking to multiple projects, environments, or branches
 
-`auth.withAuth` runs a callback with a temporary API client configuration, then restores the previous configuration when the callback resolves or rejects. It's useful when a single process needs to make calls across multiple Trigger.dev projects or environments without mutating the global config manually.
+A long-running process often needs to talk to more than one Trigger.dev target. There are two patterns:
+
+- **`new TriggerClient({...})`** — an explicit instance that owns its own auth, baseURL, and preview branch. Use this when the targets are long-lived (a dashboard that watches prod + preview, a worker that triggers across multiple projects, etc.). Each instance is fully isolated and concurrent calls don't interfere. See [Multiple SDK clients](/management/multiple-clients) for details.
+- **`auth.withAuth(config, fn)`** — runs a single callback under a temporary config override, then restores. Use this for short, sequential overrides (e.g. one batch under a different token) where keeping a dedicated client around is overkill.
 
 ```ts
 import { auth, runs } from "@trigger.dev/sdk";
@@ -174,15 +177,48 @@ const projectBRuns = await auth.withAuth(
 );
 ```
 
-Any SDK call inside the callback uses the overridden token. Calls outside the callback continue to use whatever was set by `configure` (or picked up from `TRIGGER_SECRET_KEY`).
+Any SDK call inside the callback uses the overridden config. Calls outside the callback continue to use whatever was set by `configure` (or picked up from `TRIGGER_SECRET_KEY`).
 
-<Warning>
-  Avoid `auth.withAuth` as a per-request authentication strategy on long-running servers. Use it
-  only for sequential, non-overlapping scopes.
-</Warning>
+The override is scoped via [AsyncLocalStorage](https://nodejs.org/api/async_context.html), so concurrent `auth.withAuth` calls (including overlapping calls inside `Promise.all` with different tokens) do not interfere. Nested calls compose — an inner `auth.withAuth({ accessToken })` inside an outer `auth.withAuth({ baseURL })` runs with both fields applied.
 
-#### How scoping actually works
+Unlike `TriggerClient` instances (which stay isolated unless you opt in), `auth.withAuth` keeps the surrounding task context: a call made inside a task still inherits `parentRunId`, version locking, and the test flag, the same as a direct SDK call. See the [isolation contract](/management/multiple-clients#isolation-contract).
 
-Despite looking block-scoped, `auth.withAuth` stores the overridden configuration in a process-wide global (not [AsyncLocalStorage](https://nodejs.org/api/async_context.html)). It saves the previous config, installs the new one globally, runs the callback, and restores the previous config in a `finally`. This means sequential, non-overlapping usage is safe, but concurrent usage is not — if two `auth.withAuth` calls overlap (for example inside `Promise.all` with different tokens, or across concurrent request handlers on a long-running server) both will share whichever configuration was installed most recently, and SDK calls in one scope can silently use the other scope's token.
+<Note>
+  On runtimes without AsyncLocalStorage (browsers and some edge runtimes), the SDK falls back to
+  swapping the global config in place for the duration of the callback, which is not safe under
+  concurrency. If you need concurrent multi-target calls there, use
+  [`new TriggerClient({...})`](/management/multiple-clients) instances instead.
+</Note>
 
-A fix using async context isolation is tracked in [issue #3298](https://github.com/triggerdotdev/trigger.dev/issues/3298).
+## Session scopes
+
+[Sessions](/ai-chat/sessions) are addressed by a session-scoped public access token — a short-lived JWT you mint in your backend and pass to frontend or server-side clients. The token carries one or both of two scopes, each pinned to a session by its friendly ID (`session_…`) or your `externalId`:
+
+| Scope | Grants |
+| --- | --- |
+| `read:sessions:{id}` | Retrieve the session, list its runs, and subscribe to and drain both its `.in` and `.out` [channels](/management/sessions/channels). |
+| `write:sessions:{id}` | Append to the session's `.in` channel, and create runs on the session (including the create call itself). |
+
+Two boundaries follow from the table, and both are enforced server-side:
+
+- **`write:sessions` does not grant `.out` append.** The `.out` channel is the task's to write. Appending to `.out` requires a **secret key**; a public token gets `403`.
+- **Updating or closing a session requires a secret key.** A session public token cannot call `PATCH /api/v1/sessions/{session}` or `POST /api/v1/sessions/{session}/close` — those are admin operations.
+
+Mint a token with `auth.createPublicToken` in your backend:
+
+```ts Your backend
+import { auth } from "@trigger.dev/sdk";
+
+const publicToken = await auth.createPublicToken({
+  scopes: {
+    read: { sessions: "session_123" },
+    write: { sessions: "session_123" },
+  },
+});
+```
+
+`sessions` accepts a single ID or an array. The default token TTL is 1 hour. One token authorizes **both** URL forms — pass either your `externalId` or the `session_…` ID in the path.
+
+The `publicAccessToken` returned by [`sessions.start()`](/management/sessions/create) already carries both scopes for the session it created, so you usually don't mint one by hand for the create flow.
+
+For the full channel HTTP surface these scopes authorize, see [Session channels](/management/sessions/channels). For the SDK side, see [Sessions](/ai-chat/sessions). For general public-token usage (expiration formats, trigger tokens, scoping to runs and tasks), see [Realtime authentication](/realtime/auth).

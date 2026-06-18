@@ -19,6 +19,7 @@ import {
 import { ChartLineLoading, ChartLineNoData, ChartLineInvalid } from "./ChartLoading";
 import { useChartContext } from "./ChartContext";
 import { ChartRoot, useHasNoData } from "./ChartRoot";
+import { useYAxisWidth } from "./useYAxisWidth";
 // Legend is now rendered by ChartRoot outside the chart container
 import type { ZoomRange } from "./hooks/useZoomSelection";
 
@@ -83,6 +84,7 @@ export function ChartLineRenderer({
 }: ChartLineRendererProps) {
   const { config, data, dataKey, dataKeys, visibleSeries, state, highlight, setActivePayload, showLegend } = useChartContext();
   const hasNoData = useHasNoData();
+  const computedYAxisWidth = useYAxisWidth(data, visibleSeries, yAxisPropsProp?.tickFormatter);
 
   // Render loading/error states
   if (state === "loading") {
@@ -118,6 +120,7 @@ export function ChartLineRenderer({
     axisLine: false,
     tickLine: false,
     tickMargin: 8,
+    width: computedYAxisWidth,
     tick: {
       fill: "#878C99",
       fontSize: 11,

@@ -1,4 +1,4 @@
-import { TaskContext, test, TestAPI } from "vitest";
+import { TestContext, test, TestAPI } from "vitest";
 import {
   logCleanup,
   network,
@@ -36,7 +36,7 @@ type EngineOptions = {
   };
 };
 
-const engineOptions = async ({}: TaskContext, use: Use<EngineOptions>) => {
+const engineOptions = async ({}: TestContext, use: Use<EngineOptions>) => {
   const options: EngineOptions = {
     worker: {
       workers: 1,
@@ -74,7 +74,7 @@ const engine = async (
     engineOptions: EngineOptions;
     redisOptions: RedisOptions;
     prisma: PrismaClient;
-  } & TaskContext,
+  } & TestContext,
   use: Use<RunEngine>
 ) => {
   const engine = new RunEngine({

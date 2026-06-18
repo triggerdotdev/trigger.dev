@@ -1,8 +1,11 @@
 import { type PrismaClient, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
+import { requireUserId } from "~/services/session.server";
 import { singleton } from "~/utils/singleton";
 import { ABORT_REASON_SEND_ERROR, createSSELoader, SendFunction } from "~/utils/sse";
 import { throttle } from "~/utils/throttle";
+import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
+import { deserialiseMollifierSnapshot } from "~/v3/mollifier/mollifierSnapshot.server";
 import { tracePubSub } from "~/v3/services/tracePubSub.server";
 
 const PING_INTERVAL = 5_000;
@@ -28,26 +31,79 @@ export class RunStreamPresenter {
           throw new Response("Missing runParam", { status: 400 });
         }
 
+        const userId = await requireUserId(context.request);
+
+        // Scope the lookup to organizations the requesting user is a member
+        // of, matching RunPresenter's run lookup. Unauthorized and missing
+        // runs are indistinguishable (both 404).
         const run = await prismaClient.taskRun.findFirst({
           where: {
             friendlyId: runFriendlyId,
+            project: {
+              organization: {
+                members: {
+                  some: {
+                    userId,
+                  },
+                },
+              },
+            },
           },
           select: {
             traceId: true,
           },
         });
 
-        if (!run) {
+        // Fall back to the mollifier buffer when the run isn't in PG yet.
+        // The buffered run has no execution events to stream, but we still
+        // attach a trace-pubsub subscription using the snapshot's traceId
+        // so that the moment the drainer materialises the row and execution
+        // begins, those events flow to this open SSE connection. Closing
+        // with 404 would force the dashboard to keep retrying.
+        let traceId: string | null = run?.traceId ?? null;
+        if (!traceId) {
+          const buffer = getMollifierBuffer();
+          if (buffer) {
+            try {
+              const entry = await buffer.getEntry(runFriendlyId);
+              // Same membership scoping as the PG lookup above — the buffer
+              // entry carries the owning org's id.
+              const isMember = entry
+                ? (await prismaClient.orgMember.findFirst({
+                    where: { organizationId: entry.orgId, userId },
+                    select: { id: true },
+                  })) !== null
+                : false;
+              if (entry && isMember) {
+                // Go through the webapp wrapper so this read-side module
+                // shares a single deserialisation path with readFallback —
+                // see the contract comment in syntheticRedirectInfo.server.ts.
+                const snapshot = deserialiseMollifierSnapshot(entry.payload);
+                if (typeof snapshot.traceId === "string") {
+                  traceId = snapshot.traceId;
+                }
+              }
+            } catch (err) {
+              logger.warn("RunStreamPresenter buffer fallback failed", {
+                runFriendlyId,
+                err: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }
+        }
+
+        if (!traceId) {
           throw new Response("Not found", { status: 404 });
         }
+        const resolvedRun = { traceId };
 
         logger.info("RunStreamPresenter.start", {
           runFriendlyId,
-          traceId: run.traceId,
+          traceId: resolvedRun.traceId,
         });
 
         // Subscribe to trace updates
-        const { unsubscribe, eventEmitter } = await tracePubSub.subscribeToTrace(run.traceId);
+        const { unsubscribe, eventEmitter } = await tracePubSub.subscribeToTrace(resolvedRun.traceId);
 
         // Only send max every 1 second
         const throttledSend = throttle(
@@ -105,7 +161,7 @@ export class RunStreamPresenter {
           cleanup: () => {
             logger.info("RunStreamPresenter.cleanup", {
               runFriendlyId,
-              traceId: run.traceId,
+              traceId: resolvedRun.traceId,
             });
 
             // Remove message listener
@@ -119,13 +175,13 @@ export class RunStreamPresenter {
               .then(() => {
                 logger.info("RunStreamPresenter.cleanup.unsubscribe succeeded", {
                   runFriendlyId,
-                  traceId: run.traceId,
+                  traceId: resolvedRun.traceId,
                 });
               })
               .catch((error) => {
                 logger.error("RunStreamPresenter.cleanup.unsubscribe failed", {
                   runFriendlyId,
-                  traceId: run.traceId,
+                  traceId: resolvedRun.traceId,
                   error: {
                     name: error.name,
                     message: error.message,

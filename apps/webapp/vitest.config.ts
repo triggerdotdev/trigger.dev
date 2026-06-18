@@ -1,8 +1,10 @@
 import { defineConfig } from "vitest/config";
+import { DurationShardingSequencer } from "@internal/testcontainers/sequencer";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
   test: {
+    sequence: { sequencer: DurationShardingSequencer },
     include: ["test/**/*.test.ts"],
     // *.e2e.test.ts: smoke matrix, run via vitest.e2e.config.ts.
     // *.e2e.full.test.ts: full auth suite, runs via vitest.e2e.full.config.ts

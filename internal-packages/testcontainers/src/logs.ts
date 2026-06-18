@@ -1,14 +1,17 @@
 import { env, isCI } from "std-env";
-import { TaskContext } from "vitest";
+import { TestContext } from "vitest";
 import { DockerDiagnostics, getDockerDiagnostics } from "./docker";
 import { StartedTestContainer } from "testcontainers";
 
 let setupOrder = 0;
 
+// Emit timing JSON in CI, or locally when TESTCONTAINERS_TIMING is set (drives the local timing harness)
+const emitTimingLogs = isCI || !!env.TESTCONTAINERS_TIMING;
+
 export function logSetup(resource: string, metadata: Record<string, unknown>) {
   const order = setupOrder++;
 
-  if (!isCI) {
+  if (!emitTimingLogs) {
     return;
   }
 
@@ -31,7 +34,7 @@ export function getContainerMetadata(container: StartedTestContainer) {
   };
 }
 
-export function getTaskMetadata(task: TaskContext["task"]) {
+export function getTaskMetadata(task: TestContext["task"]) {
   return {
     testName: task.name,
   };
@@ -67,7 +70,7 @@ export async function logCleanup(
   const activeAtEnd = --activeCleanups;
   const parallel = activeAtStart > 1 || activeAtEnd > 0;
 
-  if (!isCI) {
+  if (!emitTimingLogs) {
     return;
   }
 

@@ -14,9 +14,9 @@ This page explains how `chat.agent` is put together, what each piece does on a s
 **What you don't have to think about**: SSE reconnects, WebSocket backpressure, container cold starts, whether a worker is currently running, or how to re-deliver chunks the client missed during a reload. The platform handles those. **What you do have to think about**: idempotency in your `run()` function, and how much state you keep in memory between turns versus persist in your own database.
 </Note>
 
-## The primary noun: a chat session is a pair of streams and a task
+## The primary noun: the chat session
 
-A **chat session** is the unit chat.agent owns. It is three things bound together:
+A **chat session** is a stateful execution of an agent: two-way streaming plus durable compute, able to span multiple runs. It is the unit chat.agent owns, and it is three things bound together:
 
 - An **inbox** channel called `.in` — every user message lands here as a record.
 - An **outbox** channel called `.out` — every assistant chunk leaves through here.
@@ -40,7 +40,7 @@ The agent task is running. It reads the new message off `.in`, fires `onTurnStar
 
 ### Idle (awaiting next message)
 
-The turn is over. The task is alive but not doing work — it is parked in a waitpoint on `.in`, waiting for the next user message. If one arrives, it goes back to **Streaming** for the next turn. If `idleTimeoutInSeconds` (defaulting to a few minutes) passes with no new message, it moves to **Suspended**.
+The turn is over. The task is alive but not doing work — it is parked in a waitpoint on `.in`, waiting for the next user message. If one arrives, it goes back to **Streaming** for the next turn. If `idleTimeoutInSeconds` (30 seconds by default) passes with no new message, it moves to **Suspended**.
 
 ### Suspended
 
@@ -179,7 +179,7 @@ See [Lifecycle hooks](/ai-chat/lifecycle-hooks) for the full signatures and firi
 
 **Not a good fit**:
 - Single-shot completions where you don't need durability or resume. Call your model directly.
-- Workflows where you control both ends and want a custom protocol. Use a [raw `task()` with chat primitives](/ai-chat/backend#raw-task-with-primitives) directly without the `chat.agent` wrapper.
+- Workflows where you control both ends and want a custom protocol. Use a [raw `task()` with chat primitives](/ai-chat/custom-agents) directly without the `chat.agent` wrapper.
 - High-fanout broadcasting (one source, many subscribers). Use Trigger.dev realtime streams against a regular task instead.
 
 ## Putting it together

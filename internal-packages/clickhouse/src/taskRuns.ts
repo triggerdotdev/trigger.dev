@@ -48,6 +48,8 @@ export const TaskRunV2 = z.object({
   concurrency_key: z.string().default(""),
   bulk_action_group_ids: z.array(z.string()).default([]),
   worker_queue: z.string().default(""),
+  region: z.string().default(""),
+  plan_type: z.string().default(""),
   max_duration_in_seconds: z.number().int().nullish(),
   trigger_source: z.string().default(""),
   root_trigger_source: z.string().default(""),
@@ -108,6 +110,8 @@ export const TASK_RUN_COLUMNS = [
   "concurrency_key",
   "bulk_action_group_ids",
   "worker_queue",
+  "region",
+  "plan_type",
   "max_duration_in_seconds",
   "trigger_source",
   "root_trigger_source",
@@ -175,6 +179,8 @@ export type TaskRunFieldTypes = {
   concurrency_key: string;
   bulk_action_group_ids: string[];
   worker_queue: string;
+  region: string;
+  plan_type: string;
   max_duration_in_seconds: number | null;
   trigger_source: string;
   root_trigger_source: string;
@@ -313,6 +319,8 @@ export type TaskRunInsertArray = [
   concurrency_key: string,
   bulk_action_group_ids: string[],
   worker_queue: string,
+  region: string,
+  plan_type: string,
   max_duration_in_seconds: number | null,
   trigger_source: string,
   root_trigger_source: string,
@@ -370,11 +378,25 @@ export const TaskRunV2QueryResult = z.object({
 
 export type TaskRunV2QueryResult = z.infer<typeof TaskRunV2QueryResult>;
 
+// Adds the created_at timestamp (ms since epoch) needed to build composite
+// keyset cursors over (created_at, run_id) — see runsRepository.server.ts.
+// Returned as a JSON number because the client sets
+// output_format_json_quote_64bit_integers: 0. Kept separate from
+// TaskRunV2QueryResult so run_id-only consumers (e.g. the pending-version
+// lookup) aren't forced to select a column they don't need.
+export const TaskRunListQueryResult = z.object({
+  run_id: z.string(),
+  created_at_ms: z.number().int(),
+});
+
+export type TaskRunListQueryResult = z.infer<typeof TaskRunListQueryResult>;
+
 export function getTaskRunsQueryBuilder(ch: ClickhouseReader, settings?: ClickHouseSettings) {
   return ch.queryBuilder({
     name: "getTaskRuns",
-    baseQuery: "SELECT run_id FROM trigger_dev.task_runs_v2 FINAL",
-    schema: TaskRunV2QueryResult,
+    baseQuery:
+      "SELECT run_id, toUnixTimestamp64Milli(created_at) AS created_at_ms FROM trigger_dev.task_runs_v2 FINAL",
+    schema: TaskRunListQueryResult,
     settings,
   });
 }
@@ -510,6 +532,51 @@ export function getCurrentRunningStats(ch: ClickhouseReader, settings?: ClickHou
     `,
     schema: CurrentRunningStatsQueryResult,
     params: CurrentRunningStatsQueryParams,
+    settings,
+  });
+}
+
+export const ChildRunStatusCountsQueryResult = z.object({
+  root_run_id: z.string(),
+  status: z.string(),
+  count: z.number().int(),
+});
+
+export type ChildRunStatusCountsQueryResult = z.infer<typeof ChildRunStatusCountsQueryResult>;
+
+export const ChildRunStatusCountsQueryParams = z.object({
+  organizationId: z.string(),
+  projectId: z.string(),
+  environmentId: z.string(),
+  rootRunIds: z.array(z.string()).min(1),
+  since: z.number().int(),
+});
+
+export function getChildRunStatusCounts(ch: ClickhouseReader, settings?: ClickHouseSettings) {
+  return ch.query({
+    name: "getChildRunStatusCounts",
+    query: `
+    SELECT
+        root_run_id,
+        status,
+        count() as count
+    FROM trigger_dev.task_runs_v2 FINAL
+    WHERE
+        organization_id = {organizationId: String}
+        AND project_id = {projectId: String}
+        AND environment_id = {environmentId: String}
+        AND root_run_id IN {rootRunIds: Array(String)}
+        AND created_at >= fromUnixTimestamp64Milli({since: Int64})
+        AND _is_deleted = 0
+    GROUP BY
+        root_run_id,
+        status
+    ORDER BY
+        root_run_id ASC,
+        status ASC
+    `,
+    schema: ChildRunStatusCountsQueryResult,
+    params: ChildRunStatusCountsQueryParams,
     settings,
   });
 }

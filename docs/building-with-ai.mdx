@@ -1,5 +1,5 @@
 ---
-title: "Overview"
+title: "Building with AI: overview"
 sidebarTitle: "Overview"
 description: "Tools and resources for building Trigger.dev projects with AI coding assistants."
 ---
@@ -22,40 +22,30 @@ We provide multiple tools to help AI coding assistants write correct Trigger.dev
 </Step>
 
 <Step title="Install Skills">
-  Portable instruction sets that teach any AI coding assistant Trigger.dev best practices. Works with Claude Code, Cursor, Windsurf, VS Code (Copilot), and any tool that supports the [Agent Skills standard](https://agentskills.io).
+  Portable instruction sets that teach any AI coding assistant Trigger.dev best practices: writing tasks, realtime frontends, and `chat.agent` AI agents. They install with the CLI into Claude Code, Cursor, VS Code (Copilot), and AGENTS-compatible tools such as Codex via `.agents/skills/`, and draw their API guidance from a version-pinned reference shipped in `@trigger.dev/sdk`.
 
   ```bash
-  npx skills add triggerdotdev/skills
+  npx trigger.dev@latest skills
   ```
 
   [Learn more →](/skills)
 </Step>
 
-<Step title="Install Agent Rules">
-  Comprehensive rule sets installed directly into your AI client's config files. Works with Cursor, Claude Code, VS Code (Copilot), Windsurf, Gemini CLI, Cline, and more. Claude Code also gets a dedicated subagent for hands-on help.
-
-  ```bash
-  npx trigger.dev@latest install-rules
-  ```
-
-  [Learn more →](/mcp-agent-rules)
-</Step>
-
 </Steps>
 
-## Skills vs Agent Rules vs MCP
+## Skills and the MCP server
 
-Not sure which tool to use? Here's how they compare:
+Skills and the MCP server do different jobs and work best together. Here's how they compare:
 
-| | **Skills** | **Agent Rules** | **MCP Server** |
-|:--|:-----------|:----------------|:---------------|
-| **What it does** | Drops skill files into your project | Installs rule sets into client config | Runs a live server your AI connects to |
-| **Installs to** | `.claude/skills/`, `.cursor/skills/`, etc. | `.cursor/rules/`, `CLAUDE.md`, `AGENTS.md`, etc. | `mcp.json`, `~/.claude.json`, etc. |
-| **Updates** | Re-run `npx skills add` | Re-run `npx trigger.dev@latest install-rules` or auto-prompted on `trigger dev` | Always latest (uses `@latest`) |
-| **Best for** | Teaching patterns and best practices | Comprehensive code generation guidance | Live project interaction (deploy, trigger, monitor) |
-| **Works offline** | Yes | Yes | No (calls Trigger.dev API) |
+| | **Skills** | **MCP Server** |
+|:--|:-----------|:---------------|
+| **What it does** | Drops skill files into your project that teach Trigger.dev patterns | Runs a live server your AI connects to |
+| **Installs to** | `.claude/skills/`, `.cursor/skills/`, `.github/skills/`, `.agents/skills/` | `mcp.json`, `~/.claude.json`, etc. |
+| **Updates** | Re-run `npx trigger.dev@latest skills`, or auto-prompted on `trigger dev` | Always latest (uses `@latest`) |
+| **Best for** | Teaching patterns and best practices | Live project interaction (deploy, trigger, monitor) |
+| **Works offline** | Yes | No (calls Trigger.dev API) |
 
-**Our recommendation:** Install all three. Skills and Agent Rules teach your AI *how* to write code. The MCP Server lets it *do things* in your project.
+**Our recommendation:** Install both. Skills teach your AI *how* to write Trigger.dev code; the MCP Server lets it *do things* in your project.
 
 ## Project-level context snippet
 
@@ -238,7 +228,7 @@ These follow the [llms.txt standard](https://llmstxt.org) and can be fed directl
 <AccordionGroup>
 
 <Accordion title="AI keeps generating old v2/v3 code">
-  Install [Agent Rules](/mcp-agent-rules) or [Skills](/skills) — they override the outdated patterns in the AI's training data. The [context snippet](#project-level-context-snippet) above is a quick alternative.
+  Install [Skills](/skills); they override the outdated patterns in the AI's training data. The [context snippet](#project-level-context-snippet) above is a quick alternative.
 </Accordion>
 
 <Accordion title="MCP server won't connect">
@@ -249,9 +239,8 @@ These follow the [llms.txt standard](https://llmstxt.org) and can be fed directl
 </Accordion>
 
 <Accordion title="Which tool should I install?">
-  All three if possible. If you can only pick one:
-  - **Agent Rules** if you want the broadest code generation improvement
-  - **Skills** if you use multiple AI tools and want a single install
+  Both if possible:
+  - **Skills** to teach your AI how to write Trigger.dev code (tasks, realtime, chat.agent)
   - **MCP Server** if you need to trigger tasks, deploy, and search docs from your AI
 </Accordion>
 
@@ -264,10 +253,7 @@ These follow the [llms.txt standard](https://llmstxt.org) and can be fed directl
     Install and configure the MCP Server for live project interaction.
   </Card>
   <Card title="Skills" icon="wand-magic-sparkles" href="/skills">
-    Portable instruction sets for any AI coding assistant.
-  </Card>
-  <Card title="Agent Rules" icon="scroll" href="/mcp-agent-rules">
-    Comprehensive rule sets installed into your AI client.
+    Install Trigger.dev agent skills into any AI coding assistant.
   </Card>
   <Card title="Writing tasks" icon="code" href="/tasks/overview">
     Learn the task patterns your AI assistant will follow.

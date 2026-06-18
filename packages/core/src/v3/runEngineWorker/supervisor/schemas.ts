@@ -64,9 +64,20 @@ export const WorkerApiConnectResponseBody = z.object({
 });
 export type WorkerApiConnectResponseBody = z.infer<typeof WorkerApiConnectResponseBody>;
 
+export const WorkerQueueClass = z.enum(["default", "scheduled"]);
+export type WorkerQueueClass = z.infer<typeof WorkerQueueClass>;
+
 export const WorkerApiDequeueRequestBody = z.object({
   maxResources: MachineResources.optional(),
   maxRunCount: z.number().optional(),
+  /**
+   * Which class of worker queue this consumer pulls from. Absent or "default" =
+   * the worker group's region queue. "scheduled" targets the dedicated
+   * scheduled-lineage queue so a separate fleet can drain it independently. The
+   * server derives the actual queue name from the token, so this only ever
+   * selects between the authenticated worker's own queues.
+   */
+  queueClass: WorkerQueueClass.optional(),
 });
 export type WorkerApiDequeueRequestBody = z.infer<typeof WorkerApiDequeueRequestBody>;
 

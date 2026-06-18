@@ -51,6 +51,23 @@ describe("TimerWheel", () => {
     wheel.stop();
   });
 
+  it("peek returns the pending item without removing it", () => {
+    const wheel = new TimerWheel<string>({ delayMs: 3000, onExpire: () => {} });
+
+    wheel.start();
+    wheel.submit("run-1", "data");
+
+    expect(wheel.peek("run-1")).toEqual({ key: "run-1", data: "data" });
+    expect(wheel.size).toBe(1);
+    expect(wheel.peek("run-2")).toBeUndefined();
+
+    // Dispatched items are no longer peekable
+    vi.advanceTimersByTime(3100);
+    expect(wheel.peek("run-1")).toBeUndefined();
+
+    wheel.stop();
+  });
+
   it("cancel returns false for unknown key", () => {
     const wheel = new TimerWheel<string>({
       delayMs: 3000,

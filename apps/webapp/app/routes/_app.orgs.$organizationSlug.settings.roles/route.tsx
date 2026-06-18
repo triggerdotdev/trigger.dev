@@ -3,6 +3,8 @@ import { type MetaFunction } from "@remix-run/react";
 import { useState } from "react";
 import { type UseDataFunctionReturn, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button } from "~/components/primitives/Buttons";
@@ -20,11 +22,11 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { cn } from "~/utils/cn";
-import { $replica } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
-import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { TextLink } from "~/components/primitives/TextLink";
 
 export const meta: MetaFunction = () => {
@@ -39,14 +41,6 @@ const Params = z.object({
   organizationSlug: z.string(),
 });
 
-async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
-  const org = await $replica.organization.findFirst({
-    where: { slug },
-    select: { id: true },
-  });
-  return org?.id ?? null;
-}
-
 export const loader = dashboardLoader(
   {
     params: Params,
@@ -56,23 +50,21 @@ export const loader = dashboardLoader(
     },
     authorization: { action: "read", resource: { type: "members" } },
   },
-  async ({ context }) => {
+  async ({ context, user }) => {
     const orgId = context.organizationId;
     if (!orgId) {
       throw new Response("Not Found", { status: 404 });
     }
 
-    const [roles, assignableRoleIds, allPermissions, systemRoles, isUsingPlugin] =
+    const [roles, assignableRoleIds, allPermissions, systemRoles, isUsingPlugin, currentRole] =
       await Promise.all([
         rbac.allRoles(orgId),
         rbac.getAssignableRoleIds(orgId),
         rbac.allPermissions(orgId),
         rbac.systemRoles(orgId),
-        // OSS self-host: no enterprise plugin → no role infrastructure to
-        // show. Render a "roles aren't available" layout in that case
-        // rather than the plan-upsell empty state (which assumes a cloud
-        // plan and would be misleading).
+        // OSS self-host has no RBAC plugin.
         rbac.isUsingPlugin(),
+        rbac.getUserRole({ userId: user.id, organizationId: orgId }),
       ]);
 
     return typedjson({
@@ -81,6 +73,7 @@ export const loader = dashboardLoader(
       allPermissions,
       systemRoles,
       isUsingPlugin,
+      currentRoleName: currentRole?.name ?? null,
     });
   }
 );
@@ -90,33 +83,19 @@ type LoaderRole = LoaderData["roles"][number];
 type LoaderPermission = LoaderData["allPermissions"][number];
 type RolePermission = LoaderRole["permissions"][number];
 
-// Permissions are bucketed by `permission.group` from the plugin.
-// Section order = first-seen order in `allPermissions()`. Permissions
-// without a group fall into "Other" at the bottom.
+// Ungrouped permissions fall into "Other".
 const FALLBACK_GROUP = "Other";
 
 export default function Page() {
-  const { roles, assignableRoleIds, allPermissions, systemRoles, isUsingPlugin } =
+  const { roles, assignableRoleIds, allPermissions, systemRoles, isUsingPlugin, currentRoleName } =
     useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
-  const plan = useCurrentPlan();
-  const planCode = plan?.v3Subscription?.plan?.code;
-  const isEnterprise = planCode === "enterprise";
+  const showSelfServe = useShowSelfServe();
 
-  // Map role-id → role for fast cell lookup. Each role's permissions are
-  // already the expanded `effectivePermissions` output (system roles
-  // populated server-side; custom roles too) so cells just filter that
-  // list by permission name.
   const rolesById = new Map<string, LoaderRole>(roles.map((r) => [r.id, r]));
   const assignable = new Set(assignableRoleIds);
 
-  // Column ordering follows the plugin's canonical systemRoles order
-  // (highest authority first), then any custom roles in the order
-  // rbac.allRoles returned them. systemRoles is null when no plugin is
-  // installed; fall through to whatever order rbac.allRoles returns.
-  // Each entry's `available` flag reflects plan-tier eligibility — we
-  // render unavailable system roles too, but PlanBadge tags them so
-  // customers see the comparison and know what an upgrade unlocks.
+  // System roles first (plugin order), then custom roles.
   const systemRoleOrder = systemRoles ?? [];
   const systemRoleIdSet = new Set(systemRoleOrder.map((r) => r.id));
   const systemColumns = systemRoleOrder.flatMap((meta) => {
@@ -134,27 +113,28 @@ export default function Page() {
     <PageContainer>
       <NavBar>
         <PageTitle title="Roles" />
-        {/* Suppress the Enterprise-upsell button on OSS — there's no
-            plan to upgrade to in a self-hosted deployment, and the
-            dialog copy ("Available on the Enterprise plan") doesn't
-            apply. The not-supported empty state below makes the
-            absence of role infrastructure clear instead. */}
-        {isUsingPlugin && !isEnterprise ? <CreateRoleUpsell /> : null}
+        {/* Hide on OSS self-host and managed customers (!showSelfServe). */}
+        {isUsingPlugin && showSelfServe ? <RequestCustomRoles /> : null}
       </NavBar>
       <PageBody scrollable={false}>
-        <div className="grid max-h-full min-h-full grid-rows-[auto_1fr]">
+        <div className="grid h-full max-h-full grid-rows-[auto_1fr] overflow-hidden">
           <div className="border-b border-grid-bright px-4 py-6">
             <Paragraph variant="small">
               Roles control what each team member can do in <strong>{organization.title}</strong>.
               Compare what each role grants below; assign a role to a team member from the{" "}
               <TextLink to={`/orgs/${organization.slug}/settings/team`}>Team page</TextLink>.
             </Paragraph>
+            {currentRoleName ? (
+              <Paragraph variant="small" className="mt-2">
+                Your role is <strong className="text-text-bright">{currentRoleName}</strong>.
+              </Paragraph>
+            ) : null}
           </div>
-          <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+          <div className="min-h-0 overflow-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             {columns.length === 0 ? (
-              <EmptyState isUsingPlugin={isUsingPlugin} />
+              <EmptyState isUsingPlugin={isUsingPlugin} showSelfServe={showSelfServe} />
             ) : (
-              <Table containerClassName="border-t-0">
+              <Table stickyHeader containerClassName="border-t-0">
                 <TableHeader>
                   <TableRow>
                     <TableHeaderCell>Permission</TableHeaderCell>
@@ -223,17 +203,14 @@ export default function Page() {
   );
 }
 
-function EmptyState({ isUsingPlugin }: { isUsingPlugin: boolean }) {
-  // Two distinct empty states:
-  //
-  // 1. Plugin loaded, but rbac.allRoles returned nothing the org can
-  //    use under its plan tier. The plan-upsell copy is correct —
-  //    upgrade unlocks the role infrastructure.
-  // 2. No plugin loaded (OSS self-host). There's no "plan" to upgrade
-  //    to. RBAC simply isn't part of this deployment; we use a
-  //    permissive ability for every authenticated user and rely on
-  //    org-membership for access control. Surface that honestly
-  //    instead of dangling a fake upgrade carrot.
+function EmptyState({
+  isUsingPlugin,
+  showSelfServe,
+}: {
+  isUsingPlugin: boolean;
+  showSelfServe: boolean;
+}) {
+  // OSS self-host vs plan-gated empty state.
   if (!isUsingPlugin) {
     return (
       <div className="flex flex-col items-center gap-2 p-8 text-center">
@@ -249,8 +226,16 @@ function EmptyState({ isUsingPlugin }: { isUsingPlugin: boolean }) {
     <div className="flex flex-col items-center gap-2 p-8 text-center">
       <Header3>No roles available on this plan.</Header3>
       <Paragraph variant="small" className="text-text-dimmed">
-        Upgrade to Pro to unlock RBAC.
+        {showSelfServe
+          ? "Upgrade to Pro to unlock RBAC."
+          : "Contact us to discuss RBAC for your organization."}
       </Paragraph>
+      {!showSelfServe ? (
+        <Feedback
+          defaultValue="enterprise"
+          button={<Button variant="secondary/small">Contact us</Button>}
+        />
+      ) : null}
     </div>
   );
 }
@@ -264,23 +249,14 @@ function PlanBadge({
   assignable: ReadonlySet<string>;
   systemRoleIdSet: ReadonlySet<string>;
 }) {
-  // Roles the org's plan doesn't permit get a small upgrade-tier hint
-  // in the column header. The cell rendering is identical regardless
-  // — the comparison value is still useful even on Free/Hobby.
   if (assignable.has(roleId)) return null;
-  // System roles render as "Pro" (the gating tier where they unlock —
-  // Free/Hobby see Owner+Admin only, Pro adds the rest). Custom roles
-  // render as "Enterprise" — only Enterprise plans can create or assign
-  // them.
+  // Unassignable system roles → Pro; custom roles → Enterprise.
   if (systemRoleIdSet.has(roleId)) {
     return <Badge variant="extra-small">Pro</Badge>;
   }
   return <Badge variant="extra-small">Enterprise</Badge>;
 }
 
-// Render a single (role × permission) cell. Filters the role's
-// effectivePermissions list to entries matching this permission name
-// and emits an icon + optional condition badge based on the rules.
 function RoleCell({
   permissionName,
   rolePermissions,
@@ -291,7 +267,6 @@ function RoleCell({
   const matching = rolePermissions.filter((p) => p.name === permissionName);
 
   if (matching.length === 0) {
-    // No rule matches — the role denies this permission by omission.
     return (
       <span className="text-text-dimmed" aria-label="Not granted">
         <XMarkIcon className="size-4" />
@@ -302,8 +277,6 @@ function RoleCell({
   const allowed = matching.filter((p) => !p.inverted);
   const denied = matching.filter((p) => p.inverted);
 
-  // Only inverted rules apply — the role explicitly denies this
-  // permission. Render as ✗ in error colour.
   if (allowed.length === 0) {
     return (
       <span className="text-error" aria-label="Denied">
@@ -312,12 +285,20 @@ function RoleCell({
     );
   }
 
-  // At least one allow rule applies. If there's a conditional cannot
-  // rule, replace the ✓ with just the condition label so the user sees
-  // the restriction without a misleading tick. Plain unconditional
-  // allow keeps the ✓.
   const conditionalDeny = denied.find((p) => p.conditions);
   if (conditionalDeny?.conditions) {
+    const allowedEnvTypes = allowedEnvTypesFromDeny(conditionalDeny.conditions);
+    if (allowedEnvTypes) {
+      // Conditional grant: show the environments the permission is allowed in.
+      return (
+        <div className="flex flex-col items-start gap-1">
+          {allowedEnvTypes.map((type) => (
+            <EnvironmentCombo key={type} environment={{ type }} className="text-xs" />
+          ))}
+        </div>
+      );
+    }
+    // Conditions we can't map to environments fall back to a text label.
     return (
       <span className="text-xs text-text-dimmed">{conditionLabel(conditionalDeny.conditions)}</span>
     );
@@ -329,10 +310,29 @@ function RoleCell({
   );
 }
 
-// Render a CASL conditions object into a tier badge label. Only
-// `envType` is recognised today (the catalogue's only allowed condition);
-// extending this requires adding a new branch when ALLOWED_CONDITIONS
-// grows.
+const ENV_TYPES = ["DEVELOPMENT", "STAGING", "PREVIEW", "PRODUCTION"] as const;
+type EnvType = (typeof ENV_TYPES)[number];
+
+// A conditional `cannot` rule denies the permission where the resource matches
+// its condition, so the permission stays allowed everywhere else. Translate the
+// envType condition into the set of environments where it's still allowed, or
+// null when we can't interpret it (caller falls back to a text label).
+function allowedEnvTypesFromDeny(conditions: Record<string, unknown>): EnvType[] | null {
+  const envType = conditions.envType;
+  // Equality, e.g. { envType: "PRODUCTION" } → denied in prod, allowed elsewhere.
+  if (typeof envType === "string") {
+    return ENV_TYPES.includes(envType as EnvType) ? ENV_TYPES.filter((t) => t !== envType) : null;
+  }
+  // Negation, e.g. { envType: { $ne: "DEVELOPMENT" } } → denied everywhere except
+  // DEVELOPMENT, so allowed only in DEVELOPMENT.
+  if (envType && typeof envType === "object" && "$ne" in envType) {
+    const ne = (envType as { $ne: unknown }).$ne;
+    return typeof ne === "string" && ENV_TYPES.includes(ne as EnvType) ? [ne as EnvType] : null;
+  }
+  return null;
+}
+
+// Only `envType` is supported today.
 function conditionLabel(conditions: Record<string, unknown>): string {
   if (typeof conditions.envType === "string") {
     if (conditions.envType === "PRODUCTION") return "Non-prod only";
@@ -344,9 +344,6 @@ function conditionLabel(conditions: Record<string, unknown>): string {
 function groupPermissions(
   permissions: LoaderPermission[]
 ): { group: string; permissions: LoaderPermission[] }[] {
-  // Insertion-ordered map: groups appear in the order their first
-  // permission was seen. Plugins that want a specific section order
-  // just emit permissions in that order from `allPermissions()`.
   const buckets = new Map<string, LoaderPermission[]>();
   for (const permission of permissions) {
     const group = permission.group ?? FALLBACK_GROUP;
@@ -357,7 +354,7 @@ function groupPermissions(
   return Array.from(buckets, ([group, permissions]) => ({ group, permissions }));
 }
 
-function CreateRoleUpsell() {
+function RequestCustomRoles() {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>

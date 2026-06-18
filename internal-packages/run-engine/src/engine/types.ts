@@ -207,6 +207,10 @@ export type RunEngineOptions = {
    *  of the primary. Defaults to false. Callers passing an explicit `tx` always use
    *  that client regardless of this flag. */
   readReplicaSnapshotsSinceEnabled?: boolean;
+  /** Jittered delay bounds for the single replica retry `getSnapshotsSince` performs when
+   * the since snapshot is not yet on the replica, before falling back to the primary.
+   * Set maxMs to 0 (or any value <= 0) to skip the replica retry and go straight to the primary. */
+  readReplicaSnapshotsSinceRetryDelay?: { minMs: number; maxMs: number };
   tracer: Tracer;
   meter?: Meter;
   logger?: Logger;
@@ -243,6 +247,7 @@ export type TriggerParams = {
   cliVersion?: string;
   concurrencyKey?: string;
   workerQueue?: string;
+  region?: string;
   /** When true, the run queue may push directly to the worker queue if concurrency is available.
    *  Gated per WorkerInstanceGroup (production) or always true (development). */
   enableFastPath?: boolean;

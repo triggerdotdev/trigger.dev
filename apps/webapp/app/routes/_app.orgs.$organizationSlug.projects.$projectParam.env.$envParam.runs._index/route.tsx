@@ -1,7 +1,7 @@
 import { BeakerIcon, BookOpenIcon } from "@heroicons/react/24/solid";
-import { type MetaFunction, useNavigation } from "@remix-run/react";
+import { type MetaFunction, useLocation, useNavigation, useRevalidator } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import {
   TypedAwait,
   typeddefer,
@@ -9,16 +9,19 @@ import {
   useTypedLoaderData,
 } from "remix-typedjson";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
+import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { DevDisconnectedBanner, useDevPresence } from "~/components/DevPresence";
+import { InlineCode } from "~/components/code/InlineCode";
 import { StepContentContainer } from "~/components/StepContentContainer";
 import { MainCenteredContainer, PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
-import { LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Header1 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { PulsingDot } from "~/components/primitives/PulsingDot";
 import {
   RESIZABLE_PANEL_ANIMATION,
   ResizableHandle,
@@ -31,6 +34,7 @@ import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Spinner } from "~/components/primitives/Spinner";
 import { StepNumber } from "~/components/primitives/StepNumber";
 import { TextLink } from "~/components/primitives/TextLink";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { RunsFilters, type TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { BULK_ACTION_RUN_LIMIT } from "~/consts";
@@ -51,11 +55,12 @@ import {
   uiPreferencesStorage,
 } from "~/services/preferences/uiPreferences.server";
 import { requireUserId } from "~/services/session.server";
+import { rbac } from "~/services/rbac.server";
+import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { cn } from "~/utils/cn";
 import {
   docsPath,
   EnvironmentParamSchema,
-  v3CreateBulkActionPath,
   v3ProjectPath,
   v3TestPath,
   v3TestTaskPath,
@@ -64,11 +69,19 @@ import { throwNotFound } from "~/utils/httpErrors";
 import { ListPagination } from "../../components/ListPagination";
 import { CreateBulkActionInspector } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
 import { Callout } from "~/components/primitives/Callout";
+import {
+  isRunsListLoading,
+  RUNS_BULK_INSPECTOR_OPEN_VALUE,
+  shouldRevalidateRunsList,
+} from "./shouldRevalidateRunsList";
+import { useRunsLiveReload } from "./useRunsLiveReload";
+
+export { shouldRevalidateRunsList as shouldRevalidate };
 
 export const meta: MetaFunction = () => {
   return [
     {
-      title: `Runs | Trigger.dev`,
+      title: `Runs metrics | Trigger.dev`,
     },
   ];
 };
@@ -89,7 +102,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const filters = await getRunFiltersFromRequest(request);
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
   const presenter = new NextRunListPresenter($replica, clickhouse);
   const list = presenter.call(project.organizationId, environment.id, {
     userId,
@@ -110,18 +126,33 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       }
     : undefined;
 
+  // Display flags for the row-menu and bulk-action controls — the cancel/
+  // replay action routes enforce write:runs independently. Permissive in OSS.
+  const runAuth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: project.organizationId,
+  });
+  const runPermissions = runAuth.ok
+    ? checkPermissions(runAuth.ability, {
+        canCancelRuns: { action: "write", resource: { type: "runs" } },
+        canReplayRuns: { action: "write", resource: { type: "runs" } },
+      })
+    : { canCancelRuns: true, canReplayRuns: true };
+
   return typeddefer(
     {
       data: list,
       rootOnlyDefault: filters.rootOnly,
       filters,
+      ...runPermissions,
     },
     headers ? { headers } : undefined
   );
 };
 
 export default function Page() {
-  const { data, rootOnlyDefault, filters } = useTypedLoaderData<typeof loader>();
+  const { data, rootOnlyDefault, filters, canCancelRuns, canReplayRuns } =
+    useTypedLoaderData<typeof loader>();
   const { isConnected } = useDevPresence();
   const project = useProject();
   const environment = useEnvironment();
@@ -129,7 +160,7 @@ export default function Page() {
   return (
     <>
       <NavBar>
-        <PageTitle title="Runs" />
+        <PageTitle title="Runs" accessory={<RunsHelpTooltip />} />
         {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
           <DevDisconnectedBanner isConnected={isConnected} />
         )}
@@ -180,6 +211,8 @@ export default function Page() {
                       selectedItems={selectedItems}
                       rootOnlyDefault={rootOnlyDefault}
                       filters={filters}
+                      canCancelRuns={canCancelRuns}
+                      canReplayRuns={canReplayRuns}
                     />
                   );
                 }}
@@ -197,25 +230,55 @@ function RunsList({
   selectedItems,
   rootOnlyDefault,
   filters,
+  canCancelRuns,
+  canReplayRuns,
 }: {
   list: Awaited<UseDataFunctionReturn<typeof loader>["data"]>;
   selectedItems: Set<string>;
   rootOnlyDefault: boolean;
   filters: TaskRunListSearchFilters;
+  canCancelRuns: boolean;
+  canReplayRuns: boolean;
 }) {
+  const revalidator = useRevalidator();
+  const location = useLocation();
   const navigation = useNavigation();
-  const isLoading = navigation.state !== "idle";
+  const isLoading = isRunsListLoading(navigation, location.search);
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
   const { has, replace } = useSearchParams();
+  const { visibleRuns, showNewRunsBanner, newRunsCount, dismissNewRuns, childrenStatusesBasePath } =
+    useRunsLiveReload({
+      runs: list.runs,
+      hasAnyRuns: list.hasAnyRuns,
+      isLoading,
+      organizationSlug: organization.slug,
+      projectSlug: project.slug,
+      environmentSlug: environment.slug,
+    });
 
-  // Shortcut keys for bulk actions
+  const onClickShowNewRuns = () => {
+    const isPaginated = has("cursor") || has("direction");
+    dismissNewRuns();
+    if (isPaginated) {
+      replace({
+        cursor: undefined,
+        direction: undefined,
+      });
+      return;
+    }
+
+    revalidator.revalidate();
+  };
+
+  // Shortcut keys for bulk actions — disabled when the role can't perform them.
   useShortcutKeys({
     shortcut: { key: "r" },
+    disabled: !canReplayRuns,
     action: (e) => {
       replace({
-        bulkInspector: "true",
+        bulkInspector: RUNS_BULK_INSPECTOR_OPEN_VALUE,
         action: "replay",
         mode: selectedItems.size > 0 ? "selected" : undefined,
       });
@@ -223,9 +286,10 @@ function RunsList({
   });
   useShortcutKeys({
     shortcut: { key: "c" },
+    disabled: !canCancelRuns,
     action: (e) => {
       replace({
-        bulkInspector: "true",
+        bulkInspector: RUNS_BULK_INSPECTOR_OPEN_VALUE,
         action: "cancel",
         mode: selectedItems.size > 0 ? "selected" : undefined,
       });
@@ -233,6 +297,12 @@ function RunsList({
   });
 
   const isShowingBulkActionInspector = has("bulkInspector") && list.hasAnyRuns;
+  const [isBulkInspectorPanelCollapsed, setIsBulkInspectorPanelCollapsed] = useState(
+    !isShowingBulkActionInspector
+  );
+  // Keep content mounted until onCollapseChange reports the panel is fully collapsed.
+  const showBulkInspectorContent = isShowingBulkActionInspector || !isBulkInspectorPanelCollapsed;
+
   return (
     <ResizablePanelGroup orientation="horizontal" className="max-h-full">
       <ResizablePanel id="runs-main" min={"100px"}>
@@ -265,19 +335,41 @@ function RunsList({
                     rootOnlyDefault={rootOnlyDefault}
                   />
                   <div className="flex items-center justify-end gap-x-2">
-                    {!isShowingBulkActionInspector && (
-                      <LinkButton
-                        variant="secondary/small"
-                        to={v3CreateBulkActionPath(
-                          organization,
-                          project,
-                          environment,
-                          filters,
-                          selectedItems.size > 0 ? "selected" : undefined
-                        )}
-                        LeadingIcon={ListCheckedIcon}
-                        className={selectedItems.size > 0 ? "pr-1" : undefined}
-                        tooltip={
+                    {showNewRunsBanner && (
+                      <span className="flex duration-150 animate-in fade-in-0">
+                        <Button
+                          variant="secondary/small"
+                          className="text-text-bright"
+                          onClick={onClickShowNewRuns}
+                          LeadingIcon={<PulsingDot className="h-2 w-2" />}
+                          tooltip="Refresh to see new runs"
+                          aria-label="New runs created. Refresh to see new runs."
+                        >
+                          {newRunsCount >= 100
+                            ? "99+ new runs"
+                            : `${newRunsCount} new ${newRunsCount === 1 ? "run" : "runs"}`}
+                        </Button>
+                      </span>
+                    )}
+                    {/* Stay mounted while the inspector is open to avoid toolbar layout shift. */}
+                    <Button
+                      variant="secondary/small"
+                      disabled={isShowingBulkActionInspector || (!canCancelRuns && !canReplayRuns)}
+                      onClick={() =>
+                        replace({
+                          bulkInspector: RUNS_BULK_INSPECTOR_OPEN_VALUE,
+                          mode: selectedItems.size > 0 ? "selected" : undefined,
+                        })
+                      }
+                      LeadingIcon={ListCheckedIcon}
+                      className={cn(
+                        selectedItems.size > 0 ? "pr-1" : undefined,
+                        isShowingBulkActionInspector && "pointer-events-none invisible"
+                      )}
+                      tooltip={
+                        !canCancelRuns && !canReplayRuns ? (
+                          "You don't have permission to cancel or replay runs"
+                        ) : (
                           <div className="-mr-1 flex items-center gap-3 text-xs text-text-dimmed">
                             <div className="flex items-center gap-0.5">
                               <span>Replay</span>
@@ -288,28 +380,31 @@ function RunsList({
                               <ShortcutKey shortcut={{ key: "c" }} variant={"small"} />
                             </div>
                           </div>
-                        }
-                      >
-                        <span className="flex items-center gap-x-1 whitespace-nowrap text-text-bright">
-                          <span>Bulk action</span>
-                          {selectedItems.size > 0 && (
-                            <Badge variant="rounded">{selectedItems.size}</Badge>
-                          )}
-                        </span>
-                      </LinkButton>
-                    )}
+                        )
+                      }
+                    >
+                      <span className="flex items-center gap-x-1 whitespace-nowrap text-text-bright">
+                        <span>Bulk action</span>
+                        {selectedItems.size > 0 && (
+                          <Badge variant="rounded">{selectedItems.size}</Badge>
+                        )}
+                      </span>
+                    </Button>
                     <ListPagination list={list} />
                   </div>
                 </div>
 
                 <TaskRunsTable
-                  total={list.runs.length}
+                  total={visibleRuns.length}
                   hasFilters={list.hasFilters}
                   filters={list.filters}
-                  runs={list.runs}
+                  runs={visibleRuns}
+                  childrenStatusesBasePath={childrenStatusesBasePath}
                   isLoading={isLoading}
                   allowSelection
                   rootOnlyDefault={rootOnlyDefault}
+                  canCancelRuns={canCancelRuns}
+                  canReplayRuns={canReplayRuns}
                 />
               </div>
             )}
@@ -328,12 +423,12 @@ function RunsList({
         className="overflow-hidden"
         collapsible
         collapsed={!isShowingBulkActionInspector}
-        onCollapseChange={() => {}}
+        onCollapseChange={setIsBulkInspectorPanelCollapsed}
         collapsedSize="0px"
         collapseAnimation={RESIZABLE_PANEL_ANIMATION}
       >
         <div className="h-full" style={{ minWidth: 400 }}>
-          {isShowingBulkActionInspector && (
+          {showBulkInspectorContent && (
             <CreateBulkActionInspector
               filters={filters}
               selectedItems={selectedItems}
@@ -392,7 +487,7 @@ function RunTaskInstructions({ task }: { task?: { slug: string } }) {
           }
           variant="secondary/medium"
           LeadingIcon={BeakerIcon}
-          leadingIconClassName="text-lime-500"
+          leadingIconClassName="text-tests"
           className="inline-flex"
         >
           Test
@@ -419,5 +514,52 @@ function RunTaskInstructions({ task }: { task?: { slug: string } }) {
         </LinkButton>
       </StepContentContainer>
     </MainCenteredContainer>
+  );
+}
+
+function RunsHelpTooltip() {
+  return (
+    <SimpleTooltip
+      button={
+        <QuestionMarkIcon className="size-4 text-text-dimmed transition hover:text-text-bright" />
+      }
+      side="bottom"
+      className="max-w-sm p-3"
+      disableHoverableContent
+      content={
+        <div className="flex flex-col gap-3">
+          <div>
+            <Paragraph variant="small/bright">What is a run?</Paragraph>
+            <Paragraph variant="small" className="mt-1">
+              A run is a single instance of a task being executed. It's created when you trigger a
+              task, for example{" "}
+              <InlineCode variant="extra-extra-small">
+                yourTask.trigger({`{ foo: "bar" }`})
+              </InlineCode>
+              . Runs are durable, so they survive crashes, deploys, and restarts, and will
+              automatically retry on failure.
+            </Paragraph>
+          </div>
+          <div className="flex flex-col gap-2.5 border-t border-grid-dimmed pt-3">
+            <div>
+              <Paragraph variant="small/bright">
+                <InlineCode>task.trigger()</InlineCode>
+              </Paragraph>
+              <Paragraph variant="small" className="mt-1">
+                Triggered from your backend code, an API call, or another task. Each call creates a
+                single run with the payload you pass in.
+              </Paragraph>
+            </div>
+            <div>
+              <Paragraph variant="small/bright">Scheduled triggers</Paragraph>
+              <Paragraph variant="small" className="mt-1">
+                Runs created automatically from a cron schedule attached to a scheduled task. Use
+                them for recurring jobs like nightly syncs or hourly cleanups.
+              </Paragraph>
+            </div>
+          </div>
+        </div>
+      }
+    />
   );
 }

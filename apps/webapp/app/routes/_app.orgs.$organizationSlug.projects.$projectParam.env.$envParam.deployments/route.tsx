@@ -66,11 +66,14 @@ import {
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import {
   type DeploymentListItem,
   DeploymentListPresenter,
 } from "~/presenters/v3/DeploymentListPresenter.server";
 import { requireUserId } from "~/services/session.server";
+import { rbac } from "~/services/rbac.server";
+import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { titleCase } from "~/utils";
 import { cn } from "~/utils/cn";
 import {
@@ -141,7 +144,25 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     const autoReloadPollIntervalMs = env.DEPLOYMENTS_AUTORELOAD_POLL_INTERVAL_MS;
 
-    return typedjson({ ...result, selectedDeployment, autoReloadPollIntervalMs });
+    // Display flag for the rollback/promote/cancel controls — the action
+    // routes enforce write:deployments independently. Permissive in OSS.
+    const orgId = await resolveOrgIdFromSlug(organizationSlug);
+    const deploymentAuth = orgId
+      ? await rbac.authenticateSession(request, { userId, organizationId: orgId })
+      : null;
+    const canWriteDeployments =
+      deploymentAuth && deploymentAuth.ok
+        ? checkPermissions(deploymentAuth.ability, {
+            canWriteDeployments: { action: "write", resource: { type: "deployments" } },
+          }).canWriteDeployments
+        : true;
+
+    return typedjson({
+      ...result,
+      selectedDeployment,
+      autoReloadPollIntervalMs,
+      canWriteDeployments,
+    });
   } catch (error) {
     console.error(error);
     throw new Response(undefined, {
@@ -164,6 +185,7 @@ export default function Page() {
     environmentGitHubBranch,
     autoReloadPollIntervalMs,
     hasVercelIntegration,
+    canWriteDeployments,
   } = useTypedLoaderData<typeof loader>();
   const hasDeployments = totalPages > 0;
 
@@ -257,7 +279,12 @@ export default function Page() {
                           <TableRow key={deployment.id} className="group" isSelected={isSelected}>
                             <TableCell to={path} isTabbableCell isSelected={isSelected}>
                               <div className="flex items-center gap-2">
-                                <Paragraph variant="extra-small" className="group-hover/table-row:text-text-bright">{deployment.shortCode}</Paragraph>
+                                <Paragraph
+                                  variant="extra-small"
+                                  className="group-hover/table-row:text-text-bright"
+                                >
+                                  {deployment.shortCode}
+                                </Paragraph>
                                 {deployment.label && (
                                   <Badge variant="extra-small">{titleCase(deployment.label)}</Badge>
                                 )}
@@ -333,6 +360,7 @@ export default function Page() {
                               path={path}
                               isSelected={isSelected}
                               currentDeployment={currentDeployment}
+                              canWriteDeployments={canWriteDeployments}
                             />
                           </TableRow>
                         );
@@ -419,8 +447,14 @@ export default function Page() {
 export function UserTag({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
   return (
     <div className="flex items-center gap-1">
-      <UserAvatar avatarUrl={avatarUrl} name={name} className="h-4 w-4 group-hover/table-row:text-text-bright" />
-      <Paragraph variant="extra-small" className="group-hover/table-row:text-text-bright">{name}</Paragraph>
+      <UserAvatar
+        avatarUrl={avatarUrl}
+        name={name}
+        className="h-4 w-4 group-hover/table-row:text-text-bright"
+      />
+      <Paragraph variant="extra-small" className="group-hover/table-row:text-text-bright">
+        {name}
+      </Paragraph>
     </div>
   );
 }
@@ -430,11 +464,13 @@ function DeploymentActionsCell({
   path,
   isSelected,
   currentDeployment,
+  canWriteDeployments,
 }: {
   deployment: DeploymentListItem;
   path: string;
   isSelected: boolean;
   currentDeployment?: DeploymentListItem;
+  canWriteDeployments: boolean;
 }) {
   const location = useLocation();
   const project = useProject();
@@ -463,66 +499,105 @@ function DeploymentActionsCell({
       isSelected={isSelected}
       popoverContent={
         <>
-          {canBeRolledBack && (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  variant="small-menu-item"
-                  LeadingIcon={ArrowUturnLeftIcon}
-                  leadingIconClassName="text-blue-500"
-                  fullWidth
-                  textAlignLeft
-                >
-                  Rollback
-                </Button>
-              </DialogTrigger>
-              <RollbackDeploymentDialog
-                projectId={project.id}
-                deploymentShortCode={deployment.shortCode}
-                redirectPath={`${location.pathname}${location.search}`}
-              />
-            </Dialog>
-          )}
-          {canBePromoted && (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  variant="small-menu-item"
-                  LeadingIcon={PromoteIcon}
-                  leadingIconClassName="text-blue-500"
-                  fullWidth
-                  textAlignLeft
-                >
-                  Promote
-                </Button>
-              </DialogTrigger>
-              <PromoteDeploymentDialog
-                projectId={project.id}
-                deploymentShortCode={deployment.shortCode}
-                redirectPath={`${location.pathname}${location.search}`}
-              />
-            </Dialog>
-          )}
-          {canBeCanceled && (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  variant="small-menu-item"
-                  LeadingIcon={NoSymbolIcon}
-                  leadingIconClassName="text-error"
-                  fullWidth
-                  textAlignLeft
-                >
-                  Cancel
-                </Button>
-              </DialogTrigger>
-              <CancelDeploymentDialog
-                projectId={project.id}
-                deploymentShortCode={deployment.shortCode}
-                redirectPath={`${location.pathname}${location.search}`}
-              />
-            </Dialog>
-          )}
+          {canBeRolledBack &&
+            (canWriteDeployments ? (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="small-menu-item"
+                    LeadingIcon={ArrowUturnLeftIcon}
+                    leadingIconClassName="text-blue-500"
+                    fullWidth
+                    textAlignLeft
+                  >
+                    Rollback
+                  </Button>
+                </DialogTrigger>
+                <RollbackDeploymentDialog
+                  projectId={project.id}
+                  deploymentShortCode={deployment.shortCode}
+                  redirectPath={`${location.pathname}${location.search}`}
+                />
+              </Dialog>
+            ) : (
+              <Button
+                variant="small-menu-item"
+                LeadingIcon={ArrowUturnLeftIcon}
+                leadingIconClassName="text-blue-500"
+                fullWidth
+                textAlignLeft
+                disabled
+                tooltip="You don't have permission to roll back deployments"
+              >
+                Rollback
+              </Button>
+            ))}
+          {canBePromoted &&
+            (canWriteDeployments ? (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="small-menu-item"
+                    LeadingIcon={PromoteIcon}
+                    leadingIconClassName="text-blue-500"
+                    fullWidth
+                    textAlignLeft
+                  >
+                    Promote
+                  </Button>
+                </DialogTrigger>
+                <PromoteDeploymentDialog
+                  projectId={project.id}
+                  deploymentShortCode={deployment.shortCode}
+                  redirectPath={`${location.pathname}${location.search}`}
+                />
+              </Dialog>
+            ) : (
+              <Button
+                variant="small-menu-item"
+                LeadingIcon={PromoteIcon}
+                leadingIconClassName="text-blue-500"
+                fullWidth
+                textAlignLeft
+                disabled
+                tooltip="You don't have permission to promote deployments"
+              >
+                Promote
+              </Button>
+            ))}
+          {canBeCanceled &&
+            (canWriteDeployments ? (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="small-menu-item"
+                    LeadingIcon={NoSymbolIcon}
+                    leadingIconClassName="text-error"
+                    fullWidth
+                    textAlignLeft
+                  >
+                    Cancel
+                  </Button>
+                </DialogTrigger>
+                <CancelDeploymentDialog
+                  projectId={project.id}
+                  deploymentShortCode={deployment.shortCode}
+                  redirectPath={`${location.pathname}${location.search}`}
+                />
+              </Dialog>
+            ) : (
+              <Button
+                variant="small-menu-item"
+                LeadingIcon={NoSymbolIcon}
+                leadingIconClassName="text-error"
+                fullWidth
+                textAlignLeft
+                disabled
+                tooltip="You don't have permission to cancel deployments"
+              >
+                Cancel
+              </Button>
+            ))}
         </>
       }
     />

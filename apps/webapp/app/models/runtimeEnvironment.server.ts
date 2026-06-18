@@ -237,10 +237,20 @@ export async function findEnvironmentBySlug(
   return environment ? toAuthenticated(environment) : null;
 }
 
+// The authenticated environment plus the run scalars the realtime publish needs.
+// Both come from one taskRun read — see findEnvironmentFromRun.
+export type EnvironmentFromRun = {
+  environment: AuthenticatedEnvironment;
+  runTags: string[];
+  batchId: string | null;
+};
+
 export async function findEnvironmentFromRun(
   runId: string,
   tx?: PrismaClientOrTransaction
-): Promise<AuthenticatedEnvironment | null> {
+): Promise<EnvironmentFromRun | null> {
+  // The include (no select) already pulls every taskRun scalar, so runTags/batchId
+  // ride along for free — no extra query for the realtime publish to send a full record.
   const taskRun = await (tx ?? $replica).taskRun.findFirst({
     where: {
       id: runId,
@@ -249,7 +259,14 @@ export async function findEnvironmentFromRun(
       runtimeEnvironment: { include: authIncludeBase },
     },
   });
-  return taskRun?.runtimeEnvironment ? toAuthenticated(taskRun.runtimeEnvironment) : null;
+  if (!taskRun?.runtimeEnvironment) {
+    return null;
+  }
+  return {
+    environment: toAuthenticated(taskRun.runtimeEnvironment),
+    runTags: taskRun.runTags,
+    batchId: taskRun.batchId,
+  };
 }
 
 export async function createNewSession(

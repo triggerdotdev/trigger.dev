@@ -138,7 +138,7 @@ Docs live in `docs/` as a Mintlify site (MDX format). See `docs/CLAUDE.md` for c
 
 ### Reference Projects
 
-The `references/` directory contains test workspaces for testing SDK and platform features. Use `references/hello-world` to manually test changes before submitting PRs.
+Reference/example projects for testing SDK and platform features live in a separate repo: [`triggerdotdev/references`](https://github.com/triggerdotdev/references). Clone it alongside this repo and use its `projects/hello-world` to manually test changes before submitting PRs. See that repo's README for setup and linking to a local monorepo build.
 
 ## Docker Image Guidelines
 
@@ -167,15 +167,17 @@ export const myTask = task({
 
 The `rules/` directory contains versioned SDK documentation distributed via the SDK installer. Current version: `rules/manifest.json`. Do NOT update `rules/` or `.claude/skills/trigger-dev-tasks/` unless explicitly asked - these are maintained in separate dedicated passes.
 
-## Testing with hello-world Reference Project
+## Testing with the hello-world Reference Project
+
+The reference projects live in the separate [`triggerdotdev/references`](https://github.com/triggerdotdev/references) repo - clone it alongside this repo.
 
 First-time setup:
 
-1. `pnpm run db:seed` to seed the database
-2. Build CLI: `pnpm run build --filter trigger.dev && pnpm i`
-3. Authorize: `cd references/hello-world && pnpm exec trigger login -a http://localhost:3030`
+1. `pnpm run db:seed` to seed the database (creates the References org + hello-world project)
+2. Build the CLI/packages you want to test: `pnpm run build --filter trigger.dev`
+3. In your `references` clone, follow its README to link to your local monorepo build, then authorize: `cd projects/hello-world && pnpm exec trigger login -a http://localhost:3030`
 
-Running: `cd references/hello-world && pnpm exec trigger dev`
+Running (from your `references` clone): `cd projects/hello-world && pnpm exec trigger dev`
 
 ## Local Task Testing Workflow
 
@@ -190,7 +192,8 @@ curl -s http://localhost:3030/healthcheck  # Verify running
 ### Step 2: Start Trigger Dev in Background
 
 ```bash
-cd references/hello-world && pnpm exec trigger dev
+# in your triggerdotdev/references clone
+cd projects/hello-world && pnpm exec trigger dev
 # Wait for "Local worker ready [node]"
 ```
 

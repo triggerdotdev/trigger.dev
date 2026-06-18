@@ -3,7 +3,7 @@ import { Levenshtein } from "autoevals";
 import { AIQueryService } from "~/v3/services/aiQueryService.server";
 import { runsSchema } from "~/v3/querySchemas";
 import dotenv from "dotenv";
-import { traceAISDKModel } from "evalite/ai-sdk";
+import { wrapAISDKModel } from "evalite/ai-sdk";
 import { openai } from "@ai-sdk/openai";
 
 dotenv.config({ path: "../../.env" });
@@ -365,7 +365,7 @@ LIMIT 100`,
     ];
   },
   task: async (input) => {
-    const service = new AIQueryService([runsSchema], traceAISDKModel(openai("gpt-4o-mini")));
+    const service = new AIQueryService([runsSchema], wrapAISDKModel(openai("gpt-4o-mini")));
 
     const result = await service.call(input);
     return JSON.stringify(result);

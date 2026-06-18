@@ -1,7 +1,6 @@
 import * as Ariakit from "@ariakit/react";
 import {
   CalendarIcon,
-  ClockIcon,
   CpuChipIcon,
   FingerPrintIcon,
   GlobeAltIcon,
@@ -12,12 +11,14 @@ import {
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { Form, useFetcher } from "@remix-run/react";
-import { IconBugFilled, IconRotateClockwise2, IconToggleLeft } from "@tabler/icons-react";
+import { IconRotateClockwise2, IconToggleLeft } from "@tabler/icons-react";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { matchSorter } from "match-sorter";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
+import { BugIcon } from "~/assets/icons/BugIcon";
+import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { MachineDefaultIcon } from "~/assets/icons/MachineIcon";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
@@ -244,7 +245,7 @@ export function filterTitle(filterKey: string) {
     case "errorId":
       return "Error ID";
     case "sources":
-      return "Source";
+      return "Task type";
     default:
       return filterKey;
   }
@@ -286,7 +287,7 @@ export function filterIcon(filterKey: string): ReactNode | undefined {
     case "versions":
       return <IconRotateClockwise2 className="size-4" />;
     case "errorId":
-      return <IconBugFilled className="size-4" />;
+      return <BugIcon className="size-4" />;
     case "sources":
       return <CpuChipIcon className="size-4" />;
     default:
@@ -356,7 +357,11 @@ export function getRunFiltersFromSearchParams(
 }
 
 type RunFiltersProps = {
-  possibleTasks: { slug: string; triggerSource: TaskTriggerSource; isInLatestDeployment: boolean }[];
+  possibleTasks: {
+    slug: string;
+    triggerSource: TaskTriggerSource;
+    isInLatestDeployment: boolean;
+  }[];
   bulkActions: {
     id: string;
     type: BulkActionType;
@@ -423,8 +428,8 @@ const filterTypes = [
   { name: "batch", title: "Batch ID", icon: <Squares2X2Icon className="size-4" /> },
   { name: "schedule", title: "Schedule ID", icon: <ClockIcon className="size-4" /> },
   { name: "bulk", title: "Bulk action", icon: <ListCheckedIcon className="size-4" /> },
-  { name: "error", title: "Error ID", icon: <IconBugFilled className="size-4" /> },
-  { name: "source", title: "Source", icon: <CpuChipIcon className="size-4" /> },
+  { name: "error", title: "Error ID", icon: <BugIcon className="size-4" /> },
+  { name: "source", title: "Task type", icon: <TaskIcon className="size-4" /> },
 ] as const;
 
 type FilterType = (typeof filterTypes)[number]["name"];
@@ -706,7 +711,11 @@ function TasksDropdown({
   clearSearchValue: () => void;
   searchValue: string;
   onClose?: () => void;
-  possibleTasks: { slug: string; triggerSource: TaskTriggerSource; isInLatestDeployment: boolean }[];
+  possibleTasks: {
+    slug: string;
+    triggerSource: TaskTriggerSource;
+    isInLatestDeployment: boolean;
+  }[];
 }) {
   const { values, replace } = useSearchParams();
 
@@ -1954,18 +1963,16 @@ function SourceDropdown({
           return true;
         }}
       >
-        <ComboBox placeholder={"Filter by source..."} value={searchValue} />
+        <ComboBox placeholder={"Filter by task type…"} value={searchValue} />
         <SelectList>
           {filtered.map((item, index) => (
             <SelectItem
               key={item.value}
               value={item.value}
-              icon={
-                <TaskTriggerSourceIcon source={item.value} className="size-4 flex-none" />
-              }
+              icon={<TaskTriggerSourceIcon source={item.value} className="size-4 flex-none" />}
               shortcut={shortcutFromIndex(index, { shortcutsEnabled: true })}
             >
-              {item.title}
+              <span className="text-text-bright">{item.title}</span>
             </SelectItem>
           ))}
         </SelectList>
@@ -1989,12 +1996,10 @@ function AppliedSourceFilter() {
           trigger={
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>
               <AppliedFilter
-                label="Source"
+                label="Task type"
                 icon={<CpuChipIcon className="size-4" />}
                 value={appliedSummary(
-                  sources.map(
-                    (v) => sourceOptions.find((o) => o.value === v)?.title ?? v
-                  )
+                  sources.map((v) => sourceOptions.find((o) => o.value === v)?.title ?? v)
                 )}
                 onRemove={() => del(["sources", "cursor", "direction"])}
                 variant="secondary/small"

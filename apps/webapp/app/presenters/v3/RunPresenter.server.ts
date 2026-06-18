@@ -1,4 +1,4 @@
-import { millisecondsToNanoseconds } from "@trigger.dev/core/v3";
+import { millisecondsToNanoseconds, RunAnnotations } from "@trigger.dev/core/v3";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
 import { prisma, type PrismaClient } from "~/db.server";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
@@ -17,6 +17,20 @@ export class RunEnvironmentMismatchError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "RunEnvironmentMismatchError";
+  }
+}
+
+// Thrown by `call()` when the run isn't in PG. The route loader catches
+// this and falls back to the mollifier buffer via `tryMollifiedRunFallback`.
+// Using a typed error (rather than Prisma's `findFirstOrThrow` exception)
+// keeps the buffered case off the PrismaClient error path — that path
+// emits a `PrismaClient error` log every time it fires, which on the
+// run-detail page polls becomes per-tick log spam and Sentry noise for
+// any run that legitimately lives in the buffer.
+export class RunNotInPgError extends Error {
+  constructor(public readonly runFriendlyId: string) {
+    super(`Run ${runFriendlyId} not in PG`);
+    this.name = "RunNotInPgError";
   }
 }
 
@@ -42,7 +56,13 @@ export class RunPresenter {
     showDeletedLogs: boolean;
     showDebug: boolean;
   }) {
-    const run = await this.#prismaClient.taskRun.findFirstOrThrow({
+    // `findFirst` + explicit null check (not `findFirstOrThrow`) because
+    // a missing PG row is the *expected* path for buffered runs — the
+    // route catches `RunNotInPgError` and falls back to the synthesised
+    // buffer view. `findFirstOrThrow` would log a `PrismaClient error`
+    // every tick of the page poll, masking real DB issues with synthetic
+    // not-found noise.
+    const run = await this.#prismaClient.taskRun.findFirst({
       select: {
         id: true,
         createdAt: true,
@@ -57,6 +77,7 @@ export class RunPresenter {
         startedAt: true,
         completedAt: true,
         logsDeletedAt: true,
+        annotations: true,
         rootTaskRun: {
           select: {
             friendlyId: true,
@@ -105,6 +126,10 @@ export class RunPresenter {
         },
       },
     });
+
+    if (!run) {
+      throw new RunNotInPgError(runFriendlyId);
+    }
 
     if (environmentSlug !== run.runtimeEnvironment.slug) {
       throw new RunEnvironmentMismatchError(
@@ -206,6 +231,11 @@ export class RunPresenter {
       },
     });
 
+    // Resolve agent-kind once so the tree renderer can swap icon/colour for
+    // the current run's spans without doing per-row lookups.
+    const isAgentRun =
+      RunAnnotations.safeParse(run.annotations).data?.taskKind === "AGENT";
+
     //this tree starts at the passed in span (hides parent elements if there are any)
     const tree = createTreeFromFlatItems(traceSummary.spans, run.spanId);
 
@@ -231,12 +261,16 @@ export class RunPresenter {
             linkedRunIdBySpanId[n.id] = n.runId;
           }
 
+          // Raw span events are only needed server-side (to derive timelineEvents);
+          // keep them out of the serialized loader payload.
+          const { events: spanEvents, ...data } = n.data;
+
           return {
             ...n,
             data: {
-              ...n.data,
+              ...data,
               timelineEvents: createTimelineSpanEventsFromSpanEvents(
-                n.data.events,
+                spanEvents,
                 user?.admin ?? false,
                 treeRootStartTimeMs
               ),
@@ -244,6 +278,7 @@ export class RunPresenter {
               duration: n.data.isPartial ? null : n.data.duration,
               offset,
               isRoot: n.id === traceSummary.rootSpan.id,
+              isAgentRun: n.runId === run.friendlyId && isAgentRun,
             },
           };
         })

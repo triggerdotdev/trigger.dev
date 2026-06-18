@@ -205,6 +205,10 @@ toModelOutput: ({ output: message }) => {
 
 This is important for token efficiency: the sub-agent might use 100K tokens exploring and reasoning, but the parent LLM only consumes the summary.
 
+<Warning>
+  `toModelOutput` only runs when the SDK has your tools at conversion time. On a multi-turn parent, the SDK re-converts the persisted history at the start of each turn, so you must declare the sub-agent tool on the agent config (`chat.agent({ tools })`) for the compression to survive. Without it, the summary holds on turn 1 but turn 2 onward re-ingests the full sub-agent output. In a `chat.customAgent` loop you own the conversion, so pass the tools to `convertToModelMessages(uiMessages, { tools })` yourself. See [Tools: toModelOutput across turns](/ai-chat/tools#tomodeloutput-across-turns).
+</Warning>
+
 ## ChatStream.messages()
 
 The `messages()` method on `ChatStream` wraps the AI SDK's `readUIMessageStream`. It reads the raw `UIMessageChunk` stream and yields complete `UIMessage` snapshots — each containing all parts received so far.
@@ -237,13 +241,16 @@ Sub-agent tools work inside both `chat.agent()` (managed) and `chat.customAgent(
 
 ```ts
 // Managed agent with sub-agent tool
+const tools = { research: researchTool };
+
 export const myAgent = chat.agent({
   id: "orchestrator",
-  run: async ({ messages, stopSignal }) => {
+  tools, // declare here so toModelOutput survives across turns
+  run: async ({ messages, tools, stopSignal }) => {
     return streamText({
       model: anthropic("claude-sonnet-4-6"),
       messages,
-      tools: { research: researchTool },
+      tools,
       abortSignal: stopSignal,
       stopWhen: stepCountIs(15),
     });
@@ -251,7 +258,7 @@ export const myAgent = chat.agent({
 });
 ```
 
-For `chat.customAgent()`, define the tool and sub-agent Map inside the `run` closure so they survive across turns.
+For `chat.customAgent()`, define the tool and sub-agent Map inside the `run` closure so they survive across turns. Since you own the turn loop there, convert history with your tools in scope so `toModelOutput` is re-applied each turn: `convertToModelMessages(uiMessages, { tools })`. See [Tools: manual turn loops](/ai-chat/tools#manual-turn-loops-chatcustomagent).
 
 ## Streaming progress from a subtask to the parent chat
 

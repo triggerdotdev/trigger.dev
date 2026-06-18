@@ -1,5 +1,5 @@
 import { createRedisClient, Redis } from "@internal/redis";
-import { getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
+import { type Counter, getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import {
   CheckpointInput,
@@ -33,6 +33,7 @@ import {
 import { Worker } from "@trigger.dev/redis-worker";
 import { assertNever } from "assert-never";
 import { EventEmitter } from "node:events";
+import { setTimeout } from "node:timers/promises";
 import { BatchQueue } from "../batch-queue/index.js";
 import type {
   BatchItem,
@@ -46,7 +47,12 @@ import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
 import { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { BillingCache } from "./billingCache.js";
-import { NotImplementedError, RunDuplicateIdempotencyKeyError, RunOneTimeUseTokenError } from "./errors.js";
+import {
+  ExecutionSnapshotNotFoundError,
+  NotImplementedError,
+  RunDuplicateIdempotencyKeyError,
+  RunOneTimeUseTokenError,
+} from "./errors.js";
 import { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
 import { getFinalRunStatuses } from "./statuses.js";
@@ -88,6 +94,8 @@ export class RunEngine {
   private logger: Logger;
   private tracer: Tracer;
   private meter: Meter;
+  private snapshotsSinceReplicaMissCounter: Counter;
+  private snapshotsSinceReplicaRetryDelay: { minMs: number; maxMs: number };
   private heartbeatTimeouts: HeartbeatTimeouts;
   private repairSnapshotTimeoutMs: number;
   private batchQueue: BatchQueue;
@@ -272,6 +280,22 @@ export class RunEngine {
     this.tracer = options.tracer;
     this.meter = options.meter ?? getMeter("run-engine");
 
+    this.snapshotsSinceReplicaMissCounter = this.meter.createCounter(
+      "run_engine.snapshots_since.replica_miss",
+      {
+        description:
+          "getSnapshotsSince reads where the since snapshot was not yet on the read replica, recovered via a replica retry or served from the primary",
+      }
+    );
+
+    // Normalize the bounds, but keep maxMs <= 0 meaning "skip the replica retry".
+    const retryDelay = options.readReplicaSnapshotsSinceRetryDelay ?? { minMs: 50, maxMs: 200 };
+    const retryMinMs = Math.max(0, retryDelay.minMs);
+    this.snapshotsSinceReplicaRetryDelay = {
+      minMs: retryDelay.maxMs > 0 ? Math.min(retryMinMs, retryDelay.maxMs) : retryMinMs,
+      maxMs: retryDelay.maxMs,
+    };
+
     const defaultHeartbeatTimeouts: HeartbeatTimeouts = {
       PENDING_EXECUTING: 60_000,
       PENDING_CANCEL: 60_000,
@@ -450,6 +474,199 @@ export class RunEngine {
 
   //MARK: - Run functions
 
+  /**
+   * Writes a TaskRun row in CANCELED state directly, bypassing the trigger
+   * pipeline. Used by the mollifier drainer when a cancel API call lands on
+   * a buffered run before it materialises.
+   *
+   * Skips: queue insertion (no execution), waitpoint creation (the
+   * mollifier gate refuses to buffer triggerAndWait children, so a
+   * cancelled buffered run never has a waiting parent to unblock),
+   * concurrency reservation. Emits `runCancelled` by default — callers
+   * working on buffered-only runs (no primary trace event exists) can
+   * opt out via `emitRunCancelledEvent: false` to avoid the systematic
+   * "Failed to cancel run event" noise the handler would log when its
+   * `cancelRunEvent` call can't find a span.
+   *
+   * Idempotent: if a row with the same friendlyId already exists (double
+   * drainer pop after requeue), Prisma's P2002 unique-constraint violation
+   * is caught and the existing row is returned. The duplicate runCancelled
+   * emission is skipped — the original drain's emit already wrote the
+   * TaskEvent (when applicable).
+   */
+  async createCancelledRun(
+    {
+      snapshot,
+      cancelledAt,
+      cancelReason,
+      emitRunCancelledEvent = true,
+    }: {
+      snapshot: TriggerParams;
+      cancelledAt: Date;
+      cancelReason: string;
+      /**
+       * Whether to emit the `runCancelled` engine-bus event. Defaults to
+       * true.
+       *
+       * Set to `false` for buffered-only runs that never had a primary
+       * trace event written (the mollifier gate never called
+       * `repository.traceEvent` for them). The `runCancelled` handler in
+       * `runEngineHandlers.server.ts` calls `cancelRunEvent`, which
+       * looks up the run's primary span in the event store — for
+       * buffered-only runs that span doesn't exist, so the lookup fails,
+       * the handler's `tryCatch` swallows it, and a "[runCancelled]
+       * Failed to cancel run event" error is logged for every cancelled
+       * buffered run. Suppressing the emit avoids that systematic noise.
+       * The CANCELED PG row is still written; only the trace-event
+       * mirror is skipped.
+       */
+      emitRunCancelledEvent?: boolean;
+    },
+    tx?: PrismaClientOrTransaction,
+  ): Promise<TaskRun> {
+    const prisma = tx ?? this.prisma;
+    return startSpan(this.tracer, "createCancelledRun", async (span) => {
+      span.setAttribute("friendlyId", snapshot.friendlyId);
+      span.setAttribute("taskIdentifier", snapshot.taskIdentifier);
+      const id = RunId.fromFriendlyId(snapshot.friendlyId);
+      const error: TaskRunError = { type: "STRING_ERROR", raw: cancelReason };
+
+      try {
+        const taskRun = await prisma.taskRun.create({
+          data: {
+            id,
+            engine: "V2",
+            status: "CANCELED",
+            friendlyId: snapshot.friendlyId,
+            runtimeEnvironmentId: snapshot.environment.id,
+            environmentType: snapshot.environment.type,
+            organizationId: snapshot.environment.organization.id,
+            projectId: snapshot.environment.project.id,
+            idempotencyKey: snapshot.idempotencyKey,
+            idempotencyKeyExpiresAt: snapshot.idempotencyKeyExpiresAt,
+            idempotencyKeyOptions: snapshot.idempotencyKeyOptions,
+            taskIdentifier: snapshot.taskIdentifier,
+            payload: snapshot.payload,
+            payloadType: snapshot.payloadType,
+            context: snapshot.context,
+            traceContext: snapshot.traceContext,
+            traceId: snapshot.traceId,
+            spanId: snapshot.spanId,
+            parentSpanId: snapshot.parentSpanId,
+            lockedToVersionId: snapshot.lockedToVersionId,
+            taskVersion: snapshot.taskVersion,
+            sdkVersion: snapshot.sdkVersion,
+            cliVersion: snapshot.cliVersion,
+            concurrencyKey: snapshot.concurrencyKey,
+            queue: snapshot.queue,
+            lockedQueueId: snapshot.lockedQueueId,
+            workerQueue: snapshot.workerQueue,
+            isTest: snapshot.isTest,
+            taskEventStore: snapshot.taskEventStore,
+            // Defensive: the snapshot comes from a cjson-encoded buffer
+            // payload, where empty Lua tables encode as `{}` not `[]`. If
+            // the drainer pops a buffered run with no tags, snapshot.tags
+            // will be an empty object, which Prisma misreads as a relation
+            // update op. Normalise to a real array (or undefined for the
+            // empty case).
+            runTags: Array.isArray(snapshot.tags) && snapshot.tags.length > 0
+              ? snapshot.tags
+              : undefined,
+            oneTimeUseToken: snapshot.oneTimeUseToken,
+            parentTaskRunId: snapshot.parentTaskRunId,
+            rootTaskRunId: snapshot.rootTaskRunId,
+            replayedFromTaskRunFriendlyId: snapshot.replayedFromTaskRunFriendlyId,
+            batchId: snapshot.batch?.id,
+            resumeParentOnCompletion: snapshot.resumeParentOnCompletion,
+            depth: snapshot.depth,
+            seedMetadata: snapshot.seedMetadata,
+            seedMetadataType: snapshot.seedMetadataType,
+            metadata: snapshot.metadata,
+            metadataType: snapshot.metadataType,
+            machinePreset: snapshot.machine,
+            scheduleId: snapshot.scheduleId,
+            scheduleInstanceId: snapshot.scheduleInstanceId,
+            createdAt: snapshot.createdAt,
+            bulkActionGroupIds: snapshot.bulkActionId ? [snapshot.bulkActionId] : undefined,
+            planType: snapshot.planType,
+            realtimeStreamsVersion: snapshot.realtimeStreamsVersion,
+            streamBasinName: snapshot.streamBasinName,
+            annotations: snapshot.annotations,
+            completedAt: cancelledAt,
+            updatedAt: cancelledAt,
+            error: error as unknown as Prisma.InputJsonValue,
+            attemptNumber: 0,
+            executionSnapshots: {
+              create: {
+                engine: "V2",
+                executionStatus: "FINISHED",
+                description: "Run cancelled before materialisation",
+                runStatus: "CANCELED",
+                environmentId: snapshot.environment.id,
+                environmentType: snapshot.environment.type,
+                projectId: snapshot.environment.project.id,
+                organizationId: snapshot.environment.organization.id,
+              },
+            },
+          },
+        });
+
+        if (emitRunCancelledEvent) {
+          this.eventBus.emit("runCancelled", {
+            time: cancelledAt,
+            run: {
+              id: taskRun.id,
+              status: taskRun.status,
+              friendlyId: taskRun.friendlyId,
+              spanId: taskRun.spanId,
+              taskEventStore: taskRun.taskEventStore,
+              createdAt: taskRun.createdAt,
+              completedAt: taskRun.completedAt,
+              error,
+              updatedAt: taskRun.updatedAt,
+              attemptNumber: taskRun.attemptNumber ?? 0,
+            },
+            organization: { id: snapshot.environment.organization.id },
+            project: { id: snapshot.environment.project.id },
+            environment: { id: snapshot.environment.id },
+          });
+        }
+
+        return taskRun;
+      } catch (err) {
+        // P2002 = unique constraint violation. Double-pop after a drainer
+        // requeue can reach this. Idempotent: return the existing row
+        // without re-emitting.
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === "P2002"
+        ) {
+          this.logger.info(
+            "createCancelledRun: row already exists, returning existing (idempotent)",
+            { friendlyId: snapshot.friendlyId },
+          );
+          const existing = await prisma.taskRun.findFirst({ where: { id } });
+          if (existing) {
+            // Only treat the conflict as idempotent when the existing
+            // row is ALREADY canceled. If a non-canceled row landed
+            // first (e.g. the drainer's normal `engine.trigger` replay
+            // path raced ahead of the cancel) we surface a conflict
+            // rather than silently reporting "cancelled" — the run is
+            // genuinely live and the caller must decide between
+            // engine.cancelRun() and skipping.
+            if (existing.status === "CANCELED") {
+              return existing;
+            }
+            throw new Error(
+              `createCancelledRun conflict: existing run ${snapshot.friendlyId} has status ${existing.status}`,
+            );
+          }
+        }
+        throw err;
+      }
+    });
+  }
+
   /** "Triggers" one run. */
   async trigger(
     {
@@ -472,6 +689,7 @@ export class RunEngine {
       cliVersion,
       concurrencyKey,
       workerQueue,
+      region,
       enableFastPath,
       queue,
       lockedQueueId,
@@ -640,6 +858,7 @@ export class RunEngine {
               queue,
               lockedQueueId,
               workerQueue,
+              region,
               isTest,
               delayUntil,
               queuedAt,
@@ -648,7 +867,16 @@ export class RunEngine {
               priorityMs,
               queueTimestamp: queueTimestamp ?? delayUntil ?? new Date(),
               ttl: resolvedTtl,
-              runTags: tags.length === 0 ? undefined : tags,
+              // Defensive: when the mollifier drainer replays a buffered
+              // snapshot whose payload was rewritten by a buffer-side Lua
+              // mutate (e.g. append_tags clears an empty list), cjson
+              // encodes an empty Lua table as `{}` rather than `[]`. JS
+              // parses that back as an empty object, and `{}.length` is
+              // undefined — the original `tags.length === 0` check would
+              // pass `{}` straight to Prisma's `String[]` column. Mirror
+              // the same Array.isArray guard that `createCancelledRun`
+              // uses for symmetry with the trigger replay path.
+              runTags: Array.isArray(tags) && tags.length > 0 ? tags : undefined,
               oneTimeUseToken,
               parentTaskRunId,
               rootTaskRunId,
@@ -840,7 +1068,14 @@ export class RunEngine {
 
         this.eventBus.emit("runCreated", {
           time: new Date(),
-          runId: taskRun.id,
+          run: {
+            id: taskRun.id,
+            runTags: taskRun.runTags,
+            batchId: taskRun.batchId,
+          },
+          environment: {
+            id: environment.id,
+          },
         });
 
         return taskRun;
@@ -881,6 +1116,7 @@ export class RunEngine {
     taskEventStore,
     queue: queueOverride,
     lockedQueueId: lockedQueueIdOverride,
+    emitRunFailedEvent = true,
   }: {
     friendlyId: string;
     environment: {
@@ -908,6 +1144,19 @@ export class RunEngine {
     queue?: string;
     /** Resolved TaskQueue.id when the task is locked to a specific queue. */
     lockedQueueId?: string;
+    /**
+     * Whether to emit the `runFailed` engine-bus event. Defaults to true.
+     *
+     * Set to `false` when the caller is ALREADY managing the trace-event
+     * lifecycle for this run via `repository.traceEvent({ incomplete: false,
+     * isError: true, ... })`. In that path the outer trace event handles
+     * span completion itself; emitting `runFailed` from here causes the
+     * `runFailed` → `completeFailedRunEvent` handler to write a second
+     * completion row for the same (traceId, spanId), racing with the
+     * outer trace event's own write. The alert side of `runFailed` is
+     * preserved by emitting from the caller after `traceEvent` returns.
+     */
+    emitRunFailedEvent?: boolean;
   }): Promise<TaskRun> {
     return startSpan(
       this.tracer,
@@ -982,6 +1231,57 @@ export class RunEngine {
             batch,
           });
         }
+
+        // Emit `runFailed` so the alert pipeline picks up the
+        // SYSTEM_FAILURE row and the event-store handler writes the
+        // completion event into the trace. Without this the mollifier
+        // drainer's terminal failures (and batch-trigger's
+        // exceed-limit failures) land in PG silently — visible in the
+        // dashboard list but never reaching customers' configured
+        // ERROR alert channels.
+        //
+        // Gated by `emitRunFailedEvent` so call sites that already wrap
+        // this inside `repository.traceEvent({ incomplete: false,
+        // isError: true })` can opt out — the outer trace event writes
+        // the completion row itself, and a second write via
+        // `completeFailedRunEvent` would race against it. Callers that
+        // disable the emit are responsible for triggering the alerts
+        // side themselves (e.g. by calling
+        // `PerformTaskRunAlertsService.enqueue` directly after the
+        // trace event closes).
+        if (!emitRunFailedEvent) {
+          return taskRun;
+        }
+        this.eventBus.emit("runFailed", {
+          time: taskRun.completedAt ?? new Date(),
+          run: {
+            id: taskRun.id,
+            status: taskRun.status,
+            spanId: taskRun.spanId,
+            error,
+            taskEventStore: taskRun.taskEventStore,
+            createdAt: taskRun.createdAt,
+            completedAt: taskRun.completedAt,
+            updatedAt: taskRun.updatedAt,
+            // This row never attempted execution — it's a synthesised
+            // terminal failure. The alert payload's `attemptNumber=0`
+            // is the signal downstream consumers can use to
+            // distinguish a never-ran failure from a run that
+            // exhausted its retries.
+            attemptNumber: 0,
+            usageDurationMs: 0,
+            costInCents: 0,
+          },
+          organization: {
+            id: environment.organization.id,
+          },
+          project: {
+            id: environment.project.id,
+          },
+          environment: {
+            id: environment.id,
+          },
+        });
 
         return taskRun;
       },
@@ -1651,13 +1951,69 @@ export class RunEngine {
     snapshotId: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<RunExecutionData[] | null> {
-    const prisma =
-      tx ?? (this.options.readReplicaSnapshotsSinceEnabled ? this.readOnlyPrisma : this.prisma);
+    const useReplica =
+      !tx &&
+      this.options.readReplicaSnapshotsSinceEnabled === true &&
+      this.readOnlyPrisma !== this.prisma;
+    const prisma = tx ?? (useReplica ? this.readOnlyPrisma : this.prisma);
+
+    const query = async (client: PrismaClientOrTransaction) => {
+      const snapshots = await getExecutionSnapshotsSince(client, runId, snapshotId);
+      return snapshots.map(executionDataFromSnapshot);
+    };
 
     try {
-      const snapshots = await getExecutionSnapshotsSince(prisma, runId, snapshotId);
-      return snapshots.map(executionDataFromSnapshot);
+      return await query(prisma);
     } catch (e) {
+      if (useReplica && e instanceof ExecutionSnapshotNotFoundError) {
+        // Replica lag: the runner learned this snapshot id from the writer before the
+        // replica caught up. Give the replica one jittered retry; if it's still missing,
+        // serve from the writer. Only not-found errors get this treatment - any other
+        // replica failure stays an error rather than shifting read load to the writer.
+        // A miss on the writer too is a real error, not lag.
+        const { minMs, maxMs } = this.snapshotsSinceReplicaRetryDelay;
+        if (maxMs > 0) {
+          await setTimeout(minMs + Math.random() * Math.max(0, maxMs - minMs));
+          try {
+            const result = await query(this.readOnlyPrisma);
+            this.snapshotsSinceReplicaMissCounter.add(1, { outcome: "replica_retry" });
+            return result;
+          } catch (replicaRetryError) {
+            if (!(replicaRetryError instanceof ExecutionSnapshotNotFoundError)) {
+              this.logger.error("Failed to getSnapshotsSince", {
+                message:
+                  replicaRetryError instanceof Error
+                    ? replicaRetryError.message
+                    : replicaRetryError,
+                runId,
+                snapshotId,
+                failedDuring: "replica_retry",
+              });
+              return null;
+            }
+            // still not on the replica - fall through to the primary
+          }
+        }
+
+        try {
+          const result = await query(this.prisma);
+          this.snapshotsSinceReplicaMissCounter.add(1, { outcome: "primary" });
+          this.logger.warn("getSnapshotsSince: snapshot not yet on replica, served from primary", {
+            runId,
+            snapshotId,
+          });
+          return result;
+        } catch (retryError) {
+          this.logger.error("Failed to getSnapshotsSince", {
+            message: retryError instanceof Error ? retryError.message : retryError,
+            runId,
+            snapshotId,
+            failedDuring: "primary_fallback",
+          });
+          return null;
+        }
+      }
+
       this.logger.error("Failed to getSnapshotsSince", {
         message: e instanceof Error ? e.message : e,
         runId,

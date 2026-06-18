@@ -1,10 +1,12 @@
 import { Link, useNavigation } from "@remix-run/react";
 import { type ReactNode } from "react";
+import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { UpgradePrompt, useShowUpgradePrompt } from "../billing/UpgradePrompt";
 import { BreadcrumbIcon } from "./BreadcrumbIcon";
 import { Header2 } from "./Headers";
 import { LoadingBarDivider } from "./LoadingBarDivider";
+import { SimpleTooltip } from "./Tooltip";
 import { EnvironmentBanner } from "../navigation/EnvironmentBanner";
 
 type WithChildren = {
@@ -36,11 +38,17 @@ type PageTitleProps = {
     to: string;
     text: string;
   };
+  /**
+   * Renders to the right of the title.
+   * - Pass a string → a question-mark icon with the string as its hover tooltip.
+   * - Pass a ReactNode → rendered verbatim, for custom adornments.
+   */
+  accessory?: ReactNode;
 };
 
-export function PageTitle({ title, backButton }: PageTitleProps) {
+export function PageTitle({ title, backButton, accessory }: PageTitleProps) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-1">
       {backButton && (
         <div className="group -ml-1.5 flex items-center gap-0">
           <Link
@@ -53,6 +61,17 @@ export function PageTitle({ title, backButton }: PageTitleProps) {
         </div>
       )}
       <Header2 className="flex items-center gap-1">{title}</Header2>
+      {accessory !== undefined &&
+        (typeof accessory === "string" ? (
+          <SimpleTooltip
+            button={<QuestionMarkIcon className="size-4 text-text-dimmed" />}
+            content={accessory}
+            className="max-w-xs"
+            disableHoverableContent
+          />
+        ) : (
+          accessory
+        ))}
     </div>
   );
 }

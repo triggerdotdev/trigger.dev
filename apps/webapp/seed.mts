@@ -53,7 +53,10 @@ async function seed() {
     console.log(`✅ Organization already exists: ${organization.title} (${organization.slug})`);
   }
 
-  // Define the reference projects with their specific project refs
+  // Reference projects with their specific project refs. These refs MUST stay in
+  // sync with the corresponding projects in the standalone references repo
+  // (github.com/triggerdotdev/references): hello-world hardcodes its ref in
+  // trigger.config.ts; d3-chat and realtime-streams read TRIGGER_PROJECT_REF.
   const referenceProjects = [
     {
       name: "hello-world",
@@ -82,9 +85,9 @@ async function seed() {
   console.log(`User: ${user.email}`);
   console.log(`Organization: ${organization.title} (${organization.slug})`);
   console.log(`Projects: ${referenceProjects.map((p) => p.name).join(", ")}`);
-  console.log("\n⚠️  Note: Update the .env files in d3-chat and realtime-streams with:");
-  console.log(`  - d3-chat: TRIGGER_PROJECT_REF=proj_cdmymsrobxmcgjqzhdkq`);
-  console.log(`  - realtime-streams: TRIGGER_PROJECT_REF=proj_klxlzjnzxmbgiwuuwhvb`);
+  console.log("\n⚠️  Note: in your triggerdotdev/references clone, set TRIGGER_PROJECT_REF in:");
+  console.log(`  - projects/d3-chat/.env: TRIGGER_PROJECT_REF=proj_cdmymsrobxmcgjqzhdkq`);
+  console.log(`  - projects/realtime-streams/.env: TRIGGER_PROJECT_REF=proj_klxlzjnzxmbgiwuuwhvb`);
 }
 
 async function createBatchLimitOrgs(user: User) {
@@ -165,6 +168,7 @@ seed()
   })
   .finally(async () => {
     await prisma.$disconnect();
+    process.exit(0);
   });
 
 async function findOrCreateOrganization(

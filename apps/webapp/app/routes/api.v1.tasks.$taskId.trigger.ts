@@ -134,7 +134,20 @@ const { action, loader } = createActionApiRoute(
         return json({ error: "Task not found" }, { status: 404 });
       }
 
-      await saveRequestIdempotency(requestIdempotencyKey, "trigger", result.run.id);
+      // Skip request-idempotency caching when the gate diverted to the
+      // mollifier buffer. `result.run.id` is a synthesised cuid with no
+      // corresponding PG row, so a lost-response SDK retry that reaches
+      // `handleRequestIdempotency` would lookup that id, miss in PG, and
+      // fall through to a fresh trigger — producing a duplicate buffer
+      // entry for triggers without a task-level idempotency key (the
+      // task-level path still dedupes via the buffer's SETNX in
+      // `findBufferedRunWithIdempotency`). Accepting the retry-as-fresh-
+      // trigger semantics here is bounded by the drainer's eventual
+      // materialisation: once the run lands in PG, normal request-
+      // idempotency from that point forward works as usual.
+      if (!result.isMollified) {
+        await saveRequestIdempotency(requestIdempotencyKey, "trigger", result.run.id);
+      }
 
       const $responseHeaders = await responseHeaders(result.run, authentication);
 

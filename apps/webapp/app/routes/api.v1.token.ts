@@ -7,6 +7,7 @@ import {
 import { generateErrorMessage } from "zod-error";
 import { logger } from "~/services/logger.server";
 import { getPersonalAccessTokenFromAuthorizationCode } from "~/services/personalAccessToken.server";
+import { clientSafeErrorMessage } from "~/utils/prismaErrors";
 
 export async function action({ request }: ActionFunctionArgs) {
   logger.info("Getting PersonalAccessToken from AuthorizationCode", { url: request.url });
@@ -37,12 +38,15 @@ export async function action({ request }: ActionFunctionArgs) {
     return json(responseJson);
   } catch (error) {
     if (error instanceof Error) {
-      logger.error("Error getting PersonalAccessToken from AuthorizationCode", {
-        url: request.url,
-        error: error.message,
-      });
+      const expected = error.message === "Invalid authorization code, or code expired";
+      const fields = { url: request.url, error: error.message };
+      if (expected) {
+        logger.warn("Error getting PersonalAccessToken from AuthorizationCode", fields);
+      } else {
+        logger.error("Error getting PersonalAccessToken from AuthorizationCode", fields);
+      }
 
-      return json({ error: error.message }, { status: 400 });
+      return json({ error: clientSafeErrorMessage(error) }, { status: 400 });
     }
 
     return json({ error: "Something went wrong" }, { status: 400 });

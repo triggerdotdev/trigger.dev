@@ -59,22 +59,48 @@ import {
   SessionStreamInstance,
   TRIGGER_CONTROL_SUBTYPE,
   apiClientManager,
+  type SessionTriggerConfig,
 } from "@trigger.dev/core/v3";
+// Runtime VALUES via the ESM/CJS shim so the CJS build can `require` ESM-only
+// `ai@7` (see ../imports/ai-runtime.ts).
 import {
   convertToModelMessages,
   generateId as generateAssistantMessageId,
   stepCountIs,
-  type ModelMessage,
-  type StreamTextResult,
-  type Tool,
-  type UIMessage,
-  type UIMessageChunk,
-} from "ai";
+} from "../imports/ai-runtime.js";
+import type { FinishReason, ModelMessage, Tool, UIMessage, UIMessageChunk } from "ai";
 import type { ChatInputChunk, ChatTaskWirePayload } from "./ai-shared.js";
+
+// `StreamTextResult` is defined locally rather than imported from `ai`: its
+// generic arity diverged (v6 `StreamTextResult<TOOLS, OUTPUT>`, v7
+// `StreamTextResult<TOOLS, RUNTIME_CONTEXT, OUTPUT>`), so a fixed-arity import
+// can't satisfy both majors. We only read these members off the customer's
+// result; a real `StreamTextResult` (any version) is assignable to this.
+type AnyStreamTextResult = {
+  readonly finishReason: PromiseLike<FinishReason>;
+  readonly response: PromiseLike<{ messages: ModelMessage[] }>;
+  toUIMessageStream: (...args: any[]) => any;
+  toUIMessageStreamResponse: (...args: any[]) => Response;
+};
 
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
+
+/**
+ * The options `toStreamTextOptions()` hands back to spread into `streamText`.
+ * Typed concretely (rather than `Record<string, unknown>`) so the `messages`
+ * AI SDK 7 requires is statically present, and so `streamText` infers its tools
+ * from the call (rather than collapsing to `never` off a loose spread).
+ *
+ * `tools` and `stopWhen` are deliberately omitted: they're wired in at runtime,
+ * but `streamText` reads them from the runtime value, and leaving them off the
+ * type keeps it version-agnostic and avoids constraining the tool inference.
+ */
+export type HeadStartStreamTextOptions = {
+  messages: ModelMessage[];
+  abortSignal: AbortSignal;
+};
 
 export type HeadStartRunArgs<TTools extends Record<string, Tool>> = {
   /** User messages parsed from the incoming request. */
@@ -106,9 +132,7 @@ export type HeadStartChatHelper<TTools extends Record<string, Tool>> = {
    * `abortSignal` will break the handover protocol. The intent is
    * that customers spread first, then add only their own keys.
    */
-  toStreamTextOptions<TOpts extends Record<string, unknown> = Record<string, unknown>>(opts?: {
-    tools?: TTools;
-  }): TOpts;
+  toStreamTextOptions(opts?: { tools?: TTools }): HeadStartStreamTextOptions;
   /** Lower-level escape hatch with manual `out` / `in` / dispatch primitives. */
   session: HeadStartSession;
 };
@@ -127,13 +151,13 @@ export type HeadStartSession = {
    * Awaits `result.finishReason` and dispatches `handover` (with the
    * partial assistant ModelMessages) or `handover-skip`.
    */
-  handoverWhenDone(result: StreamTextResult<any, any>): Promise<void>;
+  handoverWhenDone(result: AnyStreamTextResult): Promise<void>;
   /**
    * Sugar over `tee` + `handoverWhenDone` + standard SSE response.
    * Returns a `Response` with `Content-Type: text/event-stream` whose
    * body is the teed stream.
    */
-  handoverResponse(result: StreamTextResult<any, any>): Response;
+  handoverResponse(result: AnyStreamTextResult): Response;
   /**
    * Manually dispatch the `handover` signal on `session.in`.
    *
@@ -166,12 +190,18 @@ export type HeadStartHandlerOptions<TTools extends Record<string, Tool>> = {
    * `...chat.toStreamTextOptions({ tools })` and return the
    * `StreamTextResult`.
    */
-  run: (args: HeadStartRunArgs<TTools>) => Promise<StreamTextResult<any, any>>;
+  run: (args: HeadStartRunArgs<TTools>) => Promise<AnyStreamTextResult>;
   /**
    * Seconds the agent run waits for the handover signal before
    * exiting. Defaults to 60.
    */
   idleTimeoutInSeconds?: number;
+  /**
+   * Run options for the auto-triggered `handover-prepare` session run —
+   * tags, queue, machine, etc. Mirrors `chat.createStartSessionAction`.
+   * The `chat:{chatId}` tag is prepended automatically.
+   */
+  triggerConfig?: Partial<SessionTriggerConfig>;
 };
 
 // ---------------------------------------------------------------------------
@@ -197,6 +227,7 @@ export const chat = {
         req,
         agentId: opts.agentId,
         idleTimeoutInSeconds: opts.idleTimeoutInSeconds,
+        triggerConfig: opts.triggerConfig,
       });
 
       const helper: HeadStartChatHelper<TTools> = {
@@ -226,6 +257,7 @@ export const chat = {
     req: Request;
     agentId: string;
     idleTimeoutInSeconds?: number;
+    triggerConfig?: Partial<SessionTriggerConfig>;
   }): Promise<HeadStartSession> {
     return openHandoverSession(opts).then((s) => s.handle);
   },
@@ -281,6 +313,7 @@ async function openHandoverSession(opts: {
   req: Request;
   agentId: string;
   idleTimeoutInSeconds?: number;
+  triggerConfig?: Partial<SessionTriggerConfig>;
 }): Promise<InternalSession> {
   const wirePayload = (await opts.req.json()) as ChatTaskWirePayload;
   const chatId = wirePayload.chatId;
@@ -300,7 +333,39 @@ async function openHandoverSession(opts: {
   const modelMessages = await convertToModelMessages(uiMessages);
 
   const apiClient = resolveApiClient();
-  const idleTimeoutInSeconds = opts.idleTimeoutInSeconds ?? 60;
+  // Top-level `idleTimeoutInSeconds` wins over the one in `triggerConfig`.
+  const idleTimeoutInSeconds =
+    opts.idleTimeoutInSeconds ?? opts.triggerConfig?.idleTimeoutInSeconds ?? 60;
+
+  // Merge the customer's trigger options. `handover-prepare` and `chatId` in
+  // `basePayload` are ours and can't be overridden; the `chat:{chatId}` tag is
+  // prepended (SessionTriggerConfig.tags caps at 5).
+  const userTags = opts.triggerConfig?.tags ?? [];
+  const tags = [`chat:${chatId}`, ...userTags].slice(0, 5);
+
+  const triggerConfig: SessionTriggerConfig = {
+    basePayload: {
+      ...(opts.triggerConfig?.basePayload ?? {}),
+      ...wirePayload,
+      chatId,
+      trigger: "handover-prepare",
+      idleTimeoutInSeconds,
+    },
+    ...(opts.triggerConfig?.machine ? { machine: opts.triggerConfig.machine } : {}),
+    ...(opts.triggerConfig?.queue ? { queue: opts.triggerConfig.queue } : {}),
+    tags,
+    ...(opts.triggerConfig?.maxAttempts !== undefined
+      ? { maxAttempts: opts.triggerConfig.maxAttempts }
+      : {}),
+    ...(opts.triggerConfig?.maxDuration !== undefined
+      ? { maxDuration: opts.triggerConfig.maxDuration }
+      : {}),
+    ...(opts.triggerConfig?.region ? { region: opts.triggerConfig.region } : {}),
+    ...(opts.triggerConfig?.lockToVersion
+      ? { lockToVersion: opts.triggerConfig.lockToVersion }
+      : {}),
+    idleTimeoutInSeconds,
+  };
 
   // Create the session and trigger the chat.agent's `handover-prepare`
   // run atomically. `createSession` is idempotent on `(env, externalId
@@ -319,15 +384,7 @@ async function openHandoverSession(opts: {
     type: "chat.agent",
     externalId: chatId,
     taskIdentifier: opts.agentId,
-    triggerConfig: {
-      basePayload: {
-        ...wirePayload,
-        chatId,
-        trigger: "handover-prepare",
-        idleTimeoutInSeconds,
-      },
-      idleTimeoutInSeconds,
-    },
+    triggerConfig,
   });
   const sessionPublicAccessToken = created.publicAccessToken;
 
@@ -443,7 +500,7 @@ async function openHandoverSession(opts: {
     resolveDecision = resolve;
   });
 
-  const handoverWhenDone = async (result: StreamTextResult<any, any>) => {
+  const handoverWhenDone = async (result: AnyStreamTextResult) => {
     // Owns idle-timer cleanup via the finally below, so both the
     // sugar (`handoverResponse`) and the escape-hatch
     // (`chat.openSession()` → `handle.handoverWhenDone(...)`) clean up
@@ -643,7 +700,7 @@ async function openHandoverSession(opts: {
     });
   };
 
-  const handoverResponse = (result: StreamTextResult<any, any>): Response => {
+  const handoverResponse = (result: AnyStreamTextResult): Response => {
     // `generateMessageId` makes the customer's `start` chunk carry
     // `turnMessageId`, so the browser-side AI SDK keys the assistant
     // message by it. The agent's post-handover stream emits chunks

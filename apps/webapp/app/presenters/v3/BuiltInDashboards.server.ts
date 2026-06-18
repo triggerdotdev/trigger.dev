@@ -3,7 +3,7 @@ import { z } from "zod";
 
 const overviewDashboard: BuiltInDashboard = {
   key: "overview",
-  title: "Metrics",
+  title: "Run metrics",
   filters: ["tasks", "queues"],
   layout: {
     version: "1",
@@ -252,8 +252,13 @@ const llmDashboard: BuiltInDashboard = {
       { i: "llm-cost-user", x: 6, y: 92, w: 6, h: 13 },
       // Efficiency section
       { i: "llm-title-efficiency", x: 0, y: 105, w: 12, h: 2, minH: 2, maxH: 2 },
-      { i: "llm-cost-operation", x: 0, y: 107, w: 6, h: 13 },
-      { i: "llm-cache-util", x: 6, y: 107, w: 6, h: 13 },
+      { i: "llm-cost-operation", x: 0, y: 107, w: 12, h: 13 },
+      // Caching section
+      { i: "llm-title-caching", x: 0, y: 120, w: 12, h: 2, minH: 2, maxH: 2 },
+      { i: "llm-cache-hit", x: 0, y: 122, w: 6, h: 13 },
+      { i: "llm-cache-tokens", x: 6, y: 122, w: 6, h: 13 },
+      { i: "llm-cache-savings", x: 0, y: 135, w: 6, h: 13 },
+      { i: "llm-cache-by-model", x: 6, y: 135, w: 6, h: 13 },
     ],
     widgets: {
       "llm-cost": {
@@ -487,10 +492,11 @@ const llmDashboard: BuiltInDashboard = {
           aggregation: "sum",
         },
       },
-      "llm-cache-util": {
-        title: "Cache utilization",
+      "llm-title-caching": { title: "Caching", query: "", display: { type: "title" } },
+      "llm-cache-hit": {
+        title: "Cache hit rate over time",
         query:
-          "SELECT\r\n  timeBucket(),\r\n  round(countIf(cached_read_tokens > 0) * 100.0 / count(), 1) AS cache_hit_pct,\r\n  round(avg(cached_read_tokens), 0) AS avg_cached_tokens\r\nFROM\r\n  llm_metrics\r\nGROUP BY\r\n  timeBucket\r\nORDER BY\r\n  timeBucket",
+          "SELECT timeBucket(), round(ifNull(sum(cached_read_tokens) * 100.0 / nullIf(sum(input_tokens), 0), 0), 1) AS cache_hit_pct FROM llm_metrics GROUP BY timeBucket ORDER BY timeBucket",
         display: {
           type: "chart",
           chartType: "line",
@@ -502,6 +508,44 @@ const llmDashboard: BuiltInDashboard = {
           sortDirection: "asc",
           aggregation: "avg",
         },
+      },
+      "llm-cache-tokens": {
+        title: "Cached tokens over time",
+        query:
+          "SELECT timeBucket(), sum(cached_read_tokens) AS cache_reads, sum(cache_creation_tokens) AS cache_writes FROM llm_metrics GROUP BY timeBucket ORDER BY timeBucket",
+        display: {
+          type: "chart",
+          chartType: "bar",
+          xAxisColumn: "timebucket",
+          yAxisColumns: ["cache_reads", "cache_writes"],
+          groupByColumn: null,
+          stacked: true,
+          sortByColumn: null,
+          sortDirection: "asc",
+          aggregation: "sum",
+        },
+      },
+      "llm-cache-savings": {
+        title: "Cache savings over time",
+        query:
+          "SELECT timeBucket(), round(ifNull(sum(cached_read_tokens) * (sum(input_cost) / nullIf(sum(input_tokens) - sum(cached_read_tokens) - sum(cache_creation_tokens), 0)) - sum(cached_read_cost), 0), 4) AS cache_savings FROM llm_metrics WHERE cached_read_tokens > 0 GROUP BY timeBucket ORDER BY timeBucket",
+        display: {
+          type: "chart",
+          chartType: "bar",
+          xAxisColumn: "timebucket",
+          yAxisColumns: ["cache_savings"],
+          groupByColumn: null,
+          stacked: false,
+          sortByColumn: null,
+          sortDirection: "asc",
+          aggregation: "sum",
+        },
+      },
+      "llm-cache-by-model": {
+        title: "Cache hit rate by model",
+        query:
+          "SELECT response_model, round(ifNull(sum(cached_read_tokens) * 100.0 / nullIf(sum(input_tokens), 0), 0), 1) AS cache_hit_pct, sum(cached_read_tokens) AS cached_tokens FROM llm_metrics GROUP BY response_model ORDER BY cached_tokens DESC LIMIT 20",
+        display: { type: "table", prettyFormatting: true, sorting: [] },
       },
     },
   },

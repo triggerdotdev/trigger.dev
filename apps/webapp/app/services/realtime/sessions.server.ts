@@ -1,6 +1,6 @@
 import type { PrismaClient, Session } from "@trigger.dev/database";
 import type { SessionItem } from "@trigger.dev/core/v3";
-import { $replica } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 
 /**
  * Prefix that {@link SessionId.generate} attaches to every Session friendlyId.
@@ -34,6 +34,22 @@ export async function resolveSessionByIdOrExternalId(
   return prisma.session.findFirst({
     where: { runtimeEnvironmentId, externalId: idOrExternalId },
   });
+}
+
+/**
+ * Replica-first session resolution with a writer fallback on miss. For the
+ * hot realtime routes (append / SSE subscribe / end-and-continue): a fresh
+ * session's first append or subscribe can arrive inside the replica's apply
+ * window, and a bare replica miss there surfaces as a 404 (or a subscribe
+ * that never finds its session) for a session that exists on the writer.
+ */
+export async function resolveSessionWithWriterFallback(
+  runtimeEnvironmentId: string,
+  idOrExternalId: string
+): Promise<Session | null> {
+  const row = await resolveSessionByIdOrExternalId($replica, runtimeEnvironmentId, idOrExternalId);
+  if (row) return row;
+  return resolveSessionByIdOrExternalId(prisma, runtimeEnvironmentId, idOrExternalId);
 }
 
 /** True for `session_*` friendlyId form, false for everything else. */
@@ -75,10 +91,10 @@ export function canonicalSessionAddressingKey(
  *
  * Note: `currentRunId` is left as-is — Prisma stores the internal run id
  * (cuid), but `SessionItem.currentRunId` is the *friendly* form. Routes
- * that emit a single `SessionItem` should use
- * {@link serializeSessionWithFriendlyRunId} instead, which resolves the
- * friendlyId via a TaskRun lookup. List endpoints stay on this raw form
- * to avoid N+1 lookups when paginating.
+ * that emit `SessionItem`s must translate: single-row endpoints via
+ * {@link serializeSessionWithFriendlyRunId}, list endpoints via the
+ * batched {@link serializeSessionsWithFriendlyRunIds}. Never put this
+ * raw form on the wire directly.
  */
 export function serializeSession(session: Session): SessionItem {
   return {
@@ -124,4 +140,39 @@ export async function serializeSessionWithFriendlyRunId(
     ...base,
     currentRunId: run?.friendlyId ?? null,
   };
+}
+
+/**
+ * Batched form of {@link serializeSessionWithFriendlyRunId} for list
+ * endpoints: one `IN` lookup per page instead of N+1. `currentRunId` on
+ * the wire is always the public `run_*` friendlyId — the raw
+ * {@link serializeSession} form leaks the internal cuid, which customers
+ * can't use with `runs.retrieve(...)`.
+ */
+export async function serializeSessionsWithFriendlyRunIds(
+  sessions: Session[],
+  scope: { projectId: string; runtimeEnvironmentId: string }
+): Promise<SessionItem[]> {
+  const runIds = [...new Set(sessions.map((s) => s.currentRunId).filter((id): id is string => !!id))];
+
+  // `currentRunId` is a plain string pointer (no FK), so scope the lookup to
+  // the caller's tenant — a stale value must not resolve a run in another env.
+  const runs = runIds.length
+    ? await $replica.taskRun.findMany({
+        where: {
+          id: { in: runIds },
+          projectId: scope.projectId,
+          runtimeEnvironmentId: scope.runtimeEnvironmentId,
+        },
+        select: { id: true, friendlyId: true },
+      })
+    : [];
+  const friendlyIdByRunId = new Map(runs.map((run) => [run.id, run.friendlyId]));
+
+  return sessions.map((session) => ({
+    ...serializeSession(session),
+    currentRunId: session.currentRunId
+      ? friendlyIdByRunId.get(session.currentRunId) ?? null
+      : null,
+  }));
 }

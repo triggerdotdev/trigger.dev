@@ -7,14 +7,21 @@ import {
   useForm,
 } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
-import { LockClosedIcon, LockOpenIcon, PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import {
+  LockClosedIcon,
+  LockOpenIcon,
+  NoSymbolIcon,
+  PlusIcon,
+  XMarkIcon,
+} from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
-import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import dotenv from "dotenv";
-import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
-import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { type RefObject, useCallback, useRef, useState } from "react";
+import { redirect } from "remix-typedjson";
+import invariant from "tiny-invariant";
 import { z } from "zod";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
+import { EnvironmentLabel, environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
@@ -39,42 +46,22 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useList } from "~/hooks/useList";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { EnvironmentVariablesPresenter } from "~/presenters/v3/EnvironmentVariablesPresenter.server";
-import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
+import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import {
+  environmentVariablesRouteId,
+  type loader as environmentVariablesLoader,
+} from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/route";
+import {
   EnvironmentParamSchema,
-  ProjectParamSchema,
   v3BillingPath,
   v3EnvironmentVariablesPath,
 } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
 import { Select, SelectItem } from "~/components/primitives/Select";
-
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { projectParam } = ProjectParamSchema.parse(params);
-
-  try {
-    const presenter = new EnvironmentVariablesPresenter();
-    const { environments, hasStaging } = await presenter.call({
-      userId,
-      projectSlug: projectParam,
-    });
-
-    return typedjson({
-      environments,
-      hasStaging,
-    });
-  } catch (error) {
-    throw new Response(undefined, {
-      status: 400,
-      statusText: "Something went wrong, if this problem persists please contact support.",
-    });
-  }
-};
 
 const Variable = z.object({
   key: EnvironmentVariableKey,
@@ -115,78 +102,115 @@ const schema = z.object({
   }, Variable.array().nonempty("At least one variable is required")),
 });
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+export const action = dashboardAction(
+  {
+    params: EnvironmentParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    // Per-environment write:envvars is enforced in the handler — the target
+    // environments come from the submission, not the route params.
+  },
+  async ({ request, params, user, ability }) => {
+    const userId = user.id;
+    const { organizationSlug, projectParam, envParam } = params;
 
-  if (request.method.toUpperCase() !== "POST") {
-    return { status: 405, body: "Method Not Allowed" };
-  }
+    if (request.method.toUpperCase() !== "POST") {
+      throw new Response("Method Not Allowed", { status: 405 });
+    }
 
-  const formData = await request.formData();
-  const submission = parse(formData, { schema });
+    const formData = await request.formData();
+    const submission = parse(formData, { schema });
 
-  if (!submission.value) {
-    return json(submission);
-  }
+    if (!submission.value) {
+      return json(submission);
+    }
 
-  const project = await prisma.project.findUnique({
-    where: {
-      slug: params.projectParam,
-      organization: {
-        members: {
-          some: {
-            userId,
+    // Enforce env-tier write:envvars for every targeted environment, so a role
+    // that can't write a deployed tier can't create vars there via a direct
+    // POST (the disabled checkboxes are not the boundary).
+    const targetEnvironments = await prisma.runtimeEnvironment.findMany({
+      where: { id: { in: submission.value.environmentIds } },
+      select: { type: true },
+    });
+    const hasDeniedEnvironment = targetEnvironments.some(
+      (env) => !ability.can("write", { type: "envvars", envType: env.type })
+    );
+    if (hasDeniedEnvironment) {
+      submission.error.environmentIds = [
+        "You don't have permission to manage environment variables in one of the selected environments.",
+      ];
+      return json(submission);
+    }
+
+    const project = await prisma.project.findUnique({
+      where: {
+        slug: params.projectParam,
+        organization: {
+          members: {
+            some: {
+              userId,
+            },
           },
         },
       },
-    },
-    select: {
-      id: true,
-    },
-  });
-  if (!project) {
-    submission.error.key = ["Project not found"];
-    return json(submission);
-  }
-
-  const repository = new EnvironmentVariablesRepository(prisma);
-  const result = await repository.create(project.id, {
-    ...submission.value,
-    lastUpdatedBy: {
-      type: "user",
-      userId,
-    },
-  });
-
-  if (!result.success) {
-    if (result.variableErrors) {
-      for (const { key, error } of result.variableErrors) {
-        const index = submission.value.variables.findIndex((v) => v.key === key);
-
-        if (index !== -1) {
-          submission.error[`variables[${index}].key`] = [error];
-        }
-      }
-    } else {
-      submission.error.variables = [result.error];
+      select: {
+        id: true,
+      },
+    });
+    if (!project) {
+      submission.error.key = ["Project not found"];
+      return json(submission);
     }
 
-    return json(submission);
-  }
+    const repository = new EnvironmentVariablesRepository(prisma);
+    const result = await repository.create(project.id, {
+      ...submission.value,
+      lastUpdatedBy: {
+        type: "user",
+        userId,
+      },
+    });
 
-  return redirect(
-    v3EnvironmentVariablesPath(
-      { slug: organizationSlug },
-      { slug: projectParam },
-      { slug: envParam }
-    )
-  );
-};
+    if (!result.success) {
+      if (result.variableErrors) {
+        for (const { key, error } of result.variableErrors) {
+          const index = submission.value.variables.findIndex((v) => v.key === key);
+
+          if (index !== -1) {
+            submission.error[`variables[${index}].key`] = [error];
+          }
+        }
+      } else {
+        submission.error.variables = [result.error];
+      }
+
+      return json(submission);
+    }
+
+    return redirect(
+      v3EnvironmentVariablesPath(
+        { slug: organizationSlug },
+        { slug: projectParam },
+        { slug: envParam }
+      )
+    );
+  }
+);
 
 export default function Page() {
-  const [isOpen, setIsOpen] = useState(false);
-  const { environments, hasStaging } = useTypedLoaderData<typeof loader>();
+  const [isOpen, setIsOpen] = useState(true);
+  const parentData = useTypedMatchesData<typeof environmentVariablesLoader>({
+    id: environmentVariablesRouteId,
+  });
+  invariant(
+    parentData,
+    "Environment variables page loader data must be defined when rendering the create dialog"
+  );
+  const { environments, hasStaging, writableEnvironmentIds } = parentData;
+  // Creating a variable is a write, so gate the targets on write access.
+  const writableEnvironmentIdSet = new Set(writableEnvironmentIds);
   const lastSubmission = useActionData();
   const navigation = useNavigation();
   const navigate = useNavigate();
@@ -259,10 +283,6 @@ export default function Page() {
 
   const [revealAll, setRevealAll] = useState(true);
 
-  useEffect(() => {
-    setIsOpen(true);
-  }, []);
-
   return (
     <Dialog
       open={isOpen}
@@ -286,19 +306,45 @@ export default function Page() {
                 ))
               )}
               <div className="flex items-center gap-2">
-                {nonBranchEnvironments.map((environment) => (
-                  <CheckboxWithLabel
-                    key={environment.id}
-                    id={environment.id}
-                    value={environment.id}
-                    defaultChecked={selectedEnvironmentIds.has(environment.id)}
-                    onChange={(isChecked) =>
-                      handleEnvironmentChange(environment.id, isChecked, environment.type)
-                    }
-                    label={<EnvironmentLabel environment={environment} className="text-sm" />}
-                    variant="button"
-                  />
-                ))}
+                {nonBranchEnvironments.map((environment) =>
+                  writableEnvironmentIdSet.has(environment.id) ? (
+                    <CheckboxWithLabel
+                      key={environment.id}
+                      id={environment.id}
+                      value={environment.id}
+                      defaultChecked={selectedEnvironmentIds.has(environment.id)}
+                      onChange={(isChecked) =>
+                        handleEnvironmentChange(environment.id, isChecked, environment.type)
+                      }
+                      label={<EnvironmentLabel environment={environment} className="text-sm" />}
+                      variant="button"
+                    />
+                  ) : (
+                    <TooltipProvider key={environment.id}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div>
+                            <CheckboxWithLabel
+                              id={environment.id}
+                              value={environment.id}
+                              disabled
+                              defaultChecked={false}
+                              label={
+                                <EnvironmentLabel environment={environment} className="text-sm" />
+                              }
+                              variant="button"
+                            />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent className="flex items-center gap-2">
+                          <NoSymbolIcon className="size-4 text-text-dimmed" />
+                          With your current role, you can't manage{" "}
+                          {environmentFullTitle(environment)} environment variables.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )
+                )}
                 {!hasStaging && (
                   <>
                     <TooltipProvider>

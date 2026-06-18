@@ -15,15 +15,26 @@ type SpanTitleProps = {
   size: "small" | "large";
   hideAccessory?: boolean;
   overrideDimmed?: boolean;
+  /**
+   * Mark the span as belonging to an AGENT-kind task so the label renders
+   * in the agents colour, matching the agent icon in the tree row.
+   */
+  isAgentRun?: boolean;
 };
 
 export function SpanTitle(event: SpanTitleProps) {
-  const textClass = eventTextClassName(event);
+  const textClass = event.isAgentRun ? "text-agents" : eventTextClassName(event);
   const finalTextClass =
     event.overrideDimmed && textClass === "text-text-dimmed" ? "text-text-bright" : textClass;
+  // Only dimmed labels brighten on row hover; colored labels (blue/amber/error)
+  // already carry meaning and should keep their hue.
+  const hoverClass =
+    finalTextClass === "text-text-dimmed" ? "group-hover/spannode:text-text-bright" : undefined;
 
   return (
-    <span className={cn("flex items-center gap-x-2 overflow-x-hidden", finalTextClass)}>
+    <span
+      className={cn("flex items-center gap-x-2 overflow-x-hidden", finalTextClass, hoverClass)}
+    >
       <span className="truncate">{event.message}</span>{" "}
       {!event.hideAccessory && (
         <SpanAccessory accessory={event.style.accessory} size={event.size} />
@@ -125,6 +136,11 @@ export function SpanCodePathAccessory({
 }
 
 function eventTextClassName(event: Pick<SpanTitleProps, "isError" | "style" | "level">) {
+  // Wait/suspended spans keep their icon and label in the same sky tone so
+  // the row reads as a single "suspended" unit. Matches `wait` in RunIcon.
+  if (event.style.icon === "wait") {
+    return "text-sky-500";
+  }
   switch (event.level) {
     case "TRACE": {
       return textClassNameForVariant(event.style.variant);

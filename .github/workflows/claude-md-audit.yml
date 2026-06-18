@@ -8,7 +8,6 @@ on:
       - ".changeset/**"
       - ".server-changes/**"
       - "**/*.md"
-      - "references/**"
 
 concurrency:
   group: claude-md-audit-${{ github.event.pull_request.number }}
@@ -16,7 +15,10 @@ concurrency:
 
 jobs:
   audit:
+    # Set the ENABLE_CLAUDE_CODE repository variable to 'false' to turn off Claude
+    # jobs; leave it unset (the default) to keep them enabled.
     if: >-
+      vars.ENABLE_CLAUDE_CODE != 'false' &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
@@ -34,7 +36,7 @@ jobs:
 
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@fefa07e9c665b7320f08c3b525980457f22f58aa # v1.0.111
+        uses: anthropics/claude-code-action@787c5a0ce96a9a6cfb050ea0c8f4c05f2447c251 # v1.0.133
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           use_sticky_comment: true

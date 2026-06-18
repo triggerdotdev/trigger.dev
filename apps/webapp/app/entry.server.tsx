@@ -9,6 +9,7 @@ import { renderToPipeableStream } from "react-dom/server";
 import { PassThrough } from "stream";
 import * as Worker from "~/services/worker.server";
 import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
+import { initMollifierStaleSweepWorker } from "~/v3/mollifierStaleSweepWorker.server";
 import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 import {
@@ -26,6 +27,7 @@ import {
   registerRunEngineEventBusHandlers,
   setupBatchQueueCallbacks,
 } from "./v3/runEngineHandlers.server";
+import { registerRunChangeNotifierHandlers } from "./services/realtime/runChangeNotifierHandlers.server";
 // Touch the sessions replication singleton at entry so it boots deterministically
 // on webapp startup. The singleton's initializer wires start (gated on
 // `clickhouseFactory.isReady()`) and SIGTERM/SIGINT shutdown — mirrors
@@ -41,6 +43,10 @@ import {
 import { sessionsReplicationInstance } from "./services/sessionsReplicationInstance.server";
 (globalThis as Record<string, unknown>).__sessionsReplicationInstance =
   sessionsReplicationInstance;
+import { globalFlagsRegistry } from "./v3/globalFlagsRegistry.server";
+(globalThis as Record<string, unknown>).__globalFlagsRegistry = globalFlagsRegistry;
+import { workerRegionRegistry } from "./v3/workerRegions.server";
+(globalThis as Record<string, unknown>).__workerRegionRegistry = workerRegionRegistry;
 
 const ABORT_DELAY = 30000;
 
@@ -228,6 +234,7 @@ Worker.init().catch((error) => {
 });
 
 initMollifierDrainerWorker();
+initMollifierStaleSweepWorker();
 
 bootstrap().catch((error) => {
   logError(error);
@@ -267,6 +274,9 @@ process.on("uncaughtException", (error, origin) => {
 
 singleton("RunEngineEventBusHandlers", registerRunEngineEventBusHandlers);
 singleton("SetupBatchQueueCallbacks", setupBatchQueueCallbacks);
+// Attach the realtime run-changed publish delegations to the engine event bus.
+// No-ops (registers nothing) unless REALTIME_BACKEND_NATIVE_ENABLED=1.
+singleton("RunChangeNotifierHandlers", registerRunChangeNotifierHandlers);
 
 // Wrapped in singleton() so Remix's dev-mode CJS reloads don't append
 // duplicate copies of the processor — Sentry's processor list lives in

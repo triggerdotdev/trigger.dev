@@ -96,6 +96,42 @@ describe("chat.createStartSessionAction — runtime", () => {
     expect(lastStartBody?.triggerConfig.basePayload).not.toHaveProperty("metadata");
   });
 
+  it("prepends chat:{chatId} to triggerConfig.tags and caps at 5", async () => {
+    installStartFixture();
+
+    const start = chat.createStartSessionAction("fake-chat", {
+      triggerConfig: {
+        tags: ["org:acme", "a", "b", "c", "d", "e"],
+      },
+    });
+    await start({ chatId: "chat-tags" });
+
+    expect(lastStartBody?.triggerConfig.tags).toEqual([
+      "chat:chat-tags",
+      "org:acme",
+      "a",
+      "b",
+      "c",
+    ]);
+  });
+
+  it("forwards maxDuration, region, and lockToVersion from triggerConfig", async () => {
+    installStartFixture();
+
+    const start = chat.createStartSessionAction("fake-chat", {
+      triggerConfig: {
+        maxDuration: 120,
+        region: "us-east-1",
+        lockToVersion: "20260101.1",
+      },
+    });
+    await start({ chatId: "chat-parity" });
+
+    expect(lastStartBody?.triggerConfig.maxDuration).toBe(120);
+    expect(lastStartBody?.triggerConfig.region).toBe("us-east-1");
+    expect(lastStartBody?.triggerConfig.lockToVersion).toBe("20260101.1");
+  });
+
   it("keeps session-level metadata distinct from per-turn clientData", async () => {
     installStartFixture();
 

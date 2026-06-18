@@ -1,5 +1,5 @@
 import { openai } from "@ai-sdk/openai";
-import { generateText, type LanguageModelV1 } from "ai";
+import { generateText, type LanguageModel } from "ai";
 import { env } from "~/env.server";
 
 /**
@@ -13,7 +13,7 @@ export type AIQueryTitleResult =
  * Service for generating concise titles for SQL queries using AI
  */
 export class AIQueryTitleService {
-  constructor(private readonly model: LanguageModelV1 = openai("gpt-4o-mini")) {}
+  constructor(private readonly model: LanguageModel = openai("gpt-4o-mini")) {}
 
   /**
    * Generate a concise title for a SQL query
@@ -45,7 +45,7 @@ Examples:
 - "Average execution time by task"
 - "Recent runs with errors"`,
         prompt: `Generate a concise title for this SQL query:\n\n${query}`,
-        maxTokens: 50,
+        maxOutputTokens: 50,
         experimental_telemetry: {
           isEnabled: true,
           metadata: {

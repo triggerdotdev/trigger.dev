@@ -100,11 +100,11 @@ export function AgentView({ agentView }: { agentView: AgentViewAuth }) {
   const rootRef = useAutoScrollToBottom([messages]);
 
   return (
-    <div ref={rootRef} className="py-3">
+    <div ref={rootRef} className="flex min-h-full flex-col py-3">
       {messages.length === 0 ? (
-        <div className="flex h-full min-h-[12rem] items-center justify-center">
+        <div className="flex flex-1 items-center justify-center">
           <div className="flex flex-col items-center gap-3">
-            <Spinner className="size-5" color="muted" />
+            <Spinner className="size-5" color="blue" />
             <Paragraph variant="small" className="text-text-dimmed">
               Loading conversation…
             </Paragraph>
@@ -249,18 +249,37 @@ function useAgentSessionMessages({
     [initialMessages]
   );
 
+  // The snapshot URL is re-signed by the loader on every navigation
+  // (tab switches in the inspector pane re-run the session loader),
+  // which would otherwise re-trigger the subscription effect below
+  // and replay post-snapshot `.out` chunks on top of the messages we
+  // already accumulated — duplicating any assistant content that
+  // lives past `snapshot.lastOutEventId` (e.g., a canceled run whose
+  // turn never completed). Hold the URL behind a ref and keep it
+  // out of the effect's deps so the effect runs exactly once per
+  // mount.
+  const snapshotUrlRef = useRef(snapshotPresignedUrl);
+  useEffect(() => {
+    snapshotUrlRef.current = snapshotPresignedUrl;
+  }, [snapshotPresignedUrl]);
+
   // `pendingRef` is the authoritative, eagerly-updated message state:
   // chunks mutate this synchronously as they arrive. A throttled flush
   // copies it into React state so UI updates are capped at ~10x/sec.
-  const pendingRef = useRef<Map<string, UIMessage>>(
-    new Map(seedMessages.map((m) => [m.id, m]))
-  );
+  const pendingRef = useRef<Map<string, UIMessage>>(new Map(seedMessages.map((m) => [m.id, m])));
   const timestampsRef = useRef<Map<string, number>>(
     new Map(seedMessages.map((m) => [m.id, INITIAL_PAYLOAD_TIMESTAMP]))
   );
   // Side-table of orchestration state, keyed by assistant message id. Lives
   // outside the UIMessage so React doesn't see it as a renderable prop.
   const orchestrationRef = useRef<Map<string, MessageOrchestrationState>>(new Map());
+
+  // Buffered HITL resolutions keyed by toolCallId. `addToolApprovalResponse` /
+  // `addToolOutput` send a slim assistant message on the `.in` channel carrying
+  // just the resolved tool part; the agent never echoes these on `.out`. We
+  // stash them here and overlay onto the matching tool part once it exists, so
+  // a denial/approval lands regardless of which stream arrives first.
+  const pendingResolutionsRef = useRef<Map<string, Record<string, unknown>>>(new Map());
 
   // React state snapshot of pendingRef. Only updated via the throttled
   // `scheduleFlush`. The Map *reference* changes on every flush so React
@@ -290,6 +309,59 @@ function useAgentSessionMessages({
   useEffect(() => {
     const abort = new AbortController();
 
+    // Overlay a buffered HITL resolution (approval/output delivered on `.in`)
+    // onto the matching tool part. Returns true if a part changed. Safe to call
+    // repeatedly — after each `.out` tool chunk and whenever a `.in` resolution
+    // arrives — so the resolution lands regardless of cross-stream ordering.
+    // Never downgrades a part that already reached a terminal output state (so
+    // an approved-then-executed tool keeps its `output-available` + output).
+    const applyToolResolution = (toolCallId: string): boolean => {
+      const res = pendingResolutionsRef.current.get(toolCallId);
+      if (!res) return false;
+      for (const [mid, msg] of pendingRef.current) {
+        const parts = (msg.parts ?? []) as Array<Record<string, unknown>>;
+        const idx = parts.findIndex((p) => (p as { toolCallId?: string }).toolCallId === toolCallId);
+        if (idx < 0) continue;
+        const cur = parts[idx]!;
+        const terminal =
+          cur.state === "output-available" ||
+          cur.state === "output-error" ||
+          cur.state === "output-denied";
+        const nextState = res.state != null && !terminal ? res.state : cur.state;
+        const sameApproval = JSON.stringify(cur.approval) === JSON.stringify(res.approval);
+        if (
+          nextState === cur.state &&
+          sameApproval &&
+          res.output === undefined &&
+          res.errorText === undefined
+        ) {
+          // Already applied. If the part has reached a terminal state, drop
+          // the buffered resolution so the Map doesn't grow unbounded on
+          // long-lived sessions with many tool calls.
+          if (terminal) pendingResolutionsRef.current.delete(toolCallId);
+          return false;
+        }
+        const next = parts.slice();
+        next[idx] = {
+          ...cur,
+          ...(res.approval != null ? { approval: res.approval } : {}),
+          ...(res.output !== undefined ? { output: res.output } : {}),
+          ...(res.errorText !== undefined ? { errorText: res.errorText } : {}),
+          state: nextState,
+        };
+        pendingRef.current.set(mid, { ...msg, parts: next } as UIMessage);
+        // Drop the buffered entry once the part has landed at a terminal
+        // state — no future `.out` chunk will need this resolution.
+        const reachedTerminal =
+          nextState === "output-available" ||
+          nextState === "output-error" ||
+          nextState === "output-denied";
+        if (reachedTerminal) pendingResolutionsRef.current.delete(toolCallId);
+        return true;
+      }
+      return false;
+    };
+
     const encodedSession = encodeURIComponent(sessionId);
     // Always use the page's own origin to avoid CORS preflight failures
     // when the configured `apiOrigin` (e.g. `localhost`) differs from the
@@ -311,9 +383,10 @@ function useAgentSessionMessages({
      * have never completed a turn).
      */
     const loadSnapshot = async (): Promise<string | undefined> => {
-      if (!snapshotPresignedUrl) return undefined;
+      const url = snapshotUrlRef.current;
+      if (!url) return undefined;
       try {
-        const resp = await fetch(snapshotPresignedUrl, { signal: abort.signal });
+        const resp = await fetch(url, { signal: abort.signal });
         if (!resp.ok) return undefined;
         const json = (await resp.json()) as unknown;
         const parsed = ChatSnapshotV1Schema.safeParse(json);
@@ -351,7 +424,7 @@ function useAgentSessionMessages({
         signal: abort.signal,
         timeoutInSeconds: 120,
         ...(lastEventId !== undefined ? { lastEventId } : {}),
-      }) as const;
+      } as const);
 
     const commonSubOptions = {
       signal: abort.signal,
@@ -468,6 +541,15 @@ function useAgentSessionMessages({
               pendingRef.current.set(currentMessageId, updated);
               scheduleFlush.current();
             }
+
+            // A `.out` chunk just established/updated a tool part — (re)apply any
+            // buffered `.in` resolution for it. Covers the `.in`-before-`.out`
+            // order and corrects a `.out` chunk that downgraded the state (e.g.
+            // a replayed `tool-approval-request` arriving after the denial).
+            const outToolCallId = (chunk as { toolCallId?: string }).toolCallId;
+            if (typeof outToolCallId === "string" && applyToolResolution(outToolCallId)) {
+              scheduleFlush.current();
+            }
           }
         } finally {
           try {
@@ -513,19 +595,38 @@ function useAgentSessionMessages({
               : payload.message
                 ? [payload.message]
                 : [];
-            const incomingUsers = candidates.filter(
-              (m): m is UIMessage =>
-                m != null && (m as { role?: string }).role === "user" && typeof m.id === "string"
-            );
-            if (incomingUsers.length === 0) continue;
 
             let changed = false;
-            for (const msg of incomingUsers) {
-              if (pendingRef.current.has(msg.id)) continue;
-              pendingRef.current.set(msg.id, msg);
-              timestampsRef.current.set(msg.id, value.timestamp);
+
+            // New user turns — merge in (dedupe by id).
+            for (const m of candidates) {
+              if (m == null || (m as { role?: string }).role !== "user" || typeof m.id !== "string") {
+                continue;
+              }
+              if (pendingRef.current.has(m.id)) continue;
+              pendingRef.current.set(m.id, m as UIMessage);
+              timestampsRef.current.set(m.id, value.timestamp);
               changed = true;
             }
+
+            // HITL resolutions ride on `.in` as a slim *assistant* message
+            // carrying just the resolved tool part (state + approval/output).
+            // Buffer each by toolCallId and overlay onto the matching tool part
+            // (which usually arrived on `.out` as `tool-approval-request`).
+            for (const m of candidates) {
+              if (m == null || (m as { role?: string }).role !== "assistant") continue;
+              const parts = (m as { parts?: unknown[] }).parts;
+              if (!Array.isArray(parts)) continue;
+              for (const sp of parts) {
+                const part = sp as Record<string, unknown>;
+                if (typeof part.type !== "string" || !part.type.startsWith("tool-")) continue;
+                const tcId = (part as { toolCallId?: string }).toolCallId;
+                if (typeof tcId !== "string") continue;
+                pendingResolutionsRef.current.set(tcId, part);
+                if (applyToolResolution(tcId)) changed = true;
+              }
+            }
+
             if (changed) scheduleFlush.current();
           }
         } finally {
@@ -552,7 +653,13 @@ function useAgentSessionMessages({
         pendingTimerRef.current = null;
       }
     };
-  }, [sessionId, apiOrigin, orgSlug, projectSlug, envSlug, snapshotPresignedUrl]);
+    // `snapshotPresignedUrl` is intentionally NOT in this dep list — see
+    // `snapshotUrlRef` above for the reasoning. Including it caused the
+    // subscription to tear down + replay on every inspector tab click,
+    // which appended duplicate parts to any assistant message whose
+    // chunks lived past `snapshot.lastOutEventId`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, apiOrigin, orgSlug, projectSlug, envSlug]);
 
   return useMemo(() => {
     const timestamps = timestampsRef.current;
@@ -733,6 +840,46 @@ function applyOutputChunk(
     );
   }
 
+  // HITL approval (AI SDK 7) -------------------------------------------------
+  //
+  // v7 added human-in-the-loop tool approval. A `needsApproval` tool emits a
+  // `tool-approval-request` after its input is available; the tool then waits
+  // for a `tool-approval-response` (approve/deny) before executing. Mirror AI
+  // SDK 7's `processUIMessageStream`: the request marks the matching part
+  // `approval-requested` and records `approval.id`; the response (matched by
+  // that id) marks it `approval-responded` with the verdict. An approved tool
+  // then proceeds to `tool-output-available` as usual.
+  if (type === "tool-approval-request") {
+    return updatePart(msg, (p) =>
+      (p as { toolCallId?: string }).toolCallId === chunk.toolCallId
+        ? {
+            ...p,
+            state: "approval-requested",
+            approval: {
+              id: chunk.approvalId,
+              ...(chunk.isAutomatic === true ? { isAutomatic: true } : {}),
+            },
+          }
+        : null
+    );
+  }
+  if (type === "tool-approval-response") {
+    return updatePart(msg, (p) => {
+      const approval = (p as { approval?: { id?: string; isAutomatic?: boolean } }).approval;
+      if (!approval || approval.id !== chunk.approvalId) return null;
+      return {
+        ...p,
+        state: "approval-responded",
+        approval: {
+          ...approval,
+          id: chunk.approvalId,
+          approved: chunk.approved,
+          ...(chunk.reason != null ? { reason: chunk.reason } : {}),
+        },
+      };
+    });
+  }
+
   // Source / file / step / data parts — pass through as a whole -------------
   if (type === "source-url" || type === "source-document" || type === "file") {
     return withNewPart(msg, chunk as unknown as AnyPart);
@@ -779,10 +926,7 @@ function withNewPart(msg: UIMessage, part: AnyPart): UIMessage {
   } as UIMessage;
 }
 
-function updatePart(
-  msg: UIMessage,
-  updater: (part: AnyPart) => AnyPart | null
-): UIMessage {
+function updatePart(msg: UIMessage, updater: (part: AnyPart) => AnyPart | null): UIMessage {
   const parts = (msg.parts ?? []) as AnyPart[];
   let changed = false;
   const next = parts.map((p) => {

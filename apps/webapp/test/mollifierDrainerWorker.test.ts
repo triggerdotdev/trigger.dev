@@ -1,4 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Importing `~/v3/mollifier/mollifierDrainer.server` (below) transitively
+// loads `~/v3/runEngine.server`, whose top-level `singleton(...)` call
+// eagerly constructs a RunEngine. That spins up Prisma + Redis workers
+// that try to connect to localhost — which in CI (no PG, no Redis)
+// produces an unhandled `PrismaClientInitializationError` that fails
+// the test run even though the assertions all pass. Mocking the
+// runEngine module short-circuits the singleton so no worker starts.
+vi.mock("~/v3/runEngine.server", () => ({ engine: {} }));
+// Same problem: prisma.server.ts's top-level singleton tries to open a
+// PG client. The test never makes a query; an empty stub is enough.
+vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
+
 import { MollifierConfigurationError } from "~/v3/mollifier/mollifierDrainer.server";
 import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
 

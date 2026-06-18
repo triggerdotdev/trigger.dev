@@ -580,6 +580,39 @@ export class TaskIndexingImportError extends Error {
   }
 }
 
+export type TaskIdCollision = { id: string; filePaths: string[] };
+
+function formatDuplicateTaskIds(collisions: TaskIdCollision[]): string {
+  const lines = collisions.map(({ id, filePaths }) => {
+    const distinct = Array.from(new Set(filePaths));
+
+    if (distinct.length === 1) {
+      return `  - "${id}" found more than once in ${distinct[0]}`;
+    }
+
+    const last = distinct[distinct.length - 1];
+    const head = distinct.slice(0, -1).join(", ");
+
+    return `  - "${id}" found in ${head} and ${last}`;
+  });
+
+  return [
+    "Duplicate task ids detected:",
+    "",
+    ...lines,
+    "",
+    "Task ids must be unique across your project (including scheduled tasks). Please rename one of them.",
+  ].join("\n");
+}
+
+export class DuplicateTaskIdsError extends Error {
+  constructor(public readonly collisions: TaskIdCollision[]) {
+    super(formatDuplicateTaskIds(collisions));
+
+    this.name = "DuplicateTaskIdsError";
+  }
+}
+
 export class UnexpectedExitError extends Error {
   constructor(
     public code: number,

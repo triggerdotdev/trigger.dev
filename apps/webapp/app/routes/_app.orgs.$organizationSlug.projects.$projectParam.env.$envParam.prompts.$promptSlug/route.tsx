@@ -2,12 +2,7 @@ import * as Ariakit from "@ariakit/react";
 import { ArrowPathIcon, ChevronUpDownIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { type MetaFunction, useFetcher } from "@remix-run/react";
-import {
-  type ActionFunctionArgs,
-  json,
-  type LoaderFunctionArgs,
-  redirect,
-} from "@remix-run/server-runtime";
+import { json, type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 
 import { AnimatePresence, motion } from "framer-motion";
 import { ClipboardCheckIcon, ClipboardIcon, GitBranchPlusIcon } from "lucide-react";
@@ -22,6 +17,7 @@ import { ProvidersFilter } from "~/components/metrics/ProvidersFilter";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { PermissionButton } from "~/components/primitives/PermissionButton";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
@@ -66,6 +62,7 @@ import { useInterval } from "~/hooks/useInterval";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type GenerationRow, PromptPresenter } from "~/presenters/v3/PromptPresenter.server";
@@ -73,10 +70,13 @@ import { SpanView } from "~/routes/resources.orgs.$organizationSlug.projects.$pr
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
+import { rbac } from "~/services/rbac.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
+import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { PromptService } from "~/v3/services/promptService.server";
 
 import { z } from "zod";
-import { AIPromptsIcon } from "~/assets/icons/AIPromptsIcon";
+import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { InlineCode } from "~/components/code/InlineCode";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
@@ -122,85 +122,110 @@ const ActionSchema = z.discriminatedUnion("intent", [
   }),
 ]);
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam, promptSlug } = ParamSchema.parse(params);
-
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  if (!project) return json({ error: "Project not found" }, { status: 404 });
-
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-  if (!environment) return json({ error: "Environment not found" }, { status: 404 });
-
-  const formData = Object.fromEntries(await request.formData());
-  const parsed = ActionSchema.safeParse(formData);
-  if (!parsed.success) return json({ error: "Invalid action" }, { status: 400 });
-
-  const prompt = await prisma.prompt.findUnique({
-    where: {
-      projectId_runtimeEnvironmentId_slug: {
-        projectId: project.id,
-        runtimeEnvironmentId: environment.id,
-        slug: promptSlug,
-      },
+export const action = dashboardAction(
+  {
+    params: ParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
     },
-  });
+  },
+  async ({ request, params, user, ability, context }) => {
+    const { organizationSlug, projectParam, envParam, promptSlug } = params;
 
-  if (!prompt) return json({ error: "Prompt not found" }, { status: 404 });
-
-  const data = parsed.data;
-  const service = new PromptService();
-
-  if (data.intent === "promote") {
-    await service.promoteVersion(prompt.id, data.versionId);
-    return json({ ok: true });
-  }
-
-  const url = new URL(request.url);
-
-  if (data.intent === "saveVersion") {
-    const result = await service.createOverride(prompt.id, {
-      textContent: data.textContent ?? "",
-      model: data.model,
-      commitMessage: data.commitMessage,
-      source: "dashboard",
-      createdBy: userId,
-    });
-    url.searchParams.set("version", String(result.version));
-    return redirect(url.pathname + url.search);
-  }
-
-  if (data.intent === "updateOverride") {
-    await service.updateOverride(prompt.id, {
-      textContent: data.textContent,
-      model: data.model,
-      commitMessage: data.commitMessage,
-    });
-    return json({ ok: true });
-  }
-
-  if (data.intent === "removeOverride") {
-    await service.removeOverride(prompt.id);
-    // Navigate back to current version
-    const currentVersion = await prisma.promptVersion.findFirst({
-      where: { promptId: prompt.id, labels: { has: "current" } },
-      select: { version: true },
-    });
-    if (currentVersion) {
-      url.searchParams.set("version", String(currentVersion.version));
-    } else {
-      url.searchParams.delete("version");
+    // This action checks permissions per intent inline (below) rather than via
+    // a top-level authorization block, so the builder's fail-closed scope guard
+    // doesn't run. Enforce it here: without a resolved org the inline
+    // ability.can checks would evaluate an unscoped ability.
+    if (!context.organizationId) {
+      return json({ error: "Unauthorized" }, { status: 403 });
     }
-    return redirect(url.pathname + url.search);
-  }
 
-  if (data.intent === "reactivateOverride") {
-    await service.reactivateOverride(prompt.id, data.versionId);
-    return json({ ok: true });
-  }
+    const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+    if (!project) return json({ error: "Project not found" }, { status: 404 });
 
-  return json({ error: "Unknown intent" }, { status: 400 });
-}
+    const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
+    if (!environment) return json({ error: "Environment not found" }, { status: 404 });
+
+    const formData = Object.fromEntries(await request.formData());
+    const parsed = ActionSchema.safeParse(formData);
+    if (!parsed.success) return json({ error: "Invalid action" }, { status: 400 });
+
+    const prompt = await prisma.prompt.findUnique({
+      where: {
+        projectId_runtimeEnvironmentId_slug: {
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+          slug: promptSlug,
+        },
+      },
+    });
+
+    if (!prompt) return json({ error: "Prompt not found" }, { status: 404 });
+
+    const data = parsed.data;
+
+    // Promoting a version to production is `update:prompts`; creating or
+    // editing override versions is `write:prompts`. Check the right one per
+    // intent — a single authorization block can't express both.
+    const requiredAction = data.intent === "promote" ? "update" : "write";
+    if (!ability.can(requiredAction, { type: "prompts" })) {
+      return json({ error: "Unauthorized" }, { status: 403 });
+    }
+
+    const service = new PromptService();
+
+    if (data.intent === "promote") {
+      await service.promoteVersion(prompt.id, data.versionId);
+      return json({ ok: true });
+    }
+
+    const url = new URL(request.url);
+
+    if (data.intent === "saveVersion") {
+      const result = await service.createOverride(prompt.id, {
+        textContent: data.textContent ?? "",
+        model: data.model,
+        commitMessage: data.commitMessage,
+        source: "dashboard",
+        createdBy: user.id,
+      });
+      url.searchParams.set("version", String(result.version));
+      return redirect(url.pathname + url.search);
+    }
+
+    if (data.intent === "updateOverride") {
+      await service.updateOverride(prompt.id, {
+        textContent: data.textContent,
+        model: data.model,
+        commitMessage: data.commitMessage,
+      });
+      return json({ ok: true });
+    }
+
+    if (data.intent === "removeOverride") {
+      await service.removeOverride(prompt.id);
+      // Navigate back to current version
+      const currentVersion = await prisma.promptVersion.findFirst({
+        where: { promptId: prompt.id, labels: { has: "current" } },
+        select: { version: true },
+      });
+      if (currentVersion) {
+        url.searchParams.set("version", String(currentVersion.version));
+      } else {
+        url.searchParams.delete("version");
+      }
+      return redirect(url.pathname + url.search);
+    }
+
+    if (data.intent === "reactivateOverride") {
+      await service.reactivateOverride(prompt.id, data.versionId);
+      return json({ ok: true });
+    }
+
+    return json({ error: "Unknown intent" }, { status: 400 });
+  }
+);
 
 // ─── Loader ──────────────────────────────────────────────
 
@@ -242,7 +267,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const startTime = fromTime ? new Date(fromTime) : new Date(Date.now() - periodMs);
   const endTime = toTime ? new Date(toTime) : new Date();
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
   const presenter = new PromptPresenter(clickhouse);
   let generations: Awaited<ReturnType<typeof presenter.listGenerations>>["generations"] = [];
   let generationsPagination: { next?: string } = {};
@@ -301,6 +329,19 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const possibleOperations = opsErr ? [] : opsRows.map((r) => r.val);
   const possibleProviders = provsErr ? [] : provsRows.map((r) => r.val);
 
+  // Display flags for the promote / override controls — the action enforces
+  // update:prompts and write:prompts independently. Permissive in OSS.
+  const promptAuth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: project.organizationId,
+  });
+  const promptPermissions = promptAuth.ok
+    ? checkPermissions(promptAuth.ability, {
+        canWritePrompts: { action: "write", resource: { type: "prompts" } },
+        canPromote: { action: "update", resource: { type: "prompts" } },
+      })
+    : { canWritePrompts: true, canPromote: true };
+
   return typedjson({
     resizable: {
       outer: resizableOuter,
@@ -353,6 +394,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     possibleModels,
     possibleOperations,
     possibleProviders,
+    ...promptPermissions,
   });
 };
 
@@ -437,6 +479,8 @@ export default function PromptDetailPage() {
     possibleModels,
     possibleOperations,
     possibleProviders,
+    canWritePrompts,
+    canPromote,
   } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
@@ -518,18 +562,22 @@ export default function PromptDetailPage() {
               </div>
             )}
             {selectedVersion && !isCurrent && selectedVersion.source === "code" && (
-              <Button
+              <PermissionButton
+                hasPermission={canPromote}
+                noPermissionTooltip="You don't have permission to promote prompt versions"
                 variant="secondary/small"
                 onClick={() => handlePromote(selectedVersion.id)}
                 disabled={fetcher.state !== "idle"}
               >
                 Promote to current
-              </Button>
+              </PermissionButton>
             )}
             {selectedVersion &&
               selectedVersion.source !== "code" &&
               !selectedVersion.labels.includes("override") && (
-                <Button
+                <PermissionButton
+                  hasPermission={canWritePrompts}
+                  noPermissionTooltip="You don't have permission to edit prompt overrides"
                   variant="secondary/small"
                   onClick={() =>
                     fetcher.submit(
@@ -540,12 +588,17 @@ export default function PromptDetailPage() {
                   disabled={fetcher.state !== "idle"}
                 >
                   Reactivate as override
-                </Button>
+                </PermissionButton>
               )}
             {!overrideVersion && (
-              <Button variant="secondary/small" onClick={() => setOverrideDialogOpen(true)}>
+              <PermissionButton
+                hasPermission={canWritePrompts}
+                noPermissionTooltip="You don't have permission to edit prompt overrides"
+                variant="secondary/small"
+                onClick={() => setOverrideDialogOpen(true)}
+              >
                 Create override
-              </Button>
+              </PermissionButton>
             )}
           </div>
         </PageAccessories>
@@ -565,21 +618,25 @@ export default function PromptDetailPage() {
                 instead of the deployed prompt.
               </span>
               <div className="flex items-center gap-2 py-1.5">
-                <Button
+                <PermissionButton
+                  hasPermission={canWritePrompts}
+                  noPermissionTooltip="You don't have permission to edit prompt overrides"
                   variant="tertiary/small"
                   className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200"
                   onClick={() => setOverrideDialogOpen(true)}
                 >
                   Edit
-                </Button>
-                <Button
+                </PermissionButton>
+                <PermissionButton
+                  hasPermission={canWritePrompts}
+                  noPermissionTooltip="You don't have permission to edit prompt overrides"
                   variant="tertiary/small"
                   className="border-amber-300/50 bg-amber-400/10 text-amber-300 group-hover/button:border-amber-400/60 group-hover/button:bg-amber-500/25 group-hover/button:text-amber-200"
                   onClick={() => fetcher.submit({ intent: "removeOverride" }, { method: "POST" })}
                   disabled={fetcher.state !== "idle"}
                 >
                   Remove
-                </Button>
+                </PermissionButton>
               </div>
             </motion.div>
           )}
@@ -1419,7 +1476,7 @@ function GenerationsTab({
       <div className="flex h-full items-center justify-center">
         <InfoPanel
           title="No generations yet"
-          icon={AIPromptsIcon}
+          icon={AIChatIcon}
           iconClassName="text-aiPrompts"
           panelClassName="max-w-md"
         >
@@ -1502,7 +1559,10 @@ function GenerationsTab({
                       {gen.operation_id || gen.task_identifier}
                     </TableCell>
                     <TableCell
-                      className={cn("tabular-nums", isSelected ? "text-text-bright" : "text-charcoal-400")}
+                      className={cn(
+                        "tabular-nums",
+                        isSelected ? "text-text-bright" : "text-charcoal-400"
+                      )}
                     >
                       v{gen.prompt_version}
                     </TableCell>
@@ -1626,7 +1686,7 @@ function MetricsTab({
   return (
     <div className="space-y-3">
       {/* Summary big numbers */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-5 gap-3">
         <div className="h-44">
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-generations`}
@@ -1659,7 +1719,7 @@ function MetricsTab({
           <MetricWidget
             widgetKey={`prompt-${prompt.slug}-cost`}
             title="Avg input cost"
-            query={`SELECT avg(input_cost) AS avg_cost FROM llm_metrics WHERE 1=1`}
+            query={`SELECT avg(input_cost + cached_read_cost + cache_creation_cost) AS avg_cost FROM llm_metrics WHERE 1=1`}
             config={{
               type: "bignumber",
               column: "avg_cost",
@@ -1680,6 +1740,20 @@ function MetricsTab({
               aggregation: "avg",
               abbreviate: false,
               suffix: "ms",
+            }}
+            {...widgetProps}
+          />
+        </div>
+        <div className="h-44">
+          <MetricWidget
+            widgetKey={`prompt-${prompt.slug}-cached-tokens`}
+            title="Cached tokens"
+            query={`SELECT sum(cached_read_tokens) AS cached_tokens FROM llm_metrics WHERE 1=1`}
+            config={{
+              type: "bignumber",
+              column: "cached_tokens",
+              aggregation: "sum",
+              abbreviate: true,
             }}
             {...widgetProps}
           />
@@ -1808,7 +1882,7 @@ function VersionPerformanceSection({
           <MetricWidget
             widgetKey={`prompt-${promptSlug}-perf-input-cost`}
             title="Input cost per 1k tokens (p50 / p95)"
-            query={`SELECT timeBucket(), prettyFormat(quantile(0.5)(input_cost / input_tokens * 1000), 'costInDollars') AS p50, prettyFormat(quantile(0.95)(input_cost / input_tokens * 1000), 'costInDollars') AS p95 FROM llm_metrics WHERE input_tokens > 0 GROUP BY timeBucket ORDER BY timeBucket`}
+            query={`SELECT timeBucket(), prettyFormat(quantile(0.5)((input_cost + cached_read_cost + cache_creation_cost) / input_tokens * 1000), 'costInDollars') AS p50, prettyFormat(quantile(0.95)((input_cost + cached_read_cost + cache_creation_cost) / input_tokens * 1000), 'costInDollars') AS p95 FROM llm_metrics WHERE input_tokens > 0 GROUP BY timeBucket ORDER BY timeBucket`}
             config={{
               type: "chart",
               chartType: "line",
@@ -1858,6 +1932,45 @@ function VersionPerformanceSection({
               sortByColumn: null,
               sortDirection: "asc",
               aggregation: "avg",
+            }}
+            {...widgetProps}
+          />
+        </div>
+        {/* Row 4: Caching */}
+        <div className="h-96">
+          <MetricWidget
+            widgetKey={`prompt-${promptSlug}-perf-cache-hit`}
+            title="Cache hit rate over time"
+            query={`SELECT timeBucket(), round(ifNull(sum(cached_read_tokens) * 100.0 / nullIf(sum(input_tokens), 0), 0), 1) AS cache_hit_pct FROM llm_metrics WHERE 1=1 GROUP BY timeBucket ORDER BY timeBucket`}
+            config={{
+              type: "chart",
+              chartType: "line",
+              xAxisColumn: "timebucket",
+              yAxisColumns: ["cache_hit_pct"],
+              groupByColumn: null,
+              stacked: false,
+              sortByColumn: null,
+              sortDirection: "asc",
+              aggregation: "avg",
+            }}
+            {...widgetProps}
+          />
+        </div>
+        <div className="h-96">
+          <MetricWidget
+            widgetKey={`prompt-${promptSlug}-perf-cached-tokens`}
+            title="Cached tokens over time"
+            query={`SELECT timeBucket(), sum(cached_read_tokens) AS cache_reads, sum(cache_creation_tokens) AS cache_writes FROM llm_metrics WHERE 1=1 GROUP BY timeBucket ORDER BY timeBucket`}
+            config={{
+              type: "chart",
+              chartType: "bar",
+              xAxisColumn: "timebucket",
+              yAxisColumns: ["cache_reads", "cache_writes"],
+              groupByColumn: null,
+              stacked: true,
+              sortByColumn: null,
+              sortDirection: "asc",
+              aggregation: "sum",
             }}
             {...widgetProps}
           />

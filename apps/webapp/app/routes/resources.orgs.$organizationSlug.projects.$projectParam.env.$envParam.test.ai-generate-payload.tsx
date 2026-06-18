@@ -1,5 +1,5 @@
 import { openai } from "@ai-sdk/openai";
-import { streamText, tool } from "ai";
+import { streamText, stepCountIs, tool } from "ai";
 import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { env } from "~/env.server";
@@ -105,19 +105,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
             getTaskSourceCode: tool({
               description:
                 "Look up the source code of the task to understand what payload shape it expects. Use this when there is no JSON Schema available and you need to infer the payload structure from the task implementation.",
-              parameters: z.object({}),
+              inputSchema: z.object({}),
               execute: async () => {
                 return getTaskSourceCode(environment.id, environment.type, taskIdentifier);
               },
             }),
           },
-          maxSteps: 3,
+          stopWhen: stepCountIs(3),
         });
 
         for await (const part of result.fullStream) {
           switch (part.type) {
             case "text-delta": {
-              sendEvent({ type: "thinking", content: part.textDelta });
+              sendEvent({ type: "thinking", content: part.text });
               break;
             }
             case "tool-call": {

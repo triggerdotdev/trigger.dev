@@ -38,6 +38,7 @@ import EventEmitter from "node:events";
 import pLimit from "p-limit";
 import { detectBadJsonStrings } from "~/utils/detectBadJsonStrings";
 import { calculateErrorFingerprint } from "~/utils/errorFingerprinting";
+import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
 import {
   isClickHouseJsonParseError,
   parseRowNumberFromError,
@@ -1121,7 +1122,9 @@ export class RunsReplicationService {
       event === "delete" ? 1 : 0, // _is_deleted
       run.concurrencyKey ?? "", // concurrency_key
       run.bulkActionGroupIds ?? [], // bulk_action_group_ids
-      run.masterQueue ?? "", // worker_queue
+      baseWorkerQueue(run.masterQueue ?? ""), // worker_queue (raw - operators slice by this)
+      run.region ?? "", // region (geo for customers)
+      run.planType ?? "", // plan_type
       run.maxDurationInSeconds ?? null, // max_duration_in_seconds
       annotations?.triggerSource ?? "", // trigger_source
       annotations?.rootTriggerSource ?? "", // root_trigger_source

@@ -1,44 +1,11 @@
 import { parse } from "@conform-to/zod";
-import {
-  BoltIcon,
-  BoltSlashIcon,
-  BookOpenIcon,
-  PencilSquareIcon,
-  TrashIcon,
-} from "@heroicons/react/20/solid";
-import { DialogDescription } from "@radix-ui/react-dialog";
-import { Form, useLocation } from "@remix-run/react";
+import { useLocation } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
-import { InlineCode } from "~/components/code/InlineCode";
-import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { DateTime } from "~/components/primitives/DateTime";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTrigger,
-} from "~/components/primitives/Dialog";
-import { Header2, Header3 } from "~/components/primitives/Headers";
-import { InfoPanel } from "~/components/primitives/InfoPanel";
-import { Paragraph } from "~/components/primitives/Paragraph";
-import * as Property from "~/components/primitives/PropertyTable";
-import {
-  Table,
-  TableBlankRow,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-} from "~/components/primitives/Table";
-import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
-import { ScheduleTypeCombo } from "~/components/runs/v3/ScheduleType";
-import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
+import { LinkButton } from "~/components/primitives/Buttons";
+import { ScheduleInspector } from "~/components/schedules/ScheduleInspector";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -48,14 +15,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { ViewSchedulePresenter } from "~/presenters/v3/ViewSchedulePresenter.server";
 import { requireUserId } from "~/services/session.server";
-import { cn } from "~/utils/cn";
-import {
-  v3EditSchedulePath,
-  v3ScheduleParams,
-  v3SchedulePath,
-  v3SchedulesPath,
-} from "~/utils/pathBuilder";
-import { throwNotFound } from "~/utils/httpErrors";
+import { v3EnvironmentPath, v3ScheduleParams, v3SchedulePath } from "~/utils/pathBuilder";
 import { DeleteTaskScheduleService } from "~/v3/services/deleteTaskSchedule.server";
 import { SetActiveOnTaskScheduleService } from "~/v3/services/setActiveOnTaskSchedule.server";
 
@@ -84,11 +44,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     environmentId: environment.id,
   });
 
-  if (!result) {
-    throwNotFound("Schedule not found");
-  }
-
-  return typedjson({ schedule: result.schedule });
+  // Return null (not a 404 throw) so fetcher-driven hosts (e.g. the sheet
+  // running this loader after a delete-in-flight) don't surface a
+  // page-level error boundary. The standalone Page below renders a
+  // not-found message when `schedule` is null.
+  return typedjson({ schedule: result?.schedule ?? null });
 };
 
 const schema = z.discriminatedUnion("action", [
@@ -115,6 +75,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     return json(submission);
   }
 
+  // `_format=json` → return JSON instead of redirecting; caller stays put.
+  const wantsJson = formData.get("_format") === "json";
+
   const project = await prisma.project.findFirst({
     where: {
       slug: projectParam,
@@ -122,6 +85,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   });
 
   if (!project) {
+    const message = `No project found with slug ${projectParam}`;
+    if (wantsJson) {
+      return json({ ok: false as const, message }, { status: 404 });
+    }
     return redirectWithErrorMessage(
       v3SchedulePath(
         { slug: organizationSlug },
@@ -130,7 +97,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         { friendlyId: scheduleParam }
       ),
       request,
-      `No project found with slug ${projectParam}`
+      message
     );
   }
 
@@ -143,12 +110,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           userId,
           friendlyId: scheduleParam,
         });
+        if (wantsJson) {
+          return json({ ok: true as const, message: `${scheduleParam} deleted` });
+        }
         return redirectWithSuccessMessage(
-          v3SchedulesPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
+          v3EnvironmentPath({ slug: organizationSlug }, { slug: projectParam }, { slug: envParam }),
           request,
           `${scheduleParam} deleted`
         );
       } catch (e) {
+        const message = `${scheduleParam} could not be deleted: ${
+          e instanceof Error ? e.message : JSON.stringify(e)
+        }`;
+        if (wantsJson) {
+          return json({ ok: false as const, message }, { status: 500 });
+        }
         return redirectWithErrorMessage(
           v3SchedulePath(
             { slug: organizationSlug },
@@ -157,9 +133,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             { friendlyId: scheduleParam }
           ),
           request,
-          `${scheduleParam} could not be deleted: ${
-            e instanceof Error ? e.message : JSON.stringify(e)
-          }`
+          message
         );
       }
     }
@@ -174,6 +148,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           friendlyId: scheduleParam,
           active,
         });
+        if (wantsJson) {
+          return json({ ok: true as const, active });
+        }
         return redirectWithSuccessMessage(
           v3SchedulePath(
             { slug: organizationSlug },
@@ -185,6 +162,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           `${scheduleParam} ${active ? "enabled" : "disabled"}`
         );
       } catch (e) {
+        const message = e instanceof Error ? e.message : JSON.stringify(e);
+        if (wantsJson) {
+          return json({ ok: false as const, message }, { status: 500 });
+        }
         return redirectWithErrorMessage(
           v3SchedulePath(
             { slug: organizationSlug },
@@ -193,22 +174,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             { friendlyId: scheduleParam }
           ),
           request,
-          `${scheduleParam} could not be ${active ? "enabled" : "disabled"}: ${
-            e instanceof Error ? e.message : JSON.stringify(e)
-          }`
+          `${scheduleParam} could not be ${active ? "enabled" : "disabled"}: ${message}`
         );
       }
     }
   }
 };
-
-function PlaceholderText({ title }: { title: string }) {
-  return (
-    <div className="flex items-center justify-center">
-      <Paragraph className="w-auto">{title}</Paragraph>
-    </div>
-  );
-}
 
 export default function Page() {
   const { schedule } = useTypedLoaderData<typeof loader>();
@@ -217,234 +188,33 @@ export default function Page() {
   const project = useProject();
   const environment = useEnvironment();
 
-  const isUtc = schedule.timezone === "UTC";
-
-  const isImperative = schedule.type === "IMPERATIVE";
+  if (!schedule) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 bg-background-bright p-6">
+        <p className="text-sm text-text-bright">Schedule not found.</p>
+        <LinkButton
+          to={`${v3EnvironmentPath(organization, project, environment)}${location.search}`}
+          variant="secondary/small"
+        >
+          Back to tasks
+        </LinkButton>
+      </div>
+    );
+  }
 
   return (
-    <div
-      className={cn(
-        "grid h-full max-h-full overflow-hidden bg-background-bright",
-        isImperative ? "grid-rows-[2.5rem_1fr_3.25rem]" : "grid-rows-[2.5rem_1fr]"
-      )}
-    >
-      <div className="mx-3 flex items-center justify-between gap-2 border-b border-grid-dimmed">
-        <Header2 className={cn("whitespace-nowrap")}>{schedule.friendlyId}</Header2>
+    <ScheduleInspector
+      schedule={schedule}
+      headerActions={
         <LinkButton
-          to={`${v3SchedulesPath(organization, project, environment)}${location.search}`}
+          to={`${v3EnvironmentPath(organization, project, environment)}${location.search}`}
           variant="minimal/small"
           TrailingIcon={ExitIcon}
           shortcut={{ key: "esc" }}
           shortcutPosition="before-trailing-icon"
           className="pl-1"
         />
-      </div>
-      <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
-        <div className="space-y-3">
-          <div className="p-3">
-            <Property.Table>
-              <Property.Item>
-                <Property.Label>Schedule ID</Property.Label>
-                <Property.Value>{schedule.friendlyId}</Property.Value>
-              </Property.Item>
-              <Property.Item>
-                <Property.Label>Task ID</Property.Label>
-                <Property.Value>{schedule.taskIdentifier}</Property.Value>
-              </Property.Item>
-              <Property.Item>
-                <Property.Label>Type</Property.Label>
-                <Property.Value>
-                  <ScheduleTypeCombo type={schedule.type} className="text-sm" />
-                </Property.Value>
-              </Property.Item>
-              <Property.Item>
-                <Property.Label>CRON</Property.Label>
-                <Property.Value>
-                  <div className="space-y-2">
-                    <InlineCode variant="extra-small">{schedule.cron}</InlineCode>
-                    <Paragraph variant="small">{schedule.cronDescription}</Paragraph>
-                  </div>
-                </Property.Value>
-              </Property.Item>
-              <Property.Item>
-                <Property.Label>Timezone</Property.Label>
-                <Property.Value>{schedule.timezone}</Property.Value>
-              </Property.Item>
-              <Property.Item className="gap-1">
-                <Property.Label>Environment</Property.Label>
-                <Property.Value>
-                  <div className="flex flex-col gap-2">
-                    {schedule.environments.map((env) => (
-                      <EnvironmentCombo key={env.id} environment={env} className="text-xs" />
-                    ))}
-                  </div>
-                </Property.Value>
-              </Property.Item>
-              {isImperative && (
-                <>
-                  <Property.Item>
-                    <Property.Label>External ID</Property.Label>
-                    <Property.Value>
-                      {schedule.externalId ? schedule.externalId : "–"}
-                    </Property.Value>
-                  </Property.Item>
-                  <Property.Item>
-                    <Property.Label>Deduplication key</Property.Label>
-                    <Property.Value>
-                      {schedule.userProvidedDeduplicationKey ? schedule.deduplicationKey : "–"}
-                    </Property.Value>
-                  </Property.Item>
-                  <Property.Item className="gap-1.5">
-                    <Property.Label>Status</Property.Label>
-                    <Property.Value>
-                      <EnabledStatus enabled={schedule.active} />
-                    </Property.Value>
-                  </Property.Item>
-                </>
-              )}
-            </Property.Table>
-          </div>
-          <div className="flex flex-col gap-1">
-            <Header3 className="pb-1 pl-3">Last 5 runs</Header3>
-            <TaskRunsTable
-              total={schedule.runs.length}
-              hasFilters={false}
-              filters={{
-                tasks: [],
-                versions: [],
-                statuses: [],
-                from: undefined,
-                to: undefined,
-              }}
-              runs={schedule.runs}
-              isLoading={false}
-              variant="bright"
-              disableAdjacentRows
-            />
-          </div>
-          <div className="flex flex-col gap-1 pt-2">
-            <Header3 className="pb-1 pl-3">Next 5 runs</Header3>
-            <Table variant="bright">
-              <TableHeader>
-                <TableRow>
-                  {!isUtc && <TableHeaderCell>{schedule.timezone}</TableHeaderCell>}
-                  <TableHeaderCell>UTC</TableHeaderCell>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {schedule.active ? (
-                  schedule.nextRuns.length ? (
-                    schedule.nextRuns.map((run, index) => (
-                      <TableRow key={index}>
-                        {!isUtc && (
-                          <TableCell>
-                            <DateTime date={run} timeZone={schedule.timezone} />
-                          </TableCell>
-                        )}
-                        <TableCell>
-                          <DateTime date={run} timeZone="UTC" />
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableBlankRow colSpan={isUtc ? 1 : 2}>
-                      <PlaceholderText title="You found a bug" />
-                    </TableBlankRow>
-                  )
-                ) : (
-                  <TableBlankRow colSpan={isUtc ? 1 : 2}>
-                    <PlaceholderText title="Schedule disabled" />
-                  </TableBlankRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-          {!isImperative && (
-            <div className="p-3">
-              <InfoPanel
-                title="Editing declarative schedules"
-                icon={BookOpenIcon}
-                iconClassName="text-indigo-500"
-                variant="info"
-                accessory={
-                  <LinkButton
-                    to="https://trigger.dev/docs/v3/tasks-scheduled"
-                    variant="docs/small"
-                    LeadingIcon={BookOpenIcon}
-                  >
-                    Schedules docs
-                  </LinkButton>
-                }
-                panelClassName="max-w-full"
-              >
-                You can only edit a declarative schedule by updating your schedules.task and then
-                running the CLI dev and deploy commands.
-              </InfoPanel>
-            </div>
-          )}
-        </div>
-      </div>
-      {isImperative && (
-        <div className="flex items-center justify-between gap-2 border-t border-grid-dimmed px-2">
-          <div className="flex items-center gap-2">
-            <Form method="post">
-              <Button
-                type="submit"
-                variant="tertiary/medium"
-                LeadingIcon={schedule.active ? BoltSlashIcon : BoltIcon}
-                leadingIconClassName={schedule.active ? "text-dimmed" : "text-success"}
-                name="action"
-                value={schedule.active ? "disable" : "enable"}
-              >
-                {schedule.active ? "Disable" : "Enable"}
-              </Button>
-            </Form>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  type="submit"
-                  variant="danger/medium"
-                  LeadingIcon={TrashIcon}
-                  name="action"
-                  value="delete"
-                >
-                  Delete
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-sm">
-                <DialogHeader>Delete schedule</DialogHeader>
-                <DialogDescription className="mt-3">
-                  Are you sure you want to delete this schedule? This can't be reversed.
-                </DialogDescription>
-                <DialogFooter className="sm:justify-end">
-                  <Form method="post">
-                    <Button
-                      type="submit"
-                      variant="danger/medium"
-                      LeadingIcon={TrashIcon}
-                      name="action"
-                      value="delete"
-                    >
-                      Delete
-                    </Button>
-                  </Form>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
-          <div className="flex items-center gap-4">
-            <LinkButton
-              variant="tertiary/medium"
-              to={`${v3EditSchedulePath(organization, project, environment, schedule)}${
-                location.search
-              }`}
-              LeadingIcon={PencilSquareIcon}
-            >
-              Edit schedule
-            </LinkButton>
-          </div>
-        </div>
-      )}
-    </div>
+      }
+    />
   );
 }

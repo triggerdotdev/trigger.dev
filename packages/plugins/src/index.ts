@@ -17,7 +17,27 @@ export type {
   AuthenticatedEnvironment,
 } from "./rbac.js";
 
-// Convenience re-exports — gives plugin authors (and the cloud workspace
-// link) one import surface without reaching into @trigger.dev/core
-// directly. Both helpers live in core; this is purely a forwarder.
-export { sanitizeBranchName, isValidGitBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
+export { buildJwtAbility } from "./rbac.js";
+
+export type {
+  SsoPlugin,
+  SsoController,
+  OrgSsoStatus,
+  SsoRouteDecision,
+  SsoFlow,
+  SsoProfile,
+  SsoConnectionState,
+  SsoDomainState,
+  SsoDomainStatus,
+  SsoResolutionDecision,
+  SsoDecisionError,
+  SsoBeginError,
+  SsoCompleteError,
+  SsoMutationError,
+  SsoPortalError,
+  SsoValidateError,
+  SsoWebhookError,
+  SsoWebhookEvent,
+} from "./sso.js";
+
+export { SSO_FLOWS } from "./sso.js";

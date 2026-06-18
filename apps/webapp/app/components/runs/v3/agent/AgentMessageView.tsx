@@ -1,10 +1,6 @@
 import type { UIMessage } from "@ai-sdk/react";
 import { memo } from "react";
-import {
-  AssistantResponse,
-  ChatBubble,
-  ToolUseRow,
-} from "~/components/runs/v3/ai/AIChatMessages";
+import { AssistantResponse, ChatBubble, ToolUseRow } from "~/components/runs/v3/ai/AIChatMessages";
 import { Popover, PopoverContent, PopoverTrigger } from "~/components/primitives/Popover";
 
 // ---------------------------------------------------------------------------
@@ -42,11 +38,7 @@ export function AgentMessageView({ messages }: { messages: UIMessage[] }) {
 // Default shallow prop comparison is fine: AI SDK's useChat keeps stable
 // references for messages that haven't changed, so only the last message
 // (the one receiving new chunks) re-renders.
-export const MessageBubble = memo(function MessageBubble({
-  message,
-}: {
-  message: UIMessage;
-}) {
+export const MessageBubble = memo(function MessageBubble({ message }: { message: UIMessage }) {
   if (message.role === "user") {
     const text =
       message.parts
@@ -67,15 +59,68 @@ export const MessageBubble = memo(function MessageBubble({
     const hasContent = message.parts && message.parts.length > 0;
     if (!hasContent) return null;
 
-    return (
-      <div className="space-y-2">
-        {message.parts?.map((part, i) => renderPart(part, i))}
-      </div>
-    );
+    return <div className="space-y-2">{renderAssistantParts(message.parts ?? [])}</div>;
   }
 
   return null;
 });
+
+// Group consecutive data-* parts (rendered as inline DataPartPopover pills)
+// under a single "Tool calls:" label with a flex-wrap row so they have a
+// proper gap between them. Non-data parts pass through to renderPart
+// unchanged.
+function renderAssistantParts(parts: UIMessage["parts"]) {
+  const nodes: React.ReactNode[] = [];
+  let i = 0;
+  while (i < parts.length) {
+    const type = parts[i].type as string;
+    if (type?.startsWith?.("data-") && type !== "data-subagent-run") {
+      const groupStart = i;
+      const group: UIMessage["parts"] = [];
+      while (
+        i < parts.length &&
+        (parts[i].type as string)?.startsWith?.("data-") &&
+        (parts[i].type as string) !== "data-subagent-run"
+      ) {
+        group.push(parts[i]);
+        i++;
+      }
+      nodes.push(
+        <div key={`data-${groupStart}`} className="flex items-center gap-1.5">
+          <span className="text-xs font-medium text-text-dimmed">AI SDK data parts:</span>
+          <div className="flex flex-wrap gap-1.5">
+            {group.map((g, k) => renderPart(g, groupStart + k))}
+          </div>
+        </div>
+      );
+    } else {
+      nodes.push(renderPart(parts[i], i));
+      i++;
+    }
+  }
+  return nodes;
+}
+
+// URLs in `source-url`/`file` parts come from streamed agent/tool data, so an
+// unsafe scheme like `javascript:` would become a clickable XSS payload once it
+// reaches an href/src. Allow only http(s)/blob (and data: for inline images),
+// and return null for anything else so the caller can skip the link/image.
+export function toSafeUrl(value: unknown, allowDataImage = false): string | null {
+  if (typeof value !== "string") return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol === "http:" || parsed.protocol === "https:" || parsed.protocol === "blob:") {
+    return value;
+  }
+  if (allowDataImage && parsed.protocol === "data:" && /^data:image\//i.test(value)) {
+    return value;
+  }
+  return null;
+}
 
 export function renderPart(part: UIMessage["parts"][number], i: number) {
   const p = part as any;
@@ -91,9 +136,7 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
     return (
       <div key={i} className="border-l-2 border-amber-500/40 pl-2">
         <ChatBubble>
-          <div className="whitespace-pre-wrap text-xs italic text-amber-200/70">
-            {p.text ?? ""}
-          </div>
+          <div className="whitespace-pre-wrap text-xs italic text-amber-200/70">{p.text ?? ""}</div>
         </ChatBubble>
       </div>
     );
@@ -117,8 +160,23 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
         .pop();
       resultOutput = lastText?.text ?? undefined;
     } else if (p.output != null) {
-      resultOutput =
-        typeof p.output === "string" ? p.output : JSON.stringify(p.output, null, 2);
+      resultOutput = typeof p.output === "string" ? p.output : JSON.stringify(p.output, null, 2);
+    }
+
+    // Status label for the tool row. AI SDK 7 HITL adds the
+    // approval-requested / approval-responded states between input-available
+    // and output-available, so surface those alongside the existing states.
+    let resultSummary: string | undefined;
+    if (p.state === "input-streaming" || p.state === "input-available") {
+      resultSummary = "calling...";
+    } else if (p.state === "approval-requested") {
+      resultSummary = "awaiting approval";
+    } else if (p.state === "approval-responded" || p.state === "output-denied") {
+      resultSummary = p.approval?.approved
+        ? "approved"
+        : `denied${p.approval?.reason ? `: ${p.approval.reason}` : ""}`;
+    } else if (p.state === "output-error") {
+      resultSummary = `error: ${p.errorText ?? "unknown"}`;
     }
 
     return (
@@ -129,12 +187,7 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
           toolName,
           inputJson: JSON.stringify(p.input ?? {}, null, 2),
           resultOutput,
-          resultSummary:
-            p.state === "input-streaming" || p.state === "input-available"
-              ? "calling..."
-              : p.state === "output-error"
-              ? `error: ${p.errorText ?? "unknown"}`
-              : undefined,
+          resultSummary,
           subAgent: isSubAgent
             ? {
                 parts: p.output.parts,
@@ -148,15 +201,25 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
 
   // Source URL — clickable citation link
   if (type === "source-url") {
+    const safeUrl = toSafeUrl(p.url);
+    const label = p.title || p.url;
+    // Unsafe scheme: render the citation text without a clickable link.
+    if (!safeUrl) {
+      return label ? (
+        <div key={i} className="text-xs text-text-dimmed">
+          {label}
+        </div>
+      ) : null;
+    }
     return (
       <div key={i} className="text-xs">
         <a
-          href={p.url}
+          href={safeUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="text-indigo-400 underline hover:text-indigo-300"
         >
-          {p.title || p.url}
+          {label}
         </a>
       </div>
     );
@@ -176,19 +239,37 @@ export function renderPart(part: UIMessage["parts"][number], i: number) {
   if (type === "file") {
     const isImage = typeof p.mediaType === "string" && p.mediaType.startsWith("image/");
     if (isImage) {
+      const safeSrc = toSafeUrl(p.url, true); // allow data: URIs for inline images
+      // Unsafe scheme: fall back to the filename, matching the non-image branch.
+      if (!safeSrc) {
+        return p.filename ? (
+          <div key={i} className="text-xs text-text-dimmed">
+            {p.filename}
+          </div>
+        ) : null;
+      }
       return (
         <img
           key={i}
-          src={p.url}
+          src={safeSrc}
           alt={p.filename ?? "file"}
           className="max-h-64 rounded border border-charcoal-650"
         />
       );
     }
+    const safeUrl = toSafeUrl(p.url);
+    // Unsafe scheme: show the filename without a clickable download link.
+    if (!safeUrl) {
+      return p.filename ? (
+        <div key={i} className="text-xs text-text-dimmed">
+          {p.filename}
+        </div>
+      ) : null;
+    }
     return (
       <div key={i} className="text-xs">
         <a
-          href={p.url}
+          href={safeUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="text-indigo-400 underline hover:text-indigo-300"

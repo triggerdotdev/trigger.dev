@@ -1,5 +1,57 @@
 # internal-platform
 
+## 4.5.0-rc.7
+
+### Patch Changes
+
+- The run span API response now includes `cachedCost` and `cacheCreationCost` on the `ai` object, alongside the existing `inputCost` / `outputCost` / `totalCost`. `inputCost` reflects only the non-cached input, so these fields let you reconstruct the full cost breakdown for prompt-cached calls. ([#3958](https://github.com/triggerdotdev/trigger.dev/pull/3958))
+
+## 4.5.0-rc.6
+
+### Patch Changes
+
+- Reliability fixes for `chat.agent`. A user message sent while the agent is streaming is no longer delivered twice (which could run a duplicate turn), input appends now carry an idempotency key so a retried send can't duplicate a message, stopping a generation clears the streaming state so a page reload doesn't replay the stopped turn, and runs can now carry the full set of dashboard tags instead of being silently truncated. `onTurnComplete` now fires on errored turns (with the thrown error attached) and the failed turn's user message is persisted so it isn't lost on the next run. Custom agents and manual `chat.writeTurnComplete` callers now trim the output stream, sending a custom action no longer leaves a second stream reader running, and a long-lived `watch` subscription no longer grows its dedupe set without bound. ([#3891](https://github.com/triggerdotdev/trigger.dev/pull/3891))
+- Continuation chat boots no longer stall for around 10 seconds before the first turn. The `session.in` resume cursor is now found with a non-blocking records read instead of draining an SSE long-poll (which always waited out its full 5 second inactivity window, twice per boot), the boot reads run concurrently, and chat snapshots carry the cursor so subsequent boots skip the scan entirely. ([#3907](https://github.com/triggerdotdev/trigger.dev/pull/3907))
+- Record client-side dequeue API latency in the supervisor consumer pool as a Prometheus histogram (`queue_consumer_pool_dequeue_duration_seconds`, labelled by `outcome`: success/empty/error). ([#3887](https://github.com/triggerdotdev/trigger.dev/pull/3887))
+- `dev` and `deploy` now fail with a clear error when two tasks are defined with the same id, including across different task types (e.g. a scheduled task and a regular task sharing an id). Previously the second definition silently overwrote the first, so one of the tasks would vanish with no warning. Task ids are detected as duplicates during indexing (naming each offending id and the files it was found in), and the same rule is enforced server-side when the background worker is registered. ([#3865](https://github.com/triggerdotdev/trigger.dev/pull/3865))
+- Add `GetProjectEnvironmentsResponseBody` and `ProjectEnvironment` schemas for the new `GET /api/v1/projects/{projectRef}/environments` endpoint, which lists the parent environments (dev, staging, preview, prod) a personal access token can access for a project. Dev is scoped to the token owner and branch (preview child) environments are excluded. ([#3880](https://github.com/triggerdotdev/trigger.dev/pull/3880))
+
+## 4.5.0-rc.5
+
+### Patch Changes
+
+- Add optional `shouldPauseScaling` to the supervisor consumer pool scaling options to freeze scale-up while it returns true (scale-down stays allowed). ([#3836](https://github.com/triggerdotdev/trigger.dev/pull/3836))
+- Fix `@trigger.dev/core` build: cast the underlying log record exporter when calling `forceFlush` so it typechecks against the updated OpenTelemetry `LogRecordExporter` type (which no longer declares `forceFlush`). ([#3829](https://github.com/triggerdotdev/trigger.dev/pull/3829))
+- `envvars.upload` now accepts an optional `isSecret` flag, letting you create the imported variables as secret (redacted) environment variables. When omitted, variables default to non-secret. ([#3809](https://github.com/triggerdotdev/trigger.dev/pull/3809))
+
+  ```ts
+  await envvars.upload("proj_1234", "prod", {
+    variables: { STRIPE_SECRET_KEY: "sk_live_..." },
+    isSecret: true,
+  });
+  ```
+
+- Offload large trigger payloads to object storage before sending the trigger API request. The SDK uploads packets at or above the existing 128KB limit and sends an `application/store` pointer instead of embedding large JSON in the request body. `TriggerTaskRequestBody` now validates that `application/store` payloads are non-empty storage paths. ([#3785](https://github.com/triggerdotdev/trigger.dev/pull/3785))
+
+  Payload uploads use the same resolved `ApiClient` as the trigger call (including `requestOptions.clientConfig`), not only the global `apiClientManager.client` — so custom `baseURL`, access token, and preview branch apply to both presign and trigger.
+
+- Update the bundled OpenTelemetry packages to their latest releases (`@opentelemetry/sdk-node` 0.218.0, `@opentelemetry/core` 2.7.1, `@opentelemetry/host-metrics` 0.38.3). ([#3810](https://github.com/triggerdotdev/trigger.dev/pull/3810))
+
+## 4.5.0-rc.4
+
+### Patch Changes
+
+- Coerce numeric `concurrencyKey` values to string at the API boundary across `tasks.trigger`, `tasks.batchTrigger`, and the Phase-2 streaming batch endpoint. ([#3789](https://github.com/triggerdotdev/trigger.dev/pull/3789))
+- Bump `@s2-dev/streamstore` to `0.22.10` to fix a `TASK_RUN_UNCAUGHT_EXCEPTION` ("Invalid state: Unable to enqueue") when a `chat.agent` turn is aborted mid-stream. ([#3792](https://github.com/triggerdotdev/trigger.dev/pull/3792))
+
+## 4.5.0-rc.3
+
+### Patch Changes
+
+- Retry `TASK_MIDDLEWARE_ERROR` under the task's retry policy instead of failing the run on the first attempt. The error was already classified as retryable by `shouldRetryError`, but `shouldLookupRetrySettings` did not include it, so the retry flow fell through to `fail_run`. Fixes #3231. ([#3676](https://github.com/triggerdotdev/trigger.dev/pull/3676))
+- Fix `TypeError` in `unflattenAttributes` when the input attribute map contains conflicting dotted key paths (e.g. both `a.b` set to a scalar and `a.b.c` set to a value). The path-walk loop now applies last-write-wins when a prior key wrote a primitive, null, or array at an intermediate slot, matching the existing precedent in `AttributeFlattener.addAttribute`. Callers no longer crash when handed malformed external attribute inputs. ([#3762](https://github.com/triggerdotdev/trigger.dev/pull/3762))
+- Fix external trace context leaking across runs on warm-started workers with `processKeepAlive` enabled. Every subsequent run's attempt span was being exported with the first run's `traceId` and `parentSpanId`, breaking causal-chain navigation in external APM tools. Runs without an external trace context are unaffected. ([#3768](https://github.com/triggerdotdev/trigger.dev/pull/3768))
+
 ## 4.5.0-rc.2
 
 ## 4.5.0-rc.1

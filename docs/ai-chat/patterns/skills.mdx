@@ -185,6 +185,8 @@ return streamText({
 
 Your tools win on name conflicts. (Pick names that don't collide with `loadSkill` / `readFile` / `bash` to keep things predictable.)
 
+Also declare those same tools on the agent's [`tools`](/ai-chat/tools) config. `toStreamTextOptions` merges them with the skill tools for the model call, while the config option threads them into history re-conversion so any `toModelOutput` survives across turns. The auto-injected skill tools (`loadSkill` / `readFile` / `bash`) don't define `toModelOutput`, so they don't need to be on the config.
+
 ## Bundling
 
 Bundling is **built-in to the CLI** — there's no extension to import. When you run `trigger deploy` or `trigger dev`:
@@ -211,7 +213,7 @@ If you're running `trigger dev`, the same layout appears in the local dev output
 
 ## Full example
 
-See `references/ai-chat/src/trigger/skills/time-utils/` in the Trigger.dev monorepo for a working skill that bundles two bash scripts and a reference cheat-sheet, wired into a `chat.agent` that answers timezone questions.
+See [`projects/ai-chat/src/trigger/skills/time-utils/`](https://github.com/triggerdotdev/references/tree/main/projects/ai-chat/src/trigger/skills/time-utils) in the [references repo](https://github.com/triggerdotdev/references) for a working skill that bundles two bash scripts and a reference cheat-sheet, wired into a `chat.agent` that answers timezone questions.
 
 ## Related
 

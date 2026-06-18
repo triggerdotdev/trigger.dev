@@ -35,6 +35,7 @@
   },
   "devDependencies": {
     "@internal/testcontainers": "workspace:*",
+    "@opentelemetry/sdk-metrics": "2.7.1",
     "@types/seedrandom": "^3.0.8",
     "rimraf": "6.0.1"
   },

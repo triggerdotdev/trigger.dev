@@ -9,14 +9,37 @@ import type {
 import { customAlphabet } from "nanoid";
 import { generate } from "random-words";
 import slug from "slug";
-import { prisma, type PrismaClientOrTransaction } from "~/db.server";
+import { $replica, prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { featuresForUrl } from "~/features.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv, envSlug } from "./api-key.server";
 import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.server";
+import { enqueueAttioWorkspaceSync } from "~/services/attio.server";
 export type { Organization };
 
 const nanoid = customAlphabet("1234567890abcdef", 4);
+
+/**
+ * Resolve an organization id from its slug for use as an RBAC auth scope.
+ * Reads the replica first (the common case) and falls back to the primary on a
+ * miss, so replica lag never leaves a real org unresolved, which the dashboard
+ * route builder treats as an unauthorized request.
+ */
+export async function resolveOrgIdFromSlug(slug: string): Promise<string | null> {
+  const fromReplica = await $replica.organization.findFirst({
+    where: { slug },
+    select: { id: true },
+  });
+  if (fromReplica) {
+    return fromReplica.id;
+  }
+
+  const fromPrimary = await prisma.organization.findFirst({
+    where: { slug },
+    select: { id: true },
+  });
+  return fromPrimary?.id ?? null;
+}
 
 export async function createOrganization(
   {
@@ -80,6 +103,16 @@ export async function createOrganization(
     include: {
       members: true,
     },
+  });
+
+  // Fire-and-forget; never blocks org creation.
+  void enqueueAttioWorkspaceSync({
+    orgId: organization.id,
+    title: organization.title,
+    slug: organization.slug,
+    companySize: organization.companySize,
+    createdAt: organization.createdAt,
+    adminUserId: userId,
   });
 
   return { ...organization };

@@ -1,9 +1,11 @@
 import { HomeIcon } from "@heroicons/react/20/solid";
 import { isRouteErrorResponse, useRouteError } from "@remix-run/react";
 import { friendlyErrorDisplay } from "~/utils/httpErrors";
+import { permissionDeniedMessage } from "~/utils/permissionDenied";
 import { LinkButton } from "./primitives/Buttons";
 import { Header1 } from "./primitives/Headers";
 import { Paragraph } from "./primitives/Paragraph";
+import { PermissionDenied } from "./PermissionDenied";
 import { TriggerRotatingLogo } from "./TriggerRotatingLogo";
 import { type ReactNode } from "react";
 
@@ -16,6 +18,21 @@ type ErrorDisplayOptions = {
 
 export function RouteErrorDisplay(options?: ErrorDisplayOptions) {
   const error = useRouteError();
+
+  // A failed `authorization` check (or `throwPermissionDenied`) throws a 403
+  // that bubbles to the nearest route ErrorBoundary. Every layout boundary
+  // renders through here, so handling it once means a gated route only has to
+  // declare `authorization` to get the permission panel: no per-route boundary.
+  const permission = isRouteErrorResponse(error) ? permissionDeniedMessage(error.data) : null;
+  if (permission) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <PermissionDenied message={permission} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
