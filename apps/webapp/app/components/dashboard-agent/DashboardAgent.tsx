@@ -1,41 +1,63 @@
 import { SparklesIcon } from "@heroicons/react/20/solid";
 import { useState } from "react";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "~/components/primitives/Resizable";
 import { useFeatureFlags } from "~/hooks/useFeatureFlags";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { DashboardAgentPanel } from "./DashboardAgentPanel";
 
 /**
- * Mount point for the dashboard agent. Rendered as the trailing flex child of
- * the env-scoped layout: when open it's a 380px side panel that pushes content;
- * when closed it's a floating launcher. The panel only mounts while open, so the
- * chat transport isn't created until the user opens it.
+ * Mounts the dashboard agent in the env layout. Renders the page content
+ * (`children` = the route Outlet); when the agent is open it splits the layout
+ * into a resizable content + agent panel using the shared Resizable primitive,
+ * with `autosaveId` persisting the width. When closed it's a floating launcher.
  *
  * Gated behind the `hasDashboardAgentAccess` flag (org override or global
  * default), with admins/impersonators always allowed. The resource route
  * enforces the same check server-side.
  */
-export function DashboardAgent() {
+export function DashboardAgent({ children }: { children: React.ReactNode }) {
   const hasAdminAccess = useHasAdminAccess();
   const { hasDashboardAgentAccess } = useFeatureFlags();
   const [open, setOpen] = useState(false);
 
   if (!hasAdminAccess && !hasDashboardAgentAccess) {
-    return null;
+    return <div className="h-full min-h-0">{children}</div>;
   }
 
-  if (open) {
-    return <DashboardAgentPanel onClose={() => setOpen(false)} />;
+  if (!open) {
+    return (
+      <div className="relative h-full min-h-0">
+        <div className="h-full overflow-hidden">{children}</div>
+        <button
+          type="button"
+          aria-label="Open the dashboard agent"
+          onClick={() => setOpen(true)}
+          className="fixed bottom-4 right-4 z-40 flex items-center gap-1.5 rounded-full border border-charcoal-650 bg-background-bright px-3.5 py-2 text-sm text-text-bright shadow-lg transition hover:border-charcoal-550"
+        >
+          <SparklesIcon className="size-4 text-indigo-500" />
+          Ask the agent
+        </button>
+      </div>
+    );
   }
 
   return (
-    <button
-      type="button"
-      aria-label="Open the dashboard agent"
-      onClick={() => setOpen(true)}
-      className="fixed bottom-4 right-4 z-40 flex items-center gap-1.5 rounded-full border border-charcoal-650 bg-background-bright px-3.5 py-2 text-sm text-text-bright shadow-lg transition hover:border-charcoal-550"
+    <ResizablePanelGroup
+      orientation="horizontal"
+      autosaveId="dashboard-agent-split"
+      className="h-full min-h-0"
     >
-      <SparklesIcon className="size-4 text-indigo-500" />
-      Ask the agent
-    </button>
+      <ResizablePanel id="dashboard-content" min="320px">
+        <div className="h-full overflow-hidden">{children}</div>
+      </ResizablePanel>
+      <ResizableHandle id="dashboard-agent-handle" />
+      <ResizablePanel id="dashboard-agent-panel" default="380px" min="320px" max="720px">
+        <DashboardAgentPanel onClose={() => setOpen(false)} />
+      </ResizablePanel>
+    </ResizablePanelGroup>
   );
 }

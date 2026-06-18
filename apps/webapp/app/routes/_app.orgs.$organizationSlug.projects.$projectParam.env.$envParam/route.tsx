@@ -91,12 +91,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export default function Page() {
   return (
-    <div className="flex h-full min-h-0">
-      <div className="min-w-0 flex-1 overflow-hidden">
-        <Outlet />
-      </div>
-      <DashboardAgent />
-    </div>
+    <DashboardAgent>
+      <Outlet />
+    </DashboardAgent>
   );
 }
 

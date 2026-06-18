@@ -170,7 +170,7 @@ export function DashboardAgentPanel({ onClose }: { onClose: () => void }) {
   }, [loadHistory]);
 
   return (
-    <div className="flex h-full w-[380px] shrink-0 flex-col border-l border-grid-bright bg-background-bright animate-in slide-in-from-right-2 duration-150">
+    <div className="flex h-full flex-col bg-background-bright animate-in slide-in-from-right-2 duration-150">
       <DashboardAgentHeader
         view={view}
         onNewChat={newChat}
