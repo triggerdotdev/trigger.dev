@@ -35,15 +35,8 @@ import {
   collapsibleHandleClassName,
 } from "~/components/primitives/Resizable";
 import { SearchInput } from "~/components/primitives/SearchInput";
-import {
-  ComboboxProvider,
-  SelectItem,
-  SelectList,
-  SelectPopover,
-  SelectProvider,
-  SelectTrigger,
-  shortcutFromIndex,
-} from "~/components/primitives/Select";
+import SegmentedControl from "~/components/primitives/SegmentedControl";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
@@ -69,6 +62,7 @@ import { useFuzzyFilter } from "~/hooks/useFuzzyFilter";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
@@ -169,6 +163,25 @@ function parseTypesParam(values: string[]): UnifiedTaskKind[] {
   return values.filter((v): v is UnifiedTaskKind => VALID_KINDS.has(v as UnifiedTaskKind));
 }
 
+const ALL_TASK_TYPES = "ALL";
+
+type TaskTypeSegment = typeof ALL_TASK_TYPES | UnifiedTaskKind;
+
+/** Segmented control options. "All" shows as a word; the task kinds show as
+ *  icon-only segments. Every segment has a tooltip (label + shortcut).
+ *  Order = shortcut keys 0–3. */
+const TASK_TYPE_SEGMENTS: {
+  value: TaskTypeSegment;
+  tooltip: string;
+  text?: string;
+  source?: UnifiedTaskKind;
+}[] = [
+  { value: ALL_TASK_TYPES, tooltip: "All tasks", text: "All" },
+  { value: "AGENT", tooltip: "Agent tasks", source: "AGENT" },
+  { value: "STANDARD", tooltip: "Standard tasks", source: "STANDARD" },
+  { value: "SCHEDULED", tooltip: "Scheduled tasks", source: "SCHEDULED" },
+];
+
 const PAGE_SIZE = 25;
 
 export default function Page() {
@@ -217,7 +230,8 @@ export default function Page() {
 
   const selectedTypes = useMemo(() => {
     const raw = parseTypesParam(values("types"));
-    return raw.length > 0 ? new Set(raw) : null; // null = all
+    // Single-select: one kind filters to it; none or legacy multi → all.
+    return raw.length === 1 ? new Set(raw) : null; // null = all
   }, [values]);
 
   const { filteredItems } = useFuzzyFilter<UnifiedTaskListItem>({
@@ -265,7 +279,7 @@ export default function Page() {
                   <div className="flex h-full flex-col overflow-hidden">
                     <div className="flex shrink-0 items-center justify-between gap-1.5 p-2">
                       <div className="flex flex-1 items-center gap-1.5">
-                        <SearchInput placeholder="Search tasks…" autoFocus resetParams={["page"]} />
+                        <SearchInput placeholder="Search tasks…" resetParams={["page"]} />
                         <TaskTypeFilter />
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -496,48 +510,80 @@ function RunningCell({ state }: { state: UnifiedRunningState | undefined }) {
 function TaskTypeFilter() {
   const { values, replace } = useSearchParams();
   const raw = parseTypesParam(values("types"));
-  const isAll = raw.length === 0 || raw.length === KIND_OPTIONS.length;
-  // No filter → preselect everything so users can uncheck from "all".
-  const popoverValue = isAll ? KIND_OPTIONS.map((k) => k.value) : raw;
+  // Single-select: exactly one kind selects it, anything else falls back to All.
+  const current: TaskTypeSegment = raw.length === 1 ? raw[0] : ALL_TASK_TYPES;
 
-  const handleChange = (next: string[]) => {
-    // Empty or fully-selected → drop the param so the default (all) applies. Always reset page.
-    if (next.length === 0 || next.length === KIND_OPTIONS.length) {
-      replace({ types: undefined, page: undefined });
-    } else {
-      replace({ types: next, page: undefined });
-    }
+  const select = (value: string) => {
+    // "All" drops the param; a kind filters to just that kind. Always reset page.
+    replace({ types: value === ALL_TASK_TYPES ? undefined : [value], page: undefined });
   };
 
-  const label = isAll
-    ? "All"
-    : raw.map((v) => KIND_OPTIONS.find((k) => k.value === v)?.label ?? v).join(", ");
-
   return (
-    <ComboboxProvider>
-      <SelectProvider value={popoverValue} setValue={handleChange} virtualFocus>
-        <SelectTrigger variant="secondary/small" dropdownIcon>
-          <span className="text-text-bright">Task type: </span>
-          <span className="max-w-[180px] truncate text-text-dimmed">{label}</span>
-        </SelectTrigger>
-        <SelectPopover className="min-w-fit">
-          <SelectList>
-            {KIND_OPTIONS.map((opt, index) => (
-              <SelectItem
-                key={opt.value}
-                value={opt.value}
-                shortcut={shortcutFromIndex(index, { shortcutsEnabled: true })}
-              >
-                <span className="flex items-center gap-2">
-                  <TaskTriggerSourceIcon source={opt.value} />
-                  <span className="text-text-bright">{opt.label}</span>
-                </span>
-              </SelectItem>
-            ))}
-          </SelectList>
-        </SelectPopover>
-      </SelectProvider>
-    </ComboboxProvider>
+    <>
+      {TASK_TYPE_SEGMENTS.map((option, index) => (
+        <TaskTypeShortcut
+          key={option.value}
+          shortcut={String(index)}
+          onSelect={() => select(option.value)}
+        />
+      ))}
+      <SegmentedControl
+        name="task-type"
+        value={current}
+        variant="secondary/small"
+        onChange={select}
+        options={TASK_TYPE_SEGMENTS.map((option, index) => ({
+          value: option.value,
+          label: <TaskTypeSegmentLabel option={option} shortcut={String(index)} />,
+        }))}
+      />
+    </>
+  );
+}
+
+// Registers a number-key shortcut that selects one segment.
+function TaskTypeShortcut({ shortcut, onSelect }: { shortcut: string; onSelect: () => void }) {
+  useShortcutKeys({
+    shortcut: { key: shortcut },
+    action: (event) => {
+      event.preventDefault();
+      onSelect();
+    },
+  });
+  return null;
+}
+
+function TaskTypeSegmentLabel({
+  option,
+  shortcut,
+}: {
+  option: (typeof TASK_TYPE_SEGMENTS)[number];
+  shortcut: string;
+}) {
+  return (
+    <SimpleTooltip
+      asChild
+      button={
+        option.source ? (
+          // -mx-0.5 tightens the icon segment toward a square button.
+          <span className="-mx-0.5 flex items-center justify-center">
+            <TaskTriggerSourceIcon source={option.source} />
+            <span className="sr-only">{option.tooltip}</span>
+          </span>
+        ) : (
+          <span className="flex items-center justify-center">{option.text}</span>
+        )
+      }
+      content={
+        <div className="flex items-center gap-1">
+          <span className="text-text-bright">{option.tooltip}</span>
+          <ShortcutKey shortcut={{ key: shortcut }} variant="small" />
+        </div>
+      }
+      className="px-2 py-1.5 text-xs"
+      sideOffset={6}
+      disableHoverableContent
+    />
   );
 }
 
