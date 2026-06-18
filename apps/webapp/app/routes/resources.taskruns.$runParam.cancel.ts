@@ -37,7 +37,7 @@ async function resolveRunOrganizationId(runParam: string): Promise<string | null
   // Replica lag with the buffer entry already drained: the run can exist in
   // the primary while both lookups above miss. Fall back to the primary so the
   // RBAC scope is never resolved without an org (which would let the role check
-  // run unscoped under the enterprise plugin).
+  // run unscoped under the RBAC plugin).
   const primaryRun = await prisma.taskRun.findFirst({
     where: { friendlyId: runParam },
     select: { project: { select: { organizationId: true } } },
