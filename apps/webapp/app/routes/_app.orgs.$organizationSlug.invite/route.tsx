@@ -6,13 +6,11 @@ import {
   LockOpenIcon,
   UserPlusIcon,
 } from "@heroicons/react/20/solid";
-import type { ActionFunction, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import { Fragment, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import simplur from "simplur";
-import invariant from "tiny-invariant";
 import { z } from "zod";
 import { MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -31,10 +29,11 @@ import { env } from "~/env.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { inviteMembers } from "~/models/member.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { TeamPresenter } from "~/presenters/TeamPresenter.server";
 import { scheduleEmail } from "~/services/scheduleEmail.server";
 import { rbac } from "~/services/rbac.server";
-import { requireUserId } from "~/services/session.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { acceptInvitePath, organizationTeamPath, v3BillingPath } from "~/utils/pathBuilder";
 import { PurchaseSeatsModal } from "../_app.orgs.$organizationSlug.settings.team/route";
 
@@ -42,55 +41,66 @@ const Params = z.object({
   organizationSlug: z.string(),
 });
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug } = Params.parse(params);
+export const loader = dashboardLoader(
+  {
+    params: Params,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: {
+      action: "manage",
+      resource: { type: "members" },
+      message: "With your current role, you can't invite team members.",
+    },
+  },
+  async ({ user, context, ability }) => {
+    const organizationId = context.organizationId;
+    if (!organizationId) {
+      throw new Response("Not Found", { status: 404 });
+    }
+    const userId = user.id;
 
-  const organization = await $replica.organization.findFirst({
-    where: { slug: organizationSlug },
-    select: { id: true },
-  });
+    const presenter = new TeamPresenter();
+    const result = await presenter.call({
+      userId,
+      organizationId,
+    });
 
-  if (!organization) {
-    throw new Response("Not Found", { status: 404 });
+    if (!result) {
+      throw new Response("Not Found", { status: 404 });
+    }
+
+    // Inviter's own role drives the "below their level" filter on the
+    // dropdown. Plus assignable role IDs already encode the org's plan
+    // tier — the intersection is what we offer.
+    const [inviterRole, assignableRoleIds, systemRoles] = await Promise.all([
+      rbac.getUserRole({ userId, organizationId }),
+      rbac.getAssignableRoleIds(organizationId),
+      rbac.systemRoles(organizationId),
+    ]);
+
+    // Build the dropdown's offerable set server-side: roles that are
+    // (a) assignable on the current plan AND (b) at or below the
+    // inviter's own level. The client just renders these — it doesn't
+    // need to know about the system-role catalogue or the ladder.
+    const assignableSet = new Set(assignableRoleIds);
+    const offerableRoleIds = systemRoles
+      ? result.roles
+          .filter(
+            (r) =>
+              assignableSet.has(r.id) && isAtOrBelow(systemRoles, inviterRole?.id ?? null, r.id)
+          )
+          .map((r) => r.id)
+      : [];
+
+    // Buying seats is a billing operation: surface whether this user can, so
+    // the purchase modal disables its trigger (the team action enforces it).
+    const canManageBilling = ability.can("manage", { type: "billing" });
+
+    return typedjson({ ...result, offerableRoleIds, canManageBilling });
   }
-
-  const presenter = new TeamPresenter();
-  const result = await presenter.call({
-    userId,
-    organizationId: organization.id,
-  });
-
-  if (!result) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  // Inviter's own role drives the "below their level" filter on the
-  // dropdown. Plus assignable role IDs already encode the org's plan
-  // tier — the intersection is what we offer.
-  const [inviterRole, assignableRoleIds, systemRoles] = await Promise.all([
-    rbac.getUserRole({ userId, organizationId: organization.id }),
-    rbac.getAssignableRoleIds(organization.id),
-    rbac.systemRoles(organization.id),
-  ]);
-
-  // Build the dropdown's offerable set server-side: roles that are
-  // (a) assignable on the current plan AND (b) at or below the
-  // inviter's own level. The client just renders these — it doesn't
-  // need to know about the system-role catalogue or the ladder.
-  const assignableSet = new Set(assignableRoleIds);
-  const offerableRoleIds = systemRoles
-    ? result.roles
-        .filter(
-          (r) =>
-            assignableSet.has(r.id) &&
-            isAtOrBelow(systemRoles, inviterRole?.id ?? null, r.id)
-        )
-        .map((r) => r.id)
-    : [];
-
-  return typedjson({ ...result, offerableRoleIds });
-};
+);
 
 // Sentinel for "no RBAC role attached to invite" — the runtime
 // fallback will derive a role from the legacy OrgMember.role write at
@@ -103,7 +113,7 @@ const NO_RBAC_ROLE = "__no_rbac_role__";
 // first), so array index drives the ladder — earlier index = higher
 // rank. Plan-tier filtering happens separately via assignableRoleIds;
 // the ladder is the absolute hierarchy. Custom roles aren't in the
-// table and are refused (TRI-8747's follow-up will handle them).
+// ladder yet, so they're refused for now.
 type LadderRole = { id: string };
 
 function buildRoleLevel(roles: ReadonlyArray<LadderRole>): Record<string, number> {
@@ -122,12 +132,11 @@ function isAtOrBelow(
   inviterRoleId: string | null,
   invitedRoleId: string
 ): boolean {
-  // No RBAC role on inviter (e.g. the runtime fallback couldn't derive
-  // one) → fall back to the legacy OrgMember.role check the calling
-  // code already enforces. Allow the invite to proceed; the action
-  // would have already failed earlier if the inviter wasn't allowed
-  // to invite at all.
-  if (!inviterRoleId) return true;
+  // No resolvable role for the inviter → fail closed: we can't confirm a
+  // target role is at or below an unknown level, so refuse it. The invite
+  // itself still proceeds (it's gated by manage:members); only assigning an
+  // explicit role is refused, and the picker offers nothing in this case.
+  if (!inviterRoleId) return false;
   const level = buildRoleLevel(roles);
   const inviter = level[inviterRoleId];
   const invited = level[invitedRoleId];
@@ -153,101 +162,101 @@ const schema = z.object({
   rbacRoleId: z.string().optional(),
 });
 
-export const action: ActionFunction = async ({ request, params }) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug } = params;
-  invariant(organizationSlug, "organizationSlug is required");
+export const action = dashboardAction(
+  {
+    params: Params,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "manage", resource: { type: "members" } },
+  },
+  async ({ request, params, user }) => {
+    const userId = user.id;
+    const { organizationSlug } = params;
 
-  const formData = await request.formData();
-  const submission = parse(formData, { schema });
+    const formData = await request.formData();
+    const submission = parse(formData, { schema });
 
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
-  }
-
-  // Resolve the RBAC role choice. NO_RBAC_ROLE / undefined / unknown
-  // role → don't pass one through; the runtime fallback handles it.
-  // Validation: the chosen role must be in the org's assignable set
-  // (plan-tier) and at or below the inviter's own level.
-  let resolvedRbacRoleId: string | null = null;
-  const submittedRbacRoleId = submission.value.rbacRoleId;
-  if (
-    submittedRbacRoleId &&
-    submittedRbacRoleId !== NO_RBAC_ROLE
-  ) {
-    const org = await $replica.organization.findFirst({
-      where: { slug: organizationSlug },
-      select: { id: true },
-    });
-    if (!org) {
-      return json({ errors: { body: "Organization not found" } }, { status: 404 });
+    if (!submission.value || submission.intent !== "submit") {
+      return json(submission);
     }
-    const [inviterRole, assignableRoleIds, systemRoles] = await Promise.all([
-      rbac.getUserRole({ userId, organizationId: org.id }),
-      rbac.getAssignableRoleIds(org.id),
-      rbac.systemRoles(org.id),
-    ]);
-    if (!systemRoles) {
-      // No plugin installed but the form somehow submitted a role id —
-      // ignore it (fall through to legacy behaviour rather than 400).
-      resolvedRbacRoleId = null;
-    } else {
-      const assignable = new Set(assignableRoleIds);
-      if (!assignable.has(submittedRbacRoleId)) {
-        return json(
-          { errors: { body: "You can't invite someone with this role on your current plan" } },
-          { status: 400 }
-        );
-      }
-      if (
-        !isAtOrBelow(
-          systemRoles,
-          inviterRole?.id ?? null,
-          submittedRbacRoleId
-        )
-      ) {
-        return json(
-          { errors: { body: "You can only invite members at or below your own role" } },
-          { status: 403 }
-        );
-      }
-      resolvedRbacRoleId = submittedRbacRoleId;
-    }
-  }
 
-  try {
-    const invites = await inviteMembers({
-      slug: organizationSlug,
-      emails: submission.value.emails,
-      userId,
-      rbacRoleId: resolvedRbacRoleId,
-    });
-
-    for (const invite of invites) {
-      try {
-        await scheduleEmail({
-          email: "invite",
-          to: invite.email,
-          orgName: invite.organization.title,
-          inviterName: invite.inviter.name ?? undefined,
-          inviterEmail: invite.inviter.email,
-          inviteLink: `${env.LOGIN_ORIGIN}${acceptInvitePath(invite.token)}`,
-        });
-      } catch (error) {
-        console.error("Failed to send invite email");
-        console.error(error);
+    // Resolve the RBAC role choice. NO_RBAC_ROLE / undefined / unknown
+    // role → don't pass one through; the runtime fallback handles it.
+    // Validation: the chosen role must be in the org's assignable set
+    // (plan-tier) and at or below the inviter's own level.
+    let resolvedRbacRoleId: string | null = null;
+    const submittedRbacRoleId = submission.value.rbacRoleId;
+    if (submittedRbacRoleId && submittedRbacRoleId !== NO_RBAC_ROLE) {
+      const org = await $replica.organization.findFirst({
+        where: { slug: organizationSlug },
+        select: { id: true },
+      });
+      if (!org) {
+        return json({ errors: { body: "Organization not found" } }, { status: 404 });
+      }
+      const [inviterRole, assignableRoleIds, systemRoles] = await Promise.all([
+        rbac.getUserRole({ userId, organizationId: org.id }),
+        rbac.getAssignableRoleIds(org.id),
+        rbac.systemRoles(org.id),
+      ]);
+      if (!systemRoles) {
+        // No plugin installed but the form somehow submitted a role id —
+        // ignore it (fall through to legacy behaviour rather than 400).
+        resolvedRbacRoleId = null;
+      } else {
+        const assignable = new Set(assignableRoleIds);
+        if (!assignable.has(submittedRbacRoleId)) {
+          return json(
+            { errors: { body: "You can't invite someone with this role on your current plan" } },
+            { status: 400 }
+          );
+        }
+        if (!isAtOrBelow(systemRoles, inviterRole?.id ?? null, submittedRbacRoleId)) {
+          return json(
+            { errors: { body: "You can only invite members at or below your own role" } },
+            { status: 403 }
+          );
+        }
+        resolvedRbacRoleId = submittedRbacRoleId;
       }
     }
 
-    return redirectWithSuccessMessage(
-      organizationTeamPath(invites[0].organization),
-      request,
-      simplur`${submission.value.emails.length} member[|s] invited`
-    );
-  } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+    try {
+      const invites = await inviteMembers({
+        slug: organizationSlug,
+        emails: submission.value.emails,
+        userId,
+        rbacRoleId: resolvedRbacRoleId,
+      });
+
+      for (const invite of invites) {
+        try {
+          await scheduleEmail({
+            email: "invite",
+            to: invite.email,
+            orgName: invite.organization.title,
+            inviterName: invite.inviter.name ?? undefined,
+            inviterEmail: invite.inviter.email,
+            inviteLink: `${env.LOGIN_ORIGIN}${acceptInvitePath(invite.token)}`,
+          });
+        } catch (error) {
+          console.error("Failed to send invite email");
+          console.error(error);
+        }
+      }
+
+      return redirectWithSuccessMessage(
+        organizationTeamPath(invites[0].organization),
+        request,
+        simplur`${submission.value.emails.length} member[|s] invited`
+      );
+    } catch (error: any) {
+      return json({ errors: { body: error.message } }, { status: 400 });
+    }
   }
-};
+);
 
 export default function Page() {
   const {
@@ -259,6 +268,7 @@ export default function Page() {
     planSeatLimit,
     roles,
     offerableRoleIds,
+    canManageBilling,
   } = useTypedLoaderData<typeof loader>();
   const [total, setTotal] = useState(limits.used);
   const organization = useOrganization();
@@ -274,9 +284,7 @@ export default function Page() {
   // Default to the lowest-tier offered role (the loader returns roles
   // in its allRoles order, which the plugin emits Owner→Member; the
   // last entry is the most restrictive).
-  const defaultRoleId = showRolePicker
-    ? offerable[offerable.length - 1].id
-    : NO_RBAC_ROLE;
+  const defaultRoleId = showRolePicker ? offerable[offerable.length - 1].id : NO_RBAC_ROLE;
   const [selectedRoleId, setSelectedRoleId] = useState(defaultRoleId);
 
   const [form, { emails }] = useForm({
@@ -316,6 +324,7 @@ export default function Page() {
                   usedSeats={limits.used}
                   maxQuota={maxSeatQuota}
                   planSeatLimit={planSeatLimit}
+                  canManageBilling={canManageBilling}
                   triggerButton={<Button variant="primary/small">Purchase more seats…</Button>}
                 />
               }
@@ -386,9 +395,7 @@ export default function Page() {
                   items={offerable}
                   variant="tertiary/medium"
                   dropdownIcon
-                  text={(v) =>
-                    offerable.find((r) => r.id === v)?.name ?? "Pick a role"
-                  }
+                  text={(v) => offerable.find((r) => r.id === v)?.name ?? "Pick a role"}
                   setValue={(next) => {
                     if (typeof next === "string") setSelectedRoleId(next);
                   }}
@@ -402,8 +409,7 @@ export default function Page() {
                   }
                 </Select>
                 <Paragraph variant="extra-small" className="text-text-dimmed">
-                  Invitees join with this role. They can be promoted later
-                  from the Team page.
+                  Invitees join with this role. They can be promoted later from the Team page.
                 </Paragraph>
               </InputGroup>
             ) : null}

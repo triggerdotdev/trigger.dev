@@ -7,6 +7,7 @@ import {
   authenticatedEnvironmentForAuthentication,
   branchNameFromRequest,
 } from "~/services/apiAuth.server";
+import { authorizeEnvVarApiRequest } from "~/services/environmentVariableApiAccess.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
 const ParamsSchema = z.object({
@@ -21,7 +22,11 @@ export async function action({ params, request }: ActionFunctionArgs) {
     return json({ error: "Invalid params" }, { status: 400 });
   }
 
-  const authenticationResult = await authenticateRequest(request);
+  const authenticationResult = await authenticateRequest(request, {
+    personalAccessToken: true,
+    organizationAccessToken: true,
+    apiKey: true,
+  });
 
   if (!authenticationResult) {
     return json({ error: "Invalid or Missing API key" }, { status: 401 });
@@ -33,6 +38,16 @@ export async function action({ params, request }: ActionFunctionArgs) {
     parsedParams.data.slug,
     branchNameFromRequest(request)
   );
+
+  const denied = await authorizeEnvVarApiRequest({
+    request,
+    authType: authenticationResult.type,
+    organizationId: environment.organizationId,
+    projectId: environment.project.id,
+    envType: environment.type,
+    action: "write",
+  });
+  if (denied) return denied;
 
   const repository = new EnvironmentVariablesRepository();
 

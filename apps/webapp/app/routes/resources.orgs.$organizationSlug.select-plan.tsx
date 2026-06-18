@@ -6,7 +6,6 @@ import {
 } from "@heroicons/react/20/solid";
 import { ArrowDownCircleIcon, ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { Form, useLocation, useNavigation } from "@remix-run/react";
-import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { uiComponent } from "@team-plain/typescript-sdk";
 import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import {
@@ -40,9 +39,10 @@ import { TextLink } from "~/components/primitives/TextLink";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { logger } from "~/services/logger.server";
 import { setPlan } from "~/services/platform.v3.server";
-import { requireUser } from "~/services/session.server";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { engine } from "~/v3/runEngine.server";
 import { cn } from "~/utils/cn";
 import { sendToPlain } from "~/utils/plain.server";
@@ -61,105 +61,110 @@ const schema = z.object({
   message: z.string().optional(),
 });
 
-export async function action({ request, params }: ActionFunctionArgs) {
-  if (request.method.toLowerCase() !== "post") {
-    return new Response("Method not allowed", { status: 405 });
-  }
+export const action = dashboardAction(
+  {
+    params: Params,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "manage", resource: { type: "billing" } },
+  },
+  async ({ request, params, user }) => {
+    const { organizationSlug } = params;
+    const formData = await request.formData();
+    const reasons = formData.getAll("reasons");
+    const message = formData.get("message");
 
-  const { organizationSlug } = Params.parse(params);
-  const user = await requireUser(request);
-  const formData = await request.formData();
-  const reasons = formData.getAll("reasons");
-  const message = formData.get("message");
+    const form = schema.parse({
+      ...Object.fromEntries(formData),
+      reasons,
+      message: message || undefined,
+    });
 
-  const form = schema.parse({
-    ...Object.fromEntries(formData),
-    reasons,
-    message: message || undefined,
-  });
+    const organization = await prisma.organization.findFirst({
+      where: { slug: organizationSlug, members: { some: { userId: user.id } } },
+    });
 
-  const organization = await prisma.organization.findFirst({
-    where: { slug: organizationSlug, members: { some: { userId: user.id } } },
-  });
+    if (!organization) {
+      throw redirectWithErrorMessage(form.callerPath, request, "Organization not found");
+    }
 
-  if (!organization) {
-    throw redirectWithErrorMessage(form.callerPath, request, "Organization not found");
-  }
+    let payload: SetPlanBody;
 
-  let payload: SetPlanBody;
-
-  switch (form.type) {
-    case "free": {
-      try {
-        if (reasons.length > 0 || (message && message.toString().trim() !== "")) {
-          await sendToPlain({
-            userId: user.id,
-            email: user.email,
-            name: user.name ?? "",
-            title: "Plan cancelation feedback",
-            components: [
-              uiComponent.text({
-                text: `${user.name} (${user.email}) just canceled their plan.`,
-              }),
-              uiComponent.divider({ spacingSize: "M" }),
-              ...(reasons.length > 0
-                ? [
-                    uiComponent.spacer({ size: "L" }),
-                    uiComponent.text({
-                      size: "L",
-                      color: "NORMAL",
-                      text: "Reasons:",
-                    }),
-                    uiComponent.text({
-                      text: reasons.join(", "),
-                    }),
-                  ]
-                : []),
-              ...(message
-                ? [
-                    uiComponent.spacer({ size: "L" }),
-                    uiComponent.text({
-                      size: "L",
-                      color: "NORMAL",
-                      text: "Comment:",
-                    }),
-                    uiComponent.text({
-                      text: message.toString(),
-                    }),
-                  ]
-                : []),
-            ],
-          });
+    switch (form.type) {
+      case "free": {
+        try {
+          if (reasons.length > 0 || (message && message.toString().trim() !== "")) {
+            await sendToPlain({
+              userId: user.id,
+              email: user.email,
+              name: user.name ?? "",
+              title: "Plan cancelation feedback",
+              components: [
+                uiComponent.text({
+                  text: `${user.name} (${user.email}) just canceled their plan.`,
+                }),
+                uiComponent.divider({ spacingSize: "M" }),
+                ...(reasons.length > 0
+                  ? [
+                      uiComponent.spacer({ size: "L" }),
+                      uiComponent.text({
+                        size: "L",
+                        color: "NORMAL",
+                        text: "Reasons:",
+                      }),
+                      uiComponent.text({
+                        text: reasons.join(", "),
+                      }),
+                    ]
+                  : []),
+                ...(message
+                  ? [
+                      uiComponent.spacer({ size: "L" }),
+                      uiComponent.text({
+                        size: "L",
+                        color: "NORMAL",
+                        text: "Comment:",
+                      }),
+                      uiComponent.text({
+                        text: message.toString(),
+                      }),
+                    ]
+                  : []),
+              ],
+            });
+          }
+        } catch (e) {
+          logger.error("Failed to submit to Plain the unsubscribe reason", { error: e });
         }
-      } catch (e) {
-        logger.error("Failed to submit to Plain the unsubscribe reason", { error: e });
+        payload = {
+          type: "free" as const,
+          userId: user.id,
+        };
+        break;
       }
-      payload = {
-        type: "free" as const,
-        userId: user.id,
-      };
-      break;
-    }
-    case "paid": {
-      if (form.planCode === undefined) {
-        throw redirectWithErrorMessage(form.callerPath, request, "Not a valid plan");
+      case "paid": {
+        if (form.planCode === undefined) {
+          throw redirectWithErrorMessage(form.callerPath, request, "Not a valid plan");
+        }
+        payload = {
+          type: "paid" as const,
+          planCode: form.planCode,
+          userId: user.id,
+        };
+        break;
       }
-      payload = {
-        type: "paid" as const,
-        planCode: form.planCode,
-        userId: user.id,
-      };
-      break;
+      default: {
+        throw new Error("Invalid form type");
+      }
     }
-    default: {
-      throw new Error("Invalid form type");
-    }
-  }
 
-  return await setPlan(organization, request, form.callerPath, payload, {
-    invalidateBillingCache: engine.invalidateBillingCache.bind(engine),
-  });
-}
+    return await setPlan(organization, request, form.callerPath, payload, {
+      invalidateBillingCache: engine.invalidateBillingCache.bind(engine),
+    });
+  }
+);
 
 const pricingDefinitions = {
   usage: {
