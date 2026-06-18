@@ -1,4 +1,5 @@
-import { type Prisma, type PrismaClient } from "@trigger.dev/database";
+import { type Prisma, type PrismaClient, type PrismaClientOrTransaction } from "@trigger.dev/database";
+import type { RunStore } from "@internal/run-store";
 import { BoundedTtlCache } from "./boundedTtlCache";
 import { RESERVED_COLUMNS, type RealtimeRunRow } from "./electricStreamProtocol.server";
 
@@ -79,6 +80,8 @@ export interface RunListResolver {
 export type RunHydratorOptions = {
   /** A read-replica Prisma client (`$replica`). Always Postgres. */
   replica: Pick<PrismaClient, "taskRun">;
+  /** RunStore the reads are routed through; `replica` is passed as the read client. */
+  runStore: RunStore;
   /** Read-through cache TTL (ms) collapsing duplicate refetches for the same run. Set 0 to disable. Defaults to 250ms. */
   cacheTtlMs?: number;
   /** Hard cap on cache entries before expired entries are swept. */
@@ -139,24 +142,28 @@ export class RunHydrator {
     if (ids.length === 0) {
       return [];
     }
-    const rows = await this.options.replica.taskRun.findMany({
-      where: {
-        runtimeEnvironmentId: environmentId,
-        id: { in: ids },
+    const rows = await this.options.runStore.findRuns(
+      {
+        where: {
+          runtimeEnvironmentId: environmentId,
+          id: { in: ids },
+        },
+        select: buildHydratorSelect(skipColumns),
       },
-      select: buildHydratorSelect(skipColumns),
-    });
+      this.options.replica as PrismaClientOrTransaction
+    );
     return rows as unknown as RealtimeRunRow[];
   }
 
   async #fetch(environmentId: string, runId: string): Promise<RealtimeRunRow | null> {
-    const run = await this.options.replica.taskRun.findFirst({
-      where: {
+    const run = await this.options.runStore.findRun(
+      {
         id: runId,
         runtimeEnvironmentId: environmentId,
       },
-      select: RUN_HYDRATOR_SELECT,
-    });
+      { select: RUN_HYDRATOR_SELECT },
+      this.options.replica as PrismaClientOrTransaction
+    );
 
     return (run ?? null) as RealtimeRunRow | null;
   }

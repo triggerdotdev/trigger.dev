@@ -68,12 +68,8 @@ export class CancelDevSessionRunsService extends BaseService {
     logger.debug("Cancelling in progress run", { runId });
 
     const taskRun = runId.startsWith("run_")
-      ? await this._prisma.taskRun.findFirst({
-          where: { friendlyId: runId },
-        })
-      : await this._prisma.taskRun.findFirst({
-          where: { id: runId },
-        });
+      ? await this.runStore.findRun({ friendlyId: runId }, this._prisma)
+      : await this.runStore.findRun({ id: runId }, this._prisma);
 
     if (!taskRun) {
       return;

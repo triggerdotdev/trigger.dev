@@ -9,6 +9,7 @@ import { getEventRepository } from "~/v3/eventRepository/index.server";
 import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRunAlerts.server";
 import { DefaultQueueManager } from "../concerns/queues.server";
 import type { TriggerTaskRequest } from "../types";
+import { runStore } from "~/v3/runStore.server";
 
 export type TriggerFailedTaskRequest = {
   /** The task identifier (e.g. "my-task") */
@@ -82,12 +83,13 @@ export class TriggerFailedTaskService {
 
       // Resolve parent run for rootTaskRunId and depth (same as triggerTask.server.ts)
       const parentRun = request.parentRunId
-        ? await this.prisma.taskRun.findFirst({
-            where: {
+        ? await runStore.findRun(
+            {
               id: RunId.fromFriendlyId(request.parentRunId),
               runtimeEnvironmentId: request.environment.id,
             },
-          })
+            this.prisma
+          )
         : undefined;
 
       const depth = parentRun ? parentRun.depth + 1 : 0;
@@ -275,12 +277,13 @@ export class TriggerFailedTaskService {
       let depth = 0;
 
       if (opts.parentRunId) {
-        const parentRun = await this.prisma.taskRun.findFirst({
-          where: {
+        const parentRun = await runStore.findRun(
+          {
             id: RunId.fromFriendlyId(opts.parentRunId),
             runtimeEnvironmentId: opts.environmentId,
           },
-        });
+          this.prisma
+        );
 
         if (parentRun) {
           parentTaskRunId = parentRun.id;

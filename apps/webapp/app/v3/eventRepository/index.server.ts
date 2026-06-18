@@ -2,6 +2,7 @@ import { env } from "~/env.server";
 import { eventRepository } from "./eventRepository.server";
 import { type IEventRepository, type TraceEventOptions } from "./eventRepository.types";
 import { prisma } from "~/db.server";
+import { runStore } from "../runStore.server";
 import { logger } from "~/services/logger.server";
 import { FEATURE_FLAG } from "../featureFlags";
 import { flag } from "../featureFlags.server";
@@ -284,28 +285,31 @@ async function recordRunEvent(
 }
 
 async function findRunForEventCreation(runId: string) {
-  return prisma.taskRun.findFirst({
-    where: {
+  return runStore.findRun(
+    {
       id: runId,
     },
-    select: {
-      friendlyId: true,
-      taskIdentifier: true,
-      traceContext: true,
-      taskEventStore: true,
-      runtimeEnvironment: {
-        select: {
-          id: true,
-          type: true,
-          organizationId: true,
-          projectId: true,
-          project: {
-            select: {
-              externalRef: true,
+    {
+      select: {
+        friendlyId: true,
+        taskIdentifier: true,
+        traceContext: true,
+        taskEventStore: true,
+        runtimeEnvironment: {
+          select: {
+            id: true,
+            type: true,
+            organizationId: true,
+            projectId: true,
+            project: {
+              select: {
+                externalRef: true,
+              },
             },
           },
         },
       },
     },
-  });
+    prisma
+  );
 }

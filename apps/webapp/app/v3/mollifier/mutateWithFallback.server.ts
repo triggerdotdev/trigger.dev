@@ -5,7 +5,9 @@ import type {
   SnapshotPatch,
 } from "@trigger.dev/redis-worker";
 import type { TaskRun } from "@trigger.dev/database";
+import type { PrismaClientOrTransaction } from "~/db.server";
 import { prisma, $replica } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { logger } from "~/services/logger.server";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
 
@@ -238,9 +240,10 @@ async function findRunInPg(
   friendlyId: string,
   environmentId: string,
 ): Promise<TaskRun | null> {
-  return client.taskRun.findFirst({
-    where: { friendlyId, runtimeEnvironmentId: environmentId },
-  });
+  return runStore.findRun(
+    { friendlyId, runtimeEnvironmentId: environmentId },
+    client as unknown as PrismaClientOrTransaction
+  );
 }
 
 function defaultSleep(ms: number): Promise<void> {
