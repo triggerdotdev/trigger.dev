@@ -227,6 +227,11 @@ export class RunsReplicationService {
       slotName: options.slotName,
       publicationName: options.publicationName,
       table: "TaskRun",
+      // task_run_v2 is a column-identical clone of TaskRun, so its WAL rows
+      // flow through the same handler/transform into the same ClickHouse table.
+      // Co-publishing it keeps the ClickHouse mirror complete once orgs cut over
+      // to v2 run ids; until then the table is empty and this is a no-op.
+      additionalTables: ["task_run_v2"],
       redisOptions: options.redisOptions,
       autoAcknowledge: false,
       publicationActions: ["insert", "update", "delete"],

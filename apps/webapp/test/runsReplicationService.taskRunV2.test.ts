@@ -1,0 +1,125 @@
+import { ClickHouse } from "@internal/clickhouse";
+import { replicationContainerTest } from "@internal/testcontainers";
+import { RunId } from "@trigger.dev/core/v3/isomorphic";
+import { setTimeout } from "node:timers/promises";
+import { z } from "zod";
+import { RunsReplicationService } from "~/services/runsReplicationService.server";
+import { createInMemoryTracing } from "./utils/tracing";
+import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
+
+vi.setConfig({ testTimeout: 60_000 });
+
+describe("RunsReplicationService (task_run_v2)", () => {
+  replicationContainerTest(
+    "co-publishes task_run_v2 and streams its rows to the same ClickHouse table",
+    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
+      // Both tables are in the publication; both need FULL identity so the
+      // delete transform can read the old row. INSERTs (this test) carry the
+      // full new tuple regardless, but we mirror the production setup.
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."task_run_v2" REPLICA IDENTITY FULL;`);
+
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "runs-replication",
+        compression: { request: true },
+        logLevel: "warn",
+      });
+
+      const { tracer } = createInMemoryTracing();
+
+      const runsReplicationService = new RunsReplicationService({
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
+        pgConnectionUrl: postgresContainer.getConnectionUri(),
+        serviceName: "runs-replication",
+        slotName: "task_runs_to_clickhouse_v1",
+        publicationName: "task_runs_to_clickhouse_v1_publication",
+        redisOptions,
+        maxFlushConcurrency: 1,
+        flushIntervalMs: 100,
+        flushBatchSize: 1,
+        leaderLockTimeoutMs: 5000,
+        leaderLockExtendIntervalMs: 1000,
+        ackIntervalSeconds: 5,
+        tracer,
+        logLevel: "warn",
+      });
+
+      await runsReplicationService.start();
+
+      const organization = await prisma.organization.create({
+        data: { title: "test", slug: "test" },
+      });
+      const project = await prisma.project.create({
+        data: {
+          name: "test",
+          slug: "test",
+          organizationId: organization.id,
+          externalRef: "test",
+        },
+      });
+      const runtimeEnvironment = await prisma.runtimeEnvironment.create({
+        data: {
+          slug: "test",
+          type: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "test",
+          pkApiKey: "test",
+          shortcode: "test",
+        },
+      });
+
+      // A v2 run lives in task_run_v2, keyed by a KSUID id.
+      const ksuid = RunId.generateKsuid();
+      const run = await prisma.taskRunV2.create({
+        data: {
+          id: ksuid.id,
+          friendlyId: ksuid.friendlyId,
+          taskIdentifier: "my-task",
+          payload: JSON.stringify({ foo: "bar" }),
+          payloadType: "application/json",
+          traceId: "v2trace",
+          spanId: "v2span",
+          queue: "test",
+          workerQueue: "us-east-1-next",
+          region: "us-east-1",
+          planType: "free",
+          runtimeEnvironmentId: runtimeEnvironment.id,
+          projectId: project.id,
+          organizationId: organization.id,
+          environmentType: "DEVELOPMENT",
+          engine: "V2",
+        },
+      });
+
+      await setTimeout(1000);
+
+      const queryRuns = clickhouse.reader.query({
+        name: "runs-replication",
+        query: "SELECT * FROM trigger_dev.task_runs_v2 WHERE run_id = {runId: String}",
+        schema: z.any(),
+        params: z.object({ runId: z.string() }),
+      });
+
+      const [queryError, result] = await queryRuns({ runId: run.id });
+
+      expect(queryError).toBeNull();
+      expect(result?.length).toBe(1);
+      expect(result?.[0]).toEqual(
+        expect.objectContaining({
+          run_id: run.id,
+          friendly_id: run.friendlyId,
+          task_identifier: "my-task",
+          environment_id: runtimeEnvironment.id,
+          project_id: project.id,
+          organization_id: organization.id,
+          environment_type: "DEVELOPMENT",
+          engine: "V2",
+        })
+      );
+
+      await runsReplicationService.stop();
+    }
+  );
+});
