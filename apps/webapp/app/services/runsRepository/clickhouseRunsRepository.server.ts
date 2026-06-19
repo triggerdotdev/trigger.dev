@@ -169,15 +169,12 @@ export class ClickHouseRunsRepository implements IRunsRepository {
   async listRuns(options: ListRunsOptions) {
     const { runIds, pagination } = await this.listRunIds(options);
 
-    let runs = await runStore.findRuns(
+    const hydrated = await runStore.findRuns(
       {
         where: {
           id: {
             in: runIds,
           },
-        },
-        orderBy: {
-          id: "desc",
         },
         select: {
           id: true,
@@ -215,6 +212,15 @@ export class ClickHouseRunsRepository implements IRunsRepository {
       },
       this.options.prisma
     );
+
+    // ClickHouse already ranked `runIds`. An `IN (...)` hydration comes back
+    // unordered, and a single SQL `orderBy` can't span the two physical run
+    // tables (legacy TaskRun + task_run_v2), so restore ClickHouse's ranking
+    // in memory.
+    const runById = new Map(hydrated.map((run) => [run.id, run]));
+    let runs = runIds
+      .map((id) => runById.get(id))
+      .filter((run): run is NonNullable<typeof run> => run !== undefined);
 
     // ClickHouse is slightly delayed, so we're going to do in-memory status filtering too
     if (options.statuses && options.statuses.length > 0) {
