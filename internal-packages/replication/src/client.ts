@@ -24,6 +24,14 @@ export interface LogicalReplicationClientOptions {
    */
   table: string;
   /**
+   * Additional tables to co-publish into the same publication. Their WAL
+   * events stream through the same `data` handler as `table`, so use this only
+   * when the extra tables share `table`'s row shape and downstream transform
+   * (e.g. a parallel clone table). On startup they are added to an existing
+   * publication via ALTER PUBLICATION ... ADD TABLE.
+   */
+  additionalTables?: string[];
+  /**
    * The name of the replication slot to use.
    */
   slotName: string;
@@ -407,6 +415,15 @@ export class LogicalReplicationClient {
     return this;
   }
 
+  // The full set of tables this client publishes: the primary `table` plus any
+  // `additionalTables`. Order is stable so the publication's FOR TABLE clause is
+  // deterministic.
+  #allTables(): string[] {
+    return this.options.additionalTables
+      ? [this.options.table, ...this.options.additionalTables]
+      : [this.options.table];
+  }
+
   async #createPublication(): Promise<boolean> {
     if (!this.client) {
       this.events.emit("error", new LogicalReplicationClientError("Client not connected"));
@@ -416,8 +433,10 @@ export class LogicalReplicationClient {
     const publicationExists = await this.#doesPublicationExist();
 
     if (publicationExists) {
-      // Validate the existing publication is correctly configured
-      const validationError = await this.#validatePublicationConfiguration();
+      // Reconcile the existing publication: add any configured table it is
+      // missing (e.g. a clone table added after the publication was first
+      // created). Returns an error string only for unrecoverable mismatches.
+      const validationError = await this.#ensurePublicationConfiguration();
 
       if (validationError) {
         this.logger.error("Publication exists but is misconfigured", {
@@ -441,9 +460,13 @@ export class LogicalReplicationClient {
       return true;
     }
 
+    const tableList = this.#allTables()
+      .map((table) => `"${table}"`)
+      .join(", ");
+
     const [createError] = await tryCatch(
       this.client.query(
-        `CREATE PUBLICATION "${this.options.publicationName}" FOR TABLE "${this.options.table}" ${
+        `CREATE PUBLICATION "${this.options.publicationName}" FOR TABLE ${tableList} ${
           this.options.publicationActions
             ? `WITH (publish = '${this.options.publicationActions.join(", ")}')`
             : ""
@@ -483,32 +506,47 @@ export class LogicalReplicationClient {
     return res.rows[0].exists;
   }
 
-  async #validatePublicationConfiguration(): Promise<string | null> {
+  async #ensurePublicationConfiguration(): Promise<string | null> {
     if (!this.client) {
-      return "Cannot validate publication configuration: client not connected";
+      return "Cannot ensure publication configuration: client not connected";
     }
 
-    // Check if the publication has the correct table
+    // Which public tables the publication already carries.
     const tablesRes = await this.client.query(
-      `SELECT schemaname, tablename 
-       FROM pg_publication_tables 
+      `SELECT schemaname, tablename
+       FROM pg_publication_tables
        WHERE pubname = '${this.options.publicationName}';`
     );
 
-    const tables = tablesRes.rows;
-    const expectedTable = this.options.table;
-
-    // Check if the table is in the publication
-    const hasTable = tables.some(
-      (row) => row.tablename === expectedTable && row.schemaname === "public"
+    const currentTables = new Set(
+      tablesRes.rows
+        .filter((row) => row.schemaname === "public")
+        .map((row) => row.tablename as string)
     );
 
-    if (!hasTable) {
-      if (tables.length === 0) {
-        return `Publication '${this.options.publicationName}' exists but has NO TABLES configured. Expected table: "public.${expectedTable}". Run: ALTER PUBLICATION ${this.options.publicationName} ADD TABLE "${expectedTable}";`;
-      } else {
-        const tableList = tables.map((t) => `"${t.schemaname}"."${t.tablename}"`).join(", ");
-        return `Publication '${this.options.publicationName}' exists but does not include the required table "public.${expectedTable}". Current tables: ${tableList}. Run: ALTER PUBLICATION ${this.options.publicationName} ADD TABLE "${expectedTable}";`;
+    // Reconcile rather than reject: add any configured table the publication is
+    // missing. ALTER PUBLICATION ... ADD TABLE is online and leaves the slot
+    // position intact, so an existing publication can gain a table (e.g.
+    // task_run_v2 alongside TaskRun) without a drop/recreate. ADD TABLE on a
+    // table already published raises duplicate_object (42710); treat that as a
+    // benign race (another instance won) rather than a failure.
+    const missingTables = this.#allTables().filter((table) => !currentTables.has(table));
+
+    for (const table of missingTables) {
+      this.logger.info("Adding table to existing publication", {
+        name: this.options.name,
+        publicationName: this.options.publicationName,
+        table,
+      });
+
+      const [addError] = await tryCatch(
+        this.client.query(
+          `ALTER PUBLICATION "${this.options.publicationName}" ADD TABLE "${table}";`
+        )
+      );
+
+      if (addError && (addError as { code?: string }).code !== "42710") {
+        return `Failed to add table "public.${table}" to publication '${this.options.publicationName}': ${addError.message}`;
       }
     }
 
