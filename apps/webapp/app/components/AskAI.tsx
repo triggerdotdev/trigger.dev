@@ -11,12 +11,11 @@ import { useSearchParams } from "@remix-run/react";
 import DOMPurify from "dompurify";
 import { motion } from "framer-motion";
 import { marked } from "marked";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTypedRouteLoaderData } from "remix-typedjson";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { SparkleListIcon } from "~/assets/icons/SparkleListIcon";
 import { useFeatures } from "~/hooks/useFeatures";
-import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { type loader } from "~/root";
 import { Button } from "./primitives/Buttons";
 import { Callout } from "./primitives/Callout";
@@ -37,104 +36,6 @@ import { ClientOnly } from "remix-utils/client-only";
 function useKapaWebsiteId() {
   const routeMatch = useTypedRouteLoaderData<typeof loader>("root");
   return routeMatch?.kapa.websiteId;
-}
-
-/** Open/close state for the Ask AI dialog, including the `?aiHelp=` deep-link handling. */
-function useAskAIState() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [initialQuery, setInitialQuery] = useState<string | undefined>();
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  const openAskAI = useCallback((question?: string) => {
-    if (question) {
-      setInitialQuery(question);
-    } else {
-      setInitialQuery(undefined);
-    }
-    setIsOpen(true);
-  }, []);
-
-  const closeAskAI = useCallback(() => {
-    setIsOpen(false);
-    setInitialQuery(undefined);
-  }, []);
-
-  // Handle URL param functionality
-  useEffect(() => {
-    const aiHelp = searchParams.get("aiHelp");
-    if (aiHelp) {
-      // Delay to avoid hCaptcha bot detection
-      window.setTimeout(() => openAskAI(aiHelp), 1000);
-
-      // Clone instead of mutating in place
-      const next = new URLSearchParams(searchParams);
-      next.delete("aiHelp");
-      setSearchParams(next);
-    }
-  }, [searchParams, openAskAI]);
-
-  return { isOpen, setIsOpen, initialQuery, openAskAI, closeAskAI };
-}
-
-/**
- * Hosts Ask AI (Kapa provider, ⌘I shortcut, dialog) for a menu that renders its own trigger. Wrap
- * it around the popover, not inside, so the dialog and shortcut survive the popover closing.
- * `children` receives the open function, or undefined when Ask AI is unavailable (self-hosted, no
- * Kapa website id, or SSR).
- */
-export function AskAIRoot({
-  children,
-}: {
-  children: (openAskAI: (() => void) | undefined) => ReactNode;
-}) {
-  const { isManagedCloud } = useFeatures();
-  const websiteId = useKapaWebsiteId();
-
-  if (!isManagedCloud || !websiteId) {
-    return <>{children(undefined)}</>;
-  }
-
-  return (
-    <ClientOnly fallback={<>{children(undefined)}</>}>
-      {() => <AskAIRootProvider websiteId={websiteId}>{children}</AskAIRootProvider>}
-    </ClientOnly>
-  );
-}
-
-function AskAIRootProvider({
-  websiteId,
-  children,
-}: {
-  websiteId: string;
-  children: (openAskAI: () => void) => ReactNode;
-}) {
-  const { isOpen, setIsOpen, initialQuery, openAskAI, closeAskAI } = useAskAIState();
-
-  useShortcutKeys({
-    shortcut: { modifiers: ["mod"], key: "i", enabledOnInputElements: true },
-    action: () => openAskAI(),
-  });
-
-  return (
-    <KapaProvider
-      integrationId={websiteId}
-      callbacks={{
-        askAI: {
-          onQuerySubmit: () => openAskAI(),
-          onAnswerGenerationCompleted: () => openAskAI(),
-        },
-      }}
-      botProtectionMechanism="hcaptcha"
-    >
-      {children(() => openAskAI())}
-      <AskAIDialog
-        initialQuery={initialQuery}
-        isOpen={isOpen}
-        onOpenChange={setIsOpen}
-        closeAskAI={closeAskAI}
-      />
-    </KapaProvider>
-  );
 }
 
 export function AskAI({ isCollapsed = false }: { isCollapsed?: boolean }) {
@@ -171,7 +72,37 @@ type AskAIProviderProps = {
 };
 
 function AskAIProvider({ websiteId, isCollapsed = false }: AskAIProviderProps) {
-  const { isOpen, setIsOpen, initialQuery, openAskAI, closeAskAI } = useAskAIState();
+  const [isOpen, setIsOpen] = useState(false);
+  const [initialQuery, setInitialQuery] = useState<string | undefined>();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const openAskAI = useCallback((question?: string) => {
+    if (question) {
+      setInitialQuery(question);
+    } else {
+      setInitialQuery(undefined);
+    }
+    setIsOpen(true);
+  }, []);
+
+  const closeAskAI = useCallback(() => {
+    setIsOpen(false);
+    setInitialQuery(undefined);
+  }, []);
+
+  // Handle URL param functionality
+  useEffect(() => {
+    const aiHelp = searchParams.get("aiHelp");
+    if (aiHelp) {
+      // Delay to avoid hCaptcha bot detection
+      window.setTimeout(() => openAskAI(aiHelp), 1000);
+
+      // Clone instead of mutating in place
+      const next = new URLSearchParams(searchParams);
+      next.delete("aiHelp");
+      setSearchParams(next);
+    }
+  }, [searchParams, openAskAI]);
 
   return (
     <KapaProvider
@@ -203,7 +134,11 @@ function AskAIProvider({ websiteId, isCollapsed = false }: AskAIProviderProps) {
                 </Button>
               </span>
             </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={8} className="flex items-center gap-2 text-xs">
+            <TooltipContent
+              side="right"
+              sideOffset={8}
+              className="flex items-center gap-2 text-xs"
+            >
               Ask AI
               <span className="flex items-center">
                 <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
@@ -242,7 +177,7 @@ function AskAIDialog({ initialQuery, isOpen, onOpenChange, closeAskAI }: AskAIDi
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="animated-gradient-glow flex max-h-[90vh] min-h-fit w-full flex-col justify-between gap-0 px-0 pb-0 pt-0 sm:max-w-prose">
-        <DialogHeader className="flex h-11 items-start justify-center rounded-t-md bg-background-bright pl-3">
+        <DialogHeader className="flex h-[2.75rem] items-start justify-center rounded-t-md bg-background-bright pl-3">
           <div className="flex items-center gap-1">
             <AISparkleIcon className="size-5" />
             <DialogTitle className="text-sm font-medium text-text-bright">Ask AI</DialogTitle>
@@ -295,7 +230,7 @@ function ChatMessages({
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+    <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
       {conversation.length === 0 ? (
         <motion.div
           className="flex flex-col gap-2 pb-2"
@@ -318,7 +253,7 @@ function ChatMessages({
           {exampleQuestions.map((question, index) => (
             <motion.button
               key={index}
-              className="group flex w-fit items-center gap-2 rounded-full border border-dashed border-border-bright px-4 py-2 transition-colors hover:border-solid hover:border-indigo-500"
+              className="group flex w-fit items-center gap-2 rounded-full border border-dashed border-charcoal-600 px-4 py-2 transition-colors hover:border-solid hover:border-indigo-500"
               onClick={() => onExampleClick(question)}
               variants={{
                 hidden: {
@@ -537,7 +472,7 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
         error={error}
         addFeedback={addFeedback}
       />
-      <form onSubmit={handleSubmit} className="shrink-0 border-t border-grid-bright p-4">
+      <form onSubmit={handleSubmit} className="flex-shrink-0 border-t border-grid-bright p-4">
         <div className="flex gap-3">
           <input
             type="text"
@@ -580,7 +515,7 @@ function ChatInterface({ initialQuery }: { initialQuery?: string }) {
               disabled={!message.trim()}
               LeadingIcon={<ArrowUpIcon className="size-5 text-text-bright" />}
               variant="primary/large"
-              className="size-10 min-w-10 rounded-full group-disabled/button:border-border-brighter group-disabled/button:bg-surface-control"
+              className="size-10 min-w-10 rounded-full group-disabled/button:border-charcoal-550 group-disabled/button:bg-charcoal-600"
             />
           )}
         </div>
@@ -600,11 +535,11 @@ function GradientSpinnerBackground({
 }) {
   return (
     <div
-      className={`flex rounded-full bg-linear-to-br from-indigo-500 via-purple-500 to-fuchsia-500 p-px ${className}`}
+      className={`flex rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-fuchsia-500 p-px ${className}`}
     >
       <div
-        className={`flex h-full w-full items-center justify-center rounded-full bg-surface-control ${
-          hoverEffect ? "transition group-hover:bg-surface-control-hover" : ""
+        className={`flex h-full w-full items-center justify-center rounded-full bg-charcoal-600 ${
+          hoverEffect ? "transition group-hover:bg-charcoal-550" : ""
         }`}
       >
         {children}

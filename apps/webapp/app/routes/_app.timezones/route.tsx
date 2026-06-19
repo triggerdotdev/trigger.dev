@@ -15,13 +15,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export default function Page() {
   const { timezones } = useTypedLoaderData<typeof loader>();
   return (
-    <div className="grid grid-rows-[2.5rem_1fr]">
+    <div className="grid grid-rows-[2.5rem,1fr]">
       <div className="flex items-center border-b border-b-grid-dimmed px-3">
         <Link to="/">
-          <LogoIcon className="relative -top-px mr-2 h-4 w-4 min-w-4" />
+          <LogoIcon className="relative -top-px mr-2 h-4 w-4 min-w-[1rem]" />
         </Link>
       </div>
-      <div className="overflow-y-auto p-8 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-surface-control">
+      <div className="overflow-y-auto p-8 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
         <Header1 spacing>Supported timezones</Header1>
         <Paragraph spacing>We support these timezones when creating a schedule.</Paragraph>
         <ul className="">
