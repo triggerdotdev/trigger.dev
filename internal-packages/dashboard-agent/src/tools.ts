@@ -112,6 +112,63 @@ function curateTasks(data: unknown) {
   };
 }
 
+function curateRuns(data: unknown) {
+  const runs = (data as any)?.data ?? [];
+  return {
+    runs: (Array.isArray(runs) ? runs : []).map((r: any) => ({
+      id: r.id,
+      status: r.status,
+      taskIdentifier: r.taskIdentifier,
+      version: r.version,
+      isTest: r.isTest,
+      createdAt: r.createdAt,
+      startedAt: r.startedAt,
+      finishedAt: r.finishedAt,
+      durationMs: r.durationMs,
+      tags: r.tags,
+    })),
+    nextCursor: (data as any)?.pagination?.next,
+  };
+}
+
+// Flatten the nested trace tree into a compact, depth-tagged list so the model
+// can reason over the timeline without the full span payloads (output,
+// properties, raw events are dropped). Capped so a deep trace stays small.
+const MAX_TRACE_SPANS = 60;
+function curateTrace(data: unknown) {
+  const root = (data as any)?.trace?.rootSpan;
+  const spans: Array<Record<string, unknown>> = [];
+  const walk = (span: any, depth: number) => {
+    if (!span || spans.length >= MAX_TRACE_SPANS) return;
+    const d = span.data ?? {};
+    spans.push({
+      depth,
+      message: d.message,
+      task: d.taskSlug,
+      durationMs: d.duration,
+      level: d.level,
+      isError: d.isError,
+      isPartial: d.isPartial,
+    });
+    for (const child of span.children ?? []) walk(child, depth + 1);
+  };
+  walk(root, 0);
+  return { traceId: (data as any)?.trace?.traceId, spans, truncated: spans.length >= MAX_TRACE_SPANS };
+}
+
+// Cap the run-list lookback at 30 days. Parse the `<number><unit>` window and
+// clamp anything larger (or unparseable) down to 30d, so the agent can't scan
+// huge time ranges. Returns the effective period so the model reports the real
+// window it queried.
+const MAX_PERIOD_SECONDS = 30 * 24 * 60 * 60;
+const PERIOD_UNIT_SECONDS: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400, w: 604800 };
+function clampPeriod(period: string): string {
+  const match = /^(\d+)\s*([smhdw])$/.exec(period.trim());
+  if (!match) return "30d";
+  const seconds = Number(match[1]) * PERIOD_UNIT_SECONDS[match[2]];
+  return seconds > MAX_PERIOD_SECONDS ? "30d" : period.trim();
+}
+
 const NO_AUTH = { error: "No delegated access is available for this turn." } as const;
 
 // Always returns the same four tools so the declared tool set stays stable
@@ -196,6 +253,51 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         );
         if (!result.ok) return { error: `Couldn't list tasks (status ${result.status}).` };
         return curateTasks(result.data);
+      },
+    }),
+
+    list_runs: tool({
+      description:
+        "List recent runs in the current environment, newest first. Optionally filter by status, task, or time period. Use this for 'what's been running', 'recent failures', etc.",
+      inputSchema: z.object({
+        status: z
+          .string()
+          .optional()
+          .describe("Run status filter, e.g. COMPLETED, FAILED, EXECUTING, QUEUED, CANCELED."),
+        taskIdentifier: z.string().optional().describe("Only runs of this task id."),
+        period: z
+          .string()
+          .optional()
+          .describe("Relative window, e.g. 1h, 24h, 7d. Max 30d; larger values are capped at 30d."),
+        limit: z.number().int().positive().max(50).optional().describe("Max runs to return (default 10)."),
+      }),
+      execute: async ({ status, taskIdentifier, period, limit }) => {
+        const envJwt = await getEnvJwt();
+        if (!envJwt) return { error: "No current environment is available to read runs from." };
+        const effectivePeriod = period ? clampPeriod(period) : undefined;
+        const sp = new URLSearchParams();
+        if (status) sp.append("filter[status]", status);
+        if (taskIdentifier) sp.append("filter[taskIdentifier]", taskIdentifier);
+        if (effectivePeriod) sp.append("filter[createdAt][period]", effectivePeriod);
+        sp.append("page[size]", String(Math.min(limit ?? 10, 50)));
+        const result = await apiGet(origin, `/api/v1/runs?${sp.toString()}`, envJwt);
+        if (!result.ok) return { error: `Couldn't list runs (status ${result.status}).` };
+        return { ...curateRuns(result.data), period: effectivePeriod };
+      },
+    }),
+
+    get_run_trace: tool({
+      description:
+        "Get a run's execution trace: the timeline of spans (tasks, waits, attempts) with durations and error flags. Use this to explain why a run failed, retried, or was slow.",
+      inputSchema: z.object({
+        runId: z.string().describe("The run id, e.g. run_abc123."),
+      }),
+      execute: async ({ runId }) => {
+        const envJwt = await getEnvJwt();
+        if (!envJwt) return { error: "No current environment is available to read runs from." };
+        const result = await apiGet(origin, `/api/v1/runs/${runId}/trace`, envJwt);
+        if (!result.ok) return { error: `Couldn't get the trace for ${runId} (status ${result.status}).` };
+        return curateTrace(result.data);
       },
     }),
   };
