@@ -366,6 +366,7 @@ model RuntimeEnvironment {
   backgroundWorkers          BackgroundWorker[]
   backgroundWorkerTasks      BackgroundWorkerTask[]
   taskRuns                   TaskRun[]
+  taskRunsV2                 TaskRunV2[]                 @relation("taskRunsV2")
   taskQueues                 TaskQueue[]
   batchTaskRuns              BatchTaskRun[]
   environmentVariableValues  EnvironmentVariableValue[]
@@ -453,6 +454,7 @@ model Project {
   backgroundWorkers              BackgroundWorker[]
   backgroundWorkerTasks          BackgroundWorkerTask[]
   taskRuns                       TaskRun[]
+  taskRunsV2                     TaskRunV2[]                      @relation("taskRunsV2")
   runTags                        TaskRunTag[]
   taskQueues                     TaskQueue[]
   environmentVariables           EnvironmentVariable[]
@@ -560,6 +562,7 @@ model BackgroundWorker {
   tasks          BackgroundWorkerTask[]
   attempts       TaskRunAttempt[]
   lockedRuns     TaskRun[]
+  lockedRunsV2   TaskRunV2[]            @relation("lockedRunsV2")
   files          BackgroundWorkerFile[]
   queues         TaskQueue[]
   promptVersions PromptVersion[]
@@ -695,6 +698,7 @@ model BackgroundWorkerTask {
 
   attempts TaskRunAttempt[]
   runs     TaskRun[]
+  runsV2   TaskRunV2[]      @relation("lockedRunsV2")
 
   queueConfig   Json?
   retryConfig   Json?
@@ -742,7 +746,9 @@ model PlaygroundConversation {
 
   /// The current active run backing this conversation (null if no run yet)
   runId String?
-  run   TaskRun? @relation(fields: [runId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  run   TaskRun? @relation(fields: [runId], references: [id], onDelete: SetNull, onUpdate: Cascade, map: "PlaygroundConversation_runId_fkey")
+  /// Mirror relation to TaskRunV2 reusing the same runId scalar (FK stripped in prod)
+  runV2 TaskRunV2? @relation("playgroundConversationsV2", fields: [runId], references: [id], onDelete: SetNull, onUpdate: Cascade, map: "PlaygroundConversation_runId_v2_fkey")
 
   /// The client data JSON used for this conversation
   clientData Json?
@@ -1131,10 +1137,12 @@ model TaskRunV2 {
   traceId String
   spanId  String
 
+  runtimeEnvironment   RuntimeEnvironment @relation("taskRunsV2", fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "task_run_v2_runtimeEnvironmentId_fkey")
   runtimeEnvironmentId String
 
   environmentType RuntimeEnvironmentType?
 
+  project   Project @relation("taskRunsV2", fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "task_run_v2_projectId_fkey")
   projectId String
 
   organizationId String?
@@ -1159,6 +1167,9 @@ model TaskRunV2 {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  attempts TaskRunAttempt[] @relation("attemptsV2")
+  tags     TaskRunTag[]     @relation("taskRunTagsV2")
+
   /// Denormized column that holds the raw tags
   runTags String[]
 
@@ -1166,6 +1177,8 @@ model TaskRunV2 {
   taskVersion String?
   sdkVersion  String?
   cliVersion  String?
+
+  checkpoints Checkpoint[] @relation("checkpointsV2")
 
   /// startedAt marks the point at which a run is dequeued from MarQS
   startedAt     DateTime?
@@ -1179,8 +1192,10 @@ model TaskRunV2 {
   baseCostInCents Float @default(0)
 
   lockedAt   DateTime?
+  lockedBy   BackgroundWorkerTask? @relation("lockedRunsV2", fields: [lockedById], references: [id], map: "task_run_v2_lockedById_fkey")
   lockedById String?
 
+  lockedToVersion   BackgroundWorker? @relation("lockedRunsV2", fields: [lockedToVersionId], references: [id], map: "task_run_v2_lockedToVersionId_fkey")
   lockedToVersionId String?
 
   /// The "priority" of the run. This is just a negative offset in ms for the queue timestamp
@@ -1199,10 +1214,26 @@ model TaskRunV2 {
   /// optional token that can be used to authenticate the task run
   oneTimeUseToken String?
 
+  ///When this run is finished, the waitpoint will be marked as completed
+  associatedWaitpoint Waitpoint? @relation("CompletingRunV2")
+
+  ///If there are any blocked waitpoints, the run won't be executed
+  blockedByWaitpoints TaskRunWaitpoint[] @relation("taskRunWaitpointsV2")
+
+  /// All waitpoints that blocked this run at some point, used for display purposes
+  connectedWaitpoints Waitpoint[] @relation("WaitpointRunConnectionsV2")
+
   /// Where the logs are stored
   taskEventStore String @default("taskEvent")
 
   queueTimestamp DateTime?
+
+  batchItems             BatchTaskRunItem[]         @relation("batchItemsV2")
+  dependency             TaskRunDependency?         @relation("dependencyV2")
+  CheckpointRestoreEvent CheckpointRestoreEvent[]   @relation("checkpointRestoreEventsV2")
+  executionSnapshots     TaskRunExecutionSnapshot[] @relation("executionSnapshotsV2")
+
+  alerts ProjectAlert[] @relation("alertsV2")
 
   scheduleInstanceId String?
   scheduleId         String?
@@ -1213,12 +1244,26 @@ model TaskRunV2 {
 
   replayedFromTaskRunFriendlyId String?
 
+  /// This represents the original task that that was triggered outside of a Trigger.dev task
+  rootTaskRun   TaskRunV2? @relation("TaskRootRunV2", fields: [rootTaskRunId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "task_run_v2_rootTaskRunId_fkey")
   rootTaskRunId String?
 
+  /// The root run will have a list of all the descendant runs, children, grand children, etc.
+  descendantRuns TaskRunV2[] @relation("TaskRootRunV2")
+
+  /// The immediate parent run of this task run
+  parentTaskRun   TaskRunV2? @relation("TaskParentRunV2", fields: [parentTaskRunId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "task_run_v2_parentTaskRunId_fkey")
   parentTaskRunId String?
 
+  /// The immediate child runs of this task run
+  childRuns TaskRunV2[] @relation("TaskParentRunV2")
+
+  /// The immediate parent attempt of this task run
+  parentTaskRunAttempt   TaskRunAttempt? @relation("TaskParentRunAttemptV2", fields: [parentTaskRunAttemptId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "task_run_v2_parentTaskRunAttemptId_fkey")
   parentTaskRunAttemptId String?
 
+  /// The batch run that this task run is a part of
+  batch   BatchTaskRun? @relation("batchRunsV2", fields: [batchId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "task_run_v2_batchId_fkey")
   batchId String?
 
   /// whether or not the task run was created because of a triggerAndWait for batchTriggerAndWait
@@ -1269,6 +1314,11 @@ model TaskRunV2 {
   /// basin without joining org. Null when the org has no per-org basin
   /// (OSS, or pre-backfill); reads fall back to the global basin.
   streamBasinName        String?
+
+  sourceBulkActionItems      BulkActionItem[] @relation("SourceActionItemRunV2")
+  destinationBulkActionItems BulkActionItem[] @relation("DestinationActionItemRunV2")
+
+  playgroundConversations PlaygroundConversation[] @relation("playgroundConversationsV2")
 
   @@unique([oneTimeUseToken])
   @@unique([runtimeEnvironmentId, taskIdentifier, idempotencyKey])
@@ -1407,7 +1457,9 @@ model TaskRunExecutionSnapshot {
 
   /// Run
   runId     String
-  run       TaskRun       @relation(fields: [runId], references: [id])
+  run       TaskRun       @relation(fields: [runId], references: [id], map: "TaskRunExecutionSnapshot_runId_fkey")
+  /// Mirror relation to TaskRunV2 reusing the same runId scalar (FK stripped in prod)
+  runV2     TaskRunV2     @relation("executionSnapshotsV2", fields: [runId], references: [id], map: "TaskRunExecutionSnapshot_runId_v2_fkey")
   runStatus TaskRunStatus
 
   // Batch
@@ -1527,7 +1579,9 @@ model Waitpoint {
 
   /// If it's a RUN type waitpoint, this is the associated run
   completedByTaskRunId String?  @unique
-  completedByTaskRun   TaskRun? @relation("CompletingRun", fields: [completedByTaskRunId], references: [id], onDelete: SetNull)
+  completedByTaskRun   TaskRun? @relation("CompletingRun", fields: [completedByTaskRunId], references: [id], onDelete: SetNull, map: "Waitpoint_completedByTaskRunId_fkey")
+  /// Mirror relation to TaskRunV2 reusing the same completedByTaskRunId scalar (FK stripped in prod)
+  completedByTaskRunV2 TaskRunV2? @relation("CompletingRunV2", fields: [completedByTaskRunId], references: [id], onDelete: SetNull, map: "Waitpoint_completedByTaskRunId_v2_fkey")
 
   /// If it's a DATETIME type waitpoint, this is the date.
   /// If it's a MANUAL waitpoint, this can be set as the `timeout`.
@@ -1541,7 +1595,8 @@ model Waitpoint {
   blockingTaskRuns TaskRunWaitpoint[]
 
   /// All runs that have ever been blocked by this waitpoint, used for display purposes
-  connectedRuns TaskRun[] @relation("WaitpointRunConnections")
+  connectedRuns   TaskRun[]   @relation("WaitpointRunConnections")
+  connectedRunsV2 TaskRunV2[] @relation("WaitpointRunConnectionsV2")
 
   /// When a waitpoint is complete
   completedExecutionSnapshots TaskRunExecutionSnapshot[] @relation("completedWaitpoints")
@@ -1592,7 +1647,9 @@ enum WaitpointStatus {
 model TaskRunWaitpoint {
   id String @id @default(cuid())
 
-  taskRun   TaskRun @relation(fields: [taskRunId], references: [id])
+  taskRun   TaskRun @relation(fields: [taskRunId], references: [id], map: "TaskRunWaitpoint_taskRunId_fkey")
+  /// Mirror relation to TaskRunV2 reusing the same taskRunId scalar (FK stripped in prod)
+  taskRunV2 TaskRunV2 @relation("taskRunWaitpointsV2", fields: [taskRunId], references: [id], map: "TaskRunWaitpoint_taskRunId_v2_fkey")
   taskRunId String
 
   waitpoint   Waitpoint @relation(fields: [waitpointId], references: [id])
@@ -1756,7 +1813,8 @@ model TaskRunTag {
 
   friendlyId String @unique
 
-  runs TaskRun[]
+  runs   TaskRun[]
+  runsV2 TaskRunV2[] @relation("taskRunTagsV2")
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
@@ -1773,7 +1831,9 @@ model TaskRunDependency {
   id String @id @default(cuid())
 
   /// The child run
-  taskRun   TaskRun @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskRun   TaskRun @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "TaskRunDependency_taskRunId_fkey")
+  /// Mirror relation to TaskRunV2 reusing the same taskRunId scalar (FK stripped in prod)
+  taskRunV2 TaskRunV2 @relation("dependencyV2", fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "TaskRunDependency_taskRunId_v2_fkey")
   taskRunId String  @unique
 
   checkpointEvent   CheckpointRestoreEvent? @relation(fields: [checkpointEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -1821,7 +1881,9 @@ model TaskRunAttempt {
 
   friendlyId String @unique
 
-  taskRun   TaskRun @relation("attempts", fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskRun   TaskRun @relation("attempts", fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "TaskRunAttempt_taskRunId_fkey")
+  /// Mirror relation to TaskRunV2 reusing the same taskRunId scalar (FK stripped in prod)
+  taskRunV2 TaskRunV2 @relation("attemptsV2", fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "TaskRunAttempt_taskRunId_v2_fkey")
   taskRunId String
 
   backgroundWorker   BackgroundWorker @relation(fields: [backgroundWorkerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -1858,6 +1920,7 @@ model TaskRunAttempt {
   CheckpointRestoreEvent CheckpointRestoreEvent[]
   alerts                 ProjectAlert[]
   childRuns              TaskRun[]                @relation("TaskParentRunAttempt")
+  childRunsV2            TaskRunV2[]              @relation("TaskParentRunAttemptV2")
 
   @@unique([taskRunId, number])
   @@index([taskRunId])
@@ -2059,6 +2122,7 @@ model BatchTaskRun {
   runtimeEnvironmentId    String
   /// This only includes new runs, not idempotent runs.
   runs                    TaskRun[]
+  runsV2                  TaskRunV2[]        @relation("batchRunsV2")
   createdAt               DateTime           @default(now())
   updatedAt               DateTime           @updatedAt
 
@@ -2142,7 +2206,9 @@ model BatchTaskRunItem {
   batchTaskRun   BatchTaskRun @relation(fields: [batchTaskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   batchTaskRunId String
 
-  taskRun   TaskRun @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskRun   TaskRun @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "BatchTaskRunItem_taskRunId_fkey")
+  /// Mirror relation to TaskRunV2 reusing the same taskRunId scalar (FK stripped in prod)
+  taskRunV2 TaskRunV2 @relation("batchItemsV2", fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "BatchTaskRunItem_taskRunId_v2_fkey")
   taskRunId String
 
   taskRunAttempt   TaskRunAttempt? @relation(fields: [taskRunAttemptId], references: [id], onDelete: SetNull, onUpdate: Cascade)
@@ -2237,7 +2303,9 @@ model Checkpoint {
 
   events CheckpointRestoreEvent[]
 
-  run   TaskRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  run   TaskRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "Checkpoint_runId_fkey")
+  /// Mirror relation to TaskRunV2 reusing the same runId scalar (FK stripped in prod)
+  runV2 TaskRunV2 @relation("checkpointsV2", fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "Checkpoint_runId_v2_fkey")
   runId String
 
   attempt       TaskRunAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -2272,7 +2340,9 @@ model CheckpointRestoreEvent {
   checkpoint   Checkpoint @relation(fields: [checkpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   checkpointId String
 
-  run   TaskRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  run   TaskRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "CheckpointRestoreEvent_runId_fkey")
+  /// Mirror relation to TaskRunV2 reusing the same runId scalar (FK stripped in prod)
+  runV2 TaskRunV2 @relation("checkpointRestoreEventsV2", fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "CheckpointRestoreEvent_runId_v2_fkey")
   runId String
 
   attempt   TaskRunAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -2558,7 +2628,9 @@ model ProjectAlert {
   taskRunAttempt   TaskRunAttempt? @relation(fields: [taskRunAttemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   taskRunAttemptId String?
 
-  taskRun   TaskRun? @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  taskRun   TaskRun? @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "ProjectAlert_taskRunId_fkey")
+  /// Mirror relation to TaskRunV2 reusing the same taskRunId scalar (FK stripped in prod)
+  taskRunV2 TaskRunV2? @relation("alertsV2", fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "ProjectAlert_taskRunId_v2_fkey")
   taskRunId String?
 
   workerDeployment   WorkerDeployment? @relation(fields: [workerDeploymentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -2739,11 +2811,15 @@ model BulkActionItem {
   status BulkActionItemStatus @default(PENDING)
 
   /// The run that is the source of the action, e.g. when replaying this is the original run
-  sourceRun   TaskRun @relation("SourceActionItemRun", fields: [sourceRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceRun   TaskRun @relation("SourceActionItemRun", fields: [sourceRunId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "BulkActionItem_sourceRunId_fkey")
+  /// Mirror relation to TaskRunV2 reusing the same sourceRunId scalar (FK stripped in prod)
+  sourceRunV2 TaskRunV2 @relation("SourceActionItemRunV2", fields: [sourceRunId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "BulkActionItem_sourceRunId_v2_fkey")
   sourceRunId String
 
   /// The run that's a result of the action, this will be set when the run has been created
-  destinationRun   TaskRun? @relation("DestinationActionItemRun", fields: [destinationRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  destinationRun   TaskRun? @relation("DestinationActionItemRun", fields: [destinationRunId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "BulkActionItem_destinationRunId_fkey")
+  /// Mirror relation to TaskRunV2 reusing the same destinationRunId scalar (FK stripped in prod)
+  destinationRunV2 TaskRunV2? @relation("DestinationActionItemRunV2", fields: [destinationRunId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "BulkActionItem_destinationRunId_v2_fkey")
   destinationRunId String?
 
   error String?
