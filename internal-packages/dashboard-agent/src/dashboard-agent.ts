@@ -8,9 +8,10 @@ import {
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
 import { chat } from "@trigger.dev/sdk/ai";
-import { createProviderRegistry, generateText, streamText, type UIMessage } from "ai";
+import { createProviderRegistry, generateText, stepCountIs, streamText, type UIMessage } from "ai";
 import { z } from "zod";
 import { systemPrompt, titlePrompt } from "./prompts";
+import { buildDashboardAgentTools } from "./tools";
 
 /**
  * The in-dashboard agent, built on chat.agent and deployed as an internal task
@@ -114,6 +115,13 @@ const clientDataSchema = z.object({
   projectId: z.string().optional(),
   environmentId: z.string().optional(),
   currentPage: z.string().optional(),
+  // Injected server-side by the `in` proxy on each turn (never sent from the
+  // browser): a short-lived read-only delegated token for the user, the API
+  // origin to call back to, and the current project ref + env its tools read.
+  userActorToken: z.string().optional(),
+  apiOrigin: z.string().optional(),
+  projectRef: z.string().optional(),
+  environmentName: z.string().optional(),
 });
 
 export const dashboardAgent = chat.agent({
@@ -122,6 +130,11 @@ export const dashboardAgent = chat.agent({
   // Latency levers come next (Head Start, prompt caching, AI Prompts). Scaffold
   // keeps a short idle window so suspended runs release their DB pool.
   idleTimeoutInSeconds: 60,
+
+  // Read-only tools, rebuilt per turn from the delegated token the `in` proxy
+  // injects. Declaring them here (not just inside run) lets the SDK re-apply
+  // each tool's output conversion when it replays prior-turn history.
+  tools: async ({ clientData }) => buildDashboardAgentTools(clientData ?? {}),
 
   onBoot: async () => {
     // Establish the per-process connection pool once.
@@ -206,15 +219,18 @@ export const dashboardAgent = chat.agent({
   // text (with its cache breakpoint), config, telemetry, and prepareStep
   // wiring; the model string is resolved through the registry here so
   // streamText keeps a typed model.
-  run: async ({ messages, signal }) => {
+  run: async ({ messages, signal, tools }) => {
     const resolved = chat.prompt();
     return streamText({
-      ...chat.toStreamTextOptions(),
+      ...chat.toStreamTextOptions({ tools }),
       model: registry.languageModel(
         (resolved.model ?? "anthropic:claude-sonnet-4-6") as `anthropic:${string}`
       ),
       messages,
       abortSignal: signal,
+      // toStreamTextOptions() defaults to a single step; override so the model
+      // can call a tool and then answer from its result in the same turn.
+      stopWhen: stepCountIs(10),
     });
   },
 });

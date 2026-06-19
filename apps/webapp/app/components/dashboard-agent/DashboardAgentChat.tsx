@@ -60,6 +60,15 @@ export function DashboardAgentChat({
   const transport = useTriggerChatTransport<typeof dashboardAgent>({
     task: "dashboard-agent",
     baseURL: apiOrigin,
+    // Redirect only the `in`/append to the same-origin proxy, which mints +
+    // injects the delegated user token server-side. `baseURL` stays a string so
+    // `out` (the long-lived SSE) keeps the SDK's realtime-host routing — we
+    // never override it. The proxy forwards the same path on to the API.
+    fetch: (url, init, ctx) => {
+      if (ctx.endpoint !== "in") return globalThis.fetch(url, init);
+      const { pathname, search } = new URL(url);
+      return globalThis.fetch(`${actionPath}/in${pathname}${search}`, init);
+    },
     clientData,
     sessions: session
       ? {
