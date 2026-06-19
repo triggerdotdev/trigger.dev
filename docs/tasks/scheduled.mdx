@@ -95,7 +95,7 @@ There are two ways of doing this:
 
 ### Declarative schedules
 
-These sync when you run the [dev](/cli-dev) or [deploy](/cli-deploy) commands.
+These sync when you run the [dev](/cli-dev-commands) or [deploy](/cli-deploy-commands) commands.
 
 To create them you add the `cron` property to your `schedules.task()`. This property is optional and is only used if you want to add a declarative schedule to your task:
 
@@ -127,7 +127,7 @@ export const secondScheduledTask = schedules.task({
 });
 ```
 
-When you run the [dev](/cli-dev) or [deploy](/cli-deploy) commands, declarative schedules will be synced. If you add, delete or edit the `cron` property it will be updated when you run these commands. You can view your schedules on the Schedules page in the dashboard.
+When you run the [dev](/cli-dev-commands) or [deploy](/cli-deploy-commands) commands, declarative schedules will be synced. If you add, delete or edit the `cron` property it will be updated when you run these commands. You can view your schedules on the Schedules page in the dashboard.
 
 ### Imperative schedules
 

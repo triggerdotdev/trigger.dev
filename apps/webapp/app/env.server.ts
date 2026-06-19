@@ -8,18 +8,13 @@ import { isValidDuration } from "./services/realtime/duration.server";
 // `z.string()` constrained to a `parseDuration`-parseable string (e.g.
 // `7d`, `1h`). Validated at boot so a typo'd duration fails fast.
 function durationString() {
-  return z
-    .string()
-    .refine(isValidDuration, "must be a duration like 7d, 30d, 365d, 1h, 1y");
+  return z.string().refine(isValidDuration, "must be a duration like 7d, 30d, 365d, 1h, 1y");
 }
 
 // Parses a CSV of machine preset names (e.g. "small-1x,small-2x") into a
 // non-empty array of MachinePresetName. Used by COMPUTE_TEMPLATE_MACHINE_PRESETS
 // and its _REQUIRED variant. Adds zod issues for empty input or unknown names.
-const parseMachinePresetCsv = (
-  raw: string,
-  ctx: z.RefinementCtx
-): MachinePresetName[] => {
+const parseMachinePresetCsv = (raw: string, ctx: z.RefinementCtx): MachinePresetName[] => {
   const names = raw
     .split(",")
     .map((s) => s.trim())
@@ -521,10 +516,7 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v, ctx) =>
-        parseMachinePresetCsv(
-          v ?? process.env.COMPUTE_TEMPLATE_MACHINE_PRESETS ?? "small-1x",
-          ctx
-        )
+        parseMachinePresetCsv(v ?? process.env.COMPUTE_TEMPLATE_MACHINE_PRESETS ?? "small-1x", ctx)
       ),
 
     DEPLOY_IMAGE_PLATFORM: z.string().default("linux/amd64"),
@@ -696,6 +688,7 @@ const EnvironmentSchema = z
     ALERT_RATE_LIMITER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
     LOOPS_API_KEY: z.string().optional(),
+    ATTIO_API_KEY: z.string().optional(),
     MARQS_DISABLE_REBALANCING: BoolEnv.default(false),
     MARQS_VISIBILITY_TIMEOUT_MS: z.coerce
       .number()
@@ -1186,7 +1179,9 @@ const EnvironmentSchema = z
     // setting this to "1" while `TRIGGER_MOLLIFIER_ENABLED` is "0" is a
     // no-op because the gate-side singleton refuses to construct a buffer
     // when the system is off.
-    TRIGGER_MOLLIFIER_DRAINER_ENABLED: z.string().default(process.env.TRIGGER_MOLLIFIER_ENABLED ?? "0"),
+    TRIGGER_MOLLIFIER_DRAINER_ENABLED: z
+      .string()
+      .default(process.env.TRIGGER_MOLLIFIER_ENABLED ?? "0"),
     TRIGGER_MOLLIFIER_SHADOW_MODE: z.string().default("0"),
     TRIGGER_MOLLIFIER_REDIS_HOST: z
       .string()
@@ -1196,7 +1191,7 @@ const EnvironmentSchema = z
       .number()
       .optional()
       .transform(
-        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined),
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
       ),
     TRIGGER_MOLLIFIER_REDIS_USERNAME: z
       .string()
@@ -1206,7 +1201,9 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.REDIS_PASSWORD),
-    TRIGGER_MOLLIFIER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
+    TRIGGER_MOLLIFIER_REDIS_TLS_DISABLED: z
+      .string()
+      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
     TRIGGER_MOLLIFIER_TRIP_WINDOW_MS: z.coerce.number().int().positive().default(200),
     TRIGGER_MOLLIFIER_TRIP_THRESHOLD: z.coerce.number().int().positive().default(100),
     TRIGGER_MOLLIFIER_HOLD_MS: z.coerce.number().int().positive().default(500),
@@ -1270,11 +1267,7 @@ const EnvironmentSchema = z
     // (retrieve, trace) have a safety net while PG replica lag settles.
     TRIGGER_MOLLIFIER_ACK_GRACE_TTL_SECONDS: z.coerce.number().int().positive().default(30),
     // ioredis per-request retry limit on the buffer's Redis client.
-    TRIGGER_MOLLIFIER_REDIS_MAX_RETRIES_PER_REQUEST: z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(20),
+    TRIGGER_MOLLIFIER_REDIS_MAX_RETRIES_PER_REQUEST: z.coerce.number().int().positive().default(20),
     // ioredis reconnect backoff envelope for the buffer client: the base
     // grows by `STEP_MS` per attempt, capped at `MAX_MS`, then equal-jittered.
     TRIGGER_MOLLIFIER_REDIS_RECONNECT_STEP_MS: z.coerce.number().int().positive().default(50),
@@ -1874,6 +1867,32 @@ const EnvironmentSchema = z
 
     // Force RBAC to not use the plugin
     RBAC_FORCE_FALLBACK: BoolEnv.default(false),
+
+    // Force SSO to not use the plugin (contributors without the cloud
+    // plugin installed can opt in to a clean OSS-only experience).
+    SSO_FORCE_FALLBACK: BoolEnv.default(false),
+    // Emit a console.log when the SSO fallback is selected because no
+    // plugin is installed. Default off so OSS deployments stay quiet.
+    SSO_LOG_FALLBACK: BoolEnv.default(false),
+    // Master deploy gate for the whole SSO feature. Default OFF so the
+    // image can ship dark and be flipped on only once the SSO plugin's
+    // backing services are available. When false, the SSO controller is
+    // forced to the OSS fallback — login link hidden, SSO login disabled,
+    // settings inert, and session re-validation skipped.
+    SSO_ENABLED: BoolEnv.default(false),
+    // How often (seconds) a live SSO session is re-validated against the
+    // identity provider. The check is single-flight per user, so this is
+    // the minimum interval between plugin round-trips, not a per-request
+    // cost. Defaults to 5 minutes: every active SSO user drives one
+    // billing→IdP round-trip per window, so a seconds-scale default
+    // exhausts vendor rate limits at trivial user counts (masked by
+    // fail-open, so it degrades silently).
+    SSO_SESSION_REVALIDATION_INTERVAL_SECONDS: z.coerce.number().int().positive().default(300),
+    // Hard timeout (ms) on the re-validation round-trip. If the SSO plugin
+    // doesn't answer within this window the check fails OPEN (session kept)
+    // and emits a `sso.revalidation.timeout` warn log — alert on an
+    // elevated rate of those to catch a slow/unhealthy SSO dependency.
+    SSO_SESSION_REVALIDATION_TIMEOUT_MS: z.coerce.number().int().positive().default(2000),
   })
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema)

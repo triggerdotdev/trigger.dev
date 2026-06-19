@@ -1,48 +1,60 @@
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
 import { AppContainer, MainBody, PageBody } from "~/components/layout/AppLayout";
 import { Header1 } from "~/components/primitives/Headers";
 import { prisma } from "~/db.server";
 import { featuresForRequest } from "~/features.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
-import { requireUserId } from "~/services/session.server";
+import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
 
-export async function loader({ params, request }: LoaderFunctionArgs) {
-  await requireUserId(request);
-  const { organizationSlug } = OrganizationParamsSchema.parse(params);
+export const loader = dashboardLoader(
+  {
+    params: OrganizationParamsSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "manage", resource: { type: "billing" } },
+    // Full-screen subscribe gate outside the org layout: keep redirecting on
+    // denial rather than throwing the permission panel.
+    unauthorizedRedirect: "/",
+  },
+  async ({ params, request }) => {
+    const { organizationSlug } = params;
 
-  const { isManagedCloud } = featuresForRequest(request);
-  if (!isManagedCloud) {
-    return redirect(organizationPath({ slug: organizationSlug }));
+    const { isManagedCloud } = featuresForRequest(request);
+    if (!isManagedCloud) {
+      return redirect(organizationPath({ slug: organizationSlug }));
+    }
+
+    const plans = await getPlans();
+    if (!plans) {
+      throw new Response(null, { status: 404, statusText: "Plans not found" });
+    }
+
+    const organization = await prisma.organization.findFirst({
+      where: { slug: organizationSlug },
+    });
+
+    if (!organization) {
+      throw new Response(null, { status: 404, statusText: "Organization not found" });
+    }
+
+    if (organization.v3Enabled) {
+      return redirect(organizationPath({ slug: organizationSlug }));
+    }
+
+    const currentPlan = await getCurrentPlan(organization.id);
+
+    const periodEnd = new Date();
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+    return typedjson({ ...plans, ...currentPlan, organizationSlug, periodEnd });
   }
-
-  const plans = await getPlans();
-  if (!plans) {
-    throw new Response(null, { status: 404, statusText: "Plans not found" });
-  }
-
-  const organization = await prisma.organization.findUnique({
-    where: { slug: organizationSlug },
-  });
-
-  if (!organization) {
-    throw new Response(null, { status: 404, statusText: "Organization not found" });
-  }
-
-  if (organization.v3Enabled) {
-    return redirect(organizationPath({ slug: organizationSlug }));
-  }
-
-  const currentPlan = await getCurrentPlan(organization.id);
-
-  const periodEnd = new Date();
-  periodEnd.setMonth(periodEnd.getMonth() + 1);
-
-  return typedjson({ ...plans, ...currentPlan, organizationSlug, periodEnd });
-}
+);
 
 export default function ChoosePlanPage() {
   const { plans, v3Subscription, organizationSlug, periodEnd, addOnPricing } =

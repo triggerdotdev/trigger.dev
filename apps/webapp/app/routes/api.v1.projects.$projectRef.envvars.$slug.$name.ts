@@ -8,6 +8,7 @@ import {
   branchNameFromRequest,
 } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { authorizeEnvVarApiRequest } from "~/services/environmentVariableApiAccess.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
 const ParamsSchema = z.object({
@@ -24,7 +25,11 @@ export async function action({ params, request }: ActionFunctionArgs) {
   }
 
   try {
-    const authenticationResult = await authenticateRequest(request);
+    const authenticationResult = await authenticateRequest(request, {
+      personalAccessToken: true,
+      organizationAccessToken: true,
+      apiKey: true,
+    });
 
     if (!authenticationResult) {
       return json({ error: "Invalid or Missing API key" }, { status: 401 });
@@ -36,6 +41,16 @@ export async function action({ params, request }: ActionFunctionArgs) {
       parsedParams.data.slug,
       branchNameFromRequest(request)
     );
+
+    const denied = await authorizeEnvVarApiRequest({
+      request,
+      authType: authenticationResult.type,
+      organizationId: environment.organizationId,
+      projectId: environment.project.id,
+      envType: environment.type,
+      action: "write",
+    });
+    if (denied) return denied;
 
     // Find the environment variable
     const variable = await prisma.environmentVariable.findFirst({
@@ -110,7 +125,11 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
 
   try {
-    const authenticationResult = await authenticateRequest(request);
+    const authenticationResult = await authenticateRequest(request, {
+      personalAccessToken: true,
+      organizationAccessToken: true,
+      apiKey: true,
+    });
 
     if (!authenticationResult) {
       return json({ error: "Invalid or Missing API key" }, { status: 401 });
@@ -122,6 +141,16 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       parsedParams.data.slug,
       branchNameFromRequest(request)
     );
+
+    const denied = await authorizeEnvVarApiRequest({
+      request,
+      authType: authenticationResult.type,
+      organizationId: environment.organizationId,
+      projectId: environment.project.id,
+      envType: environment.type,
+      action: "read",
+    });
+    if (denied) return denied;
 
     // Find the environment variable
     const variable = await prisma.environmentVariable.findFirst({

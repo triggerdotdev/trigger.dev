@@ -7,11 +7,8 @@ import { json, redirect } from "@remix-run/server-runtime";
 import type { RbacAbility } from "@trigger.dev/rbac";
 import { rbac } from "~/services/rbac.server";
 import { getUserId } from "~/services/session.server";
-import type {
-  AuthorizationOption,
-  DashboardLoaderOptions,
-  SessionUser,
-} from "./dashboardBuilder";
+import { permissionDeniedResponse } from "~/utils/permissionDenied";
+import type { AuthorizationOption, DashboardLoaderOptions, SessionUser } from "./dashboardBuilder";
 import { fromZodError } from "zod-validation-error";
 import type { z } from "zod";
 
@@ -33,11 +30,7 @@ function isAuthorized(ability: RbacAbility, authorization: AuthorizationOption):
 
 type AuthScope = { organizationId?: string; projectId?: string };
 
-export async function authenticateAndAuthorize<
-  TParams,
-  TSearchParams,
-  TContext extends AuthScope
->(
+export async function authenticateAndAuthorize<TParams, TSearchParams, TContext extends AuthScope>(
   request: Request,
   rawParams: unknown,
   options: DashboardLoaderOptions<TParams, TSearchParams, TContext>
@@ -83,9 +76,9 @@ export async function authenticateAndAuthorize<
     parsedSearchParams = parsed.data;
   }
 
-  const ctx = (options.context
-    ? await options.context(parsedParams, request)
-    : ({} as TContext)) as TContext;
+  const ctx = (
+    options.context ? await options.context(parsedParams, request) : ({} as TContext)
+  ) as TContext;
   // Resolve userId from the session cookie *here* (the dashboard
   // request boundary) and feed it into the rbac plugin context. The
   // plugin no longer takes a `helpers.getSessionUserId` callback —
@@ -102,8 +95,31 @@ export async function authenticateAndAuthorize<
     return { ok: false, response: redirect(options.unauthorizedRedirect ?? "/") };
   }
 
-  if (options.authorization && !isAuthorized(auth.ability, options.authorization)) {
-    return { ok: false, response: redirect(options.unauthorizedRedirect ?? "/") };
+  if (options.authorization) {
+    const isSuperGate = "requireSuper" in options.authorization;
+    // Every catalogue resource is org- or project-scoped; requireSuper is the
+    // only global gate. An org/project-scoped check with no resolved scope
+    // would evaluate an unscoped ability, making the authorization a silent
+    // no-op for a missing org. Fail closed instead of relying on the ability
+    // to happen to deny.
+    const hasScope = Boolean(ctx.organizationId || ctx.projectId);
+    const denied = isSuperGate
+      ? !isAuthorized(auth.ability, options.authorization)
+      : !hasScope || !isAuthorized(auth.ability, options.authorization);
+
+    if (denied) {
+      // Super-admin gates must not reveal that the route exists, so they
+      // redirect away rather than render the panel. A redirect is also used by
+      // routes that opt in via unauthorizedRedirect (credential endpoints with
+      // no UI).
+      if (options.unauthorizedRedirect || isSuperGate) {
+        return { ok: false, response: redirect(options.unauthorizedRedirect ?? "/") };
+      }
+      // Role-based denial: throw a permission-denied 403. Both loader and
+      // action wrappers throw this, so it bubbles to the nearest route
+      // ErrorBoundary, where RouteErrorDisplay renders the permission panel.
+      return { ok: false, response: permissionDeniedResponse(options.authorization.message) };
+    }
   }
 
   return {

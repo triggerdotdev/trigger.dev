@@ -6,6 +6,7 @@ import {
   authenticateRequest,
 } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -48,6 +49,20 @@ export async function action({ request, params }: ActionFunctionArgs) {
       env,
       triggerBranch
     );
+
+    // This mints a JWT signed with the environment's secret key. For a PAT
+    // (a user), gate it on env-tier read:apiKeys so a restricted role can't
+    // obtain deployed-environment credentials (and therefore can't deploy).
+    const denied = await authorizePatEnvironmentAccess({
+      request,
+      authType: authenticationResult.type,
+      organizationId: runtimeEnv.organizationId,
+      projectId: runtimeEnv.project.id,
+      envType: runtimeEnv.type,
+      resource: "apiKeys",
+      action: "read",
+    });
+    if (denied) return denied;
 
     const parsedBody = RequestBodySchema.safeParse(await request.json());
 

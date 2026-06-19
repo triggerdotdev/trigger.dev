@@ -1,6 +1,5 @@
 import { ArrowPathIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import type { BulkActionType } from "@trigger.dev/database";
 import { motion } from "framer-motion";
@@ -10,6 +9,7 @@ import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { BulkActionFilterSummary } from "~/components/BulkActionFilterSummary";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { PermissionButton } from "~/components/primitives/PermissionButton";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
@@ -23,11 +23,13 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { BulkActionPresenter } from "~/presenters/v3/BulkActionPresenter.server";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { cn } from "~/utils/cn";
 import { formatNumber } from "~/utils/numberFormatter";
 import {
@@ -43,71 +45,102 @@ const BulkActionParamSchema = EnvironmentParamSchema.extend({
   bulkActionParam: z.string(),
 });
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
+export const loader = dashboardLoader(
+  {
+    params: BulkActionParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "read", resource: { type: "runs" } },
+  },
+  async ({ params, user, ability }) => {
+    const { organizationSlug, projectParam, envParam, bulkActionParam } = params;
 
-  const { organizationSlug, projectParam, envParam, bulkActionParam } =
-    BulkActionParamSchema.parse(params);
-
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  if (!project) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-  if (!environment) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  try {
-    const presenter = new BulkActionPresenter();
-    const [error, data] = await tryCatch(
-      presenter.call({
-        environmentId: environment.id,
-        bulkActionId: bulkActionParam,
-      })
-    );
-
-    if (error) {
-      throw new Error(error.message);
+    const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+    if (!project) {
+      throw new Response("Not Found", { status: 404 });
     }
 
-    const autoReloadPollIntervalMs = env.BULK_ACTION_AUTORELOAD_POLL_INTERVAL_MS;
+    const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
+    if (!environment) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
-    return typedjson({ bulkAction: data, autoReloadPollIntervalMs });
-  } catch (error) {
-    console.error(error);
-    throw new Response(undefined, {
-      status: 400,
-      statusText: "Something went wrong, if this problem persists please contact support.",
-    });
+    try {
+      const presenter = new BulkActionPresenter();
+      const [error, data] = await tryCatch(
+        presenter.call({
+          environmentId: environment.id,
+          bulkActionId: bulkActionParam,
+        })
+      );
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const autoReloadPollIntervalMs = env.BULK_ACTION_AUTORELOAD_POLL_INTERVAL_MS;
+
+      // Display flag for the Abort button — the action enforces write:runs.
+      const { canAbort } = checkPermissions(ability, {
+        canAbort: { action: "write", resource: { type: "runs" } },
+      });
+
+      return typedjson({ bulkAction: data, autoReloadPollIntervalMs, canAbort });
+    } catch (error) {
+      console.error(error);
+      throw new Response(undefined, {
+        status: 400,
+        statusText: "Something went wrong, if this problem persists please contact support.",
+      });
+    }
   }
-};
+);
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam, bulkActionParam } =
-    BulkActionParamSchema.parse(params);
+export const action = dashboardAction(
+  {
+    params: BulkActionParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    authorization: { action: "write", resource: { type: "runs" } },
+  },
+  async ({ request, params, user }) => {
+    const { organizationSlug, projectParam, envParam, bulkActionParam } = params;
 
-  const project = await findProjectBySlug(organizationSlug, projectParam, userId);
-  if (!project) {
-    throw new Response("Not Found", { status: 404 });
-  }
+    const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
+    if (!project) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
-  const environment = await findEnvironmentBySlug(project.id, envParam, userId);
-  if (!environment) {
-    throw new Response("Not Found", { status: 404 });
-  }
+    const environment = await findEnvironmentBySlug(project.id, envParam, user.id);
+    if (!environment) {
+      throw new Response("Not Found", { status: 404 });
+    }
 
-  const service = new BulkActionService();
-  const [error, result] = await tryCatch(service.abort(bulkActionParam, environment.id));
+    const service = new BulkActionService();
+    const [error, result] = await tryCatch(service.abort(bulkActionParam, environment.id));
 
-  if (error) {
-    logger.error("Failed to abort bulk action", {
-      error,
-    });
+    if (error) {
+      logger.error("Failed to abort bulk action", {
+        error,
+      });
 
-    return redirectWithErrorMessage(
+      return redirectWithErrorMessage(
+        v3BulkActionPath(
+          { slug: organizationSlug },
+          { slug: projectParam },
+          { slug: envParam },
+          { friendlyId: bulkActionParam }
+        ),
+        request,
+        `Failed to abort bulk action: ${error.message}`
+      );
+    }
+
+    return redirectWithSuccessMessage(
       v3BulkActionPath(
         { slug: organizationSlug },
         { slug: projectParam },
@@ -115,24 +148,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         { friendlyId: bulkActionParam }
       ),
       request,
-      `Failed to abort bulk action: ${error.message}`
+      "Bulk action aborted"
     );
   }
-
-  return redirectWithSuccessMessage(
-    v3BulkActionPath(
-      { slug: organizationSlug },
-      { slug: projectParam },
-      { slug: envParam },
-      { friendlyId: bulkActionParam }
-    ),
-    request,
-    "Bulk action aborted"
-  );
-};
+);
 
 export default function Page() {
-  const { bulkAction, autoReloadPollIntervalMs } = useTypedLoaderData<typeof loader>();
+  const { bulkAction, autoReloadPollIntervalMs, canAbort } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -162,9 +184,14 @@ export default function Page() {
         <BulkActionStatusCombo status={bulkAction.status} />
         {bulkAction.status === "PENDING" ? (
           <Form method="post">
-            <Button type="submit" variant="danger/small">
+            <PermissionButton
+              type="submit"
+              variant="danger/small"
+              hasPermission={canAbort}
+              noPermissionTooltip="You don't have permission to abort bulk actions"
+            >
               Abort bulk action
-            </Button>
+            </PermissionButton>
           </Form>
         ) : null}
       </div>

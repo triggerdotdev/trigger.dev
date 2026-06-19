@@ -1,10 +1,12 @@
 import { conform, useForm } from "@conform-to/react";
 import { parse } from "@conform-to/zod";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
-import { type ActionFunction, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
 import { MainHorizontallyCenteredContainer } from "~/components/layout/AppLayout";
+import { throwPermissionDenied } from "~/utils/permissionDenied";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -26,7 +28,6 @@ import {
 import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { ProjectSettingsPresenter } from "~/services/projectSettingsPresenter.server";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema, v3BillingPath, vercelResourcePath } from "~/utils/pathBuilder";
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams } from "@remix-run/react";
@@ -37,50 +38,68 @@ import {
   VercelOnboardingModal,
 } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import type { loader as vercelLoader } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
+import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const userId = await requireUserId(request);
-  const { projectParam, organizationSlug } = EnvironmentParamSchema.parse(params);
+export const loader = dashboardLoader(
+  {
+    params: EnvironmentParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    // No hard authorization: the page renders a PermissionDenied panel for
+    // roles that can't manage any integration (see canManageIntegrations).
+  },
+  async ({ params, user, ability }) => {
+    const { projectParam, organizationSlug } = params;
 
-  const projectSettingsPresenter = new ProjectSettingsPresenter();
-  const resultOrFail = await projectSettingsPresenter.getProjectSettings(
-    organizationSlug,
-    projectParam,
-    userId
-  );
+    const canManageIntegrations =
+      ability.can("write", { type: "github" }) || ability.can("write", { type: "vercel" });
 
-  if (resultOrFail.isErr()) {
-    switch (resultOrFail.error.type) {
-      case "project_not_found": {
-        throw new Response(undefined, {
-          status: 404,
-          statusText: "Project not found",
-        });
-      }
-      case "other":
-      default: {
-        resultOrFail.error.type satisfies "other";
+    if (!canManageIntegrations) {
+      throwPermissionDenied("With your current role, you can't manage integrations.");
+    }
 
-        logger.error("Failed loading project settings", {
-          error: resultOrFail.error,
-        });
-        throw new Response(undefined, {
-          status: 400,
-          statusText: "Something went wrong, please try again!",
-        });
+    const projectSettingsPresenter = new ProjectSettingsPresenter();
+    const resultOrFail = await projectSettingsPresenter.getProjectSettings(
+      organizationSlug,
+      projectParam,
+      user.id
+    );
+
+    if (resultOrFail.isErr()) {
+      switch (resultOrFail.error.type) {
+        case "project_not_found": {
+          throw new Response(undefined, {
+            status: 404,
+            statusText: "Project not found",
+          });
+        }
+        case "other":
+        default: {
+          resultOrFail.error.type satisfies "other";
+
+          logger.error("Failed loading project settings", {
+            error: resultOrFail.error,
+          });
+          throw new Response(undefined, {
+            status: 400,
+            statusText: "Something went wrong, please try again!",
+          });
+        }
       }
     }
+
+    const { gitHubApp, buildSettings } = resultOrFail.value;
+
+    return typedjson({
+      githubAppEnabled: gitHubApp.enabled,
+      buildSettings,
+      vercelIntegrationEnabled: OrgIntegrationRepository.isVercelSupported,
+    });
   }
-
-  const { gitHubApp, buildSettings } = resultOrFail.value;
-
-  return typedjson({
-    githubAppEnabled: gitHubApp.enabled,
-    buildSettings,
-    vercelIntegrationEnabled: OrgIntegrationRepository.isVercelSupported,
-  });
-};
+);
 
 const UpdateBuildSettingsFormSchema = z.object({
   action: z.literal("update-build-settings"),
@@ -118,59 +137,67 @@ const UpdateBuildSettingsFormSchema = z.object({
     .transform((val) => val === "on"),
 });
 
-export const action: ActionFunction = async ({ request, params }) => {
-  const userId = await requireUserId(request);
-  const { organizationSlug, projectParam } = params;
-  if (!organizationSlug || !projectParam) {
-    return json({ errors: { body: "organizationSlug and projectParam are required" } }, { status: 400 });
-  }
+export const action = dashboardAction(
+  {
+    params: EnvironmentParamSchema,
+    context: async (params) => {
+      const organizationId = await resolveOrgIdFromSlug(params.organizationSlug);
+      return organizationId ? { organizationId } : {};
+    },
+    // Build settings configure the Git-based deploy, so gate on write:github
+    // (a restricted role can view neither this page nor mutate via a POST).
+    authorization: { action: "write", resource: { type: "github" } },
+  },
+  async ({ request, params, user }) => {
+    const { organizationSlug, projectParam } = params;
 
-  const formData = await request.formData();
-  const submission = parse(formData, { schema: UpdateBuildSettingsFormSchema });
+    const formData = await request.formData();
+    const submission = parse(formData, { schema: UpdateBuildSettingsFormSchema });
 
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
-  }
+    if (!submission.value || submission.intent !== "submit") {
+      return json(submission);
+    }
 
-  const projectSettingsService = new ProjectSettingsService();
-  const membershipResultOrFail = await projectSettingsService.verifyProjectMembership(
-    organizationSlug,
-    projectParam,
-    userId
-  );
+    const projectSettingsService = new ProjectSettingsService();
+    const membershipResultOrFail = await projectSettingsService.verifyProjectMembership(
+      organizationSlug,
+      projectParam,
+      user.id
+    );
 
-  if (membershipResultOrFail.isErr()) {
-    return json({ errors: { body: membershipResultOrFail.error.type } }, { status: 404 });
-  }
+    if (membershipResultOrFail.isErr()) {
+      return json({ errors: { body: membershipResultOrFail.error.type } }, { status: 404 });
+    }
 
-  const { projectId } = membershipResultOrFail.value;
+    const { projectId } = membershipResultOrFail.value;
 
-  const { installCommand, preBuildCommand, triggerConfigFilePath, useNativeBuildServer } =
-    submission.value;
+    const { installCommand, preBuildCommand, triggerConfigFilePath, useNativeBuildServer } =
+      submission.value;
 
-  const resultOrFail = await projectSettingsService.updateBuildSettings(projectId, {
-    installCommand: installCommand || undefined,
-    preBuildCommand: preBuildCommand || undefined,
-    triggerConfigFilePath: triggerConfigFilePath || undefined,
-    useNativeBuildServer: useNativeBuildServer,
-  });
+    const resultOrFail = await projectSettingsService.updateBuildSettings(projectId, {
+      installCommand: installCommand || undefined,
+      preBuildCommand: preBuildCommand || undefined,
+      triggerConfigFilePath: triggerConfigFilePath || undefined,
+      useNativeBuildServer: useNativeBuildServer,
+    });
 
-  if (resultOrFail.isErr()) {
-    switch (resultOrFail.error.type) {
-      case "other":
-      default: {
-        resultOrFail.error.type satisfies "other";
+    if (resultOrFail.isErr()) {
+      switch (resultOrFail.error.type) {
+        case "other":
+        default: {
+          resultOrFail.error.type satisfies "other";
 
-        logger.error("Failed to update build settings", {
-          error: resultOrFail.error,
-        });
-        return redirectBackWithErrorMessage(request, "Failed to update build settings");
+          logger.error("Failed to update build settings", {
+            error: resultOrFail.error,
+          });
+          return redirectBackWithErrorMessage(request, "Failed to update build settings");
+        }
       }
     }
-  }
 
-  return redirectBackWithSuccessMessage(request, "Build settings updated successfully");
-};
+    return redirectBackWithSuccessMessage(request, "Build settings updated successfully");
+  }
+);
 
 export default function IntegrationsSettingsPage() {
   const { githubAppEnabled, buildSettings, vercelIntegrationEnabled } =
@@ -223,14 +250,28 @@ export default function IntegrationsSettingsPage() {
       } else if (vercelFetcher.state === "idle" && vercelFetcher.data === undefined) {
         // Load onboarding data
         vercelFetcher.load(
-          `${vercelResourcePath(organization.slug, project.slug, environment.slug)}?vercelOnboarding=true`
+          `${vercelResourcePath(
+            organization.slug,
+            project.slug,
+            environment.slug
+          )}?vercelOnboarding=true`
         );
       }
     } else if (!hasQueryParam && isModalOpen) {
       // Query param removed but modal is open, close modal
       setIsModalOpen(false);
     }
-  }, [hasQueryParam, vercelIntegrationEnabled, organization.slug, project.slug, environment.slug, vercelFetcher.data, vercelFetcher.state, isModalOpen, openVercelOnboarding]);
+  }, [
+    hasQueryParam,
+    vercelIntegrationEnabled,
+    organization.slug,
+    project.slug,
+    environment.slug,
+    vercelFetcher.data,
+    vercelFetcher.state,
+    isModalOpen,
+    openVercelOnboarding,
+  ]);
 
   // Ensure modal stays open when query param is present (even after data reloads)
   // This is a safeguard to prevent the modal from closing during form submissions
@@ -272,14 +313,30 @@ export default function IntegrationsSettingsPage() {
       // Need to load data first, mark that we're waiting for button click
       waitingForButtonClickRef.current = true;
       vercelFetcher.load(
-        `${vercelResourcePath(organization.slug, project.slug, environment.slug)}?vercelOnboarding=true`
+        `${vercelResourcePath(
+          organization.slug,
+          project.slug,
+          environment.slug
+        )}?vercelOnboarding=true`
       );
     }
-  }, [organization.slug, project.slug, environment.slug, vercelFetcher, setSearchParams, hasQueryParam, openVercelOnboarding]);
+  }, [
+    organization.slug,
+    project.slug,
+    environment.slug,
+    vercelFetcher,
+    setSearchParams,
+    hasQueryParam,
+    openVercelOnboarding,
+  ]);
 
   // When data loads from button click, open modal
   useEffect(() => {
-    if (waitingForButtonClickRef.current && vercelFetcher.data?.onboardingData && vercelFetcher.state === "idle") {
+    if (
+      waitingForButtonClickRef.current &&
+      vercelFetcher.data?.onboardingData &&
+      vercelFetcher.state === "idle"
+    ) {
       // Data loaded from button click, open modal and ensure query param is present
       waitingForButtonClickRef.current = false;
       openVercelOnboarding();
@@ -313,7 +370,9 @@ export default function IntegrationsSettingsPage() {
                       projectSlug={project.slug}
                       environmentSlug={environment.slug}
                       onOpenVercelModal={handleOpenVercelModal}
-                      isLoadingVercelData={vercelFetcher.state === "loading" || vercelFetcher.state === "submitting"}
+                      isLoadingVercelData={
+                        vercelFetcher.state === "loading" || vercelFetcher.state === "submitting"
+                      }
                     />
                   </div>
                 </div>
@@ -346,8 +405,14 @@ export default function IntegrationsSettingsPage() {
           vercelManageAccessUrl={vercelFetcher.data?.vercelManageAccessUrl}
           onDataReload={(vercelEnvironmentId) => {
             vercelFetcher.load(
-              `${vercelResourcePath(organization.slug, project.slug, environment.slug)}?vercelOnboarding=true${
-                vercelEnvironmentId ? `&vercelEnvironmentId=${encodeURIComponent(vercelEnvironmentId)}` : ""
+              `${vercelResourcePath(
+                organization.slug,
+                project.slug,
+                environment.slug
+              )}?vercelOnboarding=true${
+                vercelEnvironmentId
+                  ? `&vercelEnvironmentId=${encodeURIComponent(vercelEnvironmentId)}`
+                  : ""
               }`
             );
           }}

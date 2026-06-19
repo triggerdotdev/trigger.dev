@@ -104,6 +104,7 @@ import { getImpersonationId } from "~/services/impersonation.server";
 import { logger } from "~/services/logger.server";
 import { getResizableSnapshot } from "~/services/resizablePanel.server";
 import { requireUserId } from "~/services/session.server";
+import { rbac } from "~/services/rbac.server";
 import { cn } from "~/utils/cn";
 import { lerp } from "~/utils/lerp";
 import {
@@ -189,7 +190,10 @@ async function getRunsListFromTableState({
       return null;
     }
 
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      project.organizationId,
+      "standard"
+    );
     const runsListPresenter = new NextRunListPresenter($replica, clickhouse);
     const currentPageResult = await runsListPresenter.call(project.organizationId, environment.id, {
       userId,
@@ -251,6 +255,15 @@ async function getRunsListFromTableState({
     logger.error("Error loading runs list from tableState:", { error });
     return null;
   }
+}
+
+// Display-only write:runs flags for the Replay/Cancel controls. The cancel
+// and replay action routes enforce write:runs independently; this mirrors the
+// result so the buttons disable for roles that lack it. Permissive in OSS.
+async function runWritePermissions(request: Request, userId: string, organizationId: string) {
+  const auth = await rbac.authenticateSession(request, { userId, organizationId });
+  const canWriteRun = auth.ok ? auth.ability.can("write", { type: "runs" }) : true;
+  return { canReplayRun: canWriteRun, canCancelRun: canWriteRun };
 }
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -318,11 +331,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       // Skip on `_data` requests (Remix data fetches): they're
       // client-driven follow-ups and the client URL is what matters,
       // not the loader's view of it.
-      if (
-        !url.searchParams.has("span") &&
-        !url.searchParams.has("_data") &&
-        buffered.run.spanId
-      ) {
+      if (!url.searchParams.has("span") && !url.searchParams.has("_data") && buffered.run.spanId) {
         url.searchParams.set("span", buffered.run.spanId);
         throw redirect(url.pathname + "?" + url.searchParams.toString());
       }
@@ -336,6 +345,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         maximumLiveReloadingSetting: env.MAXIMUM_LIVE_RELOADING_EVENTS,
         resizable: { parent, tree },
         runsList: null,
+        ...(await runWritePermissions(request, userId, buffered.run.environment.organizationId)),
       });
     }
 
@@ -347,11 +357,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // block in the buffered fallback above — the sibling redirect routes
   // do this, but direct navigation to the canonical project-scoped URL
   // never hits them, leaving the right detail panel collapsed.
-  if (
-    !url.searchParams.has("span") &&
-    !url.searchParams.has("_data") &&
-    result.run.spanId
-  ) {
+  if (!url.searchParams.has("span") && !url.searchParams.has("_data") && result.run.spanId) {
     url.searchParams.set("span", result.run.spanId);
     throw redirect(url.pathname + "?" + url.searchParams.toString());
   }
@@ -378,6 +384,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       tree,
     },
     runsList,
+    ...(await runWritePermissions(request, userId, result.run.environment.organizationId)),
   });
 };
 
@@ -417,8 +424,15 @@ async function tryMollifiedRunFallback(args: {
 type LoaderData = SerializeFrom<typeof loader>;
 
 export default function Page() {
-  const { run, trace, maximumLiveReloadingSetting, runsList, resizable } =
-    useLoaderData<typeof loader>();
+  const {
+    run,
+    trace,
+    maximumLiveReloadingSetting,
+    runsList,
+    resizable,
+    canReplayRun,
+    canCancelRun,
+  } = useLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -500,6 +514,8 @@ export default function Page() {
                 LeadingIcon={ArrowUturnLeftIcon}
                 shortcut={{ key: "R" }}
                 className="pr-2"
+                disabled={!canReplayRun}
+                tooltip={canReplayRun ? undefined : "You don't have permission to replay runs"}
               >
                 Replay run
               </Button>
@@ -518,6 +534,7 @@ export default function Page() {
           {run.isFinished ? null : (
             <ControlledCancelRunDialog
               key={`cancel-${run.friendlyId}`}
+              canCancel={canCancelRun}
               runFriendlyId={run.friendlyId}
               redirectPath={v3RunSpanPath(
                 organization,
@@ -699,15 +716,23 @@ function TraceView({
 function ControlledCancelRunDialog({
   runFriendlyId,
   redirectPath,
+  canCancel,
 }: {
   runFriendlyId: string;
   redirectPath: string;
+  canCancel: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="danger/small" LeadingIcon={StopCircleIcon} shortcut={{ key: "C" }}>
+        <Button
+          variant="danger/small"
+          LeadingIcon={StopCircleIcon}
+          shortcut={{ key: "C" }}
+          disabled={!canCancel}
+          tooltip={canCancel ? undefined : "You don't have permission to cancel runs"}
+        >
           Cancel run…
         </Button>
       </DialogTrigger>
