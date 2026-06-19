@@ -31,13 +31,14 @@ import { analyzeWorker } from "../utilities/analyze.js";
 
 export type DevOutputOptions = {
   name: string | undefined;
+  branch: string;
   dashboardUrl: string;
   config: ResolvedConfig;
   args: DevCommandOptions;
 };
 
 export function startDevOutput(options: DevOutputOptions) {
-  const { dashboardUrl, config } = options;
+  const { branch, dashboardUrl, config } = options;
 
   const baseUrl = `${dashboardUrl}/projects/v3/${config.project}`;
 
@@ -90,7 +91,7 @@ export function startDevOutput(options: DevOutputOptions) {
     const runsLink = chalkLink(cliLink("View runs", runsUrl));
 
     const runtime = chalkGrey(`[${worker.build.runtime}]`);
-    const workerStarted = chalkGrey("Local worker ready");
+    const workerStarted = chalkGrey(`Local worker ready on branch: ${branch}`);
     const workerVersion = chalkWorker(worker.serverWorker!.version);
 
     logParts.push(workerStarted, runtime, arrow, workerVersion);

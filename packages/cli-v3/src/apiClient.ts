@@ -320,7 +320,7 @@ export class CliApiClient {
     );
   }
 
-  async archiveBranch(projectRef: string, branch: string) {
+  async archiveBranch(projectRef: string, env: string, branch: string) {
     if (!this.accessToken) {
       throw new Error("archiveBranch: No access token");
     }
@@ -331,7 +331,7 @@ export class CliApiClient {
       {
         method: "POST",
         headers: this.getHeaders(),
-        body: JSON.stringify({ branch }),
+        body: JSON.stringify({ env, branch }),
       }
     );
   }
@@ -694,6 +694,7 @@ export class CliApiClient {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         Accept: "application/json",
+        ...this.getBranchHeader(),
       },
     });
   }
@@ -714,6 +715,7 @@ export class CliApiClient {
           headers: {
             ...init?.headers,
             Authorization: `Bearer ${this.accessToken}`,
+            ...this.getBranchHeader(),
           },
         }),
     });
@@ -766,6 +768,7 @@ export class CliApiClient {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         Accept: "application/json",
+        ...this.getBranchHeader(),
       },
       body: JSON.stringify(body),
     });
@@ -783,6 +786,7 @@ export class CliApiClient {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         Accept: "application/json",
+        ...this.getBranchHeader(),
       },
       body: JSON.stringify(body),
     });
@@ -802,6 +806,7 @@ export class CliApiClient {
         Authorization: `Bearer ${this.accessToken}`,
         Accept: "application/json",
         "Content-Type": "application/json",
+        ...this.getBranchHeader(),
       },
       body: JSON.stringify(body),
     });
@@ -818,6 +823,7 @@ export class CliApiClient {
         headers: {
           Authorization: `Bearer ${this.accessToken}`,
           Accept: "application/json",
+          ...this.getBranchHeader(),
         },
       }
     );
@@ -837,6 +843,7 @@ export class CliApiClient {
           Authorization: `Bearer ${this.accessToken}`,
           Accept: "application/json",
           "Content-Type": "application/json",
+          ...this.getBranchHeader(),
         },
         body: JSON.stringify(body),
       }
@@ -855,6 +862,7 @@ export class CliApiClient {
         headers: {
           Authorization: `Bearer ${this.accessToken}`,
           Accept: "application/json",
+          ...this.getBranchHeader(),
         },
         //no body at the moment, but we'll probably add things soon
         body: JSON.stringify({}),
@@ -875,6 +883,7 @@ export class CliApiClient {
         headers: {
           Authorization: `Bearer ${this.accessToken}`,
           Accept: "application/json",
+          ...this.getBranchHeader(),
         },
         body: JSON.stringify(body),
       }
@@ -886,16 +895,15 @@ export class CliApiClient {
   }
 
   private getHeaders() {
-    const headers: Record<string, string> = {
+    return {
       Authorization: `Bearer ${this.accessToken}`,
       "Content-Type": "application/json",
       "x-trigger-source": this.source,
+      ...this.getBranchHeader(),
     };
+  }
 
-    if (this.branch) {
-      headers["x-trigger-branch"] = this.branch;
-    }
-
-    return headers;
+  private getBranchHeader(): Record<string, string> {
+    return this.branch ? { "x-trigger-branch": this.branch } : {};
   }
 }

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { readFile } from "../utilities/fileSystem.js";
 import { tryCatch } from "@trigger.dev/core/utils";
+import { isDefaultDevBranch } from "@trigger.dev/core/v3/utils/gitBranch";
 import { logger } from "../utilities/logger.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { existsSync, unlinkSync } from "node:fs";
@@ -8,9 +9,25 @@ import { onExit } from "signal-exit";
 
 const LOCK_FILE_NAME = "dev.lock";
 
-export async function createLockFile(cwd: string) {
+/**
+ * Builds the lock file name for a given branch. The default branch keeps the
+ * original `dev.lock` name (backwards compatible), while branches get their own
+ * lock (e.g. `dev.feature-foo.lock`) so concurrent dev sessions on different
+ * branches don't kill each other.
+ */
+function lockFileName(branch?: string) {
+  if (!branch || isDefaultDevBranch(branch)) {
+    return LOCK_FILE_NAME;
+  }
+
+  // Branch names can contain filesystem-unsafe characters (e.g. "/"), so sanitize.
+  const safeBranch = branch.replace(/[^a-zA-Z0-9-_]/g, "-");
+  return `dev.${safeBranch}.lock`;
+}
+
+export async function createLockFile(cwd: string, branch?: string) {
   const currentPid = process.pid;
-  const lockFilePath = path.join(cwd, ".trigger", LOCK_FILE_NAME);
+  const lockFilePath = path.join(cwd, ".trigger", lockFileName(branch));
 
   logger.debug("Checking for lockfile", { lockFilePath, currentPid });
 

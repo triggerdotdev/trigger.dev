@@ -82,6 +82,7 @@ export type GetEnvOptions = {
 };
 
 export async function getProjectClient(options: GetEnvOptions) {
+  // TODO everything calling this needs to become dev-branch aware
   logger.debug(
     `Initializing ${options.env} environment for project ${options.projectRef}`,
     options.apiUrl

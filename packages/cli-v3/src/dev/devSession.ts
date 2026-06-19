@@ -33,6 +33,7 @@ import { join } from "node:path";
 
 export type DevSessionOptions = {
   name: string | undefined;
+  branch: string;
   dashboardUrl: string;
   initialMode: "local";
   showInteractiveDevSession: boolean | undefined;
@@ -50,6 +51,7 @@ export type DevSessionInstance = {
 export async function startDevSession({
   rawConfig,
   name,
+  branch,
   rawArgs,
   client,
   dashboardUrl,
@@ -81,6 +83,7 @@ export async function startDevSession({
 
   const stopOutput = startDevOutput({
     name,
+    branch,
     dashboardUrl,
     config: rawConfig,
     args: rawArgs,

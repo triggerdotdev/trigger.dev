@@ -84,6 +84,7 @@ export class McpContext {
   }
 
   public async getCliApiClient(branch?: string) {
+    // TODO everything calling this possibly needs to become dev-branch aware...
     const auth = await this.getAuth();
 
     return new CliApiClient(auth.auth.apiUrl, auth.auth.accessToken, branch);
