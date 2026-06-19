@@ -73,6 +73,7 @@ import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { NoopPendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
 import { SystemResources } from "./systems/systems.js";
+import { PostgresRunStore, RunStore } from "@internal/run-store";
 import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import {
@@ -102,6 +103,7 @@ export class RunEngine {
 
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
+  runStore: RunStore;
   runQueue: RunQueue;
   eventBus: EventBus = new EventEmitter<EventBusEvents>();
   executionSnapshotSystem: ExecutionSnapshotSystem;
@@ -123,6 +125,7 @@ export class RunEngine {
     this.logger = options.logger ?? new Logger("RunEngine", this.options.logLevel ?? "info");
     this.prisma = options.prisma;
     this.readOnlyPrisma = options.readOnlyPrisma ?? this.prisma;
+    this.runStore = new PostgresRunStore({ prisma: this.prisma, readOnlyPrisma: this.readOnlyPrisma });
     this.runLockRedis = createRedisClient(
       {
         ...options.runLock.redis,
@@ -313,6 +316,7 @@ export class RunEngine {
     const resources: SystemResources = {
       prisma: this.prisma,
       readOnlyPrisma: this.readOnlyPrisma,
+      runStore: this.runStore,
       worker: this.worker,
       eventBus: this.eventBus,
       logger: this.logger,
@@ -532,84 +536,85 @@ export class RunEngine {
       const error: TaskRunError = { type: "STRING_ERROR", raw: cancelReason };
 
       try {
-        const taskRun = await prisma.taskRun.create({
-          data: {
-            id,
-            engine: "V2",
-            status: "CANCELED",
-            friendlyId: snapshot.friendlyId,
-            runtimeEnvironmentId: snapshot.environment.id,
-            environmentType: snapshot.environment.type,
-            organizationId: snapshot.environment.organization.id,
-            projectId: snapshot.environment.project.id,
-            idempotencyKey: snapshot.idempotencyKey,
-            idempotencyKeyExpiresAt: snapshot.idempotencyKeyExpiresAt,
-            idempotencyKeyOptions: snapshot.idempotencyKeyOptions,
-            taskIdentifier: snapshot.taskIdentifier,
-            payload: snapshot.payload,
-            payloadType: snapshot.payloadType,
-            context: snapshot.context,
-            traceContext: snapshot.traceContext,
-            traceId: snapshot.traceId,
-            spanId: snapshot.spanId,
-            parentSpanId: snapshot.parentSpanId,
-            lockedToVersionId: snapshot.lockedToVersionId,
-            taskVersion: snapshot.taskVersion,
-            sdkVersion: snapshot.sdkVersion,
-            cliVersion: snapshot.cliVersion,
-            concurrencyKey: snapshot.concurrencyKey,
-            queue: snapshot.queue,
-            lockedQueueId: snapshot.lockedQueueId,
-            workerQueue: snapshot.workerQueue,
-            isTest: snapshot.isTest,
-            taskEventStore: snapshot.taskEventStore,
-            // Defensive: the snapshot comes from a cjson-encoded buffer
-            // payload, where empty Lua tables encode as `{}` not `[]`. If
-            // the drainer pops a buffered run with no tags, snapshot.tags
-            // will be an empty object, which Prisma misreads as a relation
-            // update op. Normalise to a real array (or undefined for the
-            // empty case).
-            runTags: Array.isArray(snapshot.tags) && snapshot.tags.length > 0
-              ? snapshot.tags
-              : undefined,
-            oneTimeUseToken: snapshot.oneTimeUseToken,
-            parentTaskRunId: snapshot.parentTaskRunId,
-            rootTaskRunId: snapshot.rootTaskRunId,
-            replayedFromTaskRunFriendlyId: snapshot.replayedFromTaskRunFriendlyId,
-            batchId: snapshot.batch?.id,
-            resumeParentOnCompletion: snapshot.resumeParentOnCompletion,
-            depth: snapshot.depth,
-            seedMetadata: snapshot.seedMetadata,
-            seedMetadataType: snapshot.seedMetadataType,
-            metadata: snapshot.metadata,
-            metadataType: snapshot.metadataType,
-            machinePreset: snapshot.machine,
-            scheduleId: snapshot.scheduleId,
-            scheduleInstanceId: snapshot.scheduleInstanceId,
-            createdAt: snapshot.createdAt,
-            bulkActionGroupIds: snapshot.bulkActionId ? [snapshot.bulkActionId] : undefined,
-            planType: snapshot.planType,
-            realtimeStreamsVersion: snapshot.realtimeStreamsVersion,
-            streamBasinName: snapshot.streamBasinName,
-            annotations: snapshot.annotations,
-            completedAt: cancelledAt,
-            updatedAt: cancelledAt,
-            error: error as unknown as Prisma.InputJsonValue,
-            attemptNumber: 0,
-            executionSnapshots: {
-              create: {
-                engine: "V2",
-                executionStatus: "FINISHED",
-                description: "Run cancelled before materialisation",
-                runStatus: "CANCELED",
-                environmentId: snapshot.environment.id,
-                environmentType: snapshot.environment.type,
-                projectId: snapshot.environment.project.id,
-                organizationId: snapshot.environment.organization.id,
-              },
+        const taskRun = await this.runStore.createCancelledRun(
+          {
+            data: {
+              id,
+              engine: "V2",
+              status: "CANCELED",
+              friendlyId: snapshot.friendlyId,
+              runtimeEnvironmentId: snapshot.environment.id,
+              environmentType: snapshot.environment.type,
+              organizationId: snapshot.environment.organization.id,
+              projectId: snapshot.environment.project.id,
+              idempotencyKey: snapshot.idempotencyKey,
+              idempotencyKeyExpiresAt: snapshot.idempotencyKeyExpiresAt,
+              idempotencyKeyOptions: snapshot.idempotencyKeyOptions,
+              taskIdentifier: snapshot.taskIdentifier,
+              payload: snapshot.payload,
+              payloadType: snapshot.payloadType,
+              context: snapshot.context,
+              traceContext: snapshot.traceContext,
+              traceId: snapshot.traceId,
+              spanId: snapshot.spanId,
+              parentSpanId: snapshot.parentSpanId,
+              lockedToVersionId: snapshot.lockedToVersionId,
+              taskVersion: snapshot.taskVersion,
+              sdkVersion: snapshot.sdkVersion,
+              cliVersion: snapshot.cliVersion,
+              concurrencyKey: snapshot.concurrencyKey,
+              queue: snapshot.queue,
+              lockedQueueId: snapshot.lockedQueueId,
+              workerQueue: snapshot.workerQueue,
+              isTest: snapshot.isTest,
+              taskEventStore: snapshot.taskEventStore,
+              // Defensive: the snapshot comes from a cjson-encoded buffer
+              // payload, where empty Lua tables encode as `{}` not `[]`. If
+              // the drainer pops a buffered run with no tags, snapshot.tags
+              // will be an empty object, which Prisma misreads as a relation
+              // update op. Normalise to a real array (or undefined for the
+              // empty case).
+              runTags: Array.isArray(snapshot.tags) && snapshot.tags.length > 0
+                ? snapshot.tags
+                : undefined,
+              oneTimeUseToken: snapshot.oneTimeUseToken,
+              parentTaskRunId: snapshot.parentTaskRunId,
+              rootTaskRunId: snapshot.rootTaskRunId,
+              replayedFromTaskRunFriendlyId: snapshot.replayedFromTaskRunFriendlyId,
+              batchId: snapshot.batch?.id,
+              resumeParentOnCompletion: snapshot.resumeParentOnCompletion,
+              depth: snapshot.depth,
+              seedMetadata: snapshot.seedMetadata,
+              seedMetadataType: snapshot.seedMetadataType,
+              metadata: snapshot.metadata,
+              metadataType: snapshot.metadataType,
+              machinePreset: snapshot.machine,
+              scheduleId: snapshot.scheduleId,
+              scheduleInstanceId: snapshot.scheduleInstanceId,
+              createdAt: snapshot.createdAt,
+              bulkActionGroupIds: snapshot.bulkActionId ? [snapshot.bulkActionId] : undefined,
+              planType: snapshot.planType,
+              realtimeStreamsVersion: snapshot.realtimeStreamsVersion,
+              streamBasinName: snapshot.streamBasinName,
+              annotations: snapshot.annotations,
+              completedAt: cancelledAt,
+              updatedAt: cancelledAt,
+              error: error as unknown as Prisma.InputJsonValue,
+              attemptNumber: 0,
+            },
+            snapshot: {
+              engine: "V2",
+              executionStatus: "FINISHED",
+              description: "Run cancelled before materialisation",
+              runStatus: "CANCELED",
+              environmentId: snapshot.environment.id,
+              environmentType: snapshot.environment.type,
+              projectId: snapshot.environment.project.id,
+              organizationId: snapshot.environment.organization.id,
             },
           },
-        });
+          prisma
+        );
 
         if (emitRunCancelledEvent) {
           this.eventBus.emit("runCancelled", {
@@ -826,112 +831,108 @@ export class RunEngine {
         let taskRun: TaskRun & { associatedWaitpoint: Waitpoint | null };
         const taskRunId = RunId.fromFriendlyId(friendlyId);
         try {
-          taskRun = await prisma.taskRun.create({
-            include: {
-              associatedWaitpoint: true,
-            },
-            data: {
-              id: taskRunId,
-              engine: "V2",
-              status,
-              friendlyId,
-              runtimeEnvironmentId: environment.id,
-              environmentType: environment.type,
-              organizationId: environment.organization.id,
-              projectId: environment.project.id,
-              idempotencyKey,
-              idempotencyKeyExpiresAt,
-              idempotencyKeyOptions,
-              taskIdentifier,
-              payload,
-              payloadType,
-              context,
-              traceContext,
-              traceId,
-              spanId,
-              parentSpanId,
-              lockedToVersionId,
-              taskVersion,
-              sdkVersion,
-              cliVersion,
-              concurrencyKey,
-              queue,
-              lockedQueueId,
-              workerQueue,
-              region,
-              isTest,
-              delayUntil,
-              queuedAt,
-              maxAttempts,
-              taskEventStore,
-              priorityMs,
-              queueTimestamp: queueTimestamp ?? delayUntil ?? new Date(),
-              ttl: resolvedTtl,
-              // Defensive: when the mollifier drainer replays a buffered
-              // snapshot whose payload was rewritten by a buffer-side Lua
-              // mutate (e.g. append_tags clears an empty list), cjson
-              // encodes an empty Lua table as `{}` rather than `[]`. JS
-              // parses that back as an empty object, and `{}.length` is
-              // undefined — the original `tags.length === 0` check would
-              // pass `{}` straight to Prisma's `String[]` column. Mirror
-              // the same Array.isArray guard that `createCancelledRun`
-              // uses for symmetry with the trigger replay path.
-              runTags: Array.isArray(tags) && tags.length > 0 ? tags : undefined,
-              oneTimeUseToken,
-              parentTaskRunId,
-              rootTaskRunId,
-              replayedFromTaskRunFriendlyId,
-              batchId: batch?.id,
-              resumeParentOnCompletion,
-              depth,
-              metadata,
-              metadataType,
-              seedMetadata,
-              seedMetadataType,
-              maxDurationInSeconds,
-              machinePreset: machine,
-              scheduleId,
-              scheduleInstanceId,
-              createdAt,
-              bulkActionGroupIds: bulkActionId ? [bulkActionId] : undefined,
-              planType,
-              realtimeStreamsVersion,
-              streamBasinName,
-              debounce: debounce
-                ? {
-                  key: debounce.key,
-                  delay: debounce.delay,
-                  createdAt: new Date(),
-                }
-                : undefined,
-              annotations,
-              executionSnapshots: {
-                create: {
-                  engine: "V2",
-                  executionStatus: delayUntil ? "DELAYED" : "RUN_CREATED",
-                  description: delayUntil ? "Run is delayed" : "Run was created",
-                  runStatus: status,
-                  environmentId: environment.id,
-                  environmentType: environment.type,
-                  projectId: environment.project.id,
-                  organizationId: environment.organization.id,
-                  workerId,
-                  runnerId,
-                },
+          taskRun = await this.runStore.createRun(
+            {
+              data: {
+                id: taskRunId,
+                engine: "V2",
+                status,
+                friendlyId,
+                runtimeEnvironmentId: environment.id,
+                environmentType: environment.type,
+                organizationId: environment.organization.id,
+                projectId: environment.project.id,
+                idempotencyKey,
+                idempotencyKeyExpiresAt,
+                idempotencyKeyOptions,
+                taskIdentifier,
+                payload,
+                payloadType,
+                context,
+                traceContext,
+                traceId,
+                spanId,
+                parentSpanId,
+                lockedToVersionId,
+                taskVersion,
+                sdkVersion,
+                cliVersion,
+                concurrencyKey,
+                queue,
+                lockedQueueId,
+                workerQueue,
+                region,
+                isTest,
+                delayUntil,
+                queuedAt,
+                maxAttempts,
+                taskEventStore,
+                priorityMs,
+                queueTimestamp: queueTimestamp ?? delayUntil ?? new Date(),
+                ttl: resolvedTtl,
+                // Defensive: when the mollifier drainer replays a buffered
+                // snapshot whose payload was rewritten by a buffer-side Lua
+                // mutate (e.g. append_tags clears an empty list), cjson
+                // encodes an empty Lua table as `{}` rather than `[]`. JS
+                // parses that back as an empty object, and `{}.length` is
+                // undefined — the original `tags.length === 0` check would
+                // pass `{}` straight to Prisma's `String[]` column. Mirror
+                // the same Array.isArray guard that `createCancelledRun`
+                // uses for symmetry with the trigger replay path.
+                runTags: Array.isArray(tags) && tags.length > 0 ? tags : undefined,
+                oneTimeUseToken,
+                parentTaskRunId,
+                rootTaskRunId,
+                replayedFromTaskRunFriendlyId,
+                batchId: batch?.id,
+                resumeParentOnCompletion,
+                depth,
+                metadata,
+                metadataType,
+                seedMetadata,
+                seedMetadataType,
+                maxDurationInSeconds,
+                machinePreset: machine,
+                scheduleId,
+                scheduleInstanceId,
+                createdAt,
+                bulkActionGroupIds: bulkActionId ? [bulkActionId] : undefined,
+                planType,
+                realtimeStreamsVersion,
+                streamBasinName,
+                debounce: debounce
+                  ? {
+                    key: debounce.key,
+                    delay: debounce.delay,
+                    createdAt: new Date(),
+                  }
+                  : undefined,
+                annotations,
+              },
+              snapshot: {
+                engine: "V2",
+                executionStatus: delayUntil ? "DELAYED" : "RUN_CREATED",
+                description: delayUntil ? "Run is delayed" : "Run was created",
+                runStatus: status,
+                environmentId: environment.id,
+                environmentType: environment.type,
+                projectId: environment.project.id,
+                organizationId: environment.organization.id,
+                workerId,
+                runnerId,
               },
               // Only create waitpoint if parent is waiting for this run to complete
               // For standalone triggers (no waiting parent), waitpoint is created lazily if needed later
               associatedWaitpoint:
                 resumeParentOnCompletion && parentTaskRunId
-                  ? {
-                    create: this.waitpointSystem.buildRunAssociatedWaitpoint({
-                      projectId: environment.project.id,
-                      environmentId: environment.id,
-                    }),
-                  }
+                  ? this.waitpointSystem.buildRunAssociatedWaitpoint({
+                    projectId: environment.project.id,
+                    environmentId: environment.id,
+                  })
                   : undefined,
             },
-          });
+            prisma
+          );
         } catch (error) {
           if (error instanceof Prisma.PrismaClientKnownRequestError) {
             this.logger.debug("engine.trigger(): Prisma transaction error", {
@@ -1176,42 +1177,40 @@ export class RunEngine {
         // Create the run in terminal SYSTEM_FAILURE status.
         // No execution snapshot is needed: this run never gets dequeued, executed,
         // or heartbeated, so nothing will call getLatestExecutionSnapshot on it.
-        const taskRun = await this.prisma.taskRun.create({
-          include: {
-            associatedWaitpoint: true,
+        const taskRun = await this.runStore.createFailedRun(
+          {
+            data: {
+              id: taskRunId,
+              engine: "V2",
+              status: "SYSTEM_FAILURE",
+              friendlyId,
+              runtimeEnvironmentId: environment.id,
+              environmentType: environment.type,
+              organizationId: environment.organization.id,
+              projectId: environment.project.id,
+              taskIdentifier,
+              payload: payload ?? "",
+              payloadType: payloadType ?? "application/json",
+              context: {},
+              traceContext: (traceContext ?? {}) as Record<string, string | undefined>,
+              traceId: traceId ?? "",
+              spanId: spanId ?? "",
+              queue: queueOverride ?? `task/${taskIdentifier}`,
+              lockedQueueId: lockedQueueIdOverride,
+              isTest: false,
+              completedAt: new Date(),
+              error: error as unknown as Prisma.InputJsonObject,
+              parentTaskRunId,
+              rootTaskRunId,
+              depth: depth ?? 0,
+              batchId: batch?.id,
+              resumeParentOnCompletion,
+              taskEventStore,
+            },
+            associatedWaitpoint: waitpointData,
           },
-          data: {
-            id: taskRunId,
-            engine: "V2",
-            status: "SYSTEM_FAILURE",
-            friendlyId,
-            runtimeEnvironmentId: environment.id,
-            environmentType: environment.type,
-            organizationId: environment.organization.id,
-            projectId: environment.project.id,
-            taskIdentifier,
-            payload: payload ?? "",
-            payloadType: payloadType ?? "application/json",
-            context: {},
-            traceContext: (traceContext ?? {}) as Record<string, string | undefined>,
-            traceId: traceId ?? "",
-            spanId: spanId ?? "",
-            queue: queueOverride ?? `task/${taskIdentifier}`,
-            lockedQueueId: lockedQueueIdOverride,
-            isTest: false,
-            completedAt: new Date(),
-            error: error as unknown as Prisma.InputJsonObject,
-            parentTaskRunId,
-            rootTaskRunId,
-            depth: depth ?? 0,
-            batchId: batch?.id,
-            resumeParentOnCompletion,
-            taskEventStore,
-            associatedWaitpoint: waitpointData
-              ? { create: waitpointData }
-              : undefined,
-          },
-        });
+          this.prisma
+        );
 
         span.setAttribute("runId", taskRun.id);
 

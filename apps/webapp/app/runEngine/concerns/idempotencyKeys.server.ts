@@ -10,6 +10,7 @@ import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
 import { claimOrAwait } from "~/v3/mollifier/idempotencyClaim.server";
 import { makeResolveMollifierFlag } from "~/v3/mollifier/mollifierGate.server";
+import { runStore } from "~/v3/runStore.server";
 import type { TraceEventConcern, TriggerTaskRequest } from "../types";
 
 // In-memory per-org mollifier-enabled check, shared with `evaluateGate`
@@ -190,10 +191,10 @@ export class IdempotencyKeyConcern {
         });
 
         // Update the existing run to remove the idempotency key
-        await this.prisma.taskRun.updateMany({
-          where: { id: existingRun.id, idempotencyKey },
-          data: { idempotencyKey: null, idempotencyKeyExpiresAt: null },
-        });
+        await runStore.clearIdempotencyKey(
+          { byId: { runId: existingRun.id, idempotencyKey } },
+          this.prisma
+        );
 
         return { isCached: false, idempotencyKey, idempotencyKeyExpiresAt };
       }
@@ -207,10 +208,10 @@ export class IdempotencyKeyConcern {
         });
 
         // Update the existing run to remove the idempotency key
-        await this.prisma.taskRun.updateMany({
-          where: { id: existingRun.id, idempotencyKey },
-          data: { idempotencyKey: null, idempotencyKeyExpiresAt: null },
-        });
+        await runStore.clearIdempotencyKey(
+          { byId: { runId: existingRun.id, idempotencyKey } },
+          this.prisma
+        );
 
         return { isCached: false, idempotencyKey, idempotencyKeyExpiresAt };
       }

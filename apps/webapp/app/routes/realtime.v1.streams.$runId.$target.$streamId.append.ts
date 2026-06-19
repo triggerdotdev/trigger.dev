@@ -6,6 +6,7 @@ import { $replica, prisma } from "~/db.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
+import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -87,16 +88,7 @@ const { action } = createActionApiRoute(
     }
 
     if (!targetRun.realtimeStreams.includes(params.streamId)) {
-      await prisma.taskRun.update({
-        where: {
-          id: targetRun.id,
-        },
-        data: {
-          realtimeStreams: {
-            push: params.streamId,
-          },
-        },
-      });
+      await runStore.pushRealtimeStream(targetRun.id, params.streamId, prisma);
     }
 
     const part = await request.text();

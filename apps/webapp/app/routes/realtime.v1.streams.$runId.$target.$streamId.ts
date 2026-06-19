@@ -6,6 +6,7 @@ import {
   createActionApiRoute,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
+import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -86,12 +87,7 @@ const { action } = createActionApiRoute(
       }
 
       if (!target.realtimeStreams.includes(params.streamId)) {
-        await prisma.taskRun.update({
-          where: { id: target.id },
-          data: {
-            realtimeStreams: { push: params.streamId },
-          },
-        });
+        await runStore.pushRealtimeStream(target.id, params.streamId, prisma);
       }
 
       const realtimeStream = getRealtimeStreamInstance(

@@ -13,6 +13,7 @@ import { Effect, Schedule, Duration, Fiber } from "effect";
 import { type RuntimeFiber } from "effect/Fiber";
 import { setTimeout } from "timers/promises";
 import { Logger, LogLevel } from "@trigger.dev/core/logger";
+import type { RunStore } from "@internal/run-store";
 
 const RUN_UPDATABLE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
@@ -24,6 +25,7 @@ type BufferedRunMetadataChangeOperation = {
 
 export type UpdateMetadataServiceOptions = {
   prisma: PrismaClientOrTransaction;
+  runStore: RunStore;
   flushIntervalMs?: number;
   flushEnabled?: boolean;
   flushLoggingEnabled?: boolean;
@@ -49,6 +51,7 @@ export class UpdateMetadataService {
   private _bufferedOperations: Map<string, BufferedRunMetadataChangeOperation[]> = new Map();
   private _flushFiber: RuntimeFiber<void> | null = null;
   private readonly _prisma: PrismaClientOrTransaction;
+  private readonly _runStore: RunStore;
   private readonly flushIntervalMs: number;
   private readonly flushEnabled: boolean;
   private readonly flushLoggingEnabled: boolean;
@@ -57,6 +60,7 @@ export class UpdateMetadataService {
 
   constructor(private readonly options: UpdateMetadataServiceOptions) {
     this._prisma = options.prisma;
+    this._runStore = options.runStore;
     this.flushIntervalMs = options.flushIntervalMs ?? 5000;
     this.flushEnabled = options.flushEnabled ?? true;
     this.flushLoggingEnabled = options.flushLoggingEnabled ?? true;
@@ -260,17 +264,16 @@ export class UpdateMetadataService {
       const writeTime = new Date();
       const result = yield* _(
         Effect.tryPromise(() =>
-          this._prisma.taskRun.updateMany({
-            where: {
-              id: runId,
-              metadataVersion: run.metadataVersion,
-            },
-            data: {
-              metadata: newMetadataPacket.data,
+          this._runStore.updateMetadata(
+            runId,
+            {
+              metadata: newMetadataPacket.data!,
               metadataVersion: { increment: 1 },
               updatedAt: writeTime,
             },
-          })
+            { expectedMetadataVersion: run.metadataVersion },
+            this._prisma
+          )
         )
       );
 
@@ -469,20 +472,19 @@ export class UpdateMetadataService {
       // Update with optimistic locking; updatedAt stamped explicitly so the caller can
       // publish the exact committed watermark without a follow-up read.
       const writeTime = new Date();
-      const result = await this._prisma.taskRun.updateMany({
-        where: {
-          id: runId,
-          metadataVersion: run.metadataVersion,
-        },
-        data: {
-          metadata: newMetadataPacket.data,
+      const result = await this._runStore.updateMetadata(
+        runId,
+        {
+          metadata: newMetadataPacket.data!,
           metadataType: newMetadataPacket.dataType,
           metadataVersion: {
             increment: 1,
           },
           updatedAt: writeTime,
         },
-      });
+        { expectedMetadataVersion: run.metadataVersion },
+        this._prisma
+      );
 
       if (result.count === 0) {
         if (this.flushLoggingEnabled) {
@@ -564,19 +566,19 @@ export class UpdateMetadataService {
       // Update the metadata without version check; updatedAt stamped explicitly so the
       // caller can publish the exact committed watermark.
       const writeTime = new Date();
-      await this._prisma.taskRun.update({
-        where: {
-          id: runId,
-        },
-        data: {
-          metadata: metadataPacket?.data,
+      await this._runStore.updateMetadata(
+        runId,
+        {
+          metadata: metadataPacket?.data!,
           metadataType: metadataPacket?.dataType,
           metadataVersion: {
             increment: 1,
           },
           updatedAt: writeTime,
         },
-      });
+        {},
+        this._prisma
+      );
       updatedAtMs = writeTime.getTime();
     }
 

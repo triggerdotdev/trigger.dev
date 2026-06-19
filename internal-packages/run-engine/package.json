@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@internal/redis": "workspace:*",
+    "@internal/run-store": "workspace:*",
     "@trigger.dev/redis-worker": "workspace:*",
     "@internal/tracing": "workspace:*",
     "@trigger.dev/core": "workspace:*",

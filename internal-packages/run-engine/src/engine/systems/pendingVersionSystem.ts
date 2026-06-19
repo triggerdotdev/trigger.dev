@@ -129,10 +129,7 @@ export class PendingVersionSystem {
         // Idempotency guard: only flips PENDING_VERSION → PENDING. If another
         // worker already promoted this run between our findMany and the
         // update, count is 0 and we skip the enqueue.
-        const updateResult = await tx.taskRun.updateMany({
-          where: { id: run.id, status: "PENDING_VERSION" },
-          data: { status: "PENDING" },
-        });
+        const updateResult = await this.$.runStore.promotePendingVersionRuns(run.id, tx);
 
         if (updateResult.count === 0) {
           return false;

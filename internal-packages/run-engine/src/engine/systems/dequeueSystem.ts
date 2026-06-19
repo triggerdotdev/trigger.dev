@@ -419,17 +419,14 @@ export class DequeueSystem {
               // Pre-generate snapshot ID so we can construct the result without an extra read
               const snapshotId = generateInternalId();
 
-              const lockedTaskRun = await prisma.taskRun.update({
-                where: {
-                  id: runId,
-                },
-                data: {
+              const lockedTaskRun = await this.$.runStore.lockRunToWorker(
+                runId,
+                {
                   lockedAt,
                   lockedById: result.task.id,
                   lockedToVersionId: result.worker.id,
                   lockedQueueId: result.queue.id,
                   lockedRetryConfig: lockedRetryConfig ?? undefined,
-                  status: "DEQUEUED",
                   startedAt,
                   baseCostInCents: this.options.machines.baseCostInCents,
                   machinePreset: machinePreset.name,
@@ -438,38 +435,27 @@ export class DequeueSystem {
                   cliVersion: result.worker.cliVersion,
                   maxDurationInSeconds,
                   maxAttempts: maxAttempts ?? undefined,
-                  executionSnapshots: {
-                    create: {
-                      id: snapshotId,
-                      engine: "V2",
-                      executionStatus: "PENDING_EXECUTING",
-                      description: "Run was dequeued for execution",
-                      // Map DEQUEUED -> PENDING for backwards compatibility with older runners
-                      runStatus: "PENDING",
-                      attemptNumber: result.run.attemptNumber ?? undefined,
-                      previousSnapshotId: snapshot.id,
-                      environmentId: snapshot.environmentId,
-                      environmentType: snapshot.environmentType,
-                      projectId: snapshot.projectId,
-                      organizationId: snapshot.organizationId,
-                      checkpointId: snapshot.checkpointId ?? undefined,
-                      batchId: snapshot.batchId ?? undefined,
-                      completedWaitpoints: {
-                        connect: snapshot.completedWaitpoints.map((w) => ({ id: w.id })),
-                      },
-                      completedWaitpointOrder: snapshot.completedWaitpoints
-                        .filter((c) => c.index !== undefined)
-                        .sort((a, b) => a.index! - b.index!)
-                        .map((w) => w.id),
-                      workerId,
-                      runnerId,
-                    },
+                  snapshot: {
+                    id: snapshotId,
+                    previousSnapshotId: snapshot.id,
+                    attemptNumber: result.run.attemptNumber ?? undefined,
+                    environmentId: snapshot.environmentId,
+                    environmentType: snapshot.environmentType,
+                    projectId: snapshot.projectId,
+                    organizationId: snapshot.organizationId,
+                    checkpointId: snapshot.checkpointId ?? undefined,
+                    batchId: snapshot.batchId ?? undefined,
+                    completedWaitpointIds: snapshot.completedWaitpoints.map((w) => w.id),
+                    completedWaitpointOrder: snapshot.completedWaitpoints
+                      .filter((c) => c.index !== undefined)
+                      .sort((a, b) => a.index! - b.index!)
+                      .map((w) => w.id),
+                    workerId,
+                    runnerId,
                   },
                 },
-                include: {
-                  runtimeEnvironment: true,
-                },
-              });
+                prisma
+              );
 
               this.$.eventBus.emit("runLocked", {
                 time: new Date(),
@@ -741,30 +727,32 @@ export class DequeueSystem {
       });
 
       //mark run as waiting for deploy
-      const run = await prisma.taskRun.update({
-        where: { id: runId },
-        data: {
-          status: "PENDING_VERSION",
+      const run = await this.$.runStore.parkPendingVersion(
+        runId,
+        {
           statusReason,
         },
-        select: {
-          id: true,
-          status: true,
-          attemptNumber: true,
-          updatedAt: true,
-          createdAt: true,
-          runTags: true,
-          batchId: true,
-          runtimeEnvironment: {
-            select: {
-              id: true,
-              type: true,
-              projectId: true,
-              project: { select: { id: true, organizationId: true } },
+        {
+          select: {
+            id: true,
+            status: true,
+            attemptNumber: true,
+            updatedAt: true,
+            createdAt: true,
+            runTags: true,
+            batchId: true,
+            runtimeEnvironment: {
+              select: {
+                id: true,
+                type: true,
+                projectId: true,
+                project: { select: { id: true, organizationId: true } },
+              },
             },
           },
         },
-      });
+        prisma
+      );
 
       this.$.logger.debug("RunEngine.dequeueFromWorkerQueue(): Pending version", {
         runId,
