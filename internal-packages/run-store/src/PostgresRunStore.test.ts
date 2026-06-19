@@ -1788,6 +1788,7 @@ describe("PostgresRunStore — table routing by id format", () => {
       status?: string;
       idempotencyKey?: string;
       taskIdentifier?: string;
+      createdAt?: Date;
     }
   ) {
     const delegate = isKsuidId(params.id)
@@ -1815,6 +1816,7 @@ describe("PostgresRunStore — table routing by id format", () => {
         taskEventStore: "taskEvent",
         depth: 0,
         ...(params.idempotencyKey !== undefined && { idempotencyKey: params.idempotencyKey }),
+        ...(params.createdAt !== undefined && { createdAt: params.createdAt }),
       },
     });
   }
@@ -2014,6 +2016,292 @@ describe("PostgresRunStore — table routing by id format", () => {
       expect(legacyRow.status).toBe("EXPIRED");
       expect(legacyRow.completedAt).toEqual(now);
       expect(legacyRow.expiredAt).toEqual(now);
+    }
+  );
+
+  postgresTest(
+    "findRuns (unordered) returns runs from BOTH TaskRun and task_run_v2 in one env",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // Two legacy (cuid) runs + two new (ksuid) runs in the SAME env.
+      const legacyA = RunId.generate();
+      const legacyB = RunId.generate();
+      const v2A = RunId.generateKsuid();
+      const v2B = RunId.generateKsuid();
+      expect(isKsuidId(legacyA.id)).toBe(false);
+      expect(isKsuidId(v2A.id)).toBe(true);
+
+      for (const run of [legacyA, legacyB, v2A, v2B]) {
+        await seedRoutedRun(prisma, {
+          id: run.id,
+          friendlyId: run.friendlyId,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+        });
+      }
+
+      const found = await store.findRuns({
+        where: { runtimeEnvironmentId: environment.id },
+        select: { id: true },
+      });
+
+      // ALL four runs come back, regardless of which physical table they live in.
+      expect(found.map((r) => r.id).sort()).toEqual(
+        [legacyA.id, legacyB.id, v2A.id, v2B.id].sort()
+      );
+    }
+  );
+
+  postgresTest(
+    "findRuns (ordered+limited) 2-way merges both tables to the globally-correct first N",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // Interleave createdAt across the two tables so a per-table take+slice
+      // would be WRONG: the newest run is in v2, the 2nd-newest in legacy, etc.
+      // t5 (v2) > t4 (legacy) > t3 (v2) > t2 (legacy) > t1 (v2) > t0 (legacy)
+      const base = new Date("2026-06-01T00:00:00.000Z").getTime();
+      const at = (i: number) => new Date(base + i * 60_000);
+
+      const legacy0 = RunId.generate(); // t0 (oldest)
+      const v2_1 = RunId.generateKsuid(); // t1
+      const legacy2 = RunId.generate(); // t2
+      const v2_3 = RunId.generateKsuid(); // t3
+      const legacy4 = RunId.generate(); // t4
+      const v2_5 = RunId.generateKsuid(); // t5 (newest)
+
+      const seeded: Array<{ id: string; friendlyId: string; t: number }> = [
+        { id: legacy0.id, friendlyId: legacy0.friendlyId, t: 0 },
+        { id: v2_1.id, friendlyId: v2_1.friendlyId, t: 1 },
+        { id: legacy2.id, friendlyId: legacy2.friendlyId, t: 2 },
+        { id: v2_3.id, friendlyId: v2_3.friendlyId, t: 3 },
+        { id: legacy4.id, friendlyId: legacy4.friendlyId, t: 4 },
+        { id: v2_5.id, friendlyId: v2_5.friendlyId, t: 5 },
+      ];
+
+      for (const run of seeded) {
+        await seedRoutedRun(prisma, {
+          id: run.id,
+          friendlyId: run.friendlyId,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+          createdAt: at(run.t),
+        });
+      }
+
+      const found = await store.findRuns({
+        where: { runtimeEnvironmentId: environment.id },
+        select: { id: true },
+        orderBy: { createdAt: "desc" },
+        take: 3,
+      });
+
+      // The globally-newest 3 — drawn from BOTH tables in true createdAt order,
+      // NOT three rows from one table.
+      expect(found.map((r) => r.id)).toEqual([v2_5.id, legacy4.id, v2_3.id]);
+    }
+  );
+
+  postgresTest(
+    "findRuns scoping: a run in another env is NOT returned from either table",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // A second env in the same project.
+      const otherEnv = await prisma.runtimeEnvironment.create({
+        data: {
+          type: "PREVIEW",
+          slug: "other",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "tr_other_apikey",
+          pkApiKey: "pk_other_apikey",
+          shortcode: "other_short_code",
+        },
+      });
+
+      // One legacy + one v2 run in the TARGET env.
+      const legacyTarget = RunId.generate();
+      const v2Target = RunId.generateKsuid();
+      // One legacy + one v2 run in the OTHER env (must never surface).
+      const legacyOther = RunId.generate();
+      const v2Other = RunId.generateKsuid();
+
+      await seedRoutedRun(prisma, {
+        id: legacyTarget.id,
+        friendlyId: legacyTarget.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      await seedRoutedRun(prisma, {
+        id: v2Target.id,
+        friendlyId: v2Target.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      await seedRoutedRun(prisma, {
+        id: legacyOther.id,
+        friendlyId: legacyOther.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: otherEnv.id,
+      });
+      await seedRoutedRun(prisma, {
+        id: v2Other.id,
+        friendlyId: v2Other.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: otherEnv.id,
+      });
+
+      const found = await store.findRuns({
+        where: { runtimeEnvironmentId: environment.id },
+        select: { id: true },
+      });
+
+      // The same `where` fences BOTH tables: only the target env's runs come back.
+      expect(found.map((r) => r.id).sort()).toEqual([legacyTarget.id, v2Target.id].sort());
+      const foundIds = new Set(found.map((r) => r.id));
+      expect(foundIds.has(legacyOther.id)).toBe(false);
+      expect(foundIds.has(v2Other.id)).toBe(false);
+    }
+  );
+
+  postgresTest(
+    "findRuns (include) returns hydrated relations from both tables",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const legacy = RunId.generate();
+      const v2 = RunId.generateKsuid();
+
+      await seedRoutedRun(prisma, {
+        id: legacy.id,
+        friendlyId: legacy.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      await seedRoutedRun(prisma, {
+        id: v2.id,
+        friendlyId: v2.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+
+      const found = await store.findRuns({
+        where: { runtimeEnvironmentId: environment.id },
+        include: { runtimeEnvironment: true },
+      });
+
+      expect(found).toHaveLength(2);
+      // Both rows — legacy and v2 — carry the hydrated relation.
+      for (const run of found) {
+        expect(run.runtimeEnvironment).not.toBeNull();
+        expect(run.runtimeEnvironment.id).toBe(environment.id);
+        expect(run.runtimeEnvironment.slug).toBe("dev");
+      }
+    }
+  );
+
+  postgresTest(
+    "findRuns (take, no orderBy) caps the combined result across both tables",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // 2 legacy + 2 v2; an unordered `take: 3` must return exactly 3, all
+      // belonging to the scoped env.
+      const runs = [
+        RunId.generate(),
+        RunId.generate(),
+        RunId.generateKsuid(),
+        RunId.generateKsuid(),
+      ];
+      for (const run of runs) {
+        await seedRoutedRun(prisma, {
+          id: run.id,
+          friendlyId: run.friendlyId,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+        });
+      }
+
+      const found = await store.findRuns({
+        where: { runtimeEnvironmentId: environment.id },
+        select: { id: true },
+        take: 3,
+      });
+
+      expect(found).toHaveLength(3);
+      const allIds = new Set(runs.map((r) => r.id));
+      for (const run of found) {
+        expect(allIds.has(run.id)).toBe(true);
+      }
+    }
+  );
+
+  postgresTest(
+    "findRuns (ordered+limited) by id alone is rejected: id is not a total cross-table order",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const legacy = RunId.generate();
+      await seedRoutedRun(prisma, {
+        id: legacy.id,
+        friendlyId: legacy.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+
+      await expect(
+        store.findRuns({
+          where: { runtimeEnvironmentId: environment.id },
+          select: { id: true },
+          orderBy: { id: "asc" },
+          take: 10,
+        })
+      ).rejects.toThrow(/total order/i);
+    }
+  );
+
+  postgresTest(
+    "findRuns (ordered+limited) rejects a Prisma cursor it cannot span across two tables",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const legacy = RunId.generate();
+      await seedRoutedRun(prisma, {
+        id: legacy.id,
+        friendlyId: legacy.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+
+      await expect(
+        store.findRuns({
+          where: { runtimeEnvironmentId: environment.id },
+          select: { id: true },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+          cursor: { id: legacy.id },
+        })
+      ).rejects.toThrow(/cursor/i);
     }
   );
 });

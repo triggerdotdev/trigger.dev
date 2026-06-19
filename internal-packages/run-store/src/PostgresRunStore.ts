@@ -813,7 +813,298 @@ export class PostgresRunStore implements RunStore {
   ): Promise<unknown> {
     const prisma = client ?? this.readOnlyPrisma;
 
-    return prisma.taskRun.findMany(args);
+    // A run lives in exactly one physical table, chosen by its id format, so a
+    // multi-row read must hit BOTH `TaskRun` (legacy cuid) and `task_run_v2`
+    // (new ksuid) and combine. `task_run_v2` is an identical clone of `TaskRun`
+    // (same relation surface), so the SAME `args` — crucially the SAME `where`,
+    // which is the security scope — run unchanged against either delegate.
+    const legacyModel = prisma.taskRun;
+    const v2Model = prisma.taskRunV2 as unknown as typeof prisma.taskRun;
+
+    const ordered = this.#normalizeOrderBy(args.orderBy);
+
+    // ORDERED + LIMITED → bounded 2-way merge.
+    //
+    // A single Prisma `cursor` addresses one table's row and cannot span two
+    // tables, so reject it on this path rather than silently paginating one
+    // table. (No current caller pairs `cursor` with `orderBy`+`take`; keyset
+    // callers carry the cursor in `where`, which both queries honor.)
+    if (ordered.length > 0 && args.take !== undefined) {
+      if (args.cursor !== undefined) {
+        throw new Error(
+          "RunStore.findRuns: a Prisma `cursor` cannot address two tables on an ordered+limited read. " +
+            "Use a where-based keyset (e.g. `where: { createdAt: { lt: X } }`) instead."
+        );
+      }
+
+      const comparator = this.#buildCrossTableComparator(ordered);
+
+      // The in-memory comparator reads the order keys off each row, so they
+      // MUST be in the projection. If the caller's `select` omits one, add it
+      // for the query and strip it from the output. (`include`/full-row already
+      // carry every scalar.)
+      const { args: queryArgs, addedKeys } = this.#withOrderKeysSelected(args, ordered);
+
+      // Take at most `take` from each table: the merged head of two ordered
+      // streams of length `take` is fully determined by their first `take` rows.
+      const perTableArgs = { ...queryArgs, take: args.take };
+
+      const [legacyRows, v2Rows] = (await Promise.all([
+        legacyModel.findMany(perTableArgs),
+        v2Model.findMany(perTableArgs),
+      ])) as [Array<Record<string, unknown>>, Array<Record<string, unknown>>];
+
+      const merged = this.#mergeOrdered(legacyRows, v2Rows, comparator, args.take);
+      return this.#stripAddedKeys(merged, addedKeys);
+    }
+
+    // UNORDERED / NO-LIMIT (or `take` without `orderBy`) → run the SAME args
+    // against both tables and concatenate. A run is in exactly one table, so
+    // concatenation is complete and has no duplicates.
+    //
+    // `orderBy` without `take` still needs the order keys projected so the
+    // whole-set re-sort below can read them.
+    const { args: queryArgs, addedKeys } =
+      ordered.length > 0
+        ? this.#withOrderKeysSelected(args, ordered)
+        : { args, addedKeys: [] as string[] };
+
+    const [legacyRows, v2Rows] = (await Promise.all([
+      legacyModel.findMany(queryArgs),
+      v2Model.findMany(queryArgs),
+    ])) as [Array<Record<string, unknown>>, Array<Record<string, unknown>>];
+
+    let combined = legacyRows.concat(v2Rows);
+
+    // `orderBy` without `take`: each table came back ordered, but the
+    // concatenation is not — re-sort the whole bounded set to honor the order.
+    if (ordered.length > 0) {
+      const comparator = this.#buildCrossTableComparator(ordered);
+      combined = combined.sort(comparator);
+    }
+
+    // `take` without `orderBy`: an unordered cap. Each table was capped at
+    // `take`, so the concatenation is at most `2*take`; trim to `take`. Order
+    // among unordered rows is unspecified either way.
+    if (args.take !== undefined) {
+      combined = combined.slice(0, args.take);
+    }
+
+    return this.#stripAddedKeys(combined, addedKeys);
+  }
+
+  /**
+   * The cross-table merge/sort compares order-key VALUES read off each returned
+   * row, so every scalar order key must be present in the projection. When the
+   * caller passes a `select` that omits an order key, add it (so the row carries
+   * the value) and record which keys were added so they can be stripped from the
+   * final output — the caller asked not to see them. A query with `include`, or
+   * with neither `select` nor `include` (full row), already returns every scalar
+   * column, so nothing is added.
+   */
+  #withOrderKeysSelected(
+    args: {
+      where: Prisma.TaskRunWhereInput;
+      select?: Prisma.TaskRunSelect;
+      include?: Prisma.TaskRunInclude;
+      orderBy?: Prisma.TaskRunOrderByWithRelationInput | Prisma.TaskRunOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+      cursor?: Prisma.TaskRunWhereUniqueInput;
+    },
+    ordered: Array<{ key: string; direction: "asc" | "desc" }>
+  ): {
+    args: typeof args;
+    addedKeys: string[];
+  } {
+    // The merge always tiebreaks on `id`, so it must be readable too.
+    const requiredKeys = new Set<string>([...ordered.map((entry) => entry.key), "id"]);
+
+    if (!args.select) {
+      // include / full-row: all scalars are present already.
+      return { args, addedKeys: [] };
+    }
+
+    const select = args.select as Record<string, unknown>;
+    const addedKeys: string[] = [];
+    const augmentedSelect: Record<string, unknown> = { ...select };
+
+    for (const key of requiredKeys) {
+      if (!(key in augmentedSelect)) {
+        augmentedSelect[key] = true;
+        addedKeys.push(key);
+      }
+    }
+
+    if (addedKeys.length === 0) {
+      return { args, addedKeys: [] };
+    }
+
+    return { args: { ...args, select: augmentedSelect as Prisma.TaskRunSelect }, addedKeys };
+  }
+
+  /** Remove the order-key columns that were added purely to drive the merge. */
+  #stripAddedKeys(
+    rows: Array<Record<string, unknown>>,
+    addedKeys: string[]
+  ): Array<Record<string, unknown>> {
+    if (addedKeys.length === 0) {
+      return rows;
+    }
+
+    for (const row of rows) {
+      for (const key of addedKeys) {
+        delete row[key];
+      }
+    }
+
+    return rows;
+  }
+
+  /**
+   * Normalize the optional `orderBy` (single object or array) into an array of
+   * single-key order entries, preserving precedence. An empty array means "no
+   * ordering requested".
+   */
+  #normalizeOrderBy(
+    orderBy:
+      | Prisma.TaskRunOrderByWithRelationInput
+      | Prisma.TaskRunOrderByWithRelationInput[]
+      | undefined
+  ): Array<{ key: string; direction: "asc" | "desc" }> {
+    if (orderBy === undefined) {
+      return [];
+    }
+
+    const list = Array.isArray(orderBy) ? orderBy : [orderBy];
+    const entries: Array<{ key: string; direction: "asc" | "desc" }> = [];
+
+    for (const clause of list) {
+      for (const [key, value] of Object.entries(clause)) {
+        // Only scalar `{ field: "asc" | "desc" }` entries are mergeable in
+        // memory. A relation/nested sort (value is an object) can't be compared
+        // here — flag it rather than mis-order across the two tables.
+        if (value === "asc" || value === "desc") {
+          entries.push({ key, direction: value });
+        } else {
+          throw new Error(
+            `RunStore.findRuns: cannot merge across tables on a non-scalar orderBy key "${key}". ` +
+              "Ordered+limited cross-table reads must order by a scalar column (a time/createdAt field, with id as a tiebreak)."
+          );
+        }
+      }
+    }
+
+    return entries;
+  }
+
+  /**
+   * Build a total-order comparator from the requested scalar order keys.
+   *
+   * The cross-table merge is only correct when the order is a TOTAL order over
+   * the union of both tables. A time-based column (`createdAt`, or any other
+   * Date column) provides that; `id` alone does NOT — a cuid and a ksuid live
+   * in different, non-interleaving id spaces, so ordering the union by `id`
+   * lexicographically is meaningless. Require a time/createdAt key to lead (or
+   * appear in) the order, and use `id` only as a within-timestamp tiebreak.
+   */
+  #buildCrossTableComparator(
+    ordered: Array<{ key: string; direction: "asc" | "desc" }>
+  ): (a: Record<string, unknown>, b: Record<string, unknown>) => number {
+    const hasTimeKey = ordered.some((entry) => this.#isTimeOrderKey(entry.key));
+
+    if (!hasTimeKey) {
+      const keys = ordered.map((entry) => entry.key).join(", ");
+      throw new Error(
+        `RunStore.findRuns: ordered+limited read orders by [${keys}], which is not a valid total order across the ` +
+          "legacy TaskRun (cuid) and task_run_v2 (ksuid) tables. Order by a time/createdAt column (id may follow as a tiebreak)."
+      );
+    }
+
+    // Ensure `id` is present as a final tiebreak so the merge is deterministic
+    // when two rows share the leading timestamp. Use the direction of the
+    // leading order key for the tiebreak.
+    const comparators = [...ordered];
+    if (!comparators.some((entry) => entry.key === "id")) {
+      comparators.push({ key: "id", direction: ordered[0].direction });
+    }
+
+    return (a, b) => {
+      for (const { key, direction } of comparators) {
+        const cmp = this.#compareValues(a[key], b[key]);
+        if (cmp !== 0) {
+          return direction === "asc" ? cmp : -cmp;
+        }
+      }
+      return 0;
+    };
+  }
+
+  /**
+   * A column is a valid cross-table total-order lead when it is time-based.
+   * `createdAt` is the canonical one; the other Date columns the callers use
+   * (`updatedAt`, `completedAt`, etc.) qualify too. The selected/included row
+   * must carry the column for the comparator to read it.
+   */
+  #isTimeOrderKey(key: string): boolean {
+    return (
+      key === "createdAt" ||
+      key === "updatedAt" ||
+      key === "completedAt" ||
+      key === "startedAt" ||
+      key === "queuedAt" ||
+      key === "lockedAt" ||
+      key === "delayUntil" ||
+      key === "expiredAt"
+    );
+  }
+
+  /** Ascending comparison of two scalar order values (Date, number, string). */
+  #compareValues(a: unknown, b: unknown): number {
+    if (a === b) return 0;
+    // Nulls sort last (Prisma's default for `nulls: "last"` is the common case;
+    // a stable, deterministic placement is what matters for the merge).
+    if (a === null || a === undefined) return 1;
+    if (b === null || b === undefined) return -1;
+
+    if (a instanceof Date && b instanceof Date) {
+      return a.getTime() - b.getTime();
+    }
+    if (typeof a === "number" && typeof b === "number") {
+      return a - b;
+    }
+    return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+  }
+
+  /**
+   * 2-way merge of two already-ordered streams into the first `take` rows of
+   * their combined order. Bounded: walks at most `take` steps. The two inputs
+   * are each `findMany`-ordered by the SAME order keys, so a single linear pass
+   * picking the smaller head under `comparator` yields the globally-correct head.
+   */
+  #mergeOrdered(
+    left: Array<Record<string, unknown>>,
+    right: Array<Record<string, unknown>>,
+    comparator: (a: Record<string, unknown>, b: Record<string, unknown>) => number,
+    take: number
+  ): Array<Record<string, unknown>> {
+    const out: Array<Record<string, unknown>> = [];
+    let i = 0;
+    let j = 0;
+
+    while (out.length < take && (i < left.length || j < right.length)) {
+      if (i >= left.length) {
+        out.push(right[j++]);
+      } else if (j >= right.length) {
+        out.push(left[i++]);
+      } else if (comparator(left[i], right[j]) <= 0) {
+        out.push(left[i++]);
+      } else {
+        out.push(right[j++]);
+      }
+    }
+
+    return out;
   }
 
   /**
