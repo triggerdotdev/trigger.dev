@@ -59,6 +59,7 @@ import {
   SessionStreamInstance,
   TRIGGER_CONTROL_SUBTYPE,
   apiClientManager,
+  type ApiClientConfiguration,
   type SessionTriggerConfig,
 } from "@trigger.dev/core/v3";
 // Runtime VALUES via the ESM/CJS shim so the CJS build can `require` ESM-only
@@ -202,6 +203,15 @@ export type HeadStartHandlerOptions<TTools extends Record<string, Tool>> = {
    * The `chat:{chatId}` tag is prepended automatically.
    */
   triggerConfig?: Partial<SessionTriggerConfig>;
+  /**
+   * API client config (base URL + access token) for creating the session
+   * and triggering the agent run. When set, the handler runs under this
+   * config instead of the ambient `apiClientManager` config — use it when
+   * the agent lives in a different project/env than the warm server's
+   * default (mirrors `chat.createStartSessionAction`'s `apiClient` option).
+   * The customer's LLM provider keys are unaffected; they stay in `run`.
+   */
+  apiClient?: ApiClientConfiguration;
 };
 
 // ---------------------------------------------------------------------------
@@ -222,7 +232,7 @@ export const chat = {
   headStart<TTools extends Record<string, Tool>>(
     opts: HeadStartHandlerOptions<TTools>
   ): (req: Request) => Promise<Response> {
-    return async (req: Request) => {
+    const handler = async (req: Request): Promise<Response> => {
       const session = await openHandoverSession({
         req,
         agentId: opts.agentId,
@@ -245,6 +255,15 @@ export const chat = {
 
       return session.handle.handoverResponse(result);
     };
+
+    // Scope session creation + the agent trigger to `apiClient`'s env when
+    // provided, so the agent can live in a different project/env than the warm
+    // server's ambient config. The `run` callback's LLM keys are unaffected.
+    const { apiClient } = opts;
+    if (apiClient) {
+      return async (req: Request) => apiClientManager.runWithConfig(apiClient, () => handler(req));
+    }
+    return handler;
   },
 
   /**
