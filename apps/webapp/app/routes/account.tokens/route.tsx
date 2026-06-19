@@ -56,6 +56,11 @@ export const meta: MetaFunction = () => {
   ];
 };
 
+// Shared between the create-token panel hint and the listing column
+// header tooltip so the cap is explained identically in both places.
+const MAX_ROLE_EXPLANATION =
+  "The token can act with up to this role. Your current role in each org is the actual ceiling. The token never grants permissions that are beyond your own user role.";
+
 // PATs aren't org-scoped, but the RBAC plugin's allRoles is org-keyed
 // (a plugin may also expose org-defined custom roles alongside the
 // global system roles). The picker shows the assignable system role
@@ -128,10 +133,25 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const defaultRoleId =
       userRoleId && assignableIds.has(userRoleId) ? userRoleId : lowestAssignable;
 
+    // The "Maximum role" column is a plugin concept — the OSS fallback
+    // has no TokenRole store, so only surface it when a plugin is
+    // installed. Tokens without a cap (legacy, or created when no
+    // plugin was present) render as "-".
+    const showMaxRole = await rbac.isUsingPlugin();
+    const tokensWithMaxRole = showMaxRole
+      ? await Promise.all(
+          personalAccessTokens.map(async (pat) => ({
+            ...pat,
+            maxRole: (await rbac.getTokenRole(pat.id))?.name ?? null,
+          }))
+        )
+      : personalAccessTokens.map((pat) => ({ ...pat, maxRole: null as string | null }));
+
     return typedjson({
-      personalAccessTokens,
+      personalAccessTokens: tokensWithMaxRole,
       roles,
       defaultRoleId,
+      showMaxRole,
     });
   } catch (error) {
     if (error instanceof Response) {
@@ -225,7 +245,8 @@ export const action: ActionFunction = async ({ request }) => {
 };
 
 export default function Page() {
-  const { personalAccessTokens, roles, defaultRoleId } = useTypedLoaderData<typeof loader>();
+  const { personalAccessTokens, roles, defaultRoleId, showMaxRole } =
+    useTypedLoaderData<typeof loader>();
 
   return (
     <PageContainer>
@@ -258,6 +279,9 @@ export default function Page() {
               <TableRow>
                 <TableHeaderCell>Name</TableHeaderCell>
                 <TableHeaderCell>Token</TableHeaderCell>
+                {showMaxRole && (
+                  <TableHeaderCell tooltip={MAX_ROLE_EXPLANATION}>Maximum role</TableHeaderCell>
+                )}
                 <TableHeaderCell>Created</TableHeaderCell>
                 <TableHeaderCell>Last accessed</TableHeaderCell>
                 <TableHeaderCell hiddenLabel>Delete</TableHeaderCell>
@@ -270,6 +294,7 @@ export default function Page() {
                     <TableRow key={personalAccessToken.id} className="group">
                       <TableCell>{personalAccessToken.name}</TableCell>
                       <TableCell>{personalAccessToken.obfuscatedToken}</TableCell>
+                      {showMaxRole && <TableCell>{personalAccessToken.maxRole ?? "-"}</TableCell>}
                       <TableCell>
                         <DateTime date={personalAccessToken.createdAt} />
                       </TableCell>
@@ -288,7 +313,7 @@ export default function Page() {
                   );
                 })
               ) : (
-                <TableBlankRow colSpan={5}>
+                <TableBlankRow colSpan={showMaxRole ? 6 : 5}>
                   <Paragraph
                     variant="base/bright"
                     className="flex items-center justify-center py-8"
@@ -400,10 +425,7 @@ function CreatePersonalAccessToken({
                     ))
                   }
                 </Select>
-                <Hint>
-                  The token can act with up to this role. Your current role in each org is the
-                  actual ceiling — the token never grants more than you have.
-                </Hint>
+                <Hint>{MAX_ROLE_EXPLANATION}</Hint>
               </InputGroup>
             )}
 
