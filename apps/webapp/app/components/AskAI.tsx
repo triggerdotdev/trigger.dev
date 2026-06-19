@@ -230,7 +230,7 @@ function ChatMessages({
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+    <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
       {conversation.length === 0 ? (
         <motion.div
           className="flex flex-col gap-2 pb-2"

@@ -330,7 +330,7 @@ export default function Page() {
           className="pl-1"
         />
       </div>
-      <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+      <div className="overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
         <div className="flex flex-col">
           <div className="p-3">
             <Property.Table>
@@ -530,7 +530,7 @@ export default function Page() {
           {deployment.errorData && <DeploymentError errorData={deployment.errorData} />}
 
           {deployment.tasks && (
-            <div className="divide-y divide-charcoal-800 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
+            <div className="divide-y divide-charcoal-800 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300">
               <Table variant="bright">
                 <TableHeader>
                   <TableRow>
@@ -692,7 +692,7 @@ function LogsDisplay({
         <div
           ref={logsContainerRef}
           className={cn(
-            "grow overflow-x-auto overflow-y-scroll font-mono text-xs transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600",
+            "grow overflow-x-auto overflow-y-scroll font-mono text-xs transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300",
             collapsed ? "h-16" : "h-64"
           )}
         >
