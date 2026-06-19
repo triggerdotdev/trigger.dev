@@ -13,11 +13,20 @@ export type {
   BearerAuthResult,
   SessionAuthResult,
   PatAuthResult,
+  UserActorAuthResult,
+  UserActorClaims,
+  RbacPluginConfig,
   SystemRole,
   AuthenticatedEnvironment,
 } from "./rbac.js";
 
 export { buildJwtAbility } from "./rbac.js";
+export {
+  isUserActorToken,
+  signUserActorToken,
+  verifyUserActorToken,
+  USER_ACTOR_TOKEN_PREFIX,
+} from "./rbac.js";
 
 export type {
   SsoPlugin,
