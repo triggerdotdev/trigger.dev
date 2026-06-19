@@ -1,10 +1,13 @@
 import { type ActionFunctionArgs, json } from "@remix-run/node";
 import { generateJWT as internal_generateJWT } from "@trigger.dev/core/v3";
+import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
 import { z } from "zod";
 import {
   authenticatedEnvironmentForAuthentication,
   authenticateRequest,
+  type AuthenticationResult,
 } from "~/services/apiAuth.server";
+import { env as appEnv } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { authorizePatEnvironmentAccess } from "~/services/environmentVariableApiAccess.server";
 
@@ -24,11 +27,36 @@ const RequestBodySchema = z.object({
 
 export async function action({ request, params }: ActionFunctionArgs) {
   try {
-    const authenticationResult = await authenticateRequest(request, {
-      personalAccessToken: true,
-      organizationAccessToken: true,
-      apiKey: false,
-    });
+    const bearer = request.headers.get("Authorization")?.replace(/^Bearer /, "").trim();
+    const isUat = !!bearer && isUserActorToken(bearer);
+
+    // A delegated user-actor token authenticates as its user, like a PAT. We
+    // resolve it here (not through authenticateRequest) so the exchange stays
+    // scoped to this route — UATs deliberately aren't accepted on every
+    // PAT route. `uatCap` (the token's optional scope cap) ceilings the
+    // minted env JWT below.
+    let uatCap: string[] | undefined;
+    let userActorId: string | undefined;
+    let authenticationResult: AuthenticationResult | undefined;
+    if (isUat) {
+      const claims = await verifyUserActorToken(appEnv.SESSION_SECRET, bearer!);
+      if (!claims) {
+        return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+      }
+      uatCap = claims.cap;
+      userActorId = claims.userId;
+      // The env lookup keys purely on the user, identical to a PAT.
+      authenticationResult = {
+        type: "personalAccessToken",
+        result: { userId: claims.userId },
+      };
+    } else {
+      authenticationResult = await authenticateRequest(request, {
+        personalAccessToken: true,
+        organizationAccessToken: true,
+        apiKey: false,
+      });
+    }
 
     if (!authenticationResult) {
       return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
@@ -73,10 +101,27 @@ export async function action({ request, params }: ActionFunctionArgs) {
       );
     }
 
+    // The env JWT carries scopes only — downstream auth builds its ability
+    // from them with no role context. So for a user-actor token we ceiling
+    // the scopes by the token's own cap here (a read-only agent token can't
+    // widen its grant through the exchange) and stamp the user via `act` so
+    // the minted env JWT stays attributable. The cap is a ceiling, not a
+    // replacement: intersect what the caller asked for with the cap (or use
+    // the full cap if they asked for nothing). No cap → the request passes
+    // through, same as a PAT.
+    const requestedScopes = parsedBody.data.claims?.scopes;
+    const scopes =
+      isUat && uatCap
+        ? requestedScopes && requestedScopes.length > 0
+          ? requestedScopes.filter((scope) => uatCap.includes(scope))
+          : uatCap
+        : requestedScopes;
+
     const claims = {
       sub: runtimeEnv.id,
       pub: true,
-      ...parsedBody.data.claims,
+      ...(scopes ? { scopes } : {}),
+      ...(userActorId ? { act: { sub: userActorId } } : {}),
     };
 
     const jwt = await internal_generateJWT({

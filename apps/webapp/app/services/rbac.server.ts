@@ -25,5 +25,7 @@ export const rbac = plugin.create(
   // $replica is structurally a PrismaClient minus `$transaction` — the
   // RBAC fallback only uses `findFirst` on it, so the cast is safe.
   { primary: prisma, replica: $replica as PrismaClient },
-  { forceFallback: env.RBAC_FORCE_FALLBACK }
+  // SESSION_SECRET signs delegated user-actor tokens; the plugin verifies
+  // them with it in authenticateUserActor.
+  { forceFallback: env.RBAC_FORCE_FALLBACK, userActorSecret: env.SESSION_SECRET }
 );
