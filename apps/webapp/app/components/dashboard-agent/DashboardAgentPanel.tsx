@@ -37,7 +37,13 @@ type ActiveChat = {
  * the inner `DashboardAgentChat` (keyed by chatId) so resume flows in through
  * the transport's declarative `sessions` option.
  */
-export function DashboardAgentPanel({ onClose }: { onClose: () => void }) {
+export function DashboardAgentPanel({
+  onClose,
+  headStartEnabled = false,
+}: {
+  onClose: () => void;
+  headStartEnabled?: boolean;
+}) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -202,6 +208,7 @@ export function DashboardAgentPanel({ onClose }: { onClose: () => void }) {
           projectSlug={project.slug}
           environmentSlug={environment.slug}
           currentPage={currentPage}
+          headStartEnabled={headStartEnabled}
           onTurnSettled={loadHistory}
         />
       )}

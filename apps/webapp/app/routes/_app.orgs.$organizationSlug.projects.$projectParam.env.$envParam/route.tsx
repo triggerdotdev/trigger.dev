@@ -1,8 +1,10 @@
-import { Outlet } from "@remix-run/react";
+import { Outlet, useLoaderData } from "@remix-run/react";
 import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { DashboardAgent } from "~/components/dashboard-agent/DashboardAgent";
 import { prisma } from "~/db.server";
+import { env } from "~/env.server";
+import { isDashboardAgentConfigured } from "~/services/dashboardAgent.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { updateCurrentProjectEnvironmentId } from "~/services/dashboardPreferences.server";
 import { logger } from "~/services/logger.server";
@@ -86,12 +88,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   await updateCurrentProjectEnvironmentId({ user: user, projectId: project.id, environmentId });
 
-  return project;
+  // Head Start needs both the agent secret key and an Anthropic key in this
+  // process; when either is missing the panel falls back to the cold-start path.
+  return {
+    ...project,
+    headStartEnabled: isDashboardAgentConfigured() && Boolean(env.ANTHROPIC_API_KEY),
+  };
 };
 
 export default function Page() {
+  const { headStartEnabled } = useLoaderData<typeof loader>();
   return (
-    <DashboardAgent>
+    <DashboardAgent headStartEnabled={headStartEnabled}>
       <Outlet />
     </DashboardAgent>
   );

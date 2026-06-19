@@ -110,6 +110,11 @@ const EnvironmentSchema = z
     // agent dark; flip to "1" to enable it for everyone at GA. Per-org overrides
     // (org featureFlags) and admins/impersonators win regardless.
     DASHBOARD_AGENT_ENABLED: z.string().default("0"),
+    // Anthropic key for the dashboard agent's Head Start route only (the warm
+    // first-turn step-1 LLM call runs in this process). The agent run itself
+    // uses its own key on the Trigger side. When unset, Head Start is disabled
+    // and the first turn falls back to the normal cold-start path.
+    ANTHROPIC_API_KEY: z.string().optional(),
     DIRECT_URL: z
       .string()
       .refine(

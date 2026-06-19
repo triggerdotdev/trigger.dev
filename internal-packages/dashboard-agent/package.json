@@ -5,11 +5,15 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tool-schemas": "./src/tool-schemas.ts"
+  },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.0",
     "@internal/dashboard-agent-db": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
-    "ai": "6.0.116",
+    "ai": "^6.0.116",
     "zod": "3.25.76"
   },
   "devDependencies": {

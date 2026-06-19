@@ -42,6 +42,7 @@ export function DashboardAgentChat({
   projectSlug,
   environmentSlug,
   currentPage,
+  headStartEnabled,
   onTurnSettled,
 }: {
   chatId: string;
@@ -53,6 +54,7 @@ export function DashboardAgentChat({
   projectSlug: string;
   environmentSlug: string;
   currentPage: string;
+  headStartEnabled: boolean;
   onTurnSettled: () => void;
 }) {
   const [input, setInput] = useState("");
@@ -60,6 +62,11 @@ export function DashboardAgentChat({
   const transport = useTriggerChatTransport<typeof dashboardAgent>({
     task: "dashboard-agent",
     baseURL: apiOrigin,
+    // First turn of a brand-new chat streams step 1 from the same-origin
+    // head-start route (which mints + injects the delegated token server-side
+    // and boots the agent in parallel). Only when the server is head-start
+    // capable; otherwise the first turn takes the normal cold-start path.
+    headStart: headStartEnabled ? `${actionPath}/headstart` : undefined,
     // Redirect only the `in`/append to the same-origin proxy, which mints +
     // injects the delegated user token server-side. `baseURL` stays a string so
     // `out` (the long-lived SSE) keeps the SDK's realtime-host routing — we

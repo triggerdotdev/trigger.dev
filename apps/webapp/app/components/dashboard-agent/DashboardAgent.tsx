@@ -19,7 +19,13 @@ import { DashboardAgentPanel } from "./DashboardAgentPanel";
  * default), with admins/impersonators always allowed. The resource route
  * enforces the same check server-side.
  */
-export function DashboardAgent({ children }: { children: React.ReactNode }) {
+export function DashboardAgent({
+  children,
+  headStartEnabled = false,
+}: {
+  children: React.ReactNode;
+  headStartEnabled?: boolean;
+}) {
   const hasAdminAccess = useHasAdminAccess();
   const { hasDashboardAgentAccess } = useFeatureFlags();
   const [open, setOpen] = useState(false);
@@ -56,7 +62,7 @@ export function DashboardAgent({ children }: { children: React.ReactNode }) {
       </ResizablePanel>
       <ResizableHandle id="dashboard-agent-handle" />
       <ResizablePanel id="dashboard-agent-panel" default="380px" min="320px" max="720px">
-        <DashboardAgentPanel onClose={() => setOpen(false)} />
+        <DashboardAgentPanel onClose={() => setOpen(false)} headStartEnabled={headStartEnabled} />
       </ResizablePanel>
     </ResizablePanelGroup>
   );

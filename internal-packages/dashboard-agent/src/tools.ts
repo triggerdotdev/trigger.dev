@@ -1,5 +1,12 @@
 import { tool, type ToolSet } from "ai";
-import { z } from "zod";
+import {
+  getRunSchema,
+  getRunTraceSchema,
+  listEnvironmentsSchema,
+  listProjectsSchema,
+  listRunsSchema,
+  listTasksSchema,
+} from "./tool-schemas";
 
 /**
  * Read-only tools for the dashboard agent. The agent is firewalled from the
@@ -190,9 +197,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
 
   return {
     list_projects: tool({
-      description:
-        "List the Trigger.dev projects the user can access, with each project's ref, name, slug, and organization.",
-      inputSchema: z.object({}),
+      ...listProjectsSchema,
       execute: async () => {
         if (!hasAuth) return NO_AUTH;
         const result = await apiGet(origin, "/api/v1/projects", userActorToken!);
@@ -202,14 +207,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     }),
 
     list_environments: tool({
-      description:
-        "List the environments (dev, staging, production, preview branches) for a project. Defaults to the current project when projectRef is omitted.",
-      inputSchema: z.object({
-        projectRef: z
-          .string()
-          .optional()
-          .describe("Project ref like proj_... . Defaults to the current project."),
-      }),
+      ...listEnvironmentsSchema,
       execute: async ({ projectRef: inputRef }) => {
         if (!hasAuth) return NO_AUTH;
         const ref = inputRef ?? projectRef;
@@ -221,11 +219,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     }),
 
     get_run: tool({
-      description:
-        "Get the status, timing, cost, and error details for a single run in the current environment, by its run id (run_...).",
-      inputSchema: z.object({
-        runId: z.string().describe("The run id, e.g. run_abc123."),
-      }),
+      ...getRunSchema,
       execute: async ({ runId }) => {
         const envJwt = await getEnvJwt();
         if (!envJwt) return { error: "No current environment is available to read runs from." };
@@ -236,9 +230,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     }),
 
     list_tasks: tool({
-      description:
-        "List the tasks deployed in the current environment's latest deployment, with each task's slug, file path, and trigger source.",
-      inputSchema: z.object({}),
+      ...listTasksSchema,
       execute: async () => {
         if (!hasAuth) return NO_AUTH;
         if (!projectRef || !environmentName) {
@@ -257,20 +249,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     }),
 
     list_runs: tool({
-      description:
-        "List recent runs in the current environment, newest first. Optionally filter by status, task, or time period. Use this for 'what's been running', 'recent failures', etc.",
-      inputSchema: z.object({
-        status: z
-          .string()
-          .optional()
-          .describe("Run status filter, e.g. COMPLETED, FAILED, EXECUTING, QUEUED, CANCELED."),
-        taskIdentifier: z.string().optional().describe("Only runs of this task id."),
-        period: z
-          .string()
-          .optional()
-          .describe("Relative window, e.g. 1h, 24h, 7d. Max 30d; larger values are capped at 30d."),
-        limit: z.number().int().positive().max(50).optional().describe("Max runs to return (default 10)."),
-      }),
+      ...listRunsSchema,
       execute: async ({ status, taskIdentifier, period, limit }) => {
         const envJwt = await getEnvJwt();
         if (!envJwt) return { error: "No current environment is available to read runs from." };
@@ -287,11 +266,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     }),
 
     get_run_trace: tool({
-      description:
-        "Get a run's execution trace: the timeline of spans (tasks, waits, attempts) with durations and error flags. Use this to explain why a run failed, retried, or was slow.",
-      inputSchema: z.object({
-        runId: z.string().describe("The run id, e.g. run_abc123."),
-      }),
+      ...getRunTraceSchema,
       execute: async ({ runId }) => {
         const envJwt = await getEnvJwt();
         if (!envJwt) return { error: "No current environment is available to read runs from." };
