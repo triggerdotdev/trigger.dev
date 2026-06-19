@@ -9,7 +9,14 @@ const DEFAULT_REDIRECT = "/";
 // `/admin/api/` covers admin JSON endpoints while leaving `/admin`,
 // `/admin/back-office/*`, `/admin/orgs`, etc. navigable.
 const NON_NAVIGABLE_PREFIXES = ["/resources/", "/auth/", "/admin/api/", "/api/", "/engine/"];
-const NON_NAVIGABLE_EXACT = new Set(["/magic", "/logout", "/login", "/login/magic", "/login/mfa"]);
+const NON_NAVIGABLE_EXACT = new Set([
+  "/magic",
+  "/logout",
+  "/login",
+  "/login/magic",
+  "/login/mfa",
+  "/login/sso",
+]);
 
 function isNavigablePath(pathname: string): boolean {
   if (NON_NAVIGABLE_EXACT.has(pathname)) return false;

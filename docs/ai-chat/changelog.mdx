@@ -4,6 +4,81 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="June 17, 2026" description="4.5.0-rc.7" tags={["SDK", "CLI", "Bug fix"]}>
+
+## chat.headStart now works for custom agents and sessions
+
+[Head Start](/ai-chat/fast-starts#head-start) — running the first `streamText` step in your warm server while the agent boots in parallel — now works with the `chat.customAgent` and `chat.createSession` backends, not just the managed `chat.agent`. The warm step-1 response hands over to your loop the same way it does for a managed agent. ([#3963](https://github.com/triggerdotdev/trigger.dev/pull/3963))
+
+In a `chat.customAgent` loop, consume the handover on turn 0:
+
+```ts
+const conversation = new chat.MessageAccumulator();
+const { isFinal, skipped } = await conversation.consumeHandover({ payload });
+if (skipped) return; // warm handler aborted, so exit without a turn
+if (isFinal) {
+  await chat.writeTurnComplete(); // step 1 is the response, no streamText
+} else {
+  const result = streamText({ model, messages: conversation.modelMessages, tools });
+  // Pass originalMessages so the handed-over tool round merges into the
+  // step-1 assistant instead of starting a new message.
+  const response = await chat.pipeAndCapture(result, {
+    originalMessages: conversation.uiMessages,
+  });
+  if (response) await conversation.addResponse(response);
+}
+```
+
+With `chat.createSession`, the iterator surfaces it as `turn.handover`; call `turn.complete()` with no argument on a final handover. The lower-level `chat.waitForHandover()` and `accumulator.applyHandover()` are also exported for hand-rolled loops. See [Handover with custom agents](/ai-chat/fast-starts#handover-with-custom-agents).
+
+## Cache your system prompt with Anthropic prompt caching
+
+`chat.toStreamTextOptions()` can now emit the system prompt as a cacheable message when you opt in, so a large, stable system block is billed at cache-read rates on every turn instead of full price. Without an option, `system` stays a plain string. ([#3952](https://github.com/triggerdotdev/trigger.dev/pull/3952))
+
+```ts
+// at the streamText call site (Anthropic sugar)
+streamText({
+  ...chat.toStreamTextOptions({ cacheControl: { type: "ephemeral" } }),
+  messages,
+});
+
+// provider-agnostic equivalent
+chat.toStreamTextOptions({
+  systemProviderOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+});
+
+// or where the prompt is defined
+chat.prompt.set(SYSTEM_PROMPT, {
+  providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+});
+```
+
+Pairs with a `prepareMessages` cache breakpoint to cache the conversation prefix across turns too. See the [Prompt caching](/ai-chat/prompt-caching) guide.
+
+## Custom agent loop fixes
+
+Three fixes for custom agent loops (`chat.customAgent`, `chat.createSession`, and hand-rolled `MessageAccumulator` loops): ([#3936](https://github.com/triggerdotdev/trigger.dev/pull/3936))
+
+- **Continuations no longer replay answered messages.** The `.in` resume cursor is now seeded before any listener attaches (the same boot logic `chat.agent` uses), so a chat that continues after a cancel, crash, or upgrade only sees genuinely new messages.
+- **Steering mid-stream keeps the in-flight response.** `chat.pipeAndCapture` now stamps a server-generated message id on the stream, so a `prepareStep` injection keeps the partial text instead of replacing the message.
+- **Task-backed tools work from custom loops.** `ai.toolExecute` now threads the parent's session to the child run, so child tasks can stream progress into the chat with `chat.stream.writer({ target: "root" })` instead of failing with "session handle is not initialized".
+
+See [Custom agents](/ai-chat/custom-agents).
+
+## trigger skills: namespacing, docs bundling, and a cost-savings skill
+
+Follow-ups to the [`trigger skills`](/ai-chat/patterns/skills) command shipped in rc.6:
+
+- The skills installed into your coding assistant are now namespaced with a `trigger-` prefix (e.g. `trigger-authoring-tasks`, `trigger-getting-started`) so they don't collide with unrelated skills in your skills directory. ([#3970](https://github.com/triggerdotdev/trigger.dev/pull/3970))
+- `@trigger.dev/sdk` now bundles the Trigger.dev agent skills and the full Trigger.dev documentation those skills reference. The installed skills read this content from `node_modules`, so the guidance your AI assistant follows is pinned to the SDK version in your project and stays current across upgrades instead of going stale until the next reinstall. ([#3937](https://github.com/triggerdotdev/trigger.dev/pull/3937), [#3970](https://github.com/triggerdotdev/trigger.dev/pull/3970))
+- New `trigger-cost-savings` skill for auditing and reducing compute spend — right-sizing machines, `maxDuration`, batching, and debounce. ([#3970](https://github.com/triggerdotdev/trigger.dev/pull/3970))
+
+```bash
+npx trigger.dev@4.5.0-rc.7 skills
+```
+
+</Update>
+
 <Update label="June 12, 2026" description="4.5.0-rc.6" tags={["SDK", "CLI", "Bug fix"]}>
 
 ## chat.agent reliability fixes

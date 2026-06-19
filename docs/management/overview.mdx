@@ -1,5 +1,5 @@
 ---
-title: Overview
+title: "Management API overview"
 sidebarTitle: Overview
 description: Using the Trigger.dev management API
 ---
@@ -37,7 +37,7 @@ configure({
 });
 
 async function main() {
-  const runs = await runs.list({
+  const completedRuns = await runs.list({
     limit: 10,
     status: ["COMPLETED"],
   });

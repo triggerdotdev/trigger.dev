@@ -1,10 +1,9 @@
-import { ArrowLeftIcon } from "@heroicons/react/24/solid";
+import { ArrowLeftIcon, LinkIcon } from "@heroicons/react/24/solid";
 import { BellIcon } from "~/assets/icons/BellIcon";
 import { CreditCardIcon } from "~/assets/icons/CreditCardIcon";
 import { PadlockIcon } from "~/assets/icons/PadlockIcon";
 import { UsageIcon } from "~/assets/icons/UsageIcon";
 import { RolesIcon } from "~/assets/icons/RolesIcon";
-import { ShieldLockIcon } from "~/assets/icons/ShieldLockIcon";
 import { SlackIcon } from "~/assets/icons/SlackIcon";
 import { SlidersIcon } from "~/assets/icons/SlidersIcon";
 import { UserGroupIcon } from "~/assets/icons/UserGroupIcon";
@@ -17,6 +16,7 @@ import {
   organizationRolesPath,
   organizationSettingsPath,
   organizationSlackIntegrationPath,
+  organizationSsoPath,
   organizationTeamPath,
   organizationVercelIntegrationPath,
   rootPath,
@@ -48,10 +48,12 @@ export function OrganizationSettingsSideMenu({
   organization,
   buildInfo,
   isUsingPlugin,
+  isSsoUsingPlugin,
 }: {
   organization: MatchedOrganization;
   buildInfo: BuildInfo;
   isUsingPlugin: boolean;
+  isSsoUsingPlugin: boolean;
 }) {
   const { isManagedCloud } = useFeatures();
   const featureFlags = useFeatureFlags();
@@ -128,7 +130,7 @@ export function OrganizationSettingsSideMenu({
           {featureFlags.hasPrivateConnections && (
             <SideMenuItem
               name="Private Connections"
-              icon={PadlockIcon}
+              icon={LinkIcon}
               activeIconColor="text-text-bright"
               inactiveIconColor="text-text-dimmed"
               to={v3PrivateConnectionsPath(organization)}
@@ -143,6 +145,21 @@ export function OrganizationSettingsSideMenu({
               inactiveIconColor="text-text-dimmed"
               to={organizationRolesPath(organization)}
               data-action="roles"
+            />
+          )}
+          {isManagedCloud && isSsoUsingPlugin && (
+            <SideMenuItem
+              name="SSO"
+              icon={PadlockIcon}
+              activeIconColor="text-text-bright"
+              inactiveIconColor="text-text-dimmed"
+              to={organizationSsoPath(organization)}
+              data-action="sso"
+              badge={
+                currentPlan?.v3Subscription?.plan?.code === "enterprise" ? undefined : (
+                  <Badge variant="extra-small">Enterprise</Badge>
+                )
+              }
             />
           )}
           <SideMenuItem

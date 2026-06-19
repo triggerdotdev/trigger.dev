@@ -155,7 +155,11 @@ export async function action({ request }: ActionFunctionArgs) {
 async function completeLogin(request: Request, session: Session, userId: string) {
   // Set the auth key on the same session object to avoid conflicting Set-Cookie headers
   // (both authSession and session share the same __session cookie name)
-  session.set(authenticator.sessionKey, { userId });
+  const pendingSso = session.get("pending-sso") as
+    | { idpOrgId: string; connectionId: string }
+    | undefined;
+  session.set(authenticator.sessionKey, pendingSso ? { userId, sso: pendingSso } : { userId });
+  session.unset("pending-sso");
 
   // Get the redirect URL and clean up pending MFA data
   const redirectTo = session.get("pending-mfa-redirect-to") ?? "/";

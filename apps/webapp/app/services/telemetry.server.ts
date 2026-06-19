@@ -5,6 +5,7 @@ import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import type { User } from "~/models/user.server";
 import { singleton } from "~/utils/singleton";
+import { enqueueAttioUserSync } from "./attio.server";
 import { loopsClient } from "./loops.server";
 
 type Options = {
@@ -73,6 +74,14 @@ class Telemetry {
           userId: user.id,
           email: user.email,
           name: user.name,
+        });
+
+        enqueueAttioUserSync({
+          userId: user.id,
+          email: user.email,
+          referralSource: referralSource ?? user.referralSource,
+          marketingEmails: user.marketingEmails,
+          createdAt: user.createdAt,
         });
       }
     },

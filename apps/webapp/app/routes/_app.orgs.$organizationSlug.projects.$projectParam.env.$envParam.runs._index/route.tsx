@@ -55,6 +55,8 @@ import {
   uiPreferencesStorage,
 } from "~/services/preferences/uiPreferences.server";
 import { requireUserId } from "~/services/session.server";
+import { rbac } from "~/services/rbac.server";
+import { checkPermissions } from "~/services/routeBuilders/permissions.server";
 import { cn } from "~/utils/cn";
 import {
   docsPath,
@@ -67,7 +69,11 @@ import { throwNotFound } from "~/utils/httpErrors";
 import { ListPagination } from "../../components/ListPagination";
 import { CreateBulkActionInspector } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
 import { Callout } from "~/components/primitives/Callout";
-import { isRunsListLoading, RUNS_BULK_INSPECTOR_OPEN_VALUE, shouldRevalidateRunsList } from "./shouldRevalidateRunsList";
+import {
+  isRunsListLoading,
+  RUNS_BULK_INSPECTOR_OPEN_VALUE,
+  shouldRevalidateRunsList,
+} from "./shouldRevalidateRunsList";
 import { useRunsLiveReload } from "./useRunsLiveReload";
 
 export { shouldRevalidateRunsList as shouldRevalidate };
@@ -120,18 +126,33 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       }
     : undefined;
 
+  // Display flags for the row-menu and bulk-action controls — the cancel/
+  // replay action routes enforce write:runs independently. Permissive in OSS.
+  const runAuth = await rbac.authenticateSession(request, {
+    userId,
+    organizationId: project.organizationId,
+  });
+  const runPermissions = runAuth.ok
+    ? checkPermissions(runAuth.ability, {
+        canCancelRuns: { action: "write", resource: { type: "runs" } },
+        canReplayRuns: { action: "write", resource: { type: "runs" } },
+      })
+    : { canCancelRuns: true, canReplayRuns: true };
+
   return typeddefer(
     {
       data: list,
       rootOnlyDefault: filters.rootOnly,
       filters,
+      ...runPermissions,
     },
     headers ? { headers } : undefined
   );
 };
 
 export default function Page() {
-  const { data, rootOnlyDefault, filters } = useTypedLoaderData<typeof loader>();
+  const { data, rootOnlyDefault, filters, canCancelRuns, canReplayRuns } =
+    useTypedLoaderData<typeof loader>();
   const { isConnected } = useDevPresence();
   const project = useProject();
   const environment = useEnvironment();
@@ -190,6 +211,8 @@ export default function Page() {
                       selectedItems={selectedItems}
                       rootOnlyDefault={rootOnlyDefault}
                       filters={filters}
+                      canCancelRuns={canCancelRuns}
+                      canReplayRuns={canReplayRuns}
                     />
                   );
                 }}
@@ -207,11 +230,15 @@ function RunsList({
   selectedItems,
   rootOnlyDefault,
   filters,
+  canCancelRuns,
+  canReplayRuns,
 }: {
   list: Awaited<UseDataFunctionReturn<typeof loader>["data"]>;
   selectedItems: Set<string>;
   rootOnlyDefault: boolean;
   filters: TaskRunListSearchFilters;
+  canCancelRuns: boolean;
+  canReplayRuns: boolean;
 }) {
   const revalidator = useRevalidator();
   const location = useLocation();
@@ -245,9 +272,10 @@ function RunsList({
     revalidator.revalidate();
   };
 
-  // Shortcut keys for bulk actions
+  // Shortcut keys for bulk actions — disabled when the role can't perform them.
   useShortcutKeys({
     shortcut: { key: "r" },
+    disabled: !canReplayRuns,
     action: (e) => {
       replace({
         bulkInspector: RUNS_BULK_INSPECTOR_OPEN_VALUE,
@@ -258,6 +286,7 @@ function RunsList({
   });
   useShortcutKeys({
     shortcut: { key: "c" },
+    disabled: !canCancelRuns,
     action: (e) => {
       replace({
         bulkInspector: RUNS_BULK_INSPECTOR_OPEN_VALUE,
@@ -272,8 +301,7 @@ function RunsList({
     !isShowingBulkActionInspector
   );
   // Keep content mounted until onCollapseChange reports the panel is fully collapsed.
-  const showBulkInspectorContent =
-    isShowingBulkActionInspector || !isBulkInspectorPanelCollapsed;
+  const showBulkInspectorContent = isShowingBulkActionInspector || !isBulkInspectorPanelCollapsed;
 
   return (
     <ResizablePanelGroup orientation="horizontal" className="max-h-full">
@@ -326,7 +354,7 @@ function RunsList({
                     {/* Stay mounted while the inspector is open to avoid toolbar layout shift. */}
                     <Button
                       variant="secondary/small"
-                      disabled={isShowingBulkActionInspector}
+                      disabled={isShowingBulkActionInspector || (!canCancelRuns && !canReplayRuns)}
                       onClick={() =>
                         replace({
                           bulkInspector: RUNS_BULK_INSPECTOR_OPEN_VALUE,
@@ -339,16 +367,20 @@ function RunsList({
                         isShowingBulkActionInspector && "pointer-events-none invisible"
                       )}
                       tooltip={
-                        <div className="-mr-1 flex items-center gap-3 text-xs text-text-dimmed">
-                          <div className="flex items-center gap-0.5">
-                            <span>Replay</span>
-                            <ShortcutKey shortcut={{ key: "r" }} variant={"small"} />
+                        !canCancelRuns && !canReplayRuns ? (
+                          "You don't have permission to cancel or replay runs"
+                        ) : (
+                          <div className="-mr-1 flex items-center gap-3 text-xs text-text-dimmed">
+                            <div className="flex items-center gap-0.5">
+                              <span>Replay</span>
+                              <ShortcutKey shortcut={{ key: "r" }} variant={"small"} />
+                            </div>
+                            <div className="flex items-center gap-0.5">
+                              <span>Cancel</span>
+                              <ShortcutKey shortcut={{ key: "c" }} variant={"small"} />
+                            </div>
                           </div>
-                          <div className="flex items-center gap-0.5">
-                            <span>Cancel</span>
-                            <ShortcutKey shortcut={{ key: "c" }} variant={"small"} />
-                          </div>
-                        </div>
+                        )
                       }
                     >
                       <span className="flex items-center gap-x-1 whitespace-nowrap text-text-bright">
@@ -371,6 +403,8 @@ function RunsList({
                   isLoading={isLoading}
                   allowSelection
                   rootOnlyDefault={rootOnlyDefault}
+                  canCancelRuns={canCancelRuns}
+                  canReplayRuns={canReplayRuns}
                 />
               </div>
             )}
