@@ -1,4 +1,5 @@
 import { postgresTest } from "@internal/testcontainers";
+import { isKsuidId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
 import { PostgresRunStore } from "./PostgresRunStore.js";
@@ -1771,4 +1772,676 @@ describe("PostgresRunStore — read", () => {
     expect(found[0]?.taskIdentifier).toBe("my-task");
     expect(found[0]?.payloadType).toBe("application/json");
   });
+});
+
+describe("PostgresRunStore — table routing by id format", () => {
+  // Seed a run directly into one physical table, choosing the delegate by id
+  // format the same way the store does. Returns the ids used.
+  async function seedRoutedRun(
+    prisma: PrismaClient,
+    params: {
+      id: string;
+      friendlyId: string;
+      organizationId: string;
+      projectId: string;
+      runtimeEnvironmentId: string;
+      status?: string;
+      idempotencyKey?: string;
+      taskIdentifier?: string;
+    }
+  ) {
+    const delegate = isKsuidId(params.id)
+      ? (prisma.taskRunV2 as unknown as typeof prisma.taskRun)
+      : prisma.taskRun;
+
+    await delegate.create({
+      data: {
+        id: params.id,
+        engine: "V2",
+        status: (params.status as any) ?? "PENDING",
+        friendlyId: params.friendlyId,
+        runtimeEnvironmentId: params.runtimeEnvironmentId,
+        environmentType: "DEVELOPMENT",
+        organizationId: params.organizationId,
+        projectId: params.projectId,
+        taskIdentifier: params.taskIdentifier ?? "my-task",
+        payload: "{}",
+        payloadType: "application/json",
+        traceContext: {},
+        traceId: `trace_${params.id}`,
+        spanId: `span_${params.id}`,
+        queue: "task/my-task",
+        isTest: false,
+        taskEventStore: "taskEvent",
+        depth: 0,
+        ...(params.idempotencyKey !== undefined && { idempotencyKey: params.idempotencyKey }),
+      },
+    });
+  }
+
+  postgresTest(
+    "createRun with a cuid id lands a row in TaskRun and NOT in task_run_v2",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const cuid = RunId.generate();
+      expect(isKsuidId(cuid.id)).toBe(false);
+
+      await store.createRun({
+        data: {
+          id: cuid.id,
+          engine: "V2",
+          status: "PENDING",
+          friendlyId: cuid.friendlyId,
+          runtimeEnvironmentId: environment.id,
+          environmentType: "DEVELOPMENT",
+          organizationId: organization.id,
+          projectId: project.id,
+          taskIdentifier: "my-task",
+          payload: "{}",
+          payloadType: "application/json",
+          traceContext: {},
+          traceId: "trace_cuid",
+          spanId: "span_cuid",
+          queue: "task/my-task",
+          isTest: false,
+          taskEventStore: "taskEvent",
+          depth: 0,
+        },
+        snapshot: {
+          engine: "V2",
+          executionStatus: "RUN_CREATED",
+          description: "Run was created",
+          runStatus: "PENDING",
+          environmentId: environment.id,
+          environmentType: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+        },
+      });
+
+      // cuid run is in TaskRun, not in task_run_v2.
+      const legacyRow = await prisma.taskRun.findUnique({ where: { id: cuid.id } });
+      expect(legacyRow).not.toBeNull();
+      const cuidInV2 = await prisma.taskRunV2.findUnique({ where: { id: cuid.id } });
+      expect(cuidInV2).toBeNull();
+    }
+  );
+
+  postgresTest(
+    "createRun routes a KSUID id to task_run_v2: the scalar row lands there and not in TaskRun",
+    async ({ prisma }) => {
+      // This test exercises the routing decision in isolation by writing the
+      // scalar row directly to the table `createRun` would pick for a KSUID
+      // `data.id`, then asserts the row landed in task_run_v2 and not in TaskRun.
+      // The full v2 create path (run + nested snapshot + waitpoint) is covered
+      // by the "v2 nested writes" suite below.
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const ksuid = RunId.generateKsuid();
+      expect(isKsuidId(ksuid.id)).toBe(true);
+
+      await seedRoutedRun(prisma, {
+        id: ksuid.id,
+        friendlyId: ksuid.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+
+      const v2Row = await prisma.taskRunV2.findUnique({ where: { id: ksuid.id } });
+      expect(v2Row).not.toBeNull();
+      const ksuidInLegacy = await prisma.taskRun.findUnique({ where: { id: ksuid.id } });
+      expect(ksuidInLegacy).toBeNull();
+    }
+  );
+
+  postgresTest(
+    "findRun and updateMetadata route to task_run_v2 for a KSUID run and to TaskRun for a cuid run",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const ksuid = RunId.generateKsuid();
+      const cuid = RunId.generate();
+
+      await seedRoutedRun(prisma, {
+        id: ksuid.id,
+        friendlyId: ksuid.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      await seedRoutedRun(prisma, {
+        id: cuid.id,
+        friendlyId: cuid.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+
+      // By-id read finds each run in its own table.
+      const foundKsuid = await store.findRun({ id: ksuid.id }, { select: { id: true } });
+      expect(foundKsuid?.id).toBe(ksuid.id);
+      const foundCuid = await store.findRun({ id: cuid.id }, { select: { id: true } });
+      expect(foundCuid?.id).toBe(cuid.id);
+
+      // By-id write (updateMetadata) lands in the correct table.
+      const ksuidResult = await store.updateMetadata(
+        ksuid.id,
+        {
+          metadata: '{"routed":"v2"}',
+          metadataType: "application/json",
+          metadataVersion: { increment: 1 },
+          updatedAt: new Date(),
+        },
+        {}
+      );
+      expect(ksuidResult.count).toBe(1);
+
+      const cuidResult = await store.updateMetadata(
+        cuid.id,
+        {
+          metadata: '{"routed":"legacy"}',
+          metadataType: "application/json",
+          metadataVersion: { increment: 1 },
+          updatedAt: new Date(),
+        },
+        {}
+      );
+      expect(cuidResult.count).toBe(1);
+
+      // The write hit task_run_v2 for the KSUID run …
+      const v2Row = await prisma.taskRunV2.findUniqueOrThrow({
+        where: { id: ksuid.id },
+        select: { metadata: true },
+      });
+      expect(v2Row.metadata).toBe('{"routed":"v2"}');
+
+      // … and TaskRun for the cuid run.
+      const legacyRow = await prisma.taskRun.findUniqueOrThrow({
+        where: { id: cuid.id },
+        select: { metadata: true },
+      });
+      expect(legacyRow.metadata).toBe('{"routed":"legacy"}');
+    }
+  );
+
+  postgresTest(
+    "expireRunsBatch with a mixed array updates both tables and returns the combined count",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const ksuid = RunId.generateKsuid();
+      const cuid = RunId.generate();
+
+      await seedRoutedRun(prisma, {
+        id: ksuid.id,
+        friendlyId: ksuid.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      await seedRoutedRun(prisma, {
+        id: cuid.id,
+        friendlyId: cuid.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+
+      const now = new Date("2026-06-19T12:00:00.000Z");
+      const error = { type: "STRING_ERROR" as const, raw: "Run expired because the TTL was reached" };
+
+      const count = await store.expireRunsBatch([ksuid.id, cuid.id], { error, now });
+
+      expect(count).toBe(2);
+
+      const v2Row = await prisma.taskRunV2.findUniqueOrThrow({
+        where: { id: ksuid.id },
+        select: { status: true, completedAt: true, expiredAt: true },
+      });
+      expect(v2Row.status).toBe("EXPIRED");
+      expect(v2Row.completedAt).toEqual(now);
+      expect(v2Row.expiredAt).toEqual(now);
+
+      const legacyRow = await prisma.taskRun.findUniqueOrThrow({
+        where: { id: cuid.id },
+        select: { status: true, completedAt: true, expiredAt: true },
+      });
+      expect(legacyRow.status).toBe("EXPIRED");
+      expect(legacyRow.completedAt).toEqual(now);
+      expect(legacyRow.expiredAt).toEqual(now);
+    }
+  );
+});
+
+describe("PostgresRunStore — v2 nested writes (run + related rows via nested Prisma create)", () => {
+  // `task_run_v2` is a full clone of `TaskRun` down to its relations, so the nested Prisma
+  // create/include used by createRun/lifecycle methods targets it unchanged via the runModel cast.
+  // The child->run foreign keys (TaskRunExecutionSnapshot.runId, Waitpoint.completedByTaskRunId, …)
+  // are dropped in production and by the testcontainer harness, so a child row can reference a run
+  // in EITHER physical table (TaskRun or task_run_v2) by plain scalar id without a FK violation.
+
+  function runAssociatedWaitpoint(params: {
+    id: string;
+    friendlyId: string;
+    projectId: string;
+    environmentId: string;
+  }) {
+    return {
+      id: params.id,
+      friendlyId: params.friendlyId,
+      type: "RUN" as const,
+      status: "PENDING" as const,
+      idempotencyKey: `idem_${params.id}`,
+      userProvidedIdempotencyKey: false,
+      projectId: params.projectId,
+      environmentId: params.environmentId,
+    };
+  }
+
+  postgresTest(
+    "createRun for a KSUID run lands the run in task_run_v2, creates its snapshot keyed to the v2 run id, and creates the associated waitpoint",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const ksuid = RunId.generateKsuid();
+      expect(isKsuidId(ksuid.id)).toBe(true);
+
+      const input: CreateRunInput = {
+        ...buildCreateRunInput({
+          runId: ksuid.id,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+        }),
+        associatedWaitpoint: runAssociatedWaitpoint({
+          id: "wp_v2_create_1",
+          friendlyId: "wp_v2_create_friendly_1",
+          projectId: project.id,
+          environmentId: environment.id,
+        }),
+      };
+      input.data.friendlyId = ksuid.friendlyId;
+
+      const run = await store.createRun(input);
+
+      // Returns the TaskRunWithWaitpoint shape with the associated waitpoint included.
+      expect(run.id).toBe(ksuid.id);
+      expect(run.status).toBe("PENDING");
+      expect(run.associatedWaitpoint).not.toBeNull();
+      expect(run.associatedWaitpoint?.id).toBe("wp_v2_create_1");
+
+      // The run row landed in task_run_v2, not TaskRun.
+      const v2Row = await prisma.taskRunV2.findUnique({ where: { id: ksuid.id } });
+      expect(v2Row).not.toBeNull();
+      const legacyRow = await prisma.taskRun.findUnique({ where: { id: ksuid.id } });
+      expect(legacyRow).toBeNull();
+
+      // The execution snapshot is keyed to the v2 run id (in the shared snapshot table).
+      const snapshots = await prisma.taskRunExecutionSnapshot.findMany({
+        where: { runId: ksuid.id },
+      });
+      expect(snapshots).toHaveLength(1);
+      expect(snapshots[0]?.executionStatus).toBe("RUN_CREATED");
+      expect(snapshots[0]?.runStatus).toBe("PENDING");
+
+      // The waitpoint points back at the v2 run via the scalar FK column.
+      const waitpoint = await prisma.waitpoint.findUnique({ where: { id: "wp_v2_create_1" } });
+      expect(waitpoint?.completedByTaskRunId).toBe(ksuid.id);
+    }
+  );
+
+  postgresTest(
+    "v2 lifecycle: startAttempt then completeAttemptSuccess creates the completion snapshot keyed to the v2 run id",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const ksuid = RunId.generateKsuid();
+
+      const input = buildCreateRunInput({
+        runId: ksuid.id,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      input.data.friendlyId = ksuid.friendlyId;
+
+      await store.createRun(input);
+
+      const started = await store.startAttempt(
+        ksuid.id,
+        { attemptNumber: 1, isWarmStart: false },
+        { select: { id: true, status: true, attemptNumber: true } }
+      );
+      expect(started.status).toBe("EXECUTING");
+      expect(started.attemptNumber).toBe(1);
+
+      const completedAt = new Date("2026-06-19T11:00:00.000Z");
+      const completed = await store.completeAttemptSuccess(
+        ksuid.id,
+        {
+          completedAt,
+          output: '{"ok":true}',
+          outputType: "application/json",
+          usageDurationMs: 250,
+          costInCents: 4,
+          snapshot: {
+            executionStatus: "FINISHED",
+            description: "Task completed successfully",
+            runStatus: "COMPLETED_SUCCESSFULLY",
+            attemptNumber: 1,
+            environmentId: environment.id,
+            environmentType: "DEVELOPMENT",
+            projectId: project.id,
+            organizationId: organization.id,
+          },
+        },
+        { select: { id: true, status: true, completedAt: true, usageDurationMs: true, costInCents: true } }
+      );
+
+      expect(completed.id).toBe(ksuid.id);
+      expect(completed.status).toBe("COMPLETED_SUCCESSFULLY");
+      expect(completed.completedAt).toEqual(completedAt);
+      expect(completed.usageDurationMs).toBe(250);
+      expect(completed.costInCents).toBe(4);
+
+      // The run row updated in task_run_v2.
+      const v2Row = await prisma.taskRunV2.findUniqueOrThrow({
+        where: { id: ksuid.id },
+        select: { status: true },
+      });
+      expect(v2Row.status).toBe("COMPLETED_SUCCESSFULLY");
+
+      // The completion snapshot is keyed to the v2 run id.
+      const finished = await prisma.taskRunExecutionSnapshot.findMany({
+        where: { runId: ksuid.id, executionStatus: "FINISHED" },
+      });
+      expect(finished).toHaveLength(1);
+      expect(finished[0]?.runStatus).toBe("COMPLETED_SUCCESSFULLY");
+    }
+  );
+
+  postgresTest(
+    "createFailedRun for a KSUID run lands the run in task_run_v2 and creates the associated waitpoint keyed to the v2 run id",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const ksuid = RunId.generateKsuid();
+      const completedAt = new Date("2026-06-19T00:00:00.000Z");
+      const error = { type: "STRING_ERROR", raw: "system failure" };
+
+      const input: CreateFailedRunInput = {
+        data: {
+          id: ksuid.id,
+          engine: "V2",
+          status: "SYSTEM_FAILURE",
+          friendlyId: ksuid.friendlyId,
+          runtimeEnvironmentId: environment.id,
+          environmentType: "DEVELOPMENT",
+          organizationId: organization.id,
+          projectId: project.id,
+          taskIdentifier: "my-task",
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "trace_v2_failed",
+          spanId: "span_v2_failed",
+          queue: "task/my-task",
+          isTest: false,
+          completedAt,
+          error: error as unknown as import("@trigger.dev/database").Prisma.InputJsonObject,
+          depth: 0,
+          taskEventStore: "taskEvent",
+        },
+        associatedWaitpoint: runAssociatedWaitpoint({
+          id: "wp_v2_failed_1",
+          friendlyId: "wp_v2_failed_friendly_1",
+          projectId: project.id,
+          environmentId: environment.id,
+        }),
+      };
+
+      const run = await store.createFailedRun(input);
+
+      expect(run.id).toBe(ksuid.id);
+      expect(run.status).toBe("SYSTEM_FAILURE");
+      expect(run.associatedWaitpoint).not.toBeNull();
+      expect(run.associatedWaitpoint?.id).toBe("wp_v2_failed_1");
+
+      const v2Row = await prisma.taskRunV2.findUnique({ where: { id: ksuid.id } });
+      expect(v2Row).not.toBeNull();
+      const legacyRow = await prisma.taskRun.findUnique({ where: { id: ksuid.id } });
+      expect(legacyRow).toBeNull();
+
+      const waitpoint = await prisma.waitpoint.findUnique({ where: { id: "wp_v2_failed_1" } });
+      expect(waitpoint?.completedByTaskRunId).toBe(ksuid.id);
+    }
+  );
+
+  postgresTest(
+    "createRun for a legacy cuid run with an associated waitpoint creates the run, its snapshot, and the waitpoint (regression: identical rows/shape)",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const cuid = RunId.generate();
+      expect(isKsuidId(cuid.id)).toBe(false);
+
+      const input: CreateRunInput = {
+        ...buildCreateRunInput({
+          runId: cuid.id,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+        }),
+        associatedWaitpoint: runAssociatedWaitpoint({
+          id: "wp_legacy_create_1",
+          friendlyId: "wp_legacy_create_friendly_1",
+          projectId: project.id,
+          environmentId: environment.id,
+        }),
+      };
+      input.data.friendlyId = cuid.friendlyId;
+
+      const run = await store.createRun(input);
+
+      // Same TaskRunWithWaitpoint shape as before.
+      expect(run.id).toBe(cuid.id);
+      expect(run.status).toBe("PENDING");
+      expect(run.associatedWaitpoint?.id).toBe("wp_legacy_create_1");
+
+      // Legacy run is in TaskRun, not task_run_v2.
+      const legacyRow = await prisma.taskRun.findUnique({ where: { id: cuid.id } });
+      expect(legacyRow).not.toBeNull();
+      const v2Row = await prisma.taskRunV2.findUnique({ where: { id: cuid.id } });
+      expect(v2Row).toBeNull();
+
+      // Snapshot keyed to the run, waitpoint linked back via the FK column.
+      const snapshots = await prisma.taskRunExecutionSnapshot.findMany({
+        where: { runId: cuid.id },
+      });
+      expect(snapshots).toHaveLength(1);
+      expect(snapshots[0]?.executionStatus).toBe("RUN_CREATED");
+
+      const waitpoint = await prisma.waitpoint.findUnique({ where: { id: "wp_legacy_create_1" } });
+      expect(waitpoint?.completedByTaskRunId).toBe(cuid.id);
+
+      // The FK still being live for the legacy table proves the waitpoint really
+      // resolves to a TaskRun row (the regression path is unchanged).
+      const reloaded = await prisma.taskRun.findUniqueOrThrow({
+        where: { id: cuid.id },
+        include: { associatedWaitpoint: true },
+      });
+      expect(reloaded.associatedWaitpoint?.id).toBe("wp_legacy_create_1");
+    }
+  );
+
+  postgresTest(
+    "createRun is atomic: a second create with the same id throws and leaves no dangling snapshot",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const cuid = RunId.generate();
+      const input = buildCreateRunInput({
+        runId: cuid.id,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      input.data.friendlyId = cuid.friendlyId;
+
+      await store.createRun(input);
+
+      const before = await prisma.taskRunExecutionSnapshot.count({ where: { runId: cuid.id } });
+      expect(before).toBe(1);
+
+      // A second createRun with the same id fails the unique-id insert and
+      // propagates the error. Because the run row and its snapshot are written by
+      // one nested Prisma create, the rollback leaves no extra snapshot behind.
+      await expect(store.createRun(input)).rejects.toThrow();
+
+      const after = await prisma.taskRunExecutionSnapshot.count({ where: { runId: cuid.id } });
+      expect(after).toBe(1);
+    }
+  );
+
+  postgresTest(
+    "lockRunToWorker for a KSUID run returns the run with runtimeEnvironment hydrated via include (no manual stitch)",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const ksuid = RunId.generateKsuid();
+      expect(isKsuidId(ksuid.id)).toBe(true);
+
+      const input = buildCreateRunInput({
+        runId: ksuid.id,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      input.data.friendlyId = ksuid.friendlyId;
+
+      await store.createRun(input);
+
+      const backgroundWorker = await prisma.backgroundWorker.create({
+        data: {
+          friendlyId: "worker_friendly_v2",
+          version: "20260601.1",
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+          contentHash: "abc123v2",
+          sdkVersion: "3.0.0",
+          cliVersion: "3.0.0",
+          metadata: {},
+        },
+      });
+
+      const workerTask = await prisma.backgroundWorkerTask.create({
+        data: {
+          friendlyId: "task_friendly_v2",
+          slug: "my-task",
+          filePath: "src/my-task.ts",
+          exportName: "myTask",
+          workerId: backgroundWorker.id,
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+        },
+      });
+
+      const queue = await prisma.taskQueue.create({
+        data: {
+          friendlyId: "queue_friendly_v2",
+          name: "task/my-task",
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+        },
+      });
+
+      const lockedAt = new Date("2026-06-19T13:00:00.000Z");
+      const startedAt = new Date("2026-06-19T13:00:01.000Z");
+      const snapshotId = "snap_lock_v2_1";
+
+      const locked = await store.lockRunToWorker(ksuid.id, {
+        lockedAt,
+        lockedById: workerTask.id,
+        lockedToVersionId: backgroundWorker.id,
+        lockedQueueId: queue.id,
+        startedAt,
+        baseCostInCents: 5,
+        machinePreset: "small-1x",
+        taskVersion: "20260601.1",
+        sdkVersion: "3.0.0",
+        cliVersion: "3.0.0",
+        maxDurationInSeconds: null,
+        snapshot: {
+          id: snapshotId,
+          previousSnapshotId: undefined,
+          environmentId: environment.id,
+          environmentType: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+          completedWaitpointIds: [],
+          completedWaitpointOrder: [],
+        },
+      });
+
+      expect(locked.status).toBe("DEQUEUED");
+      // The relation is hydrated by the nested `include`, not stitched manually.
+      expect(locked.runtimeEnvironment).toBeDefined();
+      expect(locked.runtimeEnvironment.id).toBe(environment.id);
+
+      // The run row landed (and was updated) in task_run_v2.
+      const v2Row = await prisma.taskRunV2.findUniqueOrThrow({
+        where: { id: ksuid.id },
+        select: { status: true },
+      });
+      expect(v2Row.status).toBe("DEQUEUED");
+
+      // The dequeue snapshot is keyed to the v2 run id.
+      const snap = await prisma.taskRunExecutionSnapshot.findUnique({ where: { id: snapshotId } });
+      expect(snap?.executionStatus).toBe("PENDING_EXECUTING");
+    }
+  );
+
+  postgresTest(
+    "findRun with a runtimeEnvironment include resolves the relation for a KSUID run",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const ksuid = RunId.generateKsuid();
+      const input = buildCreateRunInput({
+        runId: ksuid.id,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      input.data.friendlyId = ksuid.friendlyId;
+
+      await store.createRun(input);
+
+      const run = await store.findRun({ id: ksuid.id }, { include: { runtimeEnvironment: true } });
+
+      expect(run?.id).toBe(ksuid.id);
+      expect(run?.runtimeEnvironment).toBeDefined();
+      expect(run?.runtimeEnvironment.id).toBe(environment.id);
+    }
+  );
 });

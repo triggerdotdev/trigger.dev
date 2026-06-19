@@ -20,6 +20,7 @@ import type {
   TaskRunWithWaitpoint,
 } from "./types.js";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
+import { isKsuidId } from "@trigger.dev/core/v3/isomorphic";
 
 export type PostgresRunStoreOptions = {
   prisma: PrismaClient;
@@ -27,12 +28,17 @@ export type PostgresRunStoreOptions = {
 };
 
 /**
- * Typed write layer for the task-run row, backed by the `taskRun` Prisma model.
+ * Typed write layer for the task-run row. A run lives in one of two physical
+ * tables chosen by its id format (`runModel`): the legacy `taskRun`, or the
+ * `task_run_v2` clone. `task_run_v2` carries the same relation surface as
+ * `TaskRun`, so a method's nested Prisma create/include (execution snapshot,
+ * associated waitpoint, `runtimeEnvironment`) targets either table unchanged
+ * once the delegate comes from `runModel`.
  *
- * Each method is a verbatim relocation of the Prisma statement that lives at a
- * specific call site today. Methods write through `(tx ?? this.prisma).taskRun`
+ * Each method is its original single-table Prisma statement with the run
+ * delegate routed through `runModel`. Methods write through `tx` when supplied
  * so callers can opt into an existing transaction. Errors (including unique
- * constraint violations) propagate to the caller unchanged.
+ * constraint violations) propagate unchanged.
  */
 export class PostgresRunStore implements RunStore {
   private readonly prisma: PrismaClient;
@@ -43,13 +49,50 @@ export class PostgresRunStore implements RunStore {
     this.readOnlyPrisma = options.readOnlyPrisma;
   }
 
+  /**
+   * A run lives in exactly one physical table, chosen by the FORMAT of its id:
+   * a KSUID id (new) lives in `task_run_v2`, the legacy cuid id in `TaskRun`.
+   * `task_run_v2` is an identical clone of `TaskRun` down to its relations, so
+   * its delegate is cast to the `taskRun` delegate type to reuse the existing
+   * generic `select`/`include`/nested-write passthrough unchanged.
+   */
+  private runModel(client: PrismaClientOrTransaction, idOrFriendlyId: string) {
+    return isKsuidId(idOrFriendlyId)
+      ? (client.taskRunV2 as unknown as typeof client.taskRun)
+      : client.taskRun;
+  }
+
+  /**
+   * Route a single-row read to its physical table from the routing key in the
+   * `where` clause. `findRun`/`findRunOrThrow` are always called with a
+   * `{ id }` or `{ friendlyId }` predicate; both carry the same KSUID/cuid body
+   * and route identically. When neither is a plain string (e.g. an unexpected
+   * predicate-only read), default to the legacy `taskRun` table — matching the
+   * pre-split single-table behavior.
+   */
+  #runReadModel(
+    prisma: PrismaClientOrTransaction | PrismaReplicaClient,
+    where: Prisma.TaskRunWhereInput
+  ) {
+    const routingKey =
+      typeof where.id === "string"
+        ? where.id
+        : typeof where.friendlyId === "string"
+        ? where.friendlyId
+        : undefined;
+
+    return routingKey !== undefined && isKsuidId(routingKey)
+      ? (prisma.taskRunV2 as unknown as typeof prisma.taskRun)
+      : prisma.taskRun;
+  }
+
   async createRun(
     params: CreateRunInput,
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRunWithWaitpoint> {
     const client = tx ?? this.prisma;
 
-    return client.taskRun.create({
+    return this.runModel(client, params.data.id).create({
       include: {
         associatedWaitpoint: true,
       },
@@ -84,7 +127,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<TaskRun> {
     const client = tx ?? this.prisma;
 
-    return client.taskRun.create({
+    return this.runModel(client, params.data.id).create({
       data: {
         ...params.data,
         executionSnapshots: {
@@ -111,7 +154,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<TaskRunWithWaitpoint> {
     const client = tx ?? this.prisma;
 
-    return client.taskRun.create({
+    return this.runModel(client, params.data.id).create({
       include: {
         associatedWaitpoint: true,
       },
@@ -134,7 +177,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.taskRun.update({
+    return this.runModel(prisma, runId).update({
       where: { id: runId },
       data: {
         status: "EXECUTING",
@@ -161,7 +204,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.taskRun.update({
+    return this.runModel(prisma, runId).update({
       where: { id: runId },
       data: {
         status: "COMPLETED_SUCCESSFULLY",
@@ -197,7 +240,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }>> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.taskRun.update({
+    return this.runModel(prisma, runId).update({
       where: { id: runId },
       data: {
         machinePreset: data.machinePreset,
@@ -215,7 +258,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.taskRun.update({
+    return this.runModel(prisma, runId).update({
       where: { id: runId },
       data: { status: "PENDING" },
       select: args.select,
@@ -229,7 +272,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<void> {
     const prisma = tx ?? this.prisma;
 
-    await prisma.taskRun.update({
+    await this.runModel(prisma, runId).update({
       where: { id: runId },
       data: {
         bulkActionGroupIds: {
@@ -253,7 +296,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.taskRun.update({
+    return this.runModel(prisma, runId).update({
       where: { id: runId },
       data: {
         status: "CANCELED",
@@ -283,7 +326,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.taskRun.update({
+    return this.runModel(prisma, runId).update({
       where: { id: runId },
       data: {
         status: data.status,
@@ -304,7 +347,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.taskRun.update({
+    return this.runModel(prisma, runId).update({
       where: { id: runId },
       data: {
         status: "EXPIRED",
@@ -341,15 +384,41 @@ export class PostgresRunStore implements RunStore {
       return 0;
     }
 
-    return prisma.$executeRaw`
-      UPDATE "TaskRun"
-      SET "status" = 'EXPIRED'::"TaskRunStatus",
-          "completedAt" = ${data.now},
-          "expiredAt" = ${data.now},
-          "updatedAt" = ${data.now},
-          "error" = ${JSON.stringify(data.error)}::jsonb
-      WHERE "id" IN (${Prisma.join(runIds)})
-    `;
+    // A run lives in exactly one table, chosen by its id format. The array may
+    // be mixed, so partition it and run the UPDATE once per non-empty partition
+    // on its own table, then sum the counts.
+    const v2Ids = runIds.filter((id) => isKsuidId(id));
+    const legacyIds = runIds.filter((id) => !isKsuidId(id));
+
+    const error = JSON.stringify(data.error);
+
+    let count = 0;
+
+    if (legacyIds.length > 0) {
+      count += await prisma.$executeRaw`
+        UPDATE "TaskRun"
+        SET "status" = 'EXPIRED'::"TaskRunStatus",
+            "completedAt" = ${data.now},
+            "expiredAt" = ${data.now},
+            "updatedAt" = ${data.now},
+            "error" = ${error}::jsonb
+        WHERE "id" IN (${Prisma.join(legacyIds)})
+      `;
+    }
+
+    if (v2Ids.length > 0) {
+      count += await prisma.$executeRaw`
+        UPDATE "task_run_v2"
+        SET "status" = 'EXPIRED'::"TaskRunStatus",
+            "completedAt" = ${data.now},
+            "expiredAt" = ${data.now},
+            "updatedAt" = ${data.now},
+            "error" = ${error}::jsonb
+        WHERE "id" IN (${Prisma.join(v2Ids)})
+      `;
+    }
+
+    return count;
   }
 
   async lockRunToWorker(
@@ -359,7 +428,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{ include: { runtimeEnvironment: true } }>> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.taskRun.update({
+    return this.runModel(prisma, runId).update({
       where: { id: runId },
       data: {
         status: "DEQUEUED",
@@ -403,7 +472,7 @@ export class PostgresRunStore implements RunStore {
       include: {
         runtimeEnvironment: true,
       },
-    });
+    }) as Promise<Prisma.TaskRunGetPayload<{ include: { runtimeEnvironment: true } }>>;
   }
 
   async parkPendingVersion<S extends Prisma.TaskRunSelect>(
@@ -414,7 +483,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.taskRun.update({
+    return this.runModel(prisma, runId).update({
       where: { id: runId },
       data: {
         status: "PENDING_VERSION",
@@ -430,7 +499,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<{ count: number }> {
     const prisma = tx ?? this.prisma;
 
-    const result = await prisma.taskRun.updateMany({
+    const result = await this.runModel(prisma, runId).updateMany({
       where: { id: runId, status: "PENDING_VERSION" },
       data: { status: "PENDING" },
     });
@@ -445,7 +514,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }>> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.taskRun.update({
+    return this.runModel(prisma, runId).update({
       where: { id: runId },
       data: { status: "WAITING_TO_RESUME" },
       include: args.include,
@@ -459,7 +528,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.taskRun.update({
+    return this.runModel(prisma, runId).update({
       where: { id: runId },
       data: { status: "EXECUTING" },
       select: args.select,
@@ -473,7 +542,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<TaskRun> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.taskRun.update({
+    return this.runModel(prisma, runId).update({
       where: { id: runId },
       data: {
         delayUntil: data.delayUntil,
@@ -503,7 +572,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<TaskRun> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.taskRun.update({
+    return this.runModel(prisma, runId).update({
       where: { id: runId },
       data: {
         status: "PENDING",
@@ -519,7 +588,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<TaskRunWithWaitpoint> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.taskRun.update({
+    return this.runModel(prisma, runId).update({
       where: { id: runId },
       data,
       include: {
@@ -540,16 +609,17 @@ export class PostgresRunStore implements RunStore {
     tx?: PrismaClientOrTransaction
   ): Promise<{ count: number }> {
     const prisma = tx ?? this.prisma;
+    const model = this.runModel(prisma, runId);
 
     if (options.expectedMetadataVersion !== undefined) {
-      const result = await prisma.taskRun.updateMany({
+      const result = await model.updateMany({
         where: { id: runId, metadataVersion: options.expectedMetadataVersion },
         data,
       });
       return { count: result.count };
     }
 
-    await prisma.taskRun.update({
+    await model.update({
       where: { id: runId },
       data,
     });
@@ -563,7 +633,7 @@ export class PostgresRunStore implements RunStore {
     const prisma = tx ?? this.prisma;
 
     if (params.byId) {
-      const result = await prisma.taskRun.updateMany({
+      const result = await this.runModel(prisma, params.byId.runId).updateMany({
         where: { id: params.byId.runId, idempotencyKey: params.byId.idempotencyKey },
         data: { idempotencyKey: null, idempotencyKeyExpiresAt: null },
       });
@@ -571,23 +641,48 @@ export class PostgresRunStore implements RunStore {
     }
 
     if (params.byPredicate) {
-      const result = await prisma.taskRun.updateMany({
-        where: {
-          idempotencyKey: params.byPredicate.idempotencyKey,
-          taskIdentifier: params.byPredicate.taskIdentifier,
-          runtimeEnvironmentId: params.byPredicate.runtimeEnvironmentId,
-        },
-        data: { idempotencyKey: null, idempotencyKeyExpiresAt: null },
-      });
-      return { count: result.count };
+      // No run id to route by: a matching run could be in either table during
+      // the mixed window, so run the predicate against both and sum the counts.
+      const where = {
+        idempotencyKey: params.byPredicate.idempotencyKey,
+        taskIdentifier: params.byPredicate.taskIdentifier,
+        runtimeEnvironmentId: params.byPredicate.runtimeEnvironmentId,
+      };
+      const data = { idempotencyKey: null, idempotencyKeyExpiresAt: null };
+
+      const [legacy, v2] = await Promise.all([
+        prisma.taskRun.updateMany({ where, data }),
+        (prisma.taskRunV2 as unknown as typeof prisma.taskRun).updateMany({ where, data }),
+      ]);
+
+      return { count: legacy.count + v2.count };
     }
 
-    // byFriendlyIds — only clears idempotencyKey, not idempotencyKeyExpiresAt
-    const result = await prisma.taskRun.updateMany({
-      where: { friendlyId: { in: params.byFriendlyIds } },
-      data: { idempotencyKey: null },
-    });
-    return { count: result.count };
+    // byFriendlyIds — only clears idempotencyKey, not idempotencyKeyExpiresAt.
+    // The friendlyId carries the same KSUID/cuid body as the id, so it routes
+    // the same way; partition the (possibly mixed) array and sum the counts.
+    const v2FriendlyIds = params.byFriendlyIds.filter((friendlyId) => isKsuidId(friendlyId));
+    const legacyFriendlyIds = params.byFriendlyIds.filter((friendlyId) => !isKsuidId(friendlyId));
+
+    let count = 0;
+
+    if (legacyFriendlyIds.length > 0) {
+      const result = await prisma.taskRun.updateMany({
+        where: { friendlyId: { in: legacyFriendlyIds } },
+        data: { idempotencyKey: null },
+      });
+      count += result.count;
+    }
+
+    if (v2FriendlyIds.length > 0) {
+      const result = await (prisma.taskRunV2 as unknown as typeof prisma.taskRun).updateMany({
+        where: { friendlyId: { in: v2FriendlyIds } },
+        data: { idempotencyKey: null },
+      });
+      count += result.count;
+    }
+
+    return { count };
   }
 
   async pushTags(
@@ -598,7 +693,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<{ updatedAt: Date }> {
     const prisma = tx ?? this.prisma;
 
-    return prisma.taskRun.update({
+    return this.runModel(prisma, runId).update({
       where: { id: runId, runtimeEnvironmentId: where.runtimeEnvironmentId },
       data: { runTags: { push: tags } },
       select: { updatedAt: true },
@@ -612,7 +707,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<void> {
     const prisma = tx ?? this.prisma;
 
-    await prisma.taskRun.update({
+    await this.runModel(prisma, runId).update({
       where: { id: runId },
       data: { realtimeStreams: { push: streamId } },
     });
@@ -639,7 +734,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<unknown> {
     const { args, prisma } = this.#resolveReadArgs(argsOrClient, client);
 
-    return prisma.taskRun.findFirst({
+    return this.#runReadModel(prisma, where).findFirst({
       where,
       ...args,
     });
@@ -666,7 +761,7 @@ export class PostgresRunStore implements RunStore {
   ): Promise<unknown> {
     const { args, prisma } = this.#resolveReadArgs(argsOrClient, client);
 
-    return prisma.taskRun.findFirstOrThrow({
+    return this.#runReadModel(prisma, where).findFirstOrThrow({
       where,
       ...args,
     });
