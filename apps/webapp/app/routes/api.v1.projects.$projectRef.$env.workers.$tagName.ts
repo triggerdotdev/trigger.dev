@@ -1,4 +1,5 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
@@ -6,6 +7,7 @@ import { type GetWorkerByTagResponse } from "@trigger.dev/core/v3/schemas";
 import { env as $env } from "~/env.server";
 import { v3RunsPath } from "~/utils/pathBuilder";
 import {
+  type AuthenticationResult,
   authenticatedEnvironmentForAuthentication,
   authenticateRequest,
 } from "~/services/apiAuth.server";
@@ -25,11 +27,27 @@ type ParamsSchema = z.infer<typeof ParamsSchema>;
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   try {
-    const authenticationResult = await authenticateRequest(request, {
-      personalAccessToken: true,
-      organizationAccessToken: true,
-      apiKey: false,
-    });
+    // A delegated user-actor token authenticates as its user, like a PAT.
+    // Resolve it here (the shared `authenticateRequest` deliberately doesn't
+    // accept UATs) so the dashboard agent can list a project's deployed tasks
+    // on the user's behalf. Identity-only, same as the PAT path below — there's
+    // no ability check on this route, so the cap isn't enforced here (matches
+    // PAT behavior).
+    const bearer = request.headers.get("Authorization")?.replace(/^Bearer /, "").trim();
+    let authenticationResult: AuthenticationResult | undefined;
+    if (bearer && isUserActorToken(bearer)) {
+      const claims = await verifyUserActorToken($env.SESSION_SECRET, bearer);
+      if (!claims) {
+        return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
+      }
+      authenticationResult = { type: "personalAccessToken", result: { userId: claims.userId } };
+    } else {
+      authenticationResult = await authenticateRequest(request, {
+        personalAccessToken: true,
+        organizationAccessToken: true,
+        apiKey: false,
+      });
+    }
 
     if (!authenticationResult) {
       return json({ error: "Invalid or Missing Access Token" }, { status: 401 });
