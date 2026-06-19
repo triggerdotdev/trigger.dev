@@ -215,7 +215,7 @@ export async function acceptInvite({
         organization: invite.organization,
         project,
         type: "DEVELOPMENT",
-        isBranchableEnvironment: false,
+        isBranchableEnvironment: true,
         member,
         prismaClient: tx,
       });

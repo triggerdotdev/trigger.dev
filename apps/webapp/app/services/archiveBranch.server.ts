@@ -56,10 +56,16 @@ export class ArchiveBranchService {
         },
       });
 
-      if (!environment.parentEnvironmentId) {
+      // A branch is defined by having a parent; the branchable root (dev or
+      // preview) has none and can't be archived. For dev, that root is the
+      // default branch, so give the clearer message.
+      if (!environment.parentEnvironmentId || environment.isBranchableEnvironment) {
         return {
           success: false as const,
-          error: "This isn't a branch, and cannot be archived.",
+          error:
+            environment.type === "DEVELOPMENT"
+              ? "The default development branch cannot be archived."
+              : "This isn't a branch, and cannot be archived.",
         };
       }
 

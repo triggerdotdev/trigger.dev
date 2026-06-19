@@ -126,7 +126,7 @@ export async function createProject(
       organization,
       project,
       type: "DEVELOPMENT",
-      isBranchableEnvironment: false,
+      isBranchableEnvironment: true,
       member,
     });
   }

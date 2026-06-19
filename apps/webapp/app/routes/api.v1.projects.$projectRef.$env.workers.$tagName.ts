@@ -8,6 +8,7 @@ import { v3RunsPath } from "~/utils/pathBuilder";
 import {
   authenticatedEnvironmentForAuthentication,
   authenticateRequest,
+  branchNameFromRequest,
 } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 
@@ -15,10 +16,6 @@ const ParamsSchema = z.object({
   projectRef: z.string(),
   tagName: z.string(),
   env: z.enum(["dev", "staging", "prod", "preview"]),
-});
-
-const HeadersSchema = z.object({
-  "x-trigger-branch": z.string().optional(),
 });
 
 type ParamsSchema = z.infer<typeof ParamsSchema>;
@@ -42,10 +39,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     }
     const { projectRef, env } = parsedParams.data;
 
-    const parsedHeaders = HeadersSchema.safeParse(Object.fromEntries(request.headers));
-    const triggerBranch = parsedHeaders.success
-      ? parsedHeaders.data["x-trigger-branch"]
-      : undefined;
+    const triggerBranch = branchNameFromRequest(request);
 
     const runtimeEnv = await authenticatedEnvironmentForAuthentication(
       authenticationResult,

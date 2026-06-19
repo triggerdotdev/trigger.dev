@@ -1,4 +1,6 @@
-import { GitMeta } from "@trigger.dev/core/v3";
+import { GitMeta, } from "@trigger.dev/core/v3";
+import { DEFAULT_DEV_BRANCH } from "@trigger.dev/core/v3/utils/gitBranch";
+import { type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { type z } from "zod";
 import { type Prisma, type PrismaClient, prisma } from "~/db.server";
 import { type Project } from "~/models/project.server";
@@ -6,6 +8,8 @@ import { type User } from "~/models/user.server";
 import { type BranchesOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
 import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { checkBranchLimit } from "~/services/upsertBranch.server";
+import { devPresence } from "./DevPresence.server";
+import { sortEnvironments } from "~/utils/environmentSort";
 
 type Result = Awaited<ReturnType<BranchesPresenter["call"]>>;
 export type Branch = Result["branches"][number];
@@ -58,12 +62,14 @@ export class BranchesPresenter {
   public async call({
     userId,
     projectSlug,
+    env,
     showArchived = false,
     search,
     page = 1,
   }: {
     userId: User["id"];
     projectSlug: Project["slug"];
+    env: "preview" | "development";
   } & Options) {
     const project = await this.#prismaClient.project.findFirst({
       select: {
@@ -86,12 +92,16 @@ export class BranchesPresenter {
       throw new Error("Project not found");
     }
 
+    // TODO audit mishmash of preview/developement preview/dev stg/dev PREVIEW/DEVELOPMENT
+    const envType = env === "preview" ? "PREVIEW" : "DEVELOPMENT";
+
     const branchableEnvironment = await this.#prismaClient.runtimeEnvironment.findFirst({
       select: {
         id: true,
       },
       where: {
         projectId: project.id,
+        type: envType,
         isBranchableEnvironment: true,
       },
     });
@@ -119,23 +129,30 @@ export class BranchesPresenter {
       };
     }
 
+    // The default DEV branch has no branchName (it's the root dev env, stored
+    // with branchName: null), so searching for it by name wouldn't display it.
+    // Hacky way around that: always include the null-branchName root env.
+    const branchNameWhere = envType === "DEVELOPMENT" ?
+      search
+        ? { OR: [{ contains: search, mode: "insensitive" as const }, { is: null }] }
+        : {} :
+      search
+        ? { contains: search, mode: "insensitive" as const }
+        : { not: null };
+    const orgMemberWhere = envType === "DEVELOPMENT" ? { orgMember: { userId } } : {};
+
+
     const visibleCount = await this.#prismaClient.runtimeEnvironment.count({
       where: {
         projectId: project.id,
-        branchName: search
-          ? {
-              contains: search,
-              mode: "insensitive",
-            }
-          : {
-              not: null,
-            },
+        type: envType,
+        branchName: branchNameWhere,
+        ...orgMemberWhere,
         ...(showArchived ? {} : { archivedAt: null }),
       },
     });
 
-    // Limits
-    const limits = await checkBranchLimit(this.#prismaClient, project.organizationId, project.id);
+    const limits = await checkBranchLimit({ prisma: this.#prismaClient, organizationId: project.organizationId, projectId: project.id, userId, env });
 
     const [currentPlan, plans] = await Promise.all([
       getCurrentPlan(project.organizationId),
@@ -161,14 +178,9 @@ export class BranchesPresenter {
       },
       where: {
         projectId: project.id,
-        branchName: search
-          ? {
-              contains: search,
-              mode: "insensitive",
-            }
-          : {
-              not: null,
-            },
+        type: envType,
+        branchName: branchNameWhere,
+        ...orgMemberWhere,
         ...(showArchived ? {} : { archivedAt: null }),
       },
       orderBy: {
@@ -178,35 +190,34 @@ export class BranchesPresenter {
       take: BRANCHES_PER_PAGE,
     });
 
+    const totalBranchesWhere = envType === "DEVELOPMENT" ? {} : { not: null };
     const totalBranches = await this.#prismaClient.runtimeEnvironment.count({
       where: {
         projectId: project.id,
-        branchName: {
-          not: null,
-        },
+        type: envType,
+        branchName: totalBranchesWhere,
+        ...orgMemberWhere,
       },
     });
+
+
+    const branchesFiltered = branches
+      .filter((branch) => envType === "DEVELOPMENT" || branch.branchName !== null)
+      .map((branch) => ({
+        ...branch,
+        git: processGitMetadata(branch.git),
+        branchName: branch.branchName ?? DEFAULT_DEV_BRANCH,
+      }));
+
+    const branchesWithActivity = await hydrateEnvsWithActivity(userId, project.id, branchesFiltered);
+    const branchesSorted = sortEnvironments(branchesWithActivity);
 
     return {
       branchableEnvironment,
       currentPage: page,
       totalPages: Math.ceil(visibleCount / BRANCHES_PER_PAGE),
       hasBranches: totalBranches > 0,
-      branches: branches.flatMap((branch) => {
-        if (branch.branchName === null) {
-          return [];
-        }
-
-        const git = processGitMetadata(branch.git);
-
-        return [
-          {
-            ...branch,
-            branchName: branch.branchName,
-            git,
-          } as const,
-        ];
-      }),
+      branches: branchesSorted,
       hasFilters,
       limits,
       canPurchaseBranches,
@@ -216,6 +227,23 @@ export class BranchesPresenter {
       planBranchLimit,
     };
   }
+}
+
+export async function hydrateEnvsWithActivity<T extends { type: RuntimeEnvironmentType; id: string }>
+  (userId: string, projectId: string, environments: T[]): Promise<Array<T & { lastActivity: Date | undefined; isConnected: boolean | undefined }>> {
+  const recentDevBranchIds = await devPresence.getRecentBranchIds(userId, projectId);
+
+  return Promise.all(environments.map(async (env) => {
+    if (env.type !== "DEVELOPMENT") {
+      return { ...env, lastActivity: undefined, isConnected: undefined };
+    }
+
+    const devHit = recentDevBranchIds.get(env.id);
+    const lastActivity = devHit === undefined ? undefined : devHit;
+    // TODO change dev-presence to a different data structure to avoid N calls?
+    const isConnected = devHit === undefined ? undefined : await devPresence.isConnected(env.id);
+    return { ...env, lastActivity, isConnected };
+  }));
 }
 
 export function processGitMetadata(data: Prisma.JsonValue): GitMetaLinks | null {

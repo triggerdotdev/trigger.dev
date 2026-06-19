@@ -2,10 +2,15 @@ import { type PrismaClient, type PrismaClientOrTransaction } from "@trigger.dev/
 import slug from "slug";
 import { prisma } from "~/db.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv } from "~/models/api-key.server";
-import { type CreateBranchOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
 import { isValidGitBranchName, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import { logger } from "./logger.server";
 import { getCurrentPlan, getLimit } from "./platform.v3.server";
+import { type z } from "zod";
+import invariant from "tiny-invariant";
+import { type CreateBranchOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
+
+
+type CreateBranchOptions = z.infer<typeof CreateBranchOptions>;
 
 export class UpsertBranchService {
   #prismaClient: PrismaClient;
@@ -22,8 +27,12 @@ export class UpsertBranchService {
     orgFilter:
       | { type: "userMembership"; userId: string }
       | { type: "orgId"; organizationId: string },
-    { parentEnvironmentId, branchName, git }: CreateBranchOptions
+    { projectId, env, branchName, git }: CreateBranchOptions
   ) {
+
+
+    const parentEnvSlug = env === "preview" ? "preview" : "dev";
+
     const sanitizedBranchName = sanitizeBranchName(branchName);
     if (!sanitizedBranchName) {
       return {
@@ -42,16 +51,17 @@ export class UpsertBranchService {
     try {
       const parentEnvironment = await this.#prismaClient.runtimeEnvironment.findFirst({
         where: {
-          id: parentEnvironmentId,
+          projectId,
+          slug: parentEnvSlug,
           organization:
             orgFilter.type === "userMembership"
               ? {
-                  members: {
-                    some: {
-                      userId: orgFilter.userId,
-                    },
+                members: {
+                  some: {
+                    userId: orgFilter.userId,
                   },
-                }
+                },
+              }
               : { id: orgFilter.organizationId },
         },
         include: {
@@ -71,7 +81,11 @@ export class UpsertBranchService {
         },
       });
 
+      // Dev environments are scoped per org member, so a dev branch must inherit
+      // its parent's orgMemberId. Preview parents have no orgMember (orgMemberId is null).
+
       if (!parentEnvironment) {
+        invariant(env === "preview", "No default dev runtime environment setup");
         return {
           success: false as const,
           error: "You don't have preview branches setup. Go to the dashboard to enable them.",
@@ -81,16 +95,14 @@ export class UpsertBranchService {
       if (!parentEnvironment.isBranchableEnvironment) {
         return {
           success: false as const,
-          error: "Your preview environment is not branchable",
+          error: `Your ${env} environment is not branchable`,
         };
       }
 
+
+
       const limits = await checkBranchLimit(
-        this.#prismaClient,
-        parentEnvironment.organization.id,
-        parentEnvironment.project.id,
-        sanitizedBranchName
-      );
+        { prisma: this.#prismaClient, organizationId: parentEnvironment.organization.id, projectId: parentEnvironment.project.id, env, newBranchName: sanitizedBranchName });
 
       if (limits.isAtLimit) {
         return {
@@ -132,6 +144,9 @@ export class UpsertBranchService {
           parentEnvironment: {
             connect: { id: parentEnvironment.id },
           },
+          orgMember: parentEnvironment.orgMemberId
+            ? { connect: { id: parentEnvironment.orgMemberId } }
+            : undefined,
           git: git ?? undefined,
         },
         update: {
@@ -159,17 +174,26 @@ export class UpsertBranchService {
 }
 
 export async function checkBranchLimit(
-  prisma: PrismaClientOrTransaction,
-  organizationId: string,
-  projectId: string,
-  newBranchName?: string
-) {
+  { prisma, organizationId, projectId, userId, env, newBranchName }:
+    { prisma: PrismaClientOrTransaction; organizationId: string; projectId: string; userId?: string; env: "preview" | "development"; newBranchName?: string; }) {
+
+  // TODO audit mishmash of preview/developement preview/dev stg/dev PREVIEW/DEVELOPMENT
+  const envType = env === "preview" ? "PREVIEW" : "DEVELOPMENT";
+
+  let orgMemberWhere = {};
+  if (envType === "DEVELOPMENT") {
+    invariant(userId, "Cannot use org access for dev server");
+    orgMemberWhere = { orgMember: { userId } };
+  }
+
   const usedEnvs = await prisma.runtimeEnvironment.findMany({
     where: {
       projectId,
-      branchName: {
-        not: null,
-      },
+      type: envType,
+      // For PREVIEW, count only branches (exclude the branchable parent). For
+      // DEVELOPMENT, the root env counts toward the limit alongside its branches.
+      ...(envType === "PREVIEW" ? { parentEnvironmentId: { not: null } } : {}),
+      ...orgMemberWhere,
       archivedAt: null,
     },
   });
@@ -177,7 +201,9 @@ export async function checkBranchLimit(
   const count = newBranchName
     ? usedEnvs.filter((env) => env.branchName !== newBranchName).length
     : usedEnvs.length;
-  const baseLimit = await getLimit(organizationId, "branches", 100_000_000);
+
+  const limitName = env === "preview" ? "branches" : "branchesDev";
+  const baseLimit = await getLimit(organizationId, limitName, 100_000_000);
   const currentPlan = await getCurrentPlan(organizationId);
   const purchasedBranches = currentPlan?.v3Subscription?.addOns?.branches?.purchased ?? 0;
   const limit = baseLimit + purchasedBranches;

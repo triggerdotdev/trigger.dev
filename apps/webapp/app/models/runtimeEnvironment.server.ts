@@ -4,7 +4,7 @@ import { $replica, prisma } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
 import { logger } from "~/services/logger.server";
 import { getUsername } from "~/utils/username";
-import { sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
+import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 
 export type { RuntimeEnvironment };
 
@@ -100,11 +100,11 @@ export async function findEnvironmentByApiKey(
     ...authIncludeBase,
     childEnvironments: branchName
       ? {
-          where: {
-            branchName: sanitizeBranchName(branchName),
-            archivedAt: null,
-          },
-        }
+        where: {
+          branchName: sanitizeBranchName(branchName),
+          archivedAt: null,
+        },
+      }
       : undefined,
   } satisfies Prisma.RuntimeEnvironmentInclude;
 
@@ -161,6 +161,25 @@ export async function findEnvironmentByApiKey(
 
     //A branch was specified but no child environment was found
     return null;
+  }
+
+  // If there is a named DEV branch (other than default), return it
+  if (environment.type === "DEVELOPMENT" && branchName !== undefined && !isDefaultDevBranch(branchName)) {
+    const childEnvironment = environment.childEnvironments.at(0);
+
+    if (childEnvironment) {
+      return toAuthenticated({
+        ...childEnvironment,
+        apiKey: environment.apiKey,
+        orgMember: environment.orgMember,
+        organization: environment.organization,
+        project: environment.project,
+      });
+    }
+
+    //A branch was specified but no child environment was found
+    return null;
+
   }
 
   return toAuthenticated(environment);

@@ -605,7 +605,7 @@ export type DeploymentTriggeredVia = z.infer<typeof DeploymentTriggeredVia>;
 
 export const UpsertBranchRequestBody = z.object({
   git: GitMeta.optional(),
-  env: z.enum(["preview"]),
+  env: z.enum(["preview", "development"]),
   branch: z.string(),
 });
 
