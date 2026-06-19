@@ -43,7 +43,8 @@ jobs:
           allowed_bots: "devin-ai-integration[bot]"
 
           claude_args: |
-            --max-turns 15
+            --max-turns 25
+            --model claude-opus-4-8
             --allowedTools "Read,Glob,Grep,Bash(git diff:*)"
 
           prompt: |
