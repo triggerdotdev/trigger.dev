@@ -42,7 +42,7 @@ export function DevPresenceProvider({ children, enabled = true }: DevPresencePro
 
   // Only subscribe to event source if enabled is true
   const streamedEvents = useEventSource(
-    `/resources/orgs/${organization.slug}/projects/${project.slug}/dev/presence`,
+    `/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/presence`,
     {
       event: "presence",
       disabled: !enabled,

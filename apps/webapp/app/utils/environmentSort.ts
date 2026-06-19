@@ -10,6 +10,7 @@ const environmentSortOrder: RuntimeEnvironmentType[] = [
 type SortType = {
   type: RuntimeEnvironmentType;
   userName?: string | null;
+  lastActivity?: Date | undefined;
 };
 
 export function sortEnvironments<T extends SortType>(
@@ -24,10 +25,14 @@ export function sortEnvironments<T extends SortType>(
     const difference = aIndex - bIndex;
 
     if (difference === 0) {
-      //same environment so sort by name
-      const usernameA = a.userName || "";
-      const usernameB = b.userName || "";
-      return usernameA.localeCompare(usernameB);
+      // Sort by lastActivity if available, otherwise username
+      if (a.lastActivity !== undefined && b.lastActivity !== undefined) {
+        return b.lastActivity.getTime() - a.lastActivity.getTime();
+      } else {
+        const usernameA = a.userName || "";
+        const usernameB = b.userName || "";
+        return usernameA.localeCompare(usernameB);
+      }
     }
 
     return difference;
@@ -36,14 +41,14 @@ export function sortEnvironments<T extends SortType>(
 
 type FilterableEnvironment =
   | {
-      type: RuntimeEnvironmentType;
-      orgMemberId?: string;
-    }
+    type: RuntimeEnvironmentType;
+    orgMemberId?: string;
+  }
   | {
-      type: RuntimeEnvironmentType;
-      //intentionally vague so we can match anything
-      orgMember?: Record<string, any>;
-    };
+    type: RuntimeEnvironmentType;
+    //intentionally vague so we can match anything
+    orgMember?: Record<string, any>;
+  };
 
 export function filterOrphanedEnvironments<T extends FilterableEnvironment>(
   environments: T[]

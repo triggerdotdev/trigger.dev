@@ -488,24 +488,26 @@ export function BranchesNoBranchableEnvironment({ showSelfServe }: { showSelfSer
 }
 
 export function BranchesNoBranches({
-  parentEnvironment,
+  envType,
   limits,
   canUpgrade,
   showSelfServe,
 }: {
-  parentEnvironment: { id: string };
+  envType: "preview" | "development";
   limits: { used: number; limit: number };
   canUpgrade: boolean;
   showSelfServe: boolean;
 }) {
   const organization = useOrganization();
 
+  const envTextClassName = envType === "preview" ? "text-preview" : "text-dev";
+
   if (limits.used >= limits.limit) {
     return (
       <InfoPanel
         title="Upgrade to get preview branches"
         icon={BranchEnvironmentIconSmall}
-        iconClassName="text-preview"
+        iconClassName={envTextClassName}
         panelClassName="max-w-full"
         accessory={
           showSelfServe && canUpgrade ? (
@@ -536,7 +538,7 @@ export function BranchesNoBranches({
     <InfoPanel
       title="Create your first branch"
       icon={BranchEnvironmentIconSmall}
-      iconClassName="text-preview"
+      iconClassName={envTextClassName}
       panelClassName="max-w-full"
       accessory={
         <NewBranchPanel
@@ -549,7 +551,7 @@ export function BranchesNoBranches({
               New branch
             </Button>
           }
-          parentEnvironment={parentEnvironment}
+          env="preview"
         />
       }
     >

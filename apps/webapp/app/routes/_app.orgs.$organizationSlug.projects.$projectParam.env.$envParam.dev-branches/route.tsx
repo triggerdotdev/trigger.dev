@@ -70,6 +70,7 @@ import { requireUserId } from "~/services/session.server";
 import { UpsertBranchService } from "~/services/upsertBranch.server";
 import { cn } from "~/utils/cn";
 import {
+  branchesDevPath,
   branchesPath,
   docsPath,
   EnvironmentParamSchema,
@@ -126,7 +127,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     const result = await presenter.call({
       userId,
       projectSlug: projectParam,
-      env: "preview",
+      env: "development",
       ...options,
     });
 
@@ -251,6 +252,7 @@ export default function Page() {
     maxBranchQuota,
     planBranchLimit,
   } = useTypedLoaderData<typeof loader>();
+
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -259,10 +261,11 @@ export default function Page() {
   const showSelfServe = useShowSelfServe();
   const requiresUpgrade =
     plan?.v3Subscription?.plan &&
-    limits.used >= plan.v3Subscription.plan.limits.branches.number &&
-    !plan.v3Subscription.plan.limits.branches.canExceed;
+    limits.used >= plan.v3Subscription.plan.limits.branchesDev.number &&
+    !plan.v3Subscription.plan.limits.branchesDev.canExceed;
+  // TODO how do we actually want to handle these upgrades?
   const canUpgrade =
-    plan?.v3Subscription?.plan && !plan.v3Subscription.plan.limits.branches.canExceed;
+    plan?.v3Subscription?.plan && !plan.v3Subscription.plan.limits.branchesDev.canExceed;
   const atBranchLimit = limits.used >= limits.limit;
   const usageRatio = limits.limit > 0 ? Math.min(limits.used / limits.limit, 1) : 0;
 
@@ -270,7 +273,7 @@ export default function Page() {
     return (
       <PageContainer>
         <NavBar>
-          <PageTitle title={<V4Title>Preview branches</V4Title>} />
+          <PageTitle title={<V4Title>Dev branches</V4Title>} />
         </NavBar>
         <PageBody>
           <MainCenteredContainer className="max-w-md">
@@ -284,7 +287,7 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title={<V4Title>Preview branches</V4Title>} />
+        <PageTitle title={<V4Title>Dev branches</V4Title>} />
         <PageAccessories>
           <AdminDebugTooltip>
             <Property.Table>
@@ -300,9 +303,9 @@ export default function Page() {
           <LinkButton
             variant={"docs/small"}
             LeadingIcon={BookOpenIcon}
-            to={docsPath("deployment/preview-branches")}
+            to={docsPath("deployment/dev-branches")}
           >
-            Branches docs
+            TODO ADD DEV Branches docs
           </LinkButton>
 
           {limits.isAtLimit ? (
@@ -329,7 +332,7 @@ export default function Page() {
                   New branch…
                 </Button>
               }
-              env="preview"
+              env="development"
             />
           )}
         </PageAccessories>
@@ -339,7 +342,7 @@ export default function Page() {
           {!hasBranches ? (
             <MainCenteredContainer className="max-w-md">
               <BranchesNoBranches
-                envType="preview"
+                envType="development"
                 limits={limits}
                 canUpgrade={canUpgrade ?? false}
                 showSelfServe={showSelfServe}
@@ -362,7 +365,7 @@ export default function Page() {
                     <TableRow>
                       <TableHeaderCell>Branch</TableHeaderCell>
                       <TableHeaderCell>Created</TableHeaderCell>
-                      <TableHeaderCell>Git</TableHeaderCell>
+                      <TableHeaderCell>Last active</TableHeaderCell>
                       <TableHeaderCell>Archived</TableHeaderCell>
                       <TableHeaderCell>
                         <span className="sr-only">Actions</span>
@@ -376,7 +379,7 @@ export default function Page() {
                       </TableBlankRow>
                     ) : (
                       branches.map((branch) => {
-                        const path = branchesPath(organization, project, branch);
+                        const path = branchesDevPath(organization, project, branch);
                         const cellClass = branch.archivedAt ? "opacity-50" : "";
                         const isSelected = branch.id === environment.id;
 
@@ -385,11 +388,11 @@ export default function Page() {
                             <TableCell isTabbableCell className={cellClass}>
                               <div className="flex items-center gap-1">
                                 <BranchEnvironmentIconSmall
-                                  className={cn("size-4", isSelected && "text-preview")}
+                                  className={cn("size-4", isSelected && "text-dev")}
                                 />
                                 <CopyableText
                                   value={branch.branchName ?? ""}
-                                  className={cn(isSelected && "text-preview")}
+                                  className={cn(isSelected && "text-dev")}
                                 />
                                 {isSelected && <Badge variant="extra-small">Current</Badge>}
                               </div>
@@ -398,9 +401,11 @@ export default function Page() {
                               <DateTime date={branch.createdAt} />
                             </TableCell>
                             <TableCell className={cellClass}>
-                              <div className="-ml-1 flex items-center">
-                                <GitMetadata git={branch.git} />
-                              </div>
+                              {branch.isConnected ? (
+                                <>Online now</>
+                              ) : branch.lastActivity ? (
+                                <DateTime date={branch.lastActivity} />
+                              ) : null}
                             </TableCell>
                             <TableCell className={cellClass}>
                               {branch.archivedAt ? (
@@ -437,7 +442,11 @@ export default function Page() {
                                       />
                                     )}
                                     {!branch.archivedAt ? (
-                                      <ArchiveButton environment={branch} />
+                                      <ArchiveButton
+                                        environment={branch}
+                                        // TODO better way to differentiate here?
+                                        disabled={branch.slug === "dev"}
+                                      />
                                     ) : null}
                                   </>
                                 ) : null
@@ -465,9 +474,8 @@ export default function Page() {
                             cy="12"
                           />
                           <circle
-                            className={`fill-none ${
-                              atBranchLimit ? "stroke-error" : "stroke-success"
-                            }`}
+                            className={`fill-none ${atBranchLimit ? "stroke-error" : "stroke-success"
+                              }`}
                             strokeWidth="4"
                             r="10"
                             cx="12"
@@ -508,7 +516,7 @@ export default function Page() {
                       showSelfServe ? (
                         <div className="flex items-center gap-3">
                           <Paragraph variant="small" className="whitespace-nowrap text-text-dimmed">
-                            Upgrade plan for more Preview Branches
+                            Upgrade plan for more Dev Branches
                           </Paragraph>
                           <LinkButton
                             to={v3BillingPath(organization)}
@@ -741,7 +749,7 @@ function PurchaseBranchesModal({
           <div className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-1">
               <Paragraph variant="small/bright">
-                Purchase extra preview branches at {formatCurrency(pricePerBranch, false)}/month per
+                Purchase extra dev branches at {formatCurrency(pricePerBranch, false)}/month per
                 branch. Reducing the number of branches will take effect at the start of the next
                 billing cycle (1st of the month).
               </Paragraph>
@@ -778,7 +786,7 @@ function PurchaseBranchesModal({
             ) : state === "above_quota" ? (
               <div className="flex flex-col pb-3">
                 <Paragraph variant="small" className="text-warning" spacing>
-                  Currently you can only have up to {maxQuota} extra preview branches. Send a
+                  Currently you can only have up to {maxQuota} extra dev branches. Send a
                   request below to lift your current limit. We'll get back to you soon.
                 </Paragraph>
               </div>
