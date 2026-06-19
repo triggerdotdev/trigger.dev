@@ -25,6 +25,7 @@ import { logger } from "~/services/logger.server";
 import { parseDelay } from "~/utils/delays";
 import { handleMetadataPacket } from "~/utils/packets";
 import { startSpan } from "~/v3/tracing.server";
+import { shouldUseV2RunTable } from "~/v3/runTableV2.server";
 import type {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
@@ -151,7 +152,17 @@ export class RunEngineTriggerTaskService {
           span.setAttribute("taskId", taskId);
           span.setAttribute("attempt", attempt);
 
-          const runFriendlyId = options?.runFriendlyId ?? RunId.generate().friendlyId;
+          // The single per-org cutover point: an opted-in org mints a KSUID id
+          // (routing the run to task_run_v2), everyone else keeps a legacy id
+          // (TaskRun). The flag is a pure in-memory read of the org's
+          // featureFlags already loaded on `environment` — no DB query on the
+          // trigger hot path. Downstream routing is by id format only.
+          const runFriendlyId =
+            options?.runFriendlyId ??
+            (shouldUseV2RunTable(environment.organization.featureFlags)
+              ? RunId.generateKsuid()
+              : RunId.generate()
+            ).friendlyId;
           const triggerRequest = {
             taskId,
             friendlyId: runFriendlyId,

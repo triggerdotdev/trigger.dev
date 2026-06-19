@@ -16,6 +16,7 @@ export const FEATURE_FLAG = {
   computeMigrationFreePercentage: "computeMigrationFreePercentage",
   computeMigrationPaidPercentage: "computeMigrationPaidPercentage",
   computeMigrationRequireTemplate: "computeMigrationRequireTemplate",
+  runTableV2: "runTableV2",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -43,6 +44,12 @@ export const FeatureFlagCatalog = {
   // When on, migrated orgs build their compute template in required mode at deploy
   // (fails the deploy on error) instead of shadow. Strict boolean (see above).
   [FEATURE_FLAG.computeMigrationRequireTemplate]: z.boolean(),
+  // Per-org cutover to the parallel task_run_v2 table. When on, new runs for the
+  // org mint a KSUID id (routing them to task_run_v2); off (the default) keeps
+  // minting legacy ids. Strict boolean (see above): coercing a stringified
+  // "false" to true would cut an org over by mistake, and runs created on v2
+  // stay on v2.
+  [FEATURE_FLAG.runTableV2]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
