@@ -1114,6 +1114,19 @@ async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment
     ]);
   }
 
+  // Dev branches set branchName too, so carry it to the task via the same
+  // TRIGGER_PREVIEW_BRANCH var the prod path uses — the SDK reads it for the
+  // x-trigger-branch header (the header is branch-type agnostic). Skipped for
+  // the default dev env (branchName null), so non-branch dev is unchanged.
+  if (runtimeEnvironment.branchName) {
+    result = result.concat([
+      {
+        key: "TRIGGER_PREVIEW_BRANCH",
+        value: runtimeEnvironment.branchName,
+      },
+    ]);
+  }
+
   const commonVariables = await resolveCommonBuiltInVariables(runtimeEnvironment);
 
   return [...result, ...commonVariables];

@@ -146,7 +146,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       };
     }
 
-    // PREVIEW envs are parents — operating "on a branch" means routing
+    // PREVIEW (and DEVELOPMENT) envs are parents — operating "on a branch" means routing
     // to a child env keyed by branchName. The customer authenticates
     // with the parent's apiKey + an `x-trigger-branch` header. Mirror
     // findEnvironmentByApiKey: include the matching child env so the
@@ -196,14 +196,25 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     // downstream code operates on the branch (its own id, but the
     // parent's apiKey/orgMember/organization/project — exactly what
     // findEnvironmentByApiKey does for the legacy auth path).
-    if (env.type === "PREVIEW") {
-      if (!branchName) {
+    if (env.type === "PREVIEW" && !branchName) {
+      return {
+        ok: false,
+        status: 401,
+        error: "x-trigger-branch header required for preview env",
+      };
+    }
+    // Pivot to the child env so downstream code operates on the branch
+    // (its own id, but the parent's apiKey/orgMember/organization/project —
+    // exactly what findEnvironmentByApiKey does for the legacy auth path).
+    if (branchName !== null && branchName !== "default") {
+      if (env.type !== "PREVIEW" && env.type !== "DEVELOPMENT") {
         return {
           ok: false,
           status: 401,
-          error: "x-trigger-branch header required for preview env",
+          error: "x-trigger-branch header can only be used with preview and dev envs",
         };
       }
+
       const child = env.childEnvironments?.[0];
       if (!child) {
         return { ok: false, status: 401, error: "No matching branch env" };

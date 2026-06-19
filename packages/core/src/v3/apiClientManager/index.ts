@@ -16,7 +16,7 @@ export class ApiClientMissingError extends Error {
 export class APIClientManagerAPI {
   private static _instance?: APIClientManagerAPI;
 
-  private constructor() {}
+  private constructor() { }
 
   public static getInstance(): APIClientManagerAPI {
     if (!this._instance) {
@@ -56,6 +56,9 @@ export class APIClientManagerAPI {
   get branchName(): string | undefined {
     const scoped = sdkScope.getStore();
     if (scoped) {
+      // previewBranch carries the branch for any branchable env (preview or dev) —
+      // they share the x-trigger-branch header. resolveApiClientConfig folds in the
+      // dev-side TRIGGER_DEV_BRANCH carrier when building the scoped config.
       const value = scoped.apiClientConfig.previewBranch;
       return value ? value : undefined;
     }
@@ -64,6 +67,9 @@ export class APIClientManagerAPI {
       config?.previewBranch ??
       getEnvVar("TRIGGER_PREVIEW_BRANCH") ??
       getEnvVar("VERCEL_GIT_COMMIT_REF") ??
+      // Dev branches share the x-trigger-branch header; TRIGGER_DEV_BRANCH is the
+      // dev-side carrier. Read the raw env var only — never the "default" sentinel.
+      getEnvVar("TRIGGER_DEV_BRANCH") ??
       undefined;
     return value ? value : undefined;
   }
@@ -80,7 +86,8 @@ export class APIClientManagerAPI {
       previewBranch:
         partial.previewBranch ??
         getEnvVar("TRIGGER_PREVIEW_BRANCH") ??
-        getEnvVar("VERCEL_GIT_COMMIT_REF"),
+        getEnvVar("VERCEL_GIT_COMMIT_REF") ??
+        getEnvVar("TRIGGER_DEV_BRANCH"),
       requestOptions: partial.requestOptions,
       future: partial.future,
     };

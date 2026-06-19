@@ -11,6 +11,8 @@ const ParamsSchema = z.object({
 });
 
 const BodySchema = z.object({
+  // Defaults to "preview" so existing CLIs that don't send `env` keep working.
+  env: z.enum(["preview", "development"]).default("preview"),
   branch: z.string(),
 });
 
@@ -49,6 +51,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: parsed.error.message }, { status: 400 });
   }
 
+  const { env, branch } = parsed.data;
+
+  const environmentType = env === "preview" ? "PREVIEW" : "DEVELOPMENT";
   const environments = await prisma.runtimeEnvironment.findMany({
     select: {
       id: true,
@@ -59,16 +64,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
         authenticationResult.type === "organizationAccessToken"
           ? { id: authenticationResult.result.organizationId }
           : {
-              members: {
-                some: {
-                  userId: authenticationResult.result.userId,
-                },
+            members: {
+              some: {
+                userId: authenticationResult.result.userId,
               },
             },
+          },
       project: {
         externalRef: projectRef,
       },
-      branchName: parsed.data.branch,
+      type: environmentType,
+      branchName: branch,
     },
   });
 

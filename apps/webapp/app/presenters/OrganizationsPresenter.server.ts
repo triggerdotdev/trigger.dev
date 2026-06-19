@@ -13,6 +13,8 @@ import { defaultAvatar, parseAvatar } from "~/components/primitives/Avatar";
 import { env } from "~/env.server";
 import { flags } from "~/v3/featureFlags.server";
 import { validatePartialFeatureFlags } from "~/v3/featureFlags";
+import { devPresence } from "./v3/DevPresence.server";
+import { hydrateEnvsWithActivity } from "./v3/BranchesPresenter.server";
 
 export class OrganizationsPresenter {
   #prismaClient: PrismaClient;
@@ -102,6 +104,13 @@ export class OrganizationsPresenter {
       throw redirect(newProjectPath(organization));
     }
 
+    const recentDevBranchIds = await devPresence.getRecentBranchIds(user.id, fullProject.id);
+
+    const environments = fullProject.
+      environments.filter((env) => env.type !== "DEVELOPMENT" || env.orgMember?.userId === user.id);
+
+    const environmentsWithActivity = await hydrateEnvsWithActivity(user.id, fullProject.id, environments);
+
     const environment = this.#getEnvironment({
       user,
       projectId: fullProject.id,
@@ -115,13 +124,7 @@ export class OrganizationsPresenter {
       project: {
         ...fullProject,
         createdAt: fullProject.createdAt,
-        environments: sortEnvironments(
-          fullProject.environments.filter((env) => {
-            if (env.type !== "DEVELOPMENT") return true;
-            if (env.orgMember?.userId === user.id) return true;
-            return false;
-          })
-        ),
+        environments: sortEnvironments(environmentsWithActivity),
       },
       environment,
     };
@@ -245,7 +248,10 @@ export class OrganizationsPresenter {
 
     //otherwise show their dev environment
     const yourDevEnvironment = environments.find(
-      (env) => env.type === "DEVELOPMENT" && env.orgMember?.userId === user.id
+      (env) =>
+        env.type === "DEVELOPMENT" &&
+        env.parentEnvironmentId === null &&
+        env.orgMember?.userId === user.id
     );
     if (yourDevEnvironment) {
       return yourDevEnvironment;

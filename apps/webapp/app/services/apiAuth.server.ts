@@ -25,7 +25,7 @@ import {
   isOrganizationAccessToken,
 } from "./organizationAccessToken.server";
 import { isPublicJWT, validatePublicJwtKey } from "./realtime/jwtAuth.server";
-import { sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
+import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 
 const ClaimsSchema = z.object({
   scopes: z.array(z.string()).optional(),
@@ -282,8 +282,16 @@ function isSecretApiKey(key: string) {
   return key.startsWith("tr_");
 }
 
+/**
+ * Reads the branch off the `x-trigger-branch` header and sanitizes it. This is
+ * the single door for the branch header — every server-side reader should go
+ * through here so sanitization is applied uniformly. The dev `"default"`
+ * sentinel is intentionally NOT resolved here: that translation is environment
+ * type-dependent and only knowable once we've looked up the environment (see
+ * `findEnvironmentByApiKey` and `authenticatedEnvironmentForAuthentication`).
+ */
 export function branchNameFromRequest(request: Request): string | undefined {
-  return request.headers.get("x-trigger-branch") ?? undefined;
+  return sanitizeBranchName(request.headers.get("x-trigger-branch")) ?? undefined;
 }
 
 function getApiKeyFromRequest(request: Request): {
@@ -312,26 +320,26 @@ function getApiKeyResult(apiKey: string): {
   const type = isPublicApiKey(apiKey)
     ? "PUBLIC"
     : isSecretApiKey(apiKey)
-    ? "PRIVATE"
-    : isPublicJWT(apiKey)
-    ? "PUBLIC_JWT"
-    : "PRIVATE"; // Fallback to private key
+      ? "PRIVATE"
+      : isPublicJWT(apiKey)
+        ? "PUBLIC_JWT"
+        : "PRIVATE"; // Fallback to private key
   return { apiKey, type };
 }
 
 export type AuthenticationResult =
   | {
-      type: "personalAccessToken";
-      result: PersonalAccessTokenAuthenticationResult;
-    }
+    type: "personalAccessToken";
+    result: PersonalAccessTokenAuthenticationResult;
+  }
   | {
-      type: "organizationAccessToken";
-      result: OrganizationAccessTokenAuthenticationResult;
-    }
+    type: "organizationAccessToken";
+    result: OrganizationAccessTokenAuthenticationResult;
+  }
   | {
-      type: "apiKey";
-      result: ApiAuthenticationResult;
-    };
+    type: "apiKey";
+    result: ApiAuthenticationResult;
+  };
 
 type AuthenticationMethod = "personalAccessToken" | "organizationAccessToken" | "apiKey";
 
@@ -348,11 +356,11 @@ type FilteredAuthenticationResult<
   T extends AllowedAuthenticationMethods = AllowedAuthenticationMethods
 > =
   | (T["personalAccessToken"] extends true
-      ? Extract<AuthenticationResult, { type: "personalAccessToken" }>
-      : never)
+    ? Extract<AuthenticationResult, { type: "personalAccessToken" }>
+    : never)
   | (T["organizationAccessToken"] extends true
-      ? Extract<AuthenticationResult, { type: "organizationAccessToken" }>
-      : never)
+    ? Extract<AuthenticationResult, { type: "organizationAccessToken" }>
+    : never)
   | (T["apiKey"] extends true ? Extract<AuthenticationResult, { type: "apiKey" }> : never);
 
 /**
@@ -454,6 +462,12 @@ export async function authenticatedEnvironmentForAuthentication(
     slug = "stg";
   }
 
+  // Normalize the requested branch once: sanitize it, then collapse the dev
+  // `"default"` sentinel to "no branch" so it resolves to the root dev env
+  // rather than a (non-existent) branch literally named "default".
+  const sanitizedBranch = sanitizeBranchName(branch);
+  const resolvedBranch = isDefaultDevBranch(sanitizedBranch) ? null : sanitizedBranch;
+
   switch (auth.type) {
     case "apiKey": {
       if (!auth.result.ok) {
@@ -470,7 +484,10 @@ export async function authenticatedEnvironmentForAuthentication(
         );
       }
 
-      if (auth.result.environment.slug !== slug && auth.result.environment.branchName !== branch) {
+      if (
+        auth.result.environment.slug !== slug &&
+        auth.result.environment.branchName !== resolvedBranch
+      ) {
         throw json(
           {
             error:
@@ -499,19 +516,17 @@ export async function authenticatedEnvironmentForAuthentication(
         throw json({ error: "Project not found" }, { status: 404 });
       }
 
-      const sanitizedBranch = sanitizeBranchName(branch);
-
-      if (!sanitizedBranch) {
+      if (!resolvedBranch) {
         const environment = await $replica.runtimeEnvironment.findFirst({
           where: {
             projectId: project.id,
             slug: slug,
             ...(slug === "dev"
               ? {
-                  orgMember: {
-                    userId: user.id,
-                  },
-                }
+                orgMember: {
+                  userId: user.id,
+                },
+              }
               : {}),
           },
           include: authIncludeBase,
@@ -527,8 +542,10 @@ export async function authenticatedEnvironmentForAuthentication(
       const environment = await $replica.runtimeEnvironment.findFirst({
         where: {
           projectId: project.id,
-          type: "PREVIEW",
-          branchName: sanitizedBranch,
+          type: {
+            in: ["PREVIEW", "DEVELOPMENT"],
+          },
+          branchName: resolvedBranch,
           archivedAt: null,
         },
         include: authIncludeWithParent,
@@ -539,10 +556,10 @@ export async function authenticatedEnvironmentForAuthentication(
       }
 
       if (!environment.parentEnvironment) {
-        throw json({ error: "Branch not associated with a preview environment" }, { status: 400 });
+        throw json({ error: "Branch not associated with a parent environment" }, { status: 400 });
       }
 
-      // PREVIEW envs reuse the parent's apiKey for downstream auth flows
+      // PREVIEW envs (and DEVELOPMENT branches) reuse the parent's apiKey for downstream auth flows
       // (signed JWTs, internal-fetch helpers). Override before mapping so
       // the slim shape carries the parent's key.
       return toAuthenticated({
@@ -572,9 +589,7 @@ export async function authenticatedEnvironmentForAuthentication(
         throw json({ error: "Project not found" }, { status: 404 });
       }
 
-      const sanitizedBranch = sanitizeBranchName(branch);
-
-      if (!sanitizedBranch) {
+      if (!resolvedBranch) {
         const environment = await $replica.runtimeEnvironment.findFirst({
           where: {
             projectId: project.id,
@@ -593,8 +608,10 @@ export async function authenticatedEnvironmentForAuthentication(
       const environment = await $replica.runtimeEnvironment.findFirst({
         where: {
           projectId: project.id,
-          type: "PREVIEW",
-          branchName: sanitizedBranch,
+          type: {
+            in: ["PREVIEW", "DEVELOPMENT"],
+          },
+          branchName: resolvedBranch,
           archivedAt: null,
         },
         include: authIncludeWithParent,
