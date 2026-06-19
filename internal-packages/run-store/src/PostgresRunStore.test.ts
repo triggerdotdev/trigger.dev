@@ -1971,6 +1971,80 @@ describe("PostgresRunStore — table routing by id format", () => {
   );
 
   postgresTest(
+    "findRun resolves a non-id predicate (idempotency key) against a run in either table",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // A KSUID run carrying an idempotency key lands in task_run_v2 …
+      const ksuid = RunId.generateKsuid();
+      await seedRoutedRun(prisma, {
+        id: ksuid.id,
+        friendlyId: ksuid.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-v2",
+        taskIdentifier: "my-task",
+      });
+
+      // … and a cuid run carrying a different key lands in legacy TaskRun.
+      const cuid = RunId.generate();
+      await seedRoutedRun(prisma, {
+        id: cuid.id,
+        friendlyId: cuid.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-legacy",
+        taskIdentifier: "my-task",
+      });
+
+      // The lookup carries no id/friendlyId, so it must read BOTH tables —
+      // this is the mixed-window idempotency dedup. Miss either table and a
+      // reused key produces a duplicate run.
+      const v2Hit = await store.findRun({
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-v2",
+        taskIdentifier: "my-task",
+      });
+      expect(v2Hit?.id).toBe(ksuid.id);
+
+      const legacyHit = await store.findRun({
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-legacy",
+        taskIdentifier: "my-task",
+      });
+      expect(legacyHit?.id).toBe(cuid.id);
+
+      // A key in neither table returns null — no false dedup.
+      const miss = await store.findRun({
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-missing",
+        taskIdentifier: "my-task",
+      });
+      expect(miss).toBeNull();
+
+      // findRunOrThrow takes the same both-table path: it finds the v2 row …
+      const thrown = await store.findRunOrThrow({
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-v2",
+        taskIdentifier: "my-task",
+      });
+      expect(thrown.id).toBe(ksuid.id);
+
+      // … and throws when neither table matches.
+      await expect(
+        store.findRunOrThrow({
+          runtimeEnvironmentId: environment.id,
+          idempotencyKey: "idem-missing",
+          taskIdentifier: "my-task",
+        })
+      ).rejects.toThrow();
+    }
+  );
+
+  postgresTest(
     "expireRunsBatch with a mixed array updates both tables and returns the combined count",
     async ({ prisma }) => {
       const { organization, project, environment } = await seedEnvironment(prisma);

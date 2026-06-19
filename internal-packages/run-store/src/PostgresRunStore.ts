@@ -63,27 +63,43 @@ export class PostgresRunStore implements RunStore {
   }
 
   /**
-   * Route a single-row read to its physical table from the routing key in the
-   * `where` clause. `findRun`/`findRunOrThrow` are always called with a
-   * `{ id }` or `{ friendlyId }` predicate; both carry the same KSUID/cuid body
-   * and route identically. When neither is a plain string (e.g. an unexpected
-   * predicate-only read), default to the legacy `taskRun` table — matching the
-   * pre-split single-table behavior.
+   * The routing key for a single-row read: the `{ id }` or `{ friendlyId }`
+   * value in the `where` clause. Both carry the same KSUID/cuid body and route
+   * to the same physical table. Returns `undefined` for a predicate that
+   * addresses no specific run (e.g. an idempotency-key lookup), which must read
+   * both tables rather than assume one.
    */
-  #runReadModel(
-    prisma: PrismaClientOrTransaction | PrismaReplicaClient,
-    where: Prisma.TaskRunWhereInput
-  ) {
-    const routingKey =
-      typeof where.id === "string"
-        ? where.id
-        : typeof where.friendlyId === "string"
-        ? where.friendlyId
-        : undefined;
+  #routingKeyOf(where: Prisma.TaskRunWhereInput): string | undefined {
+    return typeof where.id === "string"
+      ? where.id
+      : typeof where.friendlyId === "string"
+      ? where.friendlyId
+      : undefined;
+  }
 
-    return routingKey !== undefined && isKsuidId(routingKey)
-      ? (prisma.taskRunV2 as unknown as typeof prisma.taskRun)
-      : prisma.taskRun;
+  /**
+   * Read a single row matching a non-id predicate from BOTH physical tables.
+   * A run lives in exactly one table (chosen by its id format), so a key-based
+   * predicate (idempotency key, "has this env any runs") can match a row in
+   * either. Query both in parallel and return the first match — at most one
+   * side is non-null, and legacy is preferred for a stable result if a
+   * predicate ever matches both. `task_run_v2` is an identical clone of
+   * `TaskRun`, so the SAME args (select/include and the security-scoping
+   * `where`) run unchanged against either delegate.
+   */
+  async #findFirstAcrossTables(
+    prisma: PrismaClientOrTransaction | PrismaReplicaClient,
+    where: Prisma.TaskRunWhereInput,
+    args: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude }
+  ): Promise<unknown> {
+    const v2Model = prisma.taskRunV2 as unknown as typeof prisma.taskRun;
+
+    const [legacyRun, v2Run] = await Promise.all([
+      prisma.taskRun.findFirst({ where, ...args }),
+      v2Model.findFirst({ where, ...args }),
+    ]);
+
+    return legacyRun ?? v2Run;
   }
 
   async createRun(
@@ -734,10 +750,15 @@ export class PostgresRunStore implements RunStore {
   ): Promise<unknown> {
     const { args, prisma } = this.#resolveReadArgs(argsOrClient, client);
 
-    return this.#runReadModel(prisma, where).findFirst({
-      where,
-      ...args,
-    });
+    const routingKey = this.#routingKeyOf(where);
+    if (routingKey !== undefined) {
+      // by id / friendlyId: the id format picks exactly one table, O(1).
+      return this.runModel(prisma, routingKey).findFirst({ where, ...args });
+    }
+
+    // Non-id predicate (e.g. idempotency-key dedup): the match can be in
+    // either table, so read both.
+    return this.#findFirstAcrossTables(prisma, where, args);
   }
 
   findRunOrThrow<S extends Prisma.TaskRunSelect>(
@@ -761,10 +782,19 @@ export class PostgresRunStore implements RunStore {
   ): Promise<unknown> {
     const { args, prisma } = this.#resolveReadArgs(argsOrClient, client);
 
-    return this.#runReadModel(prisma, where).findFirstOrThrow({
-      where,
-      ...args,
-    });
+    const routingKey = this.#routingKeyOf(where);
+    if (routingKey !== undefined) {
+      return this.runModel(prisma, routingKey).findFirstOrThrow({ where, ...args });
+    }
+
+    // Non-id predicate: read both tables, then enforce the throw-on-miss
+    // contract ourselves (neither table's findFirstOrThrow could see the
+    // other's row).
+    const run = await this.#findFirstAcrossTables(prisma, where, args);
+    if (run === null || run === undefined) {
+      throw new Error("PostgresRunStore.findRunOrThrow: no run matched the predicate");
+    }
+    return run;
   }
 
   findRuns<S extends Prisma.TaskRunSelect>(
