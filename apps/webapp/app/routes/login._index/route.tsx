@@ -1,4 +1,4 @@
-import { EnvelopeIcon } from "@heroicons/react/20/solid";
+import { EnvelopeIcon, LockClosedIcon } from "@heroicons/react/20/solid";
 import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { Form } from "@remix-run/react";
 import { GitHubLightIcon } from "@trigger.dev/companyicons";
@@ -7,23 +7,34 @@ import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import { GoogleLogo } from "~/assets/logos/GoogleLogo";
 import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormError } from "~/components/primitives/FormError";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
+import { featuresForRequest } from "~/features.server";
 import { isGithubAuthSupported, isGoogleAuthSupported } from "~/services/auth.server";
 import { getLastAuthMethod } from "~/services/lastAuthMethod.server";
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
 import { getUserId } from "~/services/session.server";
 import { getUserSession } from "~/services/sessionStorage.server";
+import { ssoController } from "~/services/sso.server";
+import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import { requestUrl } from "~/utils/requestUrl.server";
+import { SSO_SESSION_EXPIRED_REASON } from "~/utils/ssoSession";
+import { cn } from "~/utils/cn";
 
-function LastUsedBadge() {
+function LastUsedBadge({ className }: { className?: string }) {
   const shouldReduceMotion = useReducedMotion();
 
   return (
-    <div className="absolute -right-5 top-1 z-10 -translate-y-1/2 shadow-md md:-right-[4.6rem] md:top-1/2">
+    <div
+      className={cn(
+        "absolute -right-5 top-1 z-10 -translate-y-1/2 shadow-md md:-right-[4.6rem] md:top-1/2",
+        className
+      )}
+    >
       <motion.div
         className="relative rounded border border-charcoal-700 bg-charcoal-800 px-2 py-1 text-center text-xxs font-medium uppercase text-blue-500"
         initial={shouldReduceMotion ? undefined : { opacity: 0, x: 4 }}
@@ -70,6 +81,23 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const redirectTo = url.searchParams.get("redirectTo");
   const lastAuthMethod = await getLastAuthMethod(request);
 
+  const notice =
+    url.searchParams.get("reason") === SSO_SESSION_EXPIRED_REASON
+      ? "Your SSO session expired. Please sign in again."
+      : null;
+
+  const { isManagedCloud } = featuresForRequest(request);
+  // /login is unauthenticated and high-traffic; don't pay the plugin
+  // resolution + flag fetch on self-hosted where the result is unused.
+  let showSsoAuth = false;
+  if (isManagedCloud) {
+    const [pluginActive, globalFlags] = await Promise.all([
+      ssoController.isUsingPlugin(),
+      getGlobalFlags(),
+    ]);
+    showSsoAuth = pluginActive && (globalFlags as Record<string, unknown>).hasSso === true;
+  }
+
   if (redirectTo) {
     const session = await setRedirectTo(request, redirectTo);
 
@@ -78,8 +106,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
         redirectTo,
         showGithubAuth: isGithubAuthSupported,
         showGoogleAuth: isGoogleAuthSupported,
+        showSsoAuth,
         lastAuthMethod,
         authError: null,
+        notice,
         isVercelMarketplace: redirectTo.startsWith("/vercel/callback"),
       },
       {
@@ -105,8 +135,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
       redirectTo: null,
       showGithubAuth: isGithubAuthSupported,
       showGoogleAuth: isGoogleAuthSupported,
+      showSsoAuth,
       lastAuthMethod,
       authError,
+      notice,
       isVercelMarketplace: false,
     });
   }
@@ -124,6 +156,11 @@ export default function LoginPage() {
         <Paragraph variant="base" className="mb-6">
           Create an account or login
         </Paragraph>
+        {data.notice && (
+          <Callout variant="info" className="mb-6 w-full">
+            {data.notice}
+          </Callout>
+        )}
         <Fieldset className="w-full">
           <div className="flex flex-col items-center gap-y-3">
             {data.showGithubAuth && (
@@ -179,6 +216,26 @@ export default function LoginPage() {
                   <EnvelopeIcon className="mr-2 size-5 text-text-bright" />
                   Continue with Email
                 </LinkButton>
+              </div>
+            )}
+            {data.showSsoAuth && !data.isVercelMarketplace && (
+              <div className="flex w-full flex-col items-center gap-y-2 pt-2">
+                <div className="h-px w-full bg-charcoal-700" />
+                <div className="relative inline-flex items-center">
+                  {data.lastAuthMethod === "sso" && <LastUsedBadge className="translate-x-2" />}
+                  <TextLink
+                    to={
+                      data.redirectTo
+                        ? `/login/sso?redirectTo=${encodeURIComponent(data.redirectTo)}`
+                        : "/login/sso"
+                    }
+                    className="inline-flex items-center text-sm"
+                    data-action="continue with sso"
+                  >
+                    <LockClosedIcon className="mr-1.5 size-4" />
+                    Sign in with SSO
+                  </TextLink>
+                </div>
               </div>
             )}
             {data.authError && <FormError>{data.authError}</FormError>}

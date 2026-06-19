@@ -11,10 +11,15 @@ import {
 } from "~/components/navigation/OrganizationSettingsSideMenu";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { rbac } from "~/services/rbac.server";
+import { ssoController } from "~/services/sso.server";
 
 const SETTINGS_ROUTE_ID = "routes/_app.orgs.$organizationSlug.settings";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+  const [isUsingPlugin, isSsoUsingPlugin] = await Promise.all([
+    rbac.isUsingPlugin(),
+    ssoController.isUsingPlugin(),
+  ]);
   return typedjson({
     buildInfo: {
       appVersion: process.env.BUILD_APP_VERSION,
@@ -23,17 +28,20 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       gitRefName: process.env.BUILD_GIT_REF_NAME,
       buildTimestampSeconds: process.env.BUILD_TIMESTAMP_SECONDS,
     } satisfies BuildInfo,
-    isUsingPlugin: await rbac.isUsingPlugin(),
+    isUsingPlugin,
+    isSsoUsingPlugin,
   });
 };
 
 function SettingsChrome({
   buildInfo,
   isUsingPlugin,
+  isSsoUsingPlugin,
   children,
 }: {
   buildInfo: BuildInfo;
   isUsingPlugin: boolean;
+  isSsoUsingPlugin: boolean;
   children: ReactNode;
 }) {
   const organization = useOrganization();
@@ -45,6 +53,7 @@ function SettingsChrome({
           organization={organization}
           buildInfo={buildInfo}
           isUsingPlugin={isUsingPlugin}
+          isSsoUsingPlugin={isSsoUsingPlugin}
         />
         <MainBody>{children}</MainBody>
       </div>
@@ -53,10 +62,14 @@ function SettingsChrome({
 }
 
 export default function Page() {
-  const { buildInfo, isUsingPlugin } = useTypedLoaderData<typeof loader>();
+  const { buildInfo, isUsingPlugin, isSsoUsingPlugin } = useTypedLoaderData<typeof loader>();
 
   return (
-    <SettingsChrome buildInfo={buildInfo} isUsingPlugin={isUsingPlugin}>
+    <SettingsChrome
+      buildInfo={buildInfo}
+      isUsingPlugin={isUsingPlugin}
+      isSsoUsingPlugin={isSsoUsingPlugin}
+    >
       <Outlet />
     </SettingsChrome>
   );
@@ -68,7 +81,7 @@ export default function Page() {
 // available via useRouteLoaderData.
 export function ErrorBoundary() {
   const data = useRouteLoaderData(SETTINGS_ROUTE_ID) as
-    | { buildInfo: BuildInfo; isUsingPlugin: boolean }
+    | { buildInfo: BuildInfo; isUsingPlugin: boolean; isSsoUsingPlugin: boolean }
     | undefined;
 
   if (!data) {
@@ -76,7 +89,11 @@ export function ErrorBoundary() {
   }
 
   return (
-    <SettingsChrome buildInfo={data.buildInfo} isUsingPlugin={data.isUsingPlugin}>
+    <SettingsChrome
+      buildInfo={data.buildInfo}
+      isUsingPlugin={data.isUsingPlugin}
+      isSsoUsingPlugin={data.isSsoUsingPlugin}
+    >
       <RouteErrorDisplay />
     </SettingsChrome>
   );
