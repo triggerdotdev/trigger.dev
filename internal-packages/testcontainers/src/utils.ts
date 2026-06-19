@@ -2,6 +2,7 @@ import { createClient } from "@clickhouse/client";
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { RedisContainer, StartedRedisContainer } from "@testcontainers/redis";
 import { tryCatch } from "@trigger.dev/core";
+import { PrismaClient } from "@trigger.dev/database";
 import Redis from "ioredis";
 import path from "path";
 import { isDebug } from "std-env";
@@ -48,7 +49,48 @@ export async function pushDatabaseSchema(databaseUrl: string) {
     }
   );
 
+  await dropRunForeignKeys(databaseUrl);
+
   return result;
+}
+
+/**
+ * Production drops every foreign key that sits on, or points at, the run tables (`TaskRun` and
+ * `task_run_v2`) — a run's id is just a scalar that may live in either physical table, so the FKs
+ * can't be enforced. `prisma db push` doesn't know that: it recreates a constraint for every
+ * relation still declared in schema.prisma, so the template DB ends up with run FKs production
+ * doesn't have. That makes tests diverge — e.g. inserting a child row (a `TaskRunExecutionSnapshot`
+ * whose `runId` is a `task_run_v2` id) trips a `..._runId_fkey -> TaskRun` constraint that doesn't
+ * exist in prod. So after the push we strip those FKs to match production exactly.
+ *
+ * This is done dynamically (rather than naming each constraint) so any relation added to the schema
+ * later has its test-only run FK stripped automatically. It only removes FK constraints, so it
+ * cannot corrupt valid data — it makes the template DB strictly more faithful to production.
+ */
+async function dropRunForeignKeys(databaseUrl: string) {
+  const prisma = new PrismaClient({
+    datasources: { db: { url: databaseUrl } },
+  });
+
+  try {
+    await prisma.$executeRawUnsafe(`
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT conrelid::regclass::text AS tbl, conname
+    FROM pg_constraint
+    WHERE contype = 'f'
+      AND (confrelid IN ('"TaskRun"'::regclass, 'task_run_v2'::regclass)
+           OR conrelid  IN ('"TaskRun"'::regclass, 'task_run_v2'::regclass))
+  LOOP
+    EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', r.tbl, r.conname);
+  END LOOP;
+END $$;
+`);
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
 /**
