@@ -58,6 +58,11 @@ import { z } from "zod";
 import { logger } from "./utilities/logger.js";
 import { VERSION } from "./version.js";
 
+const MintUserActorTokenResponseSchema = z.object({
+  token: z.string(),
+  expiresInSeconds: z.number(),
+});
+
 const CliPlatformNotificationResponseSchema = z.object({
   notification: z
     .object({
@@ -213,6 +218,22 @@ export class CliApiClient {
       `${this.apiURL}/api/v1/projects/${projectRef}/${envName}/workers/${tagName}`,
       {
         headers: this.getHeaders(),
+      }
+    );
+  }
+
+  async mintUserActorToken(body?: { cap?: string[]; client?: string; ttlSeconds?: number }) {
+    if (!this.accessToken) {
+      throw new Error("mintUserActorToken: No access token");
+    }
+
+    return wrapZodFetch(
+      MintUserActorTokenResponseSchema,
+      `${this.apiURL}/api/v1/auth/user-actor-token`,
+      {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: JSON.stringify(body ?? {}),
       }
     );
   }
