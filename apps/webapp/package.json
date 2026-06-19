@@ -27,6 +27,7 @@
     "/public/build"
   ],
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.0",
     "@ai-sdk/openai": "^3.0.0",
     "@ai-sdk/react": "^3.0.0",
     "@ariakit/react": "^0.4.6",
