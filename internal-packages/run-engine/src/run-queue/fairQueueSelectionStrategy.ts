@@ -226,6 +226,7 @@ export class FairQueueSelectionStrategy implements RunQueueSelectionStrategy {
 
       // Add selected item to result and remove from items
       result.push(items[index].envId);
+      totalWeight -= items[index].weight;
       items.splice(index, 1);
     }
 
