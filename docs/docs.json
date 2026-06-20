@@ -380,6 +380,16 @@
             ]
           },
           {
+            "group": "Errors API",
+            "pages": [
+              "management/errors/list",
+              "management/errors/retrieve",
+              "management/errors/resolve",
+              "management/errors/ignore",
+              "management/errors/unresolve"
+            ]
+          },
+          {
             "group": "Queues API",
             "pages": [
               "management/queues/list",

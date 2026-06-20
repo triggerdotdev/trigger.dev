@@ -78,6 +78,9 @@ async function authenticateRequestForApiBuilder(
     environment: result.environment,
     realtime: result.jwt?.realtime,
     oneTimeUse: result.jwt?.oneTimeUse,
+    // Surface the delegation actor (PAT/UAT-exchanged JWT) so handlers can
+    // attribute writes to the acting user.
+    actor: result.jwt?.act,
   };
 
   return { ok: true, authentication, ability: result.ability };
