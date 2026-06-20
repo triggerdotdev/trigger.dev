@@ -8,7 +8,15 @@ import {
   type DashboardAgentDbClient,
 } from "@internal/dashboard-agent-db";
 import { chat } from "@trigger.dev/sdk/ai";
-import { createProviderRegistry, generateText, stepCountIs, streamText, type UIMessage } from "ai";
+import { locals } from "@trigger.dev/sdk";
+import {
+  createProviderRegistry,
+  generateText,
+  stepCountIs,
+  streamText,
+  type LanguageModel,
+  type UIMessage,
+} from "ai";
 import { z } from "zod";
 import { systemPrompt, titlePrompt } from "./prompts";
 import { buildDashboardAgentTools } from "./tools";
@@ -53,6 +61,38 @@ function getDb(): DashboardAgentDbClient {
 // the dashboard pick its models on a prompt.
 const registry = createProviderRegistry({ anthropic });
 
+// The persistence the agent does against its own datastore, behind an interface
+// so it can be injected. Production lazily builds one over the env-configured
+// Drizzle client (below); unit tests inject a fake via `locals` (the DI pattern
+// from the chat.agent testing guide) so the agent never needs a real database.
+export interface DashboardAgentStore {
+  ensureChat(args: Parameters<typeof ensureChat>[1]): Promise<unknown>;
+  persistMessages(args: Parameters<typeof persistMessages>[1]): Promise<unknown>;
+  persistTurn(args: Parameters<typeof persistTurn>[1]): Promise<unknown>;
+  setChatTitleIfDefault(args: Parameters<typeof setChatTitleIfDefault>[1]): Promise<unknown>;
+}
+
+export const dashboardAgentStoreKey = locals.create<DashboardAgentStore>("dashboard-agent.store");
+
+// Returns the injected store if a test seeded one, otherwise lazily builds the
+// production store over the env-configured Drizzle client and caches it.
+function getStore(): DashboardAgentStore {
+  const injected = locals.get(dashboardAgentStoreKey);
+  if (injected) return injected;
+  const { db } = getDb();
+  return locals.set(dashboardAgentStoreKey, {
+    ensureChat: (args) => ensureChat(db, args),
+    persistMessages: (args) => persistMessages(db, args),
+    persistTurn: (args) => persistTurn(db, args),
+    setChatTitleIfDefault: (args) => setChatTitleIfDefault(db, args),
+  });
+}
+
+// Optional language-model override. Production leaves this unset and resolves the
+// model from the managed prompt through the provider registry; unit tests inject
+// a mock model here so `run()` and title generation never reach a provider.
+export const dashboardAgentModelKey = locals.create<LanguageModel>("dashboard-agent.model");
+
 // The system prompt is dashboard-managed (text + model + config). Resolving it
 // is an API call, so cache it per worker process — workers are short-lived
 // (idleTimeoutInSeconds), so a dashboard edit lands within a recycle.
@@ -82,7 +122,7 @@ function cleanTitle(raw: string): string {
 // model, then write it only if the chat still has the default title. Runs in
 // the background (chat.defer) so it never blocks the response.
 async function generateAndSaveTitle(
-  db: Parameters<typeof setChatTitleIfDefault>[0],
+  store: DashboardAgentStore,
   chatId: string,
   uiMessages: UIMessage[]
 ): Promise<void> {
@@ -92,9 +132,9 @@ async function generateAndSaveTitle(
 
   const resolved = await titlePrompt.resolve({});
   const { text } = await generateText({
-    model: registry.languageModel(
-      (resolved.model ?? "anthropic:claude-haiku-4-5") as `anthropic:${string}`
-    ),
+    model:
+      locals.get(dashboardAgentModelKey) ??
+      registry.languageModel((resolved.model ?? "anthropic:claude-haiku-4-5") as `anthropic:${string}`),
     system: resolved.text,
     prompt: userText,
     ...resolved.toAISDKTelemetry(),
@@ -102,7 +142,7 @@ async function generateAndSaveTitle(
 
   const title = cleanTitle(text);
   if (title) {
-    await setChatTitleIfDefault(db, { chatId, title });
+    await store.setChatTitleIfDefault({ chatId, title });
   }
 }
 
@@ -137,13 +177,12 @@ export const dashboardAgent = chat.agent({
   tools: async ({ clientData }) => buildDashboardAgentTools(clientData ?? {}),
 
   onBoot: async () => {
-    // Establish the per-process connection pool once.
-    getDb();
+    // Establish the store (and, in production, its connection pool) once.
+    getStore();
   },
 
   onChatStart: async ({ chatId, clientData }) => {
-    const { db } = getDb();
-    await ensureChat(db, {
+    await getStore().ensureChat({
       id: chatId,
       organizationId: clientData.organizationId,
       userId: clientData.userId,
@@ -161,8 +200,7 @@ export const dashboardAgent = chat.agent({
     // Make the user's message durable in the display copy before the model
     // starts streaming. Awaited, never chat.defer — a mid-stream refresh must
     // not read an empty transcript.
-    const { db } = getDb();
-    await persistMessages(db, { chatId, messages: uiMessages });
+    await getStore().persistMessages({ chatId, messages: uiMessages });
 
     // Load the dashboard-managed system prompt for this turn. Set every turn so
     // continuation runs (which skip onChatStart) still get it; the resolve is
@@ -176,8 +214,8 @@ export const dashboardAgent = chat.agent({
   onTurnComplete: async ({ chatId, uiMessages, chatAccessToken, lastEventId, runId }) => {
     // Persist the finalized transcript + refreshed session state in one
     // transaction so a refresh on the next page load reads both consistently.
-    const { db } = getDb();
-    await persistTurn(db, {
+    const store = getStore();
+    await store.persistTurn({
       chatId,
       messages: uiMessages,
       session: {
@@ -191,14 +229,15 @@ export const dashboardAgent = chat.agent({
     // background. Deferred from onTurnComplete, so it runs during the idle wait
     // and never blocks the response; the write is conditional (default title).
     if (uiMessages.length <= 2) {
-      chat.defer(generateAndSaveTitle(db, chatId, uiMessages));
+      chat.defer(generateAndSaveTitle(store, chatId, uiMessages));
     }
   },
 
   // Roll an Anthropic cache breakpoint onto the last message every turn so the
-  // growing conversation prefix is cached and read back cheaply. Runs on every
-  // prompt-assembly path (turns + compaction), so the breakpoint always lands
-  // on the real last message. Composes with the system-block breakpoint above.
+  // growing conversation prefix is cached and read back cheaply. Composes with
+  // the system-block breakpoint above. This is the canonical prompt-caching
+  // pattern; chat.agent keeps the Head Start handover's tool-approval tail
+  // intact across this hook, so it's safe on a resume turn.
   prepareMessages: ({ messages }) => {
     if (messages.length === 0) return messages;
     const last = messages[messages.length - 1];
@@ -223,9 +262,11 @@ export const dashboardAgent = chat.agent({
     const resolved = chat.prompt();
     return streamText({
       ...chat.toStreamTextOptions({ tools }),
-      model: registry.languageModel(
-        (resolved.model ?? "anthropic:claude-sonnet-4-6") as `anthropic:${string}`
-      ),
+      // Tests inject a mock model via locals; production resolves the managed
+      // prompt's model through the provider registry.
+      model:
+        locals.get(dashboardAgentModelKey) ??
+        registry.languageModel((resolved.model ?? "anthropic:claude-sonnet-4-6") as `anthropic:${string}`),
       messages,
       abortSignal: signal,
       // toStreamTextOptions() defaults to a single step; override so the model

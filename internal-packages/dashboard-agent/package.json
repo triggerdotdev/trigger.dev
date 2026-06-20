@@ -17,11 +17,15 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
+    "@ai-sdk/provider": "3.0.8",
     "@trigger.dev/build": "workspace:*",
-    "trigger.dev": "workspace:*"
+    "trigger.dev": "workspace:*",
+    "vitest": "4.1.7"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "dev": "trigger dev",
     "deploy": "trigger deploy"
   }
