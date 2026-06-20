@@ -13,14 +13,12 @@ import { FormError } from "~/components/primitives/FormError";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
-import { featuresForRequest } from "~/features.server";
 import { isGithubAuthSupported, isGoogleAuthSupported } from "~/services/auth.server";
 import { getLastAuthMethod } from "~/services/lastAuthMethod.server";
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
 import { getUserId } from "~/services/session.server";
 import { getUserSession } from "~/services/sessionStorage.server";
 import { ssoController } from "~/services/sso.server";
-import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import { requestUrl } from "~/utils/requestUrl.server";
 import { SSO_SESSION_EXPIRED_REASON } from "~/utils/ssoSession";
 import { cn } from "~/utils/cn";
@@ -86,17 +84,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
       ? "Your SSO session expired. Please sign in again."
       : null;
 
-  const { isManagedCloud } = featuresForRequest(request);
-  // /login is unauthenticated and high-traffic; don't pay the plugin
-  // resolution + flag fetch on self-hosted where the result is unused.
-  let showSsoAuth = false;
-  if (isManagedCloud) {
-    const [pluginActive, globalFlags] = await Promise.all([
-      ssoController.isUsingPlugin(),
-      getGlobalFlags(),
-    ]);
-    showSsoAuth = pluginActive && (globalFlags as Record<string, unknown>).hasSso === true;
-  }
+  // Show the SSO entry purely on plugin presence. `isUsingPlugin()` is true
+  // only when SSO_ENABLED is on AND a real SSO plugin is loaded — the
+  // controller is built with `forceFallback: !SSO_ENABLED || SSO_FORCE_FALLBACK`,
+  // so this single signal already encodes "the env var is on and the plugin is
+  // available". /login is unauthenticated + high-traffic, but this only awaits
+  // the controller's cached init — no per-request plugin resolution or flag fetch.
+  const showSsoAuth = await ssoController.isUsingPlugin();
 
   if (redirectTo) {
     const session = await setRedirectTo(request, redirectTo);
