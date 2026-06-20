@@ -363,7 +363,7 @@ export class LogicalReplicationClient {
         } else if (buffer[0] === 0x6b) {
           // Primary keepalive message
           const timestamp = Math.floor(
-            buffer.readUInt32BE(9) * 4294967.296 + buffer.readUInt32BE(13) / 1000 + 946080000000
+            buffer.readUInt32BE(9) * 4294967.296 + buffer.readUInt32BE(13) / 1000 + 946684800000
           );
           const shouldRespond = !!buffer.readInt8(17);
           this.events.emit("heartbeat", { lsn, timestamp, shouldRespond });
@@ -658,7 +658,7 @@ export class LogicalReplicationClient {
       const slice = lsn.split("/");
       let [upperWAL, lowerWAL]: [number, number] = [parseInt(slice[0], 16), parseInt(slice[1], 16)];
       // Timestamp as microseconds since midnight 2000-01-01
-      const now = Date.now() - 946080000000;
+      const now = Date.now() - 946684800000;
       const upperTimestamp = Math.floor(now / 4294967.296);
       const lowerTimestamp = Math.floor(now - upperTimestamp * 4294967.296);
       if (lowerWAL === 4294967295) {
