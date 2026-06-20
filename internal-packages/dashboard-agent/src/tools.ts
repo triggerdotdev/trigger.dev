@@ -1,8 +1,10 @@
 import { tool, type ToolSet } from "ai";
 import {
+  getErrorSchema,
   getRunSchema,
   getRunTraceSchema,
   listEnvironmentsSchema,
+  listErrorsSchema,
   listProjectsSchema,
   listRunsSchema,
   listTasksSchema,
@@ -15,8 +17,8 @@ import {
  * delegated token the `in` proxy injects into the turn's metadata.
  *
  * - User-level reads (projects, environments) use the delegated token directly.
- * - Environment-scoped reads (runs, tasks) first exchange the token for an env
- *   JWT for the current project + environment, then call the API with that.
+ * - Environment-scoped reads (runs, tasks, errors) first exchange the token for
+ *   an env JWT for the current project + environment, then call the API with that.
  *
  * Tools return `{ error }` on failure rather than throwing, so the model can
  * recover and explain instead of the turn dying.
@@ -55,7 +57,9 @@ async function exchangeEnvJwt(
   const res = await fetch(`${origin}/api/v1/projects/${projectRef}/${environmentName}/jwt`, {
     method: "POST",
     headers: { Authorization: `Bearer ${userActorToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ claims: { scopes: ["read:runs", "read:deployments"] } }),
+    body: JSON.stringify({
+      claims: { scopes: ["read:runs", "read:deployments", "read:errors"] },
+    }),
   });
   if (!res.ok) return null;
   const data = (await res.json()) as { token?: string };
@@ -163,6 +167,44 @@ function curateTrace(data: unknown) {
   return { traceId: (data as any)?.trace?.traceId, spans, truncated: spans.length >= MAX_TRACE_SPANS };
 }
 
+function curateErrors(data: unknown) {
+  const groups = (data as any)?.data ?? [];
+  return {
+    errors: (Array.isArray(groups) ? groups : []).map((g: any) => ({
+      id: g.id,
+      taskIdentifier: g.taskIdentifier,
+      errorType: g.errorType,
+      errorMessage: g.errorMessage,
+      status: g.status,
+      count: g.count,
+      firstSeen: g.firstSeen,
+      lastSeen: g.lastSeen,
+    })),
+    nextCursor: (data as any)?.pagination?.next,
+  };
+}
+
+function curateError(group: any) {
+  return {
+    id: group.id,
+    taskIdentifier: group.taskIdentifier,
+    errorType: group.errorType,
+    errorMessage: group.errorMessage,
+    status: group.status,
+    count: group.count,
+    firstSeen: group.firstSeen,
+    lastSeen: group.lastSeen,
+    affectedVersions: group.affectedVersions,
+    resolvedAt: group.resolvedAt,
+    resolvedInVersion: group.resolvedInVersion,
+    resolvedBy: group.resolvedBy,
+    ignoredAt: group.ignoredAt,
+    ignoredUntil: group.ignoredUntil,
+    ignoredReason: group.ignoredReason,
+    ignoredByUserId: group.ignoredByUserId,
+  };
+}
+
 // Cap the run-list lookback at 30 days. Parse the `<number><unit>` window and
 // clamp anything larger (or unparseable) down to 30d, so the agent can't scan
 // huge time ranges. Returns the effective period so the model reports the real
@@ -178,9 +220,9 @@ function clampPeriod(period: string): string {
 
 const NO_AUTH = { error: "No delegated access is available for this turn." } as const;
 
-// Always returns the same four tools so the declared tool set stays stable
-// across turns (the SDK replays it over prior history). When a turn carried no
-// delegated token, each tool reports that rather than silently disappearing.
+// Always returns the same tool set so it stays stable across turns (the SDK
+// replays it over prior history). When a turn carried no delegated token, each
+// tool reports that rather than silently disappearing.
 export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSet {
   const { userActorToken, apiOrigin, projectRef, environmentName } = ctx;
   const origin = apiOrigin ? apiOrigin.replace(/\/$/, "") : "";
@@ -250,13 +292,14 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
 
     list_runs: tool({
       ...listRunsSchema,
-      execute: async ({ status, taskIdentifier, period, limit }) => {
+      execute: async ({ status, taskIdentifier, errorId, period, limit }) => {
         const envJwt = await getEnvJwt();
         if (!envJwt) return { error: "No current environment is available to read runs from." };
         const effectivePeriod = period ? clampPeriod(period) : undefined;
         const sp = new URLSearchParams();
         if (status) sp.append("filter[status]", status);
         if (taskIdentifier) sp.append("filter[taskIdentifier]", taskIdentifier);
+        if (errorId) sp.append("filter[error]", errorId);
         if (effectivePeriod) sp.append("filter[createdAt][period]", effectivePeriod);
         sp.append("page[size]", String(Math.min(limit ?? 10, 50)));
         const result = await apiGet(origin, `/api/v1/runs?${sp.toString()}`, envJwt);
@@ -273,6 +316,34 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         const result = await apiGet(origin, `/api/v1/runs/${runId}/trace`, envJwt);
         if (!result.ok) return { error: `Couldn't get the trace for ${runId} (status ${result.status}).` };
         return curateTrace(result.data);
+      },
+    }),
+
+    list_errors: tool({
+      ...listErrorsSchema,
+      execute: async ({ status, taskIdentifier, search, period, limit }) => {
+        const envJwt = await getEnvJwt();
+        if (!envJwt) return { error: "No current environment is available to read errors from." };
+        const sp = new URLSearchParams();
+        if (status) sp.append("filter[status]", status);
+        if (taskIdentifier) sp.append("filter[taskIdentifier]", taskIdentifier);
+        if (search) sp.append("filter[search]", search);
+        if (period) sp.append("filter[period]", period);
+        sp.append("page[size]", String(Math.min(limit ?? 20, 100)));
+        const result = await apiGet(origin, `/api/v1/errors?${sp.toString()}`, envJwt);
+        if (!result.ok) return { error: `Couldn't list errors (status ${result.status}).` };
+        return curateErrors(result.data);
+      },
+    }),
+
+    get_error: tool({
+      ...getErrorSchema,
+      execute: async ({ errorId }) => {
+        const envJwt = await getEnvJwt();
+        if (!envJwt) return { error: "No current environment is available to read errors from." };
+        const result = await apiGet(origin, `/api/v1/errors/${errorId}`, envJwt);
+        if (!result.ok) return { error: `Couldn't get error ${errorId} (status ${result.status}).` };
+        return curateError(result.data);
       },
     }),
   };
