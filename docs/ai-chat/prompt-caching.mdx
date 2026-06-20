@@ -135,6 +135,10 @@ The system breakpoint and the conversation breakpoint compose: the system block 
   Anthropic allows **at most 4** cache breakpoints per request, and a prefix must be at least ~1024 tokens (model-dependent) to cache at all — shorter prefixes silently don't cache. One system breakpoint plus one rolling message breakpoint is the typical setup and leaves headroom.
 </Note>
 
+<Note>
+  This rolling-breakpoint pattern composes with [Head Start](/ai-chat/fast-starts#head-start). On a head-start handover, the first turn's pending tool call is handed to the agent as a tool-approval round whose trailing `tool` message must reach `streamText` untouched for that call to execute. `chat.agent` preserves that tail across `prepareMessages` automatically, so rewriting the last message here is safe: on a resume turn the breakpoint just lands on the next user or assistant message instead of the transient approval row.
+</Note>
+
 ## Caching and compaction
 
 Compaction rewrites the conversation prefix — it replaces earlier turns with a summary — so it necessarily invalidates the cached message prefix at that point. That's a one-time reset, not a regression: because `prepareMessages` also runs on the compaction rebuild and result paths, the new (shorter) prefix gets a fresh breakpoint and re-warms on the next turn. Your system-prompt cache is unaffected — compaction never touches the system block. See [Compaction](/ai-chat/compaction) for how the summary is produced.

@@ -545,6 +545,10 @@ Head Start composes with [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemes
 
 Your hydrate hook shapes **model context**, not the transcript — dropping reasoning-only entries or unresolved tool rows from the returned chain is fine and does not affect what `onTurnComplete` persists or what the UI renders.
 
+#### With `prepareMessages`
+
+When the first turn's handover carries a pending tool call, the runtime reshapes it into a tool-approval round: the partial assistant gets a `tool-approval-request` and the chain ends with a `tool` message holding the matching `tool-approval-response`. The agent's `streamText` reads that trailing row to execute the handed-over call before step 2. `chat.agent` keeps that tail intact across your [`prepareMessages`](/ai-chat/reference#chatagentoptions) hook, so the common [prompt-caching](/ai-chat/prompt-caching) pattern of rolling a cache breakpoint onto the last message is safe on a resume turn (the breakpoint lands on the next user or assistant message instead). If you hand-roll a backend with [`chat.customAgent`](#chatcustomagent) or [`chat.createSession`](#chatcreatesession), preserve that trailing approval row yourself.
+
 ### Handover with custom agents
 
 The route handler is backend-agnostic: `agentId` can point at a `chat.agent`, a [`chat.customAgent`](/ai-chat/custom-agents), or a [`chat.createSession`](/ai-chat/custom-agents#managed-loop-chatcreatesession) loop. With `chat.agent` the handover is consumed for you (the steps above). The two hand-rolled backends consume it explicitly on turn 0.
