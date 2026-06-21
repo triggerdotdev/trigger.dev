@@ -15,6 +15,10 @@ import { defineConfig } from "@trigger.dev/sdk";
 export default defineConfig({
   project: process.env.TRIGGER_DASHBOARD_AGENT_PROJECT_REF ?? "",
   dirs: ["./src"],
+  // Keep test + eval files out of the task index. They import vitest, which
+  // throws at registration. Setting this replaces the built-in defaults, so the
+  // test/spec patterns are repeated alongside the eval one.
+  ignorePatterns: ["**/*.test.ts", "**/*.spec.ts", "**/*.eval.ts"],
   compatibilityFlags: ["run_engine_v2"],
   maxDuration: 3600,
 });

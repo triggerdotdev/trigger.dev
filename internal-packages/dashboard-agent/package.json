@@ -26,6 +26,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:evals": "vitest run --config vitest.eval.config.ts",
     "dev": "trigger dev",
     "deploy": "trigger deploy"
   }
