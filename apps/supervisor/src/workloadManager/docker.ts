@@ -84,6 +84,7 @@ export class DockerWorkloadManager implements WorkloadManager {
       `TRIGGER_MACHINE_CPU=${opts.machine.cpu}`,
       `TRIGGER_MACHINE_MEMORY=${opts.machine.memory}`,
       `PRETTY_LOGS=${env.RUNNER_PRETTY_LOGS}`,
+      `TRIGGER_SEND_RUN_DEBUG_LOGS=${env.SEND_RUN_DEBUG_LOGS}`,
     ];
 
     if (this.opts.warmStartUrl) {

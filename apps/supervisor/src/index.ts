@@ -157,6 +157,7 @@ class ManagedSupervisor {
           instanceName: env.TRIGGER_WORKER_INSTANCE_NAME,
           otelEndpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
           prettyLogs: env.RUNNER_PRETTY_LOGS,
+          sendRunDebugLogs: env.SEND_RUN_DEBUG_LOGS,
         },
         createRetry: {
           maxAttempts: env.COMPUTE_INSTANCE_CREATE_MAX_ATTEMPTS,

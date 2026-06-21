@@ -209,6 +209,10 @@ export class KubernetesWorkloadManager implements WorkloadManager {
                     value: `${opts.machine.memory}`,
                   },
                   {
+                    name: "TRIGGER_SEND_RUN_DEBUG_LOGS",
+                    value: `${env.SEND_RUN_DEBUG_LOGS}`,
+                  },
+                  {
                     name: "LIMITS_CPU",
                     valueFrom: {
                       resourceFieldRef: {
