@@ -8,6 +8,13 @@
       "when": 1781711036274,
       "tag": "0000_magenta_lilandra",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781990914081,
+      "tag": "0001_slimy_living_tribunal",
+      "breakpoints": true
     }
   ]
 }

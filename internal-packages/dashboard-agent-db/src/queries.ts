@@ -1,6 +1,6 @@
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { DashboardAgentDb } from "./client.js";
-import { chats, chatSessions, type ChatSession } from "./schema.js";
+import { chats, chatSessions, chatTurnEvals, type ChatSession, type NewChatTurnEval } from "./schema.js";
 
 /**
  * The access-pattern layer. Every query that touches user data is scoped by
@@ -237,4 +237,13 @@ export async function persistTurn(
         },
       });
   });
+}
+
+/**
+ * #11 Record a turn eval. Idempotent on `(chatId, turn)` so a re-delivered turn
+ * (the eval task is triggered with an idempotency key, and may still retry) can
+ * never write a second row.
+ */
+export async function insertTurnEval(db: DashboardAgentDb, row: NewChatTurnEval): Promise<void> {
+  await db.insert(chatTurnEvals).values(row).onConflictDoNothing();
 }
