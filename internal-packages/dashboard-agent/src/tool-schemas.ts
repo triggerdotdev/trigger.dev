@@ -110,6 +110,44 @@ export const getErrorSchema = tool({
   }),
 });
 
+// Code-mode tools (only present when the project has a connected GitHub repo).
+// They read the repo's source at a pinned commit from the agent's filesystem.
+
+export const getRepoInfoSchema = tool({
+  description:
+    "Get the connected GitHub repository the agent can read: owner, repo name, the commit SHA the source is pinned to, and the default branch.",
+  inputSchema: z.object({}),
+});
+
+export const listFilesSchema = tool({
+  description:
+    "List source files in the connected repository (respecting .gitignore). Optionally filter by a glob like '**/*.ts' or scope to a subdirectory. Use this to find where something lives before reading it.",
+  inputSchema: z.object({
+    glob: z.string().optional().describe("Glob filter, e.g. 'src/**/*.ts' or '*.json'."),
+    path: z.string().optional().describe("Subdirectory (relative to repo root) to scope the listing to."),
+  }),
+});
+
+export const readFileSchema = tool({
+  description:
+    "Read a file from the connected repository by its path relative to the repo root. Optionally restrict to a line range. Use this to read the actual task source behind a run or error.",
+  inputSchema: z.object({
+    path: z.string().describe("File path relative to the repo root, e.g. src/trigger/processOrder.ts."),
+    startLine: z.number().int().positive().optional().describe("First line to include (1-based)."),
+    endLine: z.number().int().positive().optional().describe("Last line to include (1-based)."),
+  }),
+});
+
+export const searchCodeSchema = tool({
+  description:
+    "Search the connected repository's source with a ripgrep query (regex or literal). Returns file:line matches. Use this to locate a task definition, an error string, a symbol, or config across the repo.",
+  inputSchema: z.object({
+    query: z.string().describe("The ripgrep pattern to search for."),
+    glob: z.string().optional().describe("Restrict the search to files matching this glob."),
+    maxResults: z.number().int().positive().max(80).optional().describe("Max matches to return (default 40)."),
+  }),
+});
+
 /**
  * The schema-only tool set, in the same key order the agent attaches executes
  * to in `tools.ts`. Passed to `chat.headStart`'s `streamText` so step 1 can
@@ -124,6 +162,17 @@ export const dashboardAgentToolSchemas = {
   get_run_trace: getRunTraceSchema,
   list_errors: listErrorsSchema,
   get_error: getErrorSchema,
+};
+
+// Code mode adds the source tools. Same key order `buildDashboardAgentTools`
+// attaches executes in (api tools, then repo tools), so head-start's warm step
+// matches the agent run.
+export const dashboardAgentCodeToolSchemas = {
+  ...dashboardAgentToolSchemas,
+  get_repo_info: getRepoInfoSchema,
+  list_files: listFilesSchema,
+  read_file: readFileSchema,
+  search_code: searchCodeSchema,
 };
 
 /**
@@ -158,3 +207,18 @@ Guidelines:
 - Your tools are read-only and scoped to the current environment for run and task lookups. You can't change anything; for actions, point the user to where in the dashboard they can do it.
 - Never invent run IDs, task identifiers, metrics, or features. If a tool returns an error or nothing, say so plainly.
 - Use Trigger.dev's own terminology: tasks, runs, attempts, queues, deployments, environments, schedules, waitpoints.`;
+
+// Used when the current project has a connected GitHub repo: the base prompt
+// plus the source-reading tools and how to use them.
+export const DASHBOARD_AGENT_CODE_SYSTEM_PROMPT = `${DASHBOARD_AGENT_SYSTEM_PROMPT}
+
+This project has its GitHub repository connected, so you can also read its source code:
+- get_repo_info: the connected repo and the commit your source is pinned to.
+- list_files: list source files (respects .gitignore), filterable by glob or subdirectory.
+- read_file: read a file by its repo-relative path, optionally a line range.
+- search_code: ripgrep the source for a task definition, error string, symbol, or config.
+
+Source guidelines:
+- When explaining why a run or error happened, read the actual task source rather than guessing. Find the task with search_code or list_files, then read_file the relevant code.
+- The source you read is pinned to the commit the run was deployed from, so it is the code that actually ran. Cite file paths (and line numbers when useful).
+- Stay read-only: you can explain and point at code, but you can't edit it or open PRs.`;

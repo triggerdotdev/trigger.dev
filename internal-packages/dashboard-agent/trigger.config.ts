@@ -1,4 +1,5 @@
 import { defineConfig } from "@trigger.dev/sdk";
+import { aptGet } from "@trigger.dev/build/extensions/core";
 
 /**
  * The dashboard agent is its own Trigger project, deployed independently of the
@@ -21,4 +22,9 @@ export default defineConfig({
   ignorePatterns: ["**/*.test.ts", "**/*.spec.ts", "**/*.eval.ts"],
   compatibilityFlags: ["run_engine_v2"],
   maxDuration: 3600,
+  // Code mode shells out to ripgrep to search the user's cloned repo. git + tar
+  // are already in the base image; ripgrep is not.
+  build: {
+    extensions: [aptGet({ packages: ["ripgrep"] })],
+  },
 });

@@ -1,5 +1,9 @@
 import { prompts } from "@trigger.dev/sdk";
-import { DASHBOARD_AGENT_MODEL, DASHBOARD_AGENT_SYSTEM_PROMPT } from "./tool-schemas";
+import {
+  DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
+  DASHBOARD_AGENT_MODEL,
+  DASHBOARD_AGENT_SYSTEM_PROMPT,
+} from "./tool-schemas";
 
 /**
  * Managed prompts for the dashboard agent. Defining them here registers them
@@ -18,6 +22,15 @@ export const systemPrompt = prompts.define({
   description: "System prompt for the in-dashboard Trigger.dev agent.",
   model: `anthropic:${DASHBOARD_AGENT_MODEL}`,
   content: DASHBOARD_AGENT_SYSTEM_PROMPT,
+});
+
+// Code mode: used for turns where the current project has a connected GitHub
+// repo, so the agent has the source-reading tools too.
+export const codeSystemPrompt = prompts.define({
+  id: "dashboard-agent-system-code",
+  description: "System prompt for the in-dashboard agent when the project's GitHub repo is connected.",
+  model: `anthropic:${DASHBOARD_AGENT_MODEL}`,
+  content: DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
 });
 
 export const titlePrompt = prompts.define({

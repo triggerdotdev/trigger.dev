@@ -1,7 +1,10 @@
 import { signUserActorToken } from "@trigger.dev/rbac";
 import { TriggerClient } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
+import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { githubApp } from "./gitHub.server";
+import { logger } from "./logger.server";
 
 const TASK_ID = "dashboard-agent";
 
@@ -71,4 +74,91 @@ export async function mintDashboardAgentToken(chatId: string): Promise<string> {
     scopes: { read: { sessions: chatId }, write: { sessions: chatId } },
     expirationTime: "1h",
   });
+}
+
+// A signed, short-lived pointer to the project's connected repo at a commit. Only
+// the URL crosses to the agent; the GitHub token stays here. The agent's code
+// tools download + extract it on their own filesystem (see @internal/dashboard-agent).
+export type DashboardAgentRepoSnapshot = {
+  tarballUrl: string;
+  owner: string;
+  repo: string;
+  sha: string;
+  defaultBranch?: string;
+};
+
+// The GitHub archive redirect URL is valid for a few minutes; cache the resolved
+// pointer briefly so multi-turn chats don't re-mint a token + re-resolve on every
+// message. Keyed by project.
+const repoSnapshotCache = new Map<string, { snapshot: DashboardAgentRepoSnapshot; expiresAt: number }>();
+const REPO_SNAPSHOT_TTL_MS = 60_000;
+
+/**
+ * Resolve the code-mode repo snapshot for a project, or null when the GitHub App
+ * is disabled / no repo is connected (which keeps the agent in assistant mode).
+ *
+ * Mints a `contents:read` installation token scoped to the one repo, resolves the
+ * signed archive URL for the tracked branch's head commit, and returns just that
+ * URL. The token never leaves the server.
+ */
+export async function resolveDashboardAgentRepoSnapshot(
+  projectId: string
+): Promise<DashboardAgentRepoSnapshot | null> {
+  if (!githubApp) return null;
+
+  const cached = repoSnapshotCache.get(projectId);
+  if (cached && cached.expiresAt > Date.now()) return cached.snapshot;
+
+  const connected = await prisma.connectedGithubRepository.findFirst({
+    where: { projectId },
+    select: {
+      branchTracking: true,
+      repository: {
+        select: {
+          fullName: true,
+          defaultBranch: true,
+          installation: { select: { appInstallationId: true } },
+        },
+      },
+    },
+  });
+  if (!connected) return null;
+
+  const [owner, repo] = connected.repository.fullName.split("/");
+  if (!owner || !repo) return null;
+  const installationId = Number(connected.repository.installation.appInstallationId);
+  const defaultBranch = connected.repository.defaultBranch;
+  const tracking = connected.branchTracking as { prod?: { branch?: string } } | null;
+  const ref = tracking?.prod?.branch || defaultBranch;
+
+  try {
+    const octokit = await githubApp.getInstallationOctokit(installationId);
+    const branch = await octokit.rest.repos.getBranch({ owner, repo, branch: ref });
+    const sha = branch.data.commit.sha;
+
+    const token = await githubApp.octokit.rest.apps.createInstallationAccessToken({
+      installation_id: installationId,
+      repositories: [repo],
+      permissions: { contents: "read" },
+    });
+
+    // Resolve the signed archive URL without downloading the bytes server-side.
+    const redirect = await fetch(`https://api.github.com/repos/${owner}/${repo}/tarball/${sha}`, {
+      headers: {
+        Authorization: `Bearer ${token.data.token}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "trigger-dashboard-agent",
+      },
+      redirect: "manual",
+    });
+    const tarballUrl = redirect.headers.get("location");
+    if (!tarballUrl) return null;
+
+    const snapshot: DashboardAgentRepoSnapshot = { tarballUrl, owner, repo, sha, defaultBranch };
+    repoSnapshotCache.set(projectId, { snapshot, expiresAt: Date.now() + REPO_SNAPSHOT_TTL_MS });
+    return snapshot;
+  } catch (error) {
+    logger.error("Failed to resolve dashboard agent repo snapshot", { error, projectId });
+    return null;
+  }
 }

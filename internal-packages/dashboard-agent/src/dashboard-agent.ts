@@ -21,7 +21,7 @@ import {
 } from "ai";
 import { z } from "zod";
 import type { EvalTurnPayload, evalTurn } from "./eval-turn";
-import { systemPrompt, titlePrompt } from "./prompts";
+import { codeSystemPrompt, systemPrompt, titlePrompt } from "./prompts";
 import { buildDashboardAgentTools } from "./tools";
 
 /**
@@ -105,8 +105,21 @@ export const dashboardAgentToolsKey = locals.create<ToolSet>("dashboard-agent.to
 // The system prompt is dashboard-managed (text + model + config). Resolving it
 // is an API call, so cache it per worker process — workers are short-lived
 // (idleTimeoutInSeconds), so a dashboard edit lands within a recycle.
+type DashboardAgentMode = "assistant" | "code";
+
+// A turn is in `code` mode when the `in` proxy injected a repo snapshot (i.e. the
+// current project has a connected repo). Drives both the tool set and the prompt.
+function modeFor(clientData: { repoSnapshot?: unknown } | undefined): DashboardAgentMode {
+  return clientData?.repoSnapshot ? "code" : "assistant";
+}
+
 let cachedSystemPrompt: Awaited<ReturnType<typeof systemPrompt.resolve>> | undefined;
-async function getSystemPrompt() {
+let cachedCodePrompt: Awaited<ReturnType<typeof codeSystemPrompt.resolve>> | undefined;
+async function getSystemPrompt(mode: DashboardAgentMode = "assistant") {
+  if (mode === "code") {
+    cachedCodePrompt ??= await codeSystemPrompt.resolve({});
+    return cachedCodePrompt;
+  }
   cachedSystemPrompt ??= await systemPrompt.resolve({});
   return cachedSystemPrompt;
 }
@@ -197,6 +210,17 @@ const clientDataSchema = z.object({
   apiOrigin: z.string().optional(),
   projectRef: z.string().optional(),
   environmentName: z.string().optional(),
+  // Injected only when the current project has a connected GitHub repo: a signed,
+  // short-lived archive pointer the code-mode source tools read from.
+  repoSnapshot: z
+    .object({
+      tarballUrl: z.string(),
+      owner: z.string(),
+      repo: z.string(),
+      sha: z.string(),
+      defaultBranch: z.string().optional(),
+    })
+    .optional(),
 });
 
 export const dashboardAgent = chat.agent({
@@ -232,17 +256,18 @@ export const dashboardAgent = chat.agent({
     });
   },
 
-  onTurnStart: async ({ chatId, uiMessages }) => {
+  onTurnStart: async ({ chatId, uiMessages, clientData }) => {
     // Make the user's message durable in the display copy before the model
     // starts streaming. Awaited, never chat.defer — a mid-stream refresh must
     // not read an empty transcript.
     await getStore().persistMessages({ chatId, messages: uiMessages });
 
-    // Load the dashboard-managed system prompt for this turn. Set every turn so
+    // Load the dashboard-managed system prompt for this turn. The code-mode
+    // variant is used when the project has a connected repo. Set every turn so
     // continuation runs (which skip onChatStart) still get it; the resolve is
     // cached per process. The Anthropic cache breakpoint on the system block
     // carries through toStreamTextOptions() and survives suspend/resume.
-    chat.prompt.set(await getSystemPrompt(), {
+    chat.prompt.set(await getSystemPrompt(modeFor(clientData)), {
       providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
     });
   },
@@ -284,7 +309,7 @@ export const dashboardAgent = chat.agent({
     // sample rate here when this scales.
     if (clientData?.organizationId && clientData?.userId && responseMessage) {
       try {
-        const resolved = await getSystemPrompt();
+        const resolved = await getSystemPrompt(modeFor(clientData));
         // The current turn's question. On a Head Start turn it arrives in the
         // boot payload (not in newUIMessages), so take the latest user message
         // from the full transcript, which holds for normal turns too.

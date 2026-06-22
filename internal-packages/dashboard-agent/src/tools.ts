@@ -9,6 +9,7 @@ import {
   listRunsSchema,
   listTasksSchema,
 } from "./tool-schemas";
+import { buildRepoTools, type RepoSnapshot } from "./repo-tools";
 
 /**
  * Read-only tools for the dashboard agent. The agent is firewalled from the
@@ -32,6 +33,9 @@ export type DashboardAgentToolContext = {
   projectRef?: string;
   // Canonical API env name (dev/staging/prod/preview), resolved by the proxy.
   environmentName?: string;
+  // Present only when the current project has a connected GitHub repo: a signed
+  // archive pointer the code-mode file tools read from. Adds the source tools.
+  repoSnapshot?: RepoSnapshot;
 };
 
 type FetchResult = { ok: true; data: unknown } | { ok: false; status: number };
@@ -237,7 +241,7 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     return envJwtPromise;
   }
 
-  return {
+  const apiTools: ToolSet = {
     list_projects: tool({
       ...listProjectsSchema,
       execute: async () => {
@@ -347,4 +351,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       },
     }),
   };
+
+  // Code mode: when the project has a connected repo, add the source tools.
+  if (!ctx.repoSnapshot) return apiTools;
+  return { ...apiTools, ...buildRepoTools(ctx.repoSnapshot) };
 }

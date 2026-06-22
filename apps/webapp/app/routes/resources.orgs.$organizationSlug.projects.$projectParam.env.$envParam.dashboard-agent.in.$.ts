@@ -4,6 +4,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import {
   dashboardAgentApiOrigin,
   mintDashboardAgentUserActorToken,
+  resolveDashboardAgentRepoSnapshot,
 } from "~/services/dashboardAgent.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
@@ -71,6 +72,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   });
   const environmentName = runtimeEnv ? ENV_NAME_BY_TYPE[runtimeEnv.type] : undefined;
 
+  // When the project has a connected GitHub repo, resolve a signed source-archive
+  // pointer (code mode). Null otherwise -> the agent stays in assistant mode.
+  const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
+
   // Inject the delegated token + context into the turn's metadata.
   const raw = await request.text();
   let body = raw;
@@ -86,6 +91,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         apiOrigin,
         projectRef: project.externalRef,
         environmentName,
+        ...(repoSnapshot ? { repoSnapshot } : {}),
       };
       body = JSON.stringify(parsed);
     }

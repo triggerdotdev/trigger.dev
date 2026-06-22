@@ -1,8 +1,10 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import {
+  DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
   DASHBOARD_AGENT_MODEL,
   DASHBOARD_AGENT_SYSTEM_PROMPT,
+  dashboardAgentCodeToolSchemas,
   dashboardAgentToolSchemas,
 } from "@internal/dashboard-agent/tool-schemas";
 import { chat as chatServer } from "@trigger.dev/sdk/chat-server";
@@ -14,6 +16,7 @@ import {
   dashboardAgentApiOrigin,
   isDashboardAgentConfigured,
   mintDashboardAgentUserActorToken,
+  resolveDashboardAgentRepoSnapshot,
 } from "~/services/dashboardAgent.server";
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
@@ -42,19 +45,30 @@ const ENV_NAME_BY_TYPE: Record<string, string> = {
 
 const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
-const headStartHandler = chatServer.headStart({
-  agentId: "dashboard-agent",
-  apiClient: {
-    baseURL: dashboardAgentApiOrigin(),
-    accessToken: env.DASHBOARD_AGENT_SECRET_KEY,
-  },
-  run: async ({ chat: helper }) =>
-    streamText({
-      ...helper.toStreamTextOptions({ tools: dashboardAgentToolSchemas }),
-      model: anthropic(DASHBOARD_AGENT_MODEL),
-      system: DASHBOARD_AGENT_SYSTEM_PROMPT,
-    }),
-});
+function makeHeadStartHandler(mode: "assistant" | "code") {
+  const tools = mode === "code" ? dashboardAgentCodeToolSchemas : dashboardAgentToolSchemas;
+  const system = mode === "code" ? DASHBOARD_AGENT_CODE_SYSTEM_PROMPT : DASHBOARD_AGENT_SYSTEM_PROMPT;
+  return chatServer.headStart({
+    agentId: "dashboard-agent",
+    apiClient: {
+      baseURL: dashboardAgentApiOrigin(),
+      accessToken: env.DASHBOARD_AGENT_SECRET_KEY,
+    },
+    run: async ({ chat: helper }) =>
+      streamText({
+        ...helper.toStreamTextOptions({ tools }),
+        model: anthropic(DASHBOARD_AGENT_MODEL),
+        system,
+      }),
+  });
+}
+
+// Two warm-step variants so step 1 matches the mode the agent run will be in: the
+// `code` one offers the source tools + prompt when the project has a connected repo.
+const headStartHandlers = {
+  assistant: makeHeadStartHandler("assistant"),
+  code: makeHeadStartHandler("code"),
+};
 
 export async function action({ request, params }: ActionFunctionArgs) {
   const user = await requireUser(request);
@@ -84,6 +98,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   });
   const environmentName = runtimeEnv ? ENV_NAME_BY_TYPE[runtimeEnv.type] : undefined;
 
+  // Code mode when the project has a connected repo: drives both the warm step's
+  // tools/prompt and the metadata the agent run picks up.
+  const repoSnapshot = await resolveDashboardAgentRepoSnapshot(project.id);
+
   // Inject the delegated token + context into the wire payload's metadata,
   // which becomes the handover-prepare run's payload (server-side, never the
   // browser). The head-start body is the flat wire payload with a top-level
@@ -98,6 +116,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       apiOrigin: dashboardAgentApiOrigin(),
       projectRef: project.externalRef,
       environmentName,
+      ...(repoSnapshot ? { repoSnapshot } : {}),
     };
     forwarded = new Request(request.url, {
       method: "POST",
@@ -109,7 +128,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   try {
-    return await headStartHandler(forwarded);
+    const handler = repoSnapshot ? headStartHandlers.code : headStartHandlers.assistant;
+    return await handler(forwarded);
   } catch (error) {
     logger.error("Dashboard agent head-start failed", { error });
     return json({ error: "The dashboard agent couldn't start." }, { status: 502 });
