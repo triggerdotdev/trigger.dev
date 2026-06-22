@@ -10,7 +10,8 @@ import { DefaultTriggerTaskValidator } from "~/runEngine/validators/triggerTaskV
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { determineEngineVersion } from "../engineVersion.server";
 import { tracer } from "../tracer.server";
-import { WithRunEngine } from "./baseService.server";
+import { isV3Disabled, V3_TRIGGER_DEPRECATION_MESSAGE } from "../engineDeprecation.server";
+import { ServiceValidationError, WithRunEngine } from "./baseService.server";
 import { TriggerTaskServiceV1 } from "./triggerTaskV1.server";
 
 export type TriggerTaskServiceOptions = {
@@ -77,6 +78,14 @@ export class TriggerTaskService extends WithRunEngine {
 
       switch (v) {
         case "V1": {
+          // v3 (engine V1) is being sunset. When the shutdown is on, reject the
+          // trigger with a graceful, actionable error instead of creating a V1
+          // run. Covers single, batch, schedule, replay, and triggerAndWait,
+          // which all route through here.
+          if (isV3Disabled()) {
+            throw new ServiceValidationError(V3_TRIGGER_DEPRECATION_MESSAGE);
+          }
+
           return await this.callV1(taskId, environment, body, options);
         }
         case "V2": {

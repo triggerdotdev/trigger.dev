@@ -3,6 +3,7 @@ import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { commonWorker } from "../commonWorker.server";
 import { BaseService } from "./baseService.server";
+import { isV3Disabled } from "../engineDeprecation.server";
 
 export class ResumeTaskDependencyService extends BaseService {
   public async call(dependencyId: string, sourceTaskAttemptId: string) {
@@ -29,6 +30,14 @@ export class ResumeTaskDependencyService extends BaseService {
 
     // Dependencies with a dependentBatchRun are handled already by the ResumeBatchRunService
     if (!dependency || !dependency.dependentAttempt) {
+      return;
+    }
+
+    // v3 (engine V1) shutdown: don't resume dependencies for abandoned V1 runs. v4 is unaffected.
+    if (isV3Disabled() && dependency.taskRun.engine === "V1") {
+      logger.debug("[ResumeTaskDependencyService] Skipping resume for shut-down v3 run", {
+        dependencyId,
+      });
       return;
     }
 

@@ -36,6 +36,7 @@ import { ResumeAttemptService } from "./services/resumeAttempt.server";
 import { UpdateFatalRunErrorService } from "./services/updateFatalRunError.server";
 import { WorkerGroupTokenService } from "./services/worker/workerGroupTokenService.server";
 import { SharedSocketConnection } from "./sharedSocketConnection";
+import { isV3Disabled } from "./engineDeprecation.server";
 
 export const socketIo = singleton("socketIo", initalizeIoServer);
 
@@ -426,6 +427,16 @@ function createSharedQueueConsumerNamespace(io: Server) {
     clientMessages: ClientToSharedQueueMessages,
     serverMessages: SharedQueueToClientMessages,
     onConnection: async (socket, handler, sender, logger) => {
+      // v3 (engine V1) shutdown: don't start the MarQS shared-queue consumer, so no
+      // deployed V1 runs are dequeued. This namespace is V1-only; v4 dequeues through
+      // the run-engine worker path. This is the code-level equivalent of taking the
+      // v3 coordinator offline.
+      if (isV3Disabled()) {
+        logger.warn("Refusing /shared-queue connection: v3 engine is shut down");
+        socket.disconnect(true);
+        return;
+      }
+
       const sharedSocketConnection = new SharedSocketConnection({
         // @ts-ignore - for some reason the built ZodNamespace Server type is not compatible with the Server type here, but only when doing typechecking
         namespace: sharedQueue.namespace,
