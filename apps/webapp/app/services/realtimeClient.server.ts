@@ -573,7 +573,13 @@ export class RealtimeClient {
       responseHeaders.set("electric-schema", merged.schema);
     }
 
-    const body = JSON.stringify([...merged.changes, UP_TO_DATE_MESSAGE]);
+    // Only append the up-to-date terminator when BOTH upstream shapes are
+    // caught up. If one table's snapshot is still spanning chunks, omitting the
+    // terminator keeps the client in snapshot mode fetching the rest instead of
+    // prematurely flipping to live and dropping that table's remaining rows.
+    const body = JSON.stringify(
+      merged.upToDate ? [...merged.changes, UP_TO_DATE_MESSAGE] : [...merged.changes]
+    );
     const finalBody =
       apiVersion === CURRENT_API_VERSION ? body : this.#rewriteResponseBodyForNoneApiVersion(body);
     return new Response(finalBody, { status: 200, headers: responseHeaders });

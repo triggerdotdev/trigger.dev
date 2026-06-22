@@ -198,4 +198,53 @@ describe("mergeParsedShapes", () => {
     if (merged.mustRefetch) throw new Error("unexpected refetch");
     expect(merged.schema).toBe('{"id":{"type":"text"}}');
   });
+
+  it("is up-to-date only when BOTH shapes are caught up (multi-chunk snapshot guard)", () => {
+    // Both caught up -> the composite terminates with up-to-date.
+    const both = mergeParsedShapes(shape({ upToDate: true }), shape({ upToDate: true }), PRIOR);
+    if (both.mustRefetch) throw new Error("unexpected refetch");
+    expect(both.upToDate).toBe(true);
+
+    // Table A is mid-snapshot (chunk 1 of N: rows but no up-to-date control
+    // message); B has completed. The composite must NOT be up-to-date — else
+    // the client flips to live after chunk 1 and silently drops A's remaining
+    // rows. The rows seen so far still flow through.
+    const aMidSnapshot = mergeParsedShapes(
+      shape({ changes: [INSERT], upToDate: false, handle: "hA", offset: "oA" }),
+      shape({ upToDate: true, handle: "hB", offset: "oB" }),
+      PRIOR
+    );
+    if (aMidSnapshot.mustRefetch) throw new Error("unexpected refetch");
+    expect(aMidSnapshot.upToDate).toBe(false);
+    expect(aMidSnapshot.changes).toEqual([INSERT]);
+
+    // Symmetric: B mid-snapshot.
+    const bMidSnapshot = mergeParsedShapes(
+      shape({ upToDate: true }),
+      shape({ changes: [UPDATE], upToDate: false }),
+      PRIOR
+    );
+    if (bMidSnapshot.mustRefetch) throw new Error("unexpected refetch");
+    expect(bMidSnapshot.upToDate).toBe(false);
+  });
+
+  it("a live round carrying the un-polled sibling terminates only when the polled shape is caught up", () => {
+    // unpolledShape reports upToDate:true, so the composite terminates iff the
+    // polled shape is itself caught up.
+    const caughtUp = mergeParsedShapes(
+      shape({ changes: [INSERT], upToDate: true }),
+      unpolledShape("b", PRIOR),
+      PRIOR
+    );
+    if (caughtUp.mustRefetch) throw new Error("unexpected refetch");
+    expect(caughtUp.upToDate).toBe(true);
+
+    const moreComing = mergeParsedShapes(
+      shape({ changes: [INSERT], upToDate: false }),
+      unpolledShape("b", PRIOR),
+      PRIOR
+    );
+    if (moreComing.mustRefetch) throw new Error("unexpected refetch");
+    expect(moreComing.upToDate).toBe(false);
+  });
 });

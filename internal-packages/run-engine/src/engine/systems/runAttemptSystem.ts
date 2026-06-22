@@ -1427,6 +1427,7 @@ export class RunAttemptSystem {
               completedAt: true,
               taskEventStore: true,
               parentTaskRunId: true,
+              runtimeEnvironmentId: true,
               delayUntil: true,
               updatedAt: true,
               runtimeEnvironment: {
@@ -1435,11 +1436,6 @@ export class RunAttemptSystem {
                 },
               },
               associatedWaitpoint: {
-                select: {
-                  id: true,
-                },
-              },
-              childRuns: {
                 select: {
                   id: true,
                 },
@@ -1548,9 +1544,21 @@ export class RunAttemptSystem {
 
         //schedule the cancellation of all the child runs
         //it will call this function for each child,
-        //which will recursively cancel all children if they need to be
-        if (run.childRuns.length > 0) {
-          for (const childRun of run.childRuns) {
+        //which will recursively cancel all children if they need to be.
+        //Resolve children across BOTH run tables: a v2 parent can have a legacy
+        //cuid child (or vice versa) in the runTableV2 mixed window, and a
+        //childRuns relation select is bound to the parent's own table, so it
+        //would silently skip the cross-table children and leave them executing
+        //and holding concurrency after the parent is cancelled.
+        const childRuns = await this.$.runStore.findRuns(
+          {
+            where: { parentTaskRunId: runId, runtimeEnvironmentId: run.runtimeEnvironmentId },
+            select: { id: true },
+          },
+          prisma
+        );
+        if (childRuns.length > 0) {
+          for (const childRun of childRuns) {
             await this.$.worker.enqueue({
               id: `cancelRun:${childRun.id}`,
               job: "cancelRun",

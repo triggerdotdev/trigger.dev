@@ -51,6 +51,16 @@ export type MergedShape =
       offset: string;
       cursor?: string;
       schema?: string;
+      /**
+       * The composite is up-to-date only when BOTH shapes are. An Electric
+       * snapshot can span multiple chunks: every chunk but the last omits the
+       * `up-to-date` control message. If one table's snapshot is still mid-fetch
+       * (chunk 1 of N) while the other has completed, the merged response must
+       * NOT terminate with `up-to-date` — otherwise the client believes the
+       * whole snapshot is done, flips to live, and never fetches the remaining
+       * chunks (silently dropping that table's overflow rows).
+       */
+      upToDate: boolean;
     };
 
 /**
@@ -146,6 +156,12 @@ export function mergeParsedShapes(
     offset: encodeComposite(a.offset ?? prior.offsetA, b.offset ?? prior.offsetB),
     cursor,
     schema: a.schema ?? b.schema,
+    // Only terminate the composite when BOTH shapes have caught up; an
+    // un-up-to-date shape (a snapshot chunk that isn't the last) keeps the
+    // client requesting the remainder. unpolledShape() reports upToDate:true,
+    // so a live round that returns changes from one shape and carries the
+    // other forward still terminates iff the polled shape is itself up-to-date.
+    upToDate: a.upToDate && b.upToDate,
   };
 }
 

@@ -215,6 +215,73 @@ export class IdempotencyKeyConcern {
       new Date(Date.now() + 24 * 60 * 60 * 1000 * 30); // 30 days
 
     if (!idempotencyKey) {
+      // A one-time-use token with NO idempotency key would otherwise skip the
+      // claim path below entirely. During a `runTableV2` flag flip, two
+      // concurrent presentations of the same token can mint into DIFFERENT
+      // physical tables (cuid -> TaskRun, ksuid -> task_run_v2); the per-table
+      // unique constraint on `oneTimeUseToken` can't see across the two tables,
+      // so neither INSERT raises P2002 and one token spawns two runs. For
+      // v2-cutover orgs, serialise on the token via a Redis claim so the first
+      // presentation wins and the rest resolve to it. Excludes
+      // resumeParentOnCompletion (triggerAndWait) to match the buffer
+      // fallback's handling — a one-time PUBLIC_JWT token is a fire-and-forget
+      // public trigger, not a parent/child wait, so that case is left to the
+      // per-table constraint.
+      const oneTimeUseToken = request.options?.oneTimeUseToken;
+      if (oneTimeUseToken && !request.body.options?.resumeParentOnCompletion) {
+        const orgFeatureFlags =
+          (request.environment.organization?.featureFlags as
+            | Record<string, unknown>
+            | null
+            | undefined) ?? null;
+        if (shouldUseV2RunTable(orgFeatureFlags)) {
+          // Namespace the claim key so a token can never collide with a real
+          // idempotency key in the same (envId, taskIdentifier) slot. The TTL is
+          // a fixed pipeline-dwell bound, NOT the customer idempotencyKeyTTL:
+          // there is no idempotency key in this path, so a client-supplied TTL
+          // has no meaning here, and a tiny value would expire the claim
+          // mid-flight and reopen the cross-table dup window.
+          const claimKey = `otu:${oneTimeUseToken}`;
+          const outcome = await claimOrAwait({
+            envId: request.environment.id,
+            taskIdentifier: request.taskId,
+            idempotencyKey: claimKey,
+            ttlSeconds: env.TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS,
+            safetyNetMs: env.TRIGGER_MOLLIFIER_CLAIM_WAIT_MS,
+            pollStepMs: env.TRIGGER_MOLLIFIER_CLAIM_POLL_MS,
+          });
+          if (outcome.kind === "resolved") {
+            // A concurrent presentation of the same one-time token already won
+            // and committed a run. Reject this one exactly as the within-table
+            // path does (the per-table oneTimeUseToken unique constraint raises
+            // P2002 -> RunOneTimeUseTokenError -> this same 4xx), preserving the
+            // "token already used" contract while closing the cross-table gap.
+            throw new ServiceValidationError(
+              `Cannot trigger ${request.taskId} with a one-time use token as it has already been used.`
+            );
+          } else if (outcome.kind === "timed_out") {
+            throw new ServiceValidationError(
+              "One-time-use token claim resolution timed out",
+              503
+            );
+          } else if (outcome.kind === "claimed") {
+            // We own the claim. The trigger pipeline MUST publish (on success)
+            // or release (on error) it — wired through the returned `claim`,
+            // exactly like the idempotency-keyed path.
+            return {
+              isCached: false,
+              idempotencyKey,
+              idempotencyKeyExpiresAt,
+              claim: {
+                envId: request.environment.id,
+                taskIdentifier: request.taskId,
+                idempotencyKey: claimKey,
+                token: outcome.token,
+              },
+            };
+          }
+        }
+      }
       return { isCached: false, idempotencyKey, idempotencyKeyExpiresAt };
     }
 
@@ -329,17 +396,22 @@ export class IdempotencyKeyConcern {
         | Record<string, unknown>
         | null
         | undefined) ?? null;
-    // v2-cutover orgs: ANY idempotency-keyed trigger can straddle a
-    // `runTableV2` flag flip into different physical tables (cuid -> TaskRun,
-    // ksuid -> task_run_v2), so the claim must serialise all of them —
-    // including triggerAndWait (resumeParentOnCompletion), debounce, and
-    // oneTimeUseToken, whose per-table unique constraints (idempotencyKey,
-    // oneTimeUseToken) can't see across the two tables. The
+    // v2-cutover orgs: an idempotency-keyed trigger can straddle a `runTableV2`
+    // flag flip into different physical tables (cuid -> TaskRun, ksuid ->
+    // task_run_v2), and the per-table idempotency-key unique constraints can't
+    // see across the two tables, so this claim (keyed on the idempotency key)
+    // is the only backstop that serialises same-key triggers across the flip,
+    // including triggerAndWait (resumeParentOnCompletion) and debounce. The
     // resumeParentOnCompletion/debounce/oneTimeUseToken exclusions below are
     // mollifier-gate alignment optimisations (those requests always return
-    // pass_through from the gate, so there's no buffer to serialise against)
-    // and don't apply to the cross-table concern. shouldUseV2RunTable is
-    // checked first so a v2 org skips the mollifier-flag resolve entirely.
+    // pass_through from the gate, so there's no buffer to serialise against);
+    // they don't apply to v2 orgs, which short-circuit to claimEligible via
+    // shouldUseV2RunTable regardless. oneTimeUseToken triggers with NO
+    // idempotency key are serialised separately by the token claim in the
+    // early-return block above; the residual same-token-with-two-different-keys
+    // case is not covered here (each key claims its own slot) and would require
+    // a pathological client. shouldUseV2RunTable is checked first so a v2 org
+    // skips the mollifier-flag resolve entirely.
     const claimEligible =
       shouldUseV2RunTable(orgFeatureFlags) ||
       (!request.body.options?.resumeParentOnCompletion &&
