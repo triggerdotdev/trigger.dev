@@ -127,6 +127,10 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
         : [];
       const realtime = result.payload.realtime as { skipColumns?: string[] } | undefined;
       const oneTimeUse = result.payload.otu === true;
+      // A JWT minted from a PAT/UAT exchange stamps `act: { sub: userId }` for
+      // attribution. Surface it so write handlers can record the acting user.
+      const act = result.payload.act as { sub?: unknown } | undefined;
+      const actSub = typeof act?.sub === "string" ? act.sub : undefined;
 
       return {
         ok: true,
@@ -138,7 +142,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
           projectId: env.projectId,
         },
         ability: buildJwtAbility(scopes),
-        jwt: { realtime, oneTimeUse },
+        jwt: { realtime, oneTimeUse, ...(actSub ? { act: { sub: actSub } } : {}) },
       };
     }
 

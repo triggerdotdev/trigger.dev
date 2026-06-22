@@ -1,5 +1,5 @@
 import type { MollifierBuffer } from "@trigger.dev/redis-worker";
-import type { PrismaClientOrTransaction } from "~/db.server";
+import type { PrismaClientOrTransaction, PrismaReplicaClient } from "~/db.server";
 import { $replica as defaultReplica, prisma as defaultWriter } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
 import { getMollifierBuffer as defaultGetBuffer } from "./mollifierBuffer.server";
@@ -18,18 +18,9 @@ export type ResolvedRunForMutation =
   | { source: "pg"; friendlyId: string }
   | { source: "buffer"; friendlyId: string };
 
-type PrismaTaskRunFindFirst = {
-  taskRun: {
-    findFirst(args: {
-      where: { friendlyId: string; runtimeEnvironmentId: string };
-      select: { friendlyId: true };
-    }): Promise<{ friendlyId: string } | null>;
-  };
-};
-
 export type ResolveRunForMutationDeps = {
-  prismaReplica?: PrismaTaskRunFindFirst;
-  prismaWriter?: PrismaTaskRunFindFirst;
+  prismaReplica?: PrismaReplicaClient;
+  prismaWriter?: PrismaClientOrTransaction;
   getBuffer?: () => MollifierBuffer | null;
 };
 
@@ -46,7 +37,7 @@ export async function resolveRunForMutation(input: {
   const pgRun = await runStore.findRun(
     { friendlyId: input.runParam, runtimeEnvironmentId: input.environmentId },
     { select: { friendlyId: true } },
-    replica as PrismaClientOrTransaction
+    replica
   );
   if (pgRun) return { source: "pg", friendlyId: pgRun.friendlyId };
 
@@ -78,7 +69,7 @@ export async function resolveRunForMutation(input: {
   const writerRun = await runStore.findRun(
     { friendlyId: input.runParam, runtimeEnvironmentId: input.environmentId },
     { select: { friendlyId: true } },
-    writer as PrismaClientOrTransaction
+    writer
   );
   if (writerRun) return { source: "pg", friendlyId: writerRun.friendlyId };
 

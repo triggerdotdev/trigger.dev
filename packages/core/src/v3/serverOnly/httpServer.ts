@@ -29,6 +29,9 @@ interface RouteDefinition<
   querySchema?: TQuery;
   bodySchema?: TBody;
   keepConnectionAlive?: boolean;
+  /** Skip reading + parsing the request body. The handler receives `body: undefined`.
+   * Node drains any unconsumed body before the next keep-alive request. */
+  skipBodyParsing?: boolean;
   handler: RouteHandler<TParams, TQuery, TBody>;
 }
 
@@ -157,7 +160,7 @@ export class HttpServer {
           return reply.empty(405);
         }
 
-        const { handler, paramsSchema, querySchema, bodySchema, keepConnectionAlive } =
+        const { handler, paramsSchema, querySchema, bodySchema, keepConnectionAlive, skipBodyParsing } =
           routeDefinition;
 
         const params = this.parseRouteParams(route, url);
@@ -176,7 +179,7 @@ export class HttpServer {
           return reply.text("Invalid query params", 400);
         }
 
-        const body = await getJsonBody(req);
+        const body = skipBodyParsing ? undefined : await getJsonBody(req);
         const parsedBody = this.optionalSchema(bodySchema, body);
 
         if (!parsedBody.success) {

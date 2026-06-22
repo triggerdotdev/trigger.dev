@@ -5,7 +5,7 @@ import type {
   SnapshotPatch,
 } from "@trigger.dev/redis-worker";
 import type { TaskRun } from "@trigger.dev/database";
-import type { PrismaClientOrTransaction } from "~/db.server";
+import type { PrismaClientOrTransaction, PrismaReplicaClient } from "~/db.server";
 import { prisma, $replica } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
 import { logger } from "~/services/logger.server";
@@ -57,8 +57,8 @@ export type MutateWithFallbackInput<TResponse> = {
   backoffFactor?: number;
   // Test injection.
   getBuffer?: () => MollifierBuffer | null;
-  prismaWriter?: TaskRunReader;
-  prismaReplica?: TaskRunReader;
+  prismaWriter?: PrismaClientOrTransaction;
+  prismaReplica?: PrismaReplicaClient;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
   // Jitter source; defaults to Math.random. Inject `() => 0` for
@@ -224,26 +224,12 @@ export async function mutateWithFallback<TResponse>(
   return { kind: "timed_out" };
 }
 
-// Structural reader interface — accepts both the writer (`prisma`) and the
-// replica (`$replica`), which differ slightly in their generated Prisma
-// types but share the findFirst surface used here.
-type TaskRunReader = {
-  taskRun: {
-    findFirst(args: {
-      where: { friendlyId: string; runtimeEnvironmentId: string };
-    }): Promise<TaskRun | null>;
-  };
-};
-
 async function findRunInPg(
-  client: TaskRunReader,
+  client: PrismaClientOrTransaction | PrismaReplicaClient,
   friendlyId: string,
   environmentId: string,
 ): Promise<TaskRun | null> {
-  return runStore.findRun(
-    { friendlyId, runtimeEnvironmentId: environmentId },
-    client as unknown as PrismaClientOrTransaction
-  );
+  return runStore.findRun({ friendlyId, runtimeEnvironmentId: environmentId }, client);
 }
 
 function defaultSleep(ms: number): Promise<void> {

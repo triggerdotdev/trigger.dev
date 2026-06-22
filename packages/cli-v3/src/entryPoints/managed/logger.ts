@@ -55,6 +55,11 @@ export class ManagedRunLogger implements RunLogger {
       this.logger.log(message, mergedProperties);
     }
 
+    // Skip the per-log-line POST to the supervisor unless explicitly enabled
+    if (!this.env.TRIGGER_SEND_RUN_DEBUG_LOGS) {
+      return;
+    }
+
     const flattenedProperties = flattenAttributes(
       mergedProperties
     ) satisfies WorkloadDebugLogRequestBody["properties"];

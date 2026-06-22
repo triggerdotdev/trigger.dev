@@ -3515,6 +3515,190 @@ paths:
 
             await sessions.close(chatId, { reason: "user signed out" });
 
+  "/api/v1/errors":
+    get:
+      operationId: list_errors_v1
+      summary: List errors
+      description: |
+        List error groups in a specific environment. Runs that fail are grouped by a fingerprint derived from the error type, message, and stack trace. Filter by task identifier, version, status, search text, and time range.
+      parameters:
+        - $ref: "#/components/parameters/errorsCursorPagination"
+        - $ref: "#/components/parameters/errorsFilter"
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListErrorsResult"
+        "400":
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorWithDetailsResponse"
+        "401":
+          description: Unauthorized request
+      tags:
+        - errors
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: List errors
+          source: |-
+            curl -X GET "https://api.trigger.dev/api/v1/errors?filter[status]=unresolved" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/errors/{errorId}":
+    parameters:
+      - $ref: "#/components/parameters/errorId"
+    get:
+      operationId: retrieve_error_v1
+      summary: Retrieve an error
+      description: Retrieve detailed information about a single error group, including its lifecycle state and the worker versions it has affected.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Error not found
+      tags:
+        - errors
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Retrieve an error
+          source: |-
+            curl -X GET "https://api.trigger.dev/api/v1/errors/error_8f3b2a1c9d4e5f60" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+  "/api/v1/errors/{errorId}/resolve":
+    parameters:
+      - $ref: "#/components/parameters/errorId"
+    post:
+      operationId: resolve_error_v1
+      summary: Resolve an error
+      description: |
+        Mark an error group as resolved. Optionally record the worker version that resolved it. Send a JSON body (use `{}` when you have no fields to set).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resolvedInVersion:
+                  type: string
+                  description: The worker version the error was resolved in.
+                  example: 20240101.1
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Error not found
+      tags:
+        - errors
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Resolve an error
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/errors/error_8f3b2a1c9d4e5f60/resolve" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{"resolvedInVersion": "20240101.1"}'
+  "/api/v1/errors/{errorId}/ignore":
+    parameters:
+      - $ref: "#/components/parameters/errorId"
+    post:
+      operationId: ignore_error_v1
+      summary: Ignore an error
+      description: |
+        Mark an error group as ignored. Provide a `duration` to ignore it for a fixed window, and/or thresholds that re-surface the error when exceeded. Send a JSON body (use `{}` to ignore indefinitely).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                duration:
+                  type: integer
+                  description: How long to ignore the error for, in milliseconds.
+                  example: 86400000
+                occurrenceRate:
+                  type: number
+                  description: Re-surface the error if its occurrence rate exceeds this many occurrences per minute.
+                totalOccurrences:
+                  type: integer
+                  description: Re-surface the error once it accrues this many new occurrences after being ignored.
+                reason:
+                  type: string
+                  description: An optional human-readable reason for ignoring the error.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Error not found
+      tags:
+        - errors
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Ignore an error
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/errors/error_8f3b2a1c9d4e5f60/ignore" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{"duration": 86400000, "reason": "Known flaky dependency"}'
+  "/api/v1/errors/{errorId}/unresolve":
+    parameters:
+      - $ref: "#/components/parameters/errorId"
+    post:
+      operationId: unresolve_error_v1
+      summary: Unresolve an error
+      description: Move a resolved or ignored error group back to unresolved.
+      responses:
+        "200":
+          description: Successful request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorObject"
+        "401":
+          description: Unauthorized request
+        "404":
+          description: Error not found
+      tags:
+        - errors
+      security:
+        - secretKey: []
+      x-codeSamples:
+        - lang: curl
+          label: Unresolve an error
+          source: |-
+            curl -X POST "https://api.trigger.dev/api/v1/errors/error_8f3b2a1c9d4e5f60/unresolve" \
+              -H "Authorization: Bearer $TRIGGER_SECRET_KEY"
+
 components:
   parameters:
     taskIdentifier:
@@ -3601,6 +3785,51 @@ components:
           before:
             type: string
             description: The ID of the session to start the page before. Sets the pagination direction to backward.
+    errorId:
+      in: path
+      name: errorId
+      required: true
+      schema:
+        type: string
+      description: The ID of an error group, starts with `error_`.
+      example: error_8f3b2a1c9d4e5f60
+    errorsFilter:
+      in: query
+      name: filter
+      style: deepObject
+      explode: true
+      description: |
+        Filter the error groups. Filter by task identifier, version, status, search text, and time range.
+
+        For array fields, provide multiple values as a comma-separated list. For example, to get unresolved and ignored errors, use `filter[status]=unresolved,ignored`.
+
+        For the time range, use `filter[period]` (e.g. `filter[period]=7d`) or `filter[from]` / `filter[to]` with ISO timestamps.
+      schema:
+        $ref: "#/components/schemas/ErrorsFilter"
+    errorsCursorPagination:
+      in: query
+      name: page
+      style: deepObject
+      explode: true
+      description: |
+        Paginate the results. Specify the number of errors per page, and the ID of the error to start the page after or before.
+
+        For object fields like `page`, use the "form" encoding style. For example, to get the next page, use `page[after]=error_1234`.
+      schema:
+        type: object
+        properties:
+          size:
+            type: integer
+            maximum: 100
+            minimum: 1
+            default: 25
+            description: Number of errors per page. Maximum is 100.
+          after:
+            type: string
+            description: The ID of the error to start the page after. Sets the pagination direction to forward.
+          before:
+            type: string
+            description: The ID of the error to start the page before. Sets the pagination direction to backward.
     runId:
       in: path
       name: runId
@@ -4075,6 +4304,199 @@ components:
           items:
             type: string
           description: The tags that are attached to the run
+        error:
+          type: string
+          description: An error group ID (starts with `error_`). Lists the runs behind that error group.
+          example: error_8f3b2a1c9d4e5f60
+    ErrorsFilter:
+      type: object
+      properties:
+        taskIdentifier:
+          type: array
+          items:
+            type: string
+          description: The identifier of the task the error belongs to
+        version:
+          type: array
+          items:
+            type: string
+          description: The worker version the error occurred in
+        status:
+          type: array
+          items:
+            type: string
+            enum:
+              - unresolved
+              - resolved
+              - ignored
+          description: The lifecycle status of the error group
+        search:
+          type: string
+          description: Free-text search across the error type and message
+        from:
+          type: string
+          format: date-time
+          description: The start of the time range to count occurrences within
+        to:
+          type: string
+          format: date-time
+          description: The end of the time range to count occurrences within
+        period:
+          type: string
+          description: A relative time range to count occurrences within
+          example: 7d
+    ErrorListItem:
+      type: object
+      required:
+        - id
+        - fingerprint
+        - taskIdentifier
+        - errorType
+        - errorMessage
+        - status
+        - count
+        - firstSeen
+        - lastSeen
+      properties:
+        id:
+          type: string
+          description: The unique ID of the error group, prefixed with `error_`
+          example: error_8f3b2a1c9d4e5f60
+        fingerprint:
+          type: string
+          description: The raw fingerprint the error is grouped by
+        taskIdentifier:
+          type: string
+          description: The identifier of the task the error belongs to
+        errorType:
+          type: string
+          description: The error type or name (e.g. `TypeError`)
+        errorMessage:
+          type: string
+          description: The normalized error message
+        status:
+          type: string
+          enum:
+            - unresolved
+            - resolved
+            - ignored
+        count:
+          type: integer
+          description: The number of occurrences within the requested time range
+        firstSeen:
+          type: string
+          format: date-time
+          description: When the error group was first seen (global)
+        lastSeen:
+          type: string
+          format: date-time
+          description: When the error group was last seen (global)
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+        ignoredUntil:
+          type: string
+          format: date-time
+          nullable: true
+    ListErrorsResult:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            "$ref": "#/components/schemas/ErrorListItem"
+        pagination:
+          type: object
+          properties:
+            next:
+              type: string
+              description: The error ID to start the next page after. Pass it as `page[after]`.
+              example: error_8f3b2a1c9d4e5f60
+            previous:
+              type: string
+              description: The error ID to start the previous page before. Pass it as `page[before]`.
+    ErrorObject:
+      type: object
+      required:
+        - id
+        - fingerprint
+        - taskIdentifier
+        - errorType
+        - errorMessage
+        - status
+        - count
+        - firstSeen
+        - lastSeen
+        - affectedVersions
+      properties:
+        id:
+          type: string
+          description: The unique ID of the error group, prefixed with `error_`
+          example: error_8f3b2a1c9d4e5f60
+        fingerprint:
+          type: string
+          description: The raw fingerprint the error is grouped by
+        taskIdentifier:
+          type: string
+          description: The identifier of the task the error belongs to
+        errorType:
+          type: string
+          description: The error type or name (e.g. `TypeError`)
+        errorMessage:
+          type: string
+          description: The normalized error message
+        count:
+          type: integer
+          description: The total number of occurrences of this error group
+        firstSeen:
+          type: string
+          format: date-time
+        lastSeen:
+          type: string
+          format: date-time
+        affectedVersions:
+          type: array
+          items:
+            type: string
+          description: The most recent worker versions the error has occurred in (up to five)
+        status:
+          type: string
+          enum:
+            - unresolved
+            - resolved
+            - ignored
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+        resolvedInVersion:
+          type: string
+          nullable: true
+        resolvedBy:
+          type: string
+          nullable: true
+          description: The ID of the user who resolved the error, when attributable
+        ignoredAt:
+          type: string
+          format: date-time
+          nullable: true
+        ignoredUntil:
+          type: string
+          format: date-time
+          nullable: true
+        ignoredReason:
+          type: string
+          nullable: true
+        ignoredByUserId:
+          type: string
+          nullable: true
+        ignoredUntilOccurrenceRate:
+          type: number
+          nullable: true
+        ignoredUntilTotalOccurrences:
+          type: integer
+          nullable: true
     ListRunsResult:
       type: object
       properties:

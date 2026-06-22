@@ -117,11 +117,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
           : uatCap
         : requestedScopes;
 
+    // Attribution: stamp the acting user on the minted env JWT. A UAT carries
+    // its user as `userActorId`; a PAT exchange resolves the user from the
+    // authentication result. Either way downstream handlers read `act.sub`
+    // (e.g. the errors API records who resolved/ignored an error). An org
+    // access token has no user, so `act` is omitted.
+    const actorUserId =
+      userActorId ??
+      (authenticationResult.type === "personalAccessToken"
+        ? authenticationResult.result.userId
+        : undefined);
+
     const claims = {
       sub: runtimeEnv.id,
       pub: true,
       ...(scopes ? { scopes } : {}),
-      ...(userActorId ? { act: { sub: userActorId } } : {}),
+      ...(actorUserId ? { act: { sub: actorUserId } } : {}),
     };
 
     const jwt = await internal_generateJWT({

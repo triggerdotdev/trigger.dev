@@ -16,3 +16,4 @@ export * from "./checkpoints.js";
 export * from "./warmStart.js";
 export * from "./queues.js";
 export * from "./query.js";
+export * from "./errors.js";
