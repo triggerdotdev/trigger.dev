@@ -1,5 +1,6 @@
 import { ChevronRightIcon, Cog8ToothIcon } from "@heroicons/react/20/solid";
 import { DEFAULT_DEV_BRANCH } from "@trigger.dev/core/v3/utils/gitBranch";
+import { isBranchableEnvironment } from "~/utils/branchableEnvironment";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { useNavigation } from "@remix-run/react";
 import { useEffect, useRef, useState } from "react";
@@ -107,33 +108,31 @@ export function EnvironmentSelector({
           {project.environments
             .filter((env) => env.parentEnvironmentId === null)
             .map((env) => {
-              switch (env.isBranchableEnvironment) {
-                case true: {
-                  const branchEnvironments = project.environments.filter(
-                    (e) => e.parentEnvironmentId === env.id
-                  );
-                  const allBranchEnvironments = env.type === "DEVELOPMENT" ? [env, ...branchEnvironments] : branchEnvironments;
-                  return (
-                    <Branches
-                      key={env.id}
-                      parentEnvironment={env}
-                      branchEnvironments={allBranchEnvironments}
-                      currentEnvironment={environment}
-                    />
-                  );
-                }
-                case false:
-                  return (
-                    <PopoverMenuItem
-                      key={env.id}
-                      to={urlForEnvironment(env)}
-                      title={
-                        <EnvironmentCombo environment={env} className="mx-auto grow text-2sm" />
-                      }
-                      isSelected={env.id === environment.id}
-                    />
-                  );
+              if (isBranchableEnvironment(env)) {
+                const branchEnvironments = project.environments.filter(
+                  (e) => e.parentEnvironmentId === env.id
+                );
+                const allBranchEnvironments = env.type === "DEVELOPMENT" ? [env, ...branchEnvironments] : branchEnvironments;
+                return (
+                  <Branches
+                    key={env.id}
+                    parentEnvironment={env}
+                    branchEnvironments={allBranchEnvironments}
+                    currentEnvironment={environment}
+                  />
+                );
               }
+
+              return (
+                <PopoverMenuItem
+                  key={env.id}
+                  to={urlForEnvironment(env)}
+                  title={
+                    <EnvironmentCombo environment={env} className="mx-auto grow text-2sm" />
+                  }
+                  isSelected={env.id === environment.id}
+                />
+              );
             })}
         </div>
         {!hasStaging && isManagedCloud && (

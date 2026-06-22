@@ -215,8 +215,9 @@ export class ApiClient {
   constructor(
     baseUrl: string,
     accessToken: string,
+    // Carries the branch for any branchable env (preview or dev) — both ride the
+    // x-trigger-branch header, and the server disambiguates by the token's env.
     previewBranch?: string,
-    // TODO need to add devBranch here and in many callers?
     requestOptions: ApiRequestOptions = {},
     futureFlags: ApiClientFutureFlags = {}
   ) {

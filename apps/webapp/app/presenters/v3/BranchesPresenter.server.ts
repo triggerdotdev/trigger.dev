@@ -102,7 +102,11 @@ export class BranchesPresenter {
       where: {
         projectId: project.id,
         type: envType,
-        isBranchableEnvironment: true,
+        // The branchable parent is the root env (no parent). For dev that's
+        // derivable; for preview we trust the isBranchableEnvironment column.
+        ...(envType === "DEVELOPMENT"
+          ? { parentEnvironmentId: null }
+          : { isBranchableEnvironment: true }),
       },
     });
 
@@ -171,6 +175,7 @@ export class BranchesPresenter {
         id: true,
         slug: true,
         branchName: true,
+        parentEnvironmentId: true,
         type: true,
         archivedAt: true,
         createdAt: true,

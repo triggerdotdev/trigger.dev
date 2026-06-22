@@ -3,6 +3,7 @@ import slug from "slug";
 import { prisma } from "~/db.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv } from "~/models/api-key.server";
 import { isValidGitBranchName, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
+import { isBranchableEnvironment } from "~/utils/branchableEnvironment";
 import { logger } from "./logger.server";
 import { getCurrentPlan, getLimit } from "./platform.v3.server";
 import { type z } from "zod";
@@ -92,7 +93,7 @@ export class UpsertBranchService {
         };
       }
 
-      if (!parentEnvironment.isBranchableEnvironment) {
+      if (!isBranchableEnvironment(parentEnvironment)) {
         return {
           success: false as const,
           error: `Your ${env} environment is not branchable`,

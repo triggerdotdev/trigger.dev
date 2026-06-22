@@ -444,8 +444,10 @@ export default function Page() {
                                     {!branch.archivedAt ? (
                                       <ArchiveButton
                                         environment={branch}
-                                        // TODO better way to differentiate here?
-                                        disabled={branch.slug === "dev"}
+                                        // The root dev env (no parent) is the default
+                                        // branch and can't be archived — matches the
+                                        // guard in ArchiveBranchService.
+                                        disabled={!branch.parentEnvironmentId}
                                       />
                                     ) : null}
                                   </>
