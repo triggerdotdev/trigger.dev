@@ -37,6 +37,12 @@ export class BulkActionService extends BaseService {
   ) {
     const filters = await getFilters(payload, request);
 
+    // Region is a replay-only override that re-routes the replayed runs. It's
+    // stored alongside the run-list filters under a dedicated key so it isn't
+    // mistaken for a `regions` selection filter when the params are parsed.
+    const replayRegion = payload.action === "replay" ? payload.region : undefined;
+    const params = replayRegion ? { ...filters, replayRegion } : filters;
+
     // Count the runs that will be affected by the bulk action
     const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
     const runsRepository = new RunsRepository({
@@ -61,7 +67,7 @@ export class BulkActionService extends BaseService {
         userId,
         name: payload.title,
         type: payload.action === "cancel" ? BulkActionType.CANCEL : BulkActionType.REPLAY,
-        params: filters,
+        params,
         queryName: "bulk_action_v1",
         totalCount: count,
         completionNotification:
@@ -141,6 +147,10 @@ export class BulkActionService extends BaseService {
     // 2. Parse the params
     const rawParams = group.params && typeof group.params === "object" ? group.params : {};
     const finalizeRun = "finalizeRun" in rawParams && (rawParams as any).finalizeRun === true;
+    const replayRegion =
+      "replayRegion" in rawParams && typeof (rawParams as any).replayRegion === "string"
+        ? (rawParams as any).replayRegion
+        : undefined;
     const filters = parseRunListInputOptions({
       organizationId: group.project.organizationId,
       projectId: group.projectId,
@@ -254,6 +264,7 @@ export class BulkActionService extends BaseService {
               replayService.call(run, {
                 bulkActionId: bulkActionId,
                 triggerSource: "dashboard",
+                region: replayRegion,
               })
             );
             if (error) {
