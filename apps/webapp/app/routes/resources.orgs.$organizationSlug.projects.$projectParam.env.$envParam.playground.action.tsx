@@ -162,7 +162,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           type: "chat.agent",
           taskIdentifier: agentSlug,
           triggerConfig: triggerConfig as unknown as Prisma.InputJsonValue,
-          tags: ["playground"],
+          // Mark as a Test session — surfaced via the Test column in the
+          // Sessions table. Session tags stay empty; the triggered run still
+          // carries "playground:true" via triggerConfig.tags.
+          isTest: true,
           projectId: project.id,
           runtimeEnvironmentId: environment.id,
           environmentType: environment.type,

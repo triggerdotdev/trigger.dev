@@ -80,6 +80,7 @@ describe("SessionsReplicationService", () => {
           },
           tags: ["user:42", "plan:pro"],
           metadata: { plan: "pro", seats: 3 },
+          isTest: true,
         },
       });
 
@@ -108,6 +109,7 @@ describe("SessionsReplicationService", () => {
           environment_type: "DEVELOPMENT",
           task_identifier: "my-agent",
           tags: ["user:42", "plan:pro"],
+          is_test: 1,
           _is_deleted: 0,
         })
       );

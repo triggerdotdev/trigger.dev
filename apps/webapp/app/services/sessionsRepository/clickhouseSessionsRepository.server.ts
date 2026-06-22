@@ -93,6 +93,7 @@ export class ClickHouseSessionsRepository implements ISessionsRepository {
         externalId: true,
         type: true,
         taskIdentifier: true,
+        isTest: true,
         tags: true,
         metadata: true,
         closedAt: true,

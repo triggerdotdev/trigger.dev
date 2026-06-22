@@ -1,5 +1,5 @@
 import { BoltIcon, BoltSlashIcon } from "@heroicons/react/20/solid";
-import { BookOpenIcon } from "@heroicons/react/24/solid";
+import { BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -816,6 +816,19 @@ function OverviewTab({ session, status }: { session: LoadedSession; status: Sess
           <Property.Label>Agent ID</Property.Label>
           <Property.Value>
             <span className="font-mono text-sm">{session.taskIdentifier}</span>
+          </Property.Value>
+        </Property.Item>
+        <Property.Item>
+          <Property.Label>Test</Property.Label>
+          <Property.Value>
+            <span className="sr-only">{session.isTest ? "Yes" : "No"}</span>
+            {session.isTest ? (
+              <CheckIcon aria-hidden className="size-4 text-text-dimmed" />
+            ) : (
+              <span aria-hidden className="text-text-dimmed">
+                –
+              </span>
+            )}
           </Property.Value>
         </Property.Item>
         {session.currentRun ? (
