@@ -1161,6 +1161,13 @@ async function resolveOverridableOtelDevVariables(
  * (bypassing tracing-enabled gateways that rewrite the W3C `traceparent`
  * header on egress) without affecting the public origins exposed to external
  * clients.
+ *
+ * The stream URL deliberately prefers `RUNTIME_API_ORIGIN` ahead of
+ * `STREAM_ORIGIN`: the obvious reorder (`STREAM_ORIGIN ?? RUNTIME_API_ORIGIN`)
+ * would route the stream path back through the same gateway and re-expose it
+ * to the `traceparent` rewrite. The trade-off is that an operator wanting both
+ * an in-cluster runner hop *and* a separate external stream endpoint must keep
+ * `RUNTIME_API_ORIGIN` unset and rely on `STREAM_ORIGIN` instead.
  */
 async function resolveBuiltInProdVariables(
   runtimeEnvironment: RuntimeEnvironmentForEnvRepo,
