@@ -8,6 +8,7 @@ import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { isFinalRunStatus } from "~/v3/taskStatus";
 import { env } from "~/env.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
+import { runStore } from "~/v3/runStore.server";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
 export type Run = Result["run"];
@@ -62,57 +63,8 @@ export class RunPresenter {
     // buffer view. `findFirstOrThrow` would log a `PrismaClient error`
     // every tick of the page poll, masking real DB issues with synthetic
     // not-found noise.
-    const run = await this.#prismaClient.taskRun.findFirst({
-      select: {
-        id: true,
-        createdAt: true,
-        taskEventStore: true,
-        taskIdentifier: true,
-        number: true,
-        traceId: true,
-        spanId: true,
-        parentSpanId: true,
-        friendlyId: true,
-        status: true,
-        startedAt: true,
-        completedAt: true,
-        logsDeletedAt: true,
-        annotations: true,
-        rootTaskRun: {
-          select: {
-            friendlyId: true,
-            spanId: true,
-            createdAt: true,
-          },
-        },
-        parentTaskRun: {
-          select: {
-            friendlyId: true,
-            spanId: true,
-            createdAt: true,
-          },
-        },
-        runtimeEnvironment: {
-          select: {
-            id: true,
-            type: true,
-            slug: true,
-            organizationId: true,
-            orgMember: {
-              select: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    displayName: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      where: {
+    const run = await runStore.findRun(
+      {
         friendlyId: runFriendlyId,
         project: {
           slug: projectSlug,
@@ -125,7 +77,59 @@ export class RunPresenter {
           },
         },
       },
-    });
+      {
+        select: {
+          id: true,
+          createdAt: true,
+          taskEventStore: true,
+          taskIdentifier: true,
+          number: true,
+          traceId: true,
+          spanId: true,
+          parentSpanId: true,
+          friendlyId: true,
+          status: true,
+          startedAt: true,
+          completedAt: true,
+          logsDeletedAt: true,
+          annotations: true,
+          rootTaskRun: {
+            select: {
+              friendlyId: true,
+              spanId: true,
+              createdAt: true,
+            },
+          },
+          parentTaskRun: {
+            select: {
+              friendlyId: true,
+              spanId: true,
+              createdAt: true,
+            },
+          },
+          runtimeEnvironment: {
+            select: {
+              id: true,
+              type: true,
+              slug: true,
+              organizationId: true,
+              orgMember: {
+                select: {
+                  user: {
+                    select: {
+                      id: true,
+                      name: true,
+                      displayName: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      this.#prismaClient
+    );
 
     if (!run) {
       throw new RunNotInPgError(runFriendlyId);

@@ -1,5 +1,6 @@
 import { getMeter } from "@internal/tracing";
 import { $replica } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 import { getCachedLimit } from "../platform.v3.server";
@@ -122,6 +123,7 @@ function initializeNativeRealtimeClient(): NativeRealtimeClient {
   // One RunHydrator shared by the router and the client, so its single-flight + short-TTL cache covers both.
   const runReader = new RunHydrator({
     replica: $replica,
+    runStore,
     cacheTtlMs: env.REALTIME_BACKEND_NATIVE_RUN_CACHE_TTL_MS,
     maxCacheEntries: env.REALTIME_BACKEND_NATIVE_RUN_CACHE_MAX_ENTRIES,
   });

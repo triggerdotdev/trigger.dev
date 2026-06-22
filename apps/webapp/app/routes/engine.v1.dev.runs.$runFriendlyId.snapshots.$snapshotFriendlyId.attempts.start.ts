@@ -18,6 +18,7 @@ import {
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { engine } from "~/v3/runEngine.server";
+import { runStore } from "~/v3/runStore.server";
 
 const { action } = createActionApiRoute(
   {
@@ -36,12 +37,13 @@ const { action } = createActionApiRoute(
     const { runFriendlyId, snapshotFriendlyId } = params;
 
     try {
-      const run = await prisma.taskRun.findFirst({
-        where: {
+      const run = await runStore.findRun(
+        {
           friendlyId: params.runFriendlyId,
           runtimeEnvironmentId: authentication.environment.id,
         },
-      });
+        prisma
+      );
 
       if (!run) {
         throw new Response("You don't have permissions for this run", { status: 401 });

@@ -7,6 +7,7 @@ import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
   runParam: z.string(),
@@ -44,18 +45,21 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     return new Response("Environment not found", { status: 404 });
   }
 
-  const run = await $replica.taskRun.findFirst({
-    where: {
+  const run = await runStore.findRun(
+    {
       friendlyId: runId,
       runtimeEnvironmentId: environment.id,
     },
-    select: {
-      id: true,
-      friendlyId: true,
-      realtimeStreamsVersion: true,
-      streamBasinName: true,
+    {
+      select: {
+        id: true,
+        friendlyId: true,
+        realtimeStreamsVersion: true,
+        streamBasinName: true,
+      },
     },
-  });
+    $replica
+  );
 
   if (!run) {
     return new Response("Run not found", { status: 404 });

@@ -110,17 +110,20 @@ export class DelayedRunSystem {
         return;
       }
 
-      const run = await this.$.prisma.taskRun.findFirst({
-        where: { id: runId },
-        include: {
-          runtimeEnvironment: {
-            include: {
-              project: true,
-              organization: true,
+      const run = await this.$.runStore.findRun(
+        { id: runId },
+        {
+          include: {
+            runtimeEnvironment: {
+              include: {
+                project: true,
+                organization: true,
+              },
             },
           },
         },
-      });
+        this.$.prisma
+      );
 
       if (!run) {
         throw new Error(`#enqueueDelayedRun: run not found: ${runId}`);

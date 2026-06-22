@@ -58,19 +58,22 @@ export class CreateCheckpointRestoreEventService extends BaseService {
     let taskRunDependencyId: string | undefined;
 
     if (params.dependencyFriendlyRunId) {
-      const run = await this._prisma.taskRun.findFirst({
-        where: {
+      const run = await this.runStore.findRun(
+        {
           friendlyId: params.dependencyFriendlyRunId,
         },
-        select: {
-          id: true,
-          dependency: {
-            select: {
-              id: true,
+        {
+          select: {
+            id: true,
+            dependency: {
+              select: {
+                id: true,
+              },
             },
           },
         },
-      });
+        this._prisma
+      );
 
       taskRunDependencyId = run?.dependency?.id;
 

@@ -11,32 +11,35 @@ import { TaskRunErrorCodes } from "@trigger.dev/core/v3";
 
 export class TaskRunHeartbeatFailedService extends BaseService {
   public async call(runId: string) {
-    const taskRun = await this._prisma.taskRun.findFirst({
-      where: {
+    const taskRun = await this.runStore.findRun(
+      {
         id: runId,
       },
-      select: {
-        id: true,
-        friendlyId: true,
-        status: true,
-        lockedAt: true,
-        runtimeEnvironment: {
-          select: {
-            type: true,
+      {
+        select: {
+          id: true,
+          friendlyId: true,
+          status: true,
+          lockedAt: true,
+          runtimeEnvironment: {
+            select: {
+              type: true,
+            },
           },
-        },
-        lockedToVersion: {
-          select: {
-            supportsLazyAttempts: true,
+          lockedToVersion: {
+            select: {
+              supportsLazyAttempts: true,
+            },
           },
-        },
-        _count: {
-          select: {
-            attempts: true,
+          _count: {
+            select: {
+              attempts: true,
+            },
           },
         },
       },
-    });
+      this._prisma
+    );
 
     if (!taskRun) {
       logger.error("[TaskRunHeartbeatFailedService] Task run not found", {

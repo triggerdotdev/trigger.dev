@@ -6,6 +6,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { $replica } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { createWaitpointTag, MAX_TAGS_PER_WAITPOINT } from "~/models/waitpointTag.server";
 import {
   deleteInputStreamWaitpoint,
@@ -32,18 +33,21 @@ const { action, loader } = createActionApiRoute(
   },
   async ({ authentication, body, params }) => {
     try {
-      const run = await $replica.taskRun.findFirst({
-        where: {
+      const run = await runStore.findRun(
+        {
           friendlyId: params.runFriendlyId,
           runtimeEnvironmentId: authentication.environment.id,
         },
-        select: {
-          id: true,
-          friendlyId: true,
-          realtimeStreamsVersion: true,
-          streamBasinName: true,
+        {
+          select: {
+            id: true,
+            friendlyId: true,
+            realtimeStreamsVersion: true,
+            streamBasinName: true,
+          },
         },
-      });
+        $replica
+      );
 
       if (!run) {
         return json({ error: "Run not found" }, { status: 404 });

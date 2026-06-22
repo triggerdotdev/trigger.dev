@@ -151,16 +151,19 @@ export class IdempotencyKeyConcern {
     }
 
     const existingRun = idempotencyKey
-      ? await this.prisma.taskRun.findFirst({
-          where: {
+      ? await runStore.findRun(
+          {
             runtimeEnvironmentId: request.environment.id,
             idempotencyKey,
             taskIdentifier: request.taskId,
           },
-          include: {
-            associatedWaitpoint: true,
+          {
+            include: {
+              associatedWaitpoint: true,
+            },
           },
-        })
+          this.prisma
+        )
       : undefined;
 
     // Buffer fallback per the mollifier-idempotency design. PG missed —
@@ -329,14 +332,15 @@ export class IdempotencyKeyConcern {
         // Another concurrent trigger committed first. Re-resolve via the
         // existing checks: writer-side PG findFirst first (defeats
         // replica lag), then buffer fallback for the buffered case.
-        const writerRun = await this.prisma.taskRun.findFirst({
-          where: {
+        const writerRun = await runStore.findRun(
+          {
             runtimeEnvironmentId: request.environment.id,
             idempotencyKey,
             taskIdentifier: request.taskId,
           },
-          include: { associatedWaitpoint: true },
-        });
+          { include: { associatedWaitpoint: true } },
+          this.prisma
+        );
         if (writerRun) {
           return { isCached: true, run: writerRun };
         }

@@ -189,18 +189,21 @@ export class UpdateMetadataService {
       // Fetch current run (+ the realtime membership keys, so a flush can publish)
       const run = yield* _(
         Effect.tryPromise(() =>
-          this._prisma.taskRun.findFirst({
-            where: { id: runId },
-            select: {
-              id: true,
-              metadata: true,
-              metadataType: true,
-              metadataVersion: true,
-              runtimeEnvironmentId: true,
-              runTags: true,
-              batchId: true,
+          this._runStore.findRun(
+            { id: runId },
+            {
+              select: {
+                id: true,
+                metadata: true,
+                metadataType: true,
+                metadataVersion: true,
+                runtimeEnvironmentId: true,
+                runTags: true,
+                batchId: true,
+              },
             },
-          })
+            this._prisma
+          )
         )
       );
 
@@ -332,8 +335,8 @@ export class UpdateMetadataService {
   ) {
     const runIdType = runId.startsWith("run_") ? "friendly" : "internal";
 
-    const taskRun = await this._prisma.taskRun.findFirst({
-      where: environment
+    const taskRun = await this._runStore.findRun(
+      environment
         ? {
             runtimeEnvironmentId: environment.id,
             ...(runIdType === "internal" ? { id: runId } : { friendlyId: runId }),
@@ -341,29 +344,32 @@ export class UpdateMetadataService {
         : {
             ...(runIdType === "internal" ? { id: runId } : { friendlyId: runId }),
           },
-      select: {
-        id: true,
-        batchId: true,
-        runTags: true,
-        completedAt: true,
-        status: true,
-        metadata: true,
-        metadataType: true,
-        metadataVersion: true,
-        parentTaskRun: {
-          select: {
-            id: true,
-            status: true,
+      {
+        select: {
+          id: true,
+          batchId: true,
+          runTags: true,
+          completedAt: true,
+          status: true,
+          metadata: true,
+          metadataType: true,
+          metadataVersion: true,
+          parentTaskRun: {
+            select: {
+              id: true,
+              status: true,
+            },
           },
-        },
-        rootTaskRun: {
-          select: {
-            id: true,
-            status: true,
+          rootTaskRun: {
+            select: {
+              id: true,
+              status: true,
+            },
           },
         },
       },
-    });
+      this._prisma
+    );
 
     if (!taskRun) {
       return;
@@ -427,10 +433,13 @@ export class UpdateMetadataService {
 
     while (attempts <= MAX_RETRIES) {
       // Fetch the latest run data
-      const run = await this._prisma.taskRun.findFirst({
-        where: { id: runId },
-        select: { metadata: true, metadataType: true, metadataVersion: true },
-      });
+      const run = await this._runStore.findRun(
+        { id: runId },
+        {
+          select: { metadata: true, metadataType: true, metadataVersion: true },
+        },
+        this._prisma
+      );
 
       if (!run) {
         throw new Error(`Run ${runId} not found`);

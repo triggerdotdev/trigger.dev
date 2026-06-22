@@ -14,6 +14,7 @@ import type {
   CreateRunInput,
   ExpireSnapshotInput,
   LockRunData,
+  ReadClient,
   RescheduleSnapshotInput,
   RewriteDebouncedRunData,
   RunStore,
@@ -616,5 +617,145 @@ export class PostgresRunStore implements RunStore {
       where: { id: runId },
       data: { realtimeStreams: { push: streamId } },
     });
+  }
+
+  findRun<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }> | null>;
+  findRun<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }> | null>;
+  findRun(
+    where: Prisma.TaskRunWhereInput,
+    client?: ReadClient
+  ): Promise<TaskRun | null>;
+  async findRun(
+    where: Prisma.TaskRunWhereInput,
+    argsOrClient?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude } | ReadClient,
+    client?: ReadClient
+  ): Promise<unknown> {
+    const { args, prisma } = this.#resolveReadArgs(argsOrClient, client);
+
+    return prisma.taskRun.findFirst({
+      where,
+      ...args,
+    });
+  }
+
+  findRunOrThrow<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  findRunOrThrow<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  findRunOrThrow(
+    where: Prisma.TaskRunWhereInput,
+    client?: ReadClient
+  ): Promise<TaskRun>;
+  async findRunOrThrow(
+    where: Prisma.TaskRunWhereInput,
+    argsOrClient?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude } | ReadClient,
+    client?: ReadClient
+  ): Promise<unknown> {
+    const { args, prisma } = this.#resolveReadArgs(argsOrClient, client);
+
+    return prisma.taskRun.findFirstOrThrow({
+      where,
+      ...args,
+    });
+  }
+
+  findRuns<S extends Prisma.TaskRunSelect>(
+    args: {
+      where: Prisma.TaskRunWhereInput;
+      select: S;
+      orderBy?: Prisma.TaskRunOrderByWithRelationInput | Prisma.TaskRunOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+      cursor?: Prisma.TaskRunWhereUniqueInput;
+    },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>[]>;
+  findRuns<I extends Prisma.TaskRunInclude>(
+    args: {
+      where: Prisma.TaskRunWhereInput;
+      include: I;
+      orderBy?: Prisma.TaskRunOrderByWithRelationInput | Prisma.TaskRunOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+      cursor?: Prisma.TaskRunWhereUniqueInput;
+    },
+    client?: ReadClient
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>[]>;
+  findRuns(
+    args: {
+      where: Prisma.TaskRunWhereInput;
+      orderBy?: Prisma.TaskRunOrderByWithRelationInput | Prisma.TaskRunOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+      cursor?: Prisma.TaskRunWhereUniqueInput;
+    },
+    client?: ReadClient
+  ): Promise<TaskRun[]>;
+  async findRuns(
+    args: {
+      where: Prisma.TaskRunWhereInput;
+      select?: Prisma.TaskRunSelect;
+      include?: Prisma.TaskRunInclude;
+      orderBy?: Prisma.TaskRunOrderByWithRelationInput | Prisma.TaskRunOrderByWithRelationInput[];
+      take?: number;
+      skip?: number;
+      cursor?: Prisma.TaskRunWhereUniqueInput;
+    },
+    client?: ReadClient
+  ): Promise<unknown> {
+    const prisma = client ?? this.readOnlyPrisma;
+
+    return prisma.taskRun.findMany(args);
+  }
+
+  /**
+   * The single-row read methods (`findRun`, `findRunOrThrow`) accept either
+   * `(where, { select | include }, client?)` or the full-row `(where, client?)`.
+   * Disambiguate the second positional arg: a `{ select }` / `{ include }`
+   * projection object vs. a Prisma client. A projection object always carries a
+   * `select` or `include` key; a Prisma client never does. Anything else (e.g.
+   * `undefined`) is treated as "no projection, no explicit client".
+   */
+  #resolveReadArgs(
+    argsOrClient:
+      | { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude }
+      | ReadClient
+      | undefined,
+    client: ReadClient | undefined
+  ): {
+    args: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude };
+    prisma: ReadClient;
+  } {
+    const isProjection =
+      typeof argsOrClient === "object" &&
+      argsOrClient !== null &&
+      ("select" in argsOrClient || "include" in argsOrClient);
+
+    if (isProjection) {
+      return {
+        args: argsOrClient as { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude },
+        prisma: client ?? this.readOnlyPrisma,
+      };
+    }
+
+    // No projection: the second positional arg, when present, is the client.
+    return {
+      args: {},
+      prisma: (argsOrClient as ReadClient | undefined) ?? this.readOnlyPrisma,
+    };
   }
 }

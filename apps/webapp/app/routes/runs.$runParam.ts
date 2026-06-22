@@ -1,6 +1,7 @@
 import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
 import { rootPath, v3RunPath } from "~/utils/pathBuilder";
@@ -14,8 +15,8 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const { runParam } = ParamsSchema.parse(params);
 
-  const run = await prisma.taskRun.findFirst({
-    where: {
+  const run = await runStore.findRun(
+    {
       friendlyId: runParam,
       project: {
         organization: {
@@ -27,25 +28,28 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
         },
       },
     },
-    select: {
-      spanId: true,
-      runtimeEnvironment: {
-        select: {
-          slug: true,
+    {
+      select: {
+        spanId: true,
+        runtimeEnvironment: {
+          select: {
+            slug: true,
+          },
         },
-      },
-      project: {
-        select: {
-          slug: true,
-          organization: {
-            select: {
-              slug: true,
+        project: {
+          select: {
+            slug: true,
+            organization: {
+              select: {
+                slug: true,
+              },
             },
           },
         },
       },
     },
-  });
+    prisma
+  );
 
   if (!run) {
     return redirectWithErrorMessage(

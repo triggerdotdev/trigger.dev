@@ -641,12 +641,15 @@ export class DequeueSystem {
 
           // Wrap the Prisma call with tryCatch - if DB is unavailable, we still want to nack via Redis
           const [findError, run] = await tryCatch(
-            prisma.taskRun.findFirst({
-              where: { id: runId },
-              include: {
-                runtimeEnvironment: true,
+            this.$.runStore.findRun(
+              { id: runId },
+              {
+                include: {
+                  runtimeEnvironment: true,
+                },
               },
-            })
+              prisma
+            )
           );
 
           // If DB is unavailable or run not found, just nack directly via Redis
@@ -808,26 +811,29 @@ export class DequeueSystem {
     return startSpan(this.$.tracer, "getRunWithBackgroundWorkerTasks", async (span) => {
       span.setAttribute("run_id", runId);
 
-      const run = await prisma.taskRun.findFirst({
-        where: {
+      const run = await this.$.runStore.findRun(
+        {
           id: runId,
         },
-        include: {
-          runtimeEnvironment: {
-            select: {
-              id: true,
-              type: true,
-              archivedAt: true,
+        {
+          include: {
+            runtimeEnvironment: {
+              select: {
+                id: true,
+                type: true,
+                archivedAt: true,
+              },
             },
-          },
-          lockedToVersion: {
-            include: {
-              deployment: true,
-              tasks: true,
+            lockedToVersion: {
+              include: {
+                deployment: true,
+                tasks: true,
+              },
             },
           },
         },
-      });
+        prisma
+      );
 
       if (!run) {
         span.setAttribute("result", "NO_RUN");

@@ -679,23 +679,26 @@ export class WaitpointSystem {
       }
 
       // 3. Get the run with environment
-      const run = await this.$.prisma.taskRun.findFirst({
-        where: {
+      const run = await this.$.runStore.findRun(
+        {
           id: runId,
         },
-        include: {
-          runtimeEnvironment: {
-            select: {
-              id: true,
-              type: true,
-              maximumConcurrencyLimit: true,
-              concurrencyLimitBurstFactor: true,
-              project: { select: { id: true } },
-              organization: { select: { id: true } },
+        {
+          include: {
+            runtimeEnvironment: {
+              select: {
+                id: true,
+                type: true,
+                maximumConcurrencyLimit: true,
+                concurrencyLimitBurstFactor: true,
+                project: { select: { id: true } },
+                organization: { select: { id: true } },
+              },
             },
           },
         },
-      });
+        this.$.prisma
+      );
 
       if (!run) {
         this.$.logger.error(`continueRunIfUnblocked: run not found`, {
@@ -972,10 +975,11 @@ export class WaitpointSystem {
     environmentId: string;
   }): Promise<Waitpoint> {
     // Fast path: check if waitpoint already exists
-    const run = await this.$.prisma.taskRun.findFirst({
-      where: { id: runId },
-      include: { associatedWaitpoint: true },
-    });
+    const run = await this.$.runStore.findRun(
+      { id: runId },
+      { include: { associatedWaitpoint: true } },
+      this.$.prisma
+    );
 
     if (!run) {
       throw new Error(`Run not found: ${runId}`);
@@ -990,10 +994,11 @@ export class WaitpointSystem {
       const prisma = this.$.prisma;
 
       // Double-check after acquiring lock
-      const runAfterLock = await prisma.taskRun.findFirst({
-        where: { id: runId },
-        include: { associatedWaitpoint: true },
-      });
+      const runAfterLock = await this.$.runStore.findRun(
+        { id: runId },
+        { include: { associatedWaitpoint: true } },
+        prisma
+      );
 
       if (!runAfterLock) {
         throw new Error(`Run not found: ${runId}`);
