@@ -20,6 +20,13 @@ export class DevPresence {
     return !!presenceValue;
   }
 
+  async isConnectedMany(environmentIds: string[]): Promise<Map<string, boolean>> {
+    if (environmentIds.length === 0) return new Map();
+    const keys = environmentIds.map((id) => this.getPresenceKey(id));
+    const values = await this.redis.mget(keys);
+    return new Map(environmentIds.map((id, i) => [id, !!values[i]]));
+  }
+
   async setConnected({ userId, projectId, environmentId, ttl }: { userId: string; projectId: string; environmentId: string; ttl: number; }) {
     const presenceKey = this.getPresenceKey(environmentId);
     await this.redis.setex(presenceKey, ttl, new Date().toISOString());

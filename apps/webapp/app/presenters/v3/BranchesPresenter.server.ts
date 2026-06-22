@@ -238,17 +238,23 @@ export async function hydrateEnvsWithActivity<T extends { type: RuntimeEnvironme
   (userId: string, projectId: string, environments: T[]): Promise<Array<T & { lastActivity: Date | undefined; isConnected: boolean | undefined }>> {
   const recentDevBranchIds = await devPresence.getRecentBranchIds(userId, projectId);
 
-  return Promise.all(environments.map(async (env) => {
+  // Resolve presence for all recently-active dev branches in a single MGET
+  // round trip instead of one GET per branch.
+  const devEnvIds = environments
+    .filter((env) => env.type === "DEVELOPMENT" && recentDevBranchIds.has(env.id))
+    .map((env) => env.id);
+  const connectedMap = await devPresence.isConnectedMany(devEnvIds);
+
+  return environments.map((env) => {
     if (env.type !== "DEVELOPMENT") {
       return { ...env, lastActivity: undefined, isConnected: undefined };
     }
 
     const devHit = recentDevBranchIds.get(env.id);
     const lastActivity = devHit === undefined ? undefined : devHit;
-    // TODO change dev-presence to a different data structure to avoid N calls?
-    const isConnected = devHit === undefined ? undefined : await devPresence.isConnected(env.id);
+    const isConnected = devHit === undefined ? undefined : (connectedMap.get(env.id) ?? false);
     return { ...env, lastActivity, isConnected };
-  }));
+  });
 }
 
 export function processGitMetadata(data: Prisma.JsonValue): GitMetaLinks | null {
