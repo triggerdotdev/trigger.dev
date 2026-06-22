@@ -297,7 +297,15 @@ async function startDev(options: StartDevOptions) {
     logger.debug("Initial config", watcher.config);
 
     if (!isDefaultDevBranch(branch)) {
-      await apiClient.upsertBranch(watcher.config.project, { branch, env: "development" });
+      const upsertResult = await apiClient.upsertBranch(watcher.config.project, {
+        branch,
+        env: "development",
+      });
+
+      if (!upsertResult.success) {
+        logger.error(`Failed to use branch "${branch}": ${upsertResult.error}`);
+        process.exit(1);
+      }
     }
 
     // eslint-disable-next-line no-inner-declarations
