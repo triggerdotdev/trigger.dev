@@ -70,14 +70,18 @@ describe("IdempotencyKeyConcern · one-time-use token cross-table claim", () => 
 
     expect(result.isCached).toBe(false);
     if (result.isCached === false) {
-      // The trigger pipeline must publish/release this claim — keyed on the
-      // namespaced token so it can never collide with a real idempotency key.
+      // The trigger pipeline must publish/release this claim. It is keyed on
+      // the namespaced token AND a reserved, task-independent slot — matching
+      // the task-independent oneTimeUseToken DB constraint, NOT request.taskId.
       expect(result.claim?.idempotencyKey).toBe("otu:tok-1");
       expect(result.claim?.envId).toBe("env_a");
-      expect(result.claim?.taskIdentifier).toBe("my-task");
+      expect(result.claim?.taskIdentifier).toBe("__one_time_use_token__");
     }
     expect(claimIdempotency).toHaveBeenCalledTimes(1);
-    expect(claimIdempotency.mock.calls[0][0]).toMatchObject({ idempotencyKey: "otu:tok-1" });
+    expect(claimIdempotency.mock.calls[0][0]).toMatchObject({
+      idempotencyKey: "otu:tok-1",
+      taskIdentifier: "__one_time_use_token__",
+    });
   });
 
   it("v2 org: a concurrent winner (claim resolved) rejects the second presentation as already-used", async () => {
@@ -113,7 +117,7 @@ describe("IdempotencyKeyConcern · one-time-use token cross-table claim", () => 
     expect(claimIdempotency).not.toHaveBeenCalled();
   });
 
-  it("triggerAndWait one-time token: left to the per-table constraint (not claimed here)", async () => {
+  it("triggerAndWait one-time token IS claimed (v2 orgs serialise it like the keyed claim)", async () => {
     const claimIdempotency = vi.fn(async () => ({ kind: "claimed" as const }));
     h.buffer = {
       claimIdempotency,
@@ -127,9 +131,12 @@ describe("IdempotencyKeyConcern · one-time-use token cross-table claim", () => 
 
     expect(result.isCached).toBe(false);
     if (result.isCached === false) {
-      expect(result.claim).toBeUndefined();
+      // resumeParentOnCompletion is NOT excluded from the token claim: for a v2
+      // org the cross-table dup hole is identical, and the loser is rejected
+      // (no cached-run waitpoint subtlety to avoid).
+      expect(result.claim?.idempotencyKey).toBe("otu:tok-1");
     }
-    expect(claimIdempotency).not.toHaveBeenCalled();
+    expect(claimIdempotency).toHaveBeenCalledTimes(1);
   });
 
   it("no one-time token: ordinary no-idempotency-key trigger is unaffected", async () => {

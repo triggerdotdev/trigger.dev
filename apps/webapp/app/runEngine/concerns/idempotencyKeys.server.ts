@@ -21,6 +21,18 @@ import type { TraceEventConcern, TriggerTaskRequest } from "../types";
 // handleTriggerRequest.
 const resolveOrgMollifierFlag = makeResolveMollifierFlag();
 
+// Reserved task slot for the cross-table one-time-use-token claim. The DB
+// constraint `@@unique([oneTimeUseToken])` is TASK-INDEPENDENT, so the claim
+// must be keyed on the token alone, not (task, token): a single token can
+// authorise more than one task, and two presentations for different tasks
+// straddling a `runTableV2` flip would otherwise build different claim keys and
+// both proceed. Folding the token into one constant task slot makes the claim
+// key (envId, token)-scoped, matching the DB constraint's scope. Paired with
+// the `otu:` idempotencyKey prefix, collision with a real task's idempotency
+// claim would require a task literally named this AND an idempotency key of the
+// form `otu:<token-hash>`.
+const ONE_TIME_USE_TOKEN_CLAIM_TASK = "__one_time_use_token__";
+
 // Claim ownership context returned to the caller when the
 // IdempotencyKeyConcern won a pre-gate claim. Caller MUST publish the
 // winning runId on pipeline success (`publishClaim`) or release the
@@ -222,29 +234,30 @@ export class IdempotencyKeyConcern {
       // unique constraint on `oneTimeUseToken` can't see across the two tables,
       // so neither INSERT raises P2002 and one token spawns two runs. For
       // v2-cutover orgs, serialise on the token via a Redis claim so the first
-      // presentation wins and the rest resolve to it. Excludes
-      // resumeParentOnCompletion (triggerAndWait) to match the buffer
-      // fallback's handling — a one-time PUBLIC_JWT token is a fire-and-forget
-      // public trigger, not a parent/child wait, so that case is left to the
-      // per-table constraint.
+      // presentation wins and the rest are rejected as already-used. Not
+      // excluded for resumeParentOnCompletion: for v2 orgs the idempotency-keyed
+      // claim covers triggerAndWait too (claimEligible short-circuits on
+      // shouldUseV2RunTable), so the token claim is consistent in doing the same;
+      // the loser is rejected (not returned a cached run), so there is no
+      // waitpoint-blocking subtlety to avoid.
       const oneTimeUseToken = request.options?.oneTimeUseToken;
-      if (oneTimeUseToken && !request.body.options?.resumeParentOnCompletion) {
+      if (oneTimeUseToken) {
         const orgFeatureFlags =
           (request.environment.organization?.featureFlags as
             | Record<string, unknown>
             | null
             | undefined) ?? null;
         if (shouldUseV2RunTable(orgFeatureFlags)) {
-          // Namespace the claim key so a token can never collide with a real
-          // idempotency key in the same (envId, taskIdentifier) slot. The TTL is
-          // a fixed pipeline-dwell bound, NOT the customer idempotencyKeyTTL:
-          // there is no idempotency key in this path, so a client-supplied TTL
-          // has no meaning here, and a tiny value would expire the claim
-          // mid-flight and reopen the cross-table dup window.
+          // Key the claim on (envId, token), task-independent, to match the DB's
+          // task-independent oneTimeUseToken constraint (see the constant's
+          // comment). The TTL is a fixed pipeline-dwell bound, NOT the customer
+          // idempotencyKeyTTL: there is no idempotency key in this path, so a
+          // client-supplied TTL has no meaning here, and a tiny value would
+          // expire the claim mid-flight and reopen the cross-table dup window.
           const claimKey = `otu:${oneTimeUseToken}`;
           const outcome = await claimOrAwait({
             envId: request.environment.id,
-            taskIdentifier: request.taskId,
+            taskIdentifier: ONE_TIME_USE_TOKEN_CLAIM_TASK,
             idempotencyKey: claimKey,
             ttlSeconds: env.TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS,
             safetyNetMs: env.TRIGGER_MOLLIFIER_CLAIM_WAIT_MS,
@@ -274,7 +287,7 @@ export class IdempotencyKeyConcern {
               idempotencyKeyExpiresAt,
               claim: {
                 envId: request.environment.id,
-                taskIdentifier: request.taskId,
+                taskIdentifier: ONE_TIME_USE_TOKEN_CLAIM_TASK,
                 idempotencyKey: claimKey,
                 token: outcome.token,
               },

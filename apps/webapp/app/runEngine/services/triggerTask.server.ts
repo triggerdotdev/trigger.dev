@@ -716,17 +716,24 @@ export class RunEngineTriggerTaskService {
           }
         },
       );
-      // Pipeline returned successfully — publish the claim if we held
-      // one. Waiters polling for our key resolve to this runId.
-      if (idempotencyClaim && result?.run?.friendlyId) {
-        await publishMollifierClaim({
-          envId: idempotencyClaim.envId,
-          taskIdentifier: idempotencyClaim.taskIdentifier,
-          idempotencyKey: idempotencyClaim.idempotencyKey,
-          token: idempotencyClaim.token,
-          runId: result.run.friendlyId,
-          ttlSeconds: env.TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS,
-        });
+      // Pipeline returned — resolve the claim if we held one. On success (a run
+      // with a friendlyId) publish it so waiters resolve to this runId;
+      // otherwise release it. Never leave a held claim unresolved on the success
+      // path: an orphaned claim would block concurrent waiters for the full
+      // safety-net window even though this request did not produce a run.
+      if (idempotencyClaim) {
+        if (result?.run?.friendlyId) {
+          await publishMollifierClaim({
+            envId: idempotencyClaim.envId,
+            taskIdentifier: idempotencyClaim.taskIdentifier,
+            idempotencyKey: idempotencyClaim.idempotencyKey,
+            token: idempotencyClaim.token,
+            runId: result.run.friendlyId,
+            ttlSeconds: env.TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS,
+          });
+        } else {
+          await releaseMollifierClaim(idempotencyClaim);
+        }
       }
       return result;
     } catch (err) {
