@@ -482,6 +482,10 @@ export class RealtimeClient {
       const firstRes = first === "a" ? aRes! : bRes!;
       if (actionable(firstRes)) {
         (first === "a" ? ctlB : ctlA).abort();
+        // The aborted sibling fetch rejects once the abort propagates; attach a
+        // no-op catch so it doesn't surface as an unhandled rejection after we
+        // have already returned.
+        void (first === "a" ? pB : pA).catch(() => {});
         return first === "a"
           ? mergeParsedShapes(aRes!, unpolledShape("b", prior), prior)
           : mergeParsedShapes(unpolledShape("a", prior), bRes!, prior);
