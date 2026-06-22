@@ -330,6 +330,12 @@ export class RealtimeClient {
   // round-trips opaquely. A run lives in exactly one table, so the union of the
   // two shapes is the full feed; the client merges by row key and never learns
   // there are two shapes. See electricShapeMerge.server.ts for the pure logic.
+  //
+  // Cost: this opens TWO upstream Electric long-polls per tag/batch
+  // subscription (vs one for a single-table feed), so these feeds use ~2x
+  // Electric connections while an org has runs across both tables. Single-run
+  // subscriptions are unaffected — one shape, routed to the run's table by id
+  // format.
   async #streamRunsAcrossTables(
     url: URL | string,
     environment: RealtimeEnvironment,
@@ -468,6 +474,13 @@ export class RealtimeClient {
       bRes = r;
       return "b" as const;
     });
+    // A shape we don't end up awaiting (the race loser we abort, or the sibling
+    // left pending when the catch below rethrows) must not surface as an
+    // unhandled rejection. Attach detached no-op catches up front; the
+    // race/await paths still observe the original rejections through their own
+    // reactions, so this only swallows an otherwise-orphaned rejection.
+    void pA.catch(() => {});
+    void pB.catch(() => {});
 
     try {
       if (!isLive) {
@@ -481,11 +494,10 @@ export class RealtimeClient {
       const first = await Promise.race([pA, pB]);
       const firstRes = first === "a" ? aRes! : bRes!;
       if (actionable(firstRes)) {
+        // Got changes/refetch from one shape; abort the other and return
+        // immediately. Its rejection is already swallowed by the catch attached
+        // above, so the abort can't surface as an unhandled rejection.
         (first === "a" ? ctlB : ctlA).abort();
-        // The aborted sibling fetch rejects once the abort propagates; attach a
-        // no-op catch so it doesn't surface as an unhandled rejection after we
-        // have already returned.
-        void (first === "a" ? pB : pA).catch(() => {});
         return first === "a"
           ? mergeParsedShapes(aRes!, unpolledShape("b", prior), prior)
           : mergeParsedShapes(unpolledShape("a", prior), bRes!, prior);
