@@ -13,6 +13,7 @@ import type {
   CreateFailedRunInput,
   CreateRunInput,
   ExpireSnapshotInput,
+  FindRunTableScope,
   LockRunData,
   ReadClient,
   RescheduleSnapshotInput,
@@ -114,8 +115,16 @@ export class PostgresRunStore implements RunStore {
   async #findFirstAcrossTables(
     prisma: ReadClient,
     where: Prisma.TaskRunWhereInput,
-    args: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude }
+    args: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude },
+    tables: FindRunTableScope = "both"
   ): Promise<unknown> {
+    // Legacy-only scope: the caller knows the run can't be in task_run_v2 (e.g.
+    // idempotency dedup for an org not cut over to v2), so skip the second,
+    // empty v2 query and keep this a single-table read on the hot path.
+    if (tables === "legacy") {
+      return prisma.taskRun.findFirst({ where, ...args });
+    }
+
     const v2Model = prisma.taskRunV2 as unknown as typeof prisma.taskRun;
 
     const [legacyRun, v2Run] = await Promise.all([
@@ -755,12 +764,12 @@ export class PostgresRunStore implements RunStore {
 
   findRun<S extends Prisma.TaskRunSelect>(
     where: Prisma.TaskRunWhereInput,
-    args: { select: S },
+    args: { select: S; tables?: FindRunTableScope },
     client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }> | null>;
   findRun<I extends Prisma.TaskRunInclude>(
     where: Prisma.TaskRunWhereInput,
-    args: { include: I },
+    args: { include: I; tables?: FindRunTableScope },
     client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }> | null>;
   findRun(
@@ -769,10 +778,12 @@ export class PostgresRunStore implements RunStore {
   ): Promise<TaskRun | null>;
   async findRun(
     where: Prisma.TaskRunWhereInput,
-    argsOrClient?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude } | ReadClient,
+    argsOrClient?:
+      | { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude; tables?: FindRunTableScope }
+      | ReadClient,
     client?: ReadClient
   ): Promise<unknown> {
-    const { args, prisma } = this.#resolveReadArgs(argsOrClient, client);
+    const { args, prisma, tables } = this.#resolveReadArgs(argsOrClient, client);
 
     const routingKey = this.#routingKeyOf(where);
     if (routingKey !== undefined) {
@@ -781,8 +792,8 @@ export class PostgresRunStore implements RunStore {
     }
 
     // Non-id predicate (e.g. idempotency-key dedup): the match can be in
-    // either table, so read both.
-    return this.#findFirstAcrossTables(prisma, where, args);
+    // either table, so read both (unless the caller scopes to legacy-only).
+    return this.#findFirstAcrossTables(prisma, where, args, tables);
   }
 
   findRunOrThrow<S extends Prisma.TaskRunSelect>(
@@ -1298,23 +1309,32 @@ export class PostgresRunStore implements RunStore {
    */
   #resolveReadArgs(
     argsOrClient:
-      | { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude }
+      | { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude; tables?: FindRunTableScope }
       | ReadClient
       | undefined,
     client: ReadClient | undefined
   ): {
     args: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude };
     prisma: ReadClient;
+    tables: FindRunTableScope;
   } {
     const isProjection =
       typeof argsOrClient === "object" &&
       argsOrClient !== null &&
-      ("select" in argsOrClient || "include" in argsOrClient);
+      ("select" in argsOrClient || "include" in argsOrClient || "tables" in argsOrClient);
 
     if (isProjection) {
+      // Split the table-scope hint out of the args that get spread into Prisma
+      // (which would reject an unknown `tables` field).
+      const { tables, ...prismaArgs } = argsOrClient as {
+        select?: Prisma.TaskRunSelect;
+        include?: Prisma.TaskRunInclude;
+        tables?: FindRunTableScope;
+      };
       return {
-        args: argsOrClient as { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude },
+        args: prismaArgs,
         prisma: client ?? this.readOnlyPrisma,
+        tables: tables ?? "both",
       };
     }
 
@@ -1322,6 +1342,7 @@ export class PostgresRunStore implements RunStore {
     return {
       args: {},
       prisma: (argsOrClient as ReadClient | undefined) ?? this.readOnlyPrisma,
+      tables: "both",
     };
   }
 }

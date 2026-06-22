@@ -302,6 +302,20 @@ export class IdempotencyKeyConcern {
       return { isCached: false, idempotencyKey, idempotencyKeyExpiresAt };
     }
 
+    // Resolve the org's v2-cutover state ONCE: it gates both the cross-table
+    // idempotency lookup below and the pre-gate claim further down. While the
+    // org is not on v2 (the default, and every org while native realtime is
+    // off) the run can only be in the legacy table, so scope the dedup read to
+    // "legacy" and skip the empty task_run_v2 query on the trigger hot path.
+    const orgFeatureFlags =
+      (request.environment.organization?.featureFlags as
+        | Record<string, unknown>
+        | null
+        | undefined) ?? null;
+    const orgUsesV2 = shouldUseV2RunTable(orgFeatureFlags, {
+      nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1",
+    });
+
     const existingRun = idempotencyKey
       ? await runStore.findRun(
           {
@@ -313,6 +327,7 @@ export class IdempotencyKeyConcern {
             include: {
               associatedWaitpoint: true,
             },
+            tables: orgUsesV2 ? "both" : "legacy",
           },
           this.prisma
         )
@@ -408,11 +423,6 @@ export class IdempotencyKeyConcern {
     // TaskRun, ksuid -> task_run_v2); the per-table idempotency unique
     // constraints can't see each other, so neither INSERT raises P2002 and two
     // runs share one key. The Redis claim is the only backstop in that window.
-    const orgFeatureFlags =
-      (request.environment.organization?.featureFlags as
-        | Record<string, unknown>
-        | null
-        | undefined) ?? null;
     // v2-cutover orgs: an idempotency-keyed trigger can straddle a `runTableV2`
     // flag flip into different physical tables (cuid -> TaskRun, ksuid ->
     // task_run_v2), and the per-table idempotency-key unique constraints can't
@@ -430,9 +440,7 @@ export class IdempotencyKeyConcern {
     // a pathological client. shouldUseV2RunTable is checked first so a v2 org
     // skips the mollifier-flag resolve entirely.
     const claimEligible =
-      shouldUseV2RunTable(orgFeatureFlags, {
-        nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1",
-      }) ||
+      orgUsesV2 ||
       (!request.body.options?.resumeParentOnCompletion &&
         !request.body.options?.debounce &&
         !request.options?.oneTimeUseToken &&

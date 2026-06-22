@@ -2049,6 +2049,127 @@ describe("PostgresRunStore — table routing by id format", () => {
   );
 
   postgresTest(
+    "findRun tables:'legacy' skips the task_run_v2 query (idempotency hot-path scope)",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // A v2 (ksuid) run carrying an idempotency key — it lives only in
+      // task_run_v2.
+      const ksuid = RunId.generateKsuid();
+      await seedRoutedRun(prisma, {
+        id: ksuid.id,
+        friendlyId: ksuid.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-scope",
+        taskIdentifier: "my-task",
+      });
+
+      const where = {
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-scope",
+        taskIdentifier: "my-task",
+      };
+
+      // Default (both tables) and an explicit "both" find the v2 run.
+      expect((await store.findRun(where))?.id).toBe(ksuid.id);
+      expect(
+        (await store.findRun(where, { select: { id: true }, tables: "both" }))?.id
+      ).toBe(ksuid.id);
+
+      // "legacy" scope skips task_run_v2 entirely, so the v2 run is NOT found.
+      // This is the hot-path optimisation for an org not cut over to v2: its
+      // runs only live in TaskRun, so the second (v2) query is always empty and
+      // can be skipped. (If a caller mis-scopes a genuinely-v2 org to legacy it
+      // would miss the run — hence it is gated on shouldUseV2RunTable upstream.)
+      expect(await store.findRun(where, { select: { id: true }, tables: "legacy" })).toBeNull();
+    }
+  );
+
+  postgresTest(
+    "clearIdempotencyKey fans out across both tables (byPredicate hits v2; byFriendlyIds partitions a mixed array)",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // byPredicate carries no id, so it must reach task_run_v2 to clear a v2 run.
+      const v2Pred = RunId.generateKsuid();
+      await seedRoutedRun(prisma, {
+        id: v2Pred.id,
+        friendlyId: v2Pred.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "kp-v2",
+        taskIdentifier: "my-task",
+      });
+
+      const predResult = await store.clearIdempotencyKey({
+        byPredicate: {
+          idempotencyKey: "kp-v2",
+          taskIdentifier: "my-task",
+          runtimeEnvironmentId: environment.id,
+        },
+      });
+      expect(predResult.count).toBe(1);
+      expect(
+        (
+          await prisma.taskRunV2.findFirst({
+            where: { id: v2Pred.id },
+            select: { idempotencyKey: true },
+          })
+        )?.idempotencyKey
+      ).toBeNull();
+
+      // byFriendlyIds with a MIXED (ksuid + cuid) array must clear rows in BOTH
+      // physical tables — the partition + sum is the cross-table behaviour.
+      const v2F = RunId.generateKsuid();
+      const legacyF = RunId.generate();
+      await seedRoutedRun(prisma, {
+        id: v2F.id,
+        friendlyId: v2F.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "kf-v2",
+        taskIdentifier: "my-task",
+      });
+      await seedRoutedRun(prisma, {
+        id: legacyF.id,
+        friendlyId: legacyF.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "kf-legacy",
+        taskIdentifier: "my-task",
+      });
+
+      const friendlyResult = await store.clearIdempotencyKey({
+        byFriendlyIds: [v2F.friendlyId, legacyF.friendlyId],
+      });
+      expect(friendlyResult.count).toBe(2);
+      expect(
+        (
+          await prisma.taskRunV2.findFirst({
+            where: { id: v2F.id },
+            select: { idempotencyKey: true },
+          })
+        )?.idempotencyKey
+      ).toBeNull();
+      expect(
+        (
+          await prisma.taskRun.findFirst({
+            where: { id: legacyF.id },
+            select: { idempotencyKey: true },
+          })
+        )?.idempotencyKey
+      ).toBeNull();
+    }
+  );
+
+  postgresTest(
     "expireRunsBatch with a mixed array updates both tables and returns the combined count",
     async ({ prisma }) => {
       const { organization, project, environment } = await seedEnvironment(prisma);
