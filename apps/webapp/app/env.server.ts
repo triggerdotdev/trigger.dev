@@ -768,6 +768,13 @@ const EnvironmentSchema = z
     // in-flight memory per request ≈ this × STREAMING_BATCH_ITEM_MAXIMUM_SIZE,
     // so raise with care. Set to 1 for fully sequential ingestion.
     STREAMING_BATCH_INGEST_CONCURRENCY: z.coerce.number().int().positive().default(10),
+    // Seal-timeout reaper: if a batch's Phase 2 item stream never seals the batch
+    // (rate-limit, request timeout, crash), abort it after this delay and resume any
+    // blocked parent (batchTriggerAndWait) with an error instead of hanging forever.
+    // Must exceed the worst-case legitimate time-to-seal: the SDK retries the stream
+    // up to maxAttempts (5) times, each attempt bounded by the server request timeout
+    // (~300s), so the floor is ~5 × requestTimeout. Default 30m leaves headroom.
+    BATCH_SEAL_TIMEOUT_MS: z.coerce.number().int().positive().default(1_800_000),
     BATCH_RATE_LIMIT_REFILL_RATE: z.coerce.number().int().default(100),
     BATCH_RATE_LIMIT_MAX: z.coerce.number().int().default(1200),
     BATCH_RATE_LIMIT_REFILL_INTERVAL: z.string().default("10s"),

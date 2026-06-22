@@ -1,4 +1,5 @@
 import { startSpan } from "@internal/tracing";
+import { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import { isFinalRunStatus } from "../statuses.js";
 import { SystemResources } from "./systems.js";
 import { WaitpointSystem } from "./waitpointSystem.js";
@@ -30,6 +31,98 @@ export class BatchSystem {
 
   public async performCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
     await this.#tryCompleteBatch({ batchId });
+  }
+
+  public async scheduleExpireBatch({
+    batchId,
+    availableAt,
+  }: {
+    batchId: string;
+    availableAt: Date;
+  }): Promise<void> {
+    await this.$.worker.enqueue({
+      // Stable id dedupes repeated schedules for the same batch.
+      id: `expireBatch:${batchId}`,
+      job: "expireBatch",
+      payload: { batchId },
+      availableAt,
+    });
+  }
+
+  /**
+   * Terminally fail a batch whose Phase 2 item stream never sealed it, and resolve
+   * the parent's batchTriggerAndWait waitpoint with an error so the parent resumes
+   * with a failure instead of hanging forever.
+   *
+   * Idempotent and race-safe: if the stream sealed the batch (or it otherwise
+   * progressed past an unsealed PENDING state) in the meantime, this is a no-op.
+   */
+  public async expireBatch({ batchId }: { batchId: string }): Promise<void> {
+    return startSpan(this.$.tracer, "expireBatch", async (span) => {
+      span.setAttribute("batchId", batchId);
+
+      const batch = await this.$.prisma.batchTaskRun.findFirst({
+        select: { status: true, sealed: true },
+        where: { id: batchId },
+      });
+
+      if (!batch) {
+        this.$.logger.debug("expireBatch: batch doesn't exist", { batchId });
+        return;
+      }
+
+      // The stream sealed the batch, or it already progressed — nothing to fail.
+      if (batch.sealed || batch.status !== "PENDING") {
+        this.$.logger.debug("expireBatch: batch already sealed or no longer PENDING", {
+          batchId,
+          status: batch.status,
+          sealed: batch.sealed,
+        });
+        return;
+      }
+
+      // Conditional update guards against racing a late seal — whichever loses no-ops.
+      const aborted = await this.$.prisma.batchTaskRun.updateMany({
+        where: { id: batchId, sealed: false, status: "PENDING" },
+        data: {
+          status: "ABORTED",
+          completedAt: new Date(),
+          processingCompletedAt: new Date(),
+        },
+      });
+
+      if (aborted.count === 0) {
+        this.$.logger.debug("expireBatch: lost race to seal, no-op", { batchId });
+        return;
+      }
+
+      // Only batchTriggerAndWait blocks a parent, so only it has a waitpoint to resolve.
+      const waitpoint = await this.$.prisma.waitpoint.findFirst({
+        where: { completedByBatchId: batchId },
+      });
+
+      if (!waitpoint) {
+        this.$.logger.debug("expireBatch: no waitpoint to resolve (fire-and-forget batch)", {
+          batchId,
+        });
+        return;
+      }
+
+      const error: TaskRunError = {
+        type: "STRING_ERROR",
+        raw: "Batch items could not be streamed before the batch timed out",
+      };
+
+      await this.waitpointSystem.completeWaitpoint({
+        id: waitpoint.id,
+        output: { value: JSON.stringify(error), isError: true },
+      });
+
+      this.$.logger.warn("expireBatch: aborted unsealed batch and resumed parent with error", {
+        batchId,
+        waitpointId: waitpoint.id,
+      });
+    });
   }
 
   /**
