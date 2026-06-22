@@ -318,9 +318,10 @@ export class IdempotencyKeyConcern {
     // mints v2. A run's table is fixed by its id format, so an org that was on
     // v2 then flipped off still holds v2 runs an idempotency key can match
     // (runTableV2.server.ts documents they stay readable); gating the read on
-    // orgUsesV2 would miss them and let a duplicate through. While native is off
-    // no v2 run exists anywhere, so "legacy" is safe and skips the empty
-    // task_run_v2 query on the trigger hot path; once native is on, read both.
+    // orgUsesV2 would miss them and let a duplicate through. Until native is
+    // enabled no v2 run exists yet (minting requires it), so "legacy" is safe and
+    // skips the empty task_run_v2 query on the trigger hot path; once native is
+    // on, read both.
     const anyV2RunsPossible = env.REALTIME_BACKEND_NATIVE_ENABLED === "1";
 
     const existingRun = idempotencyKey

@@ -151,12 +151,12 @@ export class ApiRetrieveRunPresenter {
       // Scope the cross-table reads on whether ANY v2 run can exist in this
       // deployment (the native master switch), NOT the org's current flag: a
       // run's table is fixed by its id format, and an org that was on v2 then
-      // flipped off still HAS v2 runs (and v2 children) — runTableV2.server.ts
-      // documents that they stay readable. pgRow is routed here by id format, so
-      // it can be a v2 run for a now-non-v2 org; scoping to "legacy" off the
-      // per-org flag would then silently drop its v2 children/parent. While
-      // native is off no v2 run exists anywhere, so "legacy" is safe for all and
-      // skips the empty task_run_v2 query. The reads also run in parallel.
+      // flipped off still HAS v2 runs (and v2 children) that runTableV2.server.ts
+      // documents as staying readable. pgRow is routed here by id format, so it
+      // can be a v2 run for a now-non-v2 org; scoping to "legacy" off the per-org
+      // flag would then silently drop its v2 children/parent. Until native is
+      // enabled no v2 run exists yet (minting requires it), so "legacy" is safe
+      // and skips the empty task_run_v2 query. The reads also run in parallel.
       const tables = serverEnv.REALTIME_BACKEND_NATIVE_ENABLED === "1" ? "both" : "legacy";
       const [{ parentTaskRun, rootTaskRun }, childRuns] = await Promise.all([
         hydrateParentAndRoot(
