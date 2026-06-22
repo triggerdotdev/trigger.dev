@@ -5,6 +5,7 @@ import { PerformDeploymentAlertsService } from "./alerts/performDeploymentAlerts
 import { type PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
 import { DeploymentService } from "./deployment.server";
+import { recordDeploymentOutcome } from "./recordDeploymentOutcome.server";
 
 export class TimeoutDeploymentService extends BaseService {
   public async call(id: string, fromStatus: string, errorMessage: string) {
@@ -46,6 +47,16 @@ export class TimeoutDeploymentService extends BaseService {
         failedAt: new Date(),
         errorData: { message: errorMessage, name: "TimeoutError" },
       },
+    });
+
+    recordDeploymentOutcome({
+      status: "TIMED_OUT",
+      deploymentFriendlyId: deployment.friendlyId,
+      organizationId: deployment.environment.project.organizationId,
+      projectId: deployment.environment.projectId,
+      environmentId: deployment.environmentId,
+      environmentType: deployment.environment.type,
+      reason: errorMessage,
     });
 
     const deploymentService = new DeploymentService();

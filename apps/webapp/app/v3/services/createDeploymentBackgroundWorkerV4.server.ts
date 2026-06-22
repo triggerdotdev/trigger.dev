@@ -15,6 +15,7 @@ import {
 } from "./createBackgroundWorker.server";
 import { findOrCreateBackgroundWorker } from "./createDeploymentBackgroundWorkerV4/findOrCreateBackgroundWorker.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
+import { recordDeploymentOutcome } from "./recordDeploymentOutcome.server";
 import { env } from "~/env.server";
 
 export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
@@ -297,6 +298,14 @@ export class CreateDeploymentBackgroundWorkerServiceV4 extends BaseService {
       // sibling attempt may have just enqueued it as part of a successful
       // BUILDING → DEPLOYING transition.
       await TimeoutDeploymentService.dequeue(deployment.id, this._prisma);
+
+      recordDeploymentOutcome({
+        status: "FAILED",
+        deploymentFriendlyId: deployment.friendlyId,
+        projectId: deployment.projectId,
+        environmentId: deployment.environmentId,
+        reason: error.message,
+      });
     }
 
     throw error;
