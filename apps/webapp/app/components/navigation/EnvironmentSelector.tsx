@@ -52,6 +52,7 @@ export function EnvironmentSelector({
   }, [navigation.location?.pathname]);
 
   const hasStaging = project.environments.some((env) => env.type === "STAGING");
+  const devBranchesEnabled = Boolean(organization.featureFlags?.devBranchesEnabled);
 
   return (
     <Popover onOpenChange={(open) => setIsMenuOpen(open)} open={isMenuOpen}>
@@ -108,7 +109,14 @@ export function EnvironmentSelector({
           {project.environments
             .filter((env) => env.parentEnvironmentId === null)
             .map((env) => {
-              if (isBranchableEnvironment(env)) {
+              // DEVELOPMENT is only branchable in the UI when the org has the
+              // multi-branch dev flag on. Without it, dev renders as a plain
+              // selector button (the original behavior). PREVIEW is unaffected.
+              const renderAsBranchable =
+                isBranchableEnvironment(env) &&
+                (env.type !== "DEVELOPMENT" || devBranchesEnabled);
+
+              if (renderAsBranchable) {
                 const branchEnvironments = project.environments.filter(
                   (e) => e.parentEnvironmentId === env.id
                 );
