@@ -94,7 +94,10 @@ export function toAuthenticated(
 
 export async function findEnvironmentByApiKey(
   apiKey: string,
-  branchName: string | undefined
+  branchName: string | undefined,
+  // Defaults to the read replica; injectable so the resolution branching can be
+  // exercised against a real database in tests without a live $replica.
+  tx: PrismaClientOrTransaction = $replica
 ): Promise<AuthenticatedEnvironment | null> {
   const include = {
     ...authIncludeBase,
@@ -108,7 +111,7 @@ export async function findEnvironmentByApiKey(
       : undefined,
   } satisfies Prisma.RuntimeEnvironmentInclude;
 
-  let environment = await $replica.runtimeEnvironment.findFirst({
+  let environment = await tx.runtimeEnvironment.findFirst({
     where: {
       apiKey,
     },
@@ -117,7 +120,7 @@ export async function findEnvironmentByApiKey(
 
   // Fall back to keys that were revoked within the grace window
   if (!environment) {
-    const revokedApiKey = await $replica.revokedApiKey.findFirst({
+    const revokedApiKey = await tx.revokedApiKey.findFirst({
       where: {
         apiKey,
         expiresAt: { gt: new Date() },
