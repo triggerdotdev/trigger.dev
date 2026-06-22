@@ -191,7 +191,10 @@ async function main() {
       // A snapshot's runId can reference a run in EITHER physical table during
       // the runTableV2 cutover, so join against TaskRun UNION task_run_v2 by id;
       // a stuck v2 (KSUID) run would otherwise be dropped from the join and never
-      // re-enqueued. (Raw join in an ops script, not a by-id RunStore read.)
+      // re-enqueued. UNION (not UNION ALL) so that if a future copy step leaves a
+      // run briefly in both tables under the same id, the identical clones collapse
+      // to one row and DISTINCT ON stays unambiguous. (Raw join in an ops script,
+      // not a by-id RunStore read.)
       const runInfo = await prisma.$queryRaw<
         Array<{
           runId: string;
@@ -218,7 +221,7 @@ async function main() {
         FROM "TaskRunExecutionSnapshot" s
         INNER JOIN (
           SELECT id, "organizationId", "projectId", "runtimeEnvironmentId", "taskIdentifier", "queue", "concurrencyKey" FROM "TaskRun"
-          UNION ALL
+          UNION
           SELECT id, "organizationId", "projectId", "runtimeEnvironmentId", "taskIdentifier", "queue", "concurrencyKey" FROM task_run_v2
         ) r ON r.id = s."runId"
         WHERE s."runId" = ANY(${runIds})

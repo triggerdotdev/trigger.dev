@@ -897,9 +897,13 @@ export class PostgresRunStore implements RunStore {
 
     const tablesForWhere = this.#tablesForWhere(args.where);
     const queryLegacy = tablesForWhere.queryLegacy;
-    // A "legacy" scope hint (the caller knows the run can't be in task_run_v2 —
-    // e.g. an org not cut over to v2) skips the empty v2 query, the same
-    // hot-path optimisation findRun uses.
+    // A "legacy" scope hint (the caller knows no run can be in task_run_v2 — e.g.
+    // no v2 run exists anywhere because native realtime is off) skips the empty v2
+    // query, the same hot-path optimisation findRun uses. It is meant for non-id
+    // predicates (parentTaskRunId, idempotencyKey); pairing it with a KSUID-only
+    // id predicate forces both tables off and returns [] (correct: a v2 id can't
+    // match a legacy-only read), but id reads already route by format, so the
+    // hint is redundant there rather than passed by real callers.
     const queryV2 = tableScope === "legacy" ? false : tablesForWhere.queryV2;
 
     // No candidate table (e.g. an empty `id: { in: [] }`) → matches nothing.
