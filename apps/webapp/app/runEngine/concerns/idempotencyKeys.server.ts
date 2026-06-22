@@ -341,7 +341,9 @@ export class IdempotencyKeyConcern {
     // and don't apply to the cross-table concern. shouldUseV2RunTable is
     // checked first so a v2 org skips the mollifier-flag resolve entirely.
     const claimEligible =
-      shouldUseV2RunTable(orgFeatureFlags) ||
+      shouldUseV2RunTable(orgFeatureFlags, {
+        nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1",
+      }) ||
       (!request.body.options?.resumeParentOnCompletion &&
         !request.body.options?.debounce &&
         !request.options?.oneTimeUseToken &&
