@@ -23,6 +23,24 @@ import type {
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import { isKsuidId } from "@trigger.dev/core/v3/isomorphic";
 
+// Extract a plain string equality from a Prisma string filter — a bare string
+// or `{ equals: "..." }`. Returns undefined for any other operator shape (in,
+// not, contains, etc.), which callers treat as "can't narrow to one table".
+function stringEquality(filter: unknown): string | undefined {
+  if (typeof filter === "string") {
+    return filter;
+  }
+  if (
+    filter !== null &&
+    typeof filter === "object" &&
+    "equals" in filter &&
+    typeof (filter as { equals?: unknown }).equals === "string"
+  ) {
+    return (filter as { equals: string }).equals;
+  }
+  return undefined;
+}
+
 export type PostgresRunStoreOptions = {
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
@@ -901,20 +919,26 @@ export class PostgresRunStore implements RunStore {
 
     const ordered = this.#normalizeOrderBy(args.orderBy);
 
-    // ORDERED + LIMITED → bounded 2-way merge.
-    //
-    // A single Prisma `cursor` addresses one table's row and cannot span two
-    // tables, so reject it on this path rather than silently paginating one
-    // table. (No current caller pairs `cursor` with `orderBy`+`take`; keyset
-    // callers carry the cursor in `where`, which both queries honor.)
-    if (ordered.length > 0 && args.take !== undefined) {
-      if (args.cursor !== undefined) {
-        throw new Error(
-          "RunStore.findRuns: a Prisma `cursor` cannot address two tables on an ordered+limited read. " +
-            "Use a where-based keyset (e.g. `where: { createdAt: { lt: X } }`) instead."
-        );
-      }
+    // Both tables are queried here (single-table reads were delegated earlier).
+    // A Prisma `cursor` addresses one row in one table, and a negative `take`
+    // (Prisma "last N") is meaningless across a 2-way merge — neither can span
+    // both tables. No caller pairs either with a cross-table read; reject
+    // loudly rather than silently returning a wrong or empty result. Keyset
+    // callers carry their cursor in `where`, which both per-table queries honor.
+    if (args.cursor !== undefined) {
+      throw new Error(
+        "RunStore.findRuns: a Prisma `cursor` cannot span both run tables. " +
+          "Use a where-based keyset (e.g. `where: { createdAt: { lt: X } }`) instead."
+      );
+    }
+    if (typeof args.take === "number" && args.take < 0) {
+      throw new Error(
+        "RunStore.findRuns: a negative `take` (Prisma 'last N') is not supported across both run tables."
+      );
+    }
 
+    // ORDERED + LIMITED → bounded 2-way merge.
+    if (ordered.length > 0 && args.take !== undefined) {
       const comparator = this.#buildCrossTableComparator(ordered);
 
       // The in-memory comparator reads the order keys off each row, so they
@@ -998,6 +1022,27 @@ export class PostgresRunStore implements RunStore {
         if (queryLegacy && queryV2) break;
       }
       return { queryLegacy, queryV2 };
+    }
+
+    // Plain id equality (string or `{ equals: string }`) also pins the table:
+    // a single id encodes its format, so route to the matching table and skip
+    // the other (which can't contain it). Mirrors the `id: { in }` partition.
+    const idEquals = stringEquality(idFilter);
+    if (idEquals !== undefined) {
+      return isKsuidId(idEquals)
+        ? { queryLegacy: false, queryV2: true }
+        : { queryLegacy: true, queryV2: false };
+    }
+
+    // friendlyId equality (`run_<id>`) likewise pins the table by id format.
+    const friendlyEquals = stringEquality(where.friendlyId);
+    if (friendlyEquals !== undefined) {
+      const rawId = friendlyEquals.startsWith("run_")
+        ? friendlyEquals.slice("run_".length)
+        : friendlyEquals;
+      return isKsuidId(rawId)
+        ? { queryLegacy: false, queryV2: true }
+        : { queryLegacy: true, queryV2: false };
     }
 
     return { queryLegacy: true, queryV2: true };
@@ -1186,11 +1231,21 @@ export class PostgresRunStore implements RunStore {
     // String (id) order MUST match Postgres's collation: this comparator merges
     // the two per-table streams IN MEMORY, but the keyset continuation
     // (`id > cursor`) that fetches the next page is evaluated BY Postgres. If
-    // the two disagree, a tied-createdAt boundary across the tables silently
-    // skips or duplicates a row. The run-table id columns use the database
-    // collation (en_US.utf8), whose ordering of the id charset [0-9A-Za-z]
-    // matches `localeCompare("en-US")` (verified) but NOT raw code-unit order
-    // (e.g. "c" < "Z" under en_US, yet "Z" < "c" by code unit).
+    // the two disagree, a tied-createdAt boundary that straddles BOTH tables can
+    // silently skip or duplicate a row. The run-table id columns inherit the
+    // database collation, which on Trigger.dev Cloud (and the default Postgres
+    // locale on most systems) is en_US.utf8 — whose ordering of the id charset
+    // [0-9A-Za-z] matches `localeCompare("en-US")` (verified exhaustively over
+    // every base62 2-gram) but NOT raw code-unit order (e.g. "c" < "Z" under
+    // en_US, yet "Z" < "c" by code unit).
+    //
+    // CAVEAT (self-hosters): this hard-codes the en_US assumption. A database
+    // with a different collation ("C"/"POSIX" byte order, or another locale) can
+    // disagree with localeCompare("en-US") and skip/duplicate a run at the
+    // narrow tied-createdAt cross-table boundary. The collation-independent fix
+    // is to force `COLLATE "C"` on the id in BOTH the per-table keyset ORDER BY
+    // and this comparator (byte order on both sides); deferred because it needs
+    // the keyset expressed as raw SQL rather than a Prisma `orderBy`.
     return String(a).localeCompare(String(b), "en-US");
   }
 
