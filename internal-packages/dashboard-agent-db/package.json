@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate:deploy": "node migrate.mjs",
     "db:studio": "drizzle-kit studio"
   }
 }

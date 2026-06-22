@@ -13,6 +13,14 @@ else
   echo "SKIP_POSTGRES_MIGRATIONS=1, skipping Postgres migrations."
 fi
 
+if [ "$SKIP_DASHBOARD_AGENT_MIGRATIONS" != "1" ]; then
+  echo "Running dashboard agent migrations"
+  pnpm --filter @internal/dashboard-agent-db db:migrate:deploy
+  echo "Dashboard agent migrations done"
+else
+  echo "SKIP_DASHBOARD_AGENT_MIGRATIONS=1, skipping dashboard agent migrations."
+fi
+
 if [ -n "$CLICKHOUSE_URL" ] && [ "$SKIP_CLICKHOUSE_MIGRATIONS" != "1" ]; then
   # Run ClickHouse migrations
   echo "Running ClickHouse migrations..."
