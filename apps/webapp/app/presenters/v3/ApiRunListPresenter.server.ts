@@ -83,6 +83,8 @@ export const ApiRunListSearchParams = z.object({
     }),
   "filter[bulkAction]": z.string().optional(),
   "filter[schedule]": z.string().optional(),
+  // An `error_<fingerprint>` id — lists the runs behind an error group.
+  "filter[error]": z.string().optional(),
   "filter[isTest]": z
     .string()
     .optional()
@@ -235,6 +237,10 @@ export class ApiRunListPresenter extends BasePresenter {
 
       if (searchParams["filter[schedule]"]) {
         options.scheduleId = searchParams["filter[schedule]"];
+      }
+
+      if (searchParams["filter[error]"]) {
+        options.errorId = searchParams["filter[error]"];
       }
 
       if (searchParams["filter[createdAt][from]"]) {

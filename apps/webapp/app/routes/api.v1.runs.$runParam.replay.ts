@@ -3,6 +3,7 @@ import { json } from "@remix-run/server-runtime";
 import type { TaskRun } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { authenticateApiRequest } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ReplayTaskRunService } from "~/v3/services/replayTaskRun.server";
@@ -73,12 +74,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
     // filter beyond friendlyId is the existing semantic; findFirst with
     // env scoping tightens it minimally without changing behaviour for
     // a correctly-authed caller.
-    let taskRun: TaskRun | null = await prisma.taskRun.findFirst({
-      where: {
+    let taskRun: TaskRun | null = await runStore.findRun(
+      {
         friendlyId: runParam,
         runtimeEnvironmentId: env.id,
       },
-    });
+      prisma
+    );
 
     if (!taskRun) {
       // Buffered fallback. SyntheticRun carries every field

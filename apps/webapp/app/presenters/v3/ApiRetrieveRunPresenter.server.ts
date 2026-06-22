@@ -22,6 +22,7 @@ import {
   type SyntheticRun,
 } from "~/v3/mollifier/readFallback.server";
 import { generatePresignedUrl } from "~/v3/objectStore.server";
+import { runStore } from "~/v3/runStore.server";
 import { tracer } from "~/v3/tracer.server";
 import { startSpanWithEnv } from "~/v3/tracing.server";
 
@@ -110,38 +111,41 @@ export class ApiRetrieveRunPresenter {
     friendlyId: string,
     env: AuthenticatedEnvironment,
   ): Promise<FoundRun | null> {
-    const pgRow = await $replica.taskRun.findFirst({
-      where: {
+    const pgRow = await runStore.findRun(
+      {
         friendlyId,
         runtimeEnvironmentId: env.id,
       },
-      select: {
-        ...commonRunSelect,
-        traceId: true,
-        payload: true,
-        payloadType: true,
-        output: true,
-        outputType: true,
-        error: true,
-        attempts: {
-          select: {
-            id: true,
+      {
+        select: {
+          ...commonRunSelect,
+          traceId: true,
+          payload: true,
+          payloadType: true,
+          output: true,
+          outputType: true,
+          error: true,
+          attempts: {
+            select: {
+              id: true,
+            },
+          },
+          attemptNumber: true,
+          engine: true,
+          taskEventStore: true,
+          parentTaskRun: {
+            select: commonRunSelect,
+          },
+          rootTaskRun: {
+            select: commonRunSelect,
+          },
+          childRuns: {
+            select: commonRunSelect,
           },
         },
-        attemptNumber: true,
-        engine: true,
-        taskEventStore: true,
-        parentTaskRun: {
-          select: commonRunSelect,
-        },
-        rootTaskRun: {
-          select: commonRunSelect,
-        },
-        childRuns: {
-          select: commonRunSelect,
-        },
       },
-    });
+      $replica
+    );
 
     if (pgRow) return { ...pgRow, isBuffered: false };
 

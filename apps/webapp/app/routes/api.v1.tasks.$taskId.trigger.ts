@@ -20,6 +20,7 @@ import {
   saveRequestIdempotency,
 } from "~/utils/requestIdempotency.server";
 import { sanitizeTriggerSource } from "~/utils/triggerSource";
+import { runStore } from "~/v3/runStore.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { OutOfEntitlementError, TriggerTaskService } from "~/v3/services/triggerTask.server";
 
@@ -77,14 +78,17 @@ const { action, loader } = createActionApiRoute(
     const cachedResponse = await handleRequestIdempotency(requestIdempotencyKey, {
       requestType: "trigger",
       findCachedEntity: async (cachedRequestId) => {
-        return await prisma.taskRun.findFirst({
-          where: {
+        return await runStore.findRun(
+          {
             id: cachedRequestId,
           },
-          select: {
-            friendlyId: true,
+          {
+            select: {
+              friendlyId: true,
+            },
           },
-        });
+          prisma
+        );
       },
       buildResponse: (cachedRun) => ({
         id: cachedRun.friendlyId,

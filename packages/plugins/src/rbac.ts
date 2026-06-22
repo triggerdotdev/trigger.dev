@@ -225,7 +225,10 @@ export type BearerAuthResult =
       environment: RbacEnv;
       subject: RbacSubject;
       ability: RbacAbility;
-      jwt?: { realtime?: { skipColumns?: string[] }; oneTimeUse?: boolean };
+      // `act` carries the acting user (`act.sub`) when the public JWT was
+      // minted from a PAT/UAT exchange that stamped a delegation claim. Hosts
+      // surface it for attribution (e.g. who resolved an error).
+      jwt?: { realtime?: { skipColumns?: string[] }; oneTimeUse?: boolean; act?: { sub: string } };
     };
 
 export type SessionAuthResult =

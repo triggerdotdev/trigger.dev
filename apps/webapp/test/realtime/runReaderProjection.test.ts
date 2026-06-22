@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { PostgresRunStore } from "@internal/run-store";
 import { buildHydratorSelect, RunHydrator } from "~/services/realtime/runReader.server";
 
 describe("buildHydratorSelect", () => {
@@ -54,7 +55,8 @@ describe("RunHydrator.hydrateByIds column projection", () => {
         }),
       },
     } as any;
-    return { hydrator: new RunHydrator({ replica }), getSelect: () => capturedSelect };
+    const runStore = new PostgresRunStore({ prisma: replica, readOnlyPrisma: replica });
+    return { hydrator: new RunHydrator({ replica, runStore }), getSelect: () => capturedSelect };
   }
 
   it("projects the SELECT by skipColumns", async () => {

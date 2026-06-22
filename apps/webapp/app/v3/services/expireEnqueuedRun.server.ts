@@ -23,19 +23,22 @@ export class ExpireEnqueuedRunService extends BaseService {
   }
 
   public async call(runId: string) {
-    const run = await this._prisma.taskRun.findFirst({
-      where: {
+    const run = await this.runStore.findRun(
+      {
         id: runId,
       },
-      include: {
-        runtimeEnvironment: {
-          include: {
-            organization: true,
-            project: true,
+      {
+        include: {
+          runtimeEnvironment: {
+            include: {
+              organization: true,
+              project: true,
+            },
           },
         },
       },
-    });
+      this._prisma
+    );
 
     if (!run) {
       logger.debug("Could not find enqueued run to expire", {

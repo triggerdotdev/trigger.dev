@@ -5,6 +5,7 @@ import { DevDisconnectRequestBody } from "@trigger.dev/core/v3";
 import { BulkActionId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import { BulkActionNotificationType, BulkActionType } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { logger } from "~/services/logger.server";
 import { RateLimiter } from "~/services/rateLimiter.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
@@ -99,21 +100,24 @@ async function cancelRunsInline(
 ): Promise<number> {
   const runIds = runFriendlyIds.map((fid) => RunId.toId(fid));
 
-  const runs = await prisma.taskRun.findMany({
-    where: {
-      id: { in: runIds },
-      runtimeEnvironmentId: environmentId,
+  const runs = await runStore.findRuns(
+    {
+      where: {
+        id: { in: runIds },
+        runtimeEnvironmentId: environmentId,
+      },
+      select: {
+        id: true,
+        engine: true,
+        friendlyId: true,
+        status: true,
+        createdAt: true,
+        completedAt: true,
+        taskEventStore: true,
+      },
     },
-    select: {
-      id: true,
-      engine: true,
-      friendlyId: true,
-      status: true,
-      createdAt: true,
-      completedAt: true,
-      taskEventStore: true,
-    },
-  });
+    prisma
+  );
 
   let cancelled = 0;
   const cancelService = new CancelTaskRunService(prisma);

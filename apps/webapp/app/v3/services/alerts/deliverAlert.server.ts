@@ -102,7 +102,7 @@ type DeploymentIntegrationMetadata = {
 
 export class DeliverAlertService extends BaseService {
   public async call(alertId: string) {
-    const alert: FoundAlert | null = await this._prisma.projectAlert.findFirst({
+    const alertWithoutRun = await this._prisma.projectAlert.findFirst({
       where: { id: alertId },
       include: {
         channel: true,
@@ -112,18 +112,6 @@ export class DeliverAlertService extends BaseService {
           },
         },
         environment: true,
-        taskRun: {
-          include: {
-            lockedBy: true,
-            lockedToVersion: true,
-            runtimeEnvironment: {
-              select: {
-                type: true,
-                branchName: true,
-              },
-            },
-          },
-        },
         workerDeployment: {
           include: {
             worker: {
@@ -142,9 +130,31 @@ export class DeliverAlertService extends BaseService {
       },
     });
 
-    if (!alert) {
+    if (!alertWithoutRun) {
       return;
     }
+
+    let taskRun: FoundAlert["taskRun"] = null;
+    if (alertWithoutRun.taskRunId) {
+      taskRun = await this.runStore.findRun(
+        { id: alertWithoutRun.taskRunId },
+        {
+          include: {
+            lockedBy: true,
+            lockedToVersion: true,
+            runtimeEnvironment: {
+              select: {
+                type: true,
+                branchName: true,
+              },
+            },
+          },
+        },
+        this._prisma
+      );
+    }
+
+    const alert: FoundAlert = { ...alertWithoutRun, taskRun };
 
     if (alert.status !== "PENDING") {
       return;

@@ -12,6 +12,7 @@ import { FINAL_RUN_STATUSES } from "../taskStatus";
 import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CrashTaskRunService } from "./crashTaskRun.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
+import { runStore } from "../runStore.server";
 
 export class CreateTaskRunAttemptService extends BaseService {
   public async call({
@@ -45,43 +46,46 @@ export class CreateTaskRunAttemptService extends BaseService {
         span.setAttribute("taskRunId", runId);
       }
 
-      const taskRun = await this._prisma.taskRun.findFirst({
-        where: {
+      const taskRun = await this.runStore.findRun(
+        {
           id: !isFriendlyId ? runId : undefined,
           friendlyId: isFriendlyId ? runId : undefined,
           runtimeEnvironmentId: environment.id,
         },
-        include: {
-          attempts: {
-            take: 1,
-            orderBy: {
-              number: "desc",
+        {
+          include: {
+            attempts: {
+              take: 1,
+              orderBy: {
+                number: "desc",
+              },
             },
-          },
-          lockedBy: {
-            include: {
-              worker: {
-                select: {
-                  id: true,
-                  version: true,
-                  sdkVersion: true,
-                  cliVersion: true,
-                  supportsLazyAttempts: true,
+            lockedBy: {
+              include: {
+                worker: {
+                  select: {
+                    id: true,
+                    version: true,
+                    sdkVersion: true,
+                    cliVersion: true,
+                    supportsLazyAttempts: true,
+                  },
                 },
               },
             },
-          },
-          batchItems: {
-            include: {
-              batchTaskRun: {
-                select: {
-                  friendlyId: true,
+            batchItems: {
+              include: {
+                batchTaskRun: {
+                  select: {
+                    friendlyId: true,
+                  },
                 },
               },
             },
           },
         },
-      });
+        this._prisma
+      );
 
       logger.debug("Creating a task run attempt", { taskRun });
 
@@ -263,20 +267,23 @@ async function getAuthenticatedEnvironmentFromRun(
 ) {
   const isFriendlyId = friendlyId.startsWith("run_");
 
-  const taskRun = await (prismaClient ?? prisma).taskRun.findFirst({
-    where: {
+  const taskRun = await runStore.findRun(
+    {
       id: !isFriendlyId ? friendlyId : undefined,
       friendlyId: isFriendlyId ? friendlyId : undefined,
     },
-    include: {
-      runtimeEnvironment: {
-        include: {
-          organization: true,
-          project: true,
+    {
+      include: {
+        runtimeEnvironment: {
+          include: {
+            organization: true,
+            project: true,
+          },
         },
       },
     },
-  });
+    prismaClient ?? prisma
+  );
 
   if (!taskRun) {
     return;

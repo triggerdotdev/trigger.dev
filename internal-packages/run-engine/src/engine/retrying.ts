@@ -10,6 +10,7 @@ import {
   TaskRunExecutionRetry,
 } from "@trigger.dev/core/v3";
 import { PrismaClientOrTransaction } from "@trigger.dev/database";
+import { RunStore } from "@internal/run-store";
 import { MAX_TASK_RUN_ATTEMPTS } from "./consts.js";
 import { ServiceValidationError } from "./errors.js";
 
@@ -45,6 +46,7 @@ export type RetryOutcome =
 
 export async function retryOutcomeFromCompletion(
   prisma: PrismaClientOrTransaction,
+  runStore: RunStore,
   { runId, attemptNumber, error, retryUsingQueue, retrySettings }: Params
 ): Promise<RetryOutcome> {
   // Canceled
@@ -56,7 +58,7 @@ export async function retryOutcomeFromCompletion(
 
   // OOM error (retry on a larger machine or fail)
   if (isOOMRunError(error)) {
-    const oomResult = await retryOOMOnMachine(prisma, runId);
+    const oomResult = await retryOOMOnMachine(prisma, runStore, runId);
     if (!oomResult) {
       return { outcome: "fail_run", sanitizedError, wasOOMError: true };
     }
@@ -95,18 +97,21 @@ export async function retryOutcomeFromCompletion(
   }
 
   // Get the run settings and current usage values
-  const run = await prisma.taskRun.findFirst({
-    where: {
+  const run = await runStore.findRun(
+    {
       id: runId,
     },
-    select: {
-      maxAttempts: true,
-      lockedRetryConfig: true,
-      usageDurationMs: true,
-      costInCents: true,
-      machinePreset: true,
+    {
+      select: {
+        maxAttempts: true,
+        lockedRetryConfig: true,
+        usageDurationMs: true,
+        costInCents: true,
+        machinePreset: true,
+      },
     },
-  });
+    prisma
+  );
 
   if (!run) {
     throw new ServiceValidationError("Run not found", 404);
@@ -179,6 +184,7 @@ export async function retryOutcomeFromCompletion(
 
 async function retryOOMOnMachine(
   prisma: PrismaClientOrTransaction,
+  runStore: RunStore,
   runId: string
 ): Promise<{
   machine: string;
@@ -188,17 +194,20 @@ async function retryOOMOnMachine(
   machinePreset: string | null;
 } | undefined> {
   try {
-    const run = await prisma.taskRun.findFirst({
-      where: {
+    const run = await runStore.findRun(
+      {
         id: runId,
       },
-      select: {
-        machinePreset: true,
-        lockedRetryConfig: true,
-        usageDurationMs: true,
-        costInCents: true,
+      {
+        select: {
+          machinePreset: true,
+          lockedRetryConfig: true,
+          usageDurationMs: true,
+          costInCents: true,
+        },
       },
-    });
+      prisma
+    );
 
     if (!run || !run.lockedRetryConfig || !run.machinePreset) {
       return;

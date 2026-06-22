@@ -175,56 +175,58 @@ export class RunAttemptSystem {
   }
 
   public async resolveTaskRunContext(runId: string): Promise<TaskRunContext> {
-    const run = await this.$.readOnlyPrisma.taskRun.findFirst({
-      where: {
+    const run = await this.$.runStore.findRun(
+      {
         id: runId,
       },
-      select: {
-        id: true,
-        createdAt: true,
-        updatedAt: true,
-        executedAt: true,
-        baseCostInCents: true,
-        projectId: true,
-        organizationId: true,
-        friendlyId: true,
-        lockedById: true,
-        lockedQueueId: true,
-        queue: true,
-        attemptNumber: true,
-        status: true,
-        ttl: true,
-        machinePreset: true,
-        runTags: true,
-        isTest: true,
-        replayedFromTaskRunFriendlyId: true,
-        idempotencyKey: true,
-        idempotencyKeyOptions: true,
-        startedAt: true,
-        maxAttempts: true,
-        taskVersion: true,
-        maxDurationInSeconds: true,
-        usageDurationMs: true,
-        costInCents: true,
-        traceContext: true,
-        priorityMs: true,
-        taskIdentifier: true,
-        runtimeEnvironment: {
-          select: {
-            id: true,
-            slug: true,
-            type: true,
-            branchName: true,
-            git: true,
-            organizationId: true,
+      {
+        select: {
+          id: true,
+          createdAt: true,
+          updatedAt: true,
+          executedAt: true,
+          baseCostInCents: true,
+          projectId: true,
+          organizationId: true,
+          friendlyId: true,
+          lockedById: true,
+          lockedQueueId: true,
+          queue: true,
+          attemptNumber: true,
+          status: true,
+          ttl: true,
+          machinePreset: true,
+          runTags: true,
+          isTest: true,
+          replayedFromTaskRunFriendlyId: true,
+          idempotencyKey: true,
+          idempotencyKeyOptions: true,
+          startedAt: true,
+          maxAttempts: true,
+          taskVersion: true,
+          maxDurationInSeconds: true,
+          usageDurationMs: true,
+          costInCents: true,
+          traceContext: true,
+          priorityMs: true,
+          taskIdentifier: true,
+          runtimeEnvironment: {
+            select: {
+              id: true,
+              slug: true,
+              type: true,
+              branchName: true,
+              git: true,
+              organizationId: true,
+            },
           },
+          parentTaskRunId: true,
+          rootTaskRunId: true,
+          batchId: true,
+          workerQueue: true,
         },
-        parentTaskRunId: true,
-        rootTaskRunId: true,
-        batchId: true,
-        workerQueue: true,
-      },
-    });
+      }
+    );
 
     if (!run) {
       throw new ServiceValidationError("Task run not found", 404);
@@ -338,21 +340,23 @@ export class RunAttemptSystem {
             });
           }
 
-          const taskRun = await this.$.readOnlyPrisma.taskRun.findFirst({
-            where: {
+          const taskRun = await this.$.runStore.findRun(
+            {
               id: runId,
             },
-            select: {
-              id: true,
-              friendlyId: true,
-              attemptNumber: true,
-              projectId: true,
-              runtimeEnvironmentId: true,
-              status: true,
-              lockedById: true,
-              ttl: true,
-            },
-          });
+            {
+              select: {
+                id: true,
+                friendlyId: true,
+                attemptNumber: true,
+                projectId: true,
+                runtimeEnvironmentId: true,
+                status: true,
+                lockedById: true,
+                ttl: true,
+              },
+            }
+          );
 
           this.$.logger.debug("Creating a task run attempt", { taskRun });
 
@@ -717,14 +721,16 @@ export class RunAttemptSystem {
           const completedAt = new Date();
 
           // Read current usage values to calculate new totals (safe under runLock)
-          const currentRun = await this.$.readOnlyPrisma.taskRun.findFirst({
-            where: { id: runId },
-            select: {
-              usageDurationMs: true,
-              costInCents: true,
-              machinePreset: true,
-            },
-          });
+          const currentRun = await this.$.runStore.findRun(
+            { id: runId },
+            {
+              select: {
+                usageDurationMs: true,
+                costInCents: true,
+                machinePreset: true,
+              },
+            }
+          );
 
           if (!currentRun) {
             throw new ServiceValidationError("Run not found", 404);
@@ -904,35 +910,41 @@ export class RunAttemptSystem {
 
           const failedAt = new Date();
 
-          const retryResult = await retryOutcomeFromCompletion(this.$.readOnlyPrisma, {
-            runId,
-            error: completion.error,
-            retryUsingQueue: forceRequeue ?? false,
-            retrySettings: completion.retry,
-            attemptNumber: latestSnapshot.attemptNumber,
-          });
+          const retryResult = await retryOutcomeFromCompletion(
+            this.$.readOnlyPrisma,
+            this.$.runStore,
+            {
+              runId,
+              error: completion.error,
+              retryUsingQueue: forceRequeue ?? false,
+              retrySettings: completion.retry,
+              attemptNumber: latestSnapshot.attemptNumber,
+            }
+          );
 
           // Force requeue means it was crashed so the attempt span needs to be closed
           if (forceRequeue) {
-            const minimalRun = await this.$.readOnlyPrisma.taskRun.findFirst({
-              where: {
+            const minimalRun = await this.$.runStore.findRun(
+              {
                 id: runId,
               },
-              select: {
-                status: true,
-                spanId: true,
-                maxAttempts: true,
-                runtimeEnvironment: {
-                  select: {
-                    organizationId: true,
+              {
+                select: {
+                  status: true,
+                  spanId: true,
+                  maxAttempts: true,
+                  runtimeEnvironment: {
+                    select: {
+                      organizationId: true,
+                    },
                   },
+                  taskEventStore: true,
+                  createdAt: true,
+                  completedAt: true,
+                  updatedAt: true,
                 },
-                taskEventStore: true,
-                createdAt: true,
-                completedAt: true,
-                updatedAt: true,
-              },
-            });
+              }
+            );
 
             if (!minimalRun) {
               throw new ServiceValidationError("Run not found", 404);
@@ -1367,14 +1379,16 @@ export class RunAttemptSystem {
         // Calculate updated usage if we have attempt duration data
         let usageUpdate: { usageDurationMs: number; costInCents: number } | undefined;
         if (attemptDurationMs !== undefined) {
-          const currentRun = await this.$.readOnlyPrisma.taskRun.findFirst({
-            where: { id: runId },
-            select: {
-              usageDurationMs: true,
-              costInCents: true,
-              machinePreset: true,
-            },
-          });
+          const currentRun = await this.$.runStore.findRun(
+            { id: runId },
+            {
+              select: {
+                usageDurationMs: true,
+                costInCents: true,
+                machinePreset: true,
+              },
+            }
+          );
 
           if (!currentRun) {
             throw new ServiceValidationError("Run not found", 404);
@@ -1578,14 +1592,16 @@ export class RunAttemptSystem {
       const truncatedError = this.#truncateTaskRunError(error);
 
       // Read current usage values to calculate new totals
-      const currentRun = await this.$.readOnlyPrisma.taskRun.findFirst({
-        where: { id: runId },
-        select: {
-          usageDurationMs: true,
-          costInCents: true,
-          machinePreset: true,
-        },
-      });
+      const currentRun = await this.$.runStore.findRun(
+        { id: runId },
+        {
+          select: {
+            usageDurationMs: true,
+            costInCents: true,
+            machinePreset: true,
+          },
+        }
+      );
 
       if (!currentRun) {
         throw new ServiceValidationError("Run not found", 404);

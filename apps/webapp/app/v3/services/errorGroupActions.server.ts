@@ -14,7 +14,10 @@ export class ErrorGroupActions {
   async resolveError(
     identifier: ErrorGroupIdentifier,
     params: {
-      userId: string;
+      // Nullable: a resolve via an env API key has no acting user, so
+      // `resolvedBy` stays null. The dashboard always passes a userId; the
+      // API passes the `act.sub` user from a PAT/UAT-exchanged JWT, else null.
+      userId?: string | null;
       resolvedInVersion?: string;
     }
   ) {
@@ -34,7 +37,7 @@ export class ErrorGroupActions {
         status: "RESOLVED",
         resolvedAt: now,
         resolvedInVersion: params.resolvedInVersion ?? null,
-        resolvedBy: params.userId,
+        resolvedBy: params.userId ?? null,
         ignoredUntil: null,
         ignoredUntilOccurrenceRate: null,
         ignoredUntilTotalOccurrences: null,
@@ -52,7 +55,7 @@ export class ErrorGroupActions {
         status: "RESOLVED",
         resolvedAt: now,
         resolvedInVersion: params.resolvedInVersion ?? null,
-        resolvedBy: params.userId,
+        resolvedBy: params.userId ?? null,
       },
     });
   }
@@ -60,7 +63,7 @@ export class ErrorGroupActions {
   async ignoreError(
     identifier: ErrorGroupIdentifier,
     params: {
-      userId: string;
+      userId?: string | null;
       duration?: number;
       occurrenceRateThreshold?: number;
       totalOccurrencesThreshold?: number;
@@ -87,7 +90,7 @@ export class ErrorGroupActions {
       ignoredUntilTotalOccurrences: params.totalOccurrencesThreshold ?? null,
       ignoredAtOccurrenceCount: params.occurrenceCountAtIgnoreTime ?? null,
       ignoredReason: params.reason ?? null,
-      ignoredByUserId: params.userId,
+      ignoredByUserId: params.userId ?? null,
       resolvedAt: null,
       resolvedInVersion: null,
       resolvedBy: null,

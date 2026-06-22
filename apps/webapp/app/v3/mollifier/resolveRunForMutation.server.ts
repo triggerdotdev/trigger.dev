@@ -1,5 +1,7 @@
 import type { MollifierBuffer } from "@trigger.dev/redis-worker";
+import type { PrismaClientOrTransaction, PrismaReplicaClient } from "~/db.server";
 import { $replica as defaultReplica, prisma as defaultWriter } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { getMollifierBuffer as defaultGetBuffer } from "./mollifierBuffer.server";
 
 // Discriminated-union resolver used by mutation routes' `findResource`.
@@ -16,18 +18,9 @@ export type ResolvedRunForMutation =
   | { source: "pg"; friendlyId: string }
   | { source: "buffer"; friendlyId: string };
 
-type PrismaTaskRunFindFirst = {
-  taskRun: {
-    findFirst(args: {
-      where: { friendlyId: string; runtimeEnvironmentId: string };
-      select: { friendlyId: true };
-    }): Promise<{ friendlyId: string } | null>;
-  };
-};
-
 export type ResolveRunForMutationDeps = {
-  prismaReplica?: PrismaTaskRunFindFirst;
-  prismaWriter?: PrismaTaskRunFindFirst;
+  prismaReplica?: PrismaReplicaClient;
+  prismaWriter?: PrismaClientOrTransaction;
   getBuffer?: () => MollifierBuffer | null;
 };
 
@@ -41,10 +34,11 @@ export async function resolveRunForMutation(input: {
   const writer = input.deps?.prismaWriter ?? defaultWriter;
   const getBuffer = input.deps?.getBuffer ?? defaultGetBuffer;
 
-  const pgRun = await replica.taskRun.findFirst({
-    where: { friendlyId: input.runParam, runtimeEnvironmentId: input.environmentId },
-    select: { friendlyId: true },
-  });
+  const pgRun = await runStore.findRun(
+    { friendlyId: input.runParam, runtimeEnvironmentId: input.environmentId },
+    { select: { friendlyId: true } },
+    replica
+  );
   if (pgRun) return { source: "pg", friendlyId: pgRun.friendlyId };
 
   const buffer = getBuffer();
@@ -72,10 +66,11 @@ export async function resolveRunForMutation(input: {
   //      lookup-by-friendlyId timing).
   // Without this, the resolver returns null in degraded states that the
   // downstream mutateWithFallback flow would otherwise handle correctly.
-  const writerRun = await writer.taskRun.findFirst({
-    where: { friendlyId: input.runParam, runtimeEnvironmentId: input.environmentId },
-    select: { friendlyId: true },
-  });
+  const writerRun = await runStore.findRun(
+    { friendlyId: input.runParam, runtimeEnvironmentId: input.environmentId },
+    { select: { friendlyId: true } },
+    writer
+  );
   if (writerRun) return { source: "pg", friendlyId: writerRun.friendlyId };
 
   return null;

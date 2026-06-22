@@ -29,4 +29,7 @@ export class NoopRunStore implements RunStore {
   clearIdempotencyKey(): never { return this.fail("clearIdempotencyKey"); }
   pushTags(): never { return this.fail("pushTags"); }
   pushRealtimeStream(): never { return this.fail("pushRealtimeStream"); }
+  findRun(): never { return this.fail("findRun"); }
+  findRunOrThrow(): never { return this.fail("findRunOrThrow"); }
+  findRuns(): never { return this.fail("findRuns"); }
 }

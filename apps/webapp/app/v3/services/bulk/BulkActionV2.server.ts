@@ -182,22 +182,25 @@ export class BulkActionService extends BaseService {
       case BulkActionType.CANCEL: {
         const cancelService = new CancelTaskRunService(this._prisma);
 
-        const runs = await this._replica.taskRun.findMany({
-          where: {
-            id: {
-              in: runIdsToProcess,
+        const runs = await this.runStore.findRuns(
+          {
+            where: {
+              id: {
+                in: runIdsToProcess,
+              },
+            },
+            select: {
+              id: true,
+              engine: true,
+              friendlyId: true,
+              status: true,
+              createdAt: true,
+              completedAt: true,
+              taskEventStore: true,
             },
           },
-          select: {
-            id: true,
-            engine: true,
-            friendlyId: true,
-            status: true,
-            createdAt: true,
-            completedAt: true,
-            taskEventStore: true,
-          },
-        });
+          this._replica
+        );
 
         await pMap(
           runs,
@@ -233,13 +236,16 @@ export class BulkActionService extends BaseService {
       case BulkActionType.REPLAY: {
         const replayService = new ReplayTaskRunService(this._prisma);
 
-        const runs = await this._replica.taskRun.findMany({
-          where: {
-            id: {
-              in: runIdsToProcess,
+        const runs = await this.runStore.findRuns(
+          {
+            where: {
+              id: {
+                in: runIdsToProcess,
+              },
             },
           },
-        });
+          this._replica
+        );
 
         await pMap(
           runs,

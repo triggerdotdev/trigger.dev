@@ -31,7 +31,6 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Switch } from "~/components/primitives/Switch";
 import { $replica } from "~/db.server";
-import { featuresForRequest } from "~/features.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { rbac } from "~/services/rbac.server";
 import { ssoController } from "~/services/sso.server";
@@ -79,12 +78,8 @@ export const loader = dashboardLoader(
     authorization: { action: "manage", resource: { type: "sso" } },
   },
   async ({ context, request }) => {
-    const { isManagedCloud } = featuresForRequest(request);
-    // Gate on managed cloud AND the SSO plugin actually being loaded
-    // (SSO_ENABLED off → OSS fallback → isUsingPlugin false). Without
-    // this the page renders for every managed-cloud org even when SSO
-    // is disabled for the deployment.
-    if (!isManagedCloud || !(await ssoController.isUsingPlugin())) {
+    // True only when SSO_ENABLED is on and a real SSO plugin is loaded.
+    if (!(await ssoController.isUsingPlugin())) {
       throw new Response("Not Found", { status: 404 });
     }
 
@@ -175,8 +170,8 @@ export const action = dashboardAction(
       throw new Response("Not Found", { status: 404 });
     }
 
-    const { isManagedCloud } = featuresForRequest(request);
-    if (!isManagedCloud) {
+    // Mirror the loader gate.
+    if (!(await ssoController.isUsingPlugin())) {
       throw new Response("Not Found", { status: 404 });
     }
     await requireSsoEntitlement(orgId);

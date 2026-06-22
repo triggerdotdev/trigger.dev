@@ -6,6 +6,7 @@ import { chatSnapshotStorageKey } from "~/services/realtime/chatSnapshot.server"
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
 import { logger } from "~/services/logger.server";
 import { generatePresignedUrl } from "~/v3/objectStore.server";
+import { runStore } from "~/v3/runStore.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 
@@ -96,10 +97,13 @@ export class SessionPresenter {
       async (span) => {
         span.setAttribute("runIds.count", runIds.length);
         return runIds.length > 0
-          ? this.replica.taskRun.findMany({
-              where: { id: { in: runIds } },
-              select: { id: true, friendlyId: true, status: true },
-            })
+          ? runStore.findRuns(
+              {
+                where: { id: { in: runIds } },
+                select: { id: true, friendlyId: true, status: true },
+              },
+              this.replica
+            )
           : [];
       }
     );
@@ -110,10 +114,13 @@ export class SessionPresenter {
         (await startActiveSpan(
           "SessionPresenter.findCurrentRunFallback",
           () =>
-            this.replica.taskRun.findFirst({
-              where: { id: session.currentRunId! },
-              select: { id: true, friendlyId: true, status: true },
-            })
+            runStore.findRun(
+              { id: session.currentRunId! },
+              {
+                select: { id: true, friendlyId: true, status: true },
+              },
+              this.replica
+            )
         ))
       : null;
 

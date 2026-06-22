@@ -6,6 +6,7 @@ import { ABORT_REASON_SEND_ERROR, createSSELoader, SendFunction } from "~/utils/
 import { throttle } from "~/utils/throttle";
 import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
 import { deserialiseMollifierSnapshot } from "~/v3/mollifier/mollifierSnapshot.server";
+import { runStore } from "~/v3/runStore.server";
 import { tracePubSub } from "~/v3/services/tracePubSub.server";
 
 const PING_INTERVAL = 5_000;
@@ -36,8 +37,8 @@ export class RunStreamPresenter {
         // Scope the lookup to organizations the requesting user is a member
         // of, matching RunPresenter's run lookup. Unauthorized and missing
         // runs are indistinguishable (both 404).
-        const run = await prismaClient.taskRun.findFirst({
-          where: {
+        const run = await runStore.findRun(
+          {
             friendlyId: runFriendlyId,
             project: {
               organization: {
@@ -49,10 +50,13 @@ export class RunStreamPresenter {
               },
             },
           },
-          select: {
-            traceId: true,
+          {
+            select: {
+              traceId: true,
+            },
           },
-        });
+          prismaClient
+        );
 
         // Fall back to the mollifier buffer when the run isn't in PG yet.
         // The buffered run has no execution events to stream, but we still

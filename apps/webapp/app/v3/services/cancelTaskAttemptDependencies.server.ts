@@ -10,15 +10,15 @@ export class CancelTaskAttemptDependenciesService extends BaseService {
       where: { id: attemptId },
       include: {
         dependencies: {
-          include: {
-            taskRun: true,
+          select: {
+            taskRunId: true,
           },
         },
         batchDependencies: {
           include: {
             runDependencies: {
-              include: {
-                taskRun: true,
+              select: {
+                taskRunId: true,
               },
             },
           },
@@ -45,14 +45,53 @@ export class CancelTaskAttemptDependenciesService extends BaseService {
       batchDependencies: taskAttempt.batchDependencies,
     });
 
+    // Hydrate the dependent runs from both relation paths in a single batched read,
+    // deduping the ids that feed the query while preserving the original iteration order.
+    const taskRunIds = new Set<string>();
+    for (const dependency of taskAttempt.dependencies) {
+      taskRunIds.add(dependency.taskRunId);
+    }
+    for (const batchDependency of taskAttempt.batchDependencies) {
+      for (const runDependency of batchDependency.runDependencies) {
+        taskRunIds.add(runDependency.taskRunId);
+      }
+    }
+
+    const runs =
+      taskRunIds.size > 0
+        ? await this.runStore.findRuns(
+            {
+              where: { id: { in: [...taskRunIds] } },
+              select: {
+                id: true,
+                engine: true,
+                status: true,
+                friendlyId: true,
+                taskEventStore: true,
+                createdAt: true,
+                completedAt: true,
+              },
+            },
+            this._prisma
+          )
+        : [];
+
+    const runMap = new Map(runs.map((run) => [run.id, run]));
+
     // TaskAttempt will either have dependencies or batchDependencies
     for (const dependency of taskAttempt.dependencies) {
-      await cancelRunService.call(dependency.taskRun);
+      const run = runMap.get(dependency.taskRunId);
+      if (run) {
+        await cancelRunService.call(run);
+      }
     }
 
     for (const batchDependency of taskAttempt.batchDependencies) {
       for (const runDependency of batchDependency.runDependencies) {
-        await cancelRunService.call(runDependency.taskRun);
+        const run = runMap.get(runDependency.taskRunId);
+        if (run) {
+          await cancelRunService.call(run);
+        }
       }
     }
   }

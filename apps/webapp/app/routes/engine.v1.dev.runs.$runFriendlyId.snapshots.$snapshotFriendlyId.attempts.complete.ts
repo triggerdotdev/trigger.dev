@@ -9,6 +9,7 @@ import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
+import { runStore } from "~/v3/runStore.server";
 
 const { action } = createActionApiRoute(
   {
@@ -28,12 +29,13 @@ const { action } = createActionApiRoute(
     const { runFriendlyId, snapshotFriendlyId } = params;
 
     try {
-      const run = await prisma.taskRun.findFirst({
-        where: {
+      const run = await runStore.findRun(
+        {
           friendlyId: params.runFriendlyId,
           runtimeEnvironmentId: authentication.environment.id,
         },
-      });
+        prisma
+      );
 
       if (!run) {
         throw new Response("You don't have permissions for this run", { status: 401 });
