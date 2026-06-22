@@ -170,6 +170,7 @@ export class SessionPresenter {
       externalId: session.externalId,
       type: session.type,
       taskIdentifier: session.taskIdentifier,
+      isTest: session.isTest,
       tags: session.tags ? [...session.tags].sort((a, b) => a.localeCompare(b)) : [],
       metadata: session.metadata,
       triggerConfig: session.triggerConfig,

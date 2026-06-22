@@ -87,6 +87,7 @@ export type ListedSession = Prisma.SessionGetPayload<{
     externalId: true;
     type: true;
     taskIdentifier: true;
+    isTest: true;
     tags: true;
     metadata: true;
     closedAt: true;

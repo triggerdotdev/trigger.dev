@@ -805,6 +805,10 @@ model Session {
   /// (chatId, messages, trigger) are merged at trigger time.
   triggerConfig Json
 
+  /// Whether this session was created from the Test/playground UI rather
+  /// than by a real chat.agent() trigger. Mirrors TaskRun.isTest.
+  isTest Boolean @default(false)
+
   tags     String[] @default([])
   metadata Json?
 

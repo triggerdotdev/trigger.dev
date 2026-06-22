@@ -221,6 +221,7 @@ export class SessionListPresenter {
           externalId: session.externalId,
           type: session.type,
           taskIdentifier: session.taskIdentifier,
+          isTest: session.isTest,
           tags: session.tags ? [...session.tags].sort((a, b) => a.localeCompare(b)) : [],
           status,
           closedAt: session.closedAt ? session.closedAt.toISOString() : undefined,

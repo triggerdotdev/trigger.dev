@@ -802,6 +802,7 @@ function toSessionInsertArray(
     session.expiresAt ? session.expiresAt.getTime() : null,
     session.createdAt.getTime(),
     session.updatedAt.getTime(),
+    session.isTest ?? false,
     version.toString(),
     isDeleted ? 1 : 0,
   ];

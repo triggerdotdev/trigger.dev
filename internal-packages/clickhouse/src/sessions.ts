@@ -19,6 +19,7 @@ export const SessionV1 = z.object({
   expires_at: z.number().int().nullish(),
   created_at: z.number().int(),
   updated_at: z.number().int(),
+  is_test: z.boolean().default(false),
   _version: z.string(),
   _is_deleted: z.number().int().default(0),
 });
@@ -43,6 +44,7 @@ export const SESSION_COLUMNS = [
   "expires_at",
   "created_at",
   "updated_at",
+  "is_test",
   "_version",
   "_is_deleted",
 ] as const;
@@ -70,6 +72,7 @@ export type SessionFieldTypes = {
   expires_at: number | null;
   created_at: number;
   updated_at: number;
+  is_test: boolean;
   _version: string;
   _is_deleted: number;
 };
@@ -95,6 +98,7 @@ export type SessionInsertArray = [
   expires_at: number | null,
   created_at: number,
   updated_at: number,
+  is_test: boolean,
   _version: string,
   _is_deleted: number,
 ];
