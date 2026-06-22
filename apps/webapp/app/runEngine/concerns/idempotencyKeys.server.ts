@@ -11,6 +11,7 @@ import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.se
 import { claimOrAwait } from "~/v3/mollifier/idempotencyClaim.server";
 import { makeResolveMollifierFlag } from "~/v3/mollifier/mollifierGate.server";
 import { runStore } from "~/v3/runStore.server";
+import { shouldUseV2RunTable } from "~/v3/runTableV2.server";
 import type { TraceEventConcern, TriggerTaskRequest } from "../types";
 
 // In-memory per-org mollifier-enabled check, shared with `evaluateGate`
@@ -298,20 +299,28 @@ export class IdempotencyKeyConcern {
     // trigger hot path. Excluding them keeps the claim aligned with the
     // gate — if the gate would never mollify the request, there's no
     // buffer to serialise against.
+    // Also serialise when the org is cut over to the v2 run table, even if it
+    // isn't on the mollifier. Concurrent same-key triggers that straddle a
+    // `runTableV2` flag flip can mint into DIFFERENT physical tables (cuid ->
+    // TaskRun, ksuid -> task_run_v2); the per-table idempotency unique
+    // constraints can't see each other, so neither INSERT raises P2002 and two
+    // runs share one key. The Redis claim is the only backstop in that window.
+    const orgFeatureFlags =
+      (request.environment.organization?.featureFlags as
+        | Record<string, unknown>
+        | null
+        | undefined) ?? null;
     const claimEligible =
       !request.body.options?.resumeParentOnCompletion &&
       !request.body.options?.debounce &&
       !request.options?.oneTimeUseToken &&
-      (await resolveOrgMollifierFlag({
+      ((await resolveOrgMollifierFlag({
         envId: request.environment.id,
         orgId: request.environment.organizationId,
         taskId: request.taskId,
-        orgFeatureFlags:
-          ((request.environment.organization?.featureFlags as
-            | Record<string, unknown>
-            | null
-            | undefined) ?? null),
-      }));
+        orgFeatureFlags,
+      })) ||
+        shouldUseV2RunTable(orgFeatureFlags));
     if (claimEligible) {
       const ttlSeconds = Math.max(
         1,
