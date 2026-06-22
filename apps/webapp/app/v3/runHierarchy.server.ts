@@ -75,8 +75,10 @@ export async function hydrateChildRuns<S extends Prisma.TaskRunSelect>(
       },
       select,
       // parentTaskRunId is a non-id predicate, so this reads BOTH tables by
-      // default. Callers that know the org isn't on v2 pass tables:"legacy" to
-      // skip the empty task_run_v2 query.
+      // default. Callers that know no v2 run can exist (native realtime off, so
+      // task_run_v2 is empty deployment-wide) pass tables:"legacy" to skip the
+      // empty query. Scope on the deployment switch, NOT a per-org flag: a run's
+      // table is fixed by id format, so a flipped-off org still has v2 children.
       tables: scope.tables,
     },
     client

@@ -24,7 +24,6 @@ import {
 import { generatePresignedUrl } from "~/v3/objectStore.server";
 import { runStore } from "~/v3/runStore.server";
 import { hydrateParentAndRoot, hydrateChildRuns } from "~/v3/runHierarchy.server";
-import { shouldUseV2RunTable } from "~/v3/runTableV2.server";
 import { env as serverEnv } from "~/env.server";
 import { tracer } from "~/v3/tracer.server";
 import { startSpanWithEnv } from "~/v3/tracing.server";
@@ -149,15 +148,16 @@ export class ApiRetrieveRunPresenter {
       // legacy run's v2 children), which arise in the mixed window, would come
       // back null/empty. Resolve parent/root by id (RunStore routes by format)
       // and children by a both-table predicate.
-      // While the org isn't cut over to v2 its runs only live in TaskRun, so
-      // scope the cross-table reads to "legacy" and skip the empty task_run_v2
-      // query; once it's on v2 a child can be cross-table, so read both. The
-      // parent/root and child reads run in parallel (one round-trip, not two).
-      const tables = shouldUseV2RunTable(env.organization.featureFlags, {
-        nativeRealtimeEnabled: serverEnv.REALTIME_BACKEND_NATIVE_ENABLED === "1",
-      })
-        ? "both"
-        : "legacy";
+      // Scope the cross-table reads on whether ANY v2 run can exist in this
+      // deployment (the native master switch), NOT the org's current flag: a
+      // run's table is fixed by its id format, and an org that was on v2 then
+      // flipped off still HAS v2 runs (and v2 children) — runTableV2.server.ts
+      // documents that they stay readable. pgRow is routed here by id format, so
+      // it can be a v2 run for a now-non-v2 org; scoping to "legacy" off the
+      // per-org flag would then silently drop its v2 children/parent. While
+      // native is off no v2 run exists anywhere, so "legacy" is safe for all and
+      // skips the empty task_run_v2 query. The reads also run in parallel.
+      const tables = serverEnv.REALTIME_BACKEND_NATIVE_ENABLED === "1" ? "both" : "legacy";
       const [{ parentTaskRun, rootTaskRun }, childRuns] = await Promise.all([
         hydrateParentAndRoot(
           { parentTaskRunId: pgRow.parentTaskRunId, rootTaskRunId: pgRow.rootTaskRunId },

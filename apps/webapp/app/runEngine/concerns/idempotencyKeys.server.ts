@@ -302,11 +302,8 @@ export class IdempotencyKeyConcern {
       return { isCached: false, idempotencyKey, idempotencyKeyExpiresAt };
     }
 
-    // Resolve the org's v2-cutover state ONCE: it gates both the cross-table
-    // idempotency lookup below and the pre-gate claim further down. While the
-    // org is not on v2 (the default, and every org while native realtime is
-    // off) the run can only be in the legacy table, so scope the dedup read to
-    // "legacy" and skip the empty task_run_v2 query on the trigger hot path.
+    // Resolve whether THIS org currently mints v2 runs ONCE, for the pre-gate
+    // claim further down (claimEligible).
     const orgFeatureFlags =
       (request.environment.organization?.featureFlags as
         | Record<string, unknown>
@@ -315,6 +312,16 @@ export class IdempotencyKeyConcern {
     const orgUsesV2 = shouldUseV2RunTable(orgFeatureFlags, {
       nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1",
     });
+
+    // Scope the idempotency dedup read on whether ANY v2 run can exist in this
+    // deployment (the native master switch), NOT on whether this org currently
+    // mints v2. A run's table is fixed by its id format, so an org that was on
+    // v2 then flipped off still holds v2 runs an idempotency key can match
+    // (runTableV2.server.ts documents they stay readable); gating the read on
+    // orgUsesV2 would miss them and let a duplicate through. While native is off
+    // no v2 run exists anywhere, so "legacy" is safe and skips the empty
+    // task_run_v2 query on the trigger hot path; once native is on, read both.
+    const anyV2RunsPossible = env.REALTIME_BACKEND_NATIVE_ENABLED === "1";
 
     const existingRun = idempotencyKey
       ? await runStore.findRun(
@@ -327,7 +334,7 @@ export class IdempotencyKeyConcern {
             include: {
               associatedWaitpoint: true,
             },
-            tables: orgUsesV2 ? "both" : "legacy",
+            tables: anyV2RunsPossible ? "both" : "legacy",
           },
           this.prisma
         )
