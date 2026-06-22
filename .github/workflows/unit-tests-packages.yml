@@ -95,7 +95,7 @@ jobs:
           }
           echo "Pre-pulling Docker images with authenticated session..."
           pull postgres:14
-          pull clickhouse/clickhouse-server:26.2-alpine
+          pull clickhouse/clickhouse-server:26.2.19.43-alpine@sha256:c6ad6a7eb2fb5999df3adfb8b69a0c7222c68fa9b8f6b04a088564ebbc959251
           pull redis:7.2
           pull testcontainers/ryuk:0.14.0
           pull electricsql/electric:1.2.4

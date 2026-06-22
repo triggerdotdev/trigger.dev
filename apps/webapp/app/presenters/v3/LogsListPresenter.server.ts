@@ -270,11 +270,19 @@ export class LogsListPresenter extends BasePresenter {
 
     const effectivePageSize = Math.min(pageSize, MAX_PAGE_SIZE);
 
-    const decodedCursor = cursor ? decodeCursor(cursor) : null;
+    // Only honor a cursor scoped to this org+env; one copied from another scope would shift the
+    // pagination anchor instead of resetting to the first page.
+    const parsedCursor = cursor ? decodeCursor(cursor) : null;
+    const decodedCursor =
+      parsedCursor &&
+      parsedCursor.organizationId === organizationId &&
+      parsedCursor.environmentId === environmentId
+        ? parsedCursor
+        : null;
 
-    // Effective upper bound (clamped to now), shared by every probe.
-    const clampedTo =
-      effectiveTo !== undefined ? (effectiveTo > new Date() ? new Date() : effectiveTo) : undefined;
+    // Effective upper bound, always clamped to now so a probe never runs [floor, +inf).
+    const now = new Date();
+    const clampedTo = effectiveTo !== undefined ? (effectiveTo > now ? now : effectiveTo) : now;
 
     const searchTerm =
       search && search.trim() !== ""
