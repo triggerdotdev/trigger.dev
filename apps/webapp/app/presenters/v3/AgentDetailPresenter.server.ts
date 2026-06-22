@@ -5,6 +5,13 @@ import {
 } from "@trigger.dev/database";
 import { z } from "zod";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
+import {
+  chooseBucketSeconds,
+  groupRunStatus,
+  RUN_STATUS_GROUPS,
+  zeroFillGroupedSeries,
+  zeroFillScalarSeries,
+} from "./activitySeries.server";
 
 export type AgentDetail = {
   slug: string;
@@ -22,39 +29,6 @@ export type AgentActivity = {
   data: AgentActivityPoint[];
   statuses: string[];
 };
-
-const TERMINAL_GROUPS = {
-  COMPLETED: ["COMPLETED_SUCCESSFULLY"],
-  FAILED: [
-    "COMPLETED_WITH_ERRORS",
-    "SYSTEM_FAILURE",
-    "CRASHED",
-    "INTERRUPTED",
-    "TIMED_OUT",
-  ],
-  CANCELED: ["CANCELED", "EXPIRED"],
-  RUNNING: [
-    "EXECUTING",
-    "DEQUEUED",
-    "PENDING_EXECUTING",
-    "WAITING_TO_RESUME",
-    "QUEUED_EXECUTING",
-    "PENDING",
-    "PENDING_VERSION",
-    "DELAYED",
-    "WAITING_FOR_DEPLOY",
-  ],
-} as const;
-
-const GROUP_LABEL = ["COMPLETED", "FAILED", "CANCELED", "RUNNING"] as const;
-type GroupLabel = (typeof GROUP_LABEL)[number];
-
-function groupForStatus(status: string): GroupLabel | undefined {
-  for (const label of GROUP_LABEL) {
-    if ((TERMINAL_GROUPS[label] as readonly string[]).includes(status)) return label;
-  }
-  return undefined;
-}
 
 // Stable legend order for the sessions activity chart. Derived statuses:
 //   ACTIVE  = closed_at IS NULL AND (expires_at IS NULL OR expires_at > now)
@@ -126,17 +100,7 @@ export class AgentDetailPresenter {
     to: Date;
   }): Promise<AgentActivity> {
     const rangeMs = Math.max(1, to.getTime() - from.getTime());
-    const oneHour = 60 * 60 * 1000;
-    const sixHours = 6 * oneHour;
-    const oneDay = 24 * oneHour;
-
-    // Pick a sensible bucket interval based on the range
-    const bucketSeconds =
-      rangeMs <= oneDay
-        ? 60 * 60 // 1h buckets
-        : rangeMs <= 7 * oneDay
-        ? 6 * 60 * 60 // 6h buckets
-        : 24 * 60 * 60; // 1d buckets
+    const bucketSeconds = chooseBucketSeconds(rangeMs);
 
     // NOTE: We intentionally don't filter by `task_kind = 'AGENT'` here:
     // ClickHouse stores `task_kind = ""` for pre-migration rows and rows
@@ -195,33 +159,19 @@ export class AgentDetailPresenter {
       return { data: [], statuses: [] };
     }
 
-    const bucketMap = new Map<number, Record<string, number>>();
-    for (const row of rows) {
-      const group = groupForStatus(row.status) ?? "RUNNING";
-      const ts = row.bucket * 1000;
-      const existing = bucketMap.get(ts) ?? {};
-      existing[group] = (existing[group] ?? 0) + row.val;
-      bucketMap.set(ts, existing);
-    }
+    // Always emit every status group so the chart legend is stable across time
+    // ranges (even when a group has no runs in the current window).
+    const points = zeroFillGroupedSeries({
+      rows,
+      from,
+      to,
+      bucketSeconds,
+      orderedKeys: RUN_STATUS_GROUPS,
+      groupFn: groupRunStatus,
+      fallbackKey: "RUNNING",
+    });
 
-    // Build zero-filled time series. We always emit every status group so
-    // the chart legend is stable across time ranges (even when a group has
-    // no runs in the current window).
-    const bucketMs = bucketSeconds * 1000;
-    const start = Math.floor(from.getTime() / bucketMs) * bucketMs;
-    const end = Math.ceil(to.getTime() / bucketMs) * bucketMs;
-    const points: AgentActivityPoint[] = [];
-    const orderedStatuses = [...GROUP_LABEL];
-    for (let ts = start; ts < end; ts += bucketMs) {
-      const existing = bucketMap.get(ts) ?? {};
-      const point: AgentActivityPoint = { bucket: ts };
-      for (const g of orderedStatuses) {
-        point[g] = existing[g] ?? 0;
-      }
-      points.push(point);
-    }
-
-    return { data: points, statuses: orderedStatuses };
+    return { data: points, statuses: [...RUN_STATUS_GROUPS] };
   }
 
   async getSessionActivity({
@@ -240,15 +190,7 @@ export class AgentDetailPresenter {
     to: Date;
   }): Promise<AgentActivity> {
     const rangeMs = Math.max(1, to.getTime() - from.getTime());
-    const oneHour = 60 * 60 * 1000;
-    const oneDay = 24 * oneHour;
-
-    const bucketSeconds =
-      rangeMs <= oneDay
-        ? 60 * 60
-        : rangeMs <= 7 * oneDay
-        ? 6 * 60 * 60
-        : 24 * 60 * 60;
+    const bucketSeconds = chooseBucketSeconds(rangeMs);
 
     // FINAL collapses ReplacingMergeTree versions so we see each session's
     // latest state — important since closed_at / expires_at are mutated
@@ -304,27 +246,14 @@ export class AgentDetailPresenter {
       return { data: [], statuses: [] };
     }
 
-    const bucketMap = new Map<number, Record<string, number>>();
-    for (const row of rows) {
-      const ts = row.bucket * 1000;
-      const existing = bucketMap.get(ts) ?? {};
-      existing[row.status] = (existing[row.status] ?? 0) + row.val;
-      bucketMap.set(ts, existing);
-    }
-
-    const bucketMs = bucketSeconds * 1000;
-    const start = Math.floor(from.getTime() / bucketMs) * bucketMs;
-    const end = Math.ceil(to.getTime() / bucketMs) * bucketMs;
-    const points: AgentActivityPoint[] = [];
     const orderedStatuses: SessionStatusLabel[] = [...SESSION_STATUSES];
-    for (let ts = start; ts < end; ts += bucketMs) {
-      const existing = bucketMap.get(ts) ?? {};
-      const point: AgentActivityPoint = { bucket: ts };
-      for (const s of orderedStatuses) {
-        point[s] = existing[s] ?? 0;
-      }
-      points.push(point);
-    }
+    const points = zeroFillGroupedSeries({
+      rows,
+      from,
+      to,
+      bucketSeconds,
+      orderedKeys: orderedStatuses,
+    });
 
     return { data: points, statuses: orderedStatuses };
   }
@@ -369,11 +298,7 @@ export class AgentDetailPresenter {
     metric: "cost" | "tokens";
   }): Promise<AgentActivity> {
     const rangeMs = Math.max(1, to.getTime() - from.getTime());
-    const oneHour = 60 * 60 * 1000;
-    const oneDay = 24 * oneHour;
-
-    const bucketSeconds =
-      rangeMs <= oneDay ? 60 * 60 : rangeMs <= 7 * oneDay ? 6 * 60 * 60 : 24 * 60 * 60;
+    const bucketSeconds = chooseBucketSeconds(rangeMs);
 
     const seriesKey = metric === "cost" ? "cost" : "tokens";
     // total_cost is Decimal64(12); cast to Float64 so the JSON wire format is
@@ -430,19 +355,7 @@ export class AgentDetailPresenter {
       return { data: [], statuses: [] };
     }
 
-    const bucketMap = new Map<number, number>();
-    for (const row of rows) {
-      const ts = row.bucket * 1000;
-      bucketMap.set(ts, (bucketMap.get(ts) ?? 0) + row.val);
-    }
-
-    const bucketMs = bucketSeconds * 1000;
-    const start = Math.floor(from.getTime() / bucketMs) * bucketMs;
-    const end = Math.ceil(to.getTime() / bucketMs) * bucketMs;
-    const points: AgentActivityPoint[] = [];
-    for (let ts = start; ts < end; ts += bucketMs) {
-      points.push({ bucket: ts, [seriesKey]: bucketMap.get(ts) ?? 0 });
-    }
+    const points = zeroFillScalarSeries({ rows, from, to, bucketSeconds, seriesKey });
 
     return { data: points, statuses: [seriesKey] };
   }

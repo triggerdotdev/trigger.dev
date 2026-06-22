@@ -14,8 +14,18 @@ import { ChartTooltip, ChartTooltipContent } from "~/components/primitives/chart
 import { useChartContext } from "./ChartContext";
 import { ChartBarInvalid, ChartBarLoading, ChartBarNoData } from "./ChartLoading";
 import { useHasNoData } from "./ChartRoot";
-import { useYAxisWidth } from "./useYAxisWidth";
+import { defaultYAxisTickFormatter, useYAxisWidth } from "./useYAxisWidth";
+import { useXAxisTicks } from "./useXAxisTicks";
+import { useChartSync } from "./ChartSyncContext";
 import { ZoomTooltip, useZoomHandlers } from "./ChartZoom";
+
+// charcoal-600 — a subtle vertical line used to mirror the hovered x position
+// across charts in the same ChartSyncProvider group.
+const SYNC_LINE_COLOR = "#3B3E45";
+
+// Chart margins. The right margin keeps the centered last x-axis label (e.g.
+// "Jun 22") from being clipped at the SVG's right edge.
+const CHART_MARGIN = { top: 5, right: 20, bottom: 5, left: 5 } as const;
 
 //TODO: fix the first and last bars in a stack not having rounded corners
 
@@ -75,8 +85,30 @@ export function ChartBarRenderer({
   const { config, data, dataKey, dataKeys, visibleSeries, state, highlight, setActivePayload, zoom, showLegend } = useChartContext();
   const hasNoData = useHasNoData();
   const zoomHandlers = useZoomHandlers();
+  const sync = useChartSync();
   const enableZoom = zoom !== null;
-  const computedYAxisWidth = useYAxisWidth(data, visibleSeries, yAxisPropsProp?.tickFormatter);
+  const yAxisTickFormatter = yAxisPropsProp?.tickFormatter ?? defaultYAxisTickFormatter;
+  const computedYAxisWidth = useYAxisWidth(data, visibleSeries, yAxisTickFormatter);
+
+  // Width-aware horizontal x-axis labels. Engaged only when the caller isn't
+  // controlling tick placement (no ticks/interval/angle), so callers like the
+  // query widget keep their custom (e.g. angled) axes.
+  const callerControlsXTicks =
+    xAxisPropsProp?.ticks !== undefined ||
+    xAxisPropsProp?.interval !== undefined ||
+    xAxisPropsProp?.angle !== undefined;
+  // Plot width = full width minus the y-axis and horizontal margins, so the
+  // "how many labels fit" estimate matches the area labels are drawn in.
+  const xAxisPlotWidth =
+    width != null
+      ? Math.max(0, width - computedYAxisWidth - CHART_MARGIN.left - CHART_MARGIN.right)
+      : undefined;
+  const autoXTicks = useXAxisTicks(
+    data,
+    dataKey,
+    xAxisPlotWidth,
+    xAxisPropsProp?.tickFormatter as ((value: any, index: number) => string) | undefined
+  );
 
   const handleBarClick = useCallback(
     (barData: any, e: React.MouseEvent) => {
@@ -94,7 +126,8 @@ export function ChartBarRenderer({
   const handleMouseLeave = useCallback(() => {
     zoomHandlers.onMouseLeave?.();
     highlight.reset();
-  }, [zoomHandlers, highlight]);
+    sync?.setActiveX(null);
+  }, [zoomHandlers, highlight, sync]);
 
   // Render loading/error states
   if (state === "loading") {
@@ -105,12 +138,21 @@ export function ChartBarRenderer({
     return <ChartBarInvalid />;
   }
 
-  // Get the x-axis ticks based on tooltip state
-  // Only hide middle ticks when zoom is enabled (to make room for zoom instructions)
-  const xAxisTicks =
+  // Get the x-axis ticks based on tooltip state.
+  // Only hide middle ticks when zoom is enabled (to make room for zoom instructions).
+  const zoomXAxisTicks =
     enableZoom && highlight.tooltipActive && data.length > 2
       ? [data[0]?.[dataKey], data[data.length - 1]?.[dataKey]]
       : undefined;
+
+  // Zoom ticks win; otherwise use width-aware auto ticks unless the caller
+  // controls tick placement.
+  const useAutoXTicks = !callerControlsXTicks && !zoomXAxisTicks && autoXTicks != null;
+  const baseXTicks = zoomXAxisTicks ?? (useAutoXTicks ? autoXTicks : undefined);
+  const baseXInterval = useAutoXTicks ? 0 : ("preserveStartEnd" as const);
+
+  // Synced hover indicator (mirrored across charts in the same ChartSyncProvider).
+  const syncActiveX = sync?.activeX ?? null;
 
   return (
     <BarChart
@@ -118,14 +160,17 @@ export function ChartBarRenderer({
       width={width}
       height={height}
       barCategoryGap={1}
+      margin={CHART_MARGIN}
       onMouseDown={zoomHandlers.onMouseDown}
       onMouseMove={(e: any) => {
         zoomHandlers.onMouseMove?.(e);
         if (e?.activePayload?.length) {
           setActivePayload(e.activePayload, e.activeTooltipIndex);
           highlight.setTooltipActive(true);
+          sync?.setActiveX(e.activeLabel ?? null);
         } else {
           highlight.setTooltipActive(false);
+          sync?.setActiveX(null);
         }
       }}
       onMouseUp={zoomHandlers.onMouseUp}
@@ -138,8 +183,8 @@ export function ChartBarRenderer({
         tickLine={false}
         tickMargin={10}
         axisLine={false}
-        ticks={xAxisTicks}
-        interval="preserveStartEnd"
+        ticks={baseXTicks}
+        interval={baseXInterval}
         tick={{
           fill: "#878C99",
           fontSize: 11,
@@ -157,6 +202,7 @@ export function ChartBarRenderer({
           fontSize: 11,
           style: { fontVariantNumeric: "tabular-nums" },
         }}
+        tickFormatter={yAxisTickFormatter}
         domain={["auto", (dataMax: number) => dataMax * 1.15]}
         {...yAxisPropsProp}
       />
@@ -228,6 +274,18 @@ export function ChartBarRenderer({
           />
         );
       })}
+
+      {/* Synced hover indicator — mirrors the hovered x across charts in the same ChartSyncProvider group.
+          pointer-events-none so it never steals hover from the bar underneath it. */}
+      {syncActiveX != null && (
+        <ReferenceLine
+          x={syncActiveX}
+          stroke={SYNC_LINE_COLOR}
+          strokeWidth={1}
+          isFront
+          className="pointer-events-none"
+        />
+      )}
 
       {/* Horizontal reference line */}
       {referenceLine && (
