@@ -5,6 +5,7 @@ import { type WorkerDeploymentStatus } from "@trigger.dev/database";
 import { type FailDeploymentRequestBody } from "@trigger.dev/core/v3/schemas";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { DeploymentService } from "./deployment.server";
+import { recordDeploymentOutcome } from "./recordDeploymentOutcome.server";
 
 export const FINAL_DEPLOYMENT_STATUSES: WorkerDeploymentStatus[] = [
   "CANCELED",
@@ -49,6 +50,16 @@ export class FailDeploymentService extends BaseService {
         failedAt: new Date(),
         errorData: params.error,
       },
+    });
+
+    recordDeploymentOutcome({
+      status: "FAILED",
+      deploymentFriendlyId: friendlyId,
+      organizationId: authenticatedEnv.organizationId,
+      projectId: authenticatedEnv.projectId,
+      environmentId: authenticatedEnv.id,
+      environmentType: authenticatedEnv.type,
+      reason: params.error.message,
     });
 
     const deploymentService = new DeploymentService();
