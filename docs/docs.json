@@ -199,6 +199,7 @@
               "deploy-environment-variables",
               "github-actions",
               "deployment/preview-branches",
+              "deployment/dev-branches",
               "deployment/atomic-deployment",
               {
                 "group": "Deployment integrations",

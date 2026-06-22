@@ -305,7 +305,7 @@ export default function Page() {
             LeadingIcon={BookOpenIcon}
             to={docsPath("deployment/dev-branches")}
           >
-            TODO ADD DEV Branches docs
+            Dev branches docs
           </LinkButton>
 
           {limits.isAtLimit ? (
