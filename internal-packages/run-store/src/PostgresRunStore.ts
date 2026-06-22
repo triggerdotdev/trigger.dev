@@ -936,6 +936,20 @@ export class PostgresRunStore implements RunStore {
         "RunStore.findRuns: a negative `take` (Prisma 'last N') is not supported across both run tables."
       );
     }
+    // `take` without `orderBy` across BOTH tables is non-deterministic: each
+    // table is capped at `take` independently, then the two capped sets are
+    // concatenated, so once one table fills `take` the other table's rows are
+    // silently dropped. Reject it (like `skip`/`cursor` above) rather than
+    // return a result that may omit one table. Add an `orderBy` for a bounded
+    // cross-table merge, or scope the predicate to a single table.
+    if (args.take !== undefined && ordered.length === 0) {
+      throw new Error(
+        "RunStore.findRuns: `take` without `orderBy` is not supported across both run tables " +
+          "(each table is capped independently, so the cap is non-deterministic and may omit one " +
+          "table's rows). Add an `orderBy` for a bounded cross-table merge, or scope the predicate " +
+          "to a single table."
+      );
+    }
 
     // ORDERED + LIMITED → bounded 2-way merge.
     if (ordered.length > 0 && args.take !== undefined) {
@@ -960,9 +974,10 @@ export class PostgresRunStore implements RunStore {
       return this.#stripAddedKeys(merged, addedKeys);
     }
 
-    // UNORDERED / NO-LIMIT (or `take` without `orderBy`) → run the SAME args
-    // against both tables and concatenate. A run is in exactly one table, so
-    // concatenation is complete and has no duplicates.
+    // UNORDERED / NO-LIMIT → run the SAME args against both tables and
+    // concatenate. A run is in exactly one table, so concatenation is complete
+    // and has no duplicates. (`take` without `orderBy` was rejected above;
+    // `orderBy` + `take` took the bounded-merge branch above.)
     //
     // `orderBy` without `take` still needs the order keys projected so the
     // whole-set re-sort below can read them.
@@ -983,13 +998,6 @@ export class PostgresRunStore implements RunStore {
     if (ordered.length > 0) {
       const comparator = this.#buildCrossTableComparator(ordered);
       combined = combined.sort(comparator);
-    }
-
-    // `take` without `orderBy`: an unordered cap. Each table was capped at
-    // `take`, so the concatenation is at most `2*take`; trim to `take`. Order
-    // among unordered rows is unspecified either way.
-    if (args.take !== undefined) {
-      combined = combined.slice(0, args.take);
     }
 
     return this.#stripAddedKeys(combined, addedKeys);

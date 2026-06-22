@@ -2401,6 +2401,34 @@ describe("PostgresRunStore — table routing by id format", () => {
   );
 
   postgresTest(
+    "findRuns rejects `take` without `orderBy` across both tables (non-deterministic cap)",
+    async ({ prisma }) => {
+      const { environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // A both-table predicate (no id-list) with `take` but no `orderBy` would
+      // cap each table independently and silently drop one table's overflow.
+      await expect(
+        store.findRuns({
+          where: { runtimeEnvironmentId: environment.id },
+          select: { id: true },
+          take: 5,
+        })
+      ).rejects.toThrow(/take.*orderBy/i);
+
+      // The same read WITH an `orderBy` is a valid bounded cross-table merge.
+      await expect(
+        store.findRuns({
+          where: { runtimeEnvironmentId: environment.id },
+          select: { id: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+        })
+      ).resolves.toBeDefined();
+    }
+  );
+
+  postgresTest(
     "findRuns with an id-list partitions by id format and skips the table with no candidate ids",
     async ({ prisma }) => {
       const { organization, project, environment } = await seedEnvironment(prisma);
