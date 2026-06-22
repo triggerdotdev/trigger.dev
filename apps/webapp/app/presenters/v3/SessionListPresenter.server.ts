@@ -7,6 +7,7 @@ import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import {
   type SessionStatus,
   SessionsRepository,
+  LEGACY_PLAYGROUND_TAG,
 } from "~/services/sessionsRepository/sessionsRepository.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
@@ -226,7 +227,12 @@ export class SessionListPresenter {
           type: session.type,
           taskIdentifier: session.taskIdentifier,
           isTest: session.isTest,
-          tags: session.tags ? [...session.tags].sort((a, b) => a.localeCompare(b)) : [],
+          // Hide the legacy "playground" tag (pre-isTest sessions) from display.
+          tags: session.tags
+            ? [...session.tags]
+                .filter((t) => t !== LEGACY_PLAYGROUND_TAG)
+                .sort((a, b) => a.localeCompare(b))
+            : [],
           status,
           closedAt: session.closedAt ? session.closedAt.toISOString() : undefined,
           closedReason: session.closedReason ?? undefined,

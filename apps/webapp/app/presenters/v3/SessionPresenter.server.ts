@@ -4,6 +4,7 @@ import { env } from "~/env.server";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { chatSnapshotStorageKey } from "~/services/realtime/chatSnapshot.server";
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
+import { LEGACY_PLAYGROUND_TAG } from "~/services/sessionsRepository/sessionsRepository.server";
 import { logger } from "~/services/logger.server";
 import { generatePresignedUrl } from "~/v3/objectStore.server";
 import { runStore } from "~/v3/runStore.server";
@@ -178,7 +179,12 @@ export class SessionPresenter {
       type: session.type,
       taskIdentifier: session.taskIdentifier,
       isTest: session.isTest,
-      tags: session.tags ? [...session.tags].sort((a, b) => a.localeCompare(b)) : [],
+      // Hide the legacy "playground" tag (pre-isTest sessions) from display.
+      tags: session.tags
+        ? [...session.tags]
+            .filter((t) => t !== LEGACY_PLAYGROUND_TAG)
+            .sort((a, b) => a.localeCompare(b))
+        : [],
       metadata: session.metadata,
       triggerConfig: session.triggerConfig,
       streamBasinName: session.streamBasinName,

@@ -24,6 +24,13 @@ export type SessionsRepositoryOptions = {
 export const SessionStatus = z.enum(["ACTIVE", "CLOSED", "EXPIRED"]);
 export type SessionStatus = z.infer<typeof SessionStatus>;
 
+/**
+ * Legacy marker tag for sessions created from the Test/playground before the
+ * `Session.isTest` boolean existed. New sessions set `isTest` instead; this tag
+ * is hidden from the Tags display so it doesn't surface on pre-isTest rows.
+ */
+export const LEGACY_PLAYGROUND_TAG = "playground";
+
 const SessionListInputOptionsSchema = z.object({
   organizationId: z.string(),
   projectId: z.string(),
