@@ -1,4 +1,4 @@
-import type { DiagnosisBlock } from "@internal/dashboard-agent";
+import type { DiagnosisBlock, ViewBlock } from "@internal/dashboard-agent";
 import { ViewBlocks } from "~/components/dashboard-agent/view-catalog";
 import { Header1, Header2 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -83,7 +83,7 @@ const lowConfidenceDiagnosis: DiagnosisBlock = {
   ],
 };
 
-function Example({ title, block }: { title: string; block: DiagnosisBlock }) {
+function Example({ title, block }: { title: string; block: ViewBlock }) {
   return (
     <div className="flex flex-col gap-2">
       <Header2>{title}</Header2>
@@ -101,8 +101,10 @@ export default function Story() {
         <Header1>Dashboard agent UI</Header1>
         <Paragraph variant="small">
           Blocks the dashboard agent renders via its render_view tool, shown through the same
-          ViewBlocks registry the chat panel uses. The catalog currently has the diagnosis (failure)
-          card. Run links resolve inside a project; here they render as plain text.
+          ViewBlocks registry the chat panel uses. The catalog has the diagnosis (failure) card,
+          shown here, and a chart block that runs a TRQL query live (only renders inside a
+          project/env, so it's not shown here). Run links resolve inside a project; here they render
+          as plain text.
         </Paragraph>
       </div>
 

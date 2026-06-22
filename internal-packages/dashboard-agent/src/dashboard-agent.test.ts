@@ -261,6 +261,7 @@ describe("buildDashboardAgentTools", () => {
     expect(Object.keys(tools).sort()).toEqual(
       [
         "get_error",
+        "get_query_schema",
         "get_run",
         "get_run_trace",
         "list_environments",
@@ -268,6 +269,7 @@ describe("buildDashboardAgentTools", () => {
         "list_projects",
         "list_runs",
         "list_tasks",
+        "run_query",
         "render_view",
       ].sort()
     );

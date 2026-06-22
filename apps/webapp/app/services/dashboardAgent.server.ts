@@ -18,6 +18,7 @@ const DASHBOARD_AGENT_UAT_CAP = [
   "read:deployments",
   "read:environments",
   "read:errors",
+  "read:query",
 ];
 
 // Minted fresh on every turn (the `in` proxy injects it), so the lifetime only

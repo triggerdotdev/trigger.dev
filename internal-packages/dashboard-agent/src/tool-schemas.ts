@@ -110,6 +110,33 @@ export const getErrorSchema = tool({
   }),
 });
 
+// Analytics query tools (TRQL over the user's ClickHouse-backed data). Read-only.
+
+export const getQuerySchemaSchema = tool({
+  description:
+    "Discover the analytics tables and columns you can query with TRQL. Call with no table to list the available tables (runs, metrics, llm_metrics, llm_models) and what each holds; call with a table name to get that table's columns, types, descriptions, and time column. Use this before writing a run_query.",
+  inputSchema: z.object({
+    table: z
+      .string()
+      .optional()
+      .describe("A table name (e.g. 'runs') to get its columns. Omit to list the available tables."),
+  }),
+});
+
+export const runQuerySchema = tool({
+  description:
+    "Run a read-only TRQL query against the current environment's analytics data and return the result rows. TRQL is a SQL-style language over ClickHouse: bucket time with toStartOfHour/toStartOfDay on the table's time column for time series, and use countIf/sumIf to produce one numeric column per series. Always call get_query_schema first. Results are capped, so keep queries aggregated. To chart the result, follow with a render_view chart block.",
+  inputSchema: z.object({
+    query: z
+      .string()
+      .describe("The TRQL query. A read-only SELECT over runs / metrics / llm_metrics / llm_models."),
+    period: z
+      .string()
+      .optional()
+      .describe("Time window shorthand like '24h', '7d', '30d' (max 30d), applied to the table's time column."),
+  }),
+});
+
 // ---------------------------------------------------------------------------
 // View catalog — our own small "generative UI" layer.
 //
@@ -193,14 +220,53 @@ export const diagnosisBlockSchema = z.object({
     .describe("Optional call-to-action buttons rendered under the card."),
 });
 
-export const viewBlockSchema = z.discriminatedUnion("type", [diagnosisBlockSchema]);
+// The chart block carries the TRQL query (not the rows): the panel runs it
+// through the dashboard's own query execution + QueryResultsChart, so the chart
+// is live and matches the Query page exactly. The agent describes the chart with
+// the SAME config the dashboard's chart builder uses (chartType + axis columns +
+// group/aggregation) and writes a query whose result columns map onto it.
+export const chartBlockSchema = z.object({
+  type: z.literal("chart"),
+  title: z.string().optional().describe("Optional chart title."),
+  query: z
+    .string()
+    .describe(
+      "A read-only TRQL SELECT whose result columns map onto the axes below. The panel runs this query and renders the result, so write it the same way you would for run_query (toStartOfHour/toStartOfDay buckets, countIf/sumIf per series)."
+    ),
+  period: z
+    .string()
+    .optional()
+    .describe("Time window shorthand like '24h', '7d', '30d' (max 30d), applied to the table's time column."),
+  chartType: z
+    .enum(["line", "bar"])
+    .describe("line for trends over time, bar for comparing categories. Stack with `stacked` for composition."),
+  xAxisColumn: z
+    .string()
+    .describe("The result column for the x-axis: a time bucket (for line) or a category (for bar)."),
+  yAxisColumns: z
+    .array(z.string())
+    .min(1)
+    .describe("The numeric result column(s) to plot. One per series, unless groupByColumn is set."),
+  groupByColumn: z
+    .string()
+    .nullish()
+    .describe("Optional result column to split a single yAxisColumn into one series per distinct value."),
+  stacked: z.boolean().optional().describe("Stack the series (cumulative/composition). Default false."),
+  aggregation: z
+    .enum(["sum", "avg", "count", "min", "max"])
+    .optional()
+    .describe("How to combine values that share an x point. Default sum."),
+});
+
+export const viewBlockSchema = z.discriminatedUnion("type", [diagnosisBlockSchema, chartBlockSchema]);
 
 export type DiagnosisBlock = z.infer<typeof diagnosisBlockSchema>;
+export type ChartBlock = z.infer<typeof chartBlockSchema>;
 export type ViewBlock = z.infer<typeof viewBlockSchema>;
 
 export const renderViewSchema = tool({
   description:
-    "Render a structured view in the dashboard panel: a stack of catalog blocks, instead of plain prose. The catalog currently has one block, `diagnosis` — the 'why did this run fail?' failure card. Use it after gathering evidence with the read tools (get_run for the error, get_run_trace for the failing span, get_error/list_errors for the pattern, and in code mode the source tools). Keep any accompanying message to a one-line lead-in.",
+    "Render a structured view in the dashboard panel: a stack of catalog blocks, instead of plain prose. The catalog has two blocks: `diagnosis` (the 'why did this run fail?' failure card, after gathering evidence with the read/source tools) and `chart` (a line/bar chart of run_query results). Keep any accompanying message to a one-line lead-in.",
   inputSchema: z.object({
     blocks: z.array(viewBlockSchema).min(1).describe("The blocks to render, top to bottom."),
   }),
@@ -270,6 +336,8 @@ export const dashboardAgentToolSchemas = {
   get_run_trace: getRunTraceSchema,
   list_errors: listErrorsSchema,
   get_error: getErrorSchema,
+  get_query_schema: getQuerySchemaSchema,
+  run_query: runQuerySchema,
   render_view: renderViewSchema,
 };
 
@@ -308,7 +376,9 @@ You have read-only tools that act as the user against their own account:
 - get_run_trace: a run's execution timeline (spans, durations, errors) for explaining why it failed, retried, or was slow.
 - list_errors: distinct errors in the current environment grouped by fingerprint, with occurrence counts and status (unresolved/resolved/ignored).
 - get_error: full detail for one error group by its error id, including affected versions and who resolved or ignored it.
-- render_view: render a structured view in the panel from the block catalog. The catalog has the "diagnosis" block: a failure card for a single run (summary, category, likely cause, confidence, evidence, impact, next steps, action buttons).
+- get_query_schema: discover the analytics tables and columns you can query with TRQL (runs, metrics, llm_metrics, llm_models).
+- run_query: run a read-only TRQL query (SQL-style over ClickHouse) against the current environment's analytics data.
+- render_view: render a structured view in the panel from the block catalog. The catalog has the "diagnosis" block (a failure card for a single run) and the "chart" block (a line/bar chart of run_query results).
 
 Guidelines:
 - Be concise and direct. A short, correct answer beats a long one.
@@ -321,7 +391,12 @@ Guidelines:
 Diagnosing why a run failed:
 - When the user asks why a specific run failed (or to investigate a run or error), gather evidence before answering: get_run for the status and error, get_run_trace for the failing span and timeline, and get_error / list_errors to see whether it's a recurring pattern and how widespread it is.
 - Then call render_view with a single "diagnosis" block holding your findings: a short summary, the failure category, the likely root cause in specific terms, your confidence, the concrete evidence (cite real run ids, error ids, span messages, and versions), the impact, the next steps, and any action buttons. This renders the failure card, so keep any accompanying message to a one-line lead-in rather than repeating the card.
-- Be honest about confidence. If the evidence is thin or ambiguous, mark it low and say what's missing rather than overstating a guess.`;
+- Be honest about confidence. If the evidence is thin or ambiguous, mark it low and say what's missing rather than overstating a guess.
+
+Answering with data and charts:
+- For questions about metrics, trends, counts, rates, costs, or "over time" / "by task" style aggregations, query the analytics data. First call get_query_schema (no table to list the tables, then a table name for its columns), then write a TRQL query. TRQL is SQL-style over ClickHouse: bucket time with toStartOfHour/toStartOfDay on the table's time column, produce one numeric column per series with countIf/sumIf, always include a time filter, and keep the result aggregated to a few dozen points.
+- To chart the answer, call render_view with a "chart" block containing the TRQL query itself plus chartType (line for trends over time, bar for categories), xAxisColumn, yAxisColumns, and groupByColumn when you split a single value column into series. The panel runs the query and renders it, so you don't have to run_query first just to chart.
+- Use run_query when you want to state specific numbers in prose, or to sanity-check a query before charting. If it returns an error, read the message and fix the query.`;
 
 // Used when the current project has a connected GitHub repo: the base prompt
 // plus the source-reading tools and how to use them.

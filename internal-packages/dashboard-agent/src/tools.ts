@@ -1,6 +1,7 @@
 import { tool, type ToolSet } from "ai";
 import {
   getErrorSchema,
+  getQuerySchemaSchema,
   getRunSchema,
   getRunTraceSchema,
   listEnvironmentsSchema,
@@ -9,6 +10,7 @@ import {
   listRunsSchema,
   listTasksSchema,
   renderViewSchema,
+  runQuerySchema,
 } from "./tool-schemas";
 import { buildRepoTools, type RepoSnapshot } from "./repo-tools";
 
@@ -63,7 +65,7 @@ async function exchangeEnvJwt(
     method: "POST",
     headers: { Authorization: `Bearer ${userActorToken}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      claims: { scopes: ["read:runs", "read:deployments", "read:errors"] },
+      claims: { scopes: ["read:runs", "read:deployments", "read:errors", "read:query"] },
     }),
   });
   if (!res.ok) return null;
@@ -365,6 +367,72 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         const result = await apiGet(origin, `/api/v1/errors/${errorId}`, envJwt);
         if (!result.ok) return { error: `Couldn't get error ${errorId} (status ${result.status}).` };
         return curateError(result.data);
+      },
+    }),
+
+    get_query_schema: tool({
+      ...getQuerySchemaSchema,
+      execute: async ({ table }) => {
+        const envJwt = await getEnvJwt();
+        if (!envJwt) return { error: "No current environment is available to query." };
+        const result = await apiGet(origin, "/api/v1/query/schema", envJwt);
+        if (!result.ok) return { error: `Couldn't load the query schema (status ${result.status}).` };
+        const tables = ((result.data as { tables?: any[] })?.tables ?? []) as any[];
+        // No table → list what's queryable; a table → its columns.
+        if (!table) {
+          return {
+            tables: tables.map((t) => ({
+              name: t.name,
+              description: t.description,
+              timeColumn: t.timeColumn,
+            })),
+          };
+        }
+        const match = tables.find((t) => t.name === table);
+        if (!match) {
+          return { error: `Unknown table "${table}". Available: ${tables.map((t) => t.name).join(", ")}.` };
+        }
+        return {
+          name: match.name,
+          description: match.description,
+          timeColumn: match.timeColumn,
+          columns: (match.columns ?? []).map((c: any) => ({
+            name: c.name,
+            type: c.type,
+            description: c.description,
+            allowedValues: c.allowedValues,
+            coreColumn: c.coreColumn,
+          })),
+        };
+      },
+    }),
+
+    run_query: tool({
+      ...runQuerySchema,
+      execute: async ({ query, period }) => {
+        const envJwt = await getEnvJwt();
+        if (!envJwt) return { error: "No current environment is available to query." };
+        let res: Response;
+        try {
+          res = await fetch(`${origin}/api/v1/query`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${envJwt}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({ query, scope: "environment", period, format: "json" }),
+          });
+        } catch (error) {
+          return { error: `Query request failed: ${(error as Error).message}` };
+        }
+        // The route returns 400 with { error } for invalid TRQL; surface it so
+        // the model can fix the query rather than the turn dying.
+        const data = (await res.json().catch(() => ({}))) as { results?: unknown; error?: string };
+        if (!res.ok) return { error: data.error ?? `Query failed (status ${res.status}).` };
+        const rows = Array.isArray(data.results) ? (data.results as Array<Record<string, unknown>>) : [];
+        const cap = 200;
+        return { rows: rows.slice(0, cap), rowCount: rows.length, truncated: rows.length > cap };
       },
     }),
 

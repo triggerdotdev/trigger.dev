@@ -8,4 +8,4 @@ export * from "./dashboard-agent.js";
 
 // The view-catalog block types, for the webapp's render registry. Type-only —
 // these come from the light schema module and pull no runtime into the bundle.
-export type { DiagnosisBlock, ViewBlock } from "./tool-schemas.js";
+export type { ChartBlock, DiagnosisBlock, ViewBlock } from "./tool-schemas.js";

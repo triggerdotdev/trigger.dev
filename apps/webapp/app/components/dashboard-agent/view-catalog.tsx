@@ -1,4 +1,5 @@
 import type { ViewBlock } from "@internal/dashboard-agent";
+import { AgentChart } from "./AgentChart";
 import { RunDiagnosisCard } from "./RunDiagnosisCard";
 
 // The render registry for the dashboard agent's view catalog — our small
@@ -17,6 +18,8 @@ export function ViewBlocks({ blocks }: { blocks: ViewBlock[] }) {
         switch (block.type) {
           case "diagnosis":
             return <RunDiagnosisCard key={i} block={block} />;
+          case "chart":
+            return <AgentChart key={i} block={block} />;
           default:
             return null;
         }
