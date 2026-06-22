@@ -1642,6 +1642,34 @@ const EnvironmentSchema = z
     CLICKHOUSE_LOGS_LIST_MAX_THREADS: z.coerce.number().int().default(2),
     CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ: z.coerce.number().int().default(10_000_000),
     CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME: z.coerce.number().int().default(120),
+    // Bound read-in-order memory on object-storage reads: each part opens a per-column read
+    // stream, and the default ~1 MiB+ S3 buffers dominate peak memory. These two byte sizes
+    // cap the per-stream buffers and exist on every supported ClickHouse, so they are always on.
+    CLICKHOUSE_LOGS_LIST_PREFETCH_BUFFER_SIZE: z.coerce.number().int().nonnegative().default(262_144),
+    CLICKHOUSE_LOGS_LIST_MAX_READ_BUFFER_SIZE: z.coerce.number().int().nonnegative().default(262_144),
+    // The decisive lever on Cloud SharedMergeTree, but it only exists on newer ClickHouse and
+    // is a no-op on local-disk MergeTree, so it is opt-in: unset means it is never sent (safe on
+    // any self-hosted version). Set to 0 on object-storage deployments to get the memory win.
+    CLICKHOUSE_LOGS_LIST_FILESYSTEM_CACHE_PREFER_BIGGER_BUFFER_SIZE: z.coerce
+      .number()
+      .int()
+      .nonnegative()
+      .optional(),
+
+    // Logs list pagination tuning (page sizing + recent-first probe windows).
+    LOGS_LIST_DEFAULT_PAGE_SIZE: z.coerce.number().int().positive().default(50),
+    LOGS_LIST_MAX_PAGE_SIZE: z.coerce.number().int().positive().default(100),
+    // Days back from the page ceiling to probe before widening to the full requested window,
+    // comma-separated. Empty disables narrowing (a single full-window query).
+    LOGS_LIST_RECENT_FIRST_PROBE_DAYS: z
+      .string()
+      .default("1,7")
+      .transform((s) =>
+        s
+          .split(",")
+          .map((v) => Number(v.trim()))
+          .filter((n) => Number.isFinite(n) && n > 0)
+      ),
 
     // Query feature flag
     QUERY_FEATURE_ENABLED: z.string().default("1"),
