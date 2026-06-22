@@ -596,19 +596,16 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
           ),
       });
     } else {
-      // Lightweight mock route without schemas
+      // Disabled: drop immediately without reading/parsing the body and without
+      // any log we can't switch off. Older runners still POST per log line; the
+      // route stays registered (an unregistered route would log "No route match"
+      // per request) but sheds the request at minimal cost. Request metrics still
+      // count it. 204 is non-retryable on the runner client, so no retry storm.
       httpServer.route("/api/v1/workload-actions/runs/:runFriendlyId/logs/debug", "POST", {
-        handler: async (ctx) =>
-          this.wideRoute(
-            ctx,
-            "logs.debug",
-            "/api/v1/workload-actions/runs/:runFriendlyId/logs/debug",
-            "POST",
-            async () => {
-              ctx.reply.empty(204);
-            },
-            { highFrequency: true }
-          ),
+        skipBodyParsing: true,
+        handler: async (ctx) => {
+          ctx.reply.empty(204);
+        },
       });
     }
 
