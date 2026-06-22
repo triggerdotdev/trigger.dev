@@ -36,16 +36,8 @@ const { action } = createActionApiRoute(
         select: {
           id: true,
           friendlyId: true,
-          parentTaskRun: {
-            select: {
-              friendlyId: true,
-            },
-          },
-          rootTaskRun: {
-            select: {
-              friendlyId: true,
-            },
-          },
+          parentTaskRunId: true,
+          rootTaskRunId: true,
         },
       },
       $replica
@@ -55,12 +47,24 @@ const { action } = createActionApiRoute(
       return new Response("Run not found", { status: 404 });
     }
 
-    const targetId =
-      params.target === "self"
-        ? run.friendlyId
-        : params.target === "parent"
-        ? run.parentTaskRun?.friendlyId
-        : run.rootTaskRun?.friendlyId;
+    // parentTaskRunId/rootTaskRunId are scalar ids that may point at a run in
+    // the OTHER physical table (the runTableV2 mixed window), so resolve the
+    // target's friendlyId by id (RunStore routes by id format) rather than via a
+    // table-bound relation select, which would return null cross-table.
+    let targetId: string | undefined;
+    if (params.target === "self") {
+      targetId = run.friendlyId;
+    } else {
+      const targetScalarId = params.target === "parent" ? run.parentTaskRunId : run.rootTaskRunId;
+      if (targetScalarId) {
+        const target = await runStore.findRun(
+          { id: targetScalarId, runtimeEnvironmentId: authentication.environment.id },
+          { select: { friendlyId: true } },
+          $replica
+        );
+        targetId = target?.friendlyId;
+      }
+    }
 
     if (!targetId) {
       return new Response("Target not found", { status: 404 });

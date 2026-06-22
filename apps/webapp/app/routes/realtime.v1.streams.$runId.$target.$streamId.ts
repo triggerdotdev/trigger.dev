@@ -14,6 +14,23 @@ const ParamsSchema = z.object({
   streamId: z.string(),
 });
 
+// Resolve a parent/root stream target across BOTH run tables. The scalar
+// parentTaskRunId/rootTaskRunId may reference a run in the other physical table
+// during the runTableV2 mixed window; findRun routes by id format, so this
+// resolves the target whichever table it lives in (a table-bound relation
+// select would resolve null for a cross-table parent/root).
+async function resolveStreamTargetById(
+  targetScalarId: string | null,
+  runtimeEnvironmentId: string
+): Promise<{ friendlyId: string; streamBasinName: string | null } | null> {
+  if (!targetScalarId) return null;
+  return runStore.findRun(
+    { id: targetScalarId, runtimeEnvironmentId },
+    { select: { friendlyId: true, streamBasinName: true } },
+    $replica
+  );
+}
+
 const { action } = createActionApiRoute(
   {
     params: ParamsSchema,
@@ -29,18 +46,8 @@ const { action } = createActionApiRoute(
           id: true,
           friendlyId: true,
           streamBasinName: true,
-          parentTaskRun: {
-            select: {
-              friendlyId: true,
-              streamBasinName: true,
-            },
-          },
-          rootTaskRun: {
-            select: {
-              friendlyId: true,
-              streamBasinName: true,
-            },
-          },
+          parentTaskRunId: true,
+          rootTaskRunId: true,
         },
       },
       $replica
@@ -50,12 +57,18 @@ const { action } = createActionApiRoute(
       return new Response("Run not found", { status: 404 });
     }
 
+    // Resolve the target across BOTH run tables. parentTaskRunId/rootTaskRunId
+    // are scalar pointers that may reference a run in the OTHER physical table
+    // (the runTableV2 mixed window); a table-bound relation select would resolve
+    // null and 404 a target that exists. findRun routes by id format; "self" is
+    // the run itself.
     const targetRun =
       params.target === "self"
-        ? run
-        : params.target === "parent"
-        ? run.parentTaskRun
-        : run.rootTaskRun;
+        ? { friendlyId: run.friendlyId, streamBasinName: run.streamBasinName }
+        : await resolveStreamTargetById(
+            params.target === "parent" ? run.parentTaskRunId : run.rootTaskRunId,
+            authentication.environment.id
+          );
 
     if (!targetRun?.friendlyId) {
       return new Response("Target not found", { status: 404 });
@@ -164,18 +177,8 @@ const loader = createLoaderApiRoute(
             id: true,
             friendlyId: true,
             streamBasinName: true,
-            parentTaskRun: {
-              select: {
-                friendlyId: true,
-                streamBasinName: true,
-              },
-            },
-            rootTaskRun: {
-              select: {
-                friendlyId: true,
-                streamBasinName: true,
-              },
-            },
+            parentTaskRunId: true,
+            rootTaskRunId: true,
           },
         },
         $replica
@@ -187,12 +190,15 @@ const loader = createLoaderApiRoute(
       return new Response("Run not found", { status: 404 });
     }
 
+    // Resolve the target across both run tables by id (the scalar parent/root
+    // pointer may be cross-table in the mixed window); "self" is the run itself.
     const targetRun =
       params.target === "self"
-        ? run
-        : params.target === "parent"
-        ? run.parentTaskRun
-        : run.rootTaskRun;
+        ? { friendlyId: run.friendlyId, streamBasinName: run.streamBasinName }
+        : await resolveStreamTargetById(
+            params.target === "parent" ? run.parentTaskRunId : run.rootTaskRunId,
+            authentication.environment.id
+          );
 
     if (!targetRun?.friendlyId) {
       return new Response("Target not found", { status: 404 });
