@@ -14,6 +14,7 @@ import type {
   CreateRunInput,
   ExpireSnapshotInput,
   LockRunData,
+  ReadClient,
   RescheduleSnapshotInput,
   RewriteDebouncedRunData,
   RunStore,
@@ -621,21 +622,21 @@ export class PostgresRunStore implements RunStore {
   findRun<S extends Prisma.TaskRunSelect>(
     where: Prisma.TaskRunWhereInput,
     args: { select: S },
-    client?: PrismaClientOrTransaction
+    client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }> | null>;
   findRun<I extends Prisma.TaskRunInclude>(
     where: Prisma.TaskRunWhereInput,
     args: { include: I },
-    client?: PrismaClientOrTransaction
+    client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }> | null>;
   findRun(
     where: Prisma.TaskRunWhereInput,
-    client?: PrismaClientOrTransaction
+    client?: ReadClient
   ): Promise<TaskRun | null>;
   async findRun(
     where: Prisma.TaskRunWhereInput,
-    argsOrClient?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude } | PrismaClientOrTransaction,
-    client?: PrismaClientOrTransaction
+    argsOrClient?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude } | ReadClient,
+    client?: ReadClient
   ): Promise<unknown> {
     const { args, prisma } = this.#resolveReadArgs(argsOrClient, client);
 
@@ -648,21 +649,21 @@ export class PostgresRunStore implements RunStore {
   findRunOrThrow<S extends Prisma.TaskRunSelect>(
     where: Prisma.TaskRunWhereInput,
     args: { select: S },
-    client?: PrismaClientOrTransaction
+    client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   findRunOrThrow<I extends Prisma.TaskRunInclude>(
     where: Prisma.TaskRunWhereInput,
     args: { include: I },
-    client?: PrismaClientOrTransaction
+    client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
   findRunOrThrow(
     where: Prisma.TaskRunWhereInput,
-    client?: PrismaClientOrTransaction
+    client?: ReadClient
   ): Promise<TaskRun>;
   async findRunOrThrow(
     where: Prisma.TaskRunWhereInput,
-    argsOrClient?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude } | PrismaClientOrTransaction,
-    client?: PrismaClientOrTransaction
+    argsOrClient?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude } | ReadClient,
+    client?: ReadClient
   ): Promise<unknown> {
     const { args, prisma } = this.#resolveReadArgs(argsOrClient, client);
 
@@ -681,7 +682,7 @@ export class PostgresRunStore implements RunStore {
       skip?: number;
       cursor?: Prisma.TaskRunWhereUniqueInput;
     },
-    client?: PrismaClientOrTransaction
+    client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>[]>;
   findRuns<I extends Prisma.TaskRunInclude>(
     args: {
@@ -692,7 +693,7 @@ export class PostgresRunStore implements RunStore {
       skip?: number;
       cursor?: Prisma.TaskRunWhereUniqueInput;
     },
-    client?: PrismaClientOrTransaction
+    client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }>[]>;
   findRuns(
     args: {
@@ -702,7 +703,7 @@ export class PostgresRunStore implements RunStore {
       skip?: number;
       cursor?: Prisma.TaskRunWhereUniqueInput;
     },
-    client?: PrismaClientOrTransaction
+    client?: ReadClient
   ): Promise<TaskRun[]>;
   async findRuns(
     args: {
@@ -714,7 +715,7 @@ export class PostgresRunStore implements RunStore {
       skip?: number;
       cursor?: Prisma.TaskRunWhereUniqueInput;
     },
-    client?: PrismaClientOrTransaction
+    client?: ReadClient
   ): Promise<unknown> {
     const prisma = client ?? this.readOnlyPrisma;
 
@@ -732,12 +733,12 @@ export class PostgresRunStore implements RunStore {
   #resolveReadArgs(
     argsOrClient:
       | { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude }
-      | PrismaClientOrTransaction
+      | ReadClient
       | undefined,
-    client: PrismaClientOrTransaction | undefined
+    client: ReadClient | undefined
   ): {
     args: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude };
-    prisma: PrismaClientOrTransaction | PrismaReplicaClient;
+    prisma: ReadClient;
   } {
     const isProjection =
       typeof argsOrClient === "object" &&
@@ -754,7 +755,7 @@ export class PostgresRunStore implements RunStore {
     // No projection: the second positional arg, when present, is the client.
     return {
       args: {},
-      prisma: (argsOrClient as PrismaClientOrTransaction | undefined) ?? this.readOnlyPrisma,
+      prisma: (argsOrClient as ReadClient | undefined) ?? this.readOnlyPrisma,
     };
   }
 }

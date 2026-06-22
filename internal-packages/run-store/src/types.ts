@@ -1,6 +1,7 @@
 import type {
   Prisma,
   PrismaClientOrTransaction,
+  PrismaReplicaClient,
   TaskRun,
   TaskRunStatus,
   TaskRunExecutionStatus,
@@ -8,6 +9,14 @@ import type {
   Waitpoint,
 } from "@trigger.dev/database";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
+
+/**
+ * Client accepted by the read methods. Reads route through the replica by
+ * default, so callers may pass either the writer/transaction client or the
+ * read replica — both expose the `taskRun.findFirst`/`findMany` surface the
+ * reads use. Write methods stay on `PrismaClientOrTransaction`.
+ */
+export type ReadClient = PrismaClientOrTransaction | PrismaReplicaClient;
 
 export type CreateRunSnapshotInput = {
   engine: "V2";
@@ -324,26 +333,26 @@ export interface RunStore {
   findRun<S extends Prisma.TaskRunSelect>(
     where: Prisma.TaskRunWhereInput,
     args: { select: S },
-    client?: PrismaClientOrTransaction
+    client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }> | null>;
   findRun<I extends Prisma.TaskRunInclude>(
     where: Prisma.TaskRunWhereInput,
     args: { include: I },
-    client?: PrismaClientOrTransaction
+    client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }> | null>;
-  findRun(where: Prisma.TaskRunWhereInput, client?: PrismaClientOrTransaction): Promise<TaskRun | null>;
+  findRun(where: Prisma.TaskRunWhereInput, client?: ReadClient): Promise<TaskRun | null>;
 
   findRunOrThrow<S extends Prisma.TaskRunSelect>(
     where: Prisma.TaskRunWhereInput,
     args: { select: S },
-    client?: PrismaClientOrTransaction
+    client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   findRunOrThrow<I extends Prisma.TaskRunInclude>(
     where: Prisma.TaskRunWhereInput,
     args: { include: I },
-    client?: PrismaClientOrTransaction
+    client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
-  findRunOrThrow(where: Prisma.TaskRunWhereInput, client?: PrismaClientOrTransaction): Promise<TaskRun>;
+  findRunOrThrow(where: Prisma.TaskRunWhereInput, client?: ReadClient): Promise<TaskRun>;
 
   findRuns<S extends Prisma.TaskRunSelect>(
     args: {
@@ -354,7 +363,7 @@ export interface RunStore {
       skip?: number;
       cursor?: Prisma.TaskRunWhereUniqueInput;
     },
-    client?: PrismaClientOrTransaction
+    client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>[]>;
   findRuns<I extends Prisma.TaskRunInclude>(
     args: {
@@ -365,7 +374,7 @@ export interface RunStore {
       skip?: number;
       cursor?: Prisma.TaskRunWhereUniqueInput;
     },
-    client?: PrismaClientOrTransaction
+    client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }>[]>;
   findRuns(
     args: {
@@ -375,6 +384,6 @@ export interface RunStore {
       skip?: number;
       cursor?: Prisma.TaskRunWhereUniqueInput;
     },
-    client?: PrismaClientOrTransaction
+    client?: ReadClient
   ): Promise<TaskRun[]>;
 }
