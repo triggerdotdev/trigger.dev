@@ -1,7 +1,7 @@
 import { createCookie } from "@remix-run/node";
 import { env } from "~/env.server";
 
-export type LastAuthMethod = "github" | "google" | "email";
+export type LastAuthMethod = "github" | "google" | "email" | "sso";
 
 // Cookie that persists for 1 year to remember the user's last login method
 export const lastAuthMethodCookie = createCookie("last-auth-method", {
@@ -14,7 +14,7 @@ export const lastAuthMethodCookie = createCookie("last-auth-method", {
 export async function getLastAuthMethod(request: Request): Promise<LastAuthMethod | null> {
   const cookie = request.headers.get("Cookie");
   const value = await lastAuthMethodCookie.parse(cookie);
-  if (value === "github" || value === "google" || value === "email") {
+  if (value === "github" || value === "google" || value === "email" || value === "sso") {
     return value;
   }
   return null;

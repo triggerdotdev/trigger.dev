@@ -11,7 +11,9 @@ import type {
   RoleAssignmentResult,
   RoleBaseAccessController,
   RoleMutationResult,
+  UserActorAuthResult,
 } from "@trigger.dev/plugins";
+import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/plugins";
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@trigger.dev/database";
 import { validateJWT } from "@trigger.dev/core/v3/jwt";
@@ -39,25 +41,34 @@ function resolvePrismaClients(input: PrismaInput): FallbackPrismaClients {
   return "primary" in input ? input : { primary: input, replica: input };
 }
 
+export type FallbackOptions = {
+  // Platform secret for verifying delegated user-actor tokens (tr_uat_).
+  userActorSecret?: string;
+};
+
 export class RoleBaseAccessFallback {
   private readonly clients: FallbackPrismaClients;
+  private readonly options: FallbackOptions;
 
-  constructor(prisma: PrismaInput) {
+  constructor(prisma: PrismaInput, options?: FallbackOptions) {
     this.clients = resolvePrismaClients(prisma);
+    this.options = options ?? {};
   }
 
   create(): RoleBaseAccessFallbackController {
-    return new RoleBaseAccessFallbackController(this.clients);
+    return new RoleBaseAccessFallbackController(this.clients, this.options);
   }
 }
 
 class RoleBaseAccessFallbackController implements RoleBaseAccessController {
   private readonly prisma: PrismaClient; // alias for primary — used by writes
   private readonly replica: PrismaClient;
+  private readonly userActorSecret?: string;
 
-  constructor(clients: FallbackPrismaClients) {
+  constructor(clients: FallbackPrismaClients, options?: FallbackOptions) {
     this.prisma = clients.primary;
     this.replica = clients.replica;
+    this.userActorSecret = options?.userActorSecret;
   }
 
   async isUsingPlugin(): Promise<boolean> {
@@ -116,6 +127,10 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
         : [];
       const realtime = result.payload.realtime as { skipColumns?: string[] } | undefined;
       const oneTimeUse = result.payload.otu === true;
+      // A JWT minted from a PAT/UAT exchange stamps `act: { sub: userId }` for
+      // attribution. Surface it so write handlers can record the acting user.
+      const act = result.payload.act as { sub?: unknown } | undefined;
+      const actSub = typeof act?.sub === "string" ? act.sub : undefined;
 
       return {
         ok: true,
@@ -127,7 +142,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
           projectId: env.projectId,
         },
         ability: buildJwtAbility(scopes),
-        jwt: { realtime, oneTimeUse },
+        jwt: { realtime, oneTimeUse, ...(actSub ? { act: { sub: actSub } } : {}) },
       };
     }
 
@@ -312,6 +327,36 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       // user-identity tokens; the route's own authorization block (or
       // the absence of one) decides what they can do, same as it did
       // before this method existed.
+      ability: permissiveAbility,
+    };
+  }
+
+  async authenticateUserActor(
+    request: Request,
+    context: { organizationId?: string; projectId?: string }
+  ): Promise<UserActorAuthResult> {
+    const rawToken = request.headers.get("Authorization")?.replace(/^Bearer /, "").trim();
+    if (!rawToken || !isUserActorToken(rawToken)) {
+      return { ok: false, status: 401, error: "Invalid or Missing user-actor token" };
+    }
+    if (!this.userActorSecret) {
+      return { ok: false, status: 401, error: "User-actor tokens are not configured" };
+    }
+    const claims = await verifyUserActorToken(this.userActorSecret, rawToken);
+    if (!claims) {
+      return { ok: false, status: 401, error: "Invalid user-actor token" };
+    }
+    return {
+      ok: true,
+      userId: claims.userId,
+      subject: {
+        type: "userActor",
+        userId: claims.userId,
+        client: claims.client,
+        organizationId: context.organizationId ?? "",
+        projectId: context.projectId,
+      },
+      // No plugin → permissive, matching the fallback's PAT behaviour.
       ability: permissiveAbility,
     };
   }

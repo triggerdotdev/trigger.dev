@@ -5,11 +5,7 @@ import { BaseService } from "./baseService.server";
 
 export class RetryAttemptService extends BaseService {
   public async call(runId: string) {
-    const taskRun = await this._prisma.taskRun.findFirst({
-      where: {
-        id: runId,
-      },
-    });
+    const taskRun = await this.runStore.findRun({ id: runId }, this._prisma);
 
     if (!taskRun) {
       logger.error("Task run not found", { runId });

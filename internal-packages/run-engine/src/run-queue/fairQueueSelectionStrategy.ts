@@ -209,7 +209,7 @@ export class FairQueueSelectionStrategy implements RunQueueSelectionStrategy {
   }
 
   #weightedShuffle(weightedItems: WeightedEnv[]): string[] {
-    const totalWeight = weightedItems.reduce((sum, item) => sum + item.weight, 0);
+    let totalWeight = weightedItems.reduce((sum, item) => sum + item.weight, 0);
     const result: string[] = [];
     const items = [...weightedItems];
 
@@ -224,8 +224,11 @@ export class FairQueueSelectionStrategy implements RunQueueSelectionStrategy {
       }
       index = Math.max(0, index - 1);
 
-      // Add selected item to result and remove from items
+      // Add selected item to result and remove from items. Decrement totalWeight
+      // so the next draw is scaled to the remaining items; otherwise random
+      // routinely overshoots the shrinking set and the tail item is over-picked.
       result.push(items[index].envId);
+      totalWeight -= items[index].weight;
       items.splice(index, 1);
     }
 

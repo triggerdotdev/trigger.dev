@@ -12,6 +12,7 @@ import {
 } from "./runsRepository.server";
 import parseDuration from "parse-duration";
 import { decodeRunsCursor, encodeRunsCursor } from "./runsCursor.server";
+import { runStore } from "~/v3/runStore.server";
 
 type RunCursorRow = { runId: string; createdAt: number };
 
@@ -148,16 +149,19 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     }
 
     // Then get friendly IDs from Prisma
-    const runs = await this.options.prisma.taskRun.findMany({
-      where: {
-        id: {
-          in: runIds,
+    const runs = await runStore.findRuns(
+      {
+        where: {
+          id: {
+            in: runIds,
+          },
+        },
+        select: {
+          friendlyId: true,
         },
       },
-      select: {
-        friendlyId: true,
-      },
-    });
+      this.options.prisma
+    );
 
     return runs.map((run) => run.friendlyId);
   }
@@ -165,49 +169,52 @@ export class ClickHouseRunsRepository implements IRunsRepository {
   async listRuns(options: ListRunsOptions) {
     const { runIds, pagination } = await this.listRunIds(options);
 
-    let runs = await this.options.prisma.taskRun.findMany({
-      where: {
-        id: {
-          in: runIds,
+    let runs = await runStore.findRuns(
+      {
+        where: {
+          id: {
+            in: runIds,
+          },
+        },
+        orderBy: {
+          id: "desc",
+        },
+        select: {
+          id: true,
+          friendlyId: true,
+          taskIdentifier: true,
+          taskVersion: true,
+          runtimeEnvironmentId: true,
+          status: true,
+          createdAt: true,
+          startedAt: true,
+          lockedAt: true,
+          delayUntil: true,
+          updatedAt: true,
+          completedAt: true,
+          isTest: true,
+          spanId: true,
+          idempotencyKey: true,
+          ttl: true,
+          expiredAt: true,
+          costInCents: true,
+          baseCostInCents: true,
+          usageDurationMs: true,
+          runTags: true,
+          depth: true,
+          rootTaskRunId: true,
+          batchId: true,
+          metadata: true,
+          metadataType: true,
+          machinePreset: true,
+          queue: true,
+          workerQueue: true,
+          region: true,
+          annotations: true,
         },
       },
-      orderBy: {
-        id: "desc",
-      },
-      select: {
-        id: true,
-        friendlyId: true,
-        taskIdentifier: true,
-        taskVersion: true,
-        runtimeEnvironmentId: true,
-        status: true,
-        createdAt: true,
-        startedAt: true,
-        lockedAt: true,
-        delayUntil: true,
-        updatedAt: true,
-        completedAt: true,
-        isTest: true,
-        spanId: true,
-        idempotencyKey: true,
-        ttl: true,
-        expiredAt: true,
-        costInCents: true,
-        baseCostInCents: true,
-        usageDurationMs: true,
-        runTags: true,
-        depth: true,
-        rootTaskRunId: true,
-        batchId: true,
-        metadata: true,
-        metadataType: true,
-        machinePreset: true,
-        queue: true,
-        workerQueue: true,
-        region: true,
-        annotations: true,
-      },
-    });
+      this.options.prisma
+    );
 
     // ClickHouse is slightly delayed, so we're going to do in-memory status filtering too
     if (options.statuses && options.statuses.length > 0) {

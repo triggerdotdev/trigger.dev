@@ -7,6 +7,7 @@ import { logger } from "~/services/logger.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { CancelTaskRunService } from "~/v3/services/cancelTaskRun.server";
 import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
+import { runStore } from "~/v3/runStore.server";
 
 export const cancelSchema = z.object({
   redirectUrl: z.string(),
@@ -20,10 +21,11 @@ const ParamSchema = z.object({
 // user's role in it. The run may not be in Postgres yet (buffered during a
 // burst), so fall back to the buffer entry's org.
 async function resolveRunOrganizationId(runParam: string): Promise<string | null> {
-  const run = await $replica.taskRun.findFirst({
-    where: { friendlyId: runParam },
-    select: { project: { select: { organizationId: true } } },
-  });
+  const run = await runStore.findRun(
+    { friendlyId: runParam },
+    { select: { project: { select: { organizationId: true } } } },
+    $replica
+  );
   if (run) {
     return run.project.organizationId;
   }
@@ -38,10 +40,11 @@ async function resolveRunOrganizationId(runParam: string): Promise<string | null
   // the primary while both lookups above miss. Fall back to the primary so the
   // RBAC scope is never resolved without an org (which would let the role check
   // run unscoped under the RBAC plugin).
-  const primaryRun = await prisma.taskRun.findFirst({
-    where: { friendlyId: runParam },
-    select: { project: { select: { organizationId: true } } },
-  });
+  const primaryRun = await runStore.findRun(
+    { friendlyId: runParam },
+    { select: { project: { select: { organizationId: true } } } },
+    prisma
+  );
   return primaryRun?.project.organizationId ?? null;
 }
 
@@ -65,8 +68,8 @@ export const action = dashboardAction(
     }
 
     try {
-      const taskRun = await prisma.taskRun.findFirst({
-        where: {
+      const taskRun = await runStore.findRun(
+        {
           friendlyId: runParam,
           project: {
             organization: {
@@ -78,7 +81,8 @@ export const action = dashboardAction(
             },
           },
         },
-      });
+        prisma
+      );
 
       if (taskRun) {
         const cancelRunService = new CancelTaskRunService();

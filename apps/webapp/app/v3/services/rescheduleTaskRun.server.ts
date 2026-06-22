@@ -17,15 +17,14 @@ export class RescheduleTaskRunService extends BaseService {
       throw new ServiceValidationError(`Invalid delay: ${body.delay}`);
     }
 
-    const updatedRun = await this._prisma.taskRun.update({
-      where: {
-        id: taskRun.id,
-      },
-      data: {
+    const updatedRun = await this.runStore.rescheduleRun(
+      taskRun.id,
+      {
         delayUntil: delay,
         queueTimestamp: delay,
       },
-    });
+      this._prisma
+    );
 
     if (updatedRun.engine === "V1") {
       await EnqueueDelayedRunService.reschedule(taskRun.id, delay);

@@ -9,6 +9,7 @@ import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { logger } from "~/services/logger.server";
 import { publishChangeRecord } from "~/services/realtime/runChangeNotifierInstance.server";
 import { mutateWithFallback } from "~/v3/mollifier/mutateWithFallback.server";
+import { runStore } from "~/v3/runStore.server";
 
 // Pull the existing tags out of a buffer entry's serialised payload so
 // the buffer-path response can dedup against them, matching the
@@ -84,14 +85,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         if (newTags.length === 0) {
           return json({ message: "No new tags to add" }, { status: 200 });
         }
-        const updated = await prisma.taskRun.update({
-          where: {
-            id: taskRun.id,
-            runtimeEnvironmentId: env.id,
-          },
-          data: { runTags: { push: newTags } },
-          select: { updatedAt: true },
-        });
+        const updated = await runStore.pushTags(taskRun.id, newTags, { runtimeEnvironmentId: env.id }, prisma);
         // Publish a run-changed record with the NEW tag set so tag feeds reindex
         // (no-op unless enabled). updatedAt is the read-your-writes watermark.
         publishChangeRecord({

@@ -1,5 +1,6 @@
 import { json } from "@remix-run/server-runtime";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
+import { isUserActorToken } from "@trigger.dev/rbac";
 import { rbac } from "~/services/rbac.server";
 
 type EnvironmentScopedResource = "envvars" | "apiKeys";
@@ -15,11 +16,12 @@ const RESOURCE_LABELS: Record<EnvironmentScopedResource, string> = {
  *
  * Machine credentials (an environment's secret/public API key) are already
  * scoped to a single environment, so they pass through unchanged. A personal
- * access token carries a user, so enforce that user's role for the targeted
- * environment tier — e.g. a Developer can't read deployed env vars or API keys
- * via the API, matching the dashboard restriction. Blocking the credential read
- * for deployed tiers is also what stops a restricted role deploying via the CLI
- * (deploy needs the environment's secret key).
+ * access token (or a delegated user-actor token) carries a user, so enforce
+ * that user's role for the targeted environment tier — e.g. a Developer can't
+ * read deployed env vars or API keys via the API, matching the dashboard
+ * restriction. Blocking the credential read for deployed tiers is also what
+ * stops a restricted role deploying via the CLI (deploy needs the
+ * environment's secret key).
  *
  * Returns a `Response` to short-circuit with when access is denied, or
  * `undefined` when the request may proceed.
@@ -41,16 +43,23 @@ export async function authorizePatEnvironmentAccess({
   resource: EnvironmentScopedResource;
   action: "read" | "write";
 }): Promise<Response | undefined> {
-  if (authType !== "personalAccessToken") {
+  const bearer = request.headers.get("Authorization")?.replace(/^Bearer /, "").trim();
+  const isUat = !!bearer && isUserActorToken(bearer);
+
+  // Machine creds (apiKey) and org tokens carry no user role to enforce. A
+  // user-actor token carries a user just like a PAT, so it's gated too.
+  if (authType !== "personalAccessToken" && !isUat) {
     return undefined;
   }
 
-  const patAuth = await rbac.authenticatePat(request, { organizationId, projectId });
-  if (!patAuth.ok) {
-    return json({ error: patAuth.error }, { status: patAuth.status });
+  const userAuth = isUat
+    ? await rbac.authenticateUserActor(request, { organizationId, projectId })
+    : await rbac.authenticatePat(request, { organizationId, projectId });
+  if (!userAuth.ok) {
+    return json({ error: userAuth.error }, { status: userAuth.status });
   }
 
-  if (!patAuth.ability.can(action, { type: resource, envType })) {
+  if (!userAuth.ability.can(action, { type: resource, envType })) {
     return json(
       {
         error: `You don't have permission to access this environment's ${RESOURCE_LABELS[resource]}.`,

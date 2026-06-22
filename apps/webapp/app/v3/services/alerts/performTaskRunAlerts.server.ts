@@ -12,17 +12,20 @@ type FoundRun = Prisma.Result<
 
 export class PerformTaskRunAlertsService extends BaseService {
   public async call(runId: string) {
-    const run = await this._prisma.taskRun.findFirst({
-      where: { id: runId },
-      include: {
-        lockedBy: true,
-        runtimeEnvironment: {
-          include: {
-            parentEnvironment: true,
+    const run = await this.runStore.findRun(
+      { id: runId },
+      {
+        include: {
+          lockedBy: true,
+          runtimeEnvironment: {
+            include: {
+              parentEnvironment: true,
+            },
           },
         },
       },
-    });
+      this._prisma
+    );
 
     if (!run) {
       return;

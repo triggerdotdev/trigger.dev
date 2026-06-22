@@ -10,6 +10,7 @@ import { requireUserId } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { mintSessionToken } from "~/services/realtime/mintSessionToken.server";
 import { ensureRunForSession } from "~/services/realtime/sessionRunManager.server";
+import { runStore } from "~/v3/runStore.server";
 
 const PlaygroundAction = z.object({
   intent: z.enum(["create", "start", "save", "delete"]),
@@ -161,7 +162,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
           type: "chat.agent",
           taskIdentifier: agentSlug,
           triggerConfig: triggerConfig as unknown as Prisma.InputJsonValue,
-          tags: ["playground"],
+          // Mark as a Test session — surfaced via the Test column in the
+          // Sessions table. Session tags stay empty; the triggered run still
+          // carries "playground:true" via triggerConfig.tags.
+          isTest: true,
           projectId: project.id,
           runtimeEnvironmentId: environment.id,
           environmentType: environment.type,
@@ -183,10 +187,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         reason: "initial",
       });
 
-      const run = await prisma.taskRun.findFirst({
-        where: { id: ensureResult.runId },
-        select: { friendlyId: true },
-      });
+      const run = await runStore.findRun(
+        { id: ensureResult.runId },
+        { select: { friendlyId: true } },
+        prisma
+      );
       if (!run) {
         return json({ error: "Triggered run not found" }, { status: 500 });
       }

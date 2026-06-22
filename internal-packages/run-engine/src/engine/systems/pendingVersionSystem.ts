@@ -93,15 +93,18 @@ export class PendingVersionSystem {
     // is dropped. The planner uses the PK for `id IN (…)`; the status
     // predicate is a residual filter and does NOT require the status
     // index.
-    const pendingRuns = await this.$.prisma.taskRun.findMany({
-      where: {
-        id: { in: candidateIds },
-        status: "PENDING_VERSION",
+    const pendingRuns = await this.$.runStore.findRuns(
+      {
+        where: {
+          id: { in: candidateIds },
+          status: "PENDING_VERSION",
+        },
+        orderBy: {
+          createdAt: "asc",
+        },
       },
-      orderBy: {
-        createdAt: "asc",
-      },
-    });
+      this.$.prisma
+    );
 
     if (!pendingRuns.length) {
       // CH returned candidates but all of them have already moved past
@@ -129,16 +132,13 @@ export class PendingVersionSystem {
         // Idempotency guard: only flips PENDING_VERSION → PENDING. If another
         // worker already promoted this run between our findMany and the
         // update, count is 0 and we skip the enqueue.
-        const updateResult = await tx.taskRun.updateMany({
-          where: { id: run.id, status: "PENDING_VERSION" },
-          data: { status: "PENDING" },
-        });
+        const updateResult = await this.$.runStore.promotePendingVersionRuns(run.id, tx);
 
         if (updateResult.count === 0) {
           return false;
         }
 
-        const updatedRun = await tx.taskRun.findFirstOrThrow({ where: { id: run.id } });
+        const updatedRun = await this.$.runStore.findRunOrThrow({ id: run.id }, tx);
 
         await this.enqueueSystem.enqueueRun({
           run: updatedRun,

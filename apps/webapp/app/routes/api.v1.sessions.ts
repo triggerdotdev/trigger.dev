@@ -29,6 +29,7 @@ import {
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
+import { runStore } from "~/v3/runStore.server";
 
 function asArray<T>(value: T | T[] | undefined): T[] | undefined {
   if (value === undefined) return undefined;
@@ -264,10 +265,11 @@ const { action } = createActionApiRoute(
       // Read-after-write: the run was just triggered in this request,
       // so go to the writer rather than $replica. Replica lag here
       // would null this out and turn a successful create into a 500.
-      const run = await prisma.taskRun.findFirst({
-        where: { id: ensureResult.runId },
-        select: { friendlyId: true },
-      });
+      const run = await runStore.findRun(
+        { id: ensureResult.runId },
+        { select: { friendlyId: true } },
+        prisma
+      );
       if (!run) {
         throw new Error(`Triggered run ${ensureResult.runId} not found`);
       }

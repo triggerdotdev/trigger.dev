@@ -134,6 +134,19 @@ export interface SsoController {
     roleId: string | null;
   }): ResultAsync<void, SsoMutationError>;
 
+  // Atomic counterpart to the three setters above: the settings form
+  // presents enforced + JIT-enabled + JIT-default-role as a single Save,
+  // so they must commit all-or-nothing. Implementations write all three
+  // OrgSsoConfig columns in one atomic write, so an `internal` failure
+  // leaves none of the fields changed rather than a partially-applied
+  // config. Prefer this over the individual setters for the admin Save path.
+  updateConfig(params: {
+    organizationId: string;
+    enforced: boolean;
+    jitProvisioningEnabled: boolean;
+    jitDefaultRoleId: string | null;
+  }): ResultAsync<void, SsoMutationError>;
+
   // --- Auth flow ---
 
   // Called by every login entry point BEFORE the strategy proceeds.

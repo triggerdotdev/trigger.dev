@@ -352,20 +352,23 @@ export class BatchTriggerV3Service extends BaseService {
     // Fetch cached runs for each task identifier separately to make use of the index
     const cachedRuns = await Promise.all(
       Object.entries(itemsByTask).map(([taskIdentifier, items]) =>
-        this._prisma.taskRun.findMany({
-          where: {
-            runtimeEnvironmentId: environment.id,
-            taskIdentifier,
-            idempotencyKey: {
-              in: items.map((i) => i.options?.idempotencyKey).filter(Boolean),
+        this.runStore.findRuns(
+          {
+            where: {
+              runtimeEnvironmentId: environment.id,
+              taskIdentifier,
+              idempotencyKey: {
+                in: items.map((i) => i.options?.idempotencyKey).filter(Boolean),
+              },
+            },
+            select: {
+              friendlyId: true,
+              idempotencyKey: true,
+              idempotencyKeyExpiresAt: true,
             },
           },
-          select: {
-            friendlyId: true,
-            idempotencyKey: true,
-            idempotencyKeyExpiresAt: true,
-          },
-        })
+          this._prisma
+        )
       )
     ).then((results) => results.flat());
 
@@ -408,10 +411,10 @@ export class BatchTriggerV3Service extends BaseService {
 
     // Expire the cached runs that are no longer valid
     if (expiredRunIds.size) {
-      await this._prisma.taskRun.updateMany({
-        where: { friendlyId: { in: Array.from(expiredRunIds) } },
-        data: { idempotencyKey: null },
-      });
+      await this.runStore.clearIdempotencyKey(
+        { byFriendlyIds: Array.from(expiredRunIds) },
+        this._prisma
+      );
     }
 
     return runs;

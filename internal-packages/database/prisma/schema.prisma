@@ -112,6 +112,7 @@ enum AuthenticationMethod {
   GITHUB
   MAGIC_LINK
   GOOGLE
+  SSO
 }
 
 /// Used to generate PersonalAccessTokens, they're one-time use
@@ -803,6 +804,10 @@ model Session {
   /// `basePayload` carries the customer's client-data; runtime fields
   /// (chatId, messages, trigger) are merged at trigger time.
   triggerConfig Json
+
+  /// Whether this session was created from the Test/playground UI rather
+  /// than by a real chat.agent() trigger. Mirrors TaskRun.isTest.
+  isTest Boolean @default(false)
 
   tags     String[] @default([])
   metadata Json?

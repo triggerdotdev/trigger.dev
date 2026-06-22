@@ -1657,6 +1657,34 @@ const EnvironmentSchema = z
     CLICKHOUSE_LOGS_LIST_MAX_THREADS: z.coerce.number().int().default(2),
     CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ: z.coerce.number().int().default(10_000_000),
     CLICKHOUSE_LOGS_LIST_MAX_EXECUTION_TIME: z.coerce.number().int().default(120),
+    // Bound read-in-order memory on object-storage reads: each part opens a per-column read
+    // stream, and the default ~1 MiB+ S3 buffers dominate peak memory. These two byte sizes
+    // cap the per-stream buffers and exist on every supported ClickHouse, so they are always on.
+    CLICKHOUSE_LOGS_LIST_PREFETCH_BUFFER_SIZE: z.coerce.number().int().nonnegative().default(262_144),
+    CLICKHOUSE_LOGS_LIST_MAX_READ_BUFFER_SIZE: z.coerce.number().int().nonnegative().default(262_144),
+    // The decisive lever on Cloud SharedMergeTree, but it only exists on newer ClickHouse and
+    // is a no-op on local-disk MergeTree, so it is opt-in: unset means it is never sent (safe on
+    // any self-hosted version). Set to 0 on object-storage deployments to get the memory win.
+    CLICKHOUSE_LOGS_LIST_FILESYSTEM_CACHE_PREFER_BIGGER_BUFFER_SIZE: z.coerce
+      .number()
+      .int()
+      .nonnegative()
+      .optional(),
+
+    // Logs list pagination tuning (page sizing + recent-first probe windows).
+    LOGS_LIST_DEFAULT_PAGE_SIZE: z.coerce.number().int().positive().default(50),
+    LOGS_LIST_MAX_PAGE_SIZE: z.coerce.number().int().positive().default(100),
+    // Days back from the page ceiling to probe before widening to the full requested window,
+    // comma-separated. Empty disables narrowing (a single full-window query).
+    LOGS_LIST_RECENT_FIRST_PROBE_DAYS: z
+      .string()
+      .default("1,7")
+      .transform((s) =>
+        s
+          .split(",")
+          .map((v) => Number(v.trim()))
+          .filter((n) => Number.isFinite(n) && n > 0)
+      ),
 
     // Query feature flag
     QUERY_FEATURE_ENABLED: z.string().default("1"),
@@ -1882,6 +1910,32 @@ const EnvironmentSchema = z
 
     // Force RBAC to not use the plugin
     RBAC_FORCE_FALLBACK: BoolEnv.default(false),
+
+    // Force SSO to not use the plugin (contributors without the cloud
+    // plugin installed can opt in to a clean OSS-only experience).
+    SSO_FORCE_FALLBACK: BoolEnv.default(false),
+    // Emit a console.log when the SSO fallback is selected because no
+    // plugin is installed. Default off so OSS deployments stay quiet.
+    SSO_LOG_FALLBACK: BoolEnv.default(false),
+    // Master deploy gate for the whole SSO feature. Default OFF so the
+    // image can ship dark and be flipped on only once the SSO plugin's
+    // backing services are available. When false, the SSO controller is
+    // forced to the OSS fallback — login link hidden, SSO login disabled,
+    // settings inert, and session re-validation skipped.
+    SSO_ENABLED: BoolEnv.default(false),
+    // How often (seconds) a live SSO session is re-validated against the
+    // identity provider. The check is single-flight per user, so this is
+    // the minimum interval between plugin round-trips, not a per-request
+    // cost. Defaults to 5 minutes: every active SSO user drives one
+    // billing→IdP round-trip per window, so a seconds-scale default
+    // exhausts vendor rate limits at trivial user counts (masked by
+    // fail-open, so it degrades silently).
+    SSO_SESSION_REVALIDATION_INTERVAL_SECONDS: z.coerce.number().int().positive().default(300),
+    // Hard timeout (ms) on the re-validation round-trip. If the SSO plugin
+    // doesn't answer within this window the check fails OPEN (session kept)
+    // and emits a `sso.revalidation.timeout` warn log — alert on an
+    // elevated rate of those to catch a slow/unhealthy SSO dependency.
+    SSO_SESSION_REVALIDATION_TIMEOUT_MS: z.coerce.number().int().positive().default(2000),
   })
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema)

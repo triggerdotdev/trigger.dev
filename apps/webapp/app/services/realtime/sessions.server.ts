@@ -1,6 +1,7 @@
 import type { PrismaClient, Session } from "@trigger.dev/database";
 import type { SessionItem } from "@trigger.dev/core/v3";
 import { $replica, prisma } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 
 /**
  * Prefix that {@link SessionId.generate} attaches to every Session friendlyId.
@@ -131,10 +132,11 @@ export async function serializeSessionWithFriendlyRunId(
   const base = serializeSession(session);
   if (!session.currentRunId) return base;
 
-  const run = await $replica.taskRun.findFirst({
-    where: { id: session.currentRunId },
-    select: { friendlyId: true },
-  });
+  const run = await runStore.findRun(
+    { id: session.currentRunId },
+    { select: { friendlyId: true } },
+    $replica
+  );
 
   return {
     ...base,
@@ -158,14 +160,17 @@ export async function serializeSessionsWithFriendlyRunIds(
   // `currentRunId` is a plain string pointer (no FK), so scope the lookup to
   // the caller's tenant — a stale value must not resolve a run in another env.
   const runs = runIds.length
-    ? await $replica.taskRun.findMany({
-        where: {
-          id: { in: runIds },
-          projectId: scope.projectId,
-          runtimeEnvironmentId: scope.runtimeEnvironmentId,
+    ? await runStore.findRuns(
+        {
+          where: {
+            id: { in: runIds },
+            projectId: scope.projectId,
+            runtimeEnvironmentId: scope.runtimeEnvironmentId,
+          },
+          select: { id: true, friendlyId: true },
         },
-        select: { id: true, friendlyId: true },
-      })
+        $replica
+      )
     : [];
   const friendlyIdByRunId = new Map(runs.map((run) => [run.id, run.friendlyId]));
 

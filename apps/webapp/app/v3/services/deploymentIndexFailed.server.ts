@@ -3,6 +3,7 @@ import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { type WorkerDeploymentStatus } from "@trigger.dev/database";
 import { DeploymentService } from "./deployment.server";
+import { recordDeploymentOutcome } from "./recordDeploymentOutcome.server";
 
 const FINAL_DEPLOYMENT_STATUSES: WorkerDeploymentStatus[] = [
   "CANCELED",
@@ -72,6 +73,16 @@ export class DeploymentIndexFailed extends BaseService {
         failedAt: new Date(),
         errorData: error,
       },
+    });
+
+    recordDeploymentOutcome({
+      status: "FAILED",
+      deploymentFriendlyId: deployment.friendlyId,
+      organizationId: deployment.environment.project.organizationId,
+      projectId: deployment.environment.projectId,
+      environmentId: deployment.environmentId,
+      environmentType: deployment.environment.type,
+      reason: error.message,
     });
 
     const deploymentService = new DeploymentService();

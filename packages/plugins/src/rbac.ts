@@ -46,7 +46,17 @@ export type Role = {
 export type RbacSubject =
   | { type: "user"; userId: string; organizationId: string; projectId?: string }
   | { type: "personalAccessToken"; tokenId: string; organizationId: string; projectId?: string }
-  | { type: "publicJWT"; environmentId: string; organizationId: string; projectId?: string };
+  | { type: "publicJWT"; environmentId: string; organizationId: string; projectId?: string }
+  // Delegated user-actor token (`tr_uat_…`): a short-lived, stateless
+  // credential that authenticates as `userId`. `client` records what minted
+  // it (e.g. a dashboard agent) for attribution.
+  | {
+      type: "userActor";
+      userId: string;
+      client?: string;
+      organizationId: string;
+      projectId?: string;
+    };
 
 export type RbacResource = {
   type: string;
@@ -64,6 +74,7 @@ export type RbacResource = {
 // internal package without going through the plugin contract itself.
 export type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
 import type { AuthenticatedEnvironment as RbacEnv } from "@trigger.dev/core/v3/auth/environment";
+import { generateJWT, validateJWT } from "@trigger.dev/core/v3/jwt";
 
 /** @deprecated Renamed to `AuthenticatedEnvironment`. Kept as alias for transitional code. */
 export type RbacEnvironment = RbacEnv;
@@ -137,6 +148,76 @@ export function buildJwtAbility(scopes: string[]): RbacAbility {
   };
 }
 
+// ── Delegated user-actor token grammar ───────────────────────────────────
+//
+// A `tr_uat_…` token is the JWT body (signed HS256 with the platform secret)
+// behind a routing prefix. Single source of truth for minting/verifying so
+// the host, its fallback, and any auth plugin agree on the wire format — same
+// reasoning as `buildJwtAbility`. Built on core's `generateJWT`/`validateJWT`
+// so it shares the issuer/audience/alg the rest of the platform's JWTs use.
+
+export const USER_ACTOR_TOKEN_PREFIX = "tr_uat_";
+// Distinguishes a UAT from other platform-secret-signed JWTs.
+const USER_ACTOR_KIND = "user_actor";
+
+export type UserActorClaims = {
+  userId: string;
+  client?: string;
+  sessionId?: string;
+  // Optional scope cap (e.g. `["read:runs"]`) — ceilings the token below the
+  // user's role. Absent today; the auth path is already cap-ready.
+  cap?: string[];
+};
+
+export function isUserActorToken(token: string): boolean {
+  return token.startsWith(USER_ACTOR_TOKEN_PREFIX);
+}
+
+export async function signUserActorToken(
+  secret: string,
+  opts: {
+    userId: string;
+    client: string;
+    sessionId?: string;
+    cap?: string[];
+    expirationTime?: string | number | Date;
+  }
+): Promise<string> {
+  const jwt = await generateJWT({
+    secretKey: secret,
+    payload: {
+      kind: USER_ACTOR_KIND,
+      sub: opts.userId,
+      act: { client: opts.client, ...(opts.sessionId ? { sessionId: opts.sessionId } : {}) },
+      ...(opts.cap ? { cap: opts.cap } : {}),
+    },
+    expirationTime: opts.expirationTime ?? "1h",
+  });
+  return `${USER_ACTOR_TOKEN_PREFIX}${jwt}`;
+}
+
+// undefined for anything that isn't a valid, unexpired, correctly-signed UAT.
+export async function verifyUserActorToken(
+  secret: string,
+  token: string
+): Promise<UserActorClaims | undefined> {
+  if (!isUserActorToken(token)) return;
+
+  const result = await validateJWT(token.slice(USER_ACTOR_TOKEN_PREFIX.length), secret);
+  if (!result.ok) return;
+
+  const payload = result.payload;
+  if (payload.kind !== USER_ACTOR_KIND || typeof payload.sub !== "string") return;
+
+  const act = payload.act as { client?: string; sessionId?: string } | undefined;
+  return {
+    userId: payload.sub,
+    client: act?.client,
+    sessionId: act?.sessionId,
+    cap: Array.isArray(payload.cap) ? (payload.cap as string[]) : undefined,
+  };
+}
+
 export type BearerAuthResult =
   | { ok: false; status: 401 | 403; error: string }
   | {
@@ -144,7 +225,10 @@ export type BearerAuthResult =
       environment: RbacEnv;
       subject: RbacSubject;
       ability: RbacAbility;
-      jwt?: { realtime?: { skipColumns?: string[] }; oneTimeUse?: boolean };
+      // `act` carries the acting user (`act.sub`) when the public JWT was
+      // minted from a PAT/UAT exchange that stamped a delegation claim. Hosts
+      // surface it for attribution (e.g. who resolved an error).
+      jwt?: { realtime?: { skipColumns?: string[] }; oneTimeUse?: boolean; act?: { sub: string } };
     };
 
 export type SessionAuthResult =
@@ -170,6 +254,18 @@ export type PatAuthResult =
       // collapse PAT auth + lastAccessedAt update from 2 queries to 1
       // in the fresh-cache case — matching pre-RBAC main's query count.
       lastAccessedAt: Date | null;
+      subject: RbacSubject;
+      ability: RbacAbility;
+    };
+
+// Like PatAuthResult but stateless — a UAT has no stored row, so there's no
+// `tokenId`/`lastAccessedAt`. The ability is `min(user's role in the target
+// org, the token's optional scope cap)`, same cap-and-floor model as PATs.
+export type UserActorAuthResult =
+  | { ok: false; status: 401 | 403; error: string }
+  | {
+      ok: true;
+      userId: string;
       subject: RbacSubject;
       ability: RbacAbility;
     };
@@ -212,6 +308,19 @@ export interface RoleBaseAccessController {
     request: Request,
     context: { organizationId?: string; projectId?: string }
   ): Promise<PatAuthResult>;
+
+  // Delegated user-actor token routes (Authorization: Bearer tr_uat_…). The
+  // plugin verifies the token itself (stateless — no DB lookup of the token)
+  // and resolves the same cap-and-floor ability a PAT would for the same
+  // user: floor = the user's role in the target org (rejects non-members,
+  // like authenticatePat), cap = the token's optional scope cap.
+  //
+  // No plugin installed → fallback verifies the token and returns a
+  // permissive ability, mirroring the fallback's PAT behaviour.
+  authenticateUserActor(
+    request: Request,
+    context: { organizationId?: string; projectId?: string }
+  ): Promise<UserActorAuthResult>;
 
   // Convenience: authenticate + ability.can() check in one call; returns ok:false if check fails.
   // resource accepts the same single-or-array shape as RbacAbility.can — array form means
@@ -320,6 +429,14 @@ export type RoleMutationResult =
 // Result for assignment / deletion mutations that don't return a value.
 export type RoleAssignmentResult = { ok: true } | { ok: false; error: string };
 
+// Host-injected configuration the plugin can't read from the environment
+// itself (the plugin runs in the host's process but owns no env contract).
+export type RbacPluginConfig = {
+  // Platform secret the host signs user-actor tokens with; the plugin uses
+  // it to verify them in `authenticateUserActor`. Omitted → UAT auth 401s.
+  userActorSecret?: string;
+};
+
 export interface RoleBasedAccessControlPlugin {
-  create(): RoleBaseAccessController | Promise<RoleBaseAccessController>;
+  create(config?: RbacPluginConfig): RoleBaseAccessController | Promise<RoleBaseAccessController>;
 }

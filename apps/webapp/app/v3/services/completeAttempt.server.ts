@@ -70,14 +70,17 @@ export class CompleteAttemptService extends BaseService {
         id: execution.attempt.id,
       });
 
-      const run = await this._prisma.taskRun.findFirst({
-        where: {
+      const run = await this.runStore.findRun(
+        {
           friendlyId: execution.run.id,
         },
-        select: {
-          id: true,
+        {
+          select: {
+            id: true,
+          },
         },
-      });
+        this._prisma
+      );
 
       if (!run) {
         logger.error("[CompleteAttemptService] Task run not found", {

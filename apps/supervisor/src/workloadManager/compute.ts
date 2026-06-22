@@ -75,6 +75,7 @@ type ComputeWorkloadManagerOptions = WorkloadManagerOptions & {
     instanceName: string;
     otelEndpoint: string;
     prettyLogs: boolean;
+    sendRunDebugLogs: boolean;
   };
   createRetry?: {
     maxAttempts: number;
@@ -162,6 +163,7 @@ export class ComputeWorkloadManager implements WorkloadManager {
       TRIGGER_MACHINE_CPU: String(opts.machine.cpu),
       TRIGGER_MACHINE_MEMORY: String(opts.machine.memory),
       PRETTY_LOGS: String(this.opts.runner.prettyLogs),
+      TRIGGER_SEND_RUN_DEBUG_LOGS: String(this.opts.runner.sendRunDebugLogs),
     };
 
     if (this.opts.warmStartUrl) {

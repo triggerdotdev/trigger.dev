@@ -26,6 +26,7 @@ import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.s
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { v3RunStreamParamsSchema } from "~/utils/pathBuilder";
+import { runStore } from "~/v3/runStore.server";
 
 type ViewMode = "list" | "compact";
 
@@ -58,21 +59,24 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const run = await $replica.taskRun.findFirst({
-    where: {
+  const run = await runStore.findRun(
+    {
       friendlyId: runParam,
       projectId: project.id,
     },
-    include: {
-      runtimeEnvironment: {
-        include: {
-          project: true,
-          organization: true,
-          orgMember: true,
+    {
+      include: {
+        runtimeEnvironment: {
+          include: {
+            project: true,
+            organization: true,
+            orgMember: true,
+          },
         },
       },
     },
-  });
+    $replica
+  );
 
   if (!run) {
     throw new Response("Not Found", { status: 404 });

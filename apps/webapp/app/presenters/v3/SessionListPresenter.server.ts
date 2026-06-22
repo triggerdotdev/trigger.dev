@@ -7,9 +7,11 @@ import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import {
   type SessionStatus,
   SessionsRepository,
+  LEGACY_PLAYGROUND_TAG,
 } from "~/services/sessionsRepository/sessionsRepository.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
+import { runStore } from "~/v3/runStore.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 
 export type SessionListOptions = {
@@ -189,14 +191,17 @@ export class SessionListPresenter {
         // pointer could surface another tenant's run. The list query above
         // is already env-scoped; the run lookup needs the same fence.
         return currentRunIds.length > 0
-          ? this.replica.taskRun.findMany({
-              where: {
-                id: { in: currentRunIds },
-                projectId,
-                runtimeEnvironmentId: environmentId,
+          ? runStore.findRuns(
+              {
+                where: {
+                  id: { in: currentRunIds },
+                  projectId,
+                  runtimeEnvironmentId: environmentId,
+                },
+                select: { id: true, friendlyId: true },
               },
-              select: { id: true, friendlyId: true },
-            })
+              this.replica
+            )
           : [];
       }
     );
@@ -221,7 +226,13 @@ export class SessionListPresenter {
           externalId: session.externalId,
           type: session.type,
           taskIdentifier: session.taskIdentifier,
-          tags: session.tags ? [...session.tags].sort((a, b) => a.localeCompare(b)) : [],
+          isTest: session.isTest,
+          // Hide the legacy "playground" tag (pre-isTest sessions) from display.
+          tags: session.tags
+            ? [...session.tags]
+                .filter((t) => t !== LEGACY_PLAYGROUND_TAG)
+                .sort((a, b) => a.localeCompare(b))
+            : [],
           status,
           closedAt: session.closedAt ? session.closedAt.toISOString() : undefined,
           closedReason: session.closedReason ?? undefined,

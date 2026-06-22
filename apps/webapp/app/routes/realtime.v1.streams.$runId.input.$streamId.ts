@@ -15,6 +15,7 @@ import {
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { engine } from "~/v3/runEngine.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
+import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -38,19 +39,22 @@ const { action } = createActionApiRoute(
     },
   },
   async ({ request, params, authentication }) => {
-    const run = await $replica.taskRun.findFirst({
-      where: {
+    const run = await runStore.findRun(
+      {
         friendlyId: params.runId,
         runtimeEnvironmentId: authentication.environment.id,
       },
-      select: {
-        id: true,
-        friendlyId: true,
-        completedAt: true,
-        realtimeStreamsVersion: true,
-        streamBasinName: true,
+      {
+        select: {
+          id: true,
+          friendlyId: true,
+          completedAt: true,
+          realtimeStreamsVersion: true,
+          streamBasinName: true,
+        },
       },
-    });
+      $replica
+    );
 
     if (!run) {
       return json({ ok: false, error: "Run not found" }, { status: 404 });
@@ -129,19 +133,22 @@ const loader = createLoaderApiRoute(
     allowJWT: true,
     corsStrategy: "all",
     findResource: async (params, auth) => {
-      return $replica.taskRun.findFirst({
-        where: {
+      return runStore.findRun(
+        {
           friendlyId: params.runId,
           runtimeEnvironmentId: auth.environment.id,
         },
-        include: {
-          batch: {
-            select: {
-              friendlyId: true,
+        {
+          include: {
+            batch: {
+              select: {
+                friendlyId: true,
+              },
             },
           },
         },
-      });
+        $replica
+      );
     },
     authorization: {
       action: "read",

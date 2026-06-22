@@ -67,6 +67,7 @@ import {
 import { mollifyTrigger } from "~/v3/mollifier/mollifierMollify.server";
 import { type MollifierBuffer } from "@trigger.dev/redis-worker";
 import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
+import { runStore } from "~/v3/runStore.server";
 
 class NoopTriggerRacepointSystem implements TriggerRacepointSystem {
   async waitForRacepoint(options: { racepoint: TriggerRacepoints; id: string }): Promise<void> {
@@ -241,12 +242,13 @@ export class RunEngineTriggerTaskService {
 
           // Get parent run if specified
           const parentRun = body.options?.parentRunId
-            ? await this.prisma.taskRun.findFirst({
-              where: {
+            ? await runStore.findRun(
+              {
                 id: RunId.fromFriendlyId(body.options.parentRunId),
                 runtimeEnvironmentId: environment.id,
               },
-            })
+              this.prisma
+            )
             : undefined;
 
           // Validate parent run

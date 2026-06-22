@@ -43,6 +43,15 @@ function getLogsListClickhouseSettings() {
     max_bytes_before_external_sort:
       env.CLICKHOUSE_LOGS_LIST_MAX_BYTES_BEFORE_EXTERNAL_SORT.toString(),
     max_threads: env.CLICKHOUSE_LOGS_LIST_MAX_THREADS,
+    // Cap per-part read buffers so read-in-order memory stays bounded. These exist everywhere.
+    prefetch_buffer_size: env.CLICKHOUSE_LOGS_LIST_PREFETCH_BUFFER_SIZE.toString(),
+    max_read_buffer_size: env.CLICKHOUSE_LOGS_LIST_MAX_READ_BUFFER_SIZE.toString(),
+    // Object-storage only and newer than the buffers above, so only send it when configured to
+    // avoid UNKNOWN_SETTING failures against older self-hosted ClickHouse that lack it.
+    ...(env.CLICKHOUSE_LOGS_LIST_FILESYSTEM_CACHE_PREFER_BIGGER_BUFFER_SIZE !== undefined && {
+      filesystem_cache_prefer_bigger_buffer_size:
+        env.CLICKHOUSE_LOGS_LIST_FILESYSTEM_CACHE_PREFER_BIGGER_BUFFER_SIZE,
+    }),
     ...(env.CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ && {
       max_rows_to_read: env.CLICKHOUSE_LOGS_LIST_MAX_ROWS_TO_READ.toString(),
     }),

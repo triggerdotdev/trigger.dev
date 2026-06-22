@@ -6,6 +6,7 @@ import { apiCors } from "~/utils/apiCors";
 import { logger } from "../logger.server";
 import { rbac } from "../rbac.server";
 import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
+import { isUserActorToken } from "@trigger.dev/rbac";
 import {
   PersonalAccessTokenAuthenticationResult,
   updateLastAccessedAtIfStale,
@@ -77,6 +78,9 @@ async function authenticateRequestForApiBuilder(
     environment: result.environment,
     realtime: result.jwt?.realtime,
     oneTimeUse: result.jwt?.oneTimeUse,
+    // Surface the delegation actor (PAT/UAT-exchanged JWT) so handlers can
+    // attribute writes to the acting user.
+    actor: result.jwt?.act,
   };
 
   return { ok: true, authentication, ability: result.ability };
@@ -552,28 +556,39 @@ export function createLoaderPATApiRoute<
       // `updateLastAccessedAtIfStale` — no DB roundtrip when the
       // cached timestamp is fresher than the throttle window).
       const ctx = contextFn ? await contextFn(parsedParams, request) : {};
-      const patAuth = await rbac.authenticatePat(request, ctx);
-      if (!patAuth.ok) {
-        return await wrapResponse(
-          request,
-          json({ error: patAuth.error }, { status: patAuth.status }),
-          corsStrategy !== "none"
-        );
+
+      let authenticationResult: PersonalAccessTokenAuthenticationResult;
+      let ability: RbacAbility;
+
+      const bearer = request.headers.get("Authorization")?.replace(/^Bearer /, "").trim();
+      if (bearer && isUserActorToken(bearer)) {
+        // A user-actor token validates + computes the cap-and-floor ability
+        // in one call, same shape as a PAT.
+        const uatAuth = await rbac.authenticateUserActor(request, ctx);
+        if (!uatAuth.ok) {
+          return await wrapResponse(
+            request,
+            json({ error: uatAuth.error }, { status: uatAuth.status }),
+            corsStrategy !== "none"
+          );
+        }
+        authenticationResult = { userId: uatAuth.userId };
+        ability = uatAuth.ability;
+      } else {
+        // PAT: validate + compute the cap-and-floor ability in one query.
+        const patAuth = await rbac.authenticatePat(request, ctx);
+        if (!patAuth.ok) {
+          return await wrapResponse(
+            request,
+            json({ error: patAuth.error }, { status: patAuth.status }),
+            corsStrategy !== "none"
+          );
+        }
+        authenticationResult = { userId: patAuth.userId };
+        ability = patAuth.ability;
+        // Throttled in the helper (no DB write when the cached value is fresh).
+        await updateLastAccessedAtIfStale(patAuth.tokenId, patAuth.lastAccessedAt);
       }
-
-      const authenticationResult: PersonalAccessTokenAuthenticationResult = {
-        userId: patAuth.userId,
-      };
-      const ability: RbacAbility = patAuth.ability;
-
-      // Fire the `lastAccessedAt` write conditionally. Two-layer throttle:
-      // JS skips the SQL when the value is fresh (most requests); the
-      // SQL `WHERE` clause inside the helper is race-safe for concurrent
-      // auths that both decide to fire. Don't `await` it from the
-      // critical path? — it's a one-row update on a small hot table and
-      // we want to surface failures, so it's awaited (same shape as the
-      // legacy `authenticatePersonalAccessToken`).
-      await updateLastAccessedAtIfStale(patAuth.tokenId, patAuth.lastAccessedAt);
 
       if (authorization) {
         const $resource = authorization.resource(parsedParams, parsedSearchParams, parsedHeaders);

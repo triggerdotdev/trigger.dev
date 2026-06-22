@@ -115,22 +115,20 @@ export class CheckpointSystem {
       }
 
       // Get the run and update the status
-      const run = await this.$.prisma.taskRun.update({
-        where: {
-          id: runId,
-        },
-        data: {
-          status: "WAITING_TO_RESUME",
-        },
-        include: {
-          runtimeEnvironment: {
-            include: {
-              project: true,
-              organization: true,
+      const run = await this.$.runStore.suspendForCheckpoint(
+        runId,
+        {
+          include: {
+            runtimeEnvironment: {
+              include: {
+                project: true,
+                organization: true,
+              },
             },
           },
         },
-      });
+        this.$.prisma
+      );
 
       if (!run) {
         this.$.logger.error("Run not found for createCheckpoint", {
@@ -294,26 +292,24 @@ export class CheckpointSystem {
       }
 
       // Get the run and update the status
-      const run = await this.$.prisma.taskRun.update({
-        where: {
-          id: runId,
+      const run = await this.$.runStore.resumeFromCheckpoint(
+        runId,
+        {
+          select: {
+            id: true,
+            status: true,
+            attemptNumber: true,
+            organizationId: true,
+            runtimeEnvironmentId: true,
+            projectId: true,
+            updatedAt: true,
+            createdAt: true,
+            runTags: true,
+            batchId: true,
+          },
         },
-        data: {
-          status: "EXECUTING",
-        },
-        select: {
-          id: true,
-          status: true,
-          attemptNumber: true,
-          organizationId: true,
-          runtimeEnvironmentId: true,
-          projectId: true,
-          updatedAt: true,
-          createdAt: true,
-          runTags: true,
-          batchId: true,
-        },
-      });
+        this.$.prisma
+      );
 
       if (!run) {
         this.$.logger.error("Run not found for createCheckpoint", {

@@ -6,6 +6,7 @@ import {
   createActionApiRoute,
   createLoaderApiRoute,
 } from "~/services/routeBuilders/apiBuilder.server";
+import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
   runId: z.string(),
@@ -18,29 +19,32 @@ const { action } = createActionApiRoute(
     params: ParamsSchema,
   },
   async ({ request, params, authentication }) => {
-    const run = await $replica.taskRun.findFirst({
-      where: {
+    const run = await runStore.findRun(
+      {
         friendlyId: params.runId,
         runtimeEnvironmentId: authentication.environment.id,
       },
-      select: {
-        id: true,
-        friendlyId: true,
-        streamBasinName: true,
-        parentTaskRun: {
-          select: {
-            friendlyId: true,
-            streamBasinName: true,
+      {
+        select: {
+          id: true,
+          friendlyId: true,
+          streamBasinName: true,
+          parentTaskRun: {
+            select: {
+              friendlyId: true,
+              streamBasinName: true,
+            },
           },
-        },
-        rootTaskRun: {
-          select: {
-            friendlyId: true,
-            streamBasinName: true,
+          rootTaskRun: {
+            select: {
+              friendlyId: true,
+              streamBasinName: true,
+            },
           },
         },
       },
-    });
+      $replica
+    );
 
     if (!run) {
       return new Response("Run not found", { status: 404 });
@@ -62,18 +66,21 @@ const { action } = createActionApiRoute(
 
     if (request.method === "PUT") {
       // This is the "create" endpoint
-      const target = await prisma.taskRun.findFirst({
-        where: {
+      const target = await runStore.findRun(
+        {
           friendlyId: targetId,
           runtimeEnvironmentId: authentication.environment.id,
         },
-        select: {
-          id: true,
-          realtimeStreams: true,
-          realtimeStreamsVersion: true,
-          completedAt: true,
+        {
+          select: {
+            id: true,
+            realtimeStreams: true,
+            realtimeStreamsVersion: true,
+            completedAt: true,
+          },
         },
-      });
+        prisma
+      );
 
       if (!target) {
         return new Response("Run not found", { status: 404 });
@@ -86,12 +93,7 @@ const { action } = createActionApiRoute(
       }
 
       if (!target.realtimeStreams.includes(params.streamId)) {
-        await prisma.taskRun.update({
-          where: { id: target.id },
-          data: {
-            realtimeStreams: { push: params.streamId },
-          },
-        });
+        await runStore.pushRealtimeStream(target.id, params.streamId, prisma);
       }
 
       const realtimeStream = getRealtimeStreamInstance(
@@ -152,29 +154,32 @@ const loader = createLoaderApiRoute(
     allowJWT: false,
     corsStrategy: "none",
     findResource: async (params, authentication) => {
-      return $replica.taskRun.findFirst({
-        where: {
+      return runStore.findRun(
+        {
           friendlyId: params.runId,
           runtimeEnvironmentId: authentication.environment.id,
         },
-        select: {
-          id: true,
-          friendlyId: true,
-          streamBasinName: true,
-          parentTaskRun: {
-            select: {
-              friendlyId: true,
-              streamBasinName: true,
+        {
+          select: {
+            id: true,
+            friendlyId: true,
+            streamBasinName: true,
+            parentTaskRun: {
+              select: {
+                friendlyId: true,
+                streamBasinName: true,
+              },
             },
-          },
-          rootTaskRun: {
-            select: {
-              friendlyId: true,
-              streamBasinName: true,
+            rootTaskRun: {
+              select: {
+                friendlyId: true,
+                streamBasinName: true,
+              },
             },
           },
         },
-      });
+        $replica
+      );
     },
   },
   async ({ request, params, resource: run, authentication }) => {

@@ -1,6 +1,7 @@
 import type { AuthenticatedEnvironment } from "@internal/run-engine";
 import type { Prisma, PrismaClientOrTransaction, RuntimeEnvironment } from "@trigger.dev/database";
 import { $replica, prisma } from "~/db.server";
+import { runStore } from "~/v3/runStore.server";
 import { logger } from "~/services/logger.server";
 import { getUsername } from "~/utils/username";
 import { sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
@@ -251,14 +252,17 @@ export async function findEnvironmentFromRun(
 ): Promise<EnvironmentFromRun | null> {
   // The include (no select) already pulls every taskRun scalar, so runTags/batchId
   // ride along for free — no extra query for the realtime publish to send a full record.
-  const taskRun = await (tx ?? $replica).taskRun.findFirst({
-    where: {
+  const taskRun = await runStore.findRun(
+    {
       id: runId,
     },
-    include: {
-      runtimeEnvironment: { include: authIncludeBase },
+    {
+      include: {
+        runtimeEnvironment: { include: authIncludeBase },
+      },
     },
-  });
+    tx ?? $replica
+  );
   if (!taskRun?.runtimeEnvironment) {
     return null;
   }

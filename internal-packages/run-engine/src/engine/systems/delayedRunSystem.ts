@@ -48,26 +48,19 @@ export class DelayedRunSystem {
             throw new ServiceValidationError("Cannot reschedule a run that is not delayed");
           }
 
-          const updatedRun = await prisma.taskRun.update({
-            where: {
-              id: runId,
-            },
-            data: {
+          const updatedRun = await this.$.runStore.rescheduleRun(
+            runId,
+            {
               delayUntil: delayUntil,
-              executionSnapshots: {
-                create: {
-                  engine: "V2",
-                  executionStatus: "DELAYED",
-                  description: "Delayed run was rescheduled to a future date",
-                  runStatus: "DELAYED",
-                  environmentId: snapshot.environmentId,
-                  environmentType: snapshot.environmentType,
-                  projectId: snapshot.projectId,
-                  organizationId: snapshot.organizationId,
-                },
+              snapshot: {
+                environmentId: snapshot.environmentId,
+                environmentType: snapshot.environmentType,
+                projectId: snapshot.projectId,
+                organizationId: snapshot.organizationId,
               },
             },
-          });
+            prisma
+          );
 
           await this.$.worker.reschedule(`enqueueDelayedRun:${updatedRun.id}`, delayUntil);
 
@@ -117,17 +110,20 @@ export class DelayedRunSystem {
         return;
       }
 
-      const run = await this.$.prisma.taskRun.findFirst({
-        where: { id: runId },
-        include: {
-          runtimeEnvironment: {
-            include: {
-              project: true,
-              organization: true,
+      const run = await this.$.runStore.findRun(
+        { id: runId },
+        {
+          include: {
+            runtimeEnvironment: {
+              include: {
+                project: true,
+                organization: true,
+              },
             },
           },
         },
-      });
+        this.$.prisma
+      );
 
       if (!run) {
         throw new Error(`#enqueueDelayedRun: run not found: ${runId}`);
@@ -178,13 +174,13 @@ export class DelayedRunSystem {
 
       const queuedAt = new Date();
 
-      const updatedRun = await this.$.prisma.taskRun.update({
-        where: { id: runId },
-        data: {
-          status: "PENDING",
+      const updatedRun = await this.$.runStore.enqueueDelayedRun(
+        runId,
+        {
           queuedAt,
         },
-      });
+        this.$.prisma
+      );
 
       this.$.eventBus.emit("runEnqueuedAfterDelay", {
         time: new Date(),

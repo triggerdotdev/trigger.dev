@@ -5,6 +5,7 @@ import { findOrCreateUser } from "~/models/user.server";
 import type { AuthUser } from "./authUser";
 import { logger } from "./logger.server";
 import { postAuthentication } from "./postAuth.server";
+import { SsoRequiredError, ssoRedirectForEmail } from "./ssoAutoDiscovery.server";
 
 export function addGoogleStrategy(
   authenticator: Authenticator<AuthUser>,
@@ -24,6 +25,16 @@ export function addGoogleStrategy(
         throw new Error("Google login requires an email address");
       }
 
+      const email = emails[0].value;
+
+      // SSO auto-discovery gate — BEFORE findOrCreateUser, so an
+      // SSO-enforced domain never gets this Google identity linked onto
+      // an existing account.
+      const ssoRedirect = await ssoRedirectForEmail(email, "oauth_blocked");
+      if (ssoRedirect) {
+        throw new SsoRequiredError(ssoRedirect);
+      }
+
       try {
         logger.debug("Google login", {
           emails,
@@ -32,7 +43,7 @@ export function addGoogleStrategy(
         });
 
         const { user, isNewUser } = await findOrCreateUser({
-          email: emails[0].value,
+          email,
           authenticationMethod: "GOOGLE",
           authenticationProfile: profile,
           authenticationExtraParams: extraParams,
