@@ -13,7 +13,6 @@ import { FormError } from "~/components/primitives/FormError";
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { TextLink } from "~/components/primitives/TextLink";
-import { featuresForRequest } from "~/features.server";
 import { isGithubAuthSupported, isGoogleAuthSupported } from "~/services/auth.server";
 import { getLastAuthMethod } from "~/services/lastAuthMethod.server";
 import { commitSession, setRedirectTo } from "~/services/redirectTo.server";
@@ -86,16 +85,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
       ? "Your SSO session expired. Please sign in again."
       : null;
 
-  const { isManagedCloud } = featuresForRequest(request);
-  // /login is unauthenticated and high-traffic; don't pay the plugin
-  // resolution + flag fetch on self-hosted where the result is unused.
+  // SSO login requires both an active plugin (SSO_ENABLED on + a real plugin loaded)
+  // and the hasSso global flag — a DB-backed runtime kill switch that disables the
+  // SSO login button without a redeploy. isUsingPlugin() is cheap and short-circuits
+  // before the flag fetch, so self-hosted/no-plugin deployments pay nothing.
   let showSsoAuth = false;
-  if (isManagedCloud) {
-    const [pluginActive, globalFlags] = await Promise.all([
-      ssoController.isUsingPlugin(),
-      getGlobalFlags(),
-    ]);
-    showSsoAuth = pluginActive && (globalFlags as Record<string, unknown>).hasSso === true;
+  if (await ssoController.isUsingPlugin()) {
+    const globalFlags = await getGlobalFlags();
+    showSsoAuth = (globalFlags as Record<string, unknown>).hasSso === true;
   }
 
   if (redirectTo) {

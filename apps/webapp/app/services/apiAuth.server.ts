@@ -56,6 +56,13 @@ export type ApiAuthenticationResultSuccess = {
   realtime?: {
     skipColumns?: string[];
   };
+  // Present when the request used a public JWT minted from a PAT/UAT exchange
+  // that stamped an `act` delegation claim. `actor.sub` is the acting user id,
+  // used for attribution (e.g. who resolved an error). Absent for plain env
+  // API keys (no user) and JWTs minted without delegation.
+  actor?: {
+    sub: string;
+  };
 };
 
 export type ApiAuthenticationResultFailure = {

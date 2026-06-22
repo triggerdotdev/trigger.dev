@@ -147,7 +147,7 @@ export function OrganizationSettingsSideMenu({
               data-action="roles"
             />
           )}
-          {isManagedCloud && isSsoUsingPlugin && (
+          {isSsoUsingPlugin && (
             <SideMenuItem
               name="SSO"
               icon={PadlockIcon}
