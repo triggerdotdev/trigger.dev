@@ -80,13 +80,18 @@ export class PostgresRunStore implements RunStore {
 
   /**
    * Read a single row matching a non-id predicate from BOTH physical tables.
-   * A run lives in exactly one table (chosen by its id format), so a key-based
-   * predicate (idempotency key, "has this env any runs") can match a row in
-   * either. Query both in parallel and return the first match — at most one
-   * side is non-null, and legacy is preferred for a stable result if a
-   * predicate ever matches both. `task_run_v2` is an identical clone of
-   * `TaskRun`, so the SAME args (select/include and the security-scoping
-   * `where`) run unchanged against either delegate.
+   * A key-based predicate (idempotency key, "has this env any runs") can match
+   * a row in either table. Query both in parallel and return the match,
+   * preferring `task_run_v2` when both are non-null.
+   *
+   * Today a run lives in exactly one table (createRun routes by id format), so
+   * at most one side is non-null and the preference never bites. The later
+   * slow legacy->v2 migration copies a run into task_run_v2 before operating on
+   * it, so it transiently lives in BOTH tables with the v2 copy as the
+   * canonical/operated-on one; preferring v2 returns the current row, not the
+   * stale legacy source. `task_run_v2` is an identical clone of `TaskRun`, so
+   * the SAME args (select/include and the security-scoping `where`) run
+   * unchanged against either delegate.
    */
   async #findFirstAcrossTables(
     prisma: ReadClient,
@@ -100,7 +105,7 @@ export class PostgresRunStore implements RunStore {
       v2Model.findFirst({ where, ...args }),
     ]);
 
-    return legacyRun ?? v2Run;
+    return v2Run ?? legacyRun;
   }
 
   async createRun(
@@ -871,9 +876,22 @@ export class PostgresRunStore implements RunStore {
       return model.findMany(args as Prisma.TaskRunFindManyArgs);
     }
 
-    // BOTH tables in play. Offset pagination can't be expressed across two
-    // tables (applying `skip` to each skips N rows from its own result, not N
-    // from the merged result), so reject it rather than silently double-skip.
+    // BOTH tables in play.
+    //
+    // FORWARD-LOOKING (slow legacy->v2 migration, a later stage): that migration
+    // copies a run into task_run_v2 before operating on it, so a run can briefly
+    // live in BOTH tables. When that lands, the cross-table reads below (both the
+    // ordered #mergeOrdered path AND the unordered concat) must DEDUP BY id,
+    // keeping the canonical v2 copy, or a doubly-present run is returned twice.
+    // Dedup needs `id` forced into the projection (and stripped when the caller
+    // didn't select it), and the "v2 wins" policy is part of the copy protocol,
+    // so it belongs with the migration PR that introduces the overlap. Today
+    // createRun routes by id format, so no run is in both tables and concatenation
+    // is already duplicate-free.
+    //
+    // Offset pagination can't be expressed across two tables (applying `skip` to
+    // each skips N rows from its own result, not N from the merged result), so
+    // reject it rather than silently double-skip.
     if (args.skip !== undefined) {
       throw new Error(
         "RunStore.findRuns: `skip` (offset pagination) is not supported across the legacy TaskRun " +
