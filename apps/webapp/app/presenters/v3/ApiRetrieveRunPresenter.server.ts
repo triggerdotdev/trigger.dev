@@ -23,6 +23,7 @@ import {
 } from "~/v3/mollifier/readFallback.server";
 import { generatePresignedUrl } from "~/v3/objectStore.server";
 import { runStore } from "~/v3/runStore.server";
+import { hydrateParentAndRoot, hydrateChildRuns } from "~/v3/runHierarchy.server";
 import { tracer } from "~/v3/tracer.server";
 import { startSpanWithEnv } from "~/v3/tracing.server";
 
@@ -133,21 +134,28 @@ export class ApiRetrieveRunPresenter {
           attemptNumber: true,
           engine: true,
           taskEventStore: true,
-          parentTaskRun: {
-            select: commonRunSelect,
-          },
-          rootTaskRun: {
-            select: commonRunSelect,
-          },
-          childRuns: {
-            select: commonRunSelect,
-          },
+          parentTaskRunId: true,
+          rootTaskRunId: true,
         },
       },
       $replica
     );
 
-    if (pgRow) return { ...pgRow, isBuffered: false };
+    if (pgRow) {
+      // Resolve parent/root/children across both run tables. A single Prisma
+      // relation select is table-bound, so a v2 run's legacy parent (or a
+      // legacy run's v2 children), which arise in the mixed window, would come
+      // back null/empty. Resolve parent/root by id (RunStore routes by format)
+      // and children by a both-table predicate.
+      const { parentTaskRun, rootTaskRun } = await hydrateParentAndRoot(
+        { parentTaskRunId: pgRow.parentTaskRunId, rootTaskRunId: pgRow.rootTaskRunId },
+        commonRunSelect,
+        $replica
+      );
+      const childRuns = await hydrateChildRuns(pgRow.id, commonRunSelect, $replica);
+
+      return { ...pgRow, parentTaskRun, rootTaskRun, childRuns, isBuffered: false };
+    }
 
     // Postgres miss → fall back to the mollifier buffer. When the gate
     // diverted a trigger, the run lives in Redis until the drainer replays

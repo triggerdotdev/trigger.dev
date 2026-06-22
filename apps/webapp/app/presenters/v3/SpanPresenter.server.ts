@@ -587,22 +587,9 @@ export class SpanPresenter extends BasePresenter {
             filePath: true,
           },
         },
-        //relationships
-        rootTaskRun: {
-          select: {
-            taskIdentifier: true,
-            friendlyId: true,
-            spanId: true,
-            createdAt: true,
-          },
-        },
-        parentTaskRun: {
-          select: {
-            taskIdentifier: true,
-            friendlyId: true,
-            spanId: true,
-          },
-        },
+        //relationships (resolved across both run tables after the fetch)
+        rootTaskRunId: true,
+        parentTaskRunId: true,
         batch: {
           select: {
             friendlyId: true,
@@ -626,7 +613,31 @@ export class SpanPresenter extends BasePresenter {
       this._replica
     );
 
-    return run;
+    if (!run) {
+      return run;
+    }
+
+    // Resolve parent/root across both run tables: a v2 run can reference a
+    // legacy parent/root (or vice versa) in the mixed window, which a
+    // table-bound Prisma relation select on a single table would miss.
+    const [parentTaskRun, rootTaskRun] = await Promise.all([
+      run.parentTaskRunId
+        ? runStore.findRun(
+            { id: run.parentTaskRunId },
+            { select: { taskIdentifier: true, friendlyId: true, spanId: true } },
+            this._replica
+          )
+        : Promise.resolve(null),
+      run.rootTaskRunId
+        ? runStore.findRun(
+            { id: run.rootTaskRunId },
+            { select: { taskIdentifier: true, friendlyId: true, spanId: true, createdAt: true } },
+            this._replica
+          )
+        : Promise.resolve(null),
+    ]);
+
+    return { ...run, parentTaskRun, rootTaskRun };
   }
 
   async #getSpan({
