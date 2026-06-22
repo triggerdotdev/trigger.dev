@@ -1168,7 +1168,6 @@ model TaskRunV2 {
   updatedAt DateTime @updatedAt
 
   attempts TaskRunAttempt[] @relation("attemptsV2")
-  tags     TaskRunTag[]     @relation("taskRunTagsV2")
 
   /// Denormized column that holds the raw tags
   runTags String[]
@@ -1219,9 +1218,6 @@ model TaskRunV2 {
 
   ///If there are any blocked waitpoints, the run won't be executed
   blockedByWaitpoints TaskRunWaitpoint[] @relation("taskRunWaitpointsV2")
-
-  /// All waitpoints that blocked this run at some point, used for display purposes
-  connectedWaitpoints Waitpoint[] @relation("WaitpointRunConnectionsV2")
 
   /// Where the logs are stored
   taskEventStore String @default("taskEvent")
@@ -1596,7 +1592,6 @@ model Waitpoint {
 
   /// All runs that have ever been blocked by this waitpoint, used for display purposes
   connectedRuns   TaskRun[]   @relation("WaitpointRunConnections")
-  connectedRunsV2 TaskRunV2[] @relation("WaitpointRunConnectionsV2")
 
   /// When a waitpoint is complete
   completedExecutionSnapshots TaskRunExecutionSnapshot[] @relation("completedWaitpoints")
@@ -1814,7 +1809,6 @@ model TaskRunTag {
   friendlyId String @unique
 
   runs   TaskRun[]
-  runsV2 TaskRunV2[] @relation("taskRunTagsV2")
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
