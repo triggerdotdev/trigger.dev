@@ -8,10 +8,17 @@ vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
 
 // claimOrAwait resolves its backend through getIdempotencyClaimBuffer; script
 // it via a hoisted handle so each test controls the claim outcome.
-const h = vi.hoisted(() => ({ buffer: null as unknown }));
+const h = vi.hoisted(() => ({ buffer: null as unknown, v2: true }));
 vi.mock("~/v3/mollifier/mollifierBuffer.server", () => ({
   getMollifierBuffer: () => h.buffer,
   getIdempotencyClaimBuffer: () => h.buffer,
+}));
+// v2 routing is gated on native realtime (deployment env switch + per-org
+// `realtimeBackend` flag); that gate is covered by runTableV2.test.ts. Here we
+// mock it so each test controls whether the org is cut over to v2, isolating
+// the one-time-token claim logic from the gating mechanism.
+vi.mock("~/v3/runTableV2.server", () => ({
+  shouldUseV2RunTable: () => h.v2,
 }));
 // The one-time-token claim runs BEFORE the mollifier-flag resolve, but the
 // concern still imports the gate module; stub it so loading doesn't pull in
@@ -98,23 +105,24 @@ describe("IdempotencyKeyConcern · one-time-use token cross-table claim", () => 
     ).rejects.toThrow(/already been used/i);
   });
 
-  it("non-v2 org: skips the token claim entirely (no Redis round-trip)", async () => {
+  it("org not cut over to v2: skips the token claim entirely (no Redis round-trip)", async () => {
+    h.v2 = false;
     const claimIdempotency = vi.fn(async () => ({ kind: "claimed" as const }));
     h.buffer = {
       claimIdempotency,
       readClaim: vi.fn(async () => null),
     } as unknown as MollifierBuffer;
 
-    const result = await makeConcern().handleTriggerRequest(
-      makeOtuRequest({ featureFlags: { mollifierEnabled: true } }),
-      undefined
-    );
-
-    expect(result.isCached).toBe(false);
-    if (result.isCached === false) {
-      expect(result.claim).toBeUndefined();
+    try {
+      const result = await makeConcern().handleTriggerRequest(makeOtuRequest(), undefined);
+      expect(result.isCached).toBe(false);
+      if (result.isCached === false) {
+        expect(result.claim).toBeUndefined();
+      }
+      expect(claimIdempotency).not.toHaveBeenCalled();
+    } finally {
+      h.v2 = true; // restore for the other tests in this file
     }
-    expect(claimIdempotency).not.toHaveBeenCalled();
   });
 
   it("triggerAndWait one-time token IS claimed (v2 orgs serialise it like the keyed claim)", async () => {

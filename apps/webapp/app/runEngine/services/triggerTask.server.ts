@@ -159,7 +159,9 @@ export class RunEngineTriggerTaskService {
           // trigger hot path. Downstream routing is by id format only.
           const runFriendlyId =
             options?.runFriendlyId ??
-            (shouldUseV2RunTable(environment.organization.featureFlags)
+            (shouldUseV2RunTable(environment.organization.featureFlags, {
+              nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1",
+            })
               ? RunId.generateKsuid()
               : RunId.generate()
             ).friendlyId;

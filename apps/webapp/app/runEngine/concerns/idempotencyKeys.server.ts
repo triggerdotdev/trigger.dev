@@ -247,7 +247,11 @@ export class IdempotencyKeyConcern {
             | Record<string, unknown>
             | null
             | undefined) ?? null;
-        if (shouldUseV2RunTable(orgFeatureFlags)) {
+        if (
+          shouldUseV2RunTable(orgFeatureFlags, {
+            nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1",
+          })
+        ) {
           // Key the claim on (envId, token), task-independent, to match the DB's
           // task-independent oneTimeUseToken constraint (see the constant's
           // comment). The TTL is a fixed pipeline-dwell bound, NOT the customer
@@ -426,7 +430,9 @@ export class IdempotencyKeyConcern {
     // a pathological client. shouldUseV2RunTable is checked first so a v2 org
     // skips the mollifier-flag resolve entirely.
     const claimEligible =
-      shouldUseV2RunTable(orgFeatureFlags) ||
+      shouldUseV2RunTable(orgFeatureFlags, {
+        nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1",
+      }) ||
       (!request.body.options?.resumeParentOnCompletion &&
         !request.body.options?.debounce &&
         !request.options?.oneTimeUseToken &&

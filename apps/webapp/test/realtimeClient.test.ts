@@ -237,13 +237,8 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("RealtimeClient", () => {
       const chunkOffset = headers["electric-offset"];
 
       expect(response.status).toBe(200);
-      // The tag/list feed spans both physical run tables, so streamRuns merges
-      // two upstream Electric shapes (TaskRun + task_run_v2) under one composite
-      // cursor: handle and offset each pack the two per-table values joined by
-      // "~". Both shapes are at "0_0" for the initial snapshot.
       expect(shapeId).toBeDefined();
-      expect(shapeId).toContain("~");
-      expect(chunkOffset).toBe("0_0~0_0");
+      expect(chunkOffset).toBe("0_0");
     }
   );
 
