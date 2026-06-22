@@ -59,6 +59,11 @@ export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
 export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.defaultWorkerInstanceGroupId,
   FEATURE_FLAG.taskEventRepository,
+  // runTableV2 is resolved per-org only (`shouldUseV2RunTable` reads
+  // `Organization.featureFlags`, never the global FeatureFlag table), so a
+  // global toggle would be a silent no-op. Lock it on the global page to
+  // avoid that footgun; per-org control stays on the org dialog.
+  FEATURE_FLAG.runTableV2,
 ];
 
 // Flags that are read-only on the org-level dialog.
