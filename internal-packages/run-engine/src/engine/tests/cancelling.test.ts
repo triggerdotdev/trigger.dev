@@ -1,5 +1,6 @@
 import { containerTest, assertNonNullable } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
+import { isKsuidId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "timers/promises";
@@ -221,6 +222,119 @@ describe("RunEngine cancelling", () => {
           authenticatedEnvironment
         );
         expect(envConcurrencyCompleted).toBe(0);
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "Cancelling a parent cascades to a child in the OTHER run table (cross-table mixed window)",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 100,
+        },
+        queue: {
+          redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      try {
+        const parentTask = "parent-task";
+        const childTask = "child-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask, childTask]);
+
+        // Parent gets a cuid id (-> TaskRun); child gets a ksuid id
+        // (-> task_run_v2). This is exactly the hierarchy a runTableV2 flip
+        // creates while a pre-flip parent is still live.
+        const parentId = RunId.generate();
+        const childId = RunId.generateKsuid();
+
+        const parentRun = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: parentId.friendlyId,
+            environment: authenticatedEnvironment,
+            taskIdentifier: parentTask,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "tp",
+            spanId: "sp",
+            workerQueue: "main",
+            queue: `task/${parentTask}`,
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        const childRun = await engine.trigger(
+          {
+            number: 1,
+            friendlyId: childId.friendlyId,
+            environment: authenticatedEnvironment,
+            taskIdentifier: childTask,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "tc",
+            spanId: "sc",
+            workerQueue: "main",
+            queue: `task/${childTask}`,
+            isTest: false,
+            tags: [],
+            parentTaskRunId: parentRun.id,
+          },
+          prisma
+        );
+
+        // The hierarchy genuinely straddles the two physical run tables.
+        expect(isKsuidId(parentRun.id)).toBe(false);
+        expect(isKsuidId(childRun.id)).toBe(true);
+
+        // Cancel the (queued) parent. Pre-fix, cancelRun read children through
+        // the table-bound childRuns relation, which cannot see the v2 child, so
+        // the cascade skipped it and it kept its place in the queue. Post-fix,
+        // the cross-table findRuns finds the child and cancels it too.
+        await engine.cancelRun({
+          runId: parentRun.id,
+          completedAt: new Date(),
+          reason: "Cancelled by the user",
+        });
+
+        // The child cancellation is enqueued as a job; give the worker a moment.
+        await setTimeout(1000);
+
+        const childData = await engine.getRunExecutionData({ runId: childRun.id });
+        expect(childData?.run.status).toBe("CANCELED");
       } finally {
         await engine.quit();
       }
