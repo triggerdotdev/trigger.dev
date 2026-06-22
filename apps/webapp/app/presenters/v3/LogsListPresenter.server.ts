@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { type ClickHouse, type WhereCondition } from "@internal/clickhouse";
+import {
+  type ClickHouse,
+  type WhereCondition,
+  type LogsSearchListResult,
+} from "@internal/clickhouse";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { EVENT_STORE_TYPES, getConfiguredEventRepository } from "~/v3/eventRepository/index.server";
 
@@ -68,23 +72,42 @@ export const LogsListOptionsSchema = z.object({
 
 const DEFAULT_PAGE_SIZE = 50;
 
+// The list projection is wide (full attributes_text per row), so cap the effective page size
+// well below the schema max of 1000 to keep per-page memory and payload bounded.
+const MAX_PAGE_SIZE = 100;
+
+// Recent-first window stepping: probe the most recent windows before widening to the full
+// requested range, so a dense env fills a page from a few recent parts instead of scanning
+// the whole window. Days back from the page ceiling; the full requested window is always the
+// final probe.
+const PROBE_STEP_DAYS = [1, 7];
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export type LogsList = Awaited<ReturnType<LogsListPresenter["call"]>>;
 export type LogEntry = LogsList["logs"][0];
 export type LogsListAppliedFilters = LogsList["filters"];
 
+// Bump when the cursor shape changes so stale cursors are ignored (reset to the first page)
+// rather than misparsed.
+const LOG_CURSOR_VERSION = 2;
+
 // Cursor is a base64 encoded JSON of the pagination keys
 type LogCursor = {
+  v: number;
   organizationId: string;
   environmentId: string;
   triggeredTimestamp: string; // DateTime64(9) string
   traceId: string;
+  spanId: string;
 };
 
 const LogCursorSchema = z.object({
+  v: z.literal(LOG_CURSOR_VERSION),
   organizationId: z.string(),
   environmentId: z.string(),
   triggeredTimestamp: z.string(),
   traceId: z.string(),
+  spanId: z.string(),
 });
 
 function encodeCursor(cursor: LogCursor): string {
@@ -103,6 +126,30 @@ function decodeCursor(cursor: string): LogCursor | null {
   } catch {
     return null;
   }
+}
+
+// Ordered list of lower bounds to try, narrowest (most recent) first, ending at the user's
+// requested floor (or undefined for an unbounded-below window). Because rows are returned
+// newest-first, a narrow window that already fills a page returns the exact same top rows the
+// full window would, so widening only happens when a page comes back short.
+function buildProbeFloors(ceil: Date, hardFloor: Date | undefined): (Date | undefined)[] {
+  const floors: (Date | undefined)[] = [];
+
+  for (const days of PROBE_STEP_DAYS) {
+    let candidate = new Date(ceil.getTime() - days * DAY_MS);
+    if (hardFloor && candidate <= hardFloor) {
+      candidate = hardFloor;
+    }
+    floors.push(candidate);
+    if (hardFloor && candidate.getTime() === hardFloor.getTime()) {
+      // Reached the requested floor; nothing wider left to probe.
+      return floors;
+    }
+  }
+
+  // Final probe always covers the full requested window (or unbounded if no floor was given).
+  floors.push(hardFloor);
+  return floors;
 }
 
 // Convert display level to ClickHouse kinds and statuses
@@ -221,125 +268,150 @@ export class LogsListPresenter extends BasePresenter {
       );
     }
 
-    const queryBuilder = this.clickhouse.taskEventsSearch.logsListQueryBuilder();
+    const effectivePageSize = Math.min(pageSize, MAX_PAGE_SIZE);
 
-    // This should be removed once we clear the old inserts, 30 DAYS, the materialized view excludes events without trace_id)
-    queryBuilder.where("trace_id != ''", {
-      environmentId,
-    });
+    const decodedCursor = cursor ? decodeCursor(cursor) : null;
 
-    queryBuilder.where("environment_id = {environmentId: String}", {
-      environmentId,
-    });
+    // Effective upper bound (clamped to now), shared by every probe.
+    const clampedTo =
+      effectiveTo !== undefined ? (effectiveTo > new Date() ? new Date() : effectiveTo) : undefined;
 
-    queryBuilder.where("organization_id = {organizationId: String}", {
-      organizationId,
-    });
-    queryBuilder.where("project_id = {projectId: String}", { projectId });
+    const searchTerm =
+      search && search.trim() !== ""
+        ? escapeClickHouseString(search.trim()).toLowerCase()
+        : undefined;
 
-    if (effectiveFrom) {
-      queryBuilder.where("triggered_timestamp >= {triggeredAtStart: DateTime64(3)}", {
-        triggeredAtStart: convertDateToClickhouseDateTime(effectiveFrom),
-      });
-    }
+    // Runs the full list query restricted to a single [floor, ceil] window. The recent-first
+    // probe loop below calls this with progressively wider floors.
+    const runProbe = (floor: Date | undefined) => {
+      const queryBuilder = this.clickhouse.taskEventsSearch.logsListQueryBuilder();
 
-    if (effectiveTo) {
-      const clampedTo = effectiveTo > new Date() ? new Date() : effectiveTo;
+      // The materialized view excludes events without a trace_id; this guards the legacy tail.
+      queryBuilder.where("trace_id != ''");
+      queryBuilder.where("environment_id = {environmentId: String}", { environmentId });
+      queryBuilder.where("organization_id = {organizationId: String}", { organizationId });
+      queryBuilder.where("project_id = {projectId: String}", { projectId });
 
-      queryBuilder.where("triggered_timestamp <= {triggeredAtEnd: DateTime64(3)}", {
-        triggeredAtEnd: convertDateToClickhouseDateTime(clampedTo),
-      });
-    }
-
-    // Task filter (applies directly to ClickHouse)
-    if (tasks && tasks.length > 0) {
-      queryBuilder.where("task_identifier IN {tasks: Array(String)}", {
-        tasks,
-      });
-    }
-
-    // Run ID filter
-    if (runId && runId !== "") {
-      queryBuilder.where("run_id = {runId: String}", { runId });
-    }
-
-    // Case-insensitive search in message, attributes, and status fields
-    if (search && search.trim() !== "") {
-      const searchTerm = escapeClickHouseString(search.trim()).toLowerCase();
-      queryBuilder.where(
-        "(lower(message) like {searchPattern: String} OR lower(attributes_text) like {searchPattern: String})",
-        {
-          searchPattern: `%${searchTerm}%`,
-        }
-      );
-    }
-
-    if (levels && levels.length > 0) {
-      const conditions: WhereCondition[] = [];
-
-      for (let i = 0; i < levels.length; i++) {
-        const filter = levelToKindsAndStatuses(levels[i]);
-
-        if (filter.kinds && filter.kinds.length > 0) {
-          conditions.push({
-            clause: `kind IN {kinds_${i}: Array(String)} AND status NOT IN {excluded_statuses: Array(String)}`,
-            params: {
-              [`kinds_${i}`]: filter.kinds,
-              excluded_statuses: ["ERROR", "CANCELLED"],
-            },
-          });
-        }
-
-        if (filter.statuses && filter.statuses.length > 0) {
-          conditions.push({
-            clause: `status IN {statuses_${i}: Array(String)}`,
-            params: { [`statuses_${i}`]: filter.statuses },
-          });
-        }
+      if (clampedTo) {
+        queryBuilder.where("triggered_timestamp <= {triggeredAtEnd: DateTime64(3)}", {
+          triggeredAtEnd: convertDateToClickhouseDateTime(clampedTo),
+        });
       }
 
-      queryBuilder.whereOr(conditions);
-    }
+      if (floor) {
+        queryBuilder.where("triggered_timestamp >= {triggeredAtStart: DateTime64(3)}", {
+          triggeredAtStart: convertDateToClickhouseDateTime(floor),
+        });
+      }
 
-    // Cursor-based pagination using lexicographic comparison on (triggered_timestamp, trace_id).
-    // Since ORDER BY is DESC, "next page" means rows that sort *after* the cursor, i.e. less-than.
-    // The OR handles the tiebreaker: rows with an earlier timestamp always qualify, and rows
-    // with the *same* timestamp only qualify if their trace_id is also smaller.
-    // Equivalent to: WHERE (triggered_timestamp, trace_id) < (cursor.triggered_timestamp, cursor.trace_id)
-    const decodedCursor = cursor ? decodeCursor(cursor) : null;
-    if (decodedCursor) {
-      queryBuilder.where(
-        `(triggered_timestamp < {cursorTriggeredTimestamp: String} OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id < {cursorTraceId: String}))`,
-        {
-          cursorTriggeredTimestamp: decodedCursor.triggeredTimestamp,
-          cursorTraceId: decodedCursor.traceId,
+      // Task filter (applies directly to ClickHouse)
+      if (tasks && tasks.length > 0) {
+        queryBuilder.where("task_identifier IN {tasks: Array(String)}", { tasks });
+      }
+
+      // Run ID filter
+      if (runId && runId !== "") {
+        queryBuilder.where("run_id = {runId: String}", { runId });
+      }
+
+      // Case-insensitive search in message and attributes
+      if (searchTerm !== undefined) {
+        queryBuilder.where(
+          "(lower(message) like {searchPattern: String} OR lower(attributes_text) like {searchPattern: String})",
+          { searchPattern: `%${searchTerm}%` }
+        );
+      }
+
+      if (levels && levels.length > 0) {
+        const conditions: WhereCondition[] = [];
+
+        for (let i = 0; i < levels.length; i++) {
+          const filter = levelToKindsAndStatuses(levels[i]);
+
+          if (filter.kinds && filter.kinds.length > 0) {
+            conditions.push({
+              clause: `kind IN {kinds_${i}: Array(String)} AND status NOT IN {excluded_statuses: Array(String)}`,
+              params: {
+                [`kinds_${i}`]: filter.kinds,
+                excluded_statuses: ["ERROR", "CANCELLED"],
+              },
+            });
+          }
+
+          if (filter.statuses && filter.statuses.length > 0) {
+            conditions.push({
+              clause: `status IN {statuses_${i}: Array(String)}`,
+              params: { [`statuses_${i}`]: filter.statuses },
+            });
+          }
         }
-      );
+
+        queryBuilder.whereOr(conditions);
+      }
+
+      // Keyset pagination over the full sort key. ORDER BY is DESC, so the next page is the rows
+      // that sort after the cursor (strictly less-than). (triggered_timestamp, trace_id) is not
+      // unique because spans of a trace share both, so span_id is the final tiebreaker; without
+      // it rows at a tie boundary could be skipped or duplicated across pages.
+      if (decodedCursor) {
+        queryBuilder.where(
+          `(triggered_timestamp < {cursorTriggeredTimestamp: String}
+            OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id < {cursorTraceId: String})
+            OR (triggered_timestamp = {cursorTriggeredTimestamp: String} AND trace_id = {cursorTraceId: String} AND span_id < {cursorSpanId: String}))`,
+          {
+            cursorTriggeredTimestamp: decodedCursor.triggeredTimestamp,
+            cursorTraceId: decodedCursor.traceId,
+            cursorSpanId: decodedCursor.spanId,
+          }
+        );
+      }
+
+      queryBuilder.orderBy("triggered_timestamp DESC, trace_id DESC, span_id DESC");
+      // Limit + 1 to check if there are more results
+      queryBuilder.limit(effectivePageSize + 1);
+
+      return queryBuilder.execute();
+    };
+
+    // Page ceiling: the cursor (deeper pages) or the requested upper bound. Widen the lower
+    // bound only when a recent window doesn't fill the page.
+    const ceil = decodedCursor
+      ? convertClickhouseDateTime64ToJsDate(decodedCursor.triggeredTimestamp)
+      : clampedTo ?? new Date();
+
+    const probeFloors = buildProbeFloors(ceil, effectiveFrom ?? undefined);
+
+    let records: LogsSearchListResult[] = [];
+    for (const floor of probeFloors) {
+      const [queryError, probeRecords] = await runProbe(floor);
+
+      if (queryError) {
+        throw queryError;
+      }
+
+      records = probeRecords ?? [];
+
+      if (records.length > effectivePageSize) {
+        // Page is full from this window; older rows can't be in the top page, stop widening.
+        break;
+      }
     }
 
-    queryBuilder.orderBy("triggered_timestamp DESC, trace_id DESC");
-    // Limit + 1 to check if there are more results
-    queryBuilder.limit(pageSize + 1);
-
-    const [queryError, records] = await queryBuilder.execute();
-
-    if (queryError) {
-      throw queryError;
-    }
-
-    const results = records || [];
-    const hasMore = results.length > pageSize;
-    const logs = results.slice(0, pageSize);
+    const results = records;
+    const hasMore = results.length > effectivePageSize;
+    const logs = results.slice(0, effectivePageSize);
 
     // Build next cursor from the last item
     let nextCursor: string | undefined;
     if (hasMore && logs.length > 0) {
       const lastLog = logs[logs.length - 1];
       nextCursor = encodeCursor({
+        v: LOG_CURSOR_VERSION,
         organizationId,
         environmentId,
         triggeredTimestamp: lastLog.triggered_timestamp,
         traceId: lastLog.trace_id,
+        spanId: lastLog.span_id,
       });
     }
 

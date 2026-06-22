@@ -16,7 +16,7 @@ export class ClickHouseContainer extends GenericContainer {
   private password = "test";
   private database = "test";
 
-  constructor(image = "clickhouse/clickhouse-server:25.4-alpine") {
+  constructor(image = "clickhouse/clickhouse-server:26.2-alpine") {
     super(image);
     this.withExposedPorts(CLICKHOUSE_PORT, CLICKHOUSE_HTTP_PORT);
     this.withWaitStrategy(
