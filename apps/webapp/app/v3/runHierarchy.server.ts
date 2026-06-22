@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClientOrTransaction, PrismaReplicaClient } from "@trigger.dev/database";
+import type { FindRunTableScope } from "@internal/run-store";
 import { runStore } from "~/v3/runStore.server";
 
 type ReadClient = PrismaClientOrTransaction | PrismaReplicaClient;
@@ -22,7 +23,7 @@ type ReadClient = PrismaClientOrTransaction | PrismaReplicaClient;
  */
 export async function hydrateParentAndRoot<S extends Prisma.TaskRunSelect>(
   ids: { parentTaskRunId: string | null; rootTaskRunId: string | null },
-  scope: { runtimeEnvironmentId: string },
+  scope: { runtimeEnvironmentId: string; tables?: FindRunTableScope },
   select: S,
   client?: ReadClient
 ): Promise<{
@@ -33,14 +34,14 @@ export async function hydrateParentAndRoot<S extends Prisma.TaskRunSelect>(
     ids.parentTaskRunId
       ? runStore.findRun(
           { id: ids.parentTaskRunId, runtimeEnvironmentId: scope.runtimeEnvironmentId },
-          { select },
+          { select, tables: scope.tables },
           client
         )
       : Promise.resolve(null),
     ids.rootTaskRunId
       ? runStore.findRun(
           { id: ids.rootTaskRunId, runtimeEnvironmentId: scope.runtimeEnvironmentId },
-          { select },
+          { select, tables: scope.tables },
           client
         )
       : Promise.resolve(null),
@@ -62,7 +63,7 @@ export async function hydrateParentAndRoot<S extends Prisma.TaskRunSelect>(
  */
 export async function hydrateChildRuns<S extends Prisma.TaskRunSelect>(
   parentRunId: string,
-  scope: { runtimeEnvironmentId: string },
+  scope: { runtimeEnvironmentId: string; tables?: FindRunTableScope },
   select: S,
   client?: ReadClient
 ): Promise<Prisma.TaskRunGetPayload<{ select: S }>[]> {
@@ -73,6 +74,10 @@ export async function hydrateChildRuns<S extends Prisma.TaskRunSelect>(
         runtimeEnvironmentId: scope.runtimeEnvironmentId,
       },
       select,
+      // parentTaskRunId is a non-id predicate, so this reads BOTH tables by
+      // default. Callers that know the org isn't on v2 pass tables:"legacy" to
+      // skip the empty task_run_v2 query.
+      tables: scope.tables,
     },
     client
   ) as Promise<Prisma.TaskRunGetPayload<{ select: S }>[]>;

@@ -2089,6 +2089,46 @@ describe("PostgresRunStore — table routing by id format", () => {
   );
 
   postgresTest(
+    "findRuns tables:'legacy' skips task_run_v2 (cross-table children hot-path scope)",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // A legacy (cuid) child and a v2 (ksuid) child of the same parent — the
+      // cross-table mixed-window hierarchy.
+      const parentId = RunId.generate().id;
+      const legacyChild = RunId.generate();
+      const v2Child = RunId.generateKsuid();
+      for (const child of [legacyChild, v2Child]) {
+        await seedRoutedRun(prisma, {
+          id: child.id,
+          friendlyId: child.friendlyId,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+          parentTaskRunId: parentId,
+          taskIdentifier: "my-task",
+        });
+      }
+
+      const where = { parentTaskRunId: parentId, runtimeEnvironmentId: environment.id };
+
+      // Default (both tables) returns both children — required once an org is on v2.
+      const both = (await store.findRuns({ where, select: { id: true } })) as { id: string }[];
+      expect(new Set(both.map((r) => r.id))).toEqual(new Set([legacyChild.id, v2Child.id]));
+
+      // "legacy" scope skips task_run_v2 — the hot-path optimisation for an org
+      // not cut over to v2 (no v2 children exist), so only the legacy child.
+      const legacy = (await store.findRuns({
+        where,
+        select: { id: true },
+        tables: "legacy",
+      })) as { id: string }[];
+      expect(legacy.map((r) => r.id)).toEqual([legacyChild.id]);
+    }
+  );
+
+  postgresTest(
     "clearIdempotencyKey fans out across both tables (byPredicate hits v2; byFriendlyIds partitions a mixed array)",
     async ({ prisma }) => {
       const { organization, project, environment } = await seedEnvironment(prisma);

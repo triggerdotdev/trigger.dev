@@ -840,6 +840,7 @@ export class PostgresRunStore implements RunStore {
       take?: number;
       skip?: number;
       cursor?: Prisma.TaskRunWhereUniqueInput;
+      tables?: FindRunTableScope;
     },
     client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>[]>;
@@ -851,6 +852,7 @@ export class PostgresRunStore implements RunStore {
       take?: number;
       skip?: number;
       cursor?: Prisma.TaskRunWhereUniqueInput;
+      tables?: FindRunTableScope;
     },
     client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }>[]>;
@@ -861,11 +863,12 @@ export class PostgresRunStore implements RunStore {
       take?: number;
       skip?: number;
       cursor?: Prisma.TaskRunWhereUniqueInput;
+      tables?: FindRunTableScope;
     },
     client?: ReadClient
   ): Promise<TaskRun[]>;
   async findRuns(
-    args: {
+    rawArgs: {
       where: Prisma.TaskRunWhereInput;
       select?: Prisma.TaskRunSelect;
       include?: Prisma.TaskRunInclude;
@@ -873,10 +876,15 @@ export class PostgresRunStore implements RunStore {
       take?: number;
       skip?: number;
       cursor?: Prisma.TaskRunWhereUniqueInput;
+      tables?: FindRunTableScope;
     },
     client?: ReadClient
   ): Promise<unknown> {
     const prisma = client ?? this.readOnlyPrisma;
+
+    // Split the table-scope hint out of the args that get spread into Prisma
+    // (which would reject an unknown `tables` field) before anything reads them.
+    const { tables: tableScope = "both", ...args } = rawArgs;
 
     // A run lives in exactly one physical table, chosen by its id format. An
     // `id: { in: [...] }` predicate of a single id format addresses ONE table;
@@ -887,7 +895,12 @@ export class PostgresRunStore implements RunStore {
     const legacyModel = prisma.taskRun;
     const v2Model = prisma.taskRunV2 as unknown as typeof prisma.taskRun;
 
-    const { queryLegacy, queryV2 } = this.#tablesForWhere(args.where);
+    const tablesForWhere = this.#tablesForWhere(args.where);
+    const queryLegacy = tablesForWhere.queryLegacy;
+    // A "legacy" scope hint (the caller knows the run can't be in task_run_v2 —
+    // e.g. an org not cut over to v2) skips the empty v2 query, the same
+    // hot-path optimisation findRun uses.
+    const queryV2 = tableScope === "legacy" ? false : tablesForWhere.queryV2;
 
     // No candidate table (e.g. an empty `id: { in: [] }`) → matches nothing.
     if (!queryLegacy && !queryV2) {

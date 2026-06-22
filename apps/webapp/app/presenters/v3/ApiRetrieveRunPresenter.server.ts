@@ -24,6 +24,8 @@ import {
 import { generatePresignedUrl } from "~/v3/objectStore.server";
 import { runStore } from "~/v3/runStore.server";
 import { hydrateParentAndRoot, hydrateChildRuns } from "~/v3/runHierarchy.server";
+import { shouldUseV2RunTable } from "~/v3/runTableV2.server";
+import { env as serverEnv } from "~/env.server";
 import { tracer } from "~/v3/tracer.server";
 import { startSpanWithEnv } from "~/v3/tracing.server";
 
@@ -147,18 +149,24 @@ export class ApiRetrieveRunPresenter {
       // legacy run's v2 children), which arise in the mixed window, would come
       // back null/empty. Resolve parent/root by id (RunStore routes by format)
       // and children by a both-table predicate.
-      const { parentTaskRun, rootTaskRun } = await hydrateParentAndRoot(
-        { parentTaskRunId: pgRow.parentTaskRunId, rootTaskRunId: pgRow.rootTaskRunId },
-        { runtimeEnvironmentId: env.id },
-        commonRunSelect,
-        $replica
-      );
-      const childRuns = await hydrateChildRuns(
-        pgRow.id,
-        { runtimeEnvironmentId: env.id },
-        commonRunSelect,
-        $replica
-      );
+      // While the org isn't cut over to v2 its runs only live in TaskRun, so
+      // scope the cross-table reads to "legacy" and skip the empty task_run_v2
+      // query; once it's on v2 a child can be cross-table, so read both. The
+      // parent/root and child reads run in parallel (one round-trip, not two).
+      const tables = shouldUseV2RunTable(env.organization.featureFlags, {
+        nativeRealtimeEnabled: serverEnv.REALTIME_BACKEND_NATIVE_ENABLED === "1",
+      })
+        ? "both"
+        : "legacy";
+      const [{ parentTaskRun, rootTaskRun }, childRuns] = await Promise.all([
+        hydrateParentAndRoot(
+          { parentTaskRunId: pgRow.parentTaskRunId, rootTaskRunId: pgRow.rootTaskRunId },
+          { runtimeEnvironmentId: env.id, tables },
+          commonRunSelect,
+          $replica
+        ),
+        hydrateChildRuns(pgRow.id, { runtimeEnvironmentId: env.id, tables }, commonRunSelect, $replica),
+      ]);
 
       return { ...pgRow, parentTaskRun, rootTaskRun, childRuns, isBuffered: false };
     }

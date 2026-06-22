@@ -374,6 +374,7 @@ export interface RunStore {
       take?: number;
       skip?: number;
       cursor?: Prisma.TaskRunWhereUniqueInput;
+      tables?: FindRunTableScope;
     },
     client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>[]>;
@@ -385,6 +386,7 @@ export interface RunStore {
       take?: number;
       skip?: number;
       cursor?: Prisma.TaskRunWhereUniqueInput;
+      tables?: FindRunTableScope;
     },
     client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }>[]>;
@@ -395,6 +397,7 @@ export interface RunStore {
       take?: number;
       skip?: number;
       cursor?: Prisma.TaskRunWhereUniqueInput;
+      tables?: FindRunTableScope;
     },
     client?: ReadClient
   ): Promise<TaskRun[]>;
