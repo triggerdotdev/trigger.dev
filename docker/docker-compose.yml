@@ -164,7 +164,7 @@ services:
       - database
 
   clickhouse:
-    image: clickhouse/clickhouse-server:25.6.2@sha256:97f0fe0f8729569e8c9d11069acee23abadeade4889f56ca3dc3df069f28cb85
+    image: clickhouse/clickhouse-server:26.2.19.43@sha256:c2f2605585899d5103a0447daadbc0005f362200d5f0fcca7f40db3ca0dd36dd
     restart: always
     container_name: ${CONTAINER_PREFIX:-}clickhouse
     ulimits:
