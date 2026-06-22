@@ -1,7 +1,7 @@
 import { postgresTest } from "@internal/testcontainers";
 import { isKsuidId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient } from "@trigger.dev/database";
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 import { PostgresRunStore } from "./PostgresRunStore.js";
 import type { CreateCancelledRunInput, CreateFailedRunInput, CreateRunInput } from "./types.js";
 
@@ -2376,6 +2376,68 @@ describe("PostgresRunStore — table routing by id format", () => {
           cursor: { id: legacy.id },
         })
       ).rejects.toThrow(/cursor/i);
+    }
+  );
+
+  postgresTest(
+    "findRuns rejects `skip` (offset pagination cannot span the two tables)",
+    async ({ prisma }) => {
+      const { environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      await expect(
+        store.findRuns({
+          where: { runtimeEnvironmentId: environment.id },
+          select: { id: true },
+          skip: 10,
+          take: 5,
+        })
+      ).rejects.toThrow(/skip/i);
+    }
+  );
+
+  postgresTest(
+    "findRuns with an id-list partitions by id format and skips the table with no candidate ids",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const cuid = RunId.generate();
+      const ksuid = RunId.generateKsuid();
+      for (const r of [cuid, ksuid]) {
+        await seedRoutedRun(prisma, {
+          id: r.id,
+          friendlyId: r.friendlyId,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+        });
+      }
+
+      const ids = (rows: unknown) =>
+        (rows as Array<{ id: string }>).map((r) => r.id).sort();
+
+      // Mixed list: both tables queried, both runs returned.
+      expect(
+        ids(await store.findRuns({ where: { id: { in: [cuid.id, ksuid.id] } }, select: { id: true } }))
+      ).toEqual([cuid.id, ksuid.id].sort());
+
+      // cuid-only list: the task_run_v2 query is skipped, legacy run still returned.
+      const v2Spy = vi.spyOn(prisma.taskRunV2, "findMany");
+      const legacyOnly = await store.findRuns({ where: { id: { in: [cuid.id] } }, select: { id: true } });
+      expect(ids(legacyOnly)).toEqual([cuid.id]);
+      expect(v2Spy).not.toHaveBeenCalled();
+      v2Spy.mockRestore();
+
+      // ksuid-only list: the TaskRun query is skipped, v2 run still returned.
+      const legacySpy = vi.spyOn(prisma.taskRun, "findMany");
+      const v2Only = await store.findRuns({ where: { id: { in: [ksuid.id] } }, select: { id: true } });
+      expect(ids(v2Only)).toEqual([ksuid.id]);
+      expect(legacySpy).not.toHaveBeenCalled();
+      legacySpy.mockRestore();
+
+      // Empty list matches nothing.
+      expect(ids(await store.findRuns({ where: { id: { in: [] } }, select: { id: true } }))).toEqual([]);
     }
   );
 });

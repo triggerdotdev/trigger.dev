@@ -844,13 +844,30 @@ export class PostgresRunStore implements RunStore {
   ): Promise<unknown> {
     const prisma = client ?? this.readOnlyPrisma;
 
+    // Offset pagination can't be expressed across two tables: applying `skip`
+    // to each table independently skips N rows from each, not N from the merged
+    // result. Reject it rather than silently double-skip. No caller uses it;
+    // cross-table reads keyset-paginate on a where + (createdAt, id) orderBy.
+    if (args.skip !== undefined) {
+      throw new Error(
+        "RunStore.findRuns: `skip` (offset pagination) is not supported across the legacy TaskRun " +
+          "and task_run_v2 tables. Use a where-based keyset (createdAt + id) instead."
+      );
+    }
+
     // A run lives in exactly one physical table, chosen by its id format, so a
-    // multi-row read must hit BOTH `TaskRun` (legacy cuid) and `task_run_v2`
-    // (new ksuid) and combine. `task_run_v2` is an identical clone of `TaskRun`
-    // (same relation surface), so the SAME `args` — crucially the SAME `where`,
-    // which is the security scope — run unchanged against either delegate.
+    // multi-row read generally hits BOTH `TaskRun` (legacy cuid) and
+    // `task_run_v2` (new ksuid) and combines. `task_run_v2` is an identical
+    // clone of `TaskRun` (same relation surface), so the SAME `args` (crucially
+    // the SAME `where`, which is the security scope) run unchanged against
+    // either delegate. When the predicate is an `id: { in: [...] }` list, the
+    // table with no candidate ids is skipped (a cuid can't live in task_run_v2,
+    // nor a ksuid in TaskRun), avoiding an empty query while task_run_v2 is
+    // unpopulated during rollout.
     const legacyModel = prisma.taskRun;
     const v2Model = prisma.taskRunV2 as unknown as typeof prisma.taskRun;
+
+    const { queryLegacy, queryV2 } = this.#tablesForWhere(args.where);
 
     const ordered = this.#normalizeOrderBy(args.orderBy);
 
@@ -881,8 +898,8 @@ export class PostgresRunStore implements RunStore {
       const perTableArgs = { ...queryArgs, take: args.take };
 
       const [legacyRows, v2Rows] = (await Promise.all([
-        legacyModel.findMany(perTableArgs),
-        v2Model.findMany(perTableArgs),
+        queryLegacy ? legacyModel.findMany(perTableArgs) : Promise.resolve([]),
+        queryV2 ? v2Model.findMany(perTableArgs) : Promise.resolve([]),
       ])) as [Array<Record<string, unknown>>, Array<Record<string, unknown>>];
 
       const merged = this.#mergeOrdered(legacyRows, v2Rows, comparator, args.take);
@@ -901,8 +918,8 @@ export class PostgresRunStore implements RunStore {
         : { args, addedKeys: [] as string[] };
 
     const [legacyRows, v2Rows] = (await Promise.all([
-      legacyModel.findMany(queryArgs),
-      v2Model.findMany(queryArgs),
+      queryLegacy ? legacyModel.findMany(queryArgs) : Promise.resolve([]),
+      queryV2 ? v2Model.findMany(queryArgs) : Promise.resolve([]),
     ])) as [Array<Record<string, unknown>>, Array<Record<string, unknown>>];
 
     let combined = legacyRows.concat(v2Rows);
@@ -922,6 +939,38 @@ export class PostgresRunStore implements RunStore {
     }
 
     return this.#stripAddedKeys(combined, addedKeys);
+  }
+
+  /**
+   * Which physical tables a `findRuns` predicate can match. A run id encodes
+   * its table, so an `id: { in: [...] }` list containing only cuids cannot match
+   * `task_run_v2` (and a ksuid-only list cannot match `TaskRun`): the table with
+   * no candidate ids is skipped, avoiding a wasted query against an empty
+   * `task_run_v2` during rollout. An empty `in` list matches nothing, so both
+   * are skipped. Any other predicate must consult both tables.
+   */
+  #tablesForWhere(where: Prisma.TaskRunWhereInput): { queryLegacy: boolean; queryV2: boolean } {
+    const idFilter = where.id;
+    const idIn =
+      idFilter !== null && typeof idFilter === "object" && "in" in idFilter
+        ? (idFilter as { in?: unknown }).in
+        : undefined;
+
+    if (Array.isArray(idIn)) {
+      let queryLegacy = false;
+      let queryV2 = false;
+      for (const id of idIn) {
+        if (typeof id === "string" && isKsuidId(id)) {
+          queryV2 = true;
+        } else {
+          queryLegacy = true;
+        }
+        if (queryLegacy && queryV2) break;
+      }
+      return { queryLegacy, queryV2 };
+    }
+
+    return { queryLegacy: true, queryV2: true };
   }
 
   /**
