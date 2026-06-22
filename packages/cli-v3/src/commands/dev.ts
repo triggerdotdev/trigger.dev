@@ -65,36 +65,17 @@ const DevCommandOptions = CommonCommandOptions.extend({
 export type DevCommandOptions = z.infer<typeof DevCommandOptions>;
 
 export function configureDevCommand(program: Command) {
+  // `dev` is a pure container: it owns no options and no action of its own. The
+  // dev session lives in the `start` default subcommand (so a bare `trigger dev`
+  // still runs it), and `archive` is a sibling. Keeping the parent option-free
+  // means each subcommand owns its own `--branch` with no inherited-option
+  // shadowing between them.
   const devBase = program.command("dev").description("Run your Trigger.dev tasks locally");
 
   commonOptions(
     devBase
-      .command("archive")
-      .description("Archive a dev branch")
-      .argument("[path]", "The path to the project", ".")
-      .option(
-        "-b, --branch <branch>",
-        "The dev branch to archive. Defaults to the TRIGGER_DEV_BRANCH environment variable if set."
-      )
-      .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
-      .option("-c, --config <config file>", "The name of the config file, found at [path]")
-      .option(
-        "-p, --project-ref <project ref>",
-        "The project ref. Required if there is no config file. This will override the project specified in the config file."
-      )
-      .option(
-        "--env-file <env file>",
-        "Path to the .env file to load into the CLI process. Defaults to .env in the project directory."
-      )
-  ).action(async (path, options) => {
-    await handleTelemetry(async () => {
-      await printStandloneInitialBanner(true, options.profile);
-      await devArchiveCommand(path, options);
-    });
-  });
-
-  commonOptions(
-    devBase
+      .command("start", { isDefault: true })
+      .description("Run your Trigger.dev tasks locally")
       .option("-c, --config <config file>", "The name of the config file")
       .option(
         "-p, --project-ref <project ref>",
@@ -145,6 +126,32 @@ export function configureDevCommand(program: Command) {
   ).action(async (options) => {
     wrapCommandAction("dev", DevCommandOptions, options, async (opts) => {
       await devCommand(opts);
+    });
+  });
+
+  commonOptions(
+    devBase
+      .command("archive")
+      .description("Archive a dev branch")
+      .argument("[path]", "The path to the project", ".")
+      .option(
+        "-b, --branch <branch>",
+        "The dev branch to archive. Defaults to the TRIGGER_DEV_BRANCH environment variable if set."
+      )
+      .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
+      .option("-c, --config <config file>", "The name of the config file, found at [path]")
+      .option(
+        "-p, --project-ref <project ref>",
+        "The project ref. Required if there is no config file. This will override the project specified in the config file."
+      )
+      .option(
+        "--env-file <env file>",
+        "Path to the .env file to load into the CLI process. Defaults to .env in the project directory."
+      )
+  ).action(async (path, options) => {
+    await handleTelemetry(async () => {
+      await printStandloneInitialBanner(true, options.profile);
+      await devArchiveCommand(path, options);
     });
   });
 }
