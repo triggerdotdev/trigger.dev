@@ -844,30 +844,42 @@ export class PostgresRunStore implements RunStore {
   ): Promise<unknown> {
     const prisma = client ?? this.readOnlyPrisma;
 
-    // Offset pagination can't be expressed across two tables: applying `skip`
-    // to each table independently skips N rows from each, not N from the merged
-    // result. Reject it rather than silently double-skip. No caller uses it;
-    // cross-table reads keyset-paginate on a where + (createdAt, id) orderBy.
+    // A run lives in exactly one physical table, chosen by its id format. An
+    // `id: { in: [...] }` predicate of a single id format addresses ONE table;
+    // any other predicate may span both `TaskRun` (legacy cuid) and
+    // `task_run_v2` (new ksuid). `task_run_v2` is an identical clone of
+    // `TaskRun` (same relation surface), so the SAME `args` (crucially the SAME
+    // `where`, the security scope) run unchanged against either delegate.
+    const legacyModel = prisma.taskRun;
+    const v2Model = prisma.taskRunV2 as unknown as typeof prisma.taskRun;
+
+    const { queryLegacy, queryV2 } = this.#tablesForWhere(args.where);
+
+    // No candidate table (e.g. an empty `id: { in: [] }`) → matches nothing.
+    if (!queryLegacy && !queryV2) {
+      return [];
+    }
+
+    // Exactly one physical table is in play. There's no cross-table merge, so
+    // delegate to that table's `findMany` with the args verbatim: Postgres
+    // orders natively (ordering by any column, incl. `id`, is a valid total
+    // order WITHIN one table) and `skip`/`cursor`/`take` are all
+    // single-table-valid. Only the both-table path below needs the in-memory
+    // comparator/merge and its keyset restrictions.
+    if (queryLegacy !== queryV2) {
+      const model = queryLegacy ? legacyModel : v2Model;
+      return model.findMany(args as Prisma.TaskRunFindManyArgs);
+    }
+
+    // BOTH tables in play. Offset pagination can't be expressed across two
+    // tables (applying `skip` to each skips N rows from its own result, not N
+    // from the merged result), so reject it rather than silently double-skip.
     if (args.skip !== undefined) {
       throw new Error(
         "RunStore.findRuns: `skip` (offset pagination) is not supported across the legacy TaskRun " +
           "and task_run_v2 tables. Use a where-based keyset (createdAt + id) instead."
       );
     }
-
-    // A run lives in exactly one physical table, chosen by its id format, so a
-    // multi-row read generally hits BOTH `TaskRun` (legacy cuid) and
-    // `task_run_v2` (new ksuid) and combines. `task_run_v2` is an identical
-    // clone of `TaskRun` (same relation surface), so the SAME `args` (crucially
-    // the SAME `where`, which is the security scope) run unchanged against
-    // either delegate. When the predicate is an `id: { in: [...] }` list, the
-    // table with no candidate ids is skipped (a cuid can't live in task_run_v2,
-    // nor a ksuid in TaskRun), avoiding an empty query while task_run_v2 is
-    // unpopulated during rollout.
-    const legacyModel = prisma.taskRun;
-    const v2Model = prisma.taskRunV2 as unknown as typeof prisma.taskRun;
-
-    const { queryLegacy, queryV2 } = this.#tablesForWhere(args.where);
 
     const ordered = this.#normalizeOrderBy(args.orderBy);
 
@@ -1153,7 +1165,15 @@ export class PostgresRunStore implements RunStore {
     if (typeof a === "number" && typeof b === "number") {
       return a - b;
     }
-    return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+    // String (id) order MUST match Postgres's collation: this comparator merges
+    // the two per-table streams IN MEMORY, but the keyset continuation
+    // (`id > cursor`) that fetches the next page is evaluated BY Postgres. If
+    // the two disagree, a tied-createdAt boundary across the tables silently
+    // skips or duplicates a row. The run-table id columns use the database
+    // collation (en_US.utf8), whose ordering of the id charset [0-9A-Za-z]
+    // matches `localeCompare("en-US")` (verified) but NOT raw code-unit order
+    // (e.g. "c" < "Z" under en_US, yet "Z" < "c" by code unit).
+    return String(a).localeCompare(String(b), "en-US");
   }
 
   /**

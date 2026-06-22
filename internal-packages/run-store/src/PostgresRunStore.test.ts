@@ -1789,6 +1789,8 @@ describe("PostgresRunStore — table routing by id format", () => {
       idempotencyKey?: string;
       taskIdentifier?: string;
       createdAt?: Date;
+      parentTaskRunId?: string;
+      rootTaskRunId?: string;
     }
   ) {
     const delegate = isKsuidId(params.id)
@@ -1817,6 +1819,8 @@ describe("PostgresRunStore — table routing by id format", () => {
         depth: 0,
         ...(params.idempotencyKey !== undefined && { idempotencyKey: params.idempotencyKey }),
         ...(params.createdAt !== undefined && { createdAt: params.createdAt }),
+        ...(params.parentTaskRunId !== undefined && { parentTaskRunId: params.parentTaskRunId }),
+        ...(params.rootTaskRunId !== undefined && { rootTaskRunId: params.rootTaskRunId }),
       },
     });
   }
@@ -2438,6 +2442,177 @@ describe("PostgresRunStore — table routing by id format", () => {
 
       // Empty list matches nothing.
       expect(ids(await store.findRuns({ where: { id: { in: [] } }, select: { id: true } }))).toEqual([]);
+    }
+  );
+
+  postgresTest(
+    "findRuns with a single-format id-list + non-time orderBy + take orders natively without the cross-table guard",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // Two v2 (ksuid) runs.
+      const k1 = RunId.generateKsuid();
+      const k2 = RunId.generateKsuid();
+      for (const r of [k1, k2]) {
+        await seedRoutedRun(prisma, {
+          id: r.id,
+          friendlyId: r.friendlyId,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+        });
+      }
+
+      // An all-ksuid id-list addresses task_run_v2 alone, so ordering by `id`
+      // (or any non-time key) with `take` must NOT trip the cross-table
+      // time-key guard — id is a valid total order within a single table.
+      const rows = (await store.findRuns({
+        where: { id: { in: [k1.id, k2.id] } },
+        select: { id: true },
+        orderBy: { id: "asc" },
+        take: 10,
+      })) as Array<{ id: string }>;
+      expect(rows.map((r) => r.id)).toEqual([k1.id, k2.id].sort());
+
+      // Same for an all-cuid id-list (legacy table only).
+      const c1 = RunId.generate();
+      const c2 = RunId.generate();
+      for (const r of [c1, c2]) {
+        await seedRoutedRun(prisma, {
+          id: r.id,
+          friendlyId: r.friendlyId,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+        });
+      }
+      const legacyRows = (await store.findRuns({
+        where: { id: { in: [c1.id, c2.id] } },
+        select: { id: true },
+        orderBy: { id: "desc" },
+        take: 10,
+      })) as Array<{ id: string }>;
+      expect(legacyRows.map((r) => r.id)).toEqual([c1.id, c2.id].sort().reverse());
+    }
+  );
+
+  postgresTest(
+    "merged keyset cursor enumerates every row exactly once at a tied createdAt across both tables (collation boundary)",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // All four rows share the SAME createdAt, so pagination relies entirely on
+      // the id tiebreak. Hand-crafted ids straddle the collation divergence: a
+      // 27-char ksuid leading with an UPPERCASE letter routes to task_run_v2,
+      // and a lowercase cuid routes to TaskRun. Under the DB's en_US collation
+      // "c" < "Z", but by raw code unit "Z" < "c" — if the in-memory merge and
+      // the Postgres keyset disagree, a row is skipped or duplicated here.
+      const sameTime = new Date("2026-06-01T00:00:00.000Z");
+      const seeds = [
+        "Z" + "0".repeat(26), // ksuid -> task_run_v2 (uppercase lead)
+        "A" + "1".repeat(26), // ksuid -> task_run_v2
+        "c" + "z".repeat(24), // cuid  -> TaskRun (25 chars)
+        "c" + "a".repeat(24), // cuid  -> TaskRun
+      ];
+      for (const id of seeds) {
+        await seedRoutedRun(prisma, {
+          id,
+          friendlyId: `run_${id}`,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+          createdAt: sameTime,
+        });
+      }
+
+      // Paginate exactly like runsBackfiller: orderBy [createdAt asc, id asc],
+      // take 1 (forces the tie boundary on every page), cursor = (createdAt, id).
+      const seen: string[] = [];
+      let cursor: { createdAt: Date; id: string } | undefined;
+      for (let guard = 0; guard < 25; guard++) {
+        const page = (await store.findRuns({
+          where: {
+            runtimeEnvironmentId: environment.id,
+            ...(cursor
+              ? {
+                  OR: [
+                    { createdAt: { gt: cursor.createdAt } },
+                    { createdAt: cursor.createdAt, id: { gt: cursor.id } },
+                  ],
+                }
+              : {}),
+          },
+          select: { id: true, createdAt: true },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          take: 1,
+        })) as Array<{ id: string; createdAt: Date }>;
+        if (page.length === 0) break;
+        seen.push(page[0].id);
+        cursor = { createdAt: page[0].createdAt, id: page[0].id };
+      }
+
+      // Every seeded row enumerated exactly once: no skip, no duplicate.
+      expect(seen.slice().sort()).toEqual(seeds.slice().sort());
+      expect(new Set(seen).size).toBe(seeds.length);
+    }
+  );
+
+  postgresTest(
+    "cross-table run hierarchy resolves parent by id and children by predicate across both tables",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const base = {
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      };
+
+      // Legacy cuid PARENT in TaskRun, v2 ksuid CHILD in task_run_v2 pointing at
+      // it (a hierarchy straddling a runTableV2 flip). This is what the
+      // presenters resolve via hydrateParentAndRoot / hydrateChildRuns.
+      const parent = RunId.generate();
+      const child = RunId.generateKsuid();
+      await seedRoutedRun(prisma, { ...base, id: parent.id, friendlyId: parent.friendlyId });
+      await seedRoutedRun(prisma, {
+        ...base,
+        id: child.id,
+        friendlyId: child.friendlyId,
+        parentTaskRunId: parent.id,
+        rootTaskRunId: parent.id,
+      });
+
+      // child -> parent: by-id read routes to the legacy table.
+      const resolvedParent = await store.findRun({ id: parent.id }, { select: { id: true } });
+      expect(resolvedParent?.id).toBe(parent.id);
+      // parent -> children: a parentTaskRunId predicate spans both tables and
+      // finds the v2 child of the legacy parent.
+      const children = (await store.findRuns({
+        where: { parentTaskRunId: parent.id },
+        select: { id: true },
+      })) as Array<{ id: string }>;
+      expect(children.map((c) => c.id)).toEqual([child.id]);
+
+      // Mirror: ksuid parent in task_run_v2, cuid child in TaskRun.
+      const parent2 = RunId.generateKsuid();
+      const child2 = RunId.generate();
+      await seedRoutedRun(prisma, { ...base, id: parent2.id, friendlyId: parent2.friendlyId });
+      await seedRoutedRun(prisma, {
+        ...base,
+        id: child2.id,
+        friendlyId: child2.friendlyId,
+        parentTaskRunId: parent2.id,
+        rootTaskRunId: parent2.id,
+      });
+      const resolvedParent2 = await store.findRun({ id: parent2.id }, { select: { id: true } });
+      expect(resolvedParent2?.id).toBe(parent2.id);
+      const children2 = (await store.findRuns({
+        where: { parentTaskRunId: parent2.id },
+        select: { id: true },
+      })) as Array<{ id: string }>;
+      expect(children2.map((c) => c.id)).toEqual([child2.id]);
     }
   );
 });
