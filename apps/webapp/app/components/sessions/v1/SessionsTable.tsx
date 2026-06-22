@@ -147,10 +147,16 @@ export function SessionsTable({
                   </div>
                 </TableCell>
                 <TableCell to={sessionPath}>
+                  <span className="sr-only">{session.isTest ? "Yes" : "No"}</span>
                   {session.isTest ? (
-                    <CheckIcon className="size-4 text-charcoal-400 group-hover/table-row:text-text-bright" />
+                    <CheckIcon
+                      aria-hidden
+                      className="size-4 text-charcoal-400 group-hover/table-row:text-text-bright"
+                    />
                   ) : (
-                    "–"
+                    <span aria-hidden className="text-text-dimmed">
+                      –
+                    </span>
                   )}
                 </TableCell>
                 <TableCell to={sessionPath}>

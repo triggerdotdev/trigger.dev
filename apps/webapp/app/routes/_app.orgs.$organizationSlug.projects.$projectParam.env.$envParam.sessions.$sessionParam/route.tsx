@@ -821,10 +821,13 @@ function OverviewTab({ session, status }: { session: LoadedSession; status: Sess
         <Property.Item>
           <Property.Label>Test</Property.Label>
           <Property.Value>
+            <span className="sr-only">{session.isTest ? "Yes" : "No"}</span>
             {session.isTest ? (
-              <CheckIcon className="size-4 text-text-dimmed" />
+              <CheckIcon aria-hidden className="size-4 text-text-dimmed" />
             ) : (
-              <span className="text-text-dimmed">–</span>
+              <span aria-hidden className="text-text-dimmed">
+                –
+              </span>
             )}
           </Property.Value>
         </Property.Item>
