@@ -15,6 +15,7 @@ import { getTaskIdentifiers } from "~/models/task.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { kindToLevel, type LogLevel, LogLevelSchema } from "~/utils/logUtils";
 import { BasePresenter } from "~/presenters/v3/basePresenter.server";
+import { env } from "~/env.server";
 import {
   convertDateToClickhouseDateTime,
   convertClickhouseDateTime64ToJsDate,
@@ -70,17 +71,6 @@ export const LogsListOptionsSchema = z.object({
   pageSize: z.number().int().positive().max(1000).optional(),
 });
 
-const DEFAULT_PAGE_SIZE = 50;
-
-// The list projection is wide (full attributes_text per row), so cap the effective page size
-// well below the schema max of 1000 to keep per-page memory and payload bounded.
-const MAX_PAGE_SIZE = 100;
-
-// Recent-first window stepping: probe the most recent windows before widening to the full
-// requested range, so a dense env fills a page from a few recent parts instead of scanning
-// the whole window. Days back from the page ceiling; the full requested window is always the
-// final probe.
-const PROBE_STEP_DAYS = [1, 7];
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type LogsList = Awaited<ReturnType<LogsListPresenter["call"]>>;
@@ -132,10 +122,14 @@ function decodeCursor(cursor: string): LogCursor | null {
 // requested floor (or undefined for an unbounded-below window). Because rows are returned
 // newest-first, a narrow window that already fills a page returns the exact same top rows the
 // full window would, so widening only happens when a page comes back short.
-function buildProbeFloors(ceil: Date, hardFloor: Date | undefined): (Date | undefined)[] {
+function buildProbeFloors(
+  ceil: Date,
+  hardFloor: Date | undefined,
+  stepDays: number[]
+): (Date | undefined)[] {
   const floors: (Date | undefined)[] = [];
 
-  for (const days of PROBE_STEP_DAYS) {
+  for (const days of stepDays) {
     let candidate = new Date(ceil.getTime() - days * DAY_MS);
     if (hardFloor && candidate <= hardFloor) {
       candidate = hardFloor;
@@ -190,7 +184,7 @@ export class LogsListPresenter extends BasePresenter {
       from,
       to,
       cursor,
-      pageSize = DEFAULT_PAGE_SIZE,
+      pageSize = env.LOGS_LIST_DEFAULT_PAGE_SIZE,
       defaultPeriod,
       retentionLimitDays,
     }: LogsListOptions
@@ -268,7 +262,7 @@ export class LogsListPresenter extends BasePresenter {
       );
     }
 
-    const effectivePageSize = Math.min(pageSize, MAX_PAGE_SIZE);
+    const effectivePageSize = Math.min(pageSize, env.LOGS_LIST_MAX_PAGE_SIZE);
 
     // Only honor a cursor scoped to this org+env; one copied from another scope would shift the
     // pagination anchor instead of resetting to the first page.
@@ -387,7 +381,11 @@ export class LogsListPresenter extends BasePresenter {
       ? convertClickhouseDateTime64ToJsDate(decodedCursor.triggeredTimestamp)
       : clampedTo ?? new Date();
 
-    const probeFloors = buildProbeFloors(ceil, effectiveFrom ?? undefined);
+    const probeFloors = buildProbeFloors(
+      ceil,
+      effectiveFrom ?? undefined,
+      env.LOGS_LIST_RECENT_FIRST_PROBE_DAYS
+    );
 
     let records: LogsSearchListResult[] = [];
     for (const floor of probeFloors) {
