@@ -22,12 +22,19 @@ import { ServiceValidationError } from "~/v3/services/baseService.server";
 
 type FakePrisma = {
   taskRun: { updateMany: (...args: unknown[]) => Promise<{ count: number }> };
+  taskRunV2: { updateMany: (...args: unknown[]) => Promise<{ count: number }> };
 };
 
 function makePrisma(pgCount: number): FakePrisma {
   return {
     taskRun: {
       updateMany: vi.fn(async () => ({ count: pgCount })),
+    },
+    // clearIdempotencyKey(byPredicate) clears across BOTH physical run tables.
+    // These tests use a legacy key that only ever matches TaskRun, so
+    // task_run_v2 always clears nothing.
+    taskRunV2: {
+      updateMany: vi.fn(async () => ({ count: 0 })),
     },
   };
 }
@@ -137,6 +144,12 @@ describe("ResetIdempotencyKeyService — buffer-outage handling", () => {
           updateManyCalls += 1;
           return updateManyCalls === 1 ? { count: 0 } : { count: 1 };
         }),
+      },
+      // task_run_v2 side of the both-tables byPredicate clear; never matches
+      // here, so it stays at 0 and the updateManyCalls assertion tracks only
+      // the legacy delegate.
+      taskRunV2: {
+        updateMany: vi.fn(async () => ({ count: 0 })),
       },
     };
     const resetIdempotency = vi.fn(async () => ({ clearedRunId: null as string | null }));

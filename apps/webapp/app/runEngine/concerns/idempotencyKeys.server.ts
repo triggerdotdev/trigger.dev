@@ -1,5 +1,5 @@
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
-import type { PrismaClientOrTransaction, TaskRun } from "@trigger.dev/database";
+import type { Prisma, PrismaClientOrTransaction, TaskRun } from "@trigger.dev/database";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
@@ -137,6 +137,73 @@ export class IdempotencyKeyConcern {
     return synthetic as unknown as TaskRun;
   }
 
+  // Return an already-resolved idempotent run as a cache hit, blocking the
+  // parent on the run's waitpoint when this is a triggerAndWait
+  // (`resumeParentOnCompletion`). Shared by the direct PG/buffer existing-run
+  // path and the claim-`resolved` path (a concurrent same-key trigger that won
+  // the claim): a v2-cutover triggerAndWait that loses the claim must still
+  // block its parent, because the per-table unique constraints don't dedup
+  // across TaskRun/task_run_v2 — the claim is what serialises these.
+  private async returnCachedIdempotentRun(
+    request: TriggerTaskRequest,
+    parentStore: string | undefined,
+    existingRun: Prisma.TaskRunGetPayload<{ include: { associatedWaitpoint: true } }>,
+    idempotencyKey: string
+  ): Promise<IdempotencyKeyConcernResult> {
+    const parentRunId = request.body.options?.parentRunId;
+    const resumeParentOnCompletion = request.body.options?.resumeParentOnCompletion;
+
+    //We're using `andWait` so we need to block the parent run with a waitpoint
+    if (resumeParentOnCompletion && parentRunId) {
+      // Get or create waitpoint lazily (existing run may not have one if it was standalone)
+      let associatedWaitpoint = existingRun.associatedWaitpoint;
+      if (!associatedWaitpoint) {
+        associatedWaitpoint = await this.engine.getOrCreateRunWaitpoint({
+          runId: existingRun.id,
+          projectId: request.environment.projectId,
+          environmentId: request.environment.id,
+        });
+      }
+
+      await this.traceEventConcern.traceIdempotentRun(
+        request,
+        parentStore,
+        {
+          existingRun,
+          idempotencyKey,
+          incomplete: associatedWaitpoint.status === "PENDING",
+          isError: associatedWaitpoint.outputIsError,
+        },
+        async (event) => {
+          const spanId =
+            request.options?.parentAsLinkType === "replay"
+              ? event.spanId
+              : event.traceparent?.spanId
+                ? `${event.traceparent.spanId}:${event.spanId}`
+                : event.spanId;
+
+          //block run with waitpoint
+          await this.engine.blockRunWithWaitpoint({
+            runId: RunId.fromFriendlyId(parentRunId),
+            waitpoints: associatedWaitpoint!.id,
+            spanIdToComplete: spanId,
+            batch: request.options?.batchId
+              ? {
+                  id: request.options.batchId,
+                  index: request.options.batchIndex ?? 0,
+                }
+              : undefined,
+            projectId: request.environment.projectId,
+            organizationId: request.environment.organizationId,
+            tx: this.prisma,
+          });
+        }
+      );
+    }
+
+    return { isCached: true, run: existingRun };
+  }
+
   async handleTriggerRequest(
     request: TriggerTaskRequest,
     parentStore: string | undefined
@@ -220,66 +287,18 @@ export class IdempotencyKeyConcern {
         return { isCached: false, idempotencyKey, idempotencyKeyExpiresAt };
       }
 
-      // We have an idempotent run, so we return it
-      const parentRunId = request.body.options?.parentRunId;
-      const resumeParentOnCompletion = request.body.options?.resumeParentOnCompletion;
-
-      //We're using `andWait` so we need to block the parent run with a waitpoint
-      if (resumeParentOnCompletion && parentRunId) {
-        // Get or create waitpoint lazily (existing run may not have one if it was standalone)
-        let associatedWaitpoint = existingRun.associatedWaitpoint;
-        if (!associatedWaitpoint) {
-          associatedWaitpoint = await this.engine.getOrCreateRunWaitpoint({
-            runId: existingRun.id,
-            projectId: request.environment.projectId,
-            environmentId: request.environment.id,
-          });
-        }
-
-        await this.traceEventConcern.traceIdempotentRun(
-          request,
-          parentStore,
-          {
-            existingRun,
-            idempotencyKey,
-            incomplete: associatedWaitpoint.status === "PENDING",
-            isError: associatedWaitpoint.outputIsError,
-          },
-          async (event) => {
-            const spanId =
-              request.options?.parentAsLinkType === "replay"
-                ? event.spanId
-                : event.traceparent?.spanId
-                  ? `${event.traceparent.spanId}:${event.spanId}`
-                  : event.spanId;
-
-            //block run with waitpoint
-            await this.engine.blockRunWithWaitpoint({
-              runId: RunId.fromFriendlyId(parentRunId),
-              waitpoints: associatedWaitpoint!.id,
-              spanIdToComplete: spanId,
-              batch: request.options?.batchId
-                ? {
-                    id: request.options.batchId,
-                    index: request.options.batchIndex ?? 0,
-                  }
-                : undefined,
-              projectId: request.environment.projectId,
-              organizationId: request.environment.organizationId,
-              tx: this.prisma,
-            });
-          }
-        );
-      }
-
-      return { isCached: true, run: existingRun };
+      // We have an idempotent run, so we return it (blocking the parent on its
+      // waitpoint for triggerAndWait).
+      return this.returnCachedIdempotentRun(request, parentStore, existingRun, idempotencyKey);
     }
 
     // Pre-gate claim — closes the PG+buffer race during gate transition.
     // All same-key triggers serialise here before evaluateGate decides
-    // PG-pass-through vs mollify. Skipped for triggerAndWait
-    // (resumeParentOnCompletion) — that path bypasses the gate entirely
-    // and its existing PG-side dedup is sufficient.
+    // PG-pass-through vs mollify. For mollifier-only orgs this is skipped for
+    // triggerAndWait (resumeParentOnCompletion) — that path bypasses the gate
+    // and its PG-side dedup is sufficient there. v2-cutover orgs do NOT skip it
+    // (see the claimEligible comment below): cross-table dedup has no shared
+    // unique constraint, so the claim must cover triggerAndWait too.
     //
     // Also gated on the same per-org mollifier flag the gate uses: when
     // `TRIGGER_MOLLIFIER_ENABLED=1` globally for staged rollout, the buffer
@@ -310,17 +329,28 @@ export class IdempotencyKeyConcern {
         | Record<string, unknown>
         | null
         | undefined) ?? null;
+    // v2-cutover orgs: ANY idempotency-keyed trigger can straddle a
+    // `runTableV2` flag flip into different physical tables (cuid -> TaskRun,
+    // ksuid -> task_run_v2), so the claim must serialise all of them —
+    // including triggerAndWait (resumeParentOnCompletion), debounce, and
+    // oneTimeUseToken, whose per-table unique constraints (idempotencyKey,
+    // oneTimeUseToken) can't see across the two tables. The
+    // resumeParentOnCompletion/debounce/oneTimeUseToken exclusions below are
+    // mollifier-gate alignment optimisations (those requests always return
+    // pass_through from the gate, so there's no buffer to serialise against)
+    // and don't apply to the cross-table concern. shouldUseV2RunTable is
+    // checked first so a v2 org skips the mollifier-flag resolve entirely.
     const claimEligible =
-      !request.body.options?.resumeParentOnCompletion &&
-      !request.body.options?.debounce &&
-      !request.options?.oneTimeUseToken &&
-      ((await resolveOrgMollifierFlag({
-        envId: request.environment.id,
-        orgId: request.environment.organizationId,
-        taskId: request.taskId,
-        orgFeatureFlags,
-      })) ||
-        shouldUseV2RunTable(orgFeatureFlags));
+      shouldUseV2RunTable(orgFeatureFlags) ||
+      (!request.body.options?.resumeParentOnCompletion &&
+        !request.body.options?.debounce &&
+        !request.options?.oneTimeUseToken &&
+        (await resolveOrgMollifierFlag({
+          envId: request.environment.id,
+          orgId: request.environment.organizationId,
+          taskId: request.taskId,
+          orgFeatureFlags,
+        })));
     if (claimEligible) {
       const ttlSeconds = Math.max(
         1,
@@ -351,7 +381,15 @@ export class IdempotencyKeyConcern {
           this.prisma
         );
         if (writerRun) {
-          return { isCached: true, run: writerRun };
+          // The concurrent winner already committed. Return it as a cache hit,
+          // and for triggerAndWait block our parent on the winner's waitpoint
+          // (the claim is what serialises v2 cross-table triggerAndWait).
+          return this.returnCachedIdempotentRun(
+            request,
+            parentStore,
+            writerRun,
+            idempotencyKey
+          );
         }
         const buffered = await this.findBufferedRunWithIdempotency(
           request.environment.id,

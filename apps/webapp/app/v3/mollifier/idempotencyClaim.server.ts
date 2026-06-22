@@ -5,7 +5,7 @@ import type {
   MollifierBuffer,
 } from "@trigger.dev/redis-worker";
 import { logger } from "~/services/logger.server";
-import { getMollifierBuffer } from "./mollifierBuffer.server";
+import { getIdempotencyClaimBuffer } from "./mollifierBuffer.server";
 
 // Tunables. The TTL on the claim key is bounded by typical trigger-pipeline
 // dwell; long enough that a slow PG insert doesn't expire mid-flight,
@@ -58,13 +58,14 @@ export type ClaimOrAwaitInput = IdempotencyLookupInput & {
 //   attempt sees the eventual PG/buffer state via existing
 //   IdempotencyKeyConcern PG-first lookup.
 export async function claimOrAwait(input: ClaimOrAwaitInput): Promise<ClaimOrAwaitOutcome> {
-  const buffer = input.buffer === undefined ? getMollifierBuffer() : input.buffer;
+  const buffer = input.buffer === undefined ? getIdempotencyClaimBuffer() : input.buffer;
   if (!buffer) {
-    // Mollifier disabled / buffer construction failed. Fall open —
-    // caller proceeds with the trigger pipeline (PG unique constraint
-    // backstop). The token is never read in this case (publish/release
-    // are buffer-null no-ops downstream), so we skip the default
-    // `randomUUID()` to keep the mollifier-OFF hot path allocation-free
+    // No claim backend at all — both the mollifier buffer and the
+    // standalone claim buffer are unavailable (the general Redis host is
+    // unconfigured). Fall open: the caller proceeds with the trigger
+    // pipeline (PG unique constraint backstop). The token is never read in
+    // this case (publish/release are buffer-null no-ops downstream), so we
+    // skip the default `randomUUID()` to keep this hot path allocation-free
     // for idempotency-keyed triggers — `triggerTask` is the
     // highest-throughput code path in the system. A test-injected
     // generator is still honoured for deterministic assertions.
@@ -164,7 +165,7 @@ export async function publishClaim(input: {
   ttlSeconds?: number;
   buffer?: MollifierBuffer | null;
 }): Promise<void> {
-  const buffer = input.buffer === undefined ? getMollifierBuffer() : input.buffer;
+  const buffer = input.buffer === undefined ? getIdempotencyClaimBuffer() : input.buffer;
   if (!buffer) return;
   const ttlSeconds = input.ttlSeconds ?? DEFAULT_CLAIM_TTL_SECONDS;
   try {
@@ -197,7 +198,7 @@ export async function releaseClaim(input: {
   token: string;
   buffer?: MollifierBuffer | null;
 }): Promise<void> {
-  const buffer = input.buffer === undefined ? getMollifierBuffer() : input.buffer;
+  const buffer = input.buffer === undefined ? getIdempotencyClaimBuffer() : input.buffer;
   if (!buffer) return;
   try {
     await buffer.releaseClaim({

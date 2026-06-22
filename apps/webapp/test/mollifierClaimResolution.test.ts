@@ -13,6 +13,11 @@ vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
 const h = vi.hoisted(() => ({ buffer: null as unknown, orgFlag: true }));
 vi.mock("~/v3/mollifier/mollifierBuffer.server", () => ({
   getMollifierBuffer: () => h.buffer,
+  // claimOrAwait/publishClaim/releaseClaim resolve their backend through
+  // getIdempotencyClaimBuffer (the mollifier buffer when enabled, else a
+  // standalone Redis claim buffer). In tests both resolve to the scripted
+  // buffer handle so the claim path is fully controllable.
+  getIdempotencyClaimBuffer: () => h.buffer,
 }));
 // Stub `mollifierGate.server` so loading the concern doesn't drag in
 // `env.server` (which fails to parse without a populated environment in
@@ -29,7 +34,14 @@ import type { TriggerTaskRequest } from "~/runEngine/types";
 
 function makeConcern(prisma: { findFirst: () => Promise<unknown> }) {
   return new IdempotencyKeyConcern(
-    { taskRun: { findFirst: prisma.findFirst } } as never,
+    {
+      taskRun: { findFirst: prisma.findFirst },
+      // The cross-table existing-run lookup reads BOTH physical tables. These
+      // tests use legacy ids that never match a v2 row, so task_run_v2 always
+      // misses and findFirstAcrossTables returns the scripted taskRun result —
+      // keeping the per-call scripting on `prisma.findFirst` intact.
+      taskRunV2: { findFirst: async () => null },
+    } as never,
     {} as never, // engine — unused on this path
     {} as never, // traceEventConcern — unused on this path
   );
