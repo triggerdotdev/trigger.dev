@@ -149,10 +149,16 @@ export class ApiRetrieveRunPresenter {
       // and children by a both-table predicate.
       const { parentTaskRun, rootTaskRun } = await hydrateParentAndRoot(
         { parentTaskRunId: pgRow.parentTaskRunId, rootTaskRunId: pgRow.rootTaskRunId },
+        { runtimeEnvironmentId: env.id },
         commonRunSelect,
         $replica
       );
-      const childRuns = await hydrateChildRuns(pgRow.id, commonRunSelect, $replica);
+      const childRuns = await hydrateChildRuns(
+        pgRow.id,
+        { runtimeEnvironmentId: env.id },
+        commonRunSelect,
+        $replica
+      );
 
       return { ...pgRow, parentTaskRun, rootTaskRun, childRuns, isBuffered: false };
     }

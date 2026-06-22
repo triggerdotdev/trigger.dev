@@ -14,9 +14,15 @@ type ReadClient = PrismaClientOrTransaction | PrismaReplicaClient;
  * parent/root. Resolving each by id instead lets RunStore route to the correct
  * table by id format. Pass the same `select` the caller would have used on the
  * relation.
+ *
+ * The lookups are scoped to the run's `runtimeEnvironmentId`: the parent/root
+ * pointers are plain scalars with no FK enforcement, so a stale or malformed
+ * pointer could otherwise resolve to a run in another environment and leak its
+ * metadata. The relation select this replaces was implicitly same-environment.
  */
 export async function hydrateParentAndRoot<S extends Prisma.TaskRunSelect>(
   ids: { parentTaskRunId: string | null; rootTaskRunId: string | null },
+  scope: { runtimeEnvironmentId: string },
   select: S,
   client?: ReadClient
 ): Promise<{
@@ -25,10 +31,18 @@ export async function hydrateParentAndRoot<S extends Prisma.TaskRunSelect>(
 }> {
   const [parentTaskRun, rootTaskRun] = await Promise.all([
     ids.parentTaskRunId
-      ? runStore.findRun({ id: ids.parentTaskRunId }, { select }, client)
+      ? runStore.findRun(
+          { id: ids.parentTaskRunId, runtimeEnvironmentId: scope.runtimeEnvironmentId },
+          { select },
+          client
+        )
       : Promise.resolve(null),
     ids.rootTaskRunId
-      ? runStore.findRun({ id: ids.rootTaskRunId }, { select }, client)
+      ? runStore.findRun(
+          { id: ids.rootTaskRunId, runtimeEnvironmentId: scope.runtimeEnvironmentId },
+          { select },
+          client
+        )
       : Promise.resolve(null),
   ]);
 
@@ -42,15 +56,24 @@ export async function hydrateParentAndRoot<S extends Prisma.TaskRunSelect>(
  * A run's direct child runs across BOTH physical tables. Children reference the
  * parent by the scalar `parentTaskRunId`, and a v2 parent can have legacy cuid
  * children (or vice versa) in the mixed window, so this is a non-id predicate
- * read that `findRuns` resolves against both tables.
+ * read that `findRuns` resolves against both tables. Scoped to the run's
+ * `runtimeEnvironmentId` so a stale/malformed `parentTaskRunId` pointer can't
+ * surface children from another environment.
  */
 export async function hydrateChildRuns<S extends Prisma.TaskRunSelect>(
   parentRunId: string,
+  scope: { runtimeEnvironmentId: string },
   select: S,
   client?: ReadClient
 ): Promise<Prisma.TaskRunGetPayload<{ select: S }>[]> {
   return runStore.findRuns(
-    { where: { parentTaskRunId: parentRunId }, select },
+    {
+      where: {
+        parentTaskRunId: parentRunId,
+        runtimeEnvironmentId: scope.runtimeEnvironmentId,
+      },
+      select,
+    },
     client
   ) as Promise<Prisma.TaskRunGetPayload<{ select: S }>[]>;
 }

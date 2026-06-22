@@ -623,14 +623,14 @@ export class SpanPresenter extends BasePresenter {
     const [parentTaskRun, rootTaskRun] = await Promise.all([
       run.parentTaskRunId
         ? runStore.findRun(
-            { id: run.parentTaskRunId },
+            { id: run.parentTaskRunId, runtimeEnvironmentId: environmentId },
             { select: { taskIdentifier: true, friendlyId: true, spanId: true } },
             this._replica
           )
         : Promise.resolve(null),
       run.rootTaskRunId
         ? runStore.findRun(
-            { id: run.rootTaskRunId },
+            { id: run.rootTaskRunId, runtimeEnvironmentId: environmentId },
             { select: { taskIdentifier: true, friendlyId: true, spanId: true, createdAt: true } },
             this._replica
           )

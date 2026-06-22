@@ -137,6 +137,7 @@ export class RunPresenter {
     // table-bound Prisma relation select would miss.
     const { parentTaskRun, rootTaskRun } = await hydrateParentAndRoot(
       { parentTaskRunId: run.parentTaskRunId, rootTaskRunId: run.rootTaskRunId },
+      { runtimeEnvironmentId: run.runtimeEnvironment.id },
       { friendlyId: true, spanId: true, createdAt: true },
       this.#prismaClient
     );
