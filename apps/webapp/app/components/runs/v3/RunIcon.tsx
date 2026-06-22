@@ -23,11 +23,10 @@ import {
   XAIIcon,
 } from "~/assets/icons/AiProviderIcons";
 import { AttemptIcon } from "~/assets/icons/AttemptIcon";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { TaskCachedIcon, TaskIcon } from "~/assets/icons/TaskIcon";
 import { cn } from "~/utils/cn";
 import { tablerIcons } from "~/utils/tablerIcons";
 import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
-import { TaskCachedIcon } from "~/assets/icons/TaskCachedIcon";
 import { PauseIcon } from "~/assets/icons/PauseIcon";
 import { RunFunctionIcon } from "~/assets/icons/RunFunctionIcon";
 import { MiddlewareIcon } from "~/assets/icons/MiddlewareIcon";

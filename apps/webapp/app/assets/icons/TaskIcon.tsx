@@ -8,58 +8,157 @@ export function TaskIcon({ className }: { className?: string }) {
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <rect x="11" y="16" width="2" height="6" rx="1" fill="currentColor" />
-      <rect x="11" y="2" width="2" height="6" rx="1" fill="currentColor" />
+      <rect x="11" y="16" width="2" height="7" rx="1" fill="currentColor" />
+      <rect x="11" y="1" width="2" height="7" rx="1" fill="currentColor" />
       <rect
         x="13"
         y="11"
         width="2"
-        height="11"
+        height="12"
         rx="1"
         transform="rotate(90 13 11)"
         fill="currentColor"
       />
       <rect
-        x="22"
+        x="23"
         y="11"
         width="2"
-        height="6"
+        height="7"
         rx="1"
-        transform="rotate(90 22 11)"
+        transform="rotate(90 23 11)"
         fill="currentColor"
       />
       <rect
-        x="5.63604"
-        y="19.7782"
+        x="4.92758"
+        y="20.4867"
         width="2"
-        height="10.9999"
+        height="12.0018"
         rx="1"
-        transform="rotate(-135 5.63604 19.7782)"
+        transform="rotate(-135 4.92758 20.4867)"
         fill="currentColor"
       />
       <rect
         x="15.3185"
         y="10.0958"
         width="2"
-        height="6.30698"
+        height="6.99687"
         rx="1"
         transform="rotate(-135 15.3185 10.0958)"
         fill="currentColor"
       />
       <rect
-        x="19.7781"
-        y="18.364"
+        x="20.3488"
+        y="18.9346"
         width="2"
-        height="6.18952"
+        height="6.99653"
         rx="1"
-        transform="rotate(135 19.7781 18.364)"
+        transform="rotate(135 20.3488 18.9346)"
         fill="currentColor"
       />
       <rect
         x="13.4161"
         y="12.002"
         width="2"
-        height="11.0027"
+        height="11.9956"
+        rx="1"
+        transform="rotate(135 13.4161 12.002)"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+export function TaskCachedIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <rect x="11" y="16" width="2" height="3" rx="1" fill="currentColor" />
+      <rect x="11" y="20" width="2" height="3" rx="1" fill="currentColor" />
+      <rect x="11" y="5" width="2" height="3" rx="1" fill="currentColor" />
+      <rect x="11" y="1" width="2" height="3" rx="1" fill="currentColor" />
+      <rect
+        x="13"
+        y="11"
+        width="2"
+        height="12"
+        rx="1"
+        transform="rotate(90 13 11)"
+        fill="currentColor"
+      />
+      <rect
+        x="19"
+        y="11"
+        width="2"
+        height="3"
+        rx="1"
+        transform="rotate(90 19 11)"
+        fill="currentColor"
+      />
+      <rect
+        x="23"
+        y="11"
+        width="2"
+        height="3"
+        rx="1"
+        transform="rotate(90 23 11)"
+        fill="currentColor"
+      />
+      <rect
+        x="4.92758"
+        y="20.4867"
+        width="2"
+        height="12.0018"
+        rx="1"
+        transform="rotate(-135 4.92758 20.4867)"
+        fill="currentColor"
+      />
+      <rect
+        x="15.3185"
+        y="10.0958"
+        width="2"
+        height="2.99815"
+        rx="1"
+        transform="rotate(-135 15.3185 10.0958)"
+        fill="currentColor"
+      />
+      <rect
+        x="18.1445"
+        y="7.26978"
+        width="2"
+        height="3.00029"
+        rx="1"
+        transform="rotate(-135 18.1445 7.26978)"
+        fill="currentColor"
+      />
+      <rect
+        x="17.5259"
+        y="16.1117"
+        width="2"
+        height="3.00436"
+        rx="1"
+        transform="rotate(135 17.5259 16.1117)"
+        fill="currentColor"
+      />
+      <rect
+        x="20.3488"
+        y="18.9346"
+        width="2"
+        height="3.00154"
+        rx="1"
+        transform="rotate(135 20.3488 18.9346)"
+        fill="currentColor"
+      />
+      <rect
+        x="13.4161"
+        y="12.002"
+        width="2"
+        height="11.9956"
         rx="1"
         transform="rotate(135 13.4161 12.002)"
         fill="currentColor"
