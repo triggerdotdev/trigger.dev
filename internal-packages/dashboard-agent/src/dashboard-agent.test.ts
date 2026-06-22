@@ -256,7 +256,7 @@ describe("dashboardAgent (mock harness)", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildDashboardAgentTools", () => {
-  it("exposes the read tools and fails closed with no delegated token", async () => {
+  it("exposes the read tools plus render_view, and the data tools fail closed with no token", async () => {
     const tools = buildDashboardAgentTools({});
     expect(Object.keys(tools).sort()).toEqual(
       [
@@ -268,16 +268,42 @@ describe("buildDashboardAgentTools", () => {
         "list_projects",
         "list_runs",
         "list_tasks",
+        "render_view",
       ].sort()
     );
 
-    // No userActorToken / apiOrigin => every execute returns a graceful error,
-    // never throws and never hits the network.
+    // No userActorToken / apiOrigin => every data tool returns a graceful
+    // error, never throws and never hits the network. render_view is a
+    // presentation tool (no auth, no network), so it's exempt.
     for (const name of Object.keys(tools)) {
+      if (name === "render_view") continue;
       const tool = tools[name] as { execute?: (input: unknown, opts: unknown) => Promise<unknown> };
       const result = (await tool.execute?.({}, {})) as { error?: string };
       expect(result).toHaveProperty("error");
       expect(typeof result.error).toBe("string");
     }
+  });
+
+  it("render_view echoes a validated view spec back as its output", async () => {
+    const tools = buildDashboardAgentTools({});
+    const renderView = tools.render_view as {
+      execute: (input: unknown, opts: unknown) => Promise<unknown>;
+    };
+    const spec = {
+      blocks: [
+        {
+          type: "diagnosis",
+          runId: "run_abc123",
+          summary: "The task threw because the order had no line items.",
+          category: "user_code_error",
+          likelyCause: "processOrder throws when items is empty.",
+          confidence: "high",
+          evidence: [{ type: "error", detail: "Error: order has no items", reference: "run_abc123" }],
+          nextSteps: ["Validate the payload before triggering."],
+        },
+      ],
+    };
+    const output = await renderView.execute(spec, {});
+    expect(output).toEqual(spec);
   });
 });

@@ -8,6 +8,7 @@ import {
   listProjectsSchema,
   listRunsSchema,
   listTasksSchema,
+  renderViewSchema,
 } from "./tool-schemas";
 import { buildRepoTools, type RepoSnapshot } from "./repo-tools";
 
@@ -365,6 +366,15 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         if (!result.ok) return { error: `Couldn't get error ${errorId} (status ${result.status}).` };
         return curateError(result.data);
       },
+    }),
+
+    // Presentation tool, not a data tool: it renders a view spec the agent
+    // composed from already-gathered data. zod validates the spec before this
+    // runs, so execute just echoes it back as the tool output for the dashboard
+    // render registry to pick up. No auth, no API call — always available.
+    render_view: tool({
+      ...renderViewSchema,
+      execute: async (view) => view,
     }),
   };
 

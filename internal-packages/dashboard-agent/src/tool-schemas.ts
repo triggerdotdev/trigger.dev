@@ -110,6 +110,102 @@ export const getErrorSchema = tool({
   }),
 });
 
+// ---------------------------------------------------------------------------
+// View catalog — our own small "generative UI" layer.
+//
+// The agent renders rich, on-brand UI by emitting a *spec* (a stack of blocks
+// drawn from a fixed catalog) via the `render_view` tool, instead of inventing
+// arbitrary markup. The webapp has a render registry mapping each block `type`
+// to a React component (see components/dashboard-agent/view-catalog.tsx). This
+// gives us json-render's safety (only catalog blocks, validated, no arbitrary
+// HTML) without its zod 4 / React 19 dependency — we stay on the pinned zod 3.
+//
+// `render_view`'s `execute` (in tools.ts) just validates + echoes the spec back;
+// there's no API call. Add a new block by adding a member to `viewBlockSchema`
+// here and a renderer entry in the webapp registry.
+// ---------------------------------------------------------------------------
+
+// The "why did this run fail?" failure card — the first (and for now only)
+// catalog block. The agent gathers evidence with the read tools, then fills
+// these fields. `type` is the discriminant the render registry keys off.
+export const diagnosisBlockSchema = z.object({
+  type: z.literal("diagnosis"),
+  runId: z.string().describe("The run this diagnoses, e.g. run_abc123."),
+  summary: z.string().describe("One or two plain-language sentences: what happened and why."),
+  category: z
+    .enum([
+      "user_code_error",
+      "configuration",
+      "dependency",
+      "timeout",
+      "out_of_memory",
+      "rate_limit",
+      "external_service",
+      "infrastructure",
+      "cancellation",
+      "unknown",
+    ])
+    .describe("Your classification of the root cause."),
+  likelyCause: z
+    .string()
+    .describe("The most probable root cause, in specific terms — name the code, config, or dependency."),
+  confidence: z
+    .enum(["high", "medium", "low"])
+    .describe("How confident you are in this diagnosis given the evidence. Be honest."),
+  evidence: z
+    .array(
+      z.object({
+        type: z.enum([
+          "error",
+          "failed_span",
+          "child_run",
+          "logs",
+          "deploy",
+          "source",
+          "historical_match",
+        ]),
+        detail: z.string().describe("What this piece of evidence shows."),
+        reference: z
+          .string()
+          .optional()
+          .describe(
+            "Optional pointer to the evidence: a run id (run_...), error id (error_...), file:line, version, or URL."
+          ),
+      })
+    )
+    .describe("The concrete signals behind the diagnosis. Cite real ids, spans, versions, or file:line."),
+  impact: z
+    .string()
+    .optional()
+    .describe("Optional: how widespread this is, e.g. how many runs hit the same error recently."),
+  nextSteps: z.array(z.string()).describe("Actionable recommendations, most important first."),
+  actions: z
+    .array(
+      z.object({
+        label: z.string().describe("Button text, e.g. 'View run' or 'Read the retries docs'."),
+        kind: z
+          .enum(["view_run", "docs"])
+          .describe("view_run links to a run page in this environment; docs opens an external URL."),
+        target: z.string().describe("For view_run: a run id (run_...). For docs: an https URL."),
+      })
+    )
+    .optional()
+    .describe("Optional call-to-action buttons rendered under the card."),
+});
+
+export const viewBlockSchema = z.discriminatedUnion("type", [diagnosisBlockSchema]);
+
+export type DiagnosisBlock = z.infer<typeof diagnosisBlockSchema>;
+export type ViewBlock = z.infer<typeof viewBlockSchema>;
+
+export const renderViewSchema = tool({
+  description:
+    "Render a structured view in the dashboard panel: a stack of catalog blocks, instead of plain prose. The catalog currently has one block, `diagnosis` — the 'why did this run fail?' failure card. Use it after gathering evidence with the read tools (get_run for the error, get_run_trace for the failing span, get_error/list_errors for the pattern, and in code mode the source tools). Keep any accompanying message to a one-line lead-in.",
+  inputSchema: z.object({
+    blocks: z.array(viewBlockSchema).min(1).describe("The blocks to render, top to bottom."),
+  }),
+});
+
 // Code-mode tools (only present when the project has a connected GitHub repo).
 // They read the repo's source at a pinned commit from the agent's filesystem.
 
@@ -174,6 +270,7 @@ export const dashboardAgentToolSchemas = {
   get_run_trace: getRunTraceSchema,
   list_errors: listErrorsSchema,
   get_error: getErrorSchema,
+  render_view: renderViewSchema,
 };
 
 // Code mode adds the source tools. Same key order `buildDashboardAgentTools`
@@ -211,6 +308,7 @@ You have read-only tools that act as the user against their own account:
 - get_run_trace: a run's execution timeline (spans, durations, errors) for explaining why it failed, retried, or was slow.
 - list_errors: distinct errors in the current environment grouped by fingerprint, with occurrence counts and status (unresolved/resolved/ignored).
 - get_error: full detail for one error group by its error id, including affected versions and who resolved or ignored it.
+- render_view: render a structured view in the panel from the block catalog. The catalog has the "diagnosis" block: a failure card for a single run (summary, category, likely cause, confidence, evidence, impact, next steps, action buttons).
 
 Guidelines:
 - Be concise and direct. A short, correct answer beats a long one.
@@ -218,7 +316,12 @@ Guidelines:
 - For "what's broken" or "why is X failing" questions, start with list_errors to find the error groups, get_error for the detail, then list_runs with that error id to drill into the actual failing runs (and get_run_trace for one of them).
 - Your tools are read-only and scoped to the current environment for run and task lookups. You can't change anything; for actions, point the user to where in the dashboard they can do it.
 - Never invent run IDs, task identifiers, metrics, or features. If a tool returns an error or nothing, say so plainly.
-- Use Trigger.dev's own terminology: tasks, runs, attempts, queues, deployments, environments, schedules, waitpoints.`;
+- Use Trigger.dev's own terminology: tasks, runs, attempts, queues, deployments, environments, schedules, waitpoints.
+
+Diagnosing why a run failed:
+- When the user asks why a specific run failed (or to investigate a run or error), gather evidence before answering: get_run for the status and error, get_run_trace for the failing span and timeline, and get_error / list_errors to see whether it's a recurring pattern and how widespread it is.
+- Then call render_view with a single "diagnosis" block holding your findings: a short summary, the failure category, the likely root cause in specific terms, your confidence, the concrete evidence (cite real run ids, error ids, span messages, and versions), the impact, the next steps, and any action buttons. This renders the failure card, so keep any accompanying message to a one-line lead-in rather than repeating the card.
+- Be honest about confidence. If the evidence is thin or ambiguous, mark it low and say what's missing rather than overstating a guess.`;
 
 // Used when the current project has a connected GitHub repo: the base prompt
 // plus the source-reading tools and how to use them.
@@ -233,4 +336,5 @@ This project has its GitHub repository connected, so you can also read its sourc
 Source guidelines:
 - When explaining why a run or error happened, read the actual task source rather than guessing. Find the task with search_code or list_files, then read_file the relevant code.
 - When investigating a specific run, pass its run id as the runId argument to read_file/search_code/list_files. That reads the exact source the run's deployed version came from (the code that actually ran). Without runId you read the latest tracked-branch commit. Cite file paths (and line numbers when useful).
+- When you render a diagnosis block for a run, read its deployed source (with the runId argument) and add a "source" evidence item whose reference is the relevant file:line, so the card points at the exact code that ran.
 - Stay read-only: you can explain and point at code, but you can't edit it or open PRs.`;

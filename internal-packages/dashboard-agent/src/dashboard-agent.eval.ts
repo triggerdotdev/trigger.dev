@@ -130,6 +130,8 @@ function makeFixtureTools(calls: Array<{ tool: string; input: unknown }>): ToolS
       inputSchema: s.inputSchema,
       execute: async (input: unknown) => {
         calls.push({ tool: name, input });
+        // render_view is a presentation tool: it echoes the spec, like the real one.
+        if (name === "render_view") return input;
         return FIXTURES[name] ?? {};
       },
     });
