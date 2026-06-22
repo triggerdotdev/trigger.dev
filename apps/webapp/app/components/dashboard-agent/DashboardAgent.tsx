@@ -5,8 +5,6 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
-import { useFeatureFlags } from "~/hooks/useFeatureFlags";
-import { useHasAdminAccess } from "~/hooks/useUser";
 import { DashboardAgentPanel } from "./DashboardAgentPanel";
 
 /**
@@ -15,22 +13,23 @@ import { DashboardAgentPanel } from "./DashboardAgentPanel";
  * into a resizable content + agent panel using the shared Resizable primitive,
  * with `autosaveId` persisting the width. When closed it's a floating launcher.
  *
- * Gated behind the `hasDashboardAgentAccess` flag (org override or global
- * default), with admins/impersonators always allowed. The resource route
- * enforces the same check server-side.
+ * `hasAccess` is resolved server-side in the env layout loader (via
+ * `canAccessDashboardAgent`: global env, admins/impersonators, then the
+ * global/per-org feature flag, default off), so the launcher is hidden unless
+ * the agent is enabled. The resource routes enforce the same check server-side.
  */
 export function DashboardAgent({
   children,
+  hasAccess = false,
   headStartEnabled = false,
 }: {
   children: React.ReactNode;
+  hasAccess?: boolean;
   headStartEnabled?: boolean;
 }) {
-  const hasAdminAccess = useHasAdminAccess();
-  const { hasDashboardAgentAccess } = useFeatureFlags();
   const [open, setOpen] = useState(false);
 
-  if (!hasAdminAccess && !hasDashboardAgentAccess) {
+  if (!hasAccess) {
     return <div className="h-full min-h-0">{children}</div>;
   }
 

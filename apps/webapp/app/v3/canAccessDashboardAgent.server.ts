@@ -14,8 +14,12 @@ export async function canAccessDashboardAgent(options: {
   isAdmin: boolean;
   isImpersonating: boolean;
   organizationSlug: string;
+  // When the caller already has the org's `featureFlags` loaded (e.g. a layout
+  // loader that queried the org with a membership check), pass them to skip the
+  // extra org lookup. Omit it and we query the org ourselves.
+  orgFeatureFlags?: Record<string, unknown> | null;
 }): Promise<boolean> {
-  const { userId, isAdmin, isImpersonating, organizationSlug } = options;
+  const { userId, isAdmin, isImpersonating, organizationSlug, orgFeatureFlags } = options;
 
   if (env.DASHBOARD_AGENT_ENABLED === "1") {
     return true;
@@ -25,21 +29,25 @@ export async function canAccessDashboardAgent(options: {
     return true;
   }
 
-  const org = await prisma.organization.findFirst({
-    where: {
-      slug: organizationSlug,
-      members: { some: { userId } },
-    },
-    select: {
-      featureFlags: true,
-    },
-  });
+  let overrides = orgFeatureFlags;
+  if (overrides === undefined) {
+    const org = await prisma.organization.findFirst({
+      where: {
+        slug: organizationSlug,
+        members: { some: { userId } },
+      },
+      select: {
+        featureFlags: true,
+      },
+    });
+    overrides = (org?.featureFlags as Record<string, unknown>) ?? {};
+  }
 
   const flag = makeFlag();
   const flagResult = await flag({
     key: FEATURE_FLAG.hasDashboardAgentAccess,
     defaultValue: false,
-    overrides: (org?.featureFlags as Record<string, unknown>) ?? {},
+    overrides: overrides ?? {},
   });
 
   return Boolean(flagResult);

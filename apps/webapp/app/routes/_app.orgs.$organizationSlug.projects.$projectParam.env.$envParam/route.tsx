@@ -4,6 +4,7 @@ import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { DashboardAgent } from "~/components/dashboard-agent/DashboardAgent";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 import { isDashboardAgentConfigured } from "~/services/dashboardAgent.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { updateCurrentProjectEnvironmentId } from "~/services/dashboardPreferences.server";
@@ -32,7 +33,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     select: {
       id: true,
       externalRef: true,
-      organization: { select: { id: true } },
+      organization: { select: { id: true, featureFlags: true } },
       environments: {
         select: {
           id: true,
@@ -88,18 +89,32 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   await updateCurrentProjectEnvironmentId({ user: user, projectId: project.id, environmentId });
 
+  // Resolve dashboard-agent access here (single source of truth: global env,
+  // admins/impersonators, then the global/per-org feature flag, default off) so
+  // the launcher button is hidden when it's not enabled. The org's featureFlags
+  // came from the membership-checked project query above, so we pass them in to
+  // avoid a second org lookup.
+  const hasDashboardAgentAccess = await canAccessDashboardAgent({
+    userId: user.id,
+    isAdmin: user.admin,
+    isImpersonating: user.isImpersonating,
+    organizationSlug,
+    orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
+  });
+
   // Head Start needs both the agent secret key and an Anthropic key in this
   // process; when either is missing the panel falls back to the cold-start path.
   return {
     ...project,
+    hasDashboardAgentAccess,
     headStartEnabled: isDashboardAgentConfigured() && Boolean(env.ANTHROPIC_API_KEY),
   };
 };
 
 export default function Page() {
-  const { headStartEnabled } = useLoaderData<typeof loader>();
+  const { hasDashboardAgentAccess, headStartEnabled } = useLoaderData<typeof loader>();
   return (
-    <DashboardAgent headStartEnabled={headStartEnabled}>
+    <DashboardAgent hasAccess={hasDashboardAgentAccess} headStartEnabled={headStartEnabled}>
       <Outlet />
     </DashboardAgent>
   );
