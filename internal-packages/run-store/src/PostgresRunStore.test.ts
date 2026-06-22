@@ -2292,43 +2292,9 @@ describe("PostgresRunStore — table routing by id format", () => {
     }
   );
 
-  postgresTest(
-    "findRuns (take, no orderBy) caps the combined result across both tables",
-    async ({ prisma }) => {
-      const { organization, project, environment } = await seedEnvironment(prisma);
-      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
-
-      // 2 legacy + 2 v2; an unordered `take: 3` must return exactly 3, all
-      // belonging to the scoped env.
-      const runs = [
-        RunId.generate(),
-        RunId.generate(),
-        RunId.generateKsuid(),
-        RunId.generateKsuid(),
-      ];
-      for (const run of runs) {
-        await seedRoutedRun(prisma, {
-          id: run.id,
-          friendlyId: run.friendlyId,
-          organizationId: organization.id,
-          projectId: project.id,
-          runtimeEnvironmentId: environment.id,
-        });
-      }
-
-      const found = await store.findRuns({
-        where: { runtimeEnvironmentId: environment.id },
-        select: { id: true },
-        take: 3,
-      });
-
-      expect(found).toHaveLength(3);
-      const allIds = new Set(runs.map((r) => r.id));
-      for (const run of found) {
-        expect(allIds.has(run.id)).toBe(true);
-      }
-    }
-  );
+  // NOTE: `findRuns(take, no orderBy)` across both tables used to cap the
+  // concatenation to `take` (non-deterministic — could drop one table's rows).
+  // It now throws (see the guard test below, next to the skip/cursor guards).
 
   postgresTest(
     "findRuns (ordered+limited) by id alone is rejected: id is not a total cross-table order",
