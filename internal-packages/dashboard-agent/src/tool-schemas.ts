@@ -137,6 +137,14 @@ export const runQuerySchema = tool({
   }),
 });
 
+export const askSupportSchema = tool({
+  description:
+    "Ask the Trigger.dev support assistant a question about how Trigger.dev works: docs, concepts, features, configuration, best practices, and troubleshooting how-tos (e.g. 'how do retries work?', 'how do I set a concurrency limit?', 'does Trigger.dev support cron schedules?'). Use this for product/knowledge questions, NOT for the user's own runs, errors, or data (use the read and query tools for those). Returns a composed answer.",
+  inputSchema: z.object({
+    question: z.string().describe("The user's question about how Trigger.dev works, in natural language."),
+  }),
+});
+
 // ---------------------------------------------------------------------------
 // View catalog — our own small "generative UI" layer.
 //
@@ -338,6 +346,7 @@ export const dashboardAgentToolSchemas = {
   get_error: getErrorSchema,
   get_query_schema: getQuerySchemaSchema,
   run_query: runQuerySchema,
+  ask_support: askSupportSchema,
   render_view: renderViewSchema,
 };
 
@@ -378,6 +387,7 @@ You have read-only tools that act as the user against their own account:
 - get_error: full detail for one error group by its error id, including affected versions and who resolved or ignored it.
 - get_query_schema: discover the analytics tables and columns you can query with TRQL (runs, metrics, llm_metrics, llm_models).
 - run_query: run a read-only TRQL query (SQL-style over ClickHouse) against the current environment's analytics data.
+- ask_support: ask the Trigger.dev support assistant about how Trigger.dev works (docs, concepts, features, configuration, how-tos).
 - render_view: render a structured view in the panel from the block catalog. The catalog has the "diagnosis" block (a failure card for a single run) and the "chart" block (a line/bar chart of run_query results).
 
 Guidelines:
@@ -387,6 +397,7 @@ Guidelines:
 - Your tools are read-only and scoped to the current environment for run and task lookups. You can't change anything; for actions, point the user to where in the dashboard they can do it.
 - Never invent run IDs, task identifiers, metrics, or features. If a tool returns an error or nothing, say so plainly.
 - Use Trigger.dev's own terminology: tasks, runs, attempts, queues, deployments, environments, schedules, waitpoints.
+- For questions about how Trigger.dev itself works (concepts, features, configuration, best practices, how-tos, "how do I..."), use ask_support rather than guessing. For the user's own runs, errors, tasks, and metrics, use the read and query tools. A question can need both: ask_support for the how-to, the read tools for their specific data.
 
 Diagnosing why a run failed:
 - When the user asks why a specific run failed (or to investigate a run or error), gather evidence before answering: get_run for the status and error, get_run_trace for the failing span and timeline, and get_error / list_errors to see whether it's a recurring pattern and how widespread it is.

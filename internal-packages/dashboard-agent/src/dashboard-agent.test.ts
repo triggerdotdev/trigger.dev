@@ -260,6 +260,7 @@ describe("buildDashboardAgentTools", () => {
     const tools = buildDashboardAgentTools({});
     expect(Object.keys(tools).sort()).toEqual(
       [
+        "ask_support",
         "get_error",
         "get_query_schema",
         "get_run",
@@ -276,9 +277,10 @@ describe("buildDashboardAgentTools", () => {
 
     // No userActorToken / apiOrigin => every data tool returns a graceful
     // error, never throws and never hits the network. render_view is a
-    // presentation tool (no auth, no network), so it's exempt.
+    // presentation tool and ask_support is gated on its own env config
+    // (not the token), so both are exempt.
     for (const name of Object.keys(tools)) {
-      if (name === "render_view") continue;
+      if (name === "render_view" || name === "ask_support") continue;
       const tool = tools[name] as { execute?: (input: unknown, opts: unknown) => Promise<unknown> };
       const result = (await tool.execute?.({}, {})) as { error?: string };
       expect(result).toHaveProperty("error");

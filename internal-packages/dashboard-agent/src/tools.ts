@@ -1,5 +1,6 @@
 import { tool, type ToolSet } from "ai";
 import {
+  askSupportSchema,
   getErrorSchema,
   getQuerySchemaSchema,
   getRunSchema,
@@ -36,6 +37,8 @@ export type DashboardAgentToolContext = {
   projectRef?: string;
   // Canonical API env name (dev/staging/prod/preview), resolved by the proxy.
   environmentName?: string;
+  // The dashboard path the user is on, passed as context to ask_support.
+  currentPage?: string;
   // Present only when the current project has a connected GitHub repo: a signed
   // archive pointer the code-mode file tools read from. Adds the source tools.
   repoSnapshot?: RepoSnapshot;
@@ -433,6 +436,54 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         const rows = Array.isArray(data.results) ? (data.results as Array<Record<string, unknown>>) : [];
         const cap = 200;
         return { rows: rows.slice(0, cap), rowCount: rows.length, truncated: rows.length > cap };
+      },
+    }),
+
+    // Knowledge lane: forward the question to the support assistant via the
+    // service-to-service /api/ask proxy (the support-chat agent composes the
+    // answer). No user data and no UAT — knowledge is public, so this uses a
+    // shared secret, runs server-side in the task, and never reaches the browser.
+    ask_support: tool({
+      ...askSupportSchema,
+      execute: async ({ question }) => {
+        const url = process.env.SUPPORT_ASK_URL ?? "http://localhost:3939/api/ask";
+        const secret = process.env.SUPPORT_ASK_SECRET;
+        if (!secret) return { error: "The support assistant isn't configured in this environment." };
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 60_000);
+        try {
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              question,
+              context: ctx.currentPage ? { currentPage: ctx.currentPage } : undefined,
+            }),
+            signal: controller.signal,
+          });
+          if (!res.ok) return { error: `The support assistant request failed (status ${res.status}).` };
+          // The endpoint streams a UI-message SSE; accumulate the text-delta
+          // chunks into the final answer (tool-output-error chunks are noise).
+          const body = await res.text();
+          let answer = "";
+          for (const line of body.split("\n")) {
+            if (!line.startsWith("data:")) continue;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === "[DONE]") continue;
+            try {
+              const chunk = JSON.parse(payload) as { type?: string; delta?: string };
+              if (chunk.type === "text-delta" && typeof chunk.delta === "string") answer += chunk.delta;
+            } catch {
+              // Skip keepalives / non-JSON lines.
+            }
+          }
+          answer = answer.trim();
+          return answer ? { answer } : { error: "The support assistant returned no answer." };
+        } catch (error) {
+          return { error: `Couldn't reach the support assistant: ${(error as Error).message}` };
+        } finally {
+          clearTimeout(timer);
+        }
       },
     }),
 
