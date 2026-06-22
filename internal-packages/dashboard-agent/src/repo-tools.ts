@@ -126,29 +126,53 @@ export async function disposeRepoWorkspaces(): Promise<void> {
   await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true }).catch(() => {})));
 }
 
-export function buildRepoTools(snapshot: RepoSnapshot): ToolSet {
-  const info = {
-    owner: snapshot.owner,
-    repo: snapshot.repo,
-    sha: snapshot.sha,
-    defaultBranch: snapshot.defaultBranch,
-  };
+/** Resolve a run-pinned snapshot for a runId, or null. See the webapp's repo/snapshot route. */
+export type RunSnapshotResolver = (runId: string) => Promise<RepoSnapshot | null>;
+
+export function buildRepoTools(
+  defaultSnapshot: RepoSnapshot,
+  resolveRunSnapshot?: RunSnapshotResolver
+): ToolSet {
+  // Pick the snapshot for a call: a runId pins to that run's deployed commit
+  // (resolved server-side), otherwise the default tracked-branch snapshot.
+  async function snapshotFor(runId?: string): Promise<RepoSnapshot | { error: string }> {
+    if (!runId) return defaultSnapshot;
+    if (!resolveRunSnapshot) return { error: "Reading a specific run's source isn't available here." };
+    const snap = await resolveRunSnapshot(runId);
+    return (
+      snap ?? {
+        error: `Couldn't resolve the source for ${runId} (it may be a dev run, or the project has no connected repo).`,
+      }
+    );
+  }
+
+  // snapshotFor + ensureWorkspace, returning the workdir or an error result.
+  async function loadWorkdir(runId?: string): Promise<{ workdir: string } | { error: string }> {
+    const snap = await snapshotFor(runId);
+    if ("error" in snap) return snap;
+    try {
+      return { workdir: await ensureWorkspace(snap) };
+    } catch (error) {
+      return { error: `Couldn't load the repository: ${(error as Error).message}` };
+    }
+  }
 
   return {
     get_repo_info: tool({
       ...getRepoInfoSchema,
-      execute: async () => info,
+      execute: async ({ runId }) => {
+        const snap = await snapshotFor(runId);
+        if ("error" in snap) return snap;
+        return { owner: snap.owner, repo: snap.repo, sha: snap.sha, defaultBranch: snap.defaultBranch };
+      },
     }),
 
     list_files: tool({
       ...listFilesSchema,
-      execute: async ({ glob, path }) => {
-        let workdir: string;
-        try {
-          workdir = await ensureWorkspace(snapshot);
-        } catch (error) {
-          return { error: `Couldn't load the repository: ${(error as Error).message}` };
-        }
+      execute: async ({ glob, path, runId }) => {
+        const loaded = await loadWorkdir(runId);
+        if ("error" in loaded) return loaded;
+        const { workdir } = loaded;
         const args = ["--files"];
         if (glob) args.push("-g", glob);
         const sub = path ? safeResolve(workdir, path) : workdir;
@@ -167,13 +191,10 @@ export function buildRepoTools(snapshot: RepoSnapshot): ToolSet {
 
     read_file: tool({
       ...readFileSchema,
-      execute: async ({ path, startLine, endLine }) => {
-        let workdir: string;
-        try {
-          workdir = await ensureWorkspace(snapshot);
-        } catch (error) {
-          return { error: `Couldn't load the repository: ${(error as Error).message}` };
-        }
+      execute: async ({ path, startLine, endLine, runId }) => {
+        const loaded = await loadWorkdir(runId);
+        if ("error" in loaded) return loaded;
+        const { workdir } = loaded;
         const target = safeResolve(workdir, path);
         if (target === null) return { error: "Path escapes the repository root." };
         let content: string;
@@ -198,13 +219,10 @@ export function buildRepoTools(snapshot: RepoSnapshot): ToolSet {
 
     search_code: tool({
       ...searchCodeSchema,
-      execute: async ({ query, glob, maxResults }) => {
-        let workdir: string;
-        try {
-          workdir = await ensureWorkspace(snapshot);
-        } catch (error) {
-          return { error: `Couldn't load the repository: ${(error as Error).message}` };
-        }
+      execute: async ({ query, glob, maxResults, runId }) => {
+        const loaded = await loadWorkdir(runId);
+        if ("error" in loaded) return loaded;
+        const { workdir } = loaded;
         const cap = Math.min(maxResults ?? 40, MAX_MATCHES);
         const args = ["--line-number", "--no-heading", "--color", "never", "--max-count", "5"];
         if (glob) args.push("-g", glob);

@@ -89,7 +89,7 @@ export type DashboardAgentRepoSnapshot = {
 
 // The GitHub archive redirect URL is valid for a few minutes; cache the resolved
 // pointer briefly so multi-turn chats don't re-mint a token + re-resolve on every
-// message. Keyed by project.
+// message. Keyed by project + ref.
 const repoSnapshotCache = new Map<string, { snapshot: DashboardAgentRepoSnapshot; expiresAt: number }>();
 const REPO_SNAPSHOT_TTL_MS = 60_000;
 
@@ -98,15 +98,19 @@ const REPO_SNAPSHOT_TTL_MS = 60_000;
  * is disabled / no repo is connected (which keeps the agent in assistant mode).
  *
  * Mints a `contents:read` installation token scoped to the one repo, resolves the
- * signed archive URL for the tracked branch's head commit, and returns just that
- * URL. The token never leaves the server.
+ * signed archive URL, and returns just that URL. The token never leaves the
+ * server. `opts.ref` pins a specific commit (run-SHA pinning); without it, the
+ * tracked prod branch (or the repo default) head is used.
  */
 export async function resolveDashboardAgentRepoSnapshot(
-  projectId: string
+  projectId: string,
+  opts: { ref?: string } = {}
 ): Promise<DashboardAgentRepoSnapshot | null> {
   if (!githubApp) return null;
 
-  const cached = repoSnapshotCache.get(projectId);
+  // Cache per project + ref so HEAD and each pinned commit are cached separately.
+  const cacheKey = `${projectId}:${opts.ref ?? "HEAD"}`;
+  const cached = repoSnapshotCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.snapshot;
 
   const connected = await prisma.connectedGithubRepository.findFirst({
@@ -129,12 +133,17 @@ export async function resolveDashboardAgentRepoSnapshot(
   const installationId = Number(connected.repository.installation.appInstallationId);
   const defaultBranch = connected.repository.defaultBranch;
   const tracking = connected.branchTracking as { prod?: { branch?: string } } | null;
-  const ref = tracking?.prod?.branch || defaultBranch;
+  // An explicit 40-char commit SHA is used directly (run-SHA pinning); otherwise
+  // resolve the requested branch, the tracked prod branch, or the repo default.
+  const requested = opts.ref;
+  const isSha = !!requested && /^[0-9a-f]{40}$/i.test(requested);
+  const branchRef = requested && !isSha ? requested : tracking?.prod?.branch || defaultBranch;
 
   try {
     const octokit = await githubApp.getInstallationOctokit(installationId);
-    const branch = await octokit.rest.repos.getBranch({ owner, repo, branch: ref });
-    const sha = branch.data.commit.sha;
+    const sha = isSha
+      ? requested!
+      : (await octokit.rest.repos.getBranch({ owner, repo, branch: branchRef })).data.commit.sha;
 
     const token = await githubApp.octokit.rest.apps.createInstallationAccessToken({
       installation_id: installationId,
@@ -155,10 +164,34 @@ export async function resolveDashboardAgentRepoSnapshot(
     if (!tarballUrl) return null;
 
     const snapshot: DashboardAgentRepoSnapshot = { tarballUrl, owner, repo, sha, defaultBranch };
-    repoSnapshotCache.set(projectId, { snapshot, expiresAt: Date.now() + REPO_SNAPSHOT_TTL_MS });
+    repoSnapshotCache.set(cacheKey, { snapshot, expiresAt: Date.now() + REPO_SNAPSHOT_TTL_MS });
     return snapshot;
   } catch (error) {
     logger.error("Failed to resolve dashboard agent repo snapshot", { error, projectId });
     return null;
   }
+}
+
+// Map a run (by friendly id) to the commit its deployed version came from, for
+// run-SHA pinning. A run locks to a BackgroundWorker (`lockedToVersionId`), whose
+// WorkerDeployment carries the commit. Null for runs with no deployed version
+// (e.g. dev runs), so the agent falls back to the branch head.
+export async function resolveRunCommit(
+  environmentId: string,
+  runFriendlyId: string
+): Promise<{ sha: string; version: string; dirty: boolean } | null> {
+  const run = await prisma.taskRun.findFirst({
+    where: { friendlyId: runFriendlyId, runtimeEnvironmentId: environmentId },
+    select: { lockedToVersionId: true },
+  });
+  if (!run?.lockedToVersionId) return null;
+
+  const deployment = await prisma.workerDeployment.findFirst({
+    where: { workerId: run.lockedToVersionId },
+    select: { commitSHA: true, version: true, git: true },
+  });
+  if (!deployment?.commitSHA) return null;
+
+  const dirty = (deployment.git as { dirty?: boolean } | null)?.dirty ?? false;
+  return { sha: deployment.commitSHA, version: deployment.version, dirty };
 }

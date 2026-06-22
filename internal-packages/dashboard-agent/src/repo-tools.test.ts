@@ -15,7 +15,19 @@ const snapshot: RepoSnapshot = {
   defaultBranch: "main",
 };
 
-const tools = buildRepoTools(snapshot);
+// A second snapshot at a different commit, returned by the run-SHA resolver for
+// a known run id. Its order.ts has a different LIMIT so we can tell them apart.
+const pinnedSnapshot: RepoSnapshot = {
+  tarballUrl: "http://unused.invalid/never-fetched",
+  owner: "acme",
+  repo: "demo",
+  sha: "cafebabecafebabecafebabecafebabecafebabe",
+  defaultBranch: "main",
+};
+const resolveRunSnapshot = async (runId: string) =>
+  runId === "run_pinned" ? pinnedSnapshot : null;
+
+const tools = buildRepoTools(snapshot, resolveRunSnapshot);
 // Tool.execute takes (input, options); options is unused by these tools.
 const call = (tool: any, input: any) => tool.execute(input, {} as any);
 
@@ -38,11 +50,18 @@ beforeAll(async () => {
   );
   await writeFile(join(dir, "README.md"), "# demo\n");
   await writeFile(join(dir, ".ready"), snapshot.sha);
+
+  // The pinned commit's workspace, with a different LIMIT.
+  const pinnedDir = workdirFor(pinnedSnapshot);
+  await mkdir(join(pinnedDir, "src/trigger"), { recursive: true });
+  await writeFile(join(pinnedDir, "src/trigger/order.ts"), "const LIMIT = 5000;\n");
+  await writeFile(join(pinnedDir, ".ready"), pinnedSnapshot.sha);
 });
 
 afterAll(async () => {
   await disposeRepoWorkspaces();
   await rm(workdirFor(snapshot), { recursive: true, force: true });
+  await rm(workdirFor(pinnedSnapshot), { recursive: true, force: true });
 });
 
 describe("repo-tools", () => {
@@ -75,6 +94,24 @@ describe("repo-tools", () => {
   it("read_file errors on a missing file", async () => {
     const res: any = await call(tools.read_file, { path: "does/not/exist.ts" });
     expect(res.error).toBeDefined();
+  });
+
+  it("read_file with runId reads the run's pinned commit", async () => {
+    const def: any = await call(tools.read_file, { path: "src/trigger/order.ts" });
+    expect(def.content).toContain("const LIMIT = 10000;");
+    const pinned: any = await call(tools.read_file, { path: "src/trigger/order.ts", runId: "run_pinned" });
+    expect(pinned.error).toBeUndefined();
+    expect(pinned.content).toContain("const LIMIT = 5000;");
+  });
+
+  it("get_repo_info with runId reports the pinned commit", async () => {
+    const res: any = await call(tools.get_repo_info, { runId: "run_pinned" });
+    expect(res.sha).toBe(pinnedSnapshot.sha);
+  });
+
+  it("read_file with an unresolvable runId errors instead of falling back", async () => {
+    const res: any = await call(tools.read_file, { path: "src/trigger/order.ts", runId: "run_unknown" });
+    expect(res.error).toMatch(/Couldn't resolve the source/);
   });
 
   it.runIf(hasRg)("search_code finds a match (and does not hang on stdin)", async () => {

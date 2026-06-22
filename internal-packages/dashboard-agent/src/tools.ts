@@ -241,6 +241,22 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     return envJwtPromise;
   }
 
+  // Run-SHA pinning: ask the webapp for a snapshot pinned to a specific run's
+  // deployed commit (it mints the scoped token + signed URL server-side). null
+  // means the file tools fall back to the default tracked-branch snapshot.
+  const resolveRunSnapshot = async (runId: string): Promise<RepoSnapshot | null> => {
+    if (!hasAuth || !projectRef || !environmentName) return null;
+    const result = await apiGet(
+      origin,
+      `/api/v1/projects/${projectRef}/${environmentName}/repo/snapshot?runId=${encodeURIComponent(runId)}`,
+      userActorToken!
+    );
+    if (!result.ok) return null;
+    const d = result.data as Partial<RepoSnapshot> | undefined;
+    if (!d?.tarballUrl || !d.owner || !d.repo || !d.sha) return null;
+    return { tarballUrl: d.tarballUrl, owner: d.owner, repo: d.repo, sha: d.sha, defaultBranch: d.defaultBranch };
+  };
+
   const apiTools: ToolSet = {
     list_projects: tool({
       ...listProjectsSchema,
@@ -354,5 +370,5 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
 
   // Code mode: when the project has a connected repo, add the source tools.
   if (!ctx.repoSnapshot) return apiTools;
-  return { ...apiTools, ...buildRepoTools(ctx.repoSnapshot) };
+  return { ...apiTools, ...buildRepoTools(ctx.repoSnapshot, resolveRunSnapshot) };
 }

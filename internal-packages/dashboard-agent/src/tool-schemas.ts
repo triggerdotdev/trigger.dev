@@ -113,10 +113,19 @@ export const getErrorSchema = tool({
 // Code-mode tools (only present when the project has a connected GitHub repo).
 // They read the repo's source at a pinned commit from the agent's filesystem.
 
+// Optional run-SHA pinning: pass a run id to read the exact source that run's
+// deployed version came from, instead of the latest tracked-branch commit.
+const runIdField = z
+  .string()
+  .optional()
+  .describe(
+    "Optional run id (run_...) to read the exact source that run's deployed version came from, instead of the latest. Use this when investigating a specific run."
+  );
+
 export const getRepoInfoSchema = tool({
   description:
     "Get the connected GitHub repository the agent can read: owner, repo name, the commit SHA the source is pinned to, and the default branch.",
-  inputSchema: z.object({}),
+  inputSchema: z.object({ runId: runIdField }),
 });
 
 export const listFilesSchema = tool({
@@ -125,6 +134,7 @@ export const listFilesSchema = tool({
   inputSchema: z.object({
     glob: z.string().optional().describe("Glob filter, e.g. 'src/**/*.ts' or '*.json'."),
     path: z.string().optional().describe("Subdirectory (relative to repo root) to scope the listing to."),
+    runId: runIdField,
   }),
 });
 
@@ -135,6 +145,7 @@ export const readFileSchema = tool({
     path: z.string().describe("File path relative to the repo root, e.g. src/trigger/processOrder.ts."),
     startLine: z.number().int().positive().optional().describe("First line to include (1-based)."),
     endLine: z.number().int().positive().optional().describe("Last line to include (1-based)."),
+    runId: runIdField,
   }),
 });
 
@@ -145,6 +156,7 @@ export const searchCodeSchema = tool({
     query: z.string().describe("The ripgrep pattern to search for."),
     glob: z.string().optional().describe("Restrict the search to files matching this glob."),
     maxResults: z.number().int().positive().max(80).optional().describe("Max matches to return (default 40)."),
+    runId: runIdField,
   }),
 });
 
@@ -220,5 +232,5 @@ This project has its GitHub repository connected, so you can also read its sourc
 
 Source guidelines:
 - When explaining why a run or error happened, read the actual task source rather than guessing. Find the task with search_code or list_files, then read_file the relevant code.
-- The source you read is pinned to the commit the run was deployed from, so it is the code that actually ran. Cite file paths (and line numbers when useful).
+- When investigating a specific run, pass its run id as the runId argument to read_file/search_code/list_files. That reads the exact source the run's deployed version came from (the code that actually ran). Without runId you read the latest tracked-branch commit. Cite file paths (and line numbers when useful).
 - Stay read-only: you can explain and point at code, but you can't edit it or open PRs.`;
