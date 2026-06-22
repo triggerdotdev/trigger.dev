@@ -131,4 +131,127 @@ describe("RunsReplicationService (task_run_v2)", () => {
       }
     }
   );
+
+  replicationContainerTest(
+    "streams a task_run_v2 DELETE with a complete old row (REPLICA IDENTITY FULL) so the tombstone carries org id",
+    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
+      // The migration sets this in production; the testcontainer builds via
+      // db push, so apply it here. Without FULL, the DELETE's old tuple is just
+      // the PK and organization_id below would be empty (tombstone dropped).
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."task_run_v2" REPLICA IDENTITY FULL;`);
+
+      const clickhouse = new ClickHouse({
+        url: clickhouseContainer.getConnectionUrl(),
+        name: "runs-replication",
+        compression: { request: true },
+        logLevel: "warn",
+      });
+
+      const { tracer } = createInMemoryTracing();
+
+      const runsReplicationService = new RunsReplicationService({
+        clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),
+        pgConnectionUrl: postgresContainer.getConnectionUri(),
+        serviceName: "runs-replication",
+        slotName: "task_runs_to_clickhouse_v1",
+        publicationName: "task_runs_to_clickhouse_v1_publication",
+        redisOptions,
+        maxFlushConcurrency: 1,
+        flushIntervalMs: 100,
+        flushBatchSize: 1,
+        leaderLockTimeoutMs: 5000,
+        leaderLockExtendIntervalMs: 1000,
+        ackIntervalSeconds: 5,
+        tracer,
+        logLevel: "warn",
+      });
+
+      await runsReplicationService.start();
+
+      try {
+        const organization = await prisma.organization.create({
+          data: { title: "test", slug: "test" },
+        });
+        const project = await prisma.project.create({
+          data: { name: "test", slug: "test", organizationId: organization.id, externalRef: "test" },
+        });
+        const runtimeEnvironment = await prisma.runtimeEnvironment.create({
+          data: {
+            slug: "test",
+            type: "DEVELOPMENT",
+            projectId: project.id,
+            organizationId: organization.id,
+            apiKey: "test",
+            pkApiKey: "test",
+            shortcode: "test",
+          },
+        });
+
+        const ksuid = RunId.generateKsuid();
+        const run = await prisma.taskRunV2.create({
+          data: {
+            id: ksuid.id,
+            friendlyId: ksuid.friendlyId,
+            taskIdentifier: "my-task",
+            payload: "{}",
+            payloadType: "application/json",
+            traceId: "v2del",
+            spanId: "v2del",
+            queue: "test",
+            workerQueue: "us-east-1-next",
+            region: "us-east-1",
+            planType: "free",
+            runtimeEnvironmentId: runtimeEnvironment.id,
+            projectId: project.id,
+            organizationId: organization.id,
+            environmentType: "DEVELOPMENT",
+            engine: "V2",
+          },
+        });
+
+        const latestRow = clickhouse.reader.query({
+          name: "runs-replication",
+          query:
+            "SELECT run_id, organization_id, environment_id, _is_deleted FROM trigger_dev.task_runs_v2 WHERE run_id = {runId: String} ORDER BY _version DESC LIMIT 1",
+          schema: z.any(),
+          params: z.object({ runId: z.string() }),
+        });
+
+        // Wait for the INSERT to land.
+        let result: Array<Record<string, unknown>> | undefined;
+        let insertDeadline = Date.now() + 10_000;
+        do {
+          const [, rows] = await latestRow({ runId: run.id });
+          result = rows;
+          if (result?.length === 1 && Number(result[0]._is_deleted) === 0) break;
+          await setTimeout(200);
+        } while (Date.now() < insertDeadline);
+        expect(result?.length).toBe(1);
+
+        // Delete the v2 run and wait for the tombstone.
+        await prisma.taskRunV2.delete({ where: { id: run.id } });
+
+        const deleteDeadline = Date.now() + 10_000;
+        do {
+          const [, rows] = await latestRow({ runId: run.id });
+          result = rows;
+          if (result?.length === 1 && Number(result[0]._is_deleted) === 1) break;
+          await setTimeout(200);
+        } while (Date.now() < deleteDeadline);
+
+        // The tombstone must carry the full old row (org/env), not just the PK.
+        expect(Number(result?.[0]?._is_deleted)).toBe(1);
+        expect(result?.[0]).toEqual(
+          expect.objectContaining({
+            run_id: run.id,
+            organization_id: organization.id,
+            environment_id: runtimeEnvironment.id,
+          })
+        );
+      } finally {
+        await runsReplicationService.stop();
+      }
+    }
+  );
 });

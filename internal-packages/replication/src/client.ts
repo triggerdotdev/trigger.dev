@@ -307,6 +307,8 @@ export class LogicalReplicationClient {
       startLsn,
     });
 
+    await this.#warnOnWeakReplicaIdentity();
+
     const slotCreated = await this.#createSlot();
 
     if (!slotCreated) {
@@ -603,6 +605,60 @@ export class LogicalReplicationClient {
 
     // All validations passed
     return null;
+  }
+
+  /**
+   * Warn (never fail) when a co-published table lacks REPLICA IDENTITY FULL while
+   * the publication emits UPDATE/DELETE. Under the default primary-key identity,
+   * a DELETE's WAL `old` tuple carries only the key, so a consumer that needs
+   * other columns of the deleted row (e.g. to build a ClickHouse soft-delete
+   * tombstone with organization/environment ids) silently loses them. This only
+   * surfaces a misconfiguration (a forgotten ops step or a db-push'd table); it
+   * never blocks startup.
+   */
+  async #warnOnWeakReplicaIdentity(): Promise<void> {
+    if (!this.client) {
+      return;
+    }
+
+    const publishesOldTuple =
+      !this.options.publicationActions ||
+      this.options.publicationActions.includes("update") ||
+      this.options.publicationActions.includes("delete");
+    if (!publishesOldTuple) {
+      return;
+    }
+
+    const tableList = this.#allTables()
+      .map((table) => `'${table}'`)
+      .join(", ");
+
+    const [error, res] = await tryCatch(
+      this.client.query(
+        `SELECT c.relname, c.relreplident
+         FROM pg_class c
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'public' AND c.relname IN (${tableList})`
+      )
+    );
+    if (error || !res) {
+      return; // best-effort diagnostic; never block startup
+    }
+
+    for (const row of res.rows as Array<{ relname: string; relreplident: string }>) {
+      if (row.relreplident !== "f") {
+        this.logger.warn(
+          "Co-published table lacks REPLICA IDENTITY FULL; UPDATE/DELETE WAL events will omit non-key columns of the old row",
+          {
+            name: this.options.name,
+            publicationName: this.options.publicationName,
+            table: row.relname,
+            replicaIdentity: row.relreplident,
+            fix: `ALTER TABLE "public"."${row.relname}" REPLICA IDENTITY FULL;`,
+          }
+        );
+      }
+    }
   }
 
   async #createSlot(): Promise<boolean> {
