@@ -15,7 +15,6 @@ import { type z } from "zod";
 import invariant from "tiny-invariant";
 import { type CreateBranchOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
 
-
 type CreateBranchOptions = z.infer<typeof CreateBranchOptions>;
 
 export class UpsertBranchService {
@@ -35,8 +34,6 @@ export class UpsertBranchService {
       | { type: "orgId"; organizationId: string },
     { projectId, env, branchName, git }: CreateBranchOptions
   ) {
-
-
     const parentEnvType = toBranchableEnvironmentType(env);
     // Dev branch creation is always user-scoped (org tokens are rejected upstream),
     // so we can disambiguate the per-member dev root by userId.
@@ -67,12 +64,12 @@ export class UpsertBranchService {
           organization:
             orgFilter.type === "userMembership"
               ? {
-                members: {
-                  some: {
-                    userId: orgFilter.userId,
+                  members: {
+                    some: {
+                      userId: orgFilter.userId,
+                    },
                   },
-                },
-              }
+                }
               : { id: orgFilter.organizationId },
         },
         include: {
@@ -94,7 +91,6 @@ export class UpsertBranchService {
 
       // Dev environments are scoped per org member, so a dev branch must inherit
       // its parent's orgMemberId. Preview parents have no orgMember (orgMemberId is null).
-
       if (!parentEnvironment) {
         invariant(env === "preview", "No default dev runtime environment setup");
         return {
@@ -110,15 +106,25 @@ export class UpsertBranchService {
         };
       }
 
-
-
-      const limits = await checkBranchLimit(
-        { prisma: this.#prismaClient, organizationId: parentEnvironment.organization.id, projectId: parentEnvironment.project.id, type: parentEnvType, userId, newBranchName: sanitizedBranchName });
+      const limits = await checkBranchLimit({
+        prisma: this.#prismaClient,
+        organizationId: parentEnvironment.organization.id,
+        projectId: parentEnvironment.project.id,
+        type: parentEnvType,
+        userId,
+        newBranchName: sanitizedBranchName,
+      });
 
       if (limits.isAtLimit) {
+        // DEVELOPMENT has no upgrade path, so only PREVIEW mentions upgrading.
+        const remediation =
+          parentEnvType === "PREVIEW"
+            ? "Use the CLI to view your existing branches and archive any you no longer need, or upgrade to get more."
+            : "Use the CLI to view your existing branches and archive any you no longer need.";
+
         return {
           success: false as const,
-          error: `You've used all ${limits.used} of ${limits.limit} branches for your plan. Upgrade to get more branches or archive some.`,
+          error: `You've used all ${limits.used} of ${limits.limit} branches for your plan. ${remediation}`,
         };
       }
 
@@ -128,7 +134,6 @@ export class UpsertBranchService {
       const shortcode = branchSlug;
 
       const now = new Date();
-
       const branch = await this.#prismaClient.runtimeEnvironment.upsert({
         where: {
           projectId_shortcode: {
@@ -184,10 +189,21 @@ export class UpsertBranchService {
   }
 }
 
-export async function checkBranchLimit(
-  { prisma, organizationId, projectId, userId, type, newBranchName }:
-    { prisma: PrismaClientOrTransaction; organizationId: string; projectId: string; userId?: string; type: BranchableEnvironmentType; newBranchName?: string; }) {
-
+export async function checkBranchLimit({
+  prisma,
+  organizationId,
+  projectId,
+  userId,
+  type,
+  newBranchName,
+}: {
+  prisma: PrismaClientOrTransaction;
+  organizationId: string;
+  projectId: string;
+  userId?: string;
+  type: BranchableEnvironmentType;
+  newBranchName?: string;
+}) {
   let orgMemberWhere = {};
   if (type === "DEVELOPMENT") {
     invariant(userId, "Cannot use org access for dev server");

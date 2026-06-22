@@ -4,16 +4,12 @@ import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { type UserFromSession } from "~/services/session.server";
 import { newOrganizationPath, newProjectPath } from "~/utils/pathBuilder";
-import {
-  SelectBestEnvironmentPresenter,
-  type MinimumEnvironment,
-} from "./SelectBestEnvironmentPresenter.server";
+import { SelectBestEnvironmentPresenter } from "./SelectBestEnvironmentPresenter.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import { defaultAvatar, parseAvatar } from "~/components/primitives/Avatar";
 import { env } from "~/env.server";
 import { flags } from "~/v3/featureFlags.server";
 import { validatePartialFeatureFlags } from "~/v3/featureFlags";
-import { devPresence } from "./v3/DevPresence.server";
 import { hydrateEnvsWithActivity } from "./v3/BranchesPresenter.server";
 
 export class OrganizationsPresenter {
@@ -85,6 +81,7 @@ export class OrganizationsPresenter {
             branchName: true,
             parentEnvironmentId: true,
             archivedAt: true,
+            updatedAt: true,
             orgMember: {
               select: {
                 userId: true,
@@ -103,8 +100,6 @@ export class OrganizationsPresenter {
       });
       throw redirect(newProjectPath(organization));
     }
-
-    const recentDevBranchIds = await devPresence.getRecentBranchIds(user.id, fullProject.id);
 
     const environments = fullProject.
       environments.filter((env) => env.type !== "DEVELOPMENT" || env.orgMember?.userId === user.id);

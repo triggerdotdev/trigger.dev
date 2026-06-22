@@ -1,4 +1,4 @@
-import { GitMeta, } from "@trigger.dev/core/v3";
+import { GitMeta } from "@trigger.dev/core/v3";
 import { DEFAULT_DEV_BRANCH } from "@trigger.dev/core/v3/utils/gitBranch";
 import { type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { type z } from "zod";
@@ -10,12 +10,45 @@ import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { checkBranchLimit } from "~/services/upsertBranch.server";
 import { devPresence } from "./DevPresence.server";
 import { sortEnvironments } from "~/utils/environmentSort";
-import { toBranchableEnvironmentType } from "~/utils/branchableEnvironment";
+import {
+  type BranchableEnvironmentType,
+  toBranchableEnvironmentType,
+} from "~/utils/branchableEnvironment";
 
 type Result = Awaited<ReturnType<BranchesPresenter["call"]>>;
 export type Branch = Result["branches"][number];
 
 const BRANCHES_PER_PAGE = 25;
+
+/**
+ * Prisma `where` fragment that scopes the branches list by branch name, keyed by
+ * environment type. Spread it into the query's `where` (it contributes either a
+ * `branchName` constraint or a top-level `OR`).
+ *
+ * The default DEV branch is the root dev env, stored with `branchName: null`, so
+ * for DEVELOPMENT we always include the null-branchName root (and still match it
+ * when searching — hence the top-level `OR`, since a scalar field filter can't
+ * express "matches search OR is null"). PREVIEW only ever lists real branches, so
+ * its root (null) is excluded. Passing no `search` yields the "all branches of
+ * this type" fragment.
+ */
+function branchNameFilter(
+  envType: BranchableEnvironmentType,
+  search?: string
+): Prisma.RuntimeEnvironmentWhereInput {
+  switch (envType) {
+    case "DEVELOPMENT":
+      return search
+        ? { OR: [{ branchName: { contains: search, mode: "insensitive" } }, { branchName: null }] }
+        : {};
+    case "PREVIEW":
+      return search
+        ? { branchName: { contains: search, mode: "insensitive" } }
+        : { branchName: { not: null } };
+    default:
+      throw new Error(`branchNameFilter: unsupported environment type "${envType}"`);
+  }
+}
 
 type Options = z.infer<typeof BranchesOptions>;
 
@@ -133,30 +166,26 @@ export class BranchesPresenter {
       };
     }
 
-    // The default DEV branch has no branchName (it's the root dev env, stored
-    // with branchName: null), so searching for it by name wouldn't display it.
-    // Hacky way around that: always include the null-branchName root env.
-    const branchNameWhere = envType === "DEVELOPMENT" ?
-      search
-        ? { OR: [{ contains: search, mode: "insensitive" as const }, { is: null }] }
-        : {} :
-      search
-        ? { contains: search, mode: "insensitive" as const }
-        : { not: null };
+    const branchNameWhere = branchNameFilter(envType, search);
     const orgMemberWhere = envType === "DEVELOPMENT" ? { orgMember: { userId } } : {};
-
 
     const visibleCount = await this.#prismaClient.runtimeEnvironment.count({
       where: {
         projectId: project.id,
         type: envType,
-        branchName: branchNameWhere,
+        ...branchNameWhere,
         ...orgMemberWhere,
         ...(showArchived ? {} : { archivedAt: null }),
       },
     });
 
-    const limits = await checkBranchLimit({ prisma: this.#prismaClient, organizationId: project.organizationId, projectId: project.id, userId, type: envType });
+    const limits = await checkBranchLimit({
+      prisma: this.#prismaClient,
+      organizationId: project.organizationId,
+      projectId: project.id,
+      userId,
+      type: envType,
+    });
 
     const [currentPlan, plans] = await Promise.all([
       getCurrentPlan(project.organizationId),
@@ -179,12 +208,13 @@ export class BranchesPresenter {
         type: true,
         archivedAt: true,
         createdAt: true,
+        updatedAt: true,
         git: true,
       },
       where: {
         projectId: project.id,
         type: envType,
-        branchName: branchNameWhere,
+        ...branchNameWhere,
         ...orgMemberWhere,
         ...(showArchived ? {} : { archivedAt: null }),
       },
@@ -195,16 +225,14 @@ export class BranchesPresenter {
       take: BRANCHES_PER_PAGE,
     });
 
-    const totalBranchesWhere = envType === "DEVELOPMENT" ? {} : { not: null };
     const totalBranches = await this.#prismaClient.runtimeEnvironment.count({
       where: {
         projectId: project.id,
         type: envType,
-        branchName: totalBranchesWhere,
+        ...branchNameFilter(envType),
         ...orgMemberWhere,
       },
     });
-
 
     const branchesFiltered = branches
       .filter((branch) => envType === "DEVELOPMENT" || branch.branchName !== null)
@@ -234,8 +262,13 @@ export class BranchesPresenter {
   }
 }
 
-export async function hydrateEnvsWithActivity<T extends { type: RuntimeEnvironmentType; id: string }>
-  (userId: string, projectId: string, environments: T[]): Promise<Array<T & { lastActivity: Date | undefined; isConnected: boolean | undefined }>> {
+export async function hydrateEnvsWithActivity<
+  T extends { type: RuntimeEnvironmentType; id: string }
+>(
+  userId: string,
+  projectId: string,
+  environments: T[]
+): Promise<Array<T & { lastActivity: Date | undefined; isConnected: boolean | undefined }>> {
   const recentDevBranchIds = await devPresence.getRecentBranchIds(userId, projectId);
 
   // Resolve presence for all recently-active dev branches in a single MGET

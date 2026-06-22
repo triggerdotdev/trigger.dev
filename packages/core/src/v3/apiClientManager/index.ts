@@ -16,7 +16,7 @@ export class ApiClientMissingError extends Error {
 export class APIClientManagerAPI {
   private static _instance?: APIClientManagerAPI;
 
-  private constructor() { }
+  private constructor() {}
 
   public static getInstance(): APIClientManagerAPI {
     if (!this._instance) {

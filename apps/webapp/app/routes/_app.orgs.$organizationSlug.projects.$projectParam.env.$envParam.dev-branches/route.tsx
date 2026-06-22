@@ -63,12 +63,7 @@ import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { UpsertBranchService } from "~/services/upsertBranch.server";
 import { cn } from "~/utils/cn";
-import {
-  branchesDevPath,
-  branchesPath,
-  docsPath,
-  ProjectParamSchema,
-} from "~/utils/pathBuilder";
+import { branchesDevPath, docsPath, ProjectParamSchema } from "~/utils/pathBuilder";
 import { ArchiveButton } from "../resources.branches.archive";
 import { IconArrowBearRight2 } from "@tabler/icons-react";
 
@@ -110,7 +105,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     return typedjson(result);
   } catch (error) {
-    logger.error("Error loading preview branches page", { error });
+    logger.error("Error loading dev branches page", { error });
     throw new Response(undefined, {
       status: 400,
       statusText: "Something went wrong, if this problem persists please contact support.",
@@ -146,7 +141,7 @@ export async function action({ request }: ActionFunctionArgs) {
     }
 
     return redirectWithSuccessMessage(
-      `${branchesPath(result.organization, result.project, result.branch)}?dialogClosed=true`,
+      `${branchesDevPath(result.organization, result.project, result.branch)}?dialogClosed=true`,
       request,
       `Branch "${result.branch.branchName}" created`
     );

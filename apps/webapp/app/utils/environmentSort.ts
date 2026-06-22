@@ -11,6 +11,7 @@ type SortType = {
   type: RuntimeEnvironmentType;
   userName?: string | null;
   lastActivity?: Date | undefined;
+  updatedAt?: Date | undefined;
 };
 
 export function sortEnvironments<T extends SortType>(
@@ -25,14 +26,21 @@ export function sortEnvironments<T extends SortType>(
     const difference = aIndex - bIndex;
 
     if (difference === 0) {
-      // Sort by lastActivity if available, otherwise username
-      if (a.lastActivity !== undefined && b.lastActivity !== undefined) {
-        return b.lastActivity.getTime() - a.lastActivity.getTime();
-      } else {
-        const usernameA = a.userName || "";
-        const usernameB = b.userName || "";
-        return usernameA.localeCompare(usernameB);
+      // Within the same env type, order by recency: most-recent dev activity
+      // first, falling back to updatedAt when there's no recorded activity,
+      // then to username when we have no timestamps at all.
+      const aTime = (a.lastActivity ?? a.updatedAt)?.getTime();
+      const bTime = (b.lastActivity ?? b.updatedAt)?.getTime();
+
+      if (aTime !== undefined && bTime !== undefined) {
+        return bTime - aTime;
       }
+      if (aTime !== undefined) return -1;
+      if (bTime !== undefined) return 1;
+
+      const usernameA = a.userName || "";
+      const usernameB = b.userName || "";
+      return usernameA.localeCompare(usernameB);
     }
 
     return difference;
@@ -41,14 +49,14 @@ export function sortEnvironments<T extends SortType>(
 
 type FilterableEnvironment =
   | {
-    type: RuntimeEnvironmentType;
-    orgMemberId?: string;
-  }
+      type: RuntimeEnvironmentType;
+      orgMemberId?: string;
+    }
   | {
-    type: RuntimeEnvironmentType;
-    //intentionally vague so we can match anything
-    orgMember?: Record<string, any>;
-  };
+      type: RuntimeEnvironmentType;
+      //intentionally vague so we can match anything
+      orgMember?: Record<string, any>;
+    };
 
 export function filterOrphanedEnvironments<T extends FilterableEnvironment>(
   environments: T[]

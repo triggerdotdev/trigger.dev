@@ -320,26 +320,26 @@ function getApiKeyResult(apiKey: string): {
   const type = isPublicApiKey(apiKey)
     ? "PUBLIC"
     : isSecretApiKey(apiKey)
-      ? "PRIVATE"
-      : isPublicJWT(apiKey)
-        ? "PUBLIC_JWT"
-        : "PRIVATE"; // Fallback to private key
+    ? "PRIVATE"
+    : isPublicJWT(apiKey)
+    ? "PUBLIC_JWT"
+    : "PRIVATE"; // Fallback to private key
   return { apiKey, type };
 }
 
 export type AuthenticationResult =
   | {
-    type: "personalAccessToken";
-    result: PersonalAccessTokenAuthenticationResult;
-  }
+      type: "personalAccessToken";
+      result: PersonalAccessTokenAuthenticationResult;
+    }
   | {
-    type: "organizationAccessToken";
-    result: OrganizationAccessTokenAuthenticationResult;
-  }
+      type: "organizationAccessToken";
+      result: OrganizationAccessTokenAuthenticationResult;
+    }
   | {
-    type: "apiKey";
-    result: ApiAuthenticationResult;
-  };
+      type: "apiKey";
+      result: ApiAuthenticationResult;
+    };
 
 type AuthenticationMethod = "personalAccessToken" | "organizationAccessToken" | "apiKey";
 
@@ -356,11 +356,11 @@ type FilteredAuthenticationResult<
   T extends AllowedAuthenticationMethods = AllowedAuthenticationMethods
 > =
   | (T["personalAccessToken"] extends true
-    ? Extract<AuthenticationResult, { type: "personalAccessToken" }>
-    : never)
+      ? Extract<AuthenticationResult, { type: "personalAccessToken" }>
+      : never)
   | (T["organizationAccessToken"] extends true
-    ? Extract<AuthenticationResult, { type: "organizationAccessToken" }>
-    : never)
+      ? Extract<AuthenticationResult, { type: "organizationAccessToken" }>
+      : never)
   | (T["apiKey"] extends true ? Extract<AuthenticationResult, { type: "apiKey" }> : never);
 
 /**
@@ -523,10 +523,10 @@ export async function authenticatedEnvironmentForAuthentication(
             slug: slug,
             ...(slug === "dev"
               ? {
-                orgMember: {
-                  userId: user.id,
-                },
-              }
+                  orgMember: {
+                    userId: user.id,
+                  },
+                }
               : {}),
           },
           include: authIncludeBase,

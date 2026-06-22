@@ -17,7 +17,7 @@ import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/plugins";
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@trigger.dev/database";
 import { validateJWT } from "@trigger.dev/core/v3/jwt";
-import { sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
+import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import { buildFallbackAbility, buildJwtAbility, permissiveAbility } from "./ability.js";
 
 export type FallbackPrismaClients = {
@@ -206,7 +206,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     // Pivot to the child env so downstream code operates on the branch
     // (its own id, but the parent's apiKey/orgMember/organization/project —
     // exactly what findEnvironmentByApiKey does for the legacy auth path).
-    if (branchName !== null && branchName !== "default") {
+    if (branchName !== null && !isDefaultDevBranch(branchName)) {
       if (env.type !== "PREVIEW" && env.type !== "DEVELOPMENT") {
         return {
           ok: false,

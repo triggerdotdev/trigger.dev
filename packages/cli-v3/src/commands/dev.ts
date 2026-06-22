@@ -74,7 +74,7 @@ export function configureDevCommand(program: Command) {
       .argument("[path]", "The path to the project", ".")
       .option(
         "-b, --branch <branch>",
-        "The dev branch to archive. If not provided, we'll detect your local git branch."
+        "The dev branch to archive. Defaults to the TRIGGER_DEV_BRANCH environment variable if set."
       )
       .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
       .option("-c, --config <config file>", "The name of the config file, found at [path]")
@@ -407,9 +407,11 @@ async function archiveDevBranchCommand(dir: string, options: DevArchiveCommandOp
 
   const branch = getDevBranch({ specified: options.branch });
 
-  if (!branch) {
+  // getDevBranch falls back to the "default" sentinel (the root dev env), which
+  // can't be archived. Require the user to name a real branch instead.
+  if (isDefaultDevBranch(branch)) {
     throw new Error(
-      "Didn't auto-detect branch, so you need to specify a dev branch. Use --branch <branch>."
+      "You need to specify which dev branch to archive (the default branch can't be archived). Use --branch <branch>."
     );
   }
 

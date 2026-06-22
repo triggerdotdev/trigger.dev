@@ -36,6 +36,44 @@ describe("sortEnvironments", () => {
     expect(sorted.map((e) => e.userName)).toEqual(["b", "a"]);
   });
 
+  it("falls back to updatedAt desc when neither row has lastActivity", () => {
+    const older = new Date("2026-06-01T00:00:00Z");
+    const newer = new Date("2026-06-20T00:00:00Z");
+
+    const sorted = sortEnvironments([
+      { type: "DEVELOPMENT", userName: "a", updatedAt: older },
+      { type: "DEVELOPMENT", userName: "b", updatedAt: newer },
+    ]);
+
+    // Most recently updated branch first.
+    expect(sorted.map((e) => e.userName)).toEqual(["b", "a"]);
+  });
+
+  it("uses a row's lastActivity over its own stale updatedAt", () => {
+    const staleUpdate = new Date("2026-06-01T00:00:00Z");
+    const recentActivity = new Date("2026-06-26T00:00:00Z");
+    const otherUpdate = new Date("2026-06-10T00:00:00Z");
+
+    // 'a' has a stale updatedAt but recent dev activity; 'b' has only a (more
+    // recent than a's update) updatedAt. If activity weren't preferred, a's
+    // stale 06-01 would lose to b's 06-10; instead a's 06-26 activity wins.
+    const sorted = sortEnvironments([
+      { type: "DEVELOPMENT", userName: "b", updatedAt: otherUpdate },
+      { type: "DEVELOPMENT", userName: "a", updatedAt: staleUpdate, lastActivity: recentActivity },
+    ]);
+
+    expect(sorted.map((e) => e.userName)).toEqual(["a", "b"]);
+  });
+
+  it("orders rows with any timestamp ahead of rows with none", () => {
+    const sorted = sortEnvironments([
+      { type: "DEVELOPMENT", userName: "no-timestamp" },
+      { type: "DEVELOPMENT", userName: "has-update", updatedAt: new Date("2026-06-10T00:00:00Z") },
+    ]);
+
+    expect(sorted.map((e) => e.userName)).toEqual(["has-update", "no-timestamp"]);
+  });
+
   it("falls back to username order when lastActivity is absent (the ZSET-missing case)", () => {
     // When the recency ZSET is missing/evicted, lastActivity is undefined for
     // every branch, and the list must still render in a stable order.
