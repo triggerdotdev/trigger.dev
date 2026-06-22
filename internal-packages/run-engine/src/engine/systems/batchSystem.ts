@@ -62,7 +62,7 @@ export class BatchSystem {
       span.setAttribute("batchId", batchId);
 
       const batch = await this.$.prisma.batchTaskRun.findFirst({
-        select: { status: true, sealed: true },
+        select: { status: true, sealed: true, processingCompletedAt: true },
         where: { id: batchId },
       });
 
@@ -71,40 +71,58 @@ export class BatchSystem {
         return;
       }
 
-      // The stream sealed the batch, or it already progressed — nothing to fail.
-      if (batch.sealed || batch.status !== "PENDING") {
-        this.$.logger.debug("expireBatch: batch already sealed or no longer PENDING", {
+      // The stream sealed the batch, so the normal completion path owns it.
+      if (batch.sealed) {
+        this.$.logger.debug("expireBatch: batch already sealed", { batchId });
+        return;
+      }
+
+      // Terminal states other than ABORTED are done. ABORTED falls through on
+      // purpose: a previous attempt may have aborted the batch but crashed before
+      // resolving the waitpoint, and completeWaitpoint is idempotent, so retrying
+      // can't leave the parent blocked.
+      if (batch.status !== "PENDING" && batch.status !== "ABORTED") {
+        this.$.logger.debug("expireBatch: batch in terminal non-aborted state", {
           batchId,
           status: batch.status,
-          sealed: batch.sealed,
         });
         return;
       }
 
-      // Conditional update guards against racing a late seal — whichever loses no-ops.
-      const aborted = await this.$.prisma.batchTaskRun.updateMany({
-        where: { id: batchId, sealed: false, status: "PENDING" },
-        data: {
-          status: "ABORTED",
-          completedAt: new Date(),
-          processingCompletedAt: new Date(),
-        },
-      });
-
-      if (aborted.count === 0) {
-        this.$.logger.debug("expireBatch: lost race to seal, no-op", { batchId });
+      // The BatchQueue already processed every item (the completion callback set
+      // processingCompletedAt) even though the seal never landed — the runs exist
+      // and will resume the parent on their own. Aborting would fail a healthy batch.
+      if (batch.status === "PENDING" && batch.processingCompletedAt !== null) {
+        this.$.logger.debug("expireBatch: items already processed, not aborting", { batchId });
         return;
       }
 
-      // Only batchTriggerAndWait blocks a parent, so only it has a waitpoint to resolve.
+      if (batch.status === "PENDING") {
+        // Conditional update guards against racing a late seal or completion —
+        // whichever loses no-ops.
+        const aborted = await this.$.prisma.batchTaskRun.updateMany({
+          where: { id: batchId, sealed: false, status: "PENDING", processingCompletedAt: null },
+          data: {
+            status: "ABORTED",
+            completedAt: new Date(),
+          },
+        });
+
+        if (aborted.count === 0) {
+          this.$.logger.debug("expireBatch: lost race to seal/complete, no-op", { batchId });
+          return;
+        }
+      }
+
+      // Only batchTriggerAndWait blocks a parent, so only it has a waitpoint to
+      // resolve. The status filter keeps this idempotent if a previous attempt
+      // already resolved it.
       const waitpoint = await this.$.prisma.waitpoint.findFirst({
-        where: { completedByBatchId: batchId },
+        where: { completedByBatchId: batchId, status: "PENDING" },
       });
 
       if (!waitpoint) {
-        this.$.logger.debug("expireBatch: no waitpoint to resolve (fire-and-forget batch)", {
-          batchId,
-        });
+        this.$.logger.debug("expireBatch: no pending waitpoint to resolve", { batchId });
         return;
       }
 
@@ -151,8 +169,11 @@ export class BatchSystem {
         return;
       }
 
-      if (batch.status === "COMPLETED") {
-        this.$.logger.debug("#tryCompleteBatch: Batch already completed", { batchId });
+      if (batch.status === "COMPLETED" || batch.status === "ABORTED") {
+        this.$.logger.debug("#tryCompleteBatch: Batch already in a terminal status", {
+          batchId,
+          status: batch.status,
+        });
         return;
       }
 
