@@ -1,7 +1,7 @@
 import path from "node:path";
 import { readFile } from "../utilities/fileSystem.js";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { isDefaultDevBranch } from "@trigger.dev/core/v3/utils/gitBranch";
+import { devBranchPathSegment } from "../utilities/devBranch.js";
 import { logger } from "../utilities/logger.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { existsSync, unlinkSync } from "node:fs";
@@ -16,13 +16,8 @@ const LOCK_FILE_NAME = "dev.lock";
  * branches don't kill each other.
  */
 function lockFileName(branch?: string) {
-  if (!branch || isDefaultDevBranch(branch)) {
-    return LOCK_FILE_NAME;
-  }
-
-  // Branch names can contain filesystem-unsafe characters (e.g. "/"), so sanitize.
-  const safeBranch = branch.replace(/[^a-zA-Z0-9-_]/g, "-");
-  return `dev.${safeBranch}.lock`;
+  const safeBranch = devBranchPathSegment(branch);
+  return safeBranch ? `dev.${safeBranch}.lock` : LOCK_FILE_NAME;
 }
 
 export async function createLockFile(cwd: string, branch?: string) {
