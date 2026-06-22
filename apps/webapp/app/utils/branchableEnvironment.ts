@@ -1,10 +1,57 @@
-import { type RuntimeEnvironmentType } from "@trigger.dev/database";
+import { type Prisma, type RuntimeEnvironmentType } from "@trigger.dev/database";
 
 type BranchableEnvironmentInput = {
   type: RuntimeEnvironmentType;
   parentEnvironmentId: string | null;
   isBranchableEnvironment: boolean;
 };
+
+/** The two environment types that support branches. */
+export type BranchableEnvironmentType = Extract<
+  RuntimeEnvironmentType,
+  "PREVIEW" | "DEVELOPMENT"
+>;
+
+/**
+ * The wire/form token for a branchable environment kind, as sent by the CLI and
+ * dashboard forms (`"preview" | "development"`). This is the public/wire contract;
+ * internally we work in the canonical {@link RuntimeEnvironmentType} enum.
+ */
+export type BranchableEnvironmentToken = "preview" | "development";
+
+/**
+ * Convert the wire/form token to the canonical Prisma enum used internally. Call
+ * this once at the boundary (route/service entry) so downstream code branches on
+ * the enum rather than re-deriving `env === "preview" ? "PREVIEW" : "DEVELOPMENT"`
+ * in a dozen places.
+ */
+export function toBranchableEnvironmentType(
+  env: BranchableEnvironmentToken
+): BranchableEnvironmentType {
+  return env === "preview" ? "PREVIEW" : "DEVELOPMENT";
+}
+
+/**
+ * Prisma `where` fragment matching the *root* environment of a type — the
+ * branchable parent, never a branch (branches always carry a `parentEnvironmentId`).
+ * DEVELOPMENT roots are per-org-member, so pass `userId` to disambiguate between
+ * members' dev environments.
+ *
+ * Use this instead of locating roots by their magic slug (`"dev"` / `"preview"`),
+ * which is an instance identifier, not a reliable type discriminator. Whether the
+ * matched root is actually branchable is a separate concern — gate it with
+ * {@link isBranchableEnvironment} after the lookup.
+ */
+export function rootEnvironmentWhere(
+  type: RuntimeEnvironmentType,
+  opts?: { userId?: string }
+): Prisma.RuntimeEnvironmentWhereInput {
+  return {
+    type,
+    parentEnvironmentId: null,
+    ...(type === "DEVELOPMENT" && opts?.userId ? { orgMember: { userId: opts.userId } } : {}),
+  };
+}
 
 /**
  * Whether an environment is a branchable parent (i.e. branches can be created

@@ -10,6 +10,7 @@ import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { checkBranchLimit } from "~/services/upsertBranch.server";
 import { devPresence } from "./DevPresence.server";
 import { sortEnvironments } from "~/utils/environmentSort";
+import { toBranchableEnvironmentType } from "~/utils/branchableEnvironment";
 
 type Result = Awaited<ReturnType<BranchesPresenter["call"]>>;
 export type Branch = Result["branches"][number];
@@ -92,8 +93,7 @@ export class BranchesPresenter {
       throw new Error("Project not found");
     }
 
-    // TODO audit mishmash of preview/developement preview/dev stg/dev PREVIEW/DEVELOPMENT
-    const envType = env === "preview" ? "PREVIEW" : "DEVELOPMENT";
+    const envType = toBranchableEnvironmentType(env);
 
     const branchableEnvironment = await this.#prismaClient.runtimeEnvironment.findFirst({
       select: {
@@ -156,7 +156,7 @@ export class BranchesPresenter {
       },
     });
 
-    const limits = await checkBranchLimit({ prisma: this.#prismaClient, organizationId: project.organizationId, projectId: project.id, userId, env });
+    const limits = await checkBranchLimit({ prisma: this.#prismaClient, organizationId: project.organizationId, projectId: project.id, userId, type: envType });
 
     const [currentPlan, plans] = await Promise.all([
       getCurrentPlan(project.organizationId),

@@ -5,6 +5,7 @@ import { prisma } from "~/db.server";
 import { authenticateRequest } from "~/services/apiAuth.server";
 import { ArchiveBranchService } from "~/services/archiveBranch.server";
 import { logger } from "~/services/logger.server";
+import { toBranchableEnvironmentType } from "~/utils/branchableEnvironment";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -53,7 +54,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const { env, branch } = parsed.data;
 
-  const environmentType = env === "preview" ? "PREVIEW" : "DEVELOPMENT";
+  const environmentType = toBranchableEnvironmentType(env);
   const environments = await prisma.runtimeEnvironment.findMany({
     select: {
       id: true,

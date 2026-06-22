@@ -3,7 +3,12 @@ import slug from "slug";
 import { prisma } from "~/db.server";
 import { createApiKeyForEnv, createPkApiKeyForEnv } from "~/models/api-key.server";
 import { isValidGitBranchName, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
-import { isBranchableEnvironment } from "~/utils/branchableEnvironment";
+import {
+  type BranchableEnvironmentType,
+  isBranchableEnvironment,
+  rootEnvironmentWhere,
+  toBranchableEnvironmentType,
+} from "~/utils/branchableEnvironment";
 import { logger } from "./logger.server";
 import { getCurrentPlan, getLimit } from "./platform.v3.server";
 import { type z } from "zod";
@@ -32,7 +37,10 @@ export class UpsertBranchService {
   ) {
 
 
-    const parentEnvSlug = env === "preview" ? "preview" : "dev";
+    const parentEnvType = toBranchableEnvironmentType(env);
+    // Dev branch creation is always user-scoped (org tokens are rejected upstream),
+    // so we can disambiguate the per-member dev root by userId.
+    const userId = orgFilter.type === "userMembership" ? orgFilter.userId : undefined;
 
     const sanitizedBranchName = sanitizeBranchName(branchName);
     if (!sanitizedBranchName) {
@@ -53,7 +61,9 @@ export class UpsertBranchService {
       const parentEnvironment = await this.#prismaClient.runtimeEnvironment.findFirst({
         where: {
           projectId,
-          slug: parentEnvSlug,
+          // Locate the branchable parent structurally (root env of this type),
+          // not by its magic slug. Branchability is asserted below.
+          ...rootEnvironmentWhere(parentEnvType, { userId }),
           organization:
             orgFilter.type === "userMembership"
               ? {
@@ -103,7 +113,7 @@ export class UpsertBranchService {
 
 
       const limits = await checkBranchLimit(
-        { prisma: this.#prismaClient, organizationId: parentEnvironment.organization.id, projectId: parentEnvironment.project.id, env, newBranchName: sanitizedBranchName });
+        { prisma: this.#prismaClient, organizationId: parentEnvironment.organization.id, projectId: parentEnvironment.project.id, type: parentEnvType, userId, newBranchName: sanitizedBranchName });
 
       if (limits.isAtLimit) {
         return {
@@ -175,14 +185,11 @@ export class UpsertBranchService {
 }
 
 export async function checkBranchLimit(
-  { prisma, organizationId, projectId, userId, env, newBranchName }:
-    { prisma: PrismaClientOrTransaction; organizationId: string; projectId: string; userId?: string; env: "preview" | "development"; newBranchName?: string; }) {
-
-  // TODO audit mishmash of preview/developement preview/dev stg/dev PREVIEW/DEVELOPMENT
-  const envType = env === "preview" ? "PREVIEW" : "DEVELOPMENT";
+  { prisma, organizationId, projectId, userId, type, newBranchName }:
+    { prisma: PrismaClientOrTransaction; organizationId: string; projectId: string; userId?: string; type: BranchableEnvironmentType; newBranchName?: string; }) {
 
   let orgMemberWhere = {};
-  if (envType === "DEVELOPMENT") {
+  if (type === "DEVELOPMENT") {
     invariant(userId, "Cannot use org access for dev server");
     orgMemberWhere = { orgMember: { userId } };
   }
@@ -190,10 +197,10 @@ export async function checkBranchLimit(
   const usedEnvs = await prisma.runtimeEnvironment.findMany({
     where: {
       projectId,
-      type: envType,
+      type,
       // For PREVIEW, count only branches (exclude the branchable parent). For
       // DEVELOPMENT, the root env counts toward the limit alongside its branches.
-      ...(envType === "PREVIEW" ? { parentEnvironmentId: { not: null } } : {}),
+      ...(type === "PREVIEW" ? { parentEnvironmentId: { not: null } } : {}),
       ...orgMemberWhere,
       archivedAt: null,
     },
@@ -203,7 +210,7 @@ export async function checkBranchLimit(
     ? usedEnvs.filter((env) => env.branchName !== newBranchName).length
     : usedEnvs.length;
 
-  const limitName = env === "preview" ? "branches" : "branchesDev";
+  const limitName = type === "PREVIEW" ? "branches" : "branchesDev";
   const baseLimit = await getLimit(organizationId, limitName, 100_000_000);
   const currentPlan = await getCurrentPlan(organizationId);
   const purchasedBranches = currentPlan?.v3Subscription?.addOns?.branches?.purchased ?? 0;
