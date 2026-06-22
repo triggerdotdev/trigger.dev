@@ -5,7 +5,7 @@ import { tracer } from "~/v3/tracer.server";
 
 type TerminalDeploymentStatus = Extract<
   WorkerDeploymentStatus,
-  "DEPLOYED" | "FAILED" | "TIMED_OUT" | "CANCELED"
+  "DEPLOYED" | "FAILED" | "TIMED_OUT"
 >;
 
 /**
