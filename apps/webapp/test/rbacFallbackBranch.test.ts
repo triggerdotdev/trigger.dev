@@ -154,12 +154,12 @@ describe("RBAC fallback — branch header guards", () => {
     expect(result.error).toContain("preview and dev");
   });
 
-  // Documents a known collision from overloading the "default" sentinel across
-  // preview + dev: a PREVIEW branch literally named "default" can't be reached
-  // through this path — the sentinel short-circuits the pivot and resolves the
-  // preview parent instead. (Preview branch names are normally PR refs, so this
-  // is an accepted edge case rather than a supported one.)
-  postgresTest("preview + 'default' resolves the parent, not a branch named 'default'", async ({
+  // The "default" sentinel is DEVELOPMENT-only: it maps the dev root env to its
+  // (branchless) self. For PREVIEW, "default" is an ordinary branch name, so a
+  // PREVIEW branch literally named "default" is reachable and the request pivots
+  // to it like any other branch. (Preview branch names are normally PR refs, so
+  // a branch named "default" is unusual — but it's supported, not a collision.)
+  postgresTest("preview + 'default' pivots to the branch named 'default' (sentinel is dev-only)", async ({
     prisma,
   }) => {
     const { organization, project } = await createTestOrgProjectWithMember(prisma);
@@ -179,8 +179,9 @@ describe("RBAC fallback — branch header guards", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // Resolves the parent, NOT the branch literally named "default".
-    expect(result.environment.id).toBe(previewParent.id);
-    expect(result.environment.id).not.toBe(previewDefaultBranch.id);
+    // Pivots to the branch named "default", carrying the parent's api key.
+    expect(result.environment.id).toBe(previewDefaultBranch.id);
+    expect(result.environment.id).not.toBe(previewParent.id);
+    expect(result.environment.apiKey).toBe(previewParent.apiKey);
   });
 });
