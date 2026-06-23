@@ -10,7 +10,7 @@ import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRun
 import { DefaultQueueManager } from "../concerns/queues.server";
 import type { TriggerTaskRequest } from "../types";
 import { runStore } from "~/v3/runStore.server";
-import { shouldUseV2RunTable } from "~/v3/runTableV2.server";
+import { canMintV2Run } from "~/v3/runTableV2Status.server";
 import { env } from "~/env.server";
 
 export type TriggerFailedTaskRequest = {
@@ -76,7 +76,7 @@ export class TriggerFailedTaskService {
     // batch, create an ongoing cross-table edge on the failure path. Mirrors the
     // mint gate in triggerTask.server.ts.
     const failedRunFriendlyId = (
-      shouldUseV2RunTable(request.environment.organization.featureFlags, {
+      canMintV2Run(request.environment.organization.featureFlags, {
         nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1",
       })
         ? RunId.generateKsuid()
@@ -292,10 +292,9 @@ export class TriggerFailedTaskService {
         where: { id: opts.organizationId },
         select: { featureFlags: true },
       });
-      useV2RunTable = shouldUseV2RunTable(
-        (org?.featureFlags as Record<string, unknown>) ?? null,
-        { nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1" }
-      );
+      useV2RunTable = canMintV2Run((org?.featureFlags as Record<string, unknown>) ?? null, {
+        nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1",
+      });
     } catch {
       // Leave useV2RunTable=false (legacy id).
     }

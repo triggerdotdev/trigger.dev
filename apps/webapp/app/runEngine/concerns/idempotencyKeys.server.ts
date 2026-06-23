@@ -12,6 +12,7 @@ import { claimOrAwait } from "~/v3/mollifier/idempotencyClaim.server";
 import { makeResolveMollifierFlag } from "~/v3/mollifier/mollifierGate.server";
 import { runStore } from "~/v3/runStore.server";
 import { shouldUseV2RunTable } from "~/v3/runTableV2.server";
+import { v2RunsMayExist } from "~/v3/runTableV2Status.server";
 import type { TraceEventConcern, TriggerTaskRequest } from "../types";
 
 // In-memory per-org mollifier-enabled check, shared with `evaluateGate`
@@ -313,16 +314,16 @@ export class IdempotencyKeyConcern {
       nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1",
     });
 
-    // Scope the idempotency dedup read on whether ANY v2 run can exist in this
-    // deployment (the native master switch), NOT on whether this org currently
-    // mints v2. A run's table is fixed by its id format, so an org that was on
-    // v2 then flipped off still holds v2 runs an idempotency key can match
-    // (runTableV2.server.ts documents they stay readable); gating the read on
-    // orgUsesV2 would miss them and let a duplicate through. Until native is
-    // enabled no v2 run exists yet (minting requires it), so "legacy" is safe and
-    // skips the empty task_run_v2 query on the trigger hot path; once native is
-    // on, read both.
-    const anyV2RunsPossible = env.REALTIME_BACKEND_NATIVE_ENABLED === "1";
+    // Scope the idempotency dedup read on whether a v2 run could exist at all,
+    // NOT on whether this org currently mints v2. A run's table is fixed by its
+    // id format, so an org that was on v2 then flipped off still holds v2 runs an
+    // idempotency key can match; gating the read on orgUsesV2 would miss them and
+    // let a duplicate through. v2RunsMayExist is monotonic (native on now, OR
+    // task_run_v2 already has rows), so turning the native master switch off
+    // after v2 runs exist does NOT re-scope the read back to legacy and hide
+    // them. While no v2 run has ever existed it stays "legacy" and skips the
+    // empty task_run_v2 query on the trigger hot path.
+    const anyV2RunsPossible = v2RunsMayExist(env.REALTIME_BACKEND_NATIVE_ENABLED === "1");
 
     const existingRun = idempotencyKey
       ? await runStore.findRun(

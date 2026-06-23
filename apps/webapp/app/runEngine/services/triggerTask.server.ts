@@ -25,7 +25,7 @@ import { logger } from "~/services/logger.server";
 import { parseDelay } from "~/utils/delays";
 import { handleMetadataPacket } from "~/utils/packets";
 import { startSpan } from "~/v3/tracing.server";
-import { shouldUseV2RunTable } from "~/v3/runTableV2.server";
+import { canMintV2Run } from "~/v3/runTableV2Status.server";
 import type {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
@@ -159,7 +159,7 @@ export class RunEngineTriggerTaskService {
           // trigger hot path. Downstream routing is by id format only.
           const runFriendlyId =
             options?.runFriendlyId ??
-            (shouldUseV2RunTable(environment.organization.featureFlags, {
+            (canMintV2Run(environment.organization.featureFlags, {
               nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1",
             })
               ? RunId.generateKsuid()
