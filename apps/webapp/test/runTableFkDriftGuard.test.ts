@@ -41,17 +41,41 @@ describe("run-table FK-drift guard", () => {
 
   // A statement that ADDs a foreign key referencing `table`. Checked per
   // statement (split on ;) so FOREIGN KEY in one statement can't pair with
-  // REFERENCES in a later one.
+  // REFERENCES in a later one. The REFERENCES match is QUALIFICATION-AGNOSTIC:
+  // Prisma emits the schema-qualified form `REFERENCES "public"."TaskRun"` in
+  // every generated migration in this repo (including the implicit m2m join
+  // tables _WaitpointRunConnections / _TaskRunToTaskRunTag), so matching only
+  // the bare `"TaskRun"` would silently miss the real regeneration vector.
   const addsForeignKeyReferencing = (sql: string, table: string) =>
     sql
       .split(";")
       .some(
-        (stmt) => /FOREIGN KEY/i.test(stmt) && new RegExp(`REFERENCES\\s+"${table}"`, "i").test(stmt)
+        (stmt) =>
+          /FOREIGN KEY/i.test(stmt) &&
+          new RegExp(`REFERENCES\\s+(?:"[A-Za-z0-9_]+"\\.)?"${table}"`, "i").test(stmt)
       );
 
   it("finds the migrations directory and the FK-drop migration", () => {
     expect(migrationDirs.length).toBeGreaterThan(0);
     expect(migrationDirs).toContain(DROP_FKS_MIGRATION);
+  });
+
+  it("the matcher catches both bare and schema-qualified REFERENCES forms", () => {
+    // Prisma actually emits the qualified form; both must be caught so the
+    // qualified form can never regress undetected.
+    const qualifiedV2 =
+      'ALTER TABLE "TaskRunAttempt" ADD CONSTRAINT "TaskRunAttempt_taskRunId_v2_fkey" FOREIGN KEY ("taskRunId") REFERENCES "public"."task_run_v2"("id") ON DELETE CASCADE;';
+    const qualifiedM2M =
+      'ALTER TABLE "_WaitpointRunConnections" ADD CONSTRAINT "_WaitpointRunConnections_A_fkey" FOREIGN KEY ("A") REFERENCES "public"."TaskRun"("id") ON DELETE CASCADE;';
+    const bareTaskRun =
+      'ALTER TABLE "TaskRunDependency" ADD CONSTRAINT "x_fkey" FOREIGN KEY ("taskRunId") REFERENCES "TaskRun"("id");';
+    const unrelated =
+      'ALTER TABLE "Foo" ADD CONSTRAINT "y_fkey" FOREIGN KEY ("barId") REFERENCES "public"."Bar"("id");';
+    expect(addsForeignKeyReferencing(qualifiedV2, "task_run_v2")).toBe(true);
+    expect(addsForeignKeyReferencing(qualifiedM2M, "TaskRun")).toBe(true);
+    expect(addsForeignKeyReferencing(bareTaskRun, "TaskRun")).toBe(true);
+    expect(addsForeignKeyReferencing(unrelated, "TaskRun")).toBe(false);
+    expect(addsForeignKeyReferencing(unrelated, "task_run_v2")).toBe(false);
   });
 
   it("no migration EVER adds a foreign key referencing task_run_v2", () => {
