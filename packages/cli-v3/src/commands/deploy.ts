@@ -501,9 +501,8 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
   const version = deployment.version;
 
   const rawDeploymentLink = `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/deployments/${deployment.shortCode}`;
-  const rawTestLink = `${authorization.dashboardUrl}/projects/v3/${
-    resolvedConfig.project
-  }/test?environment=${options.env === "prod" ? "prod" : "stg"}`;
+  const rawTestLink = `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project
+    }/test?environment=${options.env === "prod" ? "prod" : "stg"}`;
 
   const deploymentLink = cliLink("View deployment", rawDeploymentLink);
   const testLink = cliLink("Test tasks", rawTestLink);
@@ -745,18 +744,16 @@ async function _deployCommand(dir: string, options: DeployCommandOptions) {
       TRIGGER_VERSION: version,
       TRIGGER_DEPLOYMENT_SHORT_CODE: deployment.shortCode,
       TRIGGER_DEPLOYMENT_URL: `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/deployments/${deployment.shortCode}`,
-      TRIGGER_TEST_URL: `${authorization.dashboardUrl}/projects/v3/${
-        resolvedConfig.project
-      }/test?environment=${options.env === "prod" ? "prod" : "stg"}`,
+      TRIGGER_TEST_URL: `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project
+        }/test?environment=${options.env === "prod" ? "prod" : "stg"}`,
     },
     outputs: {
       deploymentVersion: version,
       workerVersion: version,
       deploymentShortCode: deployment.shortCode,
       deploymentUrl: `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project}/deployments/${deployment.shortCode}`,
-      testUrl: `${authorization.dashboardUrl}/projects/v3/${
-        resolvedConfig.project
-      }/test?environment=${options.env === "prod" ? "prod" : "stg"}`,
+      testUrl: `${authorization.dashboardUrl}/projects/v3/${resolvedConfig.project
+        }/test?environment=${options.env === "prod" ? "prod" : "stg"}`,
       needsPromotion: options.skipPromotion ? "true" : "false",
     },
   });
@@ -767,11 +764,15 @@ export async function syncEnvVarsWithServer(
   projectRef: string,
   environmentSlug: string,
   envVars: Record<string, string>,
-  parentEnvVars?: Record<string, string>
+  parentEnvVars?: Record<string, string>,
+  secrets?: Record<string, boolean>,
+  parentSecrets?: Record<string, boolean>
 ) {
   return await apiClient.importEnvVars(projectRef, environmentSlug, {
     variables: envVars,
     parentVariables: parentEnvVars,
+    secrets,
+    parentSecrets,
     override: true,
   });
 }
@@ -799,8 +800,7 @@ async function failDeploy(
       checkLogsForErrors(logs);
 
       outro(
-        `${chalkError(`${prefix}:`)} ${
-          error.message
+        `${chalkError(`${prefix}:`)} ${error.message
         }. Full build logs have been saved to ${logPath}`
       );
 
