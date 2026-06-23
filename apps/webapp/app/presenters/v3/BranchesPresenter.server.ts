@@ -11,6 +11,7 @@ import { checkBranchLimit } from "~/services/upsertBranch.server";
 import { devPresence } from "./DevPresence.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import {
+    BranchableEnvironmentToken,
   type BranchableEnvironmentType,
   toBranchableEnvironmentType,
 } from "~/utils/branchableEnvironment";
@@ -103,7 +104,7 @@ export class BranchesPresenter {
   }: {
     userId: User["id"];
     projectSlug: Project["slug"];
-    env: "preview" | "development";
+    env: BranchableEnvironmentToken;
   } & Options) {
     const project = await this.#prismaClient.project.findFirst({
       select: {

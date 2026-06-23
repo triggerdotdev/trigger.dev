@@ -13,7 +13,7 @@ export type BranchableEnvironmentType = Extract<
 
 /**
  * The wire/form token for a branchable environment kind, as sent by the CLI and
- * dashboard forms (`"preview" | "development"`).
+ * dashboard forms.
  */
 export type BranchableEnvironmentToken = "preview" | "development";
 
