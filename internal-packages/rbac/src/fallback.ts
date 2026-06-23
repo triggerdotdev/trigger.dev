@@ -203,15 +203,9 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
         error: "x-trigger-branch header required for preview env",
       };
     }
-    // Pivot to the child env so downstream code operates on the branch
-    // (its own id, but the parent's apiKey/orgMember/organization/project —
-    // exactly what findEnvironmentByApiKey does for the legacy auth path).
-    //
     // The "default" sentinel is DEVELOPMENT-only: it maps to the dev root env
     // (which carries no branch), so we skip the pivot there. For PREVIEW,
-    // "default" is an ordinary branch name and must still pivot to its child —
-    // mirroring findEnvironmentByApiKey, which collapses the sentinel only for
-    // DEVELOPMENT and resolves a preview branch literally named "default".
+    // "default" is an ordinary branch name and must still pivot to its child.
     const isDevRootSentinel = env.type === "DEVELOPMENT" && isDefaultDevBranch(branchName);
     if (branchName !== null && !isDevRootSentinel) {
       if (env.type !== "PREVIEW" && env.type !== "DEVELOPMENT") {
@@ -221,7 +215,6 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
           error: "x-trigger-branch header can only be used with preview and dev envs",
         };
       }
-
       const child = env.childEnvironments?.[0];
       if (!child) {
         return { ok: false, status: 401, error: "No matching branch env" };

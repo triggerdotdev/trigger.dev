@@ -489,20 +489,20 @@ export function BranchesNoBranchableEnvironment({ showSelfServe }: { showSelfSer
 }
 
 export function BranchesNoBranches({
-  envType,
+  env,
   limits,
   canUpgrade,
   showSelfServe,
 }: {
-  envType: BranchableEnvironmentToken;
+  env: BranchableEnvironmentToken;
   limits: { used: number; limit: number };
   canUpgrade: boolean;
   showSelfServe: boolean;
 }) {
   const organization = useOrganization();
 
-  const envTextClassName = envType === "preview" ? "text-preview" : "text-dev";
-  const branchesLabel = envType === "preview" ? "preview branches" : "dev branches";
+  const envTextClassName = env === "preview" ? "text-preview" : "text-dev";
+  const branchesLabel = env === "preview" ? "preview branches" : "dev branches";
 
   if (limits.used >= limits.limit) {
     return (
@@ -553,7 +553,7 @@ export function BranchesNoBranches({
               New branch
             </Button>
           }
-          env={envType}
+          env={env}
         />
       }
     >

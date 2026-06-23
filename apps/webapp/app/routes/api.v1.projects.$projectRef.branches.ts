@@ -49,12 +49,12 @@ export async function action({ request, params }: ActionFunctionArgs) {
         authenticationResult.type === "organizationAccessToken"
           ? { id: authenticationResult.result.organizationId }
           : {
-            members: {
-              some: {
-                userId: authenticationResult.result.userId,
+              members: {
+                some: {
+                  userId: authenticationResult.result.userId,
+                },
               },
             },
-          },
     },
   });
   if (!project) {

@@ -126,6 +126,8 @@ export async function createProject(
       organization,
       project,
       type: "DEVELOPMENT",
+      // We set this true but no backfill (yet!?) so never used
+      // for dev environments
       isBranchableEnvironment: true,
       member,
     });

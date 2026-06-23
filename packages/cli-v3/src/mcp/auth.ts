@@ -191,3 +191,25 @@ async function askForLoginPermission(server: McpServer, authorizationCodeUrl: st
 
   return result.action === "accept" && result.content?.allowLogin;
 }
+
+export async function createApiClientWithPublicJWT(
+  auth: LoginResultOk,
+  projectRef: string,
+  envName: string,
+  scopes: string[],
+  previewBranch?: string
+) {
+  const cliApiClient = new CliApiClient(auth.auth.apiUrl, auth.auth.accessToken, previewBranch);
+
+  const jwt = await cliApiClient.getJWT(projectRef, envName, {
+    claims: {
+      scopes,
+    },
+  });
+
+  if (!jwt.success) {
+    return;
+  }
+
+  return new ApiClient(auth.auth.apiUrl, jwt.data.token);
+}

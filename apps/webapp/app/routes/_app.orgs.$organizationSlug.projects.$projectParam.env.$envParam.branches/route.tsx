@@ -290,7 +290,7 @@ export default function Page() {
           {!hasBranches ? (
             <MainCenteredContainer className="max-w-md">
               <BranchesNoBranches
-                envType="preview"
+                env="preview"
                 limits={limits}
                 canUpgrade={canUpgrade ?? false}
                 showSelfServe={showSelfServe}

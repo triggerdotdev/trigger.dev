@@ -95,21 +95,8 @@ export function toAuthenticated(
 export async function findEnvironmentByApiKey(
   apiKey: string,
   branchName: string | undefined,
-  // Defaults to the read replica; injectable so the resolution branching can be
-  // exercised against a real database in tests without a live $replica.
   tx: PrismaClientOrTransaction = $replica
 ): Promise<AuthenticatedEnvironment | null> {
-  // Normalize the requested branch once and key the child-env include, the
-  // grace-window include, and the resolution branches below off this single
-  // value — previously the include's truthy guard used the raw header while its
-  // `where` re-sanitized, so the two could disagree.
-  //
-  // We deliberately do NOT collapse the "default" sentinel here: that
-  // translation is environment-type-dependent (DEVELOPMENT only) and applied in
-  // the resolution branches below. For PREVIEW, a branch literally named
-  // "default" is a real branch and must resolve, so the include keeps it. (For a
-  // DEVELOPMENT "default" the include just matches no child — harmless — and the
-  // resolution returns the root dev env.)
   const branch = sanitizeBranchName(branchName) ?? undefined;
 
   const include = {

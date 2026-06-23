@@ -57,8 +57,8 @@ import { getProjectClient, upsertBranch } from "../utilities/session.js";
 import { getTmpDir } from "../utilities/tempDirectories.js";
 import { spinner } from "../utilities/windows.js";
 import { login } from "./login.js";
-import { updateTriggerPackages } from "./update.js";
 import { archivePreviewBranch } from "./preview.js";
+import { updateTriggerPackages } from "./update.js";
 
 const DeployCommandOptions = CommonCommandOptions.extend({
   dryRun: z.boolean().default(false),

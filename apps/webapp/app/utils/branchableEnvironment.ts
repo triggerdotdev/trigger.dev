@@ -6,7 +6,6 @@ type BranchableEnvironmentInput = {
   isBranchableEnvironment: boolean;
 };
 
-/** The two environment types that support branches. */
 export type BranchableEnvironmentType = Extract<
   RuntimeEnvironmentType,
   "PREVIEW" | "DEVELOPMENT"
@@ -14,21 +13,17 @@ export type BranchableEnvironmentType = Extract<
 
 /**
  * The wire/form token for a branchable environment kind, as sent by the CLI and
- * dashboard forms (`"preview" | "development"`). This is the public/wire contract;
- * internally we work in the canonical {@link RuntimeEnvironmentType} enum.
+ * dashboard forms (`"preview" | "development"`).
  */
 export type BranchableEnvironmentToken = "preview" | "development";
 
-/**
- * Convert the wire/form token to the canonical Prisma enum used internally. Call
- * this once at the boundary (route/service entry) so downstream code branches on
- * the enum rather than re-deriving `env === "preview" ? "PREVIEW" : "DEVELOPMENT"`
- * in a dozen places.
- */
 export function toBranchableEnvironmentType(
   env: BranchableEnvironmentToken
 ): BranchableEnvironmentType {
-  return env === "preview" ? "PREVIEW" : "DEVELOPMENT";
+  switch (env) {
+    case "preview": return "PREVIEW";
+    case "development": return "DEVELOPMENT";
+  }
 }
 
 /**

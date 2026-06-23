@@ -13,7 +13,7 @@ import { loadConfig } from "../config.js";
 import { createGitMeta } from "../utilities/gitMeta.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
-import { LoginResultOk } from "../utilities/session.js";
+import { getProjectClient, LoginResultOk } from "../utilities/session.js";
 import { spinner } from "../utilities/windows.js";
 import { verifyDirectory } from "./deploy.js";
 import { login } from "./login.js";
@@ -59,7 +59,7 @@ export function configurePreviewCommand(program: Command) {
   });
 }
 
-async function previewArchiveCommand(dir: string, options: unknown) {
+export async function previewArchiveCommand(dir: string, options: unknown) {
   return await wrapCommandAction(
     "previewArchiveCommand",
     PreviewCommandOptions,

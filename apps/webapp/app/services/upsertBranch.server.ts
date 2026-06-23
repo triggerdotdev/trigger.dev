@@ -92,7 +92,13 @@ export class UpsertBranchService {
       // Dev environments are scoped per org member, so a dev branch must inherit
       // its parent's orgMemberId. Preview parents have no orgMember (orgMemberId is null).
       if (!parentEnvironment) {
-        invariant(env === "preview", "No default dev runtime environment setup");
+        // This should never happen
+        if (env === "preview") {
+          return {
+            success: false as const,
+            error: "Error: No default dev runtime environment setup.",
+          };
+        }
         return {
           success: false as const,
           error: "You don't have preview branches setup. Go to the dashboard to enable them.",

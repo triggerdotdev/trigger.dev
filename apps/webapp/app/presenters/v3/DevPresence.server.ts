@@ -38,8 +38,6 @@ export class DevPresence {
       const recentKey = this.getRecentKey(userId, projectId);
       const now = new Date();
       const threeDaysAgo = subDays(now, RECENCY_DAYS);
-      // Run as a single MULTI/EXEC transaction so the set can never be left
-      // without a TTL if the process dies mid-sequence (expire is last).
       await this.redis
         .multi()
         .zadd(recentKey, now.getTime(), environmentId)

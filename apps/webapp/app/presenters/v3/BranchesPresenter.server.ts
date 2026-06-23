@@ -271,8 +271,6 @@ export async function hydrateEnvsWithActivity<
 ): Promise<Array<T & { lastActivity: Date | undefined; isConnected: boolean | undefined }>> {
   const recentDevBranchIds = await devPresence.getRecentBranchIds(userId, projectId);
 
-  // Resolve presence for all recently-active dev branches in a single MGET
-  // round trip instead of one GET per branch.
   const devEnvIds = environments
     .filter((env) => env.type === "DEVELOPMENT" && recentDevBranchIds.has(env.id))
     .map((env) => env.id);

@@ -64,11 +64,8 @@ const DevCommandOptions = CommonCommandOptions.extend({
 export type DevCommandOptions = z.infer<typeof DevCommandOptions>;
 
 export function configureDevCommand(program: Command) {
-  // `dev` is a pure container: it owns no options and no action of its own. The
-  // dev session lives in the `start` default subcommand (so a bare `trigger dev`
-  // still runs it), and `archive` is a sibling. Keeping the parent option-free
-  // means each subcommand owns its own `--branch` with no inherited-option
-  // shadowing between them.
+  // `dev` is the root command that defaults to the `start` subcommand,
+  // maintains existing behaviour for `trigger dev` but `trigger dev --help` a bit different
   const devBase = program.command("dev").description("Run your Trigger.dev tasks locally");
 
   commonOptions(

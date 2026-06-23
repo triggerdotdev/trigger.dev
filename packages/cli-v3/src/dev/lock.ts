@@ -11,9 +11,7 @@ const LOCK_FILE_NAME = "dev.lock";
 
 /**
  * Builds the lock file name for a given branch. The default branch keeps the
- * original `dev.lock` name (backwards compatible), while branches get their own
- * lock (e.g. `dev.feature-foo.lock`) so concurrent dev sessions on different
- * branches don't kill each other.
+ * original `dev.lock` name (backwards compatible).
  */
 function lockFileName(branch?: string) {
   const safeBranch = devBranchPathSegment(branch);

@@ -232,8 +232,8 @@ function Branches({
     branchEnvironments.length === 0
       ? "no-branches"
       : activeBranches.length === 0
-        ? "no-active-branches"
-        : "has-branches";
+      ? "no-active-branches"
+      : "has-branches";
 
   const currentBranchIsArchived = environment.archivedAt !== null;
 
