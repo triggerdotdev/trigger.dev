@@ -20,8 +20,8 @@ import {
   CheckpointClient,
   isKubernetesEnvironment,
 } from "@trigger.dev/core/v3/serverOnly";
-import { createK8sApi } from "./clients/kubernetes.js";
-import { collectDefaultMetrics, Histogram } from "prom-client";
+import { createK8sApi, createApiserverMetricsFetcher } from "./clients/kubernetes.js";
+import { collectDefaultMetrics, Gauge, Histogram } from "prom-client";
 import { register } from "./metrics.js";
 import { PodCleaner } from "./services/podCleaner.js";
 import { FailedPodHandler } from "./services/failedPodHandler.js";
@@ -33,9 +33,13 @@ import {
 } from "./services/warmStartVerificationService.js";
 import { extractTraceparent, getRestoreRunnerId } from "./util.js";
 import { Redis } from "ioredis";
-import { BackpressureMonitor } from "./backpressure/backpressureMonitor.js";
+import {
+  BackpressureMonitor,
+  type BackpressureSignalSource,
+} from "./backpressure/backpressureMonitor.js";
 import { RedisBackpressureSignalSource } from "./backpressure/redisBackpressureSignalSource.js";
 import { BackpressureMetrics } from "./backpressure/backpressureMetrics.js";
+import { K8sPodCountSignalSource } from "./backpressure/k8sPodCountSignalSource.js";
 import {
   fromContext,
   recordPhaseSince,
@@ -214,38 +218,68 @@ class ManagedSupervisor {
     }
 
     if (env.TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED) {
-      this.backpressureRedis = new Redis({
-        host: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST,
-        port: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PORT,
-        username: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_USERNAME,
-        password: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PASSWORD,
-        ...(env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_TLS_DISABLED ? {} : { tls: {} }),
-        maxRetriesPerRequest: null,
-      });
-      this.backpressureRedis.on("error", (error) =>
-        this.logger.error("Backpressure redis error", { error: error.message })
-      );
+      let source: BackpressureSignalSource;
+
+      if (env.TRIGGER_DEQUEUE_BACKPRESSURE_SOURCE === "k8s-pod-count") {
+        if (
+          env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE >=
+          env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE
+        ) {
+          throw new Error(
+            "TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE must be less than TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE"
+          );
+        }
+        const podCountGauge = new Gauge({
+          name: "supervisor_cluster_pod_count",
+          help: "Total pod objects stored in the cluster, scraped for backpressure",
+          registers: [register],
+        });
+        source = new K8sPodCountSignalSource({
+          fetchMetrics: createApiserverMetricsFetcher(),
+          engageThreshold: env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE,
+          releaseThreshold: env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE,
+          reportPodCount: (count) => podCountGauge.set(count),
+        });
+        this.logger.log("🛑 Dequeue backpressure enabled (pod-count source)", {
+          engage: env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE,
+          release: env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE,
+          refreshIntervalMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_REFRESH_MS,
+          dryRun: env.TRIGGER_DEQUEUE_BACKPRESSURE_DRY_RUN,
+        });
+      } else {
+        this.backpressureRedis = new Redis({
+          host: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST,
+          port: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PORT,
+          username: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_USERNAME,
+          password: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PASSWORD,
+          ...(env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_TLS_DISABLED ? {} : { tls: {} }),
+          maxRetriesPerRequest: null,
+        });
+        this.backpressureRedis.on("error", (error) =>
+          this.logger.error("Backpressure redis error", { error: error.message })
+        );
+        source = new RedisBackpressureSignalSource(
+          this.backpressureRedis,
+          env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_KEY
+        );
+        this.logger.log("🛑 Dequeue backpressure enabled (redis source)", {
+          key: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_KEY,
+          refreshIntervalMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_REFRESH_MS,
+          maxVerdictAgeMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_MAX_VERDICT_AGE_MS,
+          rampMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_RAMP_MS,
+          dryRun: env.TRIGGER_DEQUEUE_BACKPRESSURE_DRY_RUN,
+        });
+      }
 
       this.backpressureMonitor = new BackpressureMonitor({
         enabled: true,
-        source: new RedisBackpressureSignalSource(
-          this.backpressureRedis,
-          env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_KEY
-        ),
+        source,
         refreshIntervalMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_REFRESH_MS,
         maxVerdictAgeMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_MAX_VERDICT_AGE_MS,
         rampMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_RAMP_MS,
         dryRun: env.TRIGGER_DEQUEUE_BACKPRESSURE_DRY_RUN,
         logger: this.logger,
         metrics: new BackpressureMetrics({ register }),
-      });
-
-      this.logger.log("🛑 Dequeue backpressure enabled", {
-        key: env.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_KEY,
-        refreshIntervalMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_REFRESH_MS,
-        maxVerdictAgeMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_MAX_VERDICT_AGE_MS,
-        rampMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_RAMP_MS,
-        dryRun: env.TRIGGER_DEQUEUE_BACKPRESSURE_DRY_RUN,
       });
     }
 
