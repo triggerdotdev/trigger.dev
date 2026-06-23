@@ -38,10 +38,15 @@ export class DevPresence {
       const recentKey = this.getRecentKey(userId, projectId);
       const now = new Date();
       const threeDaysAgo = subDays(now, RECENCY_DAYS);
-      await this.redis.zadd(recentKey, now.getTime(), environmentId);
-      await this.redis.zremrangebyscore(recentKey, 0, threeDaysAgo.getTime());
-      await this.redis.zremrangebyrank(recentKey, 0, -51);
-      await this.redis.expire(recentKey, DEV_RECENT_TTL);
+      // Run as a single MULTI/EXEC transaction so the set can never be left
+      // without a TTL if the process dies mid-sequence (expire is last).
+      await this.redis
+        .multi()
+        .zadd(recentKey, now.getTime(), environmentId)
+        .zremrangebyscore(recentKey, 0, threeDaysAgo.getTime())
+        .zremrangebyrank(recentKey, 0, -51)
+        .expire(recentKey, DEV_RECENT_TTL)
+        .exec();
     }
   }
 
