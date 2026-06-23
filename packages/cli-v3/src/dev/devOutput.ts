@@ -1,4 +1,5 @@
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import { DEFAULT_DEV_BRANCH } from "@trigger.dev/core/v3/utils/gitBranch";
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import {
   createTaskMetadataFailedErrorStack,
@@ -31,7 +32,7 @@ import { analyzeWorker } from "../utilities/analyze.js";
 
 export type DevOutputOptions = {
   name: string | undefined;
-  branch: string;
+  branch?: string;
   dashboardUrl: string;
   config: ResolvedConfig;
   args: DevCommandOptions;
@@ -91,7 +92,7 @@ export function startDevOutput(options: DevOutputOptions) {
     const runsLink = chalkLink(cliLink("View runs", runsUrl));
 
     const runtime = chalkGrey(`[${worker.build.runtime}]`);
-    const workerStarted = chalkGrey(`Local worker ready on branch: ${branch}`);
+    const workerStarted = chalkGrey(`Local worker ready on branch: ${branch ?? DEFAULT_DEV_BRANCH}`);
     const workerVersion = chalkWorker(worker.serverWorker!.version);
 
     logParts.push(workerStarted, runtime, arrow, workerVersion);

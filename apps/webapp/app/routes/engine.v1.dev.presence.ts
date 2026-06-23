@@ -1,5 +1,4 @@
 import { json } from "@remix-run/server-runtime";
-import invariant from "tiny-invariant";
 import { env } from "~/env.server";
 import { devPresence } from "~/presenters/v3/DevPresence.server";
 import { authenticateApiRequestWithFailure } from "~/services/apiAuth.server";
@@ -22,7 +21,9 @@ export const loader = createSSELoader({
     const projectId = authentication.environment.projectId;
     const userId = authentication.environment.orgMember?.userId;
 
-    invariant(userId, "No userId on dev environment");
+    if (!userId) {
+      throw json({ error: "Not a dev environment" }, { status: 400 });
+    }
 
     const ttl = env.DEV_PRESENCE_TTL_MS / 1000;
 

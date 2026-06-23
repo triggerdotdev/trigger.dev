@@ -33,7 +33,7 @@ import { join } from "node:path";
 
 export type DevSessionOptions = {
   name: string | undefined;
-  branch: string;
+  branch?: string;
   dashboardUrl: string;
   initialMode: "local";
   showInteractiveDevSession: boolean | undefined;

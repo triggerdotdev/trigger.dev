@@ -99,12 +99,25 @@ export async function findEnvironmentByApiKey(
   // exercised against a real database in tests without a live $replica.
   tx: PrismaClientOrTransaction = $replica
 ): Promise<AuthenticatedEnvironment | null> {
+  // Normalize the requested branch once and key the child-env include, the
+  // grace-window include, and the resolution branches below off this single
+  // value — previously the include's truthy guard used the raw header while its
+  // `where` re-sanitized, so the two could disagree.
+  //
+  // We deliberately do NOT collapse the "default" sentinel here: that
+  // translation is environment-type-dependent (DEVELOPMENT only) and applied in
+  // the resolution branches below. For PREVIEW, a branch literally named
+  // "default" is a real branch and must resolve, so the include keeps it. (For a
+  // DEVELOPMENT "default" the include just matches no child — harmless — and the
+  // resolution returns the root dev env.)
+  const branch = sanitizeBranchName(branchName) ?? undefined;
+
   const include = {
     ...authIncludeBase,
-    childEnvironments: branchName
+    childEnvironments: branch
       ? {
         where: {
-          branchName: sanitizeBranchName(branchName),
+          branchName: branch,
           archivedAt: null,
         },
       }
@@ -143,7 +156,7 @@ export async function findEnvironmentByApiKey(
   }
 
   if (environment.type === "PREVIEW") {
-    if (!branchName) {
+    if (!branch) {
       logger.warn("findEnvironmentByApiKey(): Preview env with no branch name provided", {
         environmentId: environment.id,
       });
@@ -167,7 +180,7 @@ export async function findEnvironmentByApiKey(
   }
 
   // If there is a named DEV branch (other than default), return it
-  if (environment.type === "DEVELOPMENT" && branchName !== undefined && !isDefaultDevBranch(branchName)) {
+  if (environment.type === "DEVELOPMENT" && branch !== undefined && !isDefaultDevBranch(branch)) {
     const childEnvironment = environment.childEnvironments.at(0);
 
     if (childEnvironment) {

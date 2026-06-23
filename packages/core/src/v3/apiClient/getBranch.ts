@@ -1,6 +1,6 @@
 import { GitMeta } from "../schemas/index.js";
 import { getEnvVar } from "../utils/getEnv.js";
-import { DEFAULT_DEV_BRANCH } from "../utils/gitBranch.js";
+import { isDefaultDevBranch } from "../utils/gitBranch.js";
 
 export function getBranch({
   specified,
@@ -37,17 +37,15 @@ export function getDevBranch({
   specified,
 }: {
   specified?: string;
-}): string {
-  if (specified) {
-    return specified;
+}): string | undefined {
+  // For development we don't look at git/Vercel — only the flag and our env var.
+  const branch = specified ?? getEnvVar("TRIGGER_DEV_BRANCH");
+
+  // No branch and the "default" sentinel both mean the root dev env, which
+  // carries no branch. Collapse to undefined so callers send no branch
+  if (!branch || isDefaultDevBranch(branch)) {
+    return undefined;
   }
 
-  // not specified, so detect our variable from process.env
-  const envVar = getEnvVar("TRIGGER_DEV_BRANCH");
-  if (envVar) {
-    return envVar;
-  }
-
-  // For development we don't look at git/Vercel
-  return DEFAULT_DEV_BRANCH;
+  return branch;
 }

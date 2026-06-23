@@ -33,7 +33,6 @@ import { tryCatch } from "@trigger.dev/core/utils";
 import { VERSION } from "@trigger.dev/core";
 import { initiateSkillsInstallWizard } from "./skills.js";
 import { getDevBranch } from "@trigger.dev/core/v3";
-import { isDefaultDevBranch } from "@trigger.dev/core/v3/utils/gitBranch";
 
 const DevArchiveCommandOptions = CommonCommandOptions.extend({
   branch: z.string().optional(),
@@ -303,7 +302,7 @@ async function startDev(options: StartDevOptions) {
 
     logger.debug("Initial config", watcher.config);
 
-    if (!isDefaultDevBranch(branch)) {
+    if (branch) {
       const upsertResult = await apiClient.upsertBranch(watcher.config.project, {
         branch,
         env: "development",
@@ -414,9 +413,9 @@ async function archiveDevBranchCommand(dir: string, options: DevArchiveCommandOp
 
   const branch = getDevBranch({ specified: options.branch });
 
-  // getDevBranch falls back to the "default" sentinel (the root dev env), which
-  // can't be archived. Require the user to name a real branch instead.
-  if (isDefaultDevBranch(branch)) {
+  // getDevBranch returns undefined for the default branch (the root dev env),
+  // which can't be archived. Require the user to name a real branch instead.
+  if (!branch) {
     throw new Error(
       "You need to specify which dev branch to archive (the default branch can't be archived). Use --branch <branch>."
     );

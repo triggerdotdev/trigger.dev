@@ -320,26 +320,26 @@ function getApiKeyResult(apiKey: string): {
   const type = isPublicApiKey(apiKey)
     ? "PUBLIC"
     : isSecretApiKey(apiKey)
-    ? "PRIVATE"
-    : isPublicJWT(apiKey)
-    ? "PUBLIC_JWT"
-    : "PRIVATE"; // Fallback to private key
+      ? "PRIVATE"
+      : isPublicJWT(apiKey)
+        ? "PUBLIC_JWT"
+        : "PRIVATE"; // Fallback to private key
   return { apiKey, type };
 }
 
 export type AuthenticationResult =
   | {
-      type: "personalAccessToken";
-      result: PersonalAccessTokenAuthenticationResult;
-    }
+    type: "personalAccessToken";
+    result: PersonalAccessTokenAuthenticationResult;
+  }
   | {
-      type: "organizationAccessToken";
-      result: OrganizationAccessTokenAuthenticationResult;
-    }
+    type: "organizationAccessToken";
+    result: OrganizationAccessTokenAuthenticationResult;
+  }
   | {
-      type: "apiKey";
-      result: ApiAuthenticationResult;
-    };
+    type: "apiKey";
+    result: ApiAuthenticationResult;
+  };
 
 type AuthenticationMethod = "personalAccessToken" | "organizationAccessToken" | "apiKey";
 
@@ -356,11 +356,11 @@ type FilteredAuthenticationResult<
   T extends AllowedAuthenticationMethods = AllowedAuthenticationMethods
 > =
   | (T["personalAccessToken"] extends true
-      ? Extract<AuthenticationResult, { type: "personalAccessToken" }>
-      : never)
+    ? Extract<AuthenticationResult, { type: "personalAccessToken" }>
+    : never)
   | (T["organizationAccessToken"] extends true
-      ? Extract<AuthenticationResult, { type: "organizationAccessToken" }>
-      : never)
+    ? Extract<AuthenticationResult, { type: "organizationAccessToken" }>
+    : never)
   | (T["apiKey"] extends true ? Extract<AuthenticationResult, { type: "apiKey" }> : never);
 
 /**
@@ -465,8 +465,10 @@ export async function authenticatedEnvironmentForAuthentication(
   // Normalize the requested branch once: sanitize it, then collapse the dev
   // `"default"` sentinel to "no branch" so it resolves to the root dev env
   // rather than a (non-existent) branch literally named "default".
+  // TODO this slug check is brittle
   const sanitizedBranch = sanitizeBranchName(branch);
-  const resolvedBranch = isDefaultDevBranch(sanitizedBranch) ? null : sanitizedBranch;
+  const resolvedBranch =
+    slug === "dev" && isDefaultDevBranch(sanitizedBranch) ? null : sanitizedBranch;
 
   switch (auth.type) {
     case "apiKey": {
@@ -484,14 +486,21 @@ export async function authenticatedEnvironmentForAuthentication(
         );
       }
 
-      if (
-        auth.result.environment.slug !== slug &&
-        auth.result.environment.branchName !== resolvedBranch
-      ) {
+      if (auth.result.environment.slug !== slug) {
         throw json(
           {
             error:
               "Invalid environment slug for this API key. Make sure you are using an API key associated with that environment.",
+          },
+          { status: 400 }
+        );
+      }
+
+      if (auth.result.environment.branchName !== resolvedBranch) {
+        throw json(
+          {
+            error:
+              "Invalid environment branch for this API key. Make sure you are using an API key associated with that environment.",
           },
           { status: 400 }
         );
@@ -523,10 +532,10 @@ export async function authenticatedEnvironmentForAuthentication(
             slug: slug,
             ...(slug === "dev"
               ? {
-                  orgMember: {
-                    userId: user.id,
-                  },
-                }
+                orgMember: {
+                  userId: user.id,
+                },
+              }
               : {}),
           },
           include: authIncludeBase,
