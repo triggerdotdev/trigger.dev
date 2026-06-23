@@ -109,7 +109,7 @@ export class OrganizationsPresenter {
     const environment = this.#getEnvironment({
       user,
       projectId: fullProject.id,
-      environments: fullProject.environments,
+      environments,
       environmentSlug,
     });
 

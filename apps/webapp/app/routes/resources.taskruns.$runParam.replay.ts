@@ -146,6 +146,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
             type: true,
             slug: true,
             branchName: true,
+            parentEnvironmentId: true,
             orgMember: { select: { user: true } },
           },
           where: {

@@ -23,6 +23,7 @@ export const loader = createSSELoader({
         },
         project: {
           slug: projectParam,
+          organization: { slug: organizationSlug },
         },
       },
     });

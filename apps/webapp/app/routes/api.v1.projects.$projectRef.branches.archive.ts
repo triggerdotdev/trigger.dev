@@ -73,7 +73,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           },
       // Dev branches are per-org-member: only the owner may archive their own.
       ...(authenticationResult.type !== "organizationAccessToken" &&
-      environmentType === "DEVELOPMENT"
+        environmentType === "DEVELOPMENT"
         ? { orgMember: { userId: authenticationResult.result.userId } }
         : {}),
       project: {
@@ -88,7 +88,21 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Branch not found" }, { status: 404 });
   }
 
-  const environment = environments.find((env) => env.archivedAt === null);
+  const activeEnvironments = environments.filter((env) => env.archivedAt === null);
+
+  if (
+    authenticationResult.type === "organizationAccessToken" &&
+    environmentType === "DEVELOPMENT" &&
+    activeEnvironments.length > 1
+  ) {
+    return json(
+      { error: "Branch name is ambiguous for development environments. Use a personal access token scoped to the branch owner." },
+      { status: 409 }
+    );
+  }
+
+  const environment = activeEnvironments[0];
+
   if (!environment) {
     return json({ error: "Branch already archived" }, { status: 400 });
   }
