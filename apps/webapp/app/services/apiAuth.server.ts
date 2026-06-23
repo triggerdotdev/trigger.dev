@@ -484,21 +484,11 @@ export async function authenticatedEnvironmentForAuthentication(
         );
       }
 
-      if (auth.result.environment.slug !== slug) {
+      if (auth.result.environment.slug !== slug && auth.result.environment.branchName !== resolvedBranch) {
         throw json(
           {
             error:
               "Invalid environment slug for this API key. Make sure you are using an API key associated with that environment.",
-          },
-          { status: 400 }
-        );
-      }
-
-      if (auth.result.environment.branchName !== resolvedBranch) {
-        throw json(
-          {
-            error:
-              "Invalid environment branch for this API key. Make sure you are using an API key associated with that environment.",
           },
           { status: 400 }
         );

@@ -93,7 +93,7 @@ export class UpsertBranchService {
       // its parent's orgMemberId. Preview parents have no orgMember (orgMemberId is null).
       if (!parentEnvironment) {
         // This should never happen
-        if (env === "preview") {
+        if (env === "development") {
           return {
             success: false as const,
             error: "Error: No default dev runtime environment setup.",

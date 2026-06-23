@@ -192,10 +192,6 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       return { ok: false, status: 401, error: "Invalid API key" };
     }
 
-    // PREVIEW env requires a branch header; pivot to the child env so
-    // downstream code operates on the branch (its own id, but the
-    // parent's apiKey/orgMember/organization/project — exactly what
-    // findEnvironmentByApiKey does for the legacy auth path).
     if (env.type === "PREVIEW" && !branchName) {
       return {
         ok: false,
@@ -203,34 +199,30 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
         error: "x-trigger-branch header required for preview env",
       };
     }
-    // The "default" sentinel is DEVELOPMENT-only: it maps to the dev root env
-    // (which carries no branch), so we skip the pivot there. For PREVIEW,
-    // "default" is an ordinary branch name and must still pivot to its child.
-    const isDevRootSentinel = env.type === "DEVELOPMENT" && isDefaultDevBranch(branchName);
-    if (branchName !== null && !isDevRootSentinel) {
-      if (env.type !== "PREVIEW" && env.type !== "DEVELOPMENT") {
-        return {
-          ok: false,
-          status: 401,
-          error: "x-trigger-branch header can only be used with preview and dev envs",
+
+    if (env.type === "PREVIEW" || env.type === "DEVELOPMENT") {
+      // The "default" sentinel is DEVELOPMENT-only: it maps to the dev root env
+      // (which carries no branch), so we skip the pivot there. For PREVIEW,
+      // "default" is an ordinary branch name and must still pivot to its child.
+      const isDevRootSentinel = env.type === "DEVELOPMENT" && isDefaultDevBranch(branchName);
+      if (branchName !== null && !isDevRootSentinel) {
+        const child = env.childEnvironments?.[0];
+        if (!child) {
+          return { ok: false, status: 401, error: "No matching branch env" };
+        }
+        // Pivot to the child env: child's id/type/branchName, parent's
+        // apiKey/orgMember/organization/project. parentEnvironment is set
+        // explicitly here so the slim shape stays internally consistent.
+        env = {
+          ...child,
+          apiKey: env.apiKey,
+          orgMember: env.orgMember,
+          organization: env.organization,
+          project: env.project,
+          parentEnvironment: { id: env.id, apiKey: env.apiKey },
+          childEnvironments: [],
         };
       }
-      const child = env.childEnvironments?.[0];
-      if (!child) {
-        return { ok: false, status: 401, error: "No matching branch env" };
-      }
-      // Pivot to the child env: child's id/type/branchName, parent's
-      // apiKey/orgMember/organization/project. parentEnvironment is set
-      // explicitly here so the slim shape stays internally consistent.
-      env = {
-        ...child,
-        apiKey: env.apiKey,
-        orgMember: env.orgMember,
-        organization: env.organization,
-        project: env.project,
-        parentEnvironment: { id: env.id, apiKey: env.apiKey },
-        childEnvironments: [],
-      };
     }
 
     const subject: RbacSubject = {

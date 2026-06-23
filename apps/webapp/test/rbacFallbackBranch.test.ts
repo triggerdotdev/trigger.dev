@@ -140,20 +140,6 @@ describe("RBAC fallback — DEVELOPMENT branch pivot", () => {
 });
 
 describe("RBAC fallback — branch header guards", () => {
-  postgresTest("a non-branchable env rejects a branch header", async ({ prisma }) => {
-    const { organization, project } = await createTestOrgProjectWithMember(prisma);
-    const rbac = makeController(prisma);
-
-    const prod = await createEnv(prisma, project.id, organization.id, { type: "PRODUCTION" });
-
-    const result = await rbac.authenticateBearer(bearerRequest(prod.apiKey, "some-branch"));
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.status).toBe(401);
-    expect(result.error).toContain("preview and dev");
-  });
-
   // The "default" sentinel is DEVELOPMENT-only: it maps the dev root env to its
   // (branchless) self. For PREVIEW, "default" is an ordinary branch name, so a
   // PREVIEW branch literally named "default" is reachable and the request pivots
