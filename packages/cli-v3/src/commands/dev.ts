@@ -266,7 +266,8 @@ async function startDev(options: StartDevOptions) {
       displayedUpdateMessage = await updateTriggerPackages(options.cwd, { ...options }, true, true);
     }
 
-    const branch = getDevBranch({ specified: options.branch });
+    const envVars = resolveLocalEnvVars(options.envFile);
+    const branch = getDevBranch({ specified: options.branch ?? envVars.TRIGGER_DEV_BRANCH });
 
     const removeLockFile = await createLockFile(options.cwd, branch);
 
@@ -274,7 +275,6 @@ async function startDev(options: StartDevOptions) {
 
     printDevBanner(displayedUpdateMessage);
 
-    const envVars = resolveLocalEnvVars(options.envFile);
 
     if (envVars.TRIGGER_PROJECT_REF) {
       logger.debug("Using project ref from env", { ref: envVars.TRIGGER_PROJECT_REF });
