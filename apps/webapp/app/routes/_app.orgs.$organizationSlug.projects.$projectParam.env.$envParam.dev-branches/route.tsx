@@ -202,7 +202,7 @@ export default function Page() {
                                   className={cn("size-4", isSelected && "text-dev")}
                                 />
                                 <CopyableText
-                                  value={branch.branchName ?? ""}
+                                  value={branch.branchName}
                                   className={cn(isSelected && "text-dev")}
                                 />
                                 {isSelected && <Badge variant="extra-small">Current</Badge>}

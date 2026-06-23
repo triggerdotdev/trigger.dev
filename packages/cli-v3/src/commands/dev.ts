@@ -241,6 +241,7 @@ async function startDev(options: StartDevOptions) {
   logger.debug("Starting dev CLI", { options });
 
   let watcher: Awaited<ReturnType<typeof watchConfig>> | undefined;
+  let removeLockFile: (() => void) | undefined;
 
   try {
     if (options.logLevel) {
@@ -269,7 +270,7 @@ async function startDev(options: StartDevOptions) {
     const envVars = resolveLocalEnvVars(options.envFile);
     const branch = getDevBranch({ specified: options.branch ?? envVars.TRIGGER_DEV_BRANCH });
 
-    const removeLockFile = await createLockFile(options.cwd, branch);
+    removeLockFile = await createLockFile(options.cwd, branch);
 
     let devInstance: DevSessionInstance | undefined;
 
@@ -348,11 +349,12 @@ async function startDev(options: StartDevOptions) {
       stop: async () => {
         devInstance?.stop();
         await watcher?.stop();
-        removeLockFile();
+        removeLockFile?.();
       },
       waitUntilExit,
     };
   } catch (error) {
+    removeLockFile?.();
     await watcher?.stop();
     throw error;
   }

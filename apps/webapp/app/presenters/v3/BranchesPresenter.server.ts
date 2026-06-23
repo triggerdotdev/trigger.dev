@@ -138,7 +138,7 @@ export class BranchesPresenter {
         // The branchable parent is the root env (no parent). For dev that's
         // derivable; for preview we trust the isBranchableEnvironment column.
         ...(envType === "DEVELOPMENT"
-          ? { parentEnvironmentId: null }
+          ? { parentEnvironmentId: null, orgMember: { userId } }
           : { isBranchableEnvironment: true }),
       },
     });

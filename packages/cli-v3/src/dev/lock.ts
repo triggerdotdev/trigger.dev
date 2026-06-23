@@ -5,6 +5,7 @@ import { devBranchPathSegment } from "../utilities/devBranch.js";
 import { logger } from "../utilities/logger.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { existsSync, unlinkSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { onExit } from "signal-exit";
 
 const LOCK_FILE_NAME = "dev.lock";
@@ -12,10 +13,13 @@ const LOCK_FILE_NAME = "dev.lock";
 /**
  * Builds the lock file name for a given branch. The default branch keeps the
  * original `dev.lock` name (backwards compatible).
+ * Throws in a SHA1 of the non-sanitized filename to prevent collision
  */
 function lockFileName(branch?: string) {
   const safeBranch = devBranchPathSegment(branch);
-  return safeBranch ? `dev.${safeBranch}.lock` : LOCK_FILE_NAME;
+  if (!safeBranch || !branch) return LOCK_FILE_NAME;
+  const branchHash = createHash("sha1").update(branch).digest("hex").slice(0, 8);
+  return `dev.${safeBranch}.${branchHash}.lock`;
 }
 
 export async function createLockFile(cwd: string, branch?: string) {

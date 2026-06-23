@@ -209,7 +209,7 @@ function formatSize(bytes: number): string {
 function normalizePath(path: string): string {
   // Remove .trigger/tmp/build-<hash>/ prefix (tmp root may be branch-scoped,
   // e.g. .trigger/tmp-feature-foo/build-<hash>/)
-  return path.replace(/(^|\/)\.trigger\/tmp(-[^/]+)?\/build-[^/]+\//, "");
+  return path.replace(/(^|\/)\.trigger\/tmp(-[^/]+)?\/build-[^/]+\//, "$1");
 }
 
 interface BundleTreeData {

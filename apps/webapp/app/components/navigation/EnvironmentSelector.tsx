@@ -235,7 +235,12 @@ function Branches({
       ? "no-active-branches"
       : "has-branches";
 
-  const currentBranchIsArchived = environment.archivedAt !== null;
+  // Only surface the active environment's archived-branch item in the submenu it
+  // actually belongs to. Both Development and Preview render this component, so
+  // without the parent check an archived dev branch would leak into the Preview
+  // submenu (and vice-versa).
+  const currentBranchIsArchived =
+    environment.archivedAt !== null && environment.parentEnvironmentId === parentEnvironment.id;
 
   const envTextClassName = environmentTextClassName(parentEnvironment);
 
