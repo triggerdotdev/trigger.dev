@@ -95,6 +95,45 @@ export function validatePartialFeatureFlags(values: Record<string, unknown>) {
   return FeatureFlagCatalogSchema.partial().safeParse(values);
 }
 
+/**
+ * Cross-field invariant on a RESOLVED org flag set: `runTableV2` may only be on
+ * when the org's `realtimeBackend` is "native".
+ *
+ * New v2 runs mint a KSUID id (routing them to task_run_v2) and are only
+ * observable in realtime on the native backend; Electric is bound to
+ * public."TaskRun", so a v2 run minted while the org is still on Electric is
+ * invisible in realtime. `shouldUseV2RunTable` already enforces this at read
+ * time, but this guard blocks the dangerous combination at WRITE time so it can
+ * never be configured, including the enable-race where `runTableV2` is flipped
+ * on before `realtimeBackend=native` has propagated past the realtime cache.
+ *
+ * Pass the FINAL resolved set (after any merge) so it also rejects turning
+ * `realtimeBackend` off/to "electric" while `runTableV2` is still on.
+ */
+export function validateFeatureFlagInvariants(
+  flags: Record<string, unknown>
+): { ok: true } | { ok: false; error: string } {
+  const runTableV2 = FeatureFlagCatalog[FEATURE_FLAG.runTableV2].safeParse(
+    flags[FEATURE_FLAG.runTableV2]
+  );
+  if (!(runTableV2.success && runTableV2.data === true)) {
+    return { ok: true };
+  }
+
+  const backend = FeatureFlagCatalog[FEATURE_FLAG.realtimeBackend].safeParse(
+    flags[FEATURE_FLAG.realtimeBackend]
+  );
+  if (backend.success && backend.data === "native") {
+    return { ok: true };
+  }
+
+  return {
+    ok: false,
+    error:
+      'runTableV2 can only be enabled when realtimeBackend is "native". Set realtimeBackend="native" first (and let it propagate past the realtime cache), then enable runTableV2.',
+  };
+}
+
 // Utility types for catalog-driven UI rendering
 export type FlagControlType =
   | { type: "boolean" }
