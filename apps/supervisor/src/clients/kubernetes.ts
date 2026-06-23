@@ -53,3 +53,25 @@ function getKubeConfig() {
 }
 
 export { k8s };
+
+/**
+ * Builds a function that scrapes the apiserver's Prometheus /metrics endpoint.
+ * One lightweight aggregate read - not a pod listing. Requires the service
+ * account to be granted GET on the /metrics non-resource URL.
+ */
+export function createApiserverMetricsFetcher(): () => Promise<string> {
+  const kubeConfig = getKubeConfig();
+
+  return async () => {
+    const cluster = kubeConfig.getCurrentCluster();
+    if (!cluster) {
+      throw new Error("no current cluster in kubeconfig");
+    }
+    const requestInit = await kubeConfig.applyToFetchOptions({ method: "GET" });
+    const response = await fetch(`${cluster.server}/metrics`, requestInit as unknown as RequestInit);
+    if (!response.ok) {
+      throw new Error(`apiserver /metrics scrape failed: ${response.status}`);
+    }
+    return response.text();
+  };
+}
