@@ -47,15 +47,6 @@ export class RunsBackfillerService {
       // different ranges. RunStore merges the two tables only on a time-based
       // key, so order by createdAt and tiebreak on id within a timestamp.
       const keyset = cursor ? decodeBackfillCursor(cursor) : undefined;
-      if (cursor && !keyset) {
-        // Legacy/corrupt cursor: ignore it and restart the window (idempotent
-        // re-backfill). Self-recovers a backfill in flight across the cursor
-        // format change instead of throwing on every batch.
-        this.logger.warn(
-          "RunsBackfillerService: unparsable backfill cursor, restarting from window start",
-          { cursor }
-        );
-      }
 
       const runs = await runStore.findRuns(
         {
@@ -131,19 +122,15 @@ export function encodeBackfillCursor(createdAt: Date, id: string): string {
   return `${createdAt.toISOString()}${BACKFILL_CURSOR_SEPARATOR}${id}`;
 }
 
-export function decodeBackfillCursor(cursor: string): { createdAt: Date; id: string } | undefined {
+export function decodeBackfillCursor(cursor: string): { createdAt: Date; id: string } {
   const separatorIndex = cursor.indexOf(BACKFILL_CURSOR_SEPARATOR);
   const createdAt = separatorIndex === -1 ? new Date(NaN) : new Date(cursor.slice(0, separatorIndex));
   const id = separatorIndex === -1 ? "" : cursor.slice(separatorIndex + 1);
 
-  // A cursor with no separator is the pre-(createdAt, id) format (a bare run id,
-  // e.g. a backfill that was in flight across this change), or otherwise corrupt.
-  // The old id-only keyset can't be translated to the new (createdAt, id) order,
-  // so return undefined and let the caller restart the window. Re-backfilling is
-  // idempotent (ClickHouse ReplacingMergeTree keyed by run id), so the only cost
-  // is redoing the already-done portion once.
   if (Number.isNaN(createdAt.getTime()) || id.length === 0) {
-    return undefined;
+    throw new Error(
+      `RunsBackfillerService: malformed cursor "${cursor}" (expected "<createdAt>_<id>")`
+    );
   }
 
   return { createdAt, id };
