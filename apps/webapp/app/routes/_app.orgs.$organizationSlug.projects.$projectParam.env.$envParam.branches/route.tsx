@@ -3,9 +3,9 @@ import { parse } from "@conform-to/zod";
 import { ArrowUpCircleIcon, CheckIcon, EnvelopeIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useActionData, useFetcher, useLocation, useSearchParams } from "@remix-run/react";
+import { useFetcher, useSearchParams } from "@remix-run/react";
 import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { GitMeta, tryCatch } from "@trigger.dev/core/v3";
+import { tryCatch } from "@trigger.dev/core/v3";
 import { useCallback, useEffect, useState } from "react";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -16,7 +16,6 @@ import { Feedback } from "~/components/Feedback";
 import { GitMetadata } from "~/components/GitMetadata";
 import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { InlineCode } from "~/components/code/InlineCode";
 import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -33,8 +32,6 @@ import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
 import { Header3 } from "~/components/primitives/Headers";
-import { Hint } from "~/components/primitives/Hint";
-import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { InputNumberStepper } from "~/components/primitives/InputNumberStepper";
 import { Label } from "~/components/primitives/Label";
@@ -62,12 +59,11 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 
 import { findProjectBySlug } from "~/models/project.server";
-import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { redirectWithErrorMessage } from "~/models/message.server";
 import { BranchesPresenter } from "~/presenters/v3/BranchesPresenter.server";
 import { logger } from "~/services/logger.server";
 import { getCurrentPlan, getSelfServePurchaseBlockReason } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
-import { UpsertBranchService } from "~/services/upsertBranch.server";
 import { cn } from "~/utils/cn";
 import {
   branchesPath,
@@ -80,26 +76,9 @@ import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
 import { SetBranchesAddOnService } from "~/v3/services/setBranchesAddOn.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { ArchiveButton } from "../resources.branches.archive";
+import { NewBranchPanel } from "~/routes/resources.branches.create";
+import { BranchesOptions } from "~/utils/branches";
 import { IconArrowBearRight2 } from "@tabler/icons-react";
-
-export const BranchesOptions = z.object({
-  search: z.string().optional(),
-  showArchived: z.preprocess((val) => val === "true" || val === true, z.boolean()).optional(),
-  page: z.preprocess((val) => Number(val), z.number()).optional(),
-});
-
-export const CreateBranchOptions = z.object({
-  projectId: z.string(),
-  env: z.enum(["preview", "development"]),
-  branchName: z.string().min(1),
-  git: GitMeta.optional(),
-});
-
-export const schema = CreateBranchOptions.and(
-  z.object({
-    failurePath: z.string(),
-  })
-);
 
 const PurchaseSchema = z.discriminatedUnion("action", [
   z.object({
@@ -203,37 +182,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ ok: true } as const);
   }
 
-  const submission = parse(formData, { schema });
-
-  if (!submission.value) {
-    return redirectWithErrorMessage("/", request, "Invalid form data");
-  }
-
-  const upsertBranchService = new UpsertBranchService();
-  const result = await upsertBranchService.call(
-    { type: "userMembership", userId },
-    submission.value
-  );
-
-  if (result.success) {
-    if (result.alreadyExisted) {
-      submission.error = {
-        branchName: [
-          `Branch "${result.branch.branchName}" already exists. You can archive it and create a new one with the same name.`,
-        ],
-      };
-      return json(submission);
-    }
-
-    return redirectWithSuccessMessage(
-      `${branchesPath(result.organization, result.project, result.branch)}?dialogClosed=true`,
-      request,
-      `Branch "${result.branch.branchName}" created`
-    );
-  }
-
-  submission.error = { branchName: [result.error] };
-  return json(submission);
+  // Branch creation is handled by the `resources.branches.create` resource
+  // route; this action only services the purchase flow above.
+  return json({ ok: false, error: "Unsupported action" } as const, { status: 400 });
 }
 
 export default function Page() {
@@ -923,93 +874,3 @@ function updateBranchState({
   return "increase";
 }
 
-export function NewBranchPanel({
-  button,
-  env,
-}: {
-  button: React.ReactNode;
-  env: "preview" | "development";
-}) {
-  const project = useProject();
-  const lastSubmission = useActionData<typeof action>();
-  const location = useLocation();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [isOpen, setIsOpen] = useState(false);
-
-  const [form, { projectId, env: envField, branchName, failurePath }] = useForm({
-    id: "create-branch",
-    lastSubmission: lastSubmission as any,
-    onValidate({ formData }) {
-      return parse(formData, { schema });
-    },
-    shouldRevalidate: "onInput",
-  });
-
-  useEffect(() => {
-    if (searchParams.has("dialogClosed")) {
-      setSearchParams((s) => {
-        s.delete("dialogClosed");
-        return s;
-      });
-      setIsOpen(false);
-    }
-  }, [searchParams, setSearchParams]);
-
-  return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>{button}</DialogTrigger>
-      <DialogContent>
-        <DialogHeader>New branch</DialogHeader>
-        <div className="mt-2 flex flex-col gap-4">
-          <Form method="post" {...form.props} className="w-full">
-            <Fieldset className="max-w-full gap-y-3">
-              <input
-                value={project.id}
-                {...conform.input(projectId, { type: "hidden" })}
-              />
-              <input
-                value={env}
-                {...conform.input(envField, { type: "hidden" })}
-              />
-              <input
-                value={location.pathname}
-                {...conform.input(failurePath, { type: "hidden" })}
-              />
-              <InputGroup className="max-w-full">
-                <Label>Branch name</Label>
-                <Input {...conform.input(branchName)} />
-                <Hint>
-                  Must not contain: spaces <InlineCode variant="extra-small">~</InlineCode>{" "}
-                  <InlineCode variant="extra-small">^</InlineCode>{" "}
-                  <InlineCode variant="extra-small">:</InlineCode>{" "}
-                  <InlineCode variant="extra-small">?</InlineCode>{" "}
-                  <InlineCode variant="extra-small">*</InlineCode>{" "}
-                  <InlineCode variant="extra-small">{"["}</InlineCode>{" "}
-                  <InlineCode variant="extra-small">\</InlineCode>{" "}
-                  <InlineCode variant="extra-small">//</InlineCode>{" "}
-                  <InlineCode variant="extra-small">..</InlineCode>{" "}
-                  <InlineCode variant="extra-small">{"@{"}</InlineCode>{" "}
-                  <InlineCode variant="extra-small">.lock</InlineCode>
-                </Hint>
-                <FormError id={branchName.errorId}>{branchName.error}</FormError>
-              </InputGroup>
-              <FormError>{form.error}</FormError>
-              <FormButtons
-                confirmButton={
-                  <Button type="submit" variant="primary/medium">
-                    Create branch
-                  </Button>
-                }
-                cancelButton={
-                  <DialogClose asChild>
-                    <Button variant="tertiary/medium">Cancel</Button>
-                  </DialogClose>
-                }
-              />
-            </Fieldset>
-          </Form>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}

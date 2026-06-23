@@ -13,7 +13,7 @@ import { logger } from "./logger.server";
 import { getCurrentPlan, getLimit } from "./platform.v3.server";
 import { type z } from "zod";
 import invariant from "tiny-invariant";
-import { type CreateBranchOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
+import { type CreateBranchOptions } from "~/utils/branches";
 
 type CreateBranchOptions = z.infer<typeof CreateBranchOptions>;
 

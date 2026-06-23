@@ -22,7 +22,8 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { type MinimumEnvironment } from "~/presenters/SelectBestEnvironmentPresenter.server";
-import { NewBranchPanel } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
+import { type BranchableEnvironmentToken } from "~/utils/branchableEnvironment";
+import { NewBranchPanel } from "~/routes/resources.branches.create";
 import { GitHubSettingsPanel } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 import {
   docsPath,
@@ -493,7 +494,7 @@ export function BranchesNoBranches({
   canUpgrade,
   showSelfServe,
 }: {
-  envType: "preview" | "development";
+  envType: BranchableEnvironmentToken;
   limits: { used: number; limit: number };
   canUpgrade: boolean;
   showSelfServe: boolean;
@@ -501,11 +502,12 @@ export function BranchesNoBranches({
   const organization = useOrganization();
 
   const envTextClassName = envType === "preview" ? "text-preview" : "text-dev";
+  const branchesLabel = envType === "preview" ? "preview branches" : "dev branches";
 
   if (limits.used >= limits.limit) {
     return (
       <InfoPanel
-        title="Upgrade to get preview branches"
+        title={`Upgrade to get ${branchesLabel}`}
         icon={BranchEnvironmentIconSmall}
         iconClassName={envTextClassName}
         panelClassName="max-w-full"
@@ -551,7 +553,7 @@ export function BranchesNoBranches({
               New branch
             </Button>
           }
-          env="preview"
+          env={envType}
         />
       }
     >

@@ -38,6 +38,17 @@ export class ArchiveBranchService {
                   },
                 }
               : { id: orgFilter.organizationId },
+          // Dev branches are per-org-member, so org membership alone isn't enough:
+          // only the owner may archive their own dev branch. Non-dev branches (e.g.
+          // preview) remain scoped by org membership only.
+          ...(orgFilter.type === "userMembership"
+            ? {
+                OR: [
+                  { type: { not: "DEVELOPMENT" as const } },
+                  { orgMember: { userId: orgFilter.userId } },
+                ],
+              }
+            : {}),
         },
         include: {
           organization: {

@@ -5,7 +5,7 @@ import { type z } from "zod";
 import { type Prisma, type PrismaClient, prisma } from "~/db.server";
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
-import { type BranchesOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
+import { type BranchesOptions } from "~/utils/branches";
 import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { checkBranchLimit } from "~/services/upsertBranch.server";
 import { devPresence } from "./DevPresence.server";
