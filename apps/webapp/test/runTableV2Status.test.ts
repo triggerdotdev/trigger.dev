@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { canMintV2Run, v2RunsMayExist } from "~/v3/runTableV2Status.server";
 
 // The module caches its status in a globalThis singleton ("runTableV2Status").
-// In the unit-test env runs replication is unconfigured, so it initializes to
-// { published:false, hasRows:false } with no background poller. Mutate that
-// cached object to exercise the gates deterministically.
+// Under vitest (NODE_ENV=test) it skips the background poller entirely and
+// initializes to { published:false, hasRows:false } — so no live DB query, no
+// leaked interval, and nothing races these assertions. Mutate that cached
+// object to exercise the gates deterministically.
 function setStatus(published: boolean, hasRows: boolean) {
   const singletons = (globalThis as any).__trigger_singletons;
   // Force module init (the singleton is created on first getter call/import).

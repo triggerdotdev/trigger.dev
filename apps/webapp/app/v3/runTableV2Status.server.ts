@@ -38,6 +38,15 @@ const status = singleton("runTableV2Status", initialize);
 function initialize(): RunTableV2Status {
   const state: RunTableV2Status = { published: false, hasRows: false };
 
+  // No background poller under vitest: this module is imported by the mint/read
+  // sites, so a live DB poll + setInterval at import time would query the test
+  // database and leak a timer for the test run, and the async refresh could race
+  // tests that drive the cached status directly. Tests exercise the gates by
+  // mutating the cached state, so the poller would only get in the way.
+  if (env.NODE_ENV === "test") {
+    return state;
+  }
+
   // The publication only exists when runs replication is configured. Without it
   // no v2 run can be captured by ClickHouse, so leave published=false: minting
   // stays on legacy regardless of org flags.
@@ -51,6 +60,7 @@ function initialize(): RunTableV2Status {
         SELECT EXISTS (
           SELECT 1 FROM pg_publication_tables
           WHERE pubname = ${env.RUN_REPLICATION_PUBLICATION_NAME}
+            AND schemaname = 'public'
             AND tablename = 'task_run_v2'
         ) AS present`;
       state.published = published[0]?.present ?? false;
