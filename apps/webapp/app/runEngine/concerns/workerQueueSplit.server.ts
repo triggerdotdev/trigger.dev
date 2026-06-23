@@ -122,3 +122,25 @@ export function workerQueueForClass(
 
   return masterQueue;
 }
+
+export function parseDisabledWorkerQueues(raw: string | undefined): Set<string> {
+  return new Set(
+    (raw ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  );
+}
+
+export function matchesDisabledWorkerQueue(
+  workerQueue: string,
+  disabledWorkerQueues: ReadonlySet<string>
+): boolean {
+  if (disabledWorkerQueues.size === 0) {
+    return false;
+  }
+
+  return (
+    disabledWorkerQueues.has(workerQueue) || disabledWorkerQueues.has(baseWorkerQueue(workerQueue))
+  );
+}
