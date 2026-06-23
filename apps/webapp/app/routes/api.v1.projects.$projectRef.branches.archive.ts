@@ -71,6 +71,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
               },
             },
           },
+      // Dev branches are per-org-member: only the owner may archive their own.
+      ...(authenticationResult.type !== "organizationAccessToken" &&
+      environmentType === "DEVELOPMENT"
+        ? { orgMember: { userId: authenticationResult.result.userId } }
+        : {}),
       project: {
         externalRef: projectRef,
       },
