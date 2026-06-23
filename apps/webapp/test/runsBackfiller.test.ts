@@ -9,12 +9,37 @@ vi.mock("~/db.server", () => ({
 import { ClickHouse } from "@internal/clickhouse";
 import { replicationContainerTest } from "@internal/testcontainers";
 import { z } from "zod";
-import { RunsBackfillerService } from "~/services/runsBackfiller.server";
+import {
+  RunsBackfillerService,
+  decodeBackfillCursor,
+  encodeBackfillCursor,
+} from "~/services/runsBackfiller.server";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
 import { createInMemoryTracing } from "./utils/tracing";
 import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
 
 vi.setConfig({ testTimeout: 60_000 });
+
+describe("backfill cursor", () => {
+  it("round-trips createdAt + id", () => {
+    const createdAt = new Date("2026-06-23T00:00:00.000Z");
+    const decoded = decodeBackfillCursor(encodeBackfillCursor(createdAt, "cmqpwioyy0009unul63v3mxw2"));
+    expect(decoded?.createdAt.toISOString()).toBe(createdAt.toISOString());
+    expect(decoded?.id).toBe("cmqpwioyy0009unul63v3mxw2");
+  });
+
+  it("treats a legacy bare-id cursor (no separator) as undefined so the window restarts", () => {
+    // Pre-(createdAt, id) format: a bare run id. Decoding must not throw — it
+    // returns undefined so an in-flight backfill restarts the window instead of
+    // failing every batch after the cursor-format change.
+    expect(decodeBackfillCursor("cmqpwioyy0009unul63v3mxw2")).toBeUndefined();
+  });
+
+  it("returns undefined for a corrupt cursor instead of throwing", () => {
+    expect(decodeBackfillCursor("not-a-date_cmqpwioyy0009unul63v3mxw2")).toBeUndefined();
+    expect(decodeBackfillCursor("_cmqpwioyy0009unul63v3mxw2")).toBeUndefined();
+  });
+});
 
 describe("RunsBackfillerService", () => {
   replicationContainerTest(
