@@ -93,10 +93,11 @@ export const loader = createLoaderApiRoute(
       authentication.environment.organization.id
     );
 
-    const traceSummary = await eventRepository.getTraceDetailedSummary(
+    const traceSummary = await eventRepository.getTraceDetailedSubtreeSummary(
       getTaskEventStoreTableForRun(run),
       authentication.environment.id,
       run.traceId,
+      run.spanId,
       run.createdAt,
       run.completedAt ?? undefined
     );

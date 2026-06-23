@@ -1,6 +1,7 @@
 import { millisecondsToNanoseconds, RunAnnotations } from "@trigger.dev/core/v3";
 import { createTreeFromFlatItems, flattenTree } from "~/components/primitives/TreeView/TreeView";
 import { prisma, type PrismaClient } from "~/db.server";
+import { logger } from "~/services/logger.server";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import { getUsername } from "~/utils/username";
 import { SpanSummary } from "~/v3/eventRepository/eventRepository.types";
@@ -179,15 +180,48 @@ export class RunPresenter {
       run.runtimeEnvironment.organizationId
     );
 
-    // get the events
+    const traceTimeBounds = {
+      startCreatedAt: run.rootTaskRun?.createdAt ?? run.createdAt,
+      endCreatedAt: run.completedAt ?? undefined,
+    };
+
+    // Fast path: full trace summary. Slow path: subtree fetch when the anchor
+    // span fell past the row cap (large traces ordered by start_time ASC).
     let traceSummary = await repository.getTraceSummary(
       getTaskEventStoreTableForRun(run),
       run.runtimeEnvironment.id,
       run.traceId,
-      run.rootTaskRun?.createdAt ?? run.createdAt,
-      run.completedAt ?? undefined,
+      traceTimeBounds.startCreatedAt,
+      traceTimeBounds.endCreatedAt,
       { includeDebugLogs: showDebug }
     );
+
+    let isTruncated = traceSummary?.isTruncated ?? false;
+    const hasAnchorSpan = traceSummary?.spans.some((span) => span.id === run.spanId) ?? false;
+
+    if (traceSummary && !hasAnchorSpan) {
+      logger.warn("Trace summary missing anchor span, falling back to subtree fetch", {
+        runId: run.friendlyId,
+        spanId: run.spanId,
+        traceId: run.traceId,
+        spanCount: traceSummary.spans.length,
+      });
+
+      const subtreeSummary = await repository.getTraceSubtreeSummary(
+        getTaskEventStoreTableForRun(run),
+        run.runtimeEnvironment.id,
+        run.traceId,
+        run.spanId,
+        traceTimeBounds.startCreatedAt,
+        traceTimeBounds.endCreatedAt,
+        { includeDebugLogs: showDebug }
+      );
+
+      if (subtreeSummary) {
+        traceSummary = subtreeSummary;
+        isTruncated = subtreeSummary.isTruncated ?? false;
+      }
+    }
 
     if (!traceSummary) {
       const spanSummary: SpanSummary = {
@@ -241,6 +275,18 @@ export class RunPresenter {
 
     //this tree starts at the passed in span (hides parent elements if there are any)
     const tree = createTreeFromFlatItems(traceSummary.spans, run.spanId);
+    const missingAnchor = !traceSummary.spans.some((span) => span.id === run.spanId) || !tree;
+
+    if (missingAnchor) {
+      logger.warn("Trace view anchor span not found in trace summary", {
+        runId: run.friendlyId,
+        spanId: run.spanId,
+        traceId: run.traceId,
+        spanCount: traceSummary.spans.length,
+      });
+
+      isTruncated = true;
+    }
 
     //we need the start offset for each item, and the total duration of the entire tree
     const treeRootStartTimeMs = tree ? tree?.data.startTime.getTime() : 0;
@@ -312,6 +358,8 @@ export class RunPresenter {
           : undefined,
         overridesBySpanId: traceSummary.overridesBySpanId,
         linkedRunIdBySpanId,
+        isTruncated,
+        missingAnchor,
       },
       maximumLiveReloadingSetting: repository.maximumLiveReloadingSetting,
     };

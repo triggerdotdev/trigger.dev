@@ -308,6 +308,8 @@ export type TraceSummary = {
   rootSpan: SpanSummary;
   spans: Array<SpanSummary>;
   overridesBySpanId?: Record<string, SpanOverride>;
+  /** Set when a subtree fetch hit the row cap before collecting all descendants. */
+  isTruncated?: boolean;
 };
 
 export type SpanDetailedSummary = {
@@ -351,6 +353,8 @@ export type StreamedTraceEvent = {
 export type TraceDetailedSummary = {
   traceId: string;
   rootSpan: SpanDetailedSummary;
+  /** Set when a fetch hit the row cap before collecting all spans. */
+  isTruncated?: boolean;
 };
 
 // ============================================================================
@@ -416,10 +420,32 @@ export interface IEventRepository {
     options?: { includeDebugLogs?: boolean }
   ): Promise<TraceSummary | undefined>;
 
+  /** Fetch the anchor span, its ancestors (for override propagation), and all descendants. */
+  getTraceSubtreeSummary(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    traceId: string,
+    anchorSpanId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
+  ): Promise<TraceSummary | undefined>;
+
   getTraceDetailedSummary(
     storeTable: TaskEventStoreTable,
     environmentId: string,
     traceId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
+  ): Promise<TraceDetailedSummary | undefined>;
+
+  /** Fetch the anchor span subtree as a detailed hierarchical trace rooted at anchorSpanId. */
+  getTraceDetailedSubtreeSummary(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    traceId: string,
+    anchorSpanId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
     options?: { includeDebugLogs?: boolean }
