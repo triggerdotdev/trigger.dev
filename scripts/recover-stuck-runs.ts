@@ -220,9 +220,9 @@ async function main() {
           r."concurrencyKey"
         FROM "TaskRunExecutionSnapshot" s
         INNER JOIN (
-          SELECT id, "organizationId", "projectId", "runtimeEnvironmentId", "taskIdentifier", "queue", "concurrencyKey" FROM "TaskRun"
+          SELECT id, "organizationId", "projectId", "runtimeEnvironmentId", "taskIdentifier", "queue", "concurrencyKey" FROM "TaskRun" WHERE id = ANY(${runIds})
           UNION
-          SELECT id, "organizationId", "projectId", "runtimeEnvironmentId", "taskIdentifier", "queue", "concurrencyKey" FROM task_run_v2
+          SELECT id, "organizationId", "projectId", "runtimeEnvironmentId", "taskIdentifier", "queue", "concurrencyKey" FROM task_run_v2 WHERE id = ANY(${runIds})
         ) r ON r.id = s."runId"
         WHERE s."runId" = ANY(${runIds})
           AND s."isValid" = true

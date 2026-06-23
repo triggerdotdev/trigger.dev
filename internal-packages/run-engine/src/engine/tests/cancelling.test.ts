@@ -330,10 +330,14 @@ describe("RunEngine cancelling", () => {
           reason: "Cancelled by the user",
         });
 
-        // The child cancellation is enqueued as a job; give the worker a moment.
-        await setTimeout(1000);
-
-        const childData = await engine.getRunExecutionData({ runId: childRun.id });
+        // The child cancellation is enqueued as a job; wait for the worker to process it
+        // (poll instead of a fixed sleep so the test isn't flaky under slow CI).
+        let childData = await engine.getRunExecutionData({ runId: childRun.id });
+        const deadline = Date.now() + 5_000;
+        while (childData?.run.status !== "CANCELED" && Date.now() < deadline) {
+          await setTimeout(50);
+          childData = await engine.getRunExecutionData({ runId: childRun.id });
+        }
         expect(childData?.run.status).toBe("CANCELED");
       } finally {
         await engine.quit();
