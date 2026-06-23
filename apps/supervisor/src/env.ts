@@ -73,6 +73,12 @@ const Env = z
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_USERNAME: z.string().optional(),
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PASSWORD: z.string().optional(),
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_TLS_DISABLED: BoolEnv.default(false),
+    // Backpressure signal source. "redis" reads a verdict from a Redis key;
+    // "k8s-pod-count" scrapes the cluster apiserver's total pod-object count and
+    // engages above ENGAGE, releasing below RELEASE (hysteresis).
+    TRIGGER_DEQUEUE_BACKPRESSURE_SOURCE: z.enum(["redis", "k8s-pod-count"]).default("redis"),
+    TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE: z.coerce.number().int().positive().default(10_000),
+    TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE: z.coerce.number().int().positive().default(5_000),
 
     // Optional services
     TRIGGER_WARM_START_URL: z.string().optional(),
