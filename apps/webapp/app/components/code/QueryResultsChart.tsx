@@ -2,6 +2,7 @@ import type { ColumnFormatType, OutputColumnMetadata } from "@internal/clickhous
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { BarChart3, LineChart } from "lucide-react";
 import { memo, useMemo } from "react";
+import { useMeasure } from "react-use";
 import { createValueFormatter } from "~/utils/columnFormat";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import type { ChartConfig } from "~/components/primitives/charts/Chart";
@@ -17,6 +18,14 @@ const MAX_SERIES = 50;
 const MAX_SVG_ELEMENT_BUDGET = 6_000;
 const MIN_DATA_POINTS = 100;
 const MAX_DATA_POINTS = 500;
+
+// Width-aware x-axis label density for date-based line charts. We reserve room
+// for the y-axis + margins, then fit one label per TIME_AXIS_LABEL_SPACING_PX of
+// the remaining width. *** Lower TIME_AXIS_LABEL_SPACING_PX = denser labels. ***
+// Rotated (-45°) date labels stay readable down to ~32px. Tunable.
+const TIME_AXIS_Y_ALLOWANCE_PX = 56;
+const TIME_AXIS_LABEL_SPACING_PX = 40;
+const MIN_TIME_AXIS_TICKS = 3;
 
 interface QueryResultsChartProps {
   rows: Record<string, unknown>[];
@@ -307,7 +316,7 @@ const NICE_TIME_INTERVALS = [
  * Generate evenly-spaced tick values for a time axis using "nice" intervals
  * that align to natural time boundaries (midnight, noon, hour marks, etc.)
  */
-function generateTimeTicks(minTime: number, maxTime: number, maxTicks = 8): number[] {
+export function generateTimeTicks(minTime: number, maxTime: number, maxTicks = 8): number[] {
   const range = maxTime - minTime;
 
   if (range <= 0) {
@@ -793,6 +802,24 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     timeTicks,
   } = useMemo(() => transformDataForChart(rows, config, timeRange), [rows, config, timeRange]);
 
+  // Measure the rendered chart width so the x-axis label density adapts to it —
+  // same principle as the bar charts, applied to the line chart's nice-interval
+  // time ticks. (Continuous time scale is kept, so data gaps still show.)
+  const [chartMeasureRef, { width: chartWidth }] = useMeasure<HTMLDivElement>();
+
+  // Width-aware time-axis ticks: reuse the bar charts' "how many labels fit"
+  // estimate to choose how many clean intervals to render. Falls back to the
+  // default ticks until the width is known (first paint / SSR).
+  const widthAwareTimeTicks = useMemo(() => {
+    if (!isDateBased || !timeDomain || !chartWidth) return timeTicks;
+    const plotWidth = Math.max(0, chartWidth - TIME_AXIS_Y_ALLOWANCE_PX);
+    const maxTicks = Math.max(
+      MIN_TIME_AXIS_TICKS,
+      Math.floor(plotWidth / TIME_AXIS_LABEL_SPACING_PX)
+    );
+    return generateTimeTicks(timeDomain[0], timeDomain[1], maxTicks);
+  }, [isDateBased, timeDomain, timeTicks, chartWidth]);
+
   // Apply sorting (for date-based, sort by timestamp to ensure correct order)
   const data = useMemo(() => {
     if (isDateBased) {
@@ -1073,7 +1100,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         domain: timeDomain ?? (["auto", "auto"] as [string, string]),
         scale: "time" as const,
         // Explicitly specify tick positions so labels appear across the entire range
-        ticks: timeTicks ?? undefined,
+        ticks: widthAwareTimeTicks ?? undefined,
         ...baseXAxisProps,
       }
     : baseXAxisProps;
@@ -1123,6 +1150,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
 
   // Line or stacked area chart
   return (
+    <div ref={chartMeasureRef} className="h-full w-full">
     <Chart.Root
       config={chartConfig}
       data={data}
@@ -1150,6 +1178,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         lineType="linear"
       />
     </Chart.Root>
+    </div>
   );
 });
 
