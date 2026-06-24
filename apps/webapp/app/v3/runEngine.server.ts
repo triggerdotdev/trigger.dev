@@ -2,6 +2,7 @@ import { RunEngine } from "@internal/run-engine";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { createBatchGlobalRateLimiter } from "~/runEngine/concerns/batchGlobalRateLimiter.server";
+import { SCHEDULED_WORKER_QUEUE_SUFFIX } from "~/runEngine/concerns/workerQueueSplit.server";
 import { logger } from "~/services/logger.server";
 import { defaultMachine, getCurrentPlan } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
@@ -121,6 +122,18 @@ function createRunEngine() {
     },
     tracer,
     meter,
+    workerQueueObserver: {
+      enabled: env.RUN_ENGINE_WORKER_QUEUE_OBSERVER_ENABLED === "1",
+      intervalMs: env.RUN_ENGINE_WORKER_QUEUE_OBSERVER_INTERVAL_MS,
+      // Also observe the scheduled split variant of each worker queue. The suffix
+      // naming convention lives in the webapp, so it is passed in here.
+      additionalQueueSuffixes: [SCHEDULED_WORKER_QUEUE_SUFFIX],
+      excludedCloudProviders: env.RUN_ENGINE_WORKER_QUEUE_OBSERVER_EXCLUDED_CLOUD_PROVIDERS.split(
+        ","
+      )
+        .map((provider) => provider.trim())
+        .filter(Boolean),
+    },
     defaultMaxTtl: env.RUN_ENGINE_DEFAULT_MAX_TTL,
     heartbeatTimeoutsMs: {
       PENDING_EXECUTING: env.RUN_ENGINE_TIMEOUT_PENDING_EXECUTING,
