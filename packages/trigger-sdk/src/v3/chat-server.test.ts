@@ -479,6 +479,185 @@ describe("chat.headStart (route handler)", () => {
   });
 });
 
+describe("chat.startHeadStart (detached)", () => {
+  let originalFetch: typeof global.fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  function wireFetch(requests: CapturedRequest[]) {
+    global.fetch = vi.fn().mockImplementation(async (url: string | URL, init?: RequestInit) => {
+      const urlStr = typeof url === "string" ? url : url.toString();
+      requests.push({ url: urlStr, init });
+      if (urlStr.endsWith("/api/v1/sessions") || urlStr.endsWith("/api/v1/sessions/")) {
+        return createSessionResponse("chat-1");
+      }
+      if (urlStr.includes("/realtime/v1/sessions/") && urlStr.endsWith("/in/append")) {
+        return appendOkResponse();
+      }
+      throw new Error(`Unexpected URL: ${urlStr}`);
+    });
+  }
+
+  const userMessages = [
+    { id: "m1", role: "user" as const, parts: [{ type: "text" as const, text: "hi" }] },
+  ];
+
+  it("returns { chatId, completion } (no Response) and creates the session with handover-prepare + headStartMessages", async () => {
+    const requests: CapturedRequest[] = [];
+    wireFetch(requests);
+
+    const result = await withApiContext(() =>
+      chat.startHeadStart({
+        agentId: "test-agent",
+        chatId: "chat-1",
+        messages: userMessages,
+        run: async ({ chat: chatHelper }) =>
+          streamText({
+            ...chatHelper.toStreamTextOptions(),
+            model: new MockLanguageModelV3({
+              doStream: async () => ({ stream: textStream("hi back") }),
+            }),
+          }),
+      })
+    );
+
+    // Shape: a plain object, not a Response.
+    expect(result.chatId).toBe("chat-1");
+    expect(typeof result.completion.then).toBe("function");
+    expect(result).not.toBeInstanceOf(Response);
+
+    await result.completion;
+
+    const sessionCreate = requests.find(
+      (r) => r.url.endsWith("/api/v1/sessions") || r.url.endsWith("/api/v1/sessions/")
+    );
+    expect(sessionCreate).toBeDefined();
+    const body = JSON.parse(sessionCreate!.init!.body as string);
+    expect(body.type).toBe("chat.agent");
+    expect(body.externalId).toBe("chat-1");
+    expect(body.taskIdentifier).toBe("test-agent");
+    expect(body.triggerConfig.basePayload.trigger).toBe("handover-prepare");
+    expect(body.triggerConfig.basePayload.chatId).toBe("chat-1");
+    // Full first-turn history rides on headStartMessages (not /in/append).
+    expect(body.triggerConfig.basePayload.headStartMessages).toHaveLength(1);
+    expect(body.triggerConfig.basePayload.headStartMessages[0].id).toBe("m1");
+  });
+
+  it("dispatches a final handover (isFinal: true) on a pure-text step 1", async () => {
+    const requests: CapturedRequest[] = [];
+    wireFetch(requests);
+
+    const { completion } = await withApiContext(() =>
+      chat.startHeadStart({
+        agentId: "test-agent",
+        chatId: "chat-1",
+        messages: userMessages,
+        run: async ({ chat: chatHelper }) =>
+          streamText({
+            ...chatHelper.toStreamTextOptions(),
+            model: new MockLanguageModelV3({
+              doStream: async () => ({ stream: textStream("the answer") }),
+            }),
+          }),
+      })
+    );
+    await completion;
+
+    const append = requests.find((r) => r.url.endsWith("/in/append"));
+    expect(append).toBeDefined();
+    const appendBody = append!.init!.body as string;
+    expect(appendBody).toContain('"kind":"handover"');
+    expect(appendBody).toContain('"isFinal":true');
+    // A stable assistant messageId is carried across the handover boundary.
+    expect(appendBody).toContain('"messageId":');
+  });
+
+  it("dispatches a non-final handover (isFinal: false) on a tool-call step 1", async () => {
+    const requests: CapturedRequest[] = [];
+    wireFetch(requests);
+
+    const { completion } = await withApiContext(() =>
+      chat.startHeadStart({
+        agentId: "test-agent",
+        chatId: "chat-1",
+        messages: userMessages,
+        run: async ({ chat: chatHelper }) =>
+          streamText({
+            ...chatHelper.toStreamTextOptions(),
+            model: new MockLanguageModelV3({
+              doStream: async () => ({ stream: toolCallStream() }),
+            }),
+          }),
+      })
+    );
+    await completion;
+
+    const append = requests.find((r) => r.url.endsWith("/in/append"));
+    expect(append).toBeDefined();
+    const appendBody = append!.init!.body as string;
+    expect(appendBody).toContain('"kind":"handover"');
+    expect(appendBody).toContain('"isFinal":false');
+  });
+
+  it("merges metadata into the handover-prepare run payload (never to the browser)", async () => {
+    const requests: CapturedRequest[] = [];
+    wireFetch(requests);
+
+    const { completion } = await withApiContext(() =>
+      chat.startHeadStart({
+        agentId: "test-agent",
+        chatId: "chat-1",
+        messages: userMessages,
+        metadata: { userActorToken: "tr_uat_secret", projectRef: "proj_x" },
+        run: async ({ chat: chatHelper }) =>
+          streamText({
+            ...chatHelper.toStreamTextOptions(),
+            model: new MockLanguageModelV3({
+              doStream: async () => ({ stream: textStream("ok") }),
+            }),
+          }),
+      })
+    );
+    await completion;
+
+    const sessionCreate = requests.find(
+      (r) => r.url.endsWith("/api/v1/sessions") || r.url.endsWith("/api/v1/sessions/")
+    );
+    const body = JSON.parse(sessionCreate!.init!.body as string);
+    expect(body.triggerConfig.basePayload.metadata.userActorToken).toBe("tr_uat_secret");
+    expect(body.triggerConfig.basePayload.metadata.projectRef).toBe("proj_x");
+  });
+
+  it("signals handover-skip and rejects completion when the warm step throws", async () => {
+    const requests: CapturedRequest[] = [];
+    wireFetch(requests);
+
+    const { completion } = await withApiContext(() =>
+      chat.startHeadStart({
+        agentId: "test-agent",
+        chatId: "chat-1",
+        messages: userMessages,
+        run: async () => {
+          throw new Error("warm step boom");
+        },
+      })
+    );
+
+    await expect(completion).rejects.toThrow("warm step boom");
+
+    const append = requests.find((r) => r.url.endsWith("/in/append"));
+    expect(append).toBeDefined();
+    expect(append!.init!.body as string).toContain('"kind":"handover-skip"');
+  });
+});
+
 describe("chat.toNodeListener", () => {
   /**
    * Build a fake Node IncomingMessage that yields a JSON body.

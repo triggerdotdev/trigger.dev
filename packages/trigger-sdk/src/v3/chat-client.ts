@@ -620,6 +620,11 @@ export class AgentChat<TAgent = unknown> {
       // already committed, so a retried POST can't duplicate the record.
       "X-Part-Id": crypto.randomUUID(),
     };
+    // Preview-env sessions are branch-scoped, so the realtime in/out calls must
+    // carry the branch the session was created on. sessions.start sends it via
+    // the API client; these raw fetches have to set it themselves.
+    const branch = apiClientManager.branchName;
+    if (branch) headers["x-trigger-branch"] = branch;
     const response = await this.doFetch(ctx, url, { method: "POST", headers, body });
     if (!response.ok) {
       const text = await response.text().catch(() => "");
@@ -753,6 +758,10 @@ export class AgentChat<TAgent = unknown> {
           const subscription = new SSEStreamSubscription(streamUrl, {
             headers: {
               Authorization: `Bearer ${accessToken}`,
+              // Preview-env sessions are branch-scoped (see appendInputChunk).
+              ...(apiClientManager.branchName
+                ? { "x-trigger-branch": apiClientManager.branchName }
+                : {}),
             },
             signal: combinedSignal,
             timeoutInSeconds: this.streamTimeoutSeconds,

@@ -894,9 +894,18 @@ async function createWorkerPrompts(
         },
       });
 
-      // Compute content hash for dedup
+      // Compute the version-definition hash for dedup. Includes the model and
+      // config, not just the prompt text, so changing a code prompt's model or
+      // config creates a new version — otherwise a model-only change is silently
+      // skipped and the old model keeps serving.
       const contentString = promptResource.content ?? "";
-      const contentHash = hashContent(contentString);
+      const contentHash = hashContent(
+        JSON.stringify({
+          content: contentString,
+          model: promptResource.model ?? null,
+          config: promptResource.config ?? null,
+        })
+      );
 
       // Find the latest version overall (for version numbering) and the latest
       // code-sourced version (for content dedup). We compare against the latest
@@ -914,7 +923,8 @@ async function createWorkerPrompts(
       });
 
       if (latestCodeVersion?.contentHash === contentHash) {
-        // Code content unchanged since last deploy — skip creating a new version
+        // Code definition (text + model + config) unchanged since last deploy —
+        // skip creating a new version.
         continue;
       }
 

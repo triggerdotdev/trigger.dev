@@ -18,6 +18,7 @@ import {
   type PipeStreamResult,
   type RealtimeDefinedInputStream,
   type RealtimeDefinedStream,
+  type ApiClientConfiguration,
   type ReadStreamOptions,
   SemanticInternalAttributes,
   type SendInputStreamOptions,
@@ -2980,6 +2981,63 @@ function isStepBoundarySafe(step: {
 }
 
 /**
+ * True when a model message is a `tool` message carrying a
+ * `tool-approval-response` part — the trailing row a head-start handover
+ * reshapes a pending first-turn tool call into. AI SDK's `collectToolApprovals`
+ * only inspects the conversation's last message, so this row must survive to
+ * `streamText` intact for the agent to execute the handed-over call.
+ * @internal
+ */
+function hasToolApprovalResponse(message: ModelMessage | undefined): message is ModelMessage {
+  return (
+    message?.role === "tool" &&
+    Array.isArray(message.content) &&
+    message.content.some(
+      (part) =>
+        part != null &&
+        typeof part === "object" &&
+        (part as { type?: string }).type === "tool-approval-response"
+    )
+  );
+}
+
+/**
+ * Keep a head-start handover's tool-approval tail intact across `prepareMessages`.
+ *
+ * The handover reshapes the warm step-1's pending tool call into AI SDK's
+ * tool-approval round: a `tool-approval-request` on the assistant plus a
+ * trailing `tool` message with `tool-approval-response { approved: true }`. The
+ * agent's next `streamText` runs `collectToolApprovals`, which ONLY looks at the
+ * last message — so that tool row must stay last and unmodified for the pending
+ * call to execute. A user `prepareMessages` hook that rewrites or drops the last
+ * message (e.g. rolling a provider cache breakpoint onto it) silently breaks the
+ * resume: the agent sends a bare `tool_use` and the turn dies with
+ * "tool_use ids were found without tool_result". If the hook's input ended with
+ * that approval tail, re-assert the original tail as the last message.
+ *
+ * No-op for every normal turn — only fires when the input genuinely ended with a
+ * pending tool-approval response (i.e. a head-start resume).
+ * @internal
+ */
+function preserveToolApprovalTail(
+  original: ModelMessage[],
+  prepared: ModelMessage[]
+): ModelMessage[] {
+  const originalTail = original[original.length - 1];
+  if (!hasToolApprovalResponse(originalTail)) return prepared;
+  // Hook left the exact tail object in place — nothing to do.
+  if (prepared[prepared.length - 1] === originalTail) return prepared;
+  // Otherwise drop only the trailing approval tail the hook produced (the
+  // original moved, or a rewritten copy) and re-append the original so it is
+  // last and intact. Older approval rounds deeper in history must survive.
+  const withoutMovedOriginal = prepared.filter((m) => m !== originalTail);
+  while (hasToolApprovalResponse(withoutMovedOriginal[withoutMovedOriginal.length - 1])) {
+    withoutMovedOriginal.pop();
+  }
+  return [...withoutMovedOriginal, originalTail];
+}
+
+/**
  * Apply the prepareMessages hook if one is set in locals.
  * @internal
  */
@@ -2992,7 +3050,7 @@ async function applyPrepareMessages(
 
   const turnCtx = locals.get(chatTurnContextKey);
 
-  return tracer.startActiveSpan(
+  const prepared = await tracer.startActiveSpan(
     "prepareMessages()",
     async () => {
       return hook({
@@ -3012,6 +3070,10 @@ async function applyPrepareMessages(
       },
     }
   );
+
+  // A user hook must never be able to break the head-start handover resume by
+  // disturbing the trailing tool-approval row (see preserveToolApprovalTail).
+  return preserveToolApprovalTail(messages, prepared);
 }
 
 /**
@@ -9989,6 +10051,12 @@ export type CreateChatStartSessionActionOptions = {
    * custom retry. Applies to both session-create and JWT-claims POSTs.
    */
   fetch?: ChatStartSessionFetchOverride;
+  /**
+   * API client config (baseURL / accessToken) to scope this action to a specific
+   * environment, for callers that can't set a global `TRIGGER_SECRET_KEY`. The
+   * returned action runs under this config.
+   */
+  apiClient?: ApiClientConfiguration;
 };
 
 /**
@@ -10078,6 +10146,15 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
     if (!params.chatId) {
       throw new Error(
         "chat.createStartSessionAction: params.chatId is required — used as the session externalId."
+      );
+    }
+
+    // Scope the action to `apiClient`'s env: re-enter without it so the body
+    // runs once, under that config (read via apiClientManager.accessToken/.baseURL).
+    if (options?.apiClient) {
+      const { apiClient, ...rest } = options;
+      return apiClientManager.runWithConfig(apiClient, () =>
+        createChatStartSessionAction<TChat>(taskId, rest)(params)
       );
     }
 

@@ -59,6 +59,7 @@ import {
   SessionStreamInstance,
   TRIGGER_CONTROL_SUBTYPE,
   apiClientManager,
+  type ApiClientConfiguration,
   type SessionTriggerConfig,
 } from "@trigger.dev/core/v3";
 // Runtime VALUES via the ESM/CJS shim so the CJS build can `require` ESM-only
@@ -202,6 +203,45 @@ export type HeadStartHandlerOptions<TTools extends Record<string, Tool>> = {
    * The `chat:{chatId}` tag is prepended automatically.
    */
   triggerConfig?: Partial<SessionTriggerConfig>;
+  /**
+   * API client config (base URL + access token) for creating the session
+   * and triggering the agent run. When set, the handler runs under this
+   * config instead of the ambient `apiClientManager` config — use it when
+   * the agent lives in a different project/env than the warm server's
+   * default (mirrors `chat.createStartSessionAction`'s `apiClient` option).
+   * The customer's LLM provider keys are unaffected; they stay in `run`.
+   */
+  apiClient?: ApiClientConfiguration;
+};
+
+export type StartHeadStartOptions<TTools extends Record<string, Tool>> = {
+  /** The `chat.agent` / `chat.customAgent` / `chat.createSession` id to hand off to. */
+  agentId: string;
+  /** Stable chat id (the session externalId). You own it; reuse it on the destination page. */
+  chatId: string;
+  /** First-turn user history. Becomes the agent run's `headStartMessages`. */
+  messages: UIMessage[];
+  /** Your first-turn implementation — same shape as `chat.headStart`'s `run`. */
+  run: (args: HeadStartRunArgs<TTools>) => Promise<AnyStreamTextResult>;
+  /** Seconds the agent run waits for the handover signal before exiting. Default 60. */
+  idleTimeoutInSeconds?: number;
+  /** Run options for the auto-triggered `handover-prepare` run (tags, queue, machine, …). */
+  triggerConfig?: Partial<SessionTriggerConfig>;
+  /** API client config for session creation + trigger when the agent lives in another project/env. */
+  apiClient?: ApiClientConfiguration;
+  /** Metadata merged into the run's wire payload (auth tokens, context, …). Never sent to the browser. */
+  metadata?: Record<string, unknown>;
+};
+
+export type StartHeadStartResult = {
+  /** The chat id you passed in — echoed for convenience. */
+  chatId: string;
+  /**
+   * Resolves once step 1 has drained to `session.out` and the handover is
+   * dispatched. Hand to `waitUntil` / `after` on serverless; ignore it on a
+   * long-lived server. Rejects if the warm step or the dispatch fails.
+   */
+  completion: Promise<void>;
 };
 
 // ---------------------------------------------------------------------------
@@ -222,9 +262,9 @@ export const chat = {
   headStart<TTools extends Record<string, Tool>>(
     opts: HeadStartHandlerOptions<TTools>
   ): (req: Request) => Promise<Response> {
-    return async (req: Request) => {
+    const handler = async (req: Request): Promise<Response> => {
       const session = await openHandoverSession({
-        req,
+        ...(await parseHandoverRequest(req)),
         agentId: opts.agentId,
         idleTimeoutInSeconds: opts.idleTimeoutInSeconds,
         triggerConfig: opts.triggerConfig,
@@ -245,6 +285,112 @@ export const chat = {
 
       return session.handle.handoverResponse(result);
     };
+
+    // Scope session creation + the agent trigger to `apiClient`'s env when
+    // provided, so the agent can live in a different project/env than the warm
+    // server's ambient config. The `run` callback's LLM keys are unaffected.
+    const { apiClient } = opts;
+    if (apiClient) {
+      return async (req: Request) => apiClientManager.runWithConfig(apiClient, () => handler(req));
+    }
+    return handler;
+  },
+
+  /**
+   * Detached head start for backends that create the chat AND trigger the
+   * run in their own endpoint (e.g. a "create chat" API), then navigate the
+   * browser to a separate page that resumes the chat. Unlike
+   * `chat.headStart`, this does NOT return an SSE `Response`: it creates the
+   * session, triggers the `handover-prepare` run, then streams step 1 from
+   * your warm process straight into `session.out` and dispatches the
+   * handover — all as the returned `completion` promise. The destination
+   * page sees the whole turn (step 1 + the agent's step 2+) by resuming
+   * `session.out`; no `headStart` transport option is needed there.
+   *
+   * `createSession` is awaited before this resolves, so the returned
+   * `chatId` is immediately resumable. `completion` resolves once step 1 has
+   * drained and the handover is dispatched — hand it to the platform's
+   * "run after response" primitive (`waitUntil` / Next.js `after`) on
+   * serverless, or ignore it on a long-lived server.
+   *
+   * @example
+   * ```ts
+   * const { chatId, completion } = await chat.startHeadStart({
+   *   agentId: "my-chat",
+   *   chatId,
+   *   messages,
+   *   run: async ({ chat: helper }) =>
+   *     streamText({ ...helper.toStreamTextOptions({ tools }), model, system }),
+   * });
+   * waitUntil(completion); // serverless: keep warm until step 1 + handover finish
+   * return Response.json({ chatId });
+   * ```
+   */
+  async startHeadStart<TTools extends Record<string, Tool>>(
+    opts: StartHeadStartOptions<TTools>
+  ): Promise<StartHeadStartResult> {
+    const open = () =>
+      openHandoverSession({
+        chatId: opts.chatId,
+        uiMessages: opts.messages,
+        wirePayload: {
+          chatId: opts.chatId,
+          trigger: "handover-prepare",
+          headStartMessages: opts.messages,
+          ...(opts.metadata !== undefined ? { metadata: opts.metadata } : {}),
+        } as ChatTaskWirePayload,
+        agentId: opts.agentId,
+        idleTimeoutInSeconds: opts.idleTimeoutInSeconds,
+        triggerConfig: opts.triggerConfig,
+      });
+
+    // Scope session creation + the agent trigger to `apiClient`'s env when
+    // provided (mirrors `chat.headStart`). The client captured inside
+    // `openHandoverSession` is reused for the drain + handover dispatch, so
+    // `completion` needs no further config scoping. LLM keys in `run` are
+    // unaffected.
+    const session = opts.apiClient
+      ? await apiClientManager.runWithConfig(opts.apiClient, open)
+      : await open();
+
+    const helper: HeadStartChatHelper<TTools> = {
+      toStreamTextOptions(spreadOpts) {
+        return session.buildStreamTextOptions(spreadOpts) as any;
+      },
+      session: session.handle,
+    };
+
+    const completion = (async () => {
+      let result: AnyStreamTextResult;
+      try {
+        result = await opts.run({
+          messages: session.uiMessages,
+          signal: session.combinedSignal,
+          chat: helper,
+        });
+      } catch (err) {
+        // The warm step never produced a result — tell the agent run to exit
+        // clean instead of idle-waiting the full handover timeout.
+        await session.handle.handoverSkip().catch(() => {});
+        throw err;
+      }
+      // Stamp step 1 with the turn's stable messageId so the agent's step 2+
+      // merges into the same assistant message, then drain it to session.out.
+      const stream = result.toUIMessageStream({
+        generateMessageId: () => session.turnMessageId,
+      });
+      session.drainToSessionOut(stream);
+      // Awaits the drain, then dispatches handover / handover-skip. Owns its
+      // own skip-on-error and idle-timer cleanup.
+      await session.handle.handoverWhenDone(result);
+    })();
+
+    // Unhandled-rejection guard: a long-lived server that ignores `completion`
+    // shouldn't crash under `--unhandled-rejections=throw`. Awaiting the
+    // returned promise still surfaces the error.
+    completion.catch(() => {});
+
+    return { chatId: opts.chatId, completion };
   },
 
   /**
@@ -259,7 +405,15 @@ export const chat = {
     idleTimeoutInSeconds?: number;
     triggerConfig?: Partial<SessionTriggerConfig>;
   }): Promise<HeadStartSession> {
-    return openHandoverSession(opts).then((s) => s.handle);
+    return (async () => {
+      const session = await openHandoverSession({
+        ...(await parseHandoverRequest(opts.req)),
+        agentId: opts.agentId,
+        idleTimeoutInSeconds: opts.idleTimeoutInSeconds,
+        triggerConfig: opts.triggerConfig,
+      });
+      return session.handle;
+    })();
   },
 
   /**
@@ -307,15 +461,29 @@ type InternalSession = {
   combinedSignal: AbortSignal;
   handle: HeadStartSession;
   buildStreamTextOptions(spreadOpts?: { tools?: Record<string, Tool> }): Record<string, unknown>;
+  /** Stable assistant messageId for this turn — stamp the detached drain with it. */
+  turnMessageId: string;
+  /**
+   * Detached counterpart to `tee`: pump a UIMessage stream straight into
+   * `session.out` with no HTTP response branch. Used by `chat.startHeadStart`,
+   * where the browser picks the turn up by resuming `session.out` later.
+   */
+  drainToSessionOut(stream: ReadableStream<UIMessageChunk>): void;
 };
 
-async function openHandoverSession(opts: {
-  req: Request;
-  agentId: string;
-  idleTimeoutInSeconds?: number;
-  triggerConfig?: Partial<SessionTriggerConfig>;
-}): Promise<InternalSession> {
-  const wirePayload = (await opts.req.json()) as ChatTaskWirePayload;
+/**
+ * Parse the AI SDK transport's wire payload out of the route-handler
+ * `Request` for `chat.headStart` / `chat.openSession`. The detached
+ * `chat.startHeadStart` path skips this — it's handed the chatId and
+ * messages directly.
+ */
+async function parseHandoverRequest(req: Request): Promise<{
+  chatId: string;
+  uiMessages: UIMessage[];
+  wirePayload: ChatTaskWirePayload;
+  requestSignal?: AbortSignal;
+}> {
+  const wirePayload = (await req.json()) as ChatTaskWirePayload;
   const chatId = wirePayload.chatId;
   if (!chatId) {
     throw new Error("[chat.handover] request body missing `chatId`");
@@ -323,9 +491,32 @@ async function openHandoverSession(opts: {
   // Slim wire — head-start ships full history via `headStartMessages` (not
   // `message`/`messages`) because the route handler runs on the customer's
   // own HTTP endpoint and isn't subject to the 512 KiB `/in/append` cap.
+  const uiMessages = (wirePayload.headStartMessages ?? []) as UIMessage[];
+  return {
+    chatId,
+    uiMessages,
+    wirePayload,
+    requestSignal: (req as Request & { signal?: AbortSignal }).signal,
+  };
+}
+
+async function openHandoverSession(opts: {
+  chatId: string;
+  uiMessages: UIMessage[];
+  /** Becomes the base wire payload for the `handover-prepare` run. */
+  wirePayload: ChatTaskWirePayload;
+  agentId: string;
+  idleTimeoutInSeconds?: number;
+  triggerConfig?: Partial<SessionTriggerConfig>;
+  /** Request-lifecycle signal on the HTTP path; omitted on the detached path. */
+  requestSignal?: AbortSignal;
+}): Promise<InternalSession> {
+  const { chatId, uiMessages, wirePayload } = opts;
+  if (!chatId) {
+    throw new Error("[chat.handover] missing `chatId`");
+  }
   // The full UIMessage[] flows through `wirePayload` into the auto-trigger
   // `basePayload` below, where the agent run boot consumes it on first turn.
-  const uiMessages = (wirePayload.headStartMessages ?? []) as UIMessage[];
   // `convertToModelMessages` is async — resolve once up front so the
   // synchronous `toStreamTextOptions` builder can hand back a fully
   // formed object. AI SDK's `streamText` validates `messages` as a
@@ -392,7 +583,7 @@ async function openHandoverSession(opts: {
   // mirroring the agent's idle wait so a hung handler doesn't sit
   // forever.
   const abortController = new AbortController();
-  const requestAbort = (opts.req as Request & { signal?: AbortSignal }).signal;
+  const requestAbort = opts.requestSignal;
   if (requestAbort) {
     if (requestAbort.aborted) abortController.abort();
     else requestAbort.addEventListener("abort", () => abortController.abort(), { once: true });
@@ -446,6 +637,21 @@ async function openHandoverSession(opts: {
     });
     return a;
   };
+  // Detached drain (no HTTP response branch): hand the WHOLE stream to the S2
+  // writer as its source. `StreamsWriterV2` self-pumps the source to S2, so the
+  // stream drains to `session.out` without any reader pulling it. `handoverWhenDone`
+  // awaits `flushSessionWriter()` before dispatching, so step 1 lands in order
+  // ahead of the agent's step 2+.
+  const drainToSessionOut = (stream: ReadableStream<UIMessageChunk>): void => {
+    sessionWriter = new SessionStreamInstance<UIMessageChunk>({
+      apiClient,
+      baseUrl: apiClient.baseUrl,
+      sessionId: chatId,
+      io: "out",
+      source: stream,
+      signal: abortController.signal,
+    });
+  };
   /** Wait for the teed S2 writer to drain. Called before signaling handover. */
   const flushSessionWriter = async (): Promise<void> => {
     if (!sessionWriter) return;
@@ -477,9 +683,18 @@ async function openHandoverSession(opts: {
    * `finishReason`). Normal pure-text and tool-call finishes go
    * through `handover()` with the appropriate `isFinal` flag.
    */
+  // Clear the idle timer on every terminal path. The detached failure path
+  // (run() throws -> handoverSkip) otherwise leaves it armed until the idle
+  // timeout elapses, since only handoverWhenDone used to clear it.
+  const cleanup = () => clearTimeout(idleTimer);
+
   const handoverSkip = async () => {
-    const chunk: ChatInputChunk = { kind: "handover-skip" };
-    await apiClient.appendToSessionStream(chatId, "in", JSON.stringify(chunk));
+    try {
+      const chunk: ChatInputChunk = { kind: "handover-skip" };
+      await apiClient.appendToSessionStream(chatId, "in", JSON.stringify(chunk));
+    } finally {
+      cleanup();
+    }
   };
 
   // A stable assistant messageId for this turn. The customer's
@@ -555,7 +770,7 @@ async function openHandoverSession(opts: {
       }
       throw err;
     } finally {
-      clearTimeout(idleTimer);
+      cleanup();
     }
   };
 
@@ -766,6 +981,8 @@ async function openHandoverSession(opts: {
     combinedSignal: abortController.signal,
     handle,
     buildStreamTextOptions,
+    turnMessageId,
+    drainToSessionOut,
   };
 }
 

@@ -27,6 +27,7 @@
     "/public/build"
   ],
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.0",
     "@ai-sdk/openai": "^3.0.0",
     "@ai-sdk/react": "^3.0.0",
     "@ariakit/react": "^0.4.6",
@@ -58,6 +59,8 @@
     "@heroicons/react": "^2.0.12",
     "@internal/cache": "workspace:*",
     "@internal/compute": "workspace:*",
+    "@internal/dashboard-agent": "workspace:*",
+    "@internal/dashboard-agent-db": "workspace:*",
     "@internal/llm-model-catalog": "workspace:*",
     "@internal/redis": "workspace:*",
     "@internal/run-engine": "workspace:*",
