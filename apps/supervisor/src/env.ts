@@ -73,10 +73,8 @@ export const Env = z
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_USERNAME: z.string().optional(),
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PASSWORD: z.string().optional(),
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_TLS_DISABLED: BoolEnv.default(false),
-    // Backpressure signal source. "redis" reads a verdict from a Redis key;
-    // "k8s-pod-count" scrapes the cluster apiserver's total pod-object count and
-    // engages above ENGAGE, releasing below RELEASE (hysteresis).
-    TRIGGER_DEQUEUE_BACKPRESSURE_SOURCE: z.enum(["redis", "k8s-pod-count"]).default("redis"),
+    TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENABLED: BoolEnv.default(false),
+    TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_DRY_RUN: BoolEnv.default(true),
     TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE: z.coerce.number().int().positive().default(10_000),
     TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE: z.coerce.number().int().positive().default(5_000),
     TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_REFRESH_MS: z.coerce.number().int().positive().default(5_000),
@@ -333,11 +331,7 @@ export const Env = z
         path: ["TRIGGER_WORKLOAD_API_DOMAIN"],
       });
     }
-    if (
-      data.TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED &&
-      data.TRIGGER_DEQUEUE_BACKPRESSURE_SOURCE === "redis" &&
-      !data.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST
-    ) {
+    if (data.TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED && !data.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:

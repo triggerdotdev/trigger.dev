@@ -22,22 +22,20 @@ const base = {
 };
 
 describe("Env superRefine - backpressure source awareness", () => {
-  it("accepts k8s-pod-count source without a Redis host", () => {
+  it("pod-count source can be enabled without a Redis host", () => {
     expect(() =>
       Env.parse({
         ...base,
-        TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED: "true",
-        TRIGGER_DEQUEUE_BACKPRESSURE_SOURCE: "k8s-pod-count",
+        TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENABLED: "true",
       })
     ).not.toThrow();
   });
 
-  it("rejects redis source when Redis host is absent", () => {
+  it("redis source requires a Redis host", () => {
     expect(() =>
       Env.parse({
         ...base,
         TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED: "true",
-        TRIGGER_DEQUEUE_BACKPRESSURE_SOURCE: "redis",
       })
     ).toThrow();
   });
