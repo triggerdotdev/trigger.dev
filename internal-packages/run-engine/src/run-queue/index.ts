@@ -318,6 +318,16 @@ export class RunQueue {
     this._observableWorkerQueues.add(workerQueue);
   }
 
+  /**
+   * Replaces the full set of worker queues observed by the `runqueue.workerQueue.length`
+   * gauge. Used by a periodic observer that derives the set from the current worker
+   * groups, so the observed set stays correct (and prunes queues that no longer exist)
+   * independent of dequeue activity.
+   */
+  public setObservableWorkerQueues(workerQueues: string[]) {
+    this._observableWorkerQueues = new Set(workerQueues);
+  }
+
   async #updateWorkerQueueLength(observableResult: ObservableResult<Attributes>) {
     for (const workerQueue of this._observableWorkerQueues) {
       const workerQueueLength = await this.redis.llen(this.keys.workerQueueKey(workerQueue));
