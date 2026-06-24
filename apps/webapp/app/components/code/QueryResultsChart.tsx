@@ -7,6 +7,7 @@ import { createValueFormatter } from "~/utils/columnFormat";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import type { ChartConfig } from "~/components/primitives/charts/Chart";
 import { Chart } from "~/components/primitives/charts/ChartCompound";
+import { selectEvenlySpacedIndices } from "~/components/primitives/charts/useXAxisTicks";
 import { ChartBlankState } from "../primitives/charts/ChartBlankState";
 import { Callout } from "../primitives/Callout";
 import type { AggregationType, ChartConfiguration } from "../metrics/QueryWidget";
@@ -26,6 +27,35 @@ const MAX_DATA_POINTS = 500;
 const TIME_AXIS_Y_ALLOWANCE_PX = 56;
 const TIME_AXIS_LABEL_SPACING_PX = 40;
 const MIN_TIME_AXIS_TICKS = 3;
+
+// Categorical (non-date) x-axis label behavior. Labels are thinned to fit the
+// width; long values (run IDs, task names, etc.) are middle-truncated and the
+// axis auto-rotates so the chart stays neat without any customer configuration.
+const X_LABEL_PX_PER_CHAR = 6.5;
+const X_LABEL_GAP_PX = 16;
+const MIN_CATEGORICAL_LABEL_PX = 36;
+// Labels longer than this rotate to -45° (auto-rotate "only when needed").
+const CATEGORICAL_HORIZONTAL_MAX_CHARS = 10;
+// Middle-ellipsis cap applied to rotated labels (keeps the axis height bounded).
+const CATEGORICAL_ROTATED_MAX_CHARS = 14;
+// Rotated labels can sit closer together without overlapping than horizontal ones.
+const CATEGORICAL_ROTATED_LABEL_PX = 32;
+const CATEGORICAL_ROTATED_HEIGHT_PX = 80;
+const MIN_CATEGORICAL_TICKS = 2;
+
+/**
+ * Shorten a string to `maxChars`, keeping the start and end with an ellipsis in
+ * the middle (e.g. "run_abc…f9c2"). Middle truncation is important for IDs that
+ * share a common prefix — the distinguishing tail is preserved.
+ */
+export function truncateMiddle(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  if (maxChars <= 1) return value.slice(0, Math.max(0, maxChars));
+  const keep = maxChars - 1; // room for the ellipsis
+  const head = Math.ceil(keep / 2);
+  const tail = Math.floor(keep / 2);
+  return `${value.slice(0, head)}…${value.slice(value.length - tail)}`;
+}
 
 interface QueryResultsChartProps {
   rows: Record<string, unknown>[];
@@ -1052,6 +1082,44 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     };
   }, [isDateBased, xAxisTickFormatter, xAxisAngle]);
 
+  // Categorical (non-date) x-axis presentation: thin labels to fit the width,
+  // middle-truncate long values (run IDs, etc.), and auto-rotate only when the
+  // labels are long. Applies to both bar and line charts; zero customer config.
+  const categoricalXAxisProps = useMemo(() => {
+    if (isDateBased) return null;
+
+    const labels = data.map((d) => String(d[xDataKey] ?? ""));
+    const maxLabelChars = labels.reduce((max, l) => Math.max(max, l.length), 0);
+    const angled = maxLabelChars > CATEGORICAL_HORIZONTAL_MAX_CHARS;
+
+    const tickFormatter = angled
+      ? (value: unknown) => truncateMiddle(String(value ?? ""), CATEGORICAL_ROTATED_MAX_CHARS)
+      : (value: unknown) => String(value ?? "");
+
+    // Thin to as many labels as fit. Rotated labels pack tighter; horizontal
+    // labels need roughly their own width.
+    const perLabelPx = angled
+      ? CATEGORICAL_ROTATED_LABEL_PX
+      : Math.max(MIN_CATEGORICAL_LABEL_PX, maxLabelChars * X_LABEL_PX_PER_CHAR + X_LABEL_GAP_PX);
+    const plotWidth = chartWidth > 0 ? Math.max(0, chartWidth - TIME_AXIS_Y_ALLOWANCE_PX) : 0;
+    const fitCount =
+      plotWidth > 0
+        ? Math.max(MIN_CATEGORICAL_TICKS, Math.floor(plotWidth / perLabelPx))
+        : data.length;
+    const ticks =
+      fitCount < data.length
+        ? selectEvenlySpacedIndices(data.length, fitCount).map((i) => data[i][xDataKey] as string)
+        : undefined;
+
+    return {
+      tickFormatter,
+      angle: angled ? -45 : 0,
+      textAnchor: angled ? ("end" as const) : ("middle" as const),
+      height: angled ? CATEGORICAL_ROTATED_HEIGHT_PX : undefined,
+      ...(ticks ? { ticks, interval: 0 as const } : {}),
+    };
+  }, [isDateBased, data, xDataKey, chartWidth]);
+
   // Validation — all hooks must be above this point
   const chartIcon = chartType === "bar" ? BarChart3 : LineChart;
 
@@ -1103,12 +1171,12 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         ticks: widthAwareTimeTicks ?? undefined,
         ...baseXAxisProps,
       }
-    : baseXAxisProps;
+    : categoricalXAxisProps ?? baseXAxisProps;
 
   // Bar charts always use categorical axis positioning
   // This ensures bars are evenly distributed regardless of data point count
   // (prevents massive bars when there are only a few data points)
-  const xAxisPropsForBar = baseXAxisProps;
+  const xAxisPropsForBar = isDateBased ? baseXAxisProps : categoricalXAxisProps ?? baseXAxisProps;
 
   const yAxisProps = {
     tickFormatter: yAxisFormatter,

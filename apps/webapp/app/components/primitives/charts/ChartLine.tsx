@@ -20,6 +20,7 @@ import { ChartLineLoading, ChartLineNoData, ChartLineInvalid } from "./ChartLoad
 import { useChartContext } from "./ChartContext";
 import { ChartRoot, useHasNoData } from "./ChartRoot";
 import { defaultYAxisTickFormatter, useYAxisWidth } from "./useYAxisWidth";
+import { CHART_MARGIN } from "./ChartBar";
 // Legend is now rendered by ChartRoot outside the chart container
 import type { ZoomRange } from "./hooks/useZoomSelection";
 
@@ -145,10 +146,7 @@ export function ChartLineRenderer({
         width={width}
         height={height}
         stackOffset="none"
-        margin={{
-          left: 12,
-          right: 12,
-        }}
+        margin={CHART_MARGIN}
         onMouseMove={(e: any) => {
           if (e?.activePayload?.length) {
             setActivePayload(e.activePayload, e.activeTooltipIndex);
@@ -198,11 +196,7 @@ export function ChartLineRenderer({
       data={data}
       width={width}
       height={height}
-      margin={{
-        top: 5,
-        left: 12,
-        right: 12,
-      }}
+      margin={CHART_MARGIN}
       onMouseMove={(e: any) => {
         if (e?.activePayload?.length) {
           setActivePayload(e.activePayload, e.activeTooltipIndex);

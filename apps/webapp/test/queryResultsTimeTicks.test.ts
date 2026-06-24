@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateTimeTicks } from "~/components/code/QueryResultsChart";
+import { generateTimeTicks, truncateMiddle } from "~/components/code/QueryResultsChart";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -35,5 +35,27 @@ describe("generateTimeTicks (width-aware tick budget)", () => {
 
   it("returns a single tick for a zero range", () => {
     expect(generateTimeTicks(min, min, 8)).toEqual([min]);
+  });
+});
+
+describe("truncateMiddle", () => {
+  it("leaves short strings unchanged", () => {
+    expect(truncateMiddle("run_abc", 14)).toBe("run_abc");
+  });
+
+  it("keeps the head and tail with a middle ellipsis", () => {
+    expect(truncateMiddle("abcdefghijklmnop", 9)).toBe("abcd…mnop");
+  });
+
+  it("never exceeds maxChars", () => {
+    const out = truncateMiddle("run_0123456789abcdef", 12);
+    expect(out.length).toBeLessThanOrEqual(12);
+    expect(out).toContain("…");
+  });
+
+  it("preserves the distinguishing tail for ids sharing a prefix", () => {
+    const a = truncateMiddle("run_commonprefix_AAAA", 12);
+    const b = truncateMiddle("run_commonprefix_BBBB", 12);
+    expect(a).not.toBe(b);
   });
 });

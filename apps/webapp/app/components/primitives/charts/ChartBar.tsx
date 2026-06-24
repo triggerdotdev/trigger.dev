@@ -24,9 +24,10 @@ import { ZoomTooltip, useZoomHandlers } from "./ChartZoom";
 // across charts in the same ChartSyncProvider group.
 const SYNC_LINE_COLOR = "#3B3E45";
 
-// Chart margins. The right margin keeps the centered last x-axis label (e.g.
-// "Jun 22") from being clipped at the SVG's right edge.
-const CHART_MARGIN = { top: 5, right: 20, bottom: 5, left: 5 } as const;
+// Chart margins, shared with ChartLine so bar/line align when toggling between
+// them. The right margin keeps the centered last x-axis label (e.g. "Jun 22")
+// from being clipped; the bottom margin gives angled x-axis labels room.
+export const CHART_MARGIN = { top: 5, right: 20, bottom: 5, left: 5 } as const;
 
 /**
  * Tooltip shown while drag-to-zooming: the selected From/To range instead of the
