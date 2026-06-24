@@ -33,7 +33,7 @@ import {
 import { Worker } from "@trigger.dev/redis-worker";
 import { assertNever } from "assert-never";
 import { EventEmitter } from "node:events";
-import { setTimeout } from "node:timers/promises";
+import { setInterval, setTimeout } from "node:timers/promises";
 import { BatchQueue } from "../batch-queue/index.js";
 import type {
   BatchItem,
@@ -100,6 +100,7 @@ export class RunEngine {
   private heartbeatTimeouts: HeartbeatTimeouts;
   private repairSnapshotTimeoutMs: number;
   private batchQueue: BatchQueue;
+  private workerQueueObserverAbortController?: AbortController;
 
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
@@ -474,6 +475,96 @@ export class RunEngine {
       machines: this.options.machines,
       billingCache: this.billingCache,
     });
+
+    this.#startWorkerQueueObserver();
+  }
+
+  /**
+   * Refreshes the set of worker queues observed by the `runqueue.workerQueue.length`
+   * gauge from the WorkerInstanceGroup records, so the gauge reports each worker queue's
+   * length even when nothing is dequeuing from it. Includes hidden groups; excludes
+   * groups whose cloud provider is configured to be excluded (groups with no cloud
+   * provider are always included).
+   *
+   * Only MANAGED groups are observed. UNMANAGED groups are created per project
+   * (masterQueue `<projectId>-<name>`), so observing them would grow the set, and the
+   * per-tick Redis fanout, with the number of self-hosted-worker projects rather than
+   * with the managed regions this gauge is meant to track.
+   */
+  async refreshWorkerQueueObservation() {
+    const suffixes = this.options.workerQueueObserver?.additionalQueueSuffixes ?? [];
+    const excludedCloudProviders = new Set(
+      (this.options.workerQueueObserver?.excludedCloudProviders ?? []).map((p) => p.toLowerCase())
+    );
+
+    // Read from the replica: this is a periodic metrics-only read and worker groups change
+    // rarely, so a little replication lag is fine and keeps it off the primary.
+    const workerGroups = await this.readOnlyPrisma.workerInstanceGroup.findMany({
+      where: { type: "MANAGED" },
+      select: { masterQueue: true, cloudProvider: true },
+    });
+
+    const workerQueues: string[] = [];
+
+    for (const { masterQueue, cloudProvider } of workerGroups) {
+      if (cloudProvider && excludedCloudProviders.has(cloudProvider.toLowerCase())) {
+        continue;
+      }
+
+      workerQueues.push(masterQueue);
+
+      for (const suffix of suffixes) {
+        workerQueues.push(`${masterQueue}${suffix}`);
+      }
+    }
+
+    this.runQueue.setObservableWorkerQueues(workerQueues);
+  }
+
+  #startWorkerQueueObserver() {
+    if (!this.options.workerQueueObserver?.enabled) {
+      return;
+    }
+
+    const intervalMs = this.options.workerQueueObserver.intervalMs ?? 30_000;
+    this.workerQueueObserverAbortController = new AbortController();
+
+    this.#runWorkerQueueObserver(
+      intervalMs,
+      this.workerQueueObserverAbortController.signal
+    ).catch((error) => {
+      this.logger.error("Worker queue observer loop crashed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }
+
+  async #runWorkerQueueObserver(intervalMs: number, signal: AbortSignal) {
+    const refresh = async () => {
+      try {
+        await this.refreshWorkerQueueObservation();
+      } catch (error) {
+        this.logger.error("Failed to refresh worker queue observation", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    };
+
+    // Refresh once immediately so a freshly started instance reports queue lengths
+    // without waiting for the first interval, then keep it fresh on an interval.
+    await refresh();
+
+    try {
+      for await (const _ of setInterval(intervalMs, null, { signal })) {
+        await refresh();
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name !== "AbortError") {
+        throw error;
+      }
+
+      this.logger.debug("Worker queue observer stopped");
+    }
   }
 
   //MARK: - Run functions
@@ -1322,8 +1413,11 @@ export class RunEngine {
     blockingPop?: boolean;
     blockingPopTimeoutSeconds?: number;
   }): Promise<DequeuedMessage[]> {
-    if (!skipObserving) {
-      // We only do this with "prod" worker queues because we don't want to observe dev (e.g. environment) worker queues
+    // We only do this with "prod" worker queues because we don't want to observe dev (e.g.
+    // environment) worker queues. When the worker queue observer is enabled it is the source
+    // of truth for the observed set (and applies the cloud-provider exclusions), so the
+    // per-dequeue registration is skipped.
+    if (!skipObserving && !this.options.workerQueueObserver?.enabled) {
       this.runQueue.registerObservableWorkerQueue(workerQueue);
     }
 
@@ -2061,6 +2155,9 @@ export class RunEngine {
 
   async quit() {
     try {
+      // stop the worker queue observer loop
+      this.workerQueueObserverAbortController?.abort();
+
       //stop the run queue
       await this.runQueue.quit();
       await this.worker.stop();

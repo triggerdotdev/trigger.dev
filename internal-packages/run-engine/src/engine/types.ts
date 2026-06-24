@@ -211,6 +211,31 @@ export type RunEngineOptions = {
    * the since snapshot is not yet on the replica, before falling back to the primary.
    * Set maxMs to 0 (or any value <= 0) to skip the replica retry and go straight to the primary. */
   readReplicaSnapshotsSinceRetryDelay?: { minMs: number; maxMs: number };
+  /**
+   * Periodically refreshes the set of worker queues observed by the
+   * `runqueue.workerQueue.length` gauge from the WorkerInstanceGroup records, so the
+   * gauge reports every active worker queue's length even when this instance is not
+   * dequeuing from them (a dequeue is otherwise the only thing that registers a worker
+   * queue for observation). When enabled the observer is the source of truth for the
+   * observed set, so the per-dequeue registration is skipped. Disabled by default; the
+   * server enables it.
+   */
+  workerQueueObserver?: {
+    enabled?: boolean;
+    /** How often to refresh the observed worker queue set from the database (ms). Default: 30_000. */
+    intervalMs?: number;
+    /**
+     * Extra suffix variants to also observe for each worker queue, e.g. the scheduled
+     * split queue suffix. The suffix value lives with the caller that owns the naming
+     * convention rather than in the engine. Default: [].
+     */
+    additionalQueueSuffixes?: string[];
+    /**
+     * Worker groups whose `cloudProvider` is in this list are not observed. Groups with
+     * no `cloudProvider` are always observed. Matched case-insensitively. Default: [].
+     */
+    excludedCloudProviders?: string[];
+  };
   tracer: Tracer;
   meter?: Meter;
   logger?: Logger;
