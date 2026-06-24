@@ -28,6 +28,10 @@ import { singleton } from "~/utils/singleton";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
 import { workerQueueForClass } from "~/runEngine/concerns/workerQueueSplit.server";
+import {
+  isWorkerQueueDequeueDisabled,
+  recordBlockedDequeue,
+} from "~/runEngine/concerns/dequeueGate.server";
 import { WithRunEngine, WithRunEngineOptions } from "../baseService.server";
 
 const authenticatedWorkerInstanceCache = singleton(
@@ -377,11 +381,16 @@ export class AuthenticatedWorkerInstance extends WithRunEngine {
     runnerId?: string;
     queueClass?: WorkerQueueClass;
   }): Promise<DequeuedMessage[]> {
-    // Derive the actual queue from this worker's own masterQueue + class, so a
-    // token can only ever reach its own region's queues (default or :scheduled).
+    const workerQueue = workerQueueForClass(this.masterQueue, queueClass);
+
+    if (isWorkerQueueDequeueDisabled(workerQueue)) {
+      recordBlockedDequeue(workerQueue);
+      return [];
+    }
+
     return await this._engine.dequeueFromWorkerQueue({
       consumerId: this.workerInstanceId,
-      workerQueue: workerQueueForClass(this.masterQueue, queueClass),
+      workerQueue,
       workerId: this.workerInstanceId,
       runnerId,
     });
