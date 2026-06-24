@@ -11,6 +11,7 @@ import {
   type YAxisProps,
 } from "recharts";
 import { ChartTooltip, ChartTooltipContent } from "~/components/primitives/charts/Chart";
+import TooltipPortal from "~/components/primitives/TooltipPortal";
 import { useChartContext } from "./ChartContext";
 import { ChartBarInvalid, ChartBarLoading, ChartBarNoData } from "./ChartLoading";
 import { useHasNoData } from "./ChartRoot";
@@ -26,6 +27,33 @@ const SYNC_LINE_COLOR = "#3B3E45";
 // Chart margins. The right margin keeps the centered last x-axis label (e.g.
 // "Jun 22") from being clipped at the SVG's right edge.
 const CHART_MARGIN = { top: 5, right: 20, bottom: 5, left: 5 } as const;
+
+/**
+ * Tooltip shown while drag-to-zooming: the selected From/To range instead of the
+ * normal hovered-value tooltip. Uses the same cursor-following portal as the
+ * standard tooltip.
+ */
+function ZoomRangeTooltip({
+  active,
+  from,
+  to,
+}: {
+  active?: boolean;
+  from: string;
+  to: string;
+}) {
+  if (!active) return null;
+  return (
+    <TooltipPortal active={active}>
+      <div className="grid grid-cols-[auto_auto] gap-x-2 gap-y-1 rounded-lg border border-grid-bright bg-background-bright px-2.5 py-1.5 text-xs shadow-xl">
+        <span className="text-right text-text-dimmed">From:</span>
+        <span className="tabular-nums text-text-bright">{from}</span>
+        <span className="text-right text-text-dimmed">To:</span>
+        <span className="tabular-nums text-text-bright">{to}</span>
+      </div>
+    </TooltipPortal>
+  );
+}
 
 //TODO: fix the first and last bars in a stack not having rounded corners
 
@@ -122,11 +150,12 @@ export function ChartBarRenderer({
     [enableZoom, zoom, dataKey]
   );
 
-  // Handle mouse leave to also reset highlight
+  // Handle mouse leave to also reset highlight + cancel any in-progress zoom drag
   const handleMouseLeave = useCallback(() => {
     zoomHandlers.onMouseLeave?.();
     highlight.reset();
     sync?.setActiveX(null);
+    sync?.cancelZoom();
   }, [zoomHandlers, highlight, sync]);
 
   // Render loading/error states
@@ -153,6 +182,26 @@ export function ChartBarRenderer({
 
   // Synced hover indicator (mirrored across charts in the same ChartSyncProvider).
   const syncActiveX = sync?.activeX ?? null;
+  // Synced drag-to-zoom selection (mirrored across charts).
+  const syncZoomSelection = sync?.zoomSelection ?? null;
+  // Bucket width so the committed zoom range includes the last selected bucket.
+  const bucketWidthMs =
+    data.length >= 2 ? Number(data[1][dataKey]) - Number(data[0][dataKey]) : 0;
+
+  // While dragging, show a From/To range tooltip instead of the hovered values.
+  // Reuse the chart's tooltip label formatter (it reads `bucket` off the payload).
+  const formatZoomEdge = (v: number): string =>
+    tooltipLabelFormatter ? tooltipLabelFormatter("", [{ payload: { bucket: v } }]) : String(v);
+  let zoomFrom: string | null = null;
+  let zoomTo: string | null = null;
+  if (syncZoomSelection) {
+    const a = Number(syncZoomSelection.start);
+    const b = Number(syncZoomSelection.current);
+    if (Number.isFinite(a) && Number.isFinite(b)) {
+      zoomFrom = formatZoomEdge(Math.min(a, b));
+      zoomTo = formatZoomEdge(Math.max(a, b));
+    }
+  }
 
   return (
     <BarChart
@@ -161,9 +210,16 @@ export function ChartBarRenderer({
       height={height}
       barCategoryGap={1}
       margin={CHART_MARGIN}
-      onMouseDown={zoomHandlers.onMouseDown}
+      className={sync?.zoomEnabled ? "cursor-crosshair select-none" : undefined}
+      onMouseDown={(e: any) => {
+        zoomHandlers.onMouseDown?.(e);
+        if (sync?.zoomEnabled && e?.activeLabel != null) sync.startZoom(e.activeLabel);
+      }}
       onMouseMove={(e: any) => {
         zoomHandlers.onMouseMove?.(e);
+        if (sync?.zoomEnabled && sync.zoomSelection && e?.activeLabel != null) {
+          sync.updateZoom(e.activeLabel);
+        }
         if (e?.activePayload?.length) {
           setActivePayload(e.activePayload, e.activeTooltipIndex);
           highlight.setTooltipActive(true);
@@ -173,7 +229,10 @@ export function ChartBarRenderer({
           sync?.setActiveX(null);
         }
       }}
-      onMouseUp={zoomHandlers.onMouseUp}
+      onMouseUp={() => {
+        zoomHandlers.onMouseUp?.();
+        if (sync?.zoomEnabled) sync.endZoom(bucketWidthMs);
+      }}
       onClick={zoomHandlers.onClick}
       onMouseLeave={handleMouseLeave}
     >
@@ -211,7 +270,9 @@ export function ChartBarRenderer({
       <ChartTooltip
         cursor={{ fill: "rgba(255, 255, 255, 0.06)" }}
         content={
-          showLegend ? (
+          syncZoomSelection && zoomFrom != null && zoomTo != null ? (
+            <ZoomRangeTooltip from={zoomFrom} to={zoomTo} />
+          ) : showLegend ? (
             () => null
           ) : tooltipLabelFormatter ? (
             <ChartTooltipContent valueFormatter={tooltipValueFormatter} />
@@ -274,6 +335,20 @@ export function ChartBarRenderer({
           />
         );
       })}
+
+      {/* Synced drag-to-zoom selection — mirrored across charts in the same group. */}
+      {syncZoomSelection && (
+        <ReferenceArea
+          x1={syncZoomSelection.start}
+          x2={syncZoomSelection.current}
+          isFront
+          stroke="#3B82F6"
+          strokeOpacity={0.3}
+          fill="#3B82F6"
+          fillOpacity={0.15}
+          className="pointer-events-none"
+        />
+      )}
 
       {/* Synced hover indicator — mirrors the hovered x across charts in the same ChartSyncProvider group.
           pointer-events-none so it never steals hover from the bar underneath it. */}

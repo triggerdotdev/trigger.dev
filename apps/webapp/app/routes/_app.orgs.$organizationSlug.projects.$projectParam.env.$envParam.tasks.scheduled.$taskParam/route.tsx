@@ -12,6 +12,8 @@ import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { ChartCard } from "~/components/primitives/charts/ChartCard";
+import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
+import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
 import { statusColor } from "~/components/primitives/charts/statusColors";
@@ -193,6 +195,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export default function Page() {
   const { task, activity, scheduleList, runList } = useTypedLoaderData<typeof loader>();
+  const zoomToTimeFilter = useZoomToTimeFilter();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -298,13 +301,15 @@ export default function Page() {
                 {/* Activity chart */}
                 <ResizablePanel id="scheduled-task-activity" min="220px" default="320px">
                   <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background p-2">
-                    <ChartCard title="Runs by status">
-                      <Suspense fallback={<ActivityChartSkeleton />}>
-                        <TypedAwait resolve={activity} errorElement={<ActivityChartSkeleton />}>
-                          {(result) => <ActivityChart activity={result} />}
-                        </TypedAwait>
-                      </Suspense>
-                    </ChartCard>
+                    <ChartSyncProvider onZoom={zoomToTimeFilter}>
+                      <ChartCard title="Runs by status">
+                        <Suspense fallback={<ActivityChartSkeleton />}>
+                          <TypedAwait resolve={activity} errorElement={<ActivityChartSkeleton />}>
+                            {(result) => <ActivityChart activity={result} />}
+                          </TypedAwait>
+                        </Suspense>
+                      </ChartCard>
+                    </ChartSyncProvider>
                   </div>
                 </ResizablePanel>
 

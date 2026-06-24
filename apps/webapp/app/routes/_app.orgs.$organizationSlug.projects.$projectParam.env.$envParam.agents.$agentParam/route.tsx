@@ -11,6 +11,7 @@ import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { ChartCard } from "~/components/primitives/charts/ChartCard";
 import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
+import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
 import { statusColor } from "~/components/primitives/charts/statusColors";
@@ -204,6 +205,7 @@ export default function Page() {
   const tasksPath = v3EnvironmentPath(organization, project, environment);
 
   const [tab, setTab] = useState<AgentTab>("sessions");
+  const zoomToTimeFilter = useZoomToTimeFilter();
   const tabLabel = tab === "sessions" ? "Sessions" : "Runs";
 
   return (
@@ -273,7 +275,7 @@ export default function Page() {
                 {/* Activity / LLM cost / Token charts */}
                 <ResizablePanel id="agent-activity" min="220px" default="320px">
                   <div className="flex h-full flex-col overflow-hidden bg-background p-2">
-                    <ChartSyncProvider>
+                    <ChartSyncProvider onZoom={zoomToTimeFilter}>
                       <div className="grid min-h-0 flex-1 grid-cols-3 gap-2">
                       <ChartCard title={tabLabel}>
                         {tab === "sessions" ? (
