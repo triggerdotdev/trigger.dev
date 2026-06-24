@@ -39,4 +39,15 @@ describe("Env superRefine - backpressure source awareness", () => {
       })
     ).toThrow();
   });
+
+  it("both sources can be enabled together (with a Redis host)", () => {
+    expect(() =>
+      Env.parse({
+        ...base,
+        TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED: "true",
+        TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST: "localhost",
+        TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENABLED: "true",
+      })
+    ).not.toThrow();
+  });
 });
