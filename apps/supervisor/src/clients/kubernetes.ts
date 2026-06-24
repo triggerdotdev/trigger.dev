@@ -68,6 +68,7 @@ export function createApiserverMetricsFetcher(): () => Promise<string> {
       throw new Error("no current cluster in kubeconfig");
     }
     const requestInit = await kubeConfig.applyToFetchOptions({ method: "GET" });
+    // node-fetch vs DOM RequestInit: structurally compatible, declaration-only mismatch
     const response = await fetch(`${cluster.server}/metrics`, requestInit as unknown as RequestInit);
     if (!response.ok) {
       throw new Error(`apiserver /metrics scrape failed: ${response.status}`);

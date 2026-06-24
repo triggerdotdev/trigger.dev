@@ -219,8 +219,10 @@ class ManagedSupervisor {
 
     if (env.TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED) {
       let source: BackpressureSignalSource;
+      let refreshIntervalMs = env.TRIGGER_DEQUEUE_BACKPRESSURE_REFRESH_MS;
 
       if (env.TRIGGER_DEQUEUE_BACKPRESSURE_SOURCE === "k8s-pod-count") {
+        refreshIntervalMs = env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_REFRESH_MS;
         if (
           env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE >=
           env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE
@@ -243,7 +245,7 @@ class ManagedSupervisor {
         this.logger.log("🛑 Dequeue backpressure enabled (pod-count source)", {
           engage: env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE,
           release: env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE,
-          refreshIntervalMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_REFRESH_MS,
+          refreshIntervalMs,
           dryRun: env.TRIGGER_DEQUEUE_BACKPRESSURE_DRY_RUN,
         });
       } else {
@@ -274,7 +276,7 @@ class ManagedSupervisor {
       this.backpressureMonitor = new BackpressureMonitor({
         enabled: true,
         source,
-        refreshIntervalMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_REFRESH_MS,
+        refreshIntervalMs,
         maxVerdictAgeMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_MAX_VERDICT_AGE_MS,
         rampMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_RAMP_MS,
         dryRun: env.TRIGGER_DEQUEUE_BACKPRESSURE_DRY_RUN,

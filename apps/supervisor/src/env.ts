@@ -3,7 +3,7 @@ import { env as stdEnv } from "std-env";
 import { z } from "zod";
 import { AdditionalEnvVars, BoolEnv } from "./envUtil.js";
 
-const Env = z
+export const Env = z
   .object({
     // This will come from `spec.nodeName` in k8s
     TRIGGER_WORKER_INSTANCE_NAME: z.string().default(randomUUID()),
@@ -79,6 +79,7 @@ const Env = z
     TRIGGER_DEQUEUE_BACKPRESSURE_SOURCE: z.enum(["redis", "k8s-pod-count"]).default("redis"),
     TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE: z.coerce.number().int().positive().default(10_000),
     TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE: z.coerce.number().int().positive().default(5_000),
+    TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_REFRESH_MS: z.coerce.number().int().positive().default(5_000),
 
     // Optional services
     TRIGGER_WARM_START_URL: z.string().optional(),
@@ -332,7 +333,11 @@ const Env = z
         path: ["TRIGGER_WORKLOAD_API_DOMAIN"],
       });
     }
-    if (data.TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED && !data.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST) {
+    if (
+      data.TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED &&
+      data.TRIGGER_DEQUEUE_BACKPRESSURE_SOURCE === "redis" &&
+      !data.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:

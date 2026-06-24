@@ -24,6 +24,16 @@ describe("parsePodCount", () => {
 
   it("throws when the pods metric is absent", () => {
     const text = 'apiserver_storage_objects{resource="configmaps"} 17';
+    expect(() => parsePodCount(text)).toThrow(/not found/);
+  });
+
+  it("throws on a non-finite value (e.g. 1e999)", () => {
+    const text = 'apiserver_storage_objects{resource="pods"} 1e999';
+    expect(() => parsePodCount(text)).toThrow();
+  });
+
+  it("throws on a negative value", () => {
+    const text = 'apiserver_storage_objects{resource="pods"} -5';
     expect(() => parsePodCount(text)).toThrow();
   });
 });
