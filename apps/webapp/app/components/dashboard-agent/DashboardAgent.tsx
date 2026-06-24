@@ -21,11 +21,9 @@ import { DashboardAgentPanel } from "./DashboardAgentPanel";
 export function DashboardAgent({
   children,
   hasAccess = false,
-  headStartEnabled = false,
 }: {
   children: React.ReactNode;
   hasAccess?: boolean;
-  headStartEnabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -61,7 +59,7 @@ export function DashboardAgent({
       </ResizablePanel>
       <ResizableHandle id="dashboard-agent-handle" />
       <ResizablePanel id="dashboard-agent-panel" default="380px" min="320px" max="720px">
-        <DashboardAgentPanel onClose={() => setOpen(false)} headStartEnabled={headStartEnabled} />
+        <DashboardAgentPanel onClose={() => setOpen(false)} />
       </ResizablePanel>
     </ResizablePanelGroup>
   );

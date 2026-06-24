@@ -13,6 +13,7 @@ import {
   type DashboardAgentClientData,
   type DashboardAgentSession,
 } from "./DashboardAgentChat";
+import { DashboardAgentDraft } from "./DashboardAgentDraft";
 import { DashboardAgentHeader } from "./DashboardAgentHeader";
 import {
   DashboardAgentHistory,
@@ -29,21 +30,23 @@ type ActiveChat = {
   chatId: string;
   messages: UIMessage[];
   session: DashboardAgentSession | null;
+  // Cold start only: the agent run has no warm step-1, so the mounted chat sends
+  // this first message through the transport to trigger the turn. Undefined for
+  // head-started and resumed chats — their stream is resumed, not re-sent.
+  pendingFirstMessage?: string;
+  // True for a head-started chat: the turn is already in flight server-side, so
+  // the transport must hydrate the session as streaming to resume `session.out`.
+  streaming?: boolean;
 };
 
 /**
  * The dashboard agent side panel. Owns history, the active chat, and last-chat
- * persistence; resolves a chat's stored transcript + session before mounting
- * the inner `DashboardAgentChat` (keyed by chatId) so resume flows in through
- * the transport's declarative `sessions` option.
+ * persistence. New chats start in a draft state with no id; the server
+ * generates the chat id on the first send (`create`) and owns the chat record,
+ * so the client never invents an id. Existing chats resolve their stored
+ * transcript + session before mounting `DashboardAgentChat` (keyed by chatId).
  */
-export function DashboardAgentPanel({
-  onClose,
-  headStartEnabled = false,
-}: {
-  onClose: () => void;
-  headStartEnabled?: boolean;
-}) {
+export function DashboardAgentPanel({ onClose }: { onClose: () => void }) {
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -80,16 +83,17 @@ export function DashboardAgentPanel({
     }
   }, [actionPath]);
 
-  // Open a chat by id. A new chat mounts immediately with an empty transcript;
-  // an existing one is fetched first so its session hydrates the transport at
-  // mount. A stored id that's gone (deleted / never sent) falls back to fresh.
+  // Bumped on each open so a slower earlier open can't overwrite a newer one
+  // when chats are switched rapidly.
+  const openChatRequestSeq = useRef(0);
+
+  // Open an existing chat: fetch its stored transcript + session so resume flows
+  // in through the transport at mount. A stored id that's gone (deleted / never
+  // sent) drops back to the draft state.
   const openChat = useCallback(
-    async (id: string, opts?: { fetchExisting?: boolean }) => {
+    async (id: string) => {
       setView("chat");
-      if (!opts?.fetchExisting) {
-        setActive({ chatId: id, messages: [], session: null });
-        return;
-      }
+      const seq = ++openChatRequestSeq.current;
       setLoading(true);
       try {
         const res = await fetch(`${actionPath}?chatId=${encodeURIComponent(id)}`);
@@ -99,6 +103,7 @@ export function DashboardAgentPanel({
               session?: { publicAccessToken: string; lastEventId: string | null } | null;
             })
           : { messages: [], session: null };
+        if (seq !== openChatRequestSeq.current) return;
         if (data.messages && data.messages.length > 0) {
           setActive({
             chatId: id,
@@ -111,16 +116,62 @@ export function DashboardAgentPanel({
               : null,
           });
         } else {
-          setActive({ chatId: generateFriendlyId("chat"), messages: [], session: null });
+          // Nothing stored under this id — drop to a fresh draft.
+          setActive(null);
         }
       } finally {
-        setLoading(false);
+        if (seq === openChatRequestSeq.current) setLoading(false);
       }
     },
     [actionPath]
   );
 
-  // On open, restore the last chat (or start a new one). Runs once per mount.
+  // Start a new chat by sending its first message. The server generates the id,
+  // creates the chat record, and kicks off the first turn (head start when
+  // configured, else a cold session). We then mount the real chat on the server
+  // id and either resume its stream (head start) or send the message through
+  // the transport (cold start).
+  const createChat = useCallback(
+    async (text: string) => {
+      setView("chat");
+      setLoading(true);
+      try {
+        const userMessage: UIMessage = {
+          id: generateFriendlyId("msg"),
+          role: "user",
+          parts: [{ type: "text", text }],
+        };
+        const body = new FormData();
+        body.set("intent", "create");
+        body.set("message", JSON.stringify(userMessage));
+        body.set("clientData", JSON.stringify(clientData));
+        const res = await fetch(actionPath, { method: "POST", body });
+        const data = (await res.json()) as {
+          chatId?: string;
+          publicAccessToken?: string;
+          headStarted?: boolean;
+          error?: string;
+        };
+        if (!res.ok || !data.chatId || !data.publicAccessToken) {
+          setActive(null);
+          return;
+        }
+        setActive({
+          chatId: data.chatId,
+          messages: data.headStarted ? [userMessage] : [],
+          session: { publicAccessToken: data.publicAccessToken },
+          pendingFirstMessage: data.headStarted ? undefined : text,
+          streaming: data.headStarted,
+        });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [actionPath, clientData]
+  );
+
+  // On open, restore the last chat if there is one; otherwise stay in the draft
+  // state (active = null). Runs once per mount.
   const restored = useRef(false);
   useEffect(() => {
     if (restored.current) return;
@@ -131,8 +182,7 @@ export function DashboardAgentPanel({
     } catch {
       /* localStorage unavailable — start fresh */
     }
-    if (stored) void openChat(stored, { fetchExisting: true });
-    else void openChat(generateFriendlyId("chat"));
+    if (stored) void openChat(stored);
   }, [openChat, storageKey]);
 
   // Persist the active chat as the one to restore next time.
@@ -146,12 +196,13 @@ export function DashboardAgentPanel({
   }, [active?.chatId, storageKey]);
 
   const newChat = useCallback(() => {
-    void openChat(generateFriendlyId("chat"));
-  }, [openChat]);
+    setView("chat");
+    setActive(null);
+  }, []);
 
   const switchChat = useCallback(
     (id: string) => {
-      void openChat(id, { fetchExisting: true });
+      void openChat(id);
     },
     [openChat]
   );
@@ -192,24 +243,32 @@ export function DashboardAgentPanel({
           onNewChat={newChat}
           onDelete={deleteChat}
         />
-      ) : loading || !active ? (
+      ) : loading ? (
         <div className="flex flex-1 items-center justify-center">
           <Spinner className="size-5" />
         </div>
-      ) : (
+      ) : active ? (
         <DashboardAgentChat
           key={active.chatId}
           chatId={active.chatId}
           initialMessages={active.messages}
           session={active.session}
+          pendingFirstMessage={active.pendingFirstMessage}
+          streaming={active.streaming}
           clientData={clientData}
           apiOrigin={apiOrigin}
           actionPath={actionPath}
           projectSlug={project.slug}
           environmentSlug={environment.slug}
           currentPage={currentPage}
-          headStartEnabled={headStartEnabled}
           onTurnSettled={loadHistory}
+        />
+      ) : (
+        <DashboardAgentDraft
+          onSubmit={createChat}
+          projectSlug={project.slug}
+          environmentSlug={environment.slug}
+          currentPage={currentPage}
         />
       )}
     </div>

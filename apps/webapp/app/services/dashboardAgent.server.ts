@@ -93,6 +93,22 @@ export type DashboardAgentRepoSnapshot = {
 // message. Keyed by project + ref.
 const repoSnapshotCache = new Map<string, { snapshot: DashboardAgentRepoSnapshot; expiresAt: number }>();
 const REPO_SNAPSHOT_TTL_MS = 60_000;
+const REPO_SNAPSHOT_MAX_ENTRIES = 1_000;
+
+// Drop expired entries (key cardinality grows with each unique project + pinned
+// SHA), then evict oldest-first if still over the cap, so the cache can't grow
+// unbounded over a process lifetime.
+function pruneRepoSnapshotCache(now = Date.now()) {
+  for (const [key, value] of repoSnapshotCache) {
+    if (value.expiresAt <= now) repoSnapshotCache.delete(key);
+  }
+  let overflow = repoSnapshotCache.size - REPO_SNAPSHOT_MAX_ENTRIES;
+  if (overflow <= 0) return;
+  for (const key of repoSnapshotCache.keys()) {
+    repoSnapshotCache.delete(key);
+    if (--overflow <= 0) break;
+  }
+}
 
 /**
  * Resolve the code-mode repo snapshot for a project, or null when the GitHub App
@@ -113,6 +129,7 @@ export async function resolveDashboardAgentRepoSnapshot(
   const cacheKey = `${projectId}:${opts.ref ?? "HEAD"}`;
   const cached = repoSnapshotCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.snapshot;
+  if (cached) repoSnapshotCache.delete(cacheKey);
 
   const connected = await prisma.connectedGithubRepository.findFirst({
     where: { projectId },
@@ -165,6 +182,7 @@ export async function resolveDashboardAgentRepoSnapshot(
     if (!tarballUrl) return null;
 
     const snapshot: DashboardAgentRepoSnapshot = { tarballUrl, owner, repo, sha, defaultBranch };
+    pruneRepoSnapshotCache();
     repoSnapshotCache.set(cacheKey, { snapshot, expiresAt: Date.now() + REPO_SNAPSHOT_TTL_MS });
     return snapshot;
   } catch (error) {

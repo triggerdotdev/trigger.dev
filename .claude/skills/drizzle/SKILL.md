@@ -21,7 +21,7 @@ Pinned versions: **`drizzle-orm` ^0.45**, **`drizzle-kit` ^0.31** (dev), **`post
 
 ## Package layout
 
-```
+```text
 internal-packages/dashboard-agent-db/
   drizzle.config.ts      # drizzle-kit config (schema path, out dir, schemaFilter)
   drizzle/               # generated migrations (committed)

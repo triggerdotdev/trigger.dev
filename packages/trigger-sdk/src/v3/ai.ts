@@ -3027,12 +3027,14 @@ function preserveToolApprovalTail(
   if (!hasToolApprovalResponse(originalTail)) return prepared;
   // Hook left the exact tail object in place — nothing to do.
   if (prepared[prepared.length - 1] === originalTail) return prepared;
-  // Otherwise drop any approval tail the hook produced (the original moved, or a
-  // rewritten copy) and re-append the original so it is last and intact.
-  const withoutApprovalTail = prepared.filter(
-    (m) => m !== originalTail && !hasToolApprovalResponse(m)
-  );
-  return [...withoutApprovalTail, originalTail];
+  // Otherwise drop only the trailing approval tail the hook produced (the
+  // original moved, or a rewritten copy) and re-append the original so it is
+  // last and intact. Older approval rounds deeper in history must survive.
+  const withoutMovedOriginal = prepared.filter((m) => m !== originalTail);
+  while (hasToolApprovalResponse(withoutMovedOriginal[withoutMovedOriginal.length - 1])) {
+    withoutMovedOriginal.pop();
+  }
+  return [...withoutMovedOriginal, originalTail];
 }
 
 /**

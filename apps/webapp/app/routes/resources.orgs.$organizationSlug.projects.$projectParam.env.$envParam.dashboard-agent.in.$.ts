@@ -25,7 +25,13 @@ import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 // chunks pass through untouched. We forward only the headers the API needs and
 // deliberately drop the dashboard session cookie.
 
-const FORWARDED_HEADERS = ["authorization", "content-type", "x-part-id", "x-trigger-source"];
+const FORWARDED_HEADERS = [
+  "authorization",
+  "content-type",
+  "x-part-id",
+  "x-trigger-source",
+  "x-trigger-branch",
+];
 
 // The API's env routes key on the canonical env name (dev/staging/prod/preview),
 // not the dashboard URL slug (e.g. staging's slug is "stg"). Map from the env

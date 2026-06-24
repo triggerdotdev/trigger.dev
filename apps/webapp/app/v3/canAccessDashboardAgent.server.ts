@@ -5,9 +5,10 @@ import { makeFlag } from "~/v3/featureFlags.server";
 
 /**
  * Whether the in-dashboard AI agent is available to this user in this org.
- * Mirrors `canAccessAi`: global env default, then admins/impersonators, then
- * the global/per-org feature flag (org override wins). Enforced server-side so
- * a non-flagged user can't start sessions by hitting the resource route directly.
+ * Mirrors `canAccessAi`: admins/impersonators always pass, then the global /
+ * per-org feature flag with `DASHBOARD_AGENT_ENABLED` as the global default, so
+ * a per-org override (incl. disabling it) wins. Enforced server-side so a
+ * non-flagged user can't start sessions by hitting the resource route directly.
  */
 export async function canAccessDashboardAgent(options: {
   userId: string;
@@ -20,10 +21,6 @@ export async function canAccessDashboardAgent(options: {
   orgFeatureFlags?: Record<string, unknown> | null;
 }): Promise<boolean> {
   const { userId, isAdmin, isImpersonating, organizationSlug, orgFeatureFlags } = options;
-
-  if (env.DASHBOARD_AGENT_ENABLED === "1") {
-    return true;
-  }
 
   if (isAdmin || isImpersonating) {
     return true;
@@ -46,7 +43,7 @@ export async function canAccessDashboardAgent(options: {
   const flag = makeFlag();
   const flagResult = await flag({
     key: FEATURE_FLAG.hasDashboardAgentAccess,
-    defaultValue: false,
+    defaultValue: env.DASHBOARD_AGENT_ENABLED === "1",
     overrides: overrides ?? {},
   });
 

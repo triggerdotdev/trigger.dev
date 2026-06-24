@@ -42,7 +42,8 @@ export function DashboardAgentChat({
   projectSlug,
   environmentSlug,
   currentPage,
-  headStartEnabled,
+  pendingFirstMessage,
+  streaming,
   onTurnSettled,
 }: {
   chatId: string;
@@ -54,7 +55,13 @@ export function DashboardAgentChat({
   projectSlug: string;
   environmentSlug: string;
   currentPage: string;
-  headStartEnabled: boolean;
+  // Cold start: send this first message through the transport once on mount to
+  // trigger the turn. Undefined for head-started and resumed chats.
+  pendingFirstMessage?: string;
+  // Head start: the turn is already in flight, so hydrate the session as
+  // streaming so the transport resumes `session.out` instead of treating it as
+  // a settled session with nothing to reconnect to.
+  streaming?: boolean;
   onTurnSettled: () => void;
 }) {
   const [input, setInput] = useState("");
@@ -62,11 +69,8 @@ export function DashboardAgentChat({
   const transport = useTriggerChatTransport<typeof dashboardAgent>({
     task: "dashboard-agent",
     baseURL: apiOrigin,
-    // First turn of a brand-new chat streams step 1 from the same-origin
-    // head-start route (which mints + injects the delegated token server-side
-    // and boots the agent in parallel). Only when the server is head-start
-    // capable; otherwise the first turn takes the normal cold-start path.
-    headStart: headStartEnabled ? `${actionPath}/headstart` : undefined,
+    // New chats are created server-side (the `create` action owns the id and
+    // runs head start), so there's no client-driven head-start route here.
     // Redirect only the `in`/append to the same-origin proxy, which mints +
     // injects the delegated user token server-side. `baseURL` stays a string so
     // `out` (the long-lived SSE) keeps the SDK's realtime-host routing — we
@@ -82,7 +86,10 @@ export function DashboardAgentChat({
           [chatId]: {
             publicAccessToken: session.publicAccessToken,
             lastEventId: session.lastEventId,
-            isStreaming: false,
+            // Head-started chats are mid-turn, so mark the session streaming to
+            // make the transport resume `session.out`. A settled session
+            // (history) stays false — its transcript loads from the store.
+            isStreaming: streaming ?? false,
           },
         }
       : undefined,
@@ -121,11 +128,22 @@ export function DashboardAgentChat({
     id: chatId,
     messages: initialMessages,
     transport,
-    resume: !!session,
+    // Resume an existing/head-started session's stream. A cold-start chat has a
+    // session but nothing to resume yet — it sends its first message instead.
+    resume: !!session && !pendingFirstMessage,
   });
 
   const isStreaming = status === "streaming";
   const isThinking = status === "submitted";
+
+  // Cold start: trigger the first turn by sending the pending message once.
+  const sentFirst = useRef(false);
+  useEffect(() => {
+    if (pendingFirstMessage && !sentFirst.current) {
+      sentFirst.current = true;
+      void sendMessage({ text: pendingFirstMessage });
+    }
+  }, [pendingFirstMessage, sendMessage]);
 
   const submit = useCallback(
     (text: string) => {
@@ -146,7 +164,9 @@ export function DashboardAgentChat({
   // chat appears and titles/timestamps stay current.
   const prevStatus = useRef(status);
   useEffect(() => {
-    if (prevStatus.current === "streaming" && status === "ready") onTurnSettled();
+    const wasInFlight = prevStatus.current === "streaming" || prevStatus.current === "submitted";
+    const nowSettled = status === "ready" || status === "error";
+    if (wasInFlight && nowSettled) onTurnSettled();
     prevStatus.current = status;
   }, [status, onTurnSettled]);
 

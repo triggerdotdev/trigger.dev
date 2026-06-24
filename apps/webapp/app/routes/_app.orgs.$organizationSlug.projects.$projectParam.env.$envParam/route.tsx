@@ -5,7 +5,6 @@ import { DashboardAgent } from "~/components/dashboard-agent/DashboardAgent";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
-import { isDashboardAgentConfigured } from "~/services/dashboardAgent.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { updateCurrentProjectEnvironmentId } from "~/services/dashboardPreferences.server";
 import { logger } from "~/services/logger.server";
@@ -102,19 +101,16 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     orgFeatureFlags: (project.organization.featureFlags as Record<string, unknown>) ?? {},
   });
 
-  // Head Start needs both the agent secret key and an Anthropic key in this
-  // process; when either is missing the panel falls back to the cold-start path.
   return {
     ...project,
     hasDashboardAgentAccess,
-    headStartEnabled: isDashboardAgentConfigured() && Boolean(env.ANTHROPIC_API_KEY),
   };
 };
 
 export default function Page() {
-  const { hasDashboardAgentAccess, headStartEnabled } = useLoaderData<typeof loader>();
+  const { hasDashboardAgentAccess } = useLoaderData<typeof loader>();
   return (
-    <DashboardAgent hasAccess={hasDashboardAgentAccess} headStartEnabled={headStartEnabled}>
+    <DashboardAgent hasAccess={hasDashboardAgentAccess}>
       <Outlet />
     </DashboardAgent>
   );

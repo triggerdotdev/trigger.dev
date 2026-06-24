@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -47,8 +48,13 @@ const FETCH_TIMEOUT_MS = 30_000;
 const workspaces = new Map<string, Promise<string>>();
 
 export function workdirFor(snapshot: RepoSnapshot): string {
-  const safe = `${snapshot.owner}-${snapshot.repo}-${snapshot.sha}`.replace(/[^A-Za-z0-9._-]/g, "_");
-  return join(tmpdir(), "dashboard-agent-repo", safe);
+  // Hash the identity so different (owner, repo, sha) tuples can't collide onto
+  // the same workspace dir (e.g. via hyphen placement), which would let one
+  // repo reuse another's extracted source.
+  const key = createHash("sha256")
+    .update(`${snapshot.owner}\0${snapshot.repo}\0${snapshot.sha}`)
+    .digest("hex");
+  return join(tmpdir(), "dashboard-agent-repo", key);
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -108,12 +114,18 @@ async function ensureWorkspace(snapshot: RepoSnapshot): Promise<string> {
 }
 
 // Resolve a tool-supplied path inside the workspace, rejecting any `..` escape.
+// Lexical only — pair with a realpath check before touching the path so a
+// symlink inside the repo can't point readFile/rg at something outside.
 function safeResolve(workdir: string, input: string): string | null {
   const cleaned = input.replace(/^\/+/, "");
   if (isAbsolute(cleaned)) return null;
   const target = resolve(workdir, cleaned);
   if (target !== workdir && !target.startsWith(workdir + sep)) return null;
   return target;
+}
+
+function isInside(root: string, target: string): boolean {
+  return target === root || target.startsWith(root + sep);
 }
 
 /**
@@ -151,7 +163,9 @@ export function buildRepoTools(
     const snap = await snapshotFor(runId);
     if ("error" in snap) return snap;
     try {
-      return { workdir: await ensureWorkspace(snap) };
+      // Canonicalize the root so the per-tool realpath checks below compare
+      // against the real workspace path (tmpdir is itself a symlink on macOS).
+      return { workdir: await realpath(await ensureWorkspace(snap)) };
     } catch (error) {
       return { error: `Couldn't load the repository: ${(error as Error).message}` };
     }
@@ -177,9 +191,15 @@ export function buildRepoTools(
         if (glob) args.push("-g", glob);
         const sub = path ? safeResolve(workdir, path) : workdir;
         if (sub === null) return { error: "Path escapes the repository root." };
+        // Resolve symlinks: reject only when the path exists and points outside.
+        const realSub = await realpath(sub).catch(() => null);
+        if (realSub && !isInside(workdir, realSub)) {
+          return { error: "Path escapes the repository root." };
+        }
+        const cwd = realSub ?? sub;
         try {
-          const { stdout } = await execFileAsync("rg", args, { cwd: sub, maxBuffer: 16 * 1024 * 1024 });
-          const files = stdout.split("\n").filter(Boolean).map((f) => relative(workdir, resolve(sub, f)));
+          const { stdout } = await execFileAsync("rg", args, { cwd, maxBuffer: 16 * 1024 * 1024 });
+          const files = stdout.split("\n").filter(Boolean).map((f) => relative(workdir, resolve(cwd, f)));
           return { files: files.slice(0, MAX_LIST_FILES), truncated: files.length > MAX_LIST_FILES };
         } catch (error) {
           // rg exits 1 when there are no matches; treat as empty, not an error.
@@ -197,10 +217,16 @@ export function buildRepoTools(
         const { workdir } = loaded;
         const target = safeResolve(workdir, path);
         if (target === null) return { error: "Path escapes the repository root." };
+        // Resolve symlinks: reject only when the file exists and points outside
+        // (a missing file falls through to the not-found error below).
+        const realTarget = await realpath(target).catch(() => null);
+        if (realTarget && !isInside(workdir, realTarget)) {
+          return { error: "Path escapes the repository root." };
+        }
         let content: string;
         let truncated = false;
         try {
-          const buf = await readFile(target);
+          const buf = await readFile(realTarget ?? target);
           content = buf.subarray(0, MAX_READ_BYTES).toString("utf8");
           truncated = buf.length > MAX_READ_BYTES;
         } catch {

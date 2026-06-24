@@ -98,6 +98,25 @@ export async function getSession(
 }
 
 /**
+ * Owner check: true when a non-deleted chat with this id belongs to the user.
+ * Used to authorize chat-scoped actions (e.g. minting a session token) before
+ * a session row necessarily exists.
+ */
+export async function chatExists(
+  db: DashboardAgentDb,
+  params: { chatId: string; userId: string }
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: chats.id })
+    .from(chats)
+    .where(
+      and(eq(chats.id, params.chatId), eq(chats.userId, params.userId), isNull(chats.deletedAt))
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
  * #4 Create a chat. Idempotent (`onConflictDoNothing`) so the webapp's "new
  * chat" insert and the agent's defensive `onChatStart` ensure can't race into a
  * duplicate-key error.

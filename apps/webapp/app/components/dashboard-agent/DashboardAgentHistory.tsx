@@ -66,7 +66,7 @@ export function DashboardAgentHistory({
                     type="button"
                     onClick={() => onDelete(chat.id)}
                     aria-label="Delete chat"
-                    className="shrink-0 rounded p-1 text-text-dimmed opacity-0 transition-opacity hover:text-error group-hover:opacity-100"
+                    className="shrink-0 rounded p-1 text-text-dimmed opacity-0 transition-opacity hover:text-error group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-custom"
                   >
                     <TrashIcon className="size-3.5" />
                   </button>
