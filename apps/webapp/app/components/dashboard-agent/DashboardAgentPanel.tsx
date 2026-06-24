@@ -134,6 +134,7 @@ export function DashboardAgentPanel({ onClose }: { onClose: () => void }) {
   const createChat = useCallback(
     async (text: string) => {
       setView("chat");
+      const seq = ++openChatRequestSeq.current;
       setLoading(true);
       try {
         const userMessage: UIMessage = {
@@ -152,6 +153,8 @@ export function DashboardAgentPanel({ onClose }: { onClose: () => void }) {
           headStarted?: boolean;
           error?: string;
         };
+        // A newer open/create (or New chat) superseded this one — drop the result.
+        if (seq !== openChatRequestSeq.current) return;
         if (!res.ok || !data.chatId || !data.publicAccessToken) {
           setActive(null);
           return;
@@ -164,7 +167,7 @@ export function DashboardAgentPanel({ onClose }: { onClose: () => void }) {
           streaming: data.headStarted,
         });
       } finally {
-        setLoading(false);
+        if (seq === openChatRequestSeq.current) setLoading(false);
       }
     },
     [actionPath, clientData]
@@ -196,6 +199,9 @@ export function DashboardAgentPanel({ onClose }: { onClose: () => void }) {
   }, [active?.chatId, storageKey]);
 
   const newChat = useCallback(() => {
+    // Invalidate any in-flight open/create so its result can't replace the draft.
+    openChatRequestSeq.current += 1;
+    setLoading(false);
     setView("chat");
     setActive(null);
   }, []);

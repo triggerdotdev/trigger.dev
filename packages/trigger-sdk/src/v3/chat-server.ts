@@ -683,9 +683,18 @@ async function openHandoverSession(opts: {
    * `finishReason`). Normal pure-text and tool-call finishes go
    * through `handover()` with the appropriate `isFinal` flag.
    */
+  // Clear the idle timer on every terminal path. The detached failure path
+  // (run() throws -> handoverSkip) otherwise leaves it armed until the idle
+  // timeout elapses, since only handoverWhenDone used to clear it.
+  const cleanup = () => clearTimeout(idleTimer);
+
   const handoverSkip = async () => {
-    const chunk: ChatInputChunk = { kind: "handover-skip" };
-    await apiClient.appendToSessionStream(chatId, "in", JSON.stringify(chunk));
+    try {
+      const chunk: ChatInputChunk = { kind: "handover-skip" };
+      await apiClient.appendToSessionStream(chatId, "in", JSON.stringify(chunk));
+    } finally {
+      cleanup();
+    }
   };
 
   // A stable assistant messageId for this turn. The customer's
@@ -761,7 +770,7 @@ async function openHandoverSession(opts: {
       }
       throw err;
     } finally {
-      clearTimeout(idleTimer);
+      cleanup();
     }
   };
 

@@ -104,13 +104,18 @@ export async function getSession(
  */
 export async function chatExists(
   db: DashboardAgentDb,
-  params: { chatId: string; userId: string }
+  params: { chatId: string; userId: string; organizationId: string }
 ): Promise<boolean> {
   const rows = await db
     .select({ id: chats.id })
     .from(chats)
     .where(
-      and(eq(chats.id, params.chatId), eq(chats.userId, params.userId), isNull(chats.deletedAt))
+      and(
+        eq(chats.id, params.chatId),
+        eq(chats.organizationId, params.organizationId),
+        eq(chats.userId, params.userId),
+        isNull(chats.deletedAt)
+      )
     )
     .limit(1);
   return rows.length > 0;

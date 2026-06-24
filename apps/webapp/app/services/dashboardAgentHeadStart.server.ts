@@ -10,6 +10,7 @@ import { chat as chatServer } from "@trigger.dev/sdk/chat-server";
 import { streamText, type UIMessage } from "ai";
 import { env } from "~/env.server";
 import { dashboardAgentApiOrigin } from "~/services/dashboardAgent.server";
+import { logger } from "~/services/logger.server";
 
 const TASK_ID = "dashboard-agent";
 
@@ -59,6 +60,10 @@ export async function startDashboardAgentHeadStart(params: {
 
   // The webapp is long-lived, so step 1's drain + the handover dispatch run in
   // the background after this resolves (createSession + trigger have completed).
-  // startHeadStart already guards the promise against unhandled rejection.
-  completion.catch(() => {});
+  // Log a warm-step failure for observability: startHeadStart has already fired
+  // handover-skip so the agent run exits cleanly, but the client (mounted as
+  // streaming) then resumes an empty session.out, so the turn looks lost.
+  completion.catch((error) => {
+    logger.error("Dashboard agent head start failed", { chatId: params.chatId, error });
+  });
 }
