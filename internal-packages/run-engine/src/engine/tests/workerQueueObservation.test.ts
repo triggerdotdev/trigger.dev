@@ -45,16 +45,21 @@ describe("RunEngine worker queue observation", () => {
 
       const engine = new RunEngine({
         prisma,
+        // This test only exercises enqueue + processMasterQueue + the observer gauge, so keep
+        // the engine lean: no execution workers or batch consumers to start up and tear down.
         worker: {
           redis: redisOptions,
-          workers: 1,
-          tasksPerWorker: 10,
-          pollIntervalMs: 100,
+          disabled: true,
+          shutdownTimeoutMs: 2000,
         },
         queue: {
           redis: redisOptions,
           masterQueueConsumersDisabled: true,
           processWorkerQueueDebounceMs: 50,
+        },
+        batchQueue: {
+          redis: redisOptions,
+          consumerEnabled: false,
         },
         runLock: {
           redis: redisOptions,
