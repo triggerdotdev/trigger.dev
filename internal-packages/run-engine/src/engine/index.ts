@@ -485,6 +485,11 @@ export class RunEngine {
    * length even when nothing is dequeuing from it. Includes hidden groups; excludes
    * groups whose cloud provider is configured to be excluded (groups with no cloud
    * provider are always included).
+   *
+   * Only MANAGED groups are observed. UNMANAGED groups are created per project
+   * (masterQueue `<projectId>-<name>`), so observing them would grow the set, and the
+   * per-tick Redis fanout, with the number of self-hosted-worker projects rather than
+   * with the managed regions this gauge is meant to track.
    */
   async refreshWorkerQueueObservation() {
     const suffixes = this.options.workerQueueObserver?.additionalQueueSuffixes ?? [];
@@ -495,6 +500,7 @@ export class RunEngine {
     // Read from the replica: this is a periodic metrics-only read and worker groups change
     // rarely, so a little replication lag is fine and keeps it off the primary.
     const workerGroups = await this.readOnlyPrisma.workerInstanceGroup.findMany({
+      where: { type: "MANAGED" },
       select: { masterQueue: true, cloudProvider: true },
     });
 

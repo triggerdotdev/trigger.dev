@@ -43,6 +43,16 @@ describe("RunEngine worker queue observation", () => {
         },
       });
 
+      // An UNMANAGED (per-project, self-hosted) worker group should not be observed.
+      await prisma.workerInstanceGroup.create({
+        data: {
+          name: "unmanaged-region",
+          masterQueue: "unmanaged-region",
+          type: "UNMANAGED",
+          token: { create: { tokenHash: "unmanaged_region_token_hash" } },
+        },
+      });
+
       const engine = new RunEngine({
         prisma,
         // This test only exercises enqueue + processMasterQueue + the observer gauge, so keep
@@ -118,7 +128,8 @@ describe("RunEngine worker queue observation", () => {
         const defaultBacklog = 3;
         const scheduledBacklog = 2;
         const hiddenBacklog = 2;
-        const doBacklog = 2;
+        const doBacklog = 1;
+        const unmanagedBacklog = 1;
 
         // Build a backlog across several worker queues, then move them into the worker queue
         // lists, but never dequeue.
@@ -126,9 +137,10 @@ describe("RunEngine worker queue observation", () => {
         await enqueueTo("default:scheduled", scheduledBacklog, "r_scheduled");
         await enqueueTo("hidden-region", hiddenBacklog, "r_hidden");
         await enqueueTo("do-region", doBacklog, "r_do");
+        await enqueueTo("unmanaged-region", unmanagedBacklog, "r_unmanaged");
         await engine.runQueue.processMasterQueueForEnvironment(
           authenticatedEnvironment.id,
-          defaultBacklog + scheduledBacklog + hiddenBacklog + doBacklog
+          defaultBacklog + scheduledBacklog + hiddenBacklog + doBacklog + unmanagedBacklog
         );
 
         // Observe the worker queues derived from the WorkerInstanceGroup records. No dequeue
@@ -142,6 +154,9 @@ describe("RunEngine worker queue observation", () => {
 
         // Excluded: the DigitalOcean group is not observed even though it has a backlog.
         expect(await lengthOf("do-region")).toBe(0);
+
+        // Excluded: the UNMANAGED (per-project) group is not observed even with a backlog.
+        expect(await lengthOf("unmanaged-region")).toBe(0);
       } finally {
         await engine.quit();
       }
