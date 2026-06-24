@@ -252,14 +252,7 @@ class ManagedSupervisor {
     // Pod-count source (in-process apiserver scrape). Namespaced metrics so the
     // redis source's metric names are preserved.
     if (env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENABLED) {
-      if (
-        env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE >=
-        env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE
-      ) {
-        throw new Error(
-          "TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE must be less than TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE"
-        );
-      }
+      // RELEASE < ENGAGE is enforced in env.ts (superRefine), so it's valid here.
       const podCountGauge = new Gauge({
         name: "supervisor_cluster_pod_count",
         help: "Total pod objects stored in the cluster, scraped for backpressure",
@@ -269,7 +262,9 @@ class ManagedSupervisor {
         new BackpressureMonitor({
           enabled: true,
           source: new K8sPodCountSignalSource({
-            fetchMetrics: createApiserverMetricsFetcher(),
+            fetchMetrics: createApiserverMetricsFetcher(
+              env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_SCRAPE_TIMEOUT_MS
+            ),
             engageThreshold: env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE,
             releaseThreshold: env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE,
             reportPodCount: (count) => podCountGauge.set(count),

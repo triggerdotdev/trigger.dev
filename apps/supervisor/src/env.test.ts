@@ -50,4 +50,15 @@ describe("Env superRefine - backpressure source awareness", () => {
       })
     ).not.toThrow();
   });
+
+  it("rejects pod-count release >= engage when the source is enabled", () => {
+    expect(() =>
+      Env.parse({
+        ...base,
+        TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENABLED: "true",
+        TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE: "100",
+        TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE: "100",
+      })
+    ).toThrow();
+  });
 });

@@ -78,6 +78,13 @@ export const Env = z
     TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE: z.coerce.number().int().positive().default(10_000),
     TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE: z.coerce.number().int().positive().default(5_000),
     TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_REFRESH_MS: z.coerce.number().int().positive().default(5_000),
+    // Hard timeout on the apiserver /metrics scrape. A hung request would otherwise
+    // never settle and freeze the monitor's refresh loop (fail-open silently).
+    TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_SCRAPE_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(10_000),
 
     // Optional services
     TRIGGER_WARM_START_URL: z.string().optional(),
@@ -317,6 +324,18 @@ export const Env = z
     TRIGGER_WIDE_EVENTS_NOISY_ROUTES: BoolEnv.default(false),
   })
   .superRefine((data, ctx) => {
+    if (
+      data.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENABLED &&
+      data.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE >=
+        data.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE must be less than TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE",
+        path: ["TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE"],
+      });
+    }
     if (data.COMPUTE_SNAPSHOTS_ENABLED && !data.TRIGGER_METADATA_URL) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

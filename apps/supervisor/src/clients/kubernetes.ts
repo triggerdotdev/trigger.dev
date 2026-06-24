@@ -60,7 +60,7 @@ export { k8s };
  * One lightweight aggregate read - not a pod listing. Requires the service
  * account to be granted GET on the /metrics non-resource URL.
  */
-export function createApiserverMetricsFetcher(): () => Promise<string> {
+export function createApiserverMetricsFetcher(timeoutMs: number): () => Promise<string> {
   const kubeConfig = getKubeConfig();
 
   return async () => {
@@ -97,6 +97,11 @@ export function createApiserverMetricsFetcher(): () => Promise<string> {
             reject(new Error(`apiserver /metrics scrape failed: ${status}`));
           }
         });
+      });
+      // Without this a hung connect/TLS/read never settles, and the monitor's
+      // refreshInFlight guard would freeze the source (silent fail-open).
+      req.setTimeout(timeoutMs, () => {
+        req.destroy(new Error(`apiserver /metrics scrape timed out after ${timeoutMs}ms`));
       });
       req.on("error", reject);
       req.end();
