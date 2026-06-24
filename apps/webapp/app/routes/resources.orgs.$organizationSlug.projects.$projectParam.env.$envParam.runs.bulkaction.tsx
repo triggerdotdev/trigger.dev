@@ -91,12 +91,17 @@ export const loader = dashboardLoader(
         environmentId: environment.id,
         request,
       }),
-      new RegionsPresenter().call({
-        userId: user.id,
-        projectSlug: projectParam,
-        isAdmin: user.admin || user.isImpersonating,
-      }),
+      tryCatch(
+        new RegionsPresenter().call({
+          userId: user.id,
+          projectSlug: projectParam,
+          isAdmin: user.admin || user.isImpersonating,
+        })
+      ),
     ]);
+
+    const [regionsError, regionsData] = regionsResult;
+    const regions = regionsError ? [] : regionsData.regions;
 
     // Display flag for the inspector's Cancel/Replay controls — the action
     // below enforces write:runs independently.
@@ -104,7 +109,7 @@ export const loader = dashboardLoader(
       canCreateBulkAction: { action: "write", resource: { type: "runs" } },
     });
 
-    return typedjson({ ...data, regions: regionsResult.regions, canCreateBulkAction });
+    return typedjson({ ...data, regions, canCreateBulkAction });
   }
 );
 
