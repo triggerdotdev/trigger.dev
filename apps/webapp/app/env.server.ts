@@ -553,6 +553,9 @@ const EnvironmentSchema = z
     // log-only mode before enforcement.
     DEPRECATE_V3_CLI_DEPLOYS_ENABLED: z.string().default("0"),
 
+    // Verify the deploy image exists before promoting. Disable for out-of-band/air-gapped push. ECR only.
+    DEPLOY_IMAGE_VERIFICATION_ENABLED: BoolEnv.default(true),
+
     OBJECT_STORE_BASE_URL: z.string().optional(),
     OBJECT_STORE_BUCKET: z.string().optional(),
     OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
