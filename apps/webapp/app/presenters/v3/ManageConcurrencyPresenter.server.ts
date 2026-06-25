@@ -6,7 +6,6 @@ import {
 } from "~/services/platform.v3.server";
 import { BasePresenter } from "./basePresenter.server";
 import { sortEnvironments } from "~/utils/environmentSort";
-import { isBranchableEnvironment } from "~/utils/branchableEnvironment";
 
 export type ConcurrencyResult = {
   canAddConcurrency: boolean;
@@ -83,7 +82,8 @@ export class ManageConcurrencyPresenter extends BasePresenter {
     const projectEnvironments: EnvironmentWithConcurrency[] = [];
     for (const environment of environments) {
       // Don't count parent environments
-      if (isBranchableEnvironment(environment)) continue;
+      // We don't use isBranchableEnvironment() here as it will include the root dev env
+      if (environment.type === "PREVIEW" && environment.isBranchableEnvironment) continue;
 
       // Don't count deleted projects
       if (environment.project.deletedAt) continue;
