@@ -1,5 +1,5 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, useForm, type SubmissionResult } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
@@ -38,7 +38,7 @@ export const billingLimitRecoveryFormSchema = z
 
 type BillingLimitRecoveryActionData = {
   formIntent: "billing-limit-resolve";
-  submission: ReturnType<typeof parse<typeof billingLimitRecoveryFormSchema>>;
+  submission: SubmissionResult;
 };
 
 export function BillingLimitRecoveryPanel({
@@ -79,10 +79,10 @@ export function BillingLimitRecoveryPanel({
 
   const [form, fields] = useForm({
     id: "billing-limit-resolve",
-    lastSubmission: recoverySubmission as any,
+    lastResult: recoverySubmission as any,
     shouldRevalidate: "onInput",
     onValidate({ formData }) {
-      return parse(formData, { schema: billingLimitRecoveryFormSchema });
+      return parseWithZod(formData, { schema: billingLimitRecoveryFormSchema });
     },
     defaultValue: {
       action: "increase",
@@ -142,7 +142,7 @@ export function BillingLimitRecoveryPanel({
         )}
       </div>
 
-      <Form method="post" {...form.props}>
+      <Form method="post" {...getFormProps(form)}>
         <input type="hidden" name="intent" value="billing-limit-resolve" />
         <input type="hidden" name="action" value={action} />
         <input type="hidden" name="resumeMode" value={resumeMode} />
@@ -185,8 +185,8 @@ export function BillingLimitRecoveryPanel({
                     />
                   </InputGroup>
                 )}
-                {action === "increase" && fields.newAmount?.error && (
-                  <FormError id={fields.newAmount?.errorId}>{fields.newAmount.error}</FormError>
+                {action === "increase" && fields.newAmount?.errors && (
+                  <FormError id={fields.newAmount?.errorId}>{fields.newAmount.errors}</FormError>
                 )}
               </div>
 

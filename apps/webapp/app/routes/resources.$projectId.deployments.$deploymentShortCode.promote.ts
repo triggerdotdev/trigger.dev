@@ -1,4 +1,4 @@
-import { parse } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod";
 import { json } from "@remix-run/node";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
@@ -37,10 +37,10 @@ export const action = dashboardAction(
     const { projectId, deploymentShortCode } = params;
 
     const formData = await request.formData();
-    const submission = parse(formData, { schema: promoteSchema });
+    const submission = parseWithZod(formData, { schema: promoteSchema });
 
-    if (!submission.value) {
-      return json(submission);
+    if (submission.status !== "success") {
+      return json(submission.reply());
     }
 
     try {
@@ -93,12 +93,10 @@ export const action = dashboardAction(
             stack: error.stack,
           },
         });
-        submission.error = { "": [error.message] };
-        return json(submission);
+        return json(submission.reply({ formErrors: [error.message] }));
       } else {
         logger.error("Failed to promote deployment", { error });
-        submission.error = { "": [JSON.stringify(error)] };
-        return json(submission);
+        return json(submission.reply({ formErrors: [JSON.stringify(error)] }));
       }
     }
   }

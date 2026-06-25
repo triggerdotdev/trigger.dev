@@ -1,5 +1,5 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import {
   type FetcherWithComponents,
@@ -74,10 +74,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema: UpsertSchedule });
+  const submission = parseWithZod(formData, { schema: UpsertSchedule });
 
-  if (!submission.value) {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   // `_format=json` → return JSON instead of redirecting; caller toasts.
@@ -162,10 +162,10 @@ export function UpsertScheduleForm({
   submitFetcher?: FetcherWithComponents<unknown>;
 }) {
   const actionData = useActionData();
-  // Only feed conform-shaped data (`intent`) to `useForm` — `{ ok, message }`
-  // envelopes lack `payload` and crash conform.
+  // Only feed conform-shaped data (`status`) to `useForm` — `{ ok, message }`
+  // envelopes lack it and crash conform.
   const fetcherSubmission =
-    submitFetcher?.data && typeof submitFetcher.data === "object" && "intent" in submitFetcher.data
+    submitFetcher?.data && typeof submitFetcher.data === "object" && "status" in submitFetcher.data
       ? submitFetcher.data
       : undefined;
   const lastSubmission = submitFetcher ? fetcherSubmission : actionData;
@@ -185,10 +185,10 @@ export function UpsertScheduleForm({
       // coexist without duplicate DOM ids breaking `htmlFor` / conform.
       id: schedule?.friendlyId ? `edit-schedule-${schedule.friendlyId}` : "create-schedule",
       // TODO: type this
-      lastSubmission: lastSubmission as any,
+      lastResult: lastSubmission as any,
       shouldRevalidate: "onSubmit",
       onValidate({ formData }) {
-        return parse(formData, { schema: UpsertSchedule });
+        return parseWithZod(formData, { schema: UpsertSchedule });
       },
     });
 
@@ -233,7 +233,7 @@ export function UpsertScheduleForm({
     <FormComponent
       method="post"
       action={`/resources/orgs/${organization.slug}/projects/${project.slug}/env/${environment.slug}/schedules/new`}
-      {...form.props}
+      {...getFormProps(form)}
       className="grid h-full max-h-full grid-rows-[2.5rem_1fr_auto] overflow-hidden bg-background-bright"
     >
       <div className="mx-3 flex min-w-0 items-center justify-between gap-2 overflow-hidden border-b border-grid-dimmed">
@@ -259,7 +259,7 @@ export function UpsertScheduleForm({
                 <InputGroup>
                   <Label htmlFor={taskIdentifier.id}>Task</Label>
                   <Select
-                    {...conform.select(taskIdentifier)}
+                    {...getSelectProps(taskIdentifier)}
                     placeholder="Select a task"
                     defaultValue={schedule?.taskIdentifier}
                     heading={"Filter..."}
@@ -278,7 +278,7 @@ export function UpsertScheduleForm({
                       </>
                     )}
                   </Select>
-                  <FormError id={taskIdentifier.errorId}>{taskIdentifier.error}</FormError>
+                  <FormError id={taskIdentifier.errorId}>{taskIdentifier.errors}</FormError>
                 </InputGroup>
               );
             })()}
@@ -299,7 +299,7 @@ export function UpsertScheduleForm({
                 CRON pattern (UTC)
               </Label>
               <Input
-                {...conform.input(cron, { type: "text" })}
+                {...getInputProps(cron, { type: "text" })}
                 placeholder="? ? ? ? ?"
                 required={true}
                 value={cronPattern}
@@ -318,7 +318,7 @@ export function UpsertScheduleForm({
             <InputGroup>
               <Label htmlFor={timezone.id}>Timezone</Label>
               <Select
-                {...conform.select(timezone)}
+                {...getSelectProps(timezone)}
                 placeholder="Select a timezone"
                 defaultValue={selectedTimezone}
                 value={selectedTimezone}
@@ -338,7 +338,7 @@ export function UpsertScheduleForm({
                   ? "UTC will not change with daylight savings time."
                   : "This will automatically adjust for daylight savings time."}
               </Hint>
-              <FormError id={timezone.errorId}>{timezone.error}</FormError>
+              <FormError id={timezone.errorId}>{timezone.errors}</FormError>
             </InputGroup>
             {nextRuns !== undefined && (
               <div className="flex flex-col gap-1">
@@ -406,14 +406,14 @@ export function UpsertScheduleForm({
                   connected with the dev CLI.
                 </Hint>
               )}
-              <FormError id={environments.errorId}>{environments.error}</FormError>
+              <FormError id={environments.errorId}>{environments.errors}</FormError>
             </InputGroup>
             <InputGroup>
               <Label required={false} htmlFor={externalId.id}>
                 External ID
               </Label>
               <Input
-                {...conform.input(externalId, { type: "text" })}
+                {...getInputProps(externalId, { type: "text" })}
                 placeholder="Optionally specify your own ID, e.g. user id"
                 defaultValue={schedule?.externalId ?? undefined}
               />
@@ -422,14 +422,14 @@ export function UpsertScheduleForm({
                 run function of your task. This allows you to have per-user CRON tasks.{" "}
                 <TextLink to={docsPath("v3/tasks-scheduled")}>Read the docs.</TextLink>
               </Hint>
-              <FormError id={externalId.errorId}>{externalId.error}</FormError>
+              <FormError id={externalId.errorId}>{externalId.errors}</FormError>
             </InputGroup>
             <InputGroup>
               <Label required={false} htmlFor={deduplicationKey.id}>
                 Deduplication key
               </Label>
               <Input
-                {...conform.input(deduplicationKey, { type: "text" })}
+                {...getInputProps(deduplicationKey, { type: "text" })}
                 disabled={schedule !== undefined}
                 defaultValue={
                   schedule?.userProvidedDeduplicationKey ? schedule?.deduplicationKey : undefined
@@ -445,9 +445,9 @@ export function UpsertScheduleForm({
                 very useful when using the SDK and you don't want to create duplicate schedules for
                 a user.
               </Hint>
-              <FormError id={deduplicationKey.errorId}>{deduplicationKey.error}</FormError>
+              <FormError id={deduplicationKey.errorId}>{deduplicationKey.errors}</FormError>
             </InputGroup>
-            <FormError>{form.error}</FormError>
+            <FormError>{form.errors}</FormError>
           </Fieldset>
         </div>
       </div>

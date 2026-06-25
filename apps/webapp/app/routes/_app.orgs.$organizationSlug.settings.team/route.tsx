@@ -1,5 +1,5 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { EnvelopeIcon, NoSymbolIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import {
@@ -169,9 +169,9 @@ export const action = dashboardAction(
       if (!orgId) {
         return json({ ok: false, error: "Organization not found" } as const, { status: 404 });
       }
-      const submission = parse(formData, { schema: SetRoleSchema });
-      if (!submission.value || submission.intent !== "submit") {
-        return json(submission);
+      const submission = parseWithZod(formData, { schema: SetRoleSchema });
+      if (submission.status !== "success") {
+        return json(submission.reply());
       }
       const result = await rbac.setUserRole({
         userId: submission.value.userId,
@@ -218,10 +218,10 @@ export const action = dashboardAction(
         });
       }
 
-      const submission = parse(formData, { schema: PurchaseSchema });
+      const submission = parseWithZod(formData, { schema: PurchaseSchema });
 
-      if (!submission.value || submission.intent !== "submit") {
-        return json(submission);
+      if (submission.status !== "success") {
+        return json(submission.reply());
       }
 
       const service = new SetSeatsAddOnService();
@@ -235,22 +235,24 @@ export const action = dashboardAction(
       );
 
       if (error) {
-        submission.error.amount = [error instanceof Error ? error.message : "Unknown error"];
-        return json(submission);
+        return json(
+          submission.reply({
+            fieldErrors: { amount: [error instanceof Error ? error.message : "Unknown error"] },
+          })
+        );
       }
 
       if (!result.success) {
-        submission.error.amount = [result.error];
-        return json(submission);
+        return json(submission.reply({ fieldErrors: { amount: [result.error] } }));
       }
 
       return json({ ok: true } as const);
     }
 
-    const submission = parse(formData, { schema });
+    const submission = parseWithZod(formData, { schema });
 
-    if (!submission.value || submission.intent !== "submit") {
-      return json(submission);
+    if (submission.status !== "success") {
+      return json(submission.reply());
     }
 
     // Default intent: remove a member or leave the org. Scope the target to
@@ -728,12 +730,12 @@ function LeaveTeamModal({
   const [open, setOpen] = useState(false);
   const lastSubmission = useActionData();
 
-  const [form, { memberId }] = useForm({
+  const [form, fields] = useForm({
     id: "remove-member",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
   });
 
@@ -751,9 +753,9 @@ function LeaveTeamModal({
           <AlertCancel asChild>
             <Button variant="secondary/small">Cancel</Button>
           </AlertCancel>
-          <Form method="post" {...form.props} onSubmit={() => setOpen(false)}>
+          <Form method="post" {...getFormProps(form)} onSubmit={() => setOpen(false)}>
             <input type="hidden" value={member.id} name="memberId" />
-            <Button type="submit" variant="danger/small" form={form.props.id}>
+            <Button type="submit" variant="danger/small" form={form.id}>
               {actionText}
             </Button>
           </Form>
@@ -880,17 +882,18 @@ export function PurchaseSeatsModal({
   const fetcher = useFetcher();
   const organization = useOrganization();
   const lastSubmission =
-    fetcher.data && typeof fetcher.data === "object" && "intent" in fetcher.data
+    fetcher.data && typeof fetcher.data === "object" && "status" in fetcher.data
       ? fetcher.data
       : undefined;
-  const [form, { amount }] = useForm({
+  const [form, fields] = useForm({
     id: "purchase-seats",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema: PurchaseSchema });
+      return parseWithZod(formData, { schema: PurchaseSchema });
     },
     shouldRevalidate: "onSubmit",
   });
+  const amount = fields.amount;
 
   const [amountValue, setAmountValue] = useState(extraSeats);
   useEffect(() => {
@@ -960,7 +963,7 @@ export function PurchaseSeatsModal({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent>
         <DialogHeader>{title}</DialogHeader>
-        <fetcher.Form method="post" action={organizationTeamPath(organization)} {...form.props}>
+        <fetcher.Form method="post" action={organizationTeamPath(organization)} {...getFormProps(form)}>
           <input type="hidden" name="_formType" value="purchase-seats" />
           <div className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-1">
@@ -976,7 +979,7 @@ export function PurchaseSeatsModal({
                   Total extra seats
                 </Label>
                 <InputNumberStepper
-                  {...conform.input(amount, { type: "number" })}
+                  {...getInputProps(amount, { type: "number" })}
                   step={seatPricing.stepSize}
                   min={0}
                   max={undefined}
@@ -984,10 +987,8 @@ export function PurchaseSeatsModal({
                   onChange={(e) => setAmountValue(Number(e.target.value))}
                   disabled={isLoading}
                 />
-                <FormError id={amount.errorId}>
-                  {amount.error ?? amount.initialError?.[""]?.[0]}
-                </FormError>
-                <FormError>{form.error}</FormError>
+                <FormError id={amount.errorId}>{amount.errors}</FormError>
+                <FormError>{form.errors}</FormError>
               </InputGroup>
             </Fieldset>
             {state === "need_to_remove_members" ? (

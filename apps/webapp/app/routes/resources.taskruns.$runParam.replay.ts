@@ -1,4 +1,4 @@
-import { parse } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod";
 import { json, type LoaderFunctionArgs } from "@remix-run/node";
 import { type EnvironmentType, prettyPrintPacket } from "@trigger.dev/core/v3";
 import { typedjson } from "remix-typedjson";
@@ -306,10 +306,10 @@ export const action = dashboardAction(
     const { runParam } = params;
 
     const formData = await request.formData();
-    const submission = parse(formData, { schema: ReplayRunData });
+    const submission = parseWithZod(formData, { schema: ReplayRunData });
 
-    if (!submission.value) {
-      return json(submission);
+    if (submission.status !== "success") {
+      return json(submission.reply());
     }
 
     try {

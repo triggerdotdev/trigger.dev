@@ -1,4 +1,4 @@
-import { parse } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod";
 import { ArrowPathIcon, InformationCircleIcon } from "@heroicons/react/20/solid";
 import { XCircleIcon } from "@heroicons/react/24/outline";
 import { Form } from "@remix-run/react";
@@ -170,9 +170,9 @@ export const action = dashboardAction(
     }
 
     const formData = await request.formData();
-    const submission = parse(formData, { schema: CreateBulkActionPayload });
+    const submission = parseWithZod(formData, { schema: CreateBulkActionPayload });
 
-    if (!submission.value) {
+    if (submission.status !== "success") {
       logger.error("Invalid bulk action", {
         submission,
         formData: Object.fromEntries(formData),

@@ -1,5 +1,5 @@
-import { conform, useFieldList, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import {
   ArrowDownIcon,
   EnvelopeIcon,
@@ -158,10 +158,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema: FormSchema });
+  const submission = parseWithZod(formData, { schema: FormSchema });
 
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   if (submission.value.action === "allocate") {
@@ -176,13 +176,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     );
 
     if (error) {
-      submission.error.environments = [error instanceof Error ? error.message : "Unknown error"];
-      return json(submission);
+      return json(
+        submission.reply({
+          fieldErrors: {
+            environments: [error instanceof Error ? error.message : "Unknown error"],
+          },
+        })
+      );
     }
 
     if (!result.success) {
-      submission.error.environments = [result.error];
-      return json(submission);
+      return json(submission.reply({ fieldErrors: { environments: [result.error] } }));
     }
 
     return redirectWithSuccessMessage(
@@ -195,12 +199,18 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const currentPlan = await getCurrentPlan(project.organizationId);
   const purchaseBlockReason = getSelfServePurchaseBlockReason(currentPlan);
   if (purchaseBlockReason === "plan_unavailable") {
-    submission.error.amount = ["Unable to verify billing status. Please try again."];
-    return json(submission, { status: 503 });
+    return json(
+      submission.reply({
+        fieldErrors: { amount: ["Unable to verify billing status. Please try again."] },
+      }),
+      { status: 503 }
+    );
   }
   if (purchaseBlockReason === "managed_billing") {
-    submission.error.amount = ["Contact us to request more concurrency."];
-    return json(submission, { status: 403 });
+    return json(
+      submission.reply({ fieldErrors: { amount: ["Contact us to request more concurrency."] } }),
+      { status: 403 }
+    );
   }
 
   const service = new SetConcurrencyAddOnService();
@@ -215,13 +225,15 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   );
 
   if (error) {
-    submission.error.amount = [error instanceof Error ? error.message : "Unknown error"];
-    return json(submission);
+    return json(
+      submission.reply({
+        fieldErrors: { amount: [error instanceof Error ? error.message : "Unknown error"] },
+      })
+    );
   }
 
   if (!result.success) {
-    submission.error.amount = [result.error];
-    return json(submission);
+    return json(submission.reply({ fieldErrors: { amount: [result.error] } }));
   }
 
   return redirectWithSuccessMessage(
@@ -307,15 +319,16 @@ function Upgradable({
   maxQuota,
 }: ConcurrencyResult) {
   const lastSubmission = useActionData();
-  const [form, { environments: formEnvironments }] = useForm({
+  const [form, fields] = useForm({
     id: "allocate-concurrency",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema: FormSchema });
+      return parseWithZod(formData, { schema: FormSchema });
     },
     shouldRevalidate: "onSubmit",
   });
+  const { environments: formEnvironments } = fields;
 
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle" && navigation.formMethod === "POST";
@@ -463,11 +476,9 @@ function Upgradable({
               </TableRow>
             </TableBody>
           </Table>
-          <FormError id={formEnvironments.id}>
-            {formEnvironments.error ?? formEnvironments.initialError?.[""]?.[0]}
-          </FormError>
+          <FormError id={formEnvironments.id}>{formEnvironments.errors}</FormError>
         </div>
-        <Form className="flex flex-col gap-2" method="post" {...form.props} id="allocate">
+        <Form className="flex flex-col gap-2" method="post" {...getFormProps(form)} id="allocate">
           <input type="hidden" name="action" value="allocate" />
           <div className="flex items-center pb-1">
             <Header3 className="grow">Concurrency allocation</Header3>
@@ -615,15 +626,16 @@ function PurchaseConcurrencyModal({
 }) {
   const showSelfServe = useShowSelfServe();
   const lastSubmission = useActionData();
-  const [form, { amount }] = useForm({
+  const [form, fields] = useForm({
     id: "purchase-concurrency",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema: FormSchema });
+      return parseWithZod(formData, { schema: FormSchema });
     },
     shouldRevalidate: "onSubmit",
   });
+  const { amount } = fields;
 
   const [amountValue, setAmountValue] = useState(extraConcurrency);
   const navigation = useNavigation();
@@ -679,7 +691,7 @@ function PurchaseConcurrencyModal({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>{title}</DialogHeader>
-        <Form method="post" {...form.props}>
+        <Form method="post" {...getFormProps(form)}>
           <div className="flex flex-col gap-4 pt-2">
             <Paragraph variant="base/bright" spacing>
               You can purchase bundles of {concurrencyPricing.stepSize} concurrency for{" "}
@@ -693,7 +705,7 @@ function PurchaseConcurrencyModal({
                   Total extra concurrency
                 </Label>
                 <InputNumberStepper
-                  {...conform.input(amount, { type: "number" })}
+                  {...getInputProps(amount, { type: "number" })}
                   step={concurrencyPricing.stepSize}
                   min={0}
                   max={undefined}
@@ -701,10 +713,8 @@ function PurchaseConcurrencyModal({
                   onChange={(e) => setAmountValue(Number(e.target.value))}
                   disabled={isLoading}
                 />
-                <FormError id={amount.errorId}>
-                  {amount.error ?? amount.initialError?.[""]?.[0]}
-                </FormError>
-                <FormError>{form.error}</FormError>
+                <FormError id={amount.errorId}>{amount.errors}</FormError>
+                <FormError>{form.errors}</FormError>
               </InputGroup>
             </Fieldset>
             {state === "need_to_increase_unallocated" ? (
