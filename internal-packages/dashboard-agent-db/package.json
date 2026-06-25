@@ -17,6 +17,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:deploy": "node migrate.mjs",
+    "db:migrate:status": "node migrate-status.mjs",
     "db:studio": "drizzle-kit studio"
   }
 }
