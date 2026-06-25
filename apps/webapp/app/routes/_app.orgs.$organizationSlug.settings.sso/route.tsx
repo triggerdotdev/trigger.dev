@@ -30,13 +30,14 @@ import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Switch } from "~/components/primitives/Switch";
-import { $replica } from "~/db.server";
+import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { rbac } from "~/services/rbac.server";
 import { ssoController } from "~/services/sso.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 import type { Role } from "@trigger.dev/plugins";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { v3BillingPath } from "~/utils/pathBuilder";
 
@@ -45,7 +46,10 @@ export const meta: MetaFunction = () => [{ title: "SSO settings | Trigger.dev" }
 const Params = z.object({ organizationSlug: z.string() });
 
 async function resolveOrg(slug: string) {
-  return $replica.organization.findFirst({
+  // Use primary: this slug→id lookup scopes the org-level RBAC/entitlement
+  // checks (loader and action), and replica lag could run them against a
+  // stale or missing org scope.
+  return prisma.organization.findFirst({
     where: { slug },
     select: { id: true, title: true },
   });
@@ -68,6 +72,27 @@ async function requireSsoEntitlement(orgId: string): Promise<void> {
   }
 }
 
+const EMPTY_SSO_STATUS = {
+  hasIdpOrg: false,
+  enforced: false,
+  jitProvisioningEnabled: false,
+  jitDefaultRoleId: null,
+  idpOrgId: null,
+  primaryConnectionId: null,
+  domains: [] as Array<{
+    domain: string;
+    verified: boolean;
+    state: "pending" | "verified" | "failed";
+    verificationFailedReason: string | null;
+  }>,
+  connections: [] as Array<{
+    id: string;
+    name: string | null;
+    connectionType: string;
+    state: "active" | "inactive";
+  }>,
+};
+
 export const loader = dashboardLoader(
   {
     params: Params,
@@ -75,9 +100,13 @@ export const loader = dashboardLoader(
       const org = await resolveOrg(params.organizationSlug);
       return org ? { organizationId: org.id, orgTitle: org.title } : {};
     },
-    authorization: { action: "manage", resource: { type: "sso" } },
+    // No static `authorization` gate here: SSO is plan-gated *before* it's
+    // role-gated. A non-Enterprise org must render the upsell for everyone —
+    // gating on manage:sso at the wrapper would show a non-Owner "Permission
+    // denied" for a feature their org can't use yet. We resolve the plan in
+    // the body and only enforce manage:sso once the org is actually entitled.
   },
-  async ({ context, request }) => {
+  async ({ context, ability }) => {
     // True only when SSO_ENABLED is on and a real SSO plugin is loaded.
     if (!(await ssoController.isUsingPlugin())) {
       throw new Response("Not Found", { status: 404 });
@@ -88,37 +117,31 @@ export const loader = dashboardLoader(
       throw new Response("Not Found", { status: 404 });
     }
 
-    // The page is reachable on every paid + free plan; when the org
-    // isn't on Enterprise we render the upsell state instead of the
-    // SSO UI. Plan-tier enforcement lives in the React render so the
-    // sidebar entry and the page itself stay aligned.
+    // Plan first. When the org isn't on Enterprise the page renders the
+    // upsell state for every role, so we skip the role check (and the
+    // SSO/role queries it would gate) and return empty data.
+    const plan = await getCurrentPlan(orgId);
+    if (!planAllowsSso(plan)) {
+      return typedjson({
+        status: EMPTY_SSO_STATUS,
+        orgTitle: context.orgTitle,
+        jitRoles: [] as Role[],
+      });
+    }
+
+    // Entitled: the page is now a real config surface, so enforce the role
+    // gate. A non-Owner without manage:sso gets the permission panel — the
+    // same 403 the dashboardLoader `authorization` block would have thrown.
+    if (!ability.can("manage", { type: "sso" })) {
+      throwPermissionDenied();
+    }
+
     const [statusResult, allRoles, assignableIds] = await Promise.all([
       ssoController.getStatus(orgId),
       rbac.allRoles(orgId),
       rbac.getAssignableRoleIds(orgId),
     ]);
-    const status = statusResult.isOk()
-      ? statusResult.value
-      : {
-          hasIdpOrg: false,
-          enforced: false,
-          jitProvisioningEnabled: false,
-          jitDefaultRoleId: null,
-          idpOrgId: null,
-          primaryConnectionId: null,
-          domains: [] as Array<{
-            domain: string;
-            verified: boolean;
-            state: "pending" | "verified" | "failed";
-            verificationFailedReason: string | null;
-          }>,
-          connections: [] as Array<{
-            id: string;
-            name: string | null;
-            connectionType: string;
-            state: "active" | "inactive";
-          }>,
-        };
+    const status = statusResult.isOk() ? statusResult.value : EMPTY_SSO_STATUS;
 
     // JIT can't promote new users to Owner — that role is reserved for
     // the founding member and explicit transfers. Plan-gated roles are
