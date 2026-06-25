@@ -201,11 +201,11 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
     }
 
     if (env.type === "PREVIEW" || env.type === "DEVELOPMENT") {
-      // The "default" sentinel is DEVELOPMENT-only: it maps to the dev root env
+      // The "default" root branch is DEVELOPMENT-only: it maps to the dev root env
       // (which carries no branch), so we skip the pivot there. For PREVIEW,
       // "default" is an ordinary branch name and must still pivot to its child.
-      const isDevRootSentinel = env.type === "DEVELOPMENT" && isDefaultDevBranch(branchName);
-      if (branchName !== null && !isDevRootSentinel) {
+      const isDevAndDefault = env.type === "DEVELOPMENT" && isDefaultDevBranch(branchName);
+      if (branchName !== null && !isDevAndDefault) {
         const child = env.childEnvironments?.[0];
         if (!child) {
           return { ok: false, status: 401, error: "No matching branch env" };
