@@ -34,7 +34,7 @@ See `.server-changes/README.md` for full documentation.
 |---|---|
 | Only packages (`packages/`) | Changeset (`pnpm run changeset:add`) |
 | Only server (`apps/`) | `.server-changes/` file |
-| Both packages and server | Just the changeset |
+| Both packages and server | Both |
 
 ## Release instructions (CI)
 
