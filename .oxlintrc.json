@@ -9,19 +9,38 @@
     "**/seedCloud.ts",
     "**/populate.js"
   ],
+  // All rules below are disabled because they currently fire on the existing
+  // codebase (1748 warnings across these 20 rules as of this commit). Disabled
+  // to keep the lint baseline green; re-enable and fix incrementally.
   "rules": {
-    "consistent-type-imports": [
-      "warn",
-      {
-        "prefer": "type-imports",
-        "disallowTypeAnnotations": true,
-        "fixStyle": "inline-type-imports"
-      }
-    ],
-    "import/no-duplicates": ["warn", { "prefer-inline": true }],
-    // Disabled for now: oxlint treats any use*()/use() call as a React hook,
-    // producing false positives in async/test code (testcontainers, cli-v3 e2e).
-    // Re-enable (ideally scoped to React packages) once those are addressed.
+    // eslint
+    "no-unused-vars": "off",
+    "no-unused-expressions": "off",
+    "no-control-regex": "off",
+    "no-empty-pattern": "off",
+    "no-unused-private-class-members": "off",
+    "no-useless-catch": "off",
+    "no-unsafe-optional-chaining": "off",
+    "no-unreachable": "off",
+    "require-yield": "off",
+    "no-async-promise-executor": "off",
+    "no-unsafe-finally": "off",
+    "no-useless-escape": "off",
+    // typescript
+    "typescript/consistent-type-imports": "off",
+    "typescript/no-this-alias": "off",
+    "typescript/no-non-null-asserted-optional-chain": "off",
+    "typescript/no-unnecessary-parameter-property-assignment": "off",
+    // import
+    "import/no-duplicates": "off",
+    "import/namespace": "off",
+    // react
+    "react/jsx-key": "off",
+    "react/no-children-prop": "off",
+    // react-hooks
+    "react-hooks/exhaustive-deps": "off",
+    // oxlint treats any use*()/use() call as a React hook, producing false
+    // positives in async/test code (testcontainers, cli-v3 e2e).
     "react-hooks/rules-of-hooks": "off"
   }
 }

@@ -21,7 +21,10 @@
     "**/storybook-static/",
     "**/.changeset/",
     "**/dist/",
+    "internal-packages/tsql/src/grammar/",
+    // Maybe turn these on in the future
     "**/*.yaml",
-    "internal-packages/tsql/src/grammar/"
+    "**/*.mdx",
+    "**/*.md"
   ]
 }
