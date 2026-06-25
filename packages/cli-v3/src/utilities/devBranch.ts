@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { isDefaultDevBranch } from "@trigger.dev/core/v3/utils/gitBranch";
 
 /**
@@ -15,5 +16,7 @@ export function devBranchPathSegment(branch?: string): string | undefined {
   }
 
   // Branch names can contain filesystem-unsafe characters (e.g. "/"), so sanitize.
-  return branch.replace(/[^a-zA-Z0-9-_]/g, "-");
+  const sanitized = branch.replace(/[^a-zA-Z0-9-_]/g, "-");
+  const branchHash = createHash("sha1").update(branch).digest("hex").slice(0, 8);
+  return `${sanitized}-${branchHash}`;
 }
