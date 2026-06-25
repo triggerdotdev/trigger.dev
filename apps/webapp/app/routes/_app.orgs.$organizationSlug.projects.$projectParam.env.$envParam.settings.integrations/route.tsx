@@ -499,7 +499,9 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
             Command to install your project dependencies. This will be run from the root directory
             of your repo. Auto-detected by default.
           </Hint>
-          <FormError id={fields.installCommand.errorId}>{fields.installCommand.errors}</FormError>
+          <FormError id={fields.installCommand.errorId}>
+            {fields.installCommand.errors?.join(", ")}
+          </FormError>
         </InputGroup>
         <InputGroup fullWidth>
           <Label htmlFor={fields.preBuildCommand.id}>Pre-build command</Label>
@@ -518,7 +520,9 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
             Any command that needs to run before we build and deploy your project. This will be run
             from the root directory of your repo.
           </Hint>
-          <FormError id={fields.preBuildCommand.errorId}>{fields.preBuildCommand.errors}</FormError>
+          <FormError id={fields.preBuildCommand.errorId}>
+            {fields.preBuildCommand.errors?.join(", ")}
+          </FormError>
         </InputGroup>
         <div className="border-t border-grid-dimmed pt-4">
           <InputGroup>

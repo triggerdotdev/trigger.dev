@@ -167,7 +167,7 @@ export const action = dashboardAction(
       },
     });
     if (!project) {
-      return json(submission.reply({ fieldErrors: { key: ["Project not found"] } }));
+      return json(submission.reply({ formErrors: ["Project not found"] }));
     }
 
     const repository = new EnvironmentVariablesRepository(prisma);
