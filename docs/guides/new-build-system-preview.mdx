@@ -5,7 +5,7 @@ description: "How to use the new build system preview release"
 
 Based on feedback and a steady flow of issues from our previous build system, we're happy to share with you a preview release of our new build system that (hopefully) fixes most of the issues you may have faced.
 
-The main features of the new build sytem are:
+The main features of the new build system are:
 
 - **Bundling by default**: All dependencies are bundled by default, so you no longer need to specify which dependencies to bundle. This solves a whole bunch of issues related to monorepos.
 - **Build extensions**: A new way to extend the build process with custom logic. This is a more flexible and powerful way to extend the build process compared to the old system. (including custom esbuild plugin support)
@@ -164,7 +164,7 @@ One other difference is now `params.env` only contains the environment variables
 
 ### emitDecoratorMetadata
 
-If you make use of decorators in your code, and have enabled the `emitDecoratorMetadata` tsconfig compiler option, you'll need to enable this in the new build sytem using the `emitDecoratorMetadata` build extension:
+If you make use of decorators in your code, and have enabled the `emitDecoratorMetadata` tsconfig compiler option, you'll need to enable this in the new build system using the `emitDecoratorMetadata` build extension:
 
 ```ts
 import { defineConfig } from "@trigger.dev/sdk";
@@ -285,7 +285,7 @@ import { audioWaveform } from "@trigger.dev/build/extensions/audioWaveform";
 export default defineConfig({
   project: "<project ref>",
   build: {
-    extensions: [audioWaveform()], // uses verson 1.1.0 of audiowaveform by default
+    extensions: [audioWaveform()], // uses version 1.1.0 of audiowaveform by default
   },
 });
 ```

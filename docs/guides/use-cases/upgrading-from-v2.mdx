@@ -270,7 +270,7 @@ const openai = new OpenAI({
 export const openaiTask = task({
   id: "openai-task",
   //3. Retries happen if a task throws an error that isn't caught
-  //   The default settings are in your trigger.config.ts (used if not overriden here)
+  //   The default settings are in your trigger.config.ts (used if not overridden here)
   retry: {
     maxAttempts: 3,
   },
