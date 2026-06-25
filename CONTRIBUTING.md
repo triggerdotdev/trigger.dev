@@ -259,7 +259,7 @@ Most of the time the changes you'll make are likely to be categorized as patch r
 
 ## Adding server changes
 
-Changesets only track published npm packages. If your PR only changes server components (`apps/webapp/`, `apps/supervisor/`, `apps/coordinator/`, etc.) with no package changes, add a `.server-changes/` file so the change appears in release notes.
+Changesets only track published npm packages. If your PR changes server components (`apps/webapp/`, `apps/supervisor/`, `apps/coordinator/`, etc.), add a `.server-changes/` file so the change appears in release notes.
 
 Create a markdown file with a descriptive name:
 
@@ -286,7 +286,7 @@ The body text (below the frontmatter) is a one-line description of the change. K
 |---|---|
 | Only packages (`packages/`) | Changeset |
 | Only server (`apps/`) | `.server-changes/` file |
-| Both packages and server | Just the changeset |
+| Both packages and server | Both |
 
 See `.server-changes/README.md` for more details.
 
