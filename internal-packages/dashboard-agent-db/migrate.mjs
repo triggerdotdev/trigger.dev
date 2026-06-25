@@ -44,13 +44,23 @@ const sql = postgres(normalizeConnectionString(connectionString), {
 });
 
 try {
-  // Journal lives in Drizzle's default `drizzle` schema (matching `drizzle-kit
-  // migrate`, so dev and deploy track migrations the same way). It must not be
-  // our data schema: the first migration runs `CREATE SCHEMA
-  // "trigger_dashboard_agent"`, which would collide with the journal schema the
-  // migrator pre-creates. The dashboard agent is the only Drizzle user of its
-  // database, so the `drizzle` schema stays exclusively ours.
-  await migrate(drizzle(sql), { migrationsFolder });
+  // Track our history in a DEDICATED journal table. Drizzle's migrator reads the
+  // latest row from <schema>.<table> by created_at and skips any journal entry
+  // dated at or before it. The default `drizzle.__drizzle_migrations` is shared
+  // by every Drizzle app, so when this DB is shared (OSS single-database fallback
+  // and the enterprise-image E2E gate) billing's journal rows poison ours: a
+  // billing row dated between our 0000 and 0001 makes the migrator skip 0000 (the
+  // CREATE SCHEMA) and run 0001 against a schema that never got created. An own
+  // table keeps our history independent (enterprise/db does the same with
+  // __enterprise_migrations; billing keeps the default).
+  //
+  // The table stays in the `drizzle` schema, not our data schema, so 0000's
+  // `CREATE SCHEMA "trigger_dashboard_agent"` doesn't collide with the schema the
+  // migrator pre-creates for its journal.
+  await migrate(drizzle(sql), {
+    migrationsFolder,
+    migrationsTable: "__dashboard_agent_migrations",
+  });
   console.log("[dashboard-agent-db] migrations complete");
 } finally {
   await sql.end();

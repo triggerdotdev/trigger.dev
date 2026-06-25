@@ -13,5 +13,9 @@ export default defineConfig({
   dialect: "postgresql",
   // Only manage our schema — never introspect or diff Prisma's `public` schema.
   schemaFilter: ["trigger_dashboard_agent"],
+  // Own journal table so dev (`drizzle-kit migrate`) and deploy (migrate.mjs)
+  // share one history and we don't cross-poison the default
+  // drizzle.__drizzle_migrations when the DB is shared. See migrate.mjs.
+  migrations: { table: "__dashboard_agent_migrations", schema: "drizzle" },
   dbCredentials: { url },
 });
