@@ -24,6 +24,11 @@ Run the installer with the CLI:
 npx trigger.dev@latest skills
 ```
 
+<Warning>
+  The `skills` command is currently only available in the release candidate. Until it ships to the
+  stable release, run it with the `@rc` tag: `npx trigger.dev@rc skills`.
+</Warning>
+
 The CLI detects your installed AI tools, lets you pick which skills to install, and writes each one into that tool's native skills directory (`.claude/skills/`, `.cursor/skills/`, `.github/skills/`, `.agents/skills/`). It also adds a one-line pointer to your primary instructions file (`CLAUDE.md`, `.cursor/rules`, etc.) so your assistant always knows the skills are there and loads the right one on demand.
 
 When you run `trigger dev` for the first time, the CLI offers to install the skills for you.
