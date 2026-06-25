@@ -255,11 +255,14 @@ function getClient() {
     queryPerformanceMonitor.onQuery("writer", log);
   });
 
-  // Connect eagerly, catch any exception and log
-  // Prisma will connect on use anyway
-  client.$connect().catch((error) => {
-    logger.error("Failed to eagerly connect prisma client (writer)", { error });
-  });
+  // Connect eagerly; Prisma will connect on use anyway.
+  // Swallow the error when testing (DB likely unavailable)
+  const connectPromise = client.$connect();
+  if (env.NODE_ENV === "test") {
+    connectPromise.catch((error) => {
+      logger.warn("Failed to eagerly connect prisma client (writer)", { error });
+    });
+  }
 
   console.log(`🔌 prisma client connected`);
 
@@ -381,11 +384,14 @@ function getReplicaClient() {
     queryPerformanceMonitor.onQuery("replica", log);
   });
 
-  // Connect eagerly, catch any exception and log
-  // Prisma will connect on use anyway
-  replicaClient.$connect().catch((error) => {
-    logger.error("Failed to eagerly connect prisma client (replica)", { error });
-  });
+  // Connect eagerly; Prisma will connect on use anyway.
+  // Swallow the error when testing (DB likely unavailable)
+  const connectPromise = replicaClient.$connect();
+  if (env.NODE_ENV === "test") {
+    connectPromise.catch((error) => {
+      logger.warn("Failed to eagerly connect prisma client (replica)", { error });
+    });
+  }
 
   console.log(`🔌 read replica connected`);
 
