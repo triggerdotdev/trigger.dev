@@ -1,5 +1,5 @@
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
-import type { PrismaClientOrTransaction, TaskRun } from "@trigger.dev/database";
+import type { Prisma, PrismaClientOrTransaction, TaskRun } from "@trigger.dev/database";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
@@ -11,6 +11,8 @@ import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.se
 import { claimOrAwait } from "~/v3/mollifier/idempotencyClaim.server";
 import { makeResolveMollifierFlag } from "~/v3/mollifier/mollifierGate.server";
 import { runStore } from "~/v3/runStore.server";
+import { shouldUseV2RunTable } from "~/v3/runTableV2.server";
+import { v2RunsMayExist } from "~/v3/runTableV2Status.server";
 import type { TraceEventConcern, TriggerTaskRequest } from "../types";
 
 // In-memory per-org mollifier-enabled check, shared with `evaluateGate`
@@ -19,6 +21,18 @@ import type { TraceEventConcern, TriggerTaskRequest } from "../types";
 // during staged rollout — see the comment above the claim block in
 // handleTriggerRequest.
 const resolveOrgMollifierFlag = makeResolveMollifierFlag();
+
+// Reserved task slot for the cross-table one-time-use-token claim. The DB
+// constraint `@@unique([oneTimeUseToken])` is TASK-INDEPENDENT, so the claim
+// must be keyed on the token alone, not (task, token): a single token can
+// authorise more than one task, and two presentations for different tasks
+// straddling a `runTableV2` flip would otherwise build different claim keys and
+// both proceed. Folding the token into one constant task slot makes the claim
+// key (envId, token)-scoped, matching the DB constraint's scope. Paired with
+// the `otu:` idempotencyKey prefix, collision with a real task's idempotency
+// claim would require a task literally named this AND an idempotency key of the
+// form `otu:<token-hash>`.
+const ONE_TIME_USE_TOKEN_CLAIM_TASK = "__one_time_use_token__";
 
 // Claim ownership context returned to the caller when the
 // IdempotencyKeyConcern won a pre-gate claim. Caller MUST publish the
@@ -136,6 +150,73 @@ export class IdempotencyKeyConcern {
     return synthetic as unknown as TaskRun;
   }
 
+  // Return an already-resolved idempotent run as a cache hit, blocking the
+  // parent on the run's waitpoint when this is a triggerAndWait
+  // (`resumeParentOnCompletion`). Shared by the direct PG/buffer existing-run
+  // path and the claim-`resolved` path (a concurrent same-key trigger that won
+  // the claim): a v2-cutover triggerAndWait that loses the claim must still
+  // block its parent, because the per-table unique constraints don't dedup
+  // across TaskRun/task_run_v2 — the claim is what serialises these.
+  private async returnCachedIdempotentRun(
+    request: TriggerTaskRequest,
+    parentStore: string | undefined,
+    existingRun: Prisma.TaskRunGetPayload<{ include: { associatedWaitpoint: true } }>,
+    idempotencyKey: string
+  ): Promise<IdempotencyKeyConcernResult> {
+    const parentRunId = request.body.options?.parentRunId;
+    const resumeParentOnCompletion = request.body.options?.resumeParentOnCompletion;
+
+    //We're using `andWait` so we need to block the parent run with a waitpoint
+    if (resumeParentOnCompletion && parentRunId) {
+      // Get or create waitpoint lazily (existing run may not have one if it was standalone)
+      let associatedWaitpoint = existingRun.associatedWaitpoint;
+      if (!associatedWaitpoint) {
+        associatedWaitpoint = await this.engine.getOrCreateRunWaitpoint({
+          runId: existingRun.id,
+          projectId: request.environment.projectId,
+          environmentId: request.environment.id,
+        });
+      }
+
+      await this.traceEventConcern.traceIdempotentRun(
+        request,
+        parentStore,
+        {
+          existingRun,
+          idempotencyKey,
+          incomplete: associatedWaitpoint.status === "PENDING",
+          isError: associatedWaitpoint.outputIsError,
+        },
+        async (event) => {
+          const spanId =
+            request.options?.parentAsLinkType === "replay"
+              ? event.spanId
+              : event.traceparent?.spanId
+                ? `${event.traceparent.spanId}:${event.spanId}`
+                : event.spanId;
+
+          //block run with waitpoint
+          await this.engine.blockRunWithWaitpoint({
+            runId: RunId.fromFriendlyId(parentRunId),
+            waitpoints: associatedWaitpoint!.id,
+            spanIdToComplete: spanId,
+            batch: request.options?.batchId
+              ? {
+                  id: request.options.batchId,
+                  index: request.options.batchIndex ?? 0,
+                }
+              : undefined,
+            projectId: request.environment.projectId,
+            organizationId: request.environment.organizationId,
+            tx: this.prisma,
+          });
+        }
+      );
+    }
+
+    return { isCached: true, run: existingRun };
+  }
+
   async handleTriggerRequest(
     request: TriggerTaskRequest,
     parentStore: string | undefined
@@ -147,8 +228,102 @@ export class IdempotencyKeyConcern {
       new Date(Date.now() + 24 * 60 * 60 * 1000 * 30); // 30 days
 
     if (!idempotencyKey) {
+      // A one-time-use token with NO idempotency key would otherwise skip the
+      // claim path below entirely. During a `runTableV2` flag flip, two
+      // concurrent presentations of the same token can mint into DIFFERENT
+      // physical tables (cuid -> TaskRun, ksuid -> task_run_v2); the per-table
+      // unique constraint on `oneTimeUseToken` can't see across the two tables,
+      // so neither INSERT raises P2002 and one token spawns two runs. For
+      // v2-cutover orgs, serialise on the token via a Redis claim so the first
+      // presentation wins and the rest are rejected as already-used. Not
+      // excluded for resumeParentOnCompletion: for v2 orgs the idempotency-keyed
+      // claim covers triggerAndWait too (claimEligible short-circuits on
+      // shouldUseV2RunTable), so the token claim is consistent in doing the same;
+      // the loser is rejected (not returned a cached run), so there is no
+      // waitpoint-blocking subtlety to avoid.
+      const oneTimeUseToken = request.options?.oneTimeUseToken;
+      if (oneTimeUseToken) {
+        const orgFeatureFlags =
+          (request.environment.organization?.featureFlags as
+            | Record<string, unknown>
+            | null
+            | undefined) ?? null;
+        if (
+          shouldUseV2RunTable(orgFeatureFlags, {
+            nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1",
+          })
+        ) {
+          // Key the claim on (envId, token), task-independent, to match the DB's
+          // task-independent oneTimeUseToken constraint (see the constant's
+          // comment). The TTL is a fixed pipeline-dwell bound, NOT the customer
+          // idempotencyKeyTTL: there is no idempotency key in this path, so a
+          // client-supplied TTL has no meaning here, and a tiny value would
+          // expire the claim mid-flight and reopen the cross-table dup window.
+          const claimKey = `otu:${oneTimeUseToken}`;
+          const outcome = await claimOrAwait({
+            envId: request.environment.id,
+            taskIdentifier: ONE_TIME_USE_TOKEN_CLAIM_TASK,
+            idempotencyKey: claimKey,
+            ttlSeconds: env.TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS,
+            safetyNetMs: env.TRIGGER_MOLLIFIER_CLAIM_WAIT_MS,
+            pollStepMs: env.TRIGGER_MOLLIFIER_CLAIM_POLL_MS,
+          });
+          if (outcome.kind === "resolved") {
+            // A concurrent presentation of the same one-time token already won
+            // and committed a run. Reject this one exactly as the within-table
+            // path does (the per-table oneTimeUseToken unique constraint raises
+            // P2002 -> RunOneTimeUseTokenError -> this same 4xx), preserving the
+            // "token already used" contract while closing the cross-table gap.
+            throw new ServiceValidationError(
+              `Cannot trigger ${request.taskId} with a one-time use token as it has already been used.`
+            );
+          } else if (outcome.kind === "timed_out") {
+            throw new ServiceValidationError(
+              "One-time-use token claim resolution timed out",
+              503
+            );
+          } else if (outcome.kind === "claimed") {
+            // We own the claim. The trigger pipeline MUST publish (on success)
+            // or release (on error) it — wired through the returned `claim`,
+            // exactly like the idempotency-keyed path.
+            return {
+              isCached: false,
+              idempotencyKey,
+              idempotencyKeyExpiresAt,
+              claim: {
+                envId: request.environment.id,
+                taskIdentifier: ONE_TIME_USE_TOKEN_CLAIM_TASK,
+                idempotencyKey: claimKey,
+                token: outcome.token,
+              },
+            };
+          }
+        }
+      }
       return { isCached: false, idempotencyKey, idempotencyKeyExpiresAt };
     }
+
+    // Resolve whether THIS org currently mints v2 runs ONCE, for the pre-gate
+    // claim further down (claimEligible).
+    const orgFeatureFlags =
+      (request.environment.organization?.featureFlags as
+        | Record<string, unknown>
+        | null
+        | undefined) ?? null;
+    const orgUsesV2 = shouldUseV2RunTable(orgFeatureFlags, {
+      nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1",
+    });
+
+    // Scope the idempotency dedup read on whether a v2 run could exist at all,
+    // NOT on whether this org currently mints v2. A run's table is fixed by its
+    // id format, so an org that was on v2 then flipped off still holds v2 runs an
+    // idempotency key can match; gating the read on orgUsesV2 would miss them and
+    // let a duplicate through. v2RunsMayExist is monotonic (native on now, OR
+    // task_run_v2 already has rows), so turning the native master switch off
+    // after v2 runs exist does NOT re-scope the read back to legacy and hide
+    // them. While no v2 run has ever existed it stays "legacy" and skips the
+    // empty task_run_v2 query on the trigger hot path.
+    const anyV2RunsPossible = v2RunsMayExist(env.REALTIME_BACKEND_NATIVE_ENABLED === "1");
 
     const existingRun = idempotencyKey
       ? await runStore.findRun(
@@ -161,6 +336,7 @@ export class IdempotencyKeyConcern {
             include: {
               associatedWaitpoint: true,
             },
+            tables: anyV2RunsPossible ? "both" : "legacy",
           },
           this.prisma
         )
@@ -219,66 +395,18 @@ export class IdempotencyKeyConcern {
         return { isCached: false, idempotencyKey, idempotencyKeyExpiresAt };
       }
 
-      // We have an idempotent run, so we return it
-      const parentRunId = request.body.options?.parentRunId;
-      const resumeParentOnCompletion = request.body.options?.resumeParentOnCompletion;
-
-      //We're using `andWait` so we need to block the parent run with a waitpoint
-      if (resumeParentOnCompletion && parentRunId) {
-        // Get or create waitpoint lazily (existing run may not have one if it was standalone)
-        let associatedWaitpoint = existingRun.associatedWaitpoint;
-        if (!associatedWaitpoint) {
-          associatedWaitpoint = await this.engine.getOrCreateRunWaitpoint({
-            runId: existingRun.id,
-            projectId: request.environment.projectId,
-            environmentId: request.environment.id,
-          });
-        }
-
-        await this.traceEventConcern.traceIdempotentRun(
-          request,
-          parentStore,
-          {
-            existingRun,
-            idempotencyKey,
-            incomplete: associatedWaitpoint.status === "PENDING",
-            isError: associatedWaitpoint.outputIsError,
-          },
-          async (event) => {
-            const spanId =
-              request.options?.parentAsLinkType === "replay"
-                ? event.spanId
-                : event.traceparent?.spanId
-                  ? `${event.traceparent.spanId}:${event.spanId}`
-                  : event.spanId;
-
-            //block run with waitpoint
-            await this.engine.blockRunWithWaitpoint({
-              runId: RunId.fromFriendlyId(parentRunId),
-              waitpoints: associatedWaitpoint!.id,
-              spanIdToComplete: spanId,
-              batch: request.options?.batchId
-                ? {
-                    id: request.options.batchId,
-                    index: request.options.batchIndex ?? 0,
-                  }
-                : undefined,
-              projectId: request.environment.projectId,
-              organizationId: request.environment.organizationId,
-              tx: this.prisma,
-            });
-          }
-        );
-      }
-
-      return { isCached: true, run: existingRun };
+      // We have an idempotent run, so we return it (blocking the parent on its
+      // waitpoint for triggerAndWait).
+      return this.returnCachedIdempotentRun(request, parentStore, existingRun, idempotencyKey);
     }
 
     // Pre-gate claim — closes the PG+buffer race during gate transition.
     // All same-key triggers serialise here before evaluateGate decides
-    // PG-pass-through vs mollify. Skipped for triggerAndWait
-    // (resumeParentOnCompletion) — that path bypasses the gate entirely
-    // and its existing PG-side dedup is sufficient.
+    // PG-pass-through vs mollify. For mollifier-only orgs this is skipped for
+    // triggerAndWait (resumeParentOnCompletion) — that path bypasses the gate
+    // and its PG-side dedup is sufficient there. v2-cutover orgs do NOT skip it
+    // (see the claimEligible comment below): cross-table dedup has no shared
+    // unique constraint, so the claim must cover triggerAndWait too.
     //
     // Also gated on the same per-org mollifier flag the gate uses: when
     // `TRIGGER_MOLLIFIER_ENABLED=1` globally for staged rollout, the buffer
@@ -298,20 +426,39 @@ export class IdempotencyKeyConcern {
     // trigger hot path. Excluding them keeps the claim aligned with the
     // gate — if the gate would never mollify the request, there's no
     // buffer to serialise against.
+    // Also serialise when the org is cut over to the v2 run table, even if it
+    // isn't on the mollifier. Concurrent same-key triggers that straddle a
+    // `runTableV2` flag flip can mint into DIFFERENT physical tables (cuid ->
+    // TaskRun, ksuid -> task_run_v2); the per-table idempotency unique
+    // constraints can't see each other, so neither INSERT raises P2002 and two
+    // runs share one key. The Redis claim is the only backstop in that window.
+    // v2-cutover orgs: an idempotency-keyed trigger can straddle a `runTableV2`
+    // flag flip into different physical tables (cuid -> TaskRun, ksuid ->
+    // task_run_v2), and the per-table idempotency-key unique constraints can't
+    // see across the two tables, so this claim (keyed on the idempotency key)
+    // is the only backstop that serialises same-key triggers across the flip,
+    // including triggerAndWait (resumeParentOnCompletion) and debounce. The
+    // resumeParentOnCompletion/debounce/oneTimeUseToken exclusions below are
+    // mollifier-gate alignment optimisations (those requests always return
+    // pass_through from the gate, so there's no buffer to serialise against);
+    // they don't apply to v2 orgs, which short-circuit to claimEligible via
+    // shouldUseV2RunTable regardless. oneTimeUseToken triggers with NO
+    // idempotency key are serialised separately by the token claim in the
+    // early-return block above; the residual same-token-with-two-different-keys
+    // case is not covered here (each key claims its own slot) and would require
+    // a pathological client. shouldUseV2RunTable is checked first so a v2 org
+    // skips the mollifier-flag resolve entirely.
     const claimEligible =
-      !request.body.options?.resumeParentOnCompletion &&
-      !request.body.options?.debounce &&
-      !request.options?.oneTimeUseToken &&
-      (await resolveOrgMollifierFlag({
-        envId: request.environment.id,
-        orgId: request.environment.organizationId,
-        taskId: request.taskId,
-        orgFeatureFlags:
-          ((request.environment.organization?.featureFlags as
-            | Record<string, unknown>
-            | null
-            | undefined) ?? null),
-      }));
+      orgUsesV2 ||
+      (!request.body.options?.resumeParentOnCompletion &&
+        !request.body.options?.debounce &&
+        !request.options?.oneTimeUseToken &&
+        (await resolveOrgMollifierFlag({
+          envId: request.environment.id,
+          orgId: request.environment.organizationId,
+          taskId: request.taskId,
+          orgFeatureFlags,
+        })));
     if (claimEligible) {
       const ttlSeconds = Math.max(
         1,
@@ -342,7 +489,15 @@ export class IdempotencyKeyConcern {
           this.prisma
         );
         if (writerRun) {
-          return { isCached: true, run: writerRun };
+          // The concurrent winner already committed. Return it as a cache hit,
+          // and for triggerAndWait block our parent on the winner's waitpoint
+          // (the claim is what serialises v2 cross-table triggerAndWait).
+          return this.returnCachedIdempotentRun(
+            request,
+            parentStore,
+            writerRun,
+            idempotencyKey
+          );
         }
         const buffered = await this.findBufferedRunWithIdempotency(
           request.environment.id,

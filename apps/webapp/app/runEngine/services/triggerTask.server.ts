@@ -25,6 +25,7 @@ import { logger } from "~/services/logger.server";
 import { parseDelay } from "~/utils/delays";
 import { handleMetadataPacket } from "~/utils/packets";
 import { startSpan } from "~/v3/tracing.server";
+import { canMintV2Run } from "~/v3/runTableV2Status.server";
 import type {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
@@ -151,7 +152,19 @@ export class RunEngineTriggerTaskService {
           span.setAttribute("taskId", taskId);
           span.setAttribute("attempt", attempt);
 
-          const runFriendlyId = options?.runFriendlyId ?? RunId.generate().friendlyId;
+          // The single per-org cutover point: an opted-in org mints a KSUID id
+          // (routing the run to task_run_v2), everyone else keeps a legacy id
+          // (TaskRun). The flag is a pure in-memory read of the org's
+          // featureFlags already loaded on `environment` — no DB query on the
+          // trigger hot path. Downstream routing is by id format only.
+          const runFriendlyId =
+            options?.runFriendlyId ??
+            (canMintV2Run(environment.organization.featureFlags, {
+              nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1",
+            })
+              ? RunId.generateKsuid()
+              : RunId.generate()
+            ).friendlyId;
           const triggerRequest = {
             taskId,
             friendlyId: runFriendlyId,
@@ -705,17 +718,24 @@ export class RunEngineTriggerTaskService {
           }
         },
       );
-      // Pipeline returned successfully — publish the claim if we held
-      // one. Waiters polling for our key resolve to this runId.
-      if (idempotencyClaim && result?.run?.friendlyId) {
-        await publishMollifierClaim({
-          envId: idempotencyClaim.envId,
-          taskIdentifier: idempotencyClaim.taskIdentifier,
-          idempotencyKey: idempotencyClaim.idempotencyKey,
-          token: idempotencyClaim.token,
-          runId: result.run.friendlyId,
-          ttlSeconds: env.TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS,
-        });
+      // Pipeline returned — resolve the claim if we held one. On success (a run
+      // with a friendlyId) publish it so waiters resolve to this runId;
+      // otherwise release it. Never leave a held claim unresolved on the success
+      // path: an orphaned claim would block concurrent waiters for the full
+      // safety-net window even though this request did not produce a run.
+      if (idempotencyClaim) {
+        if (result?.run?.friendlyId) {
+          await publishMollifierClaim({
+            envId: idempotencyClaim.envId,
+            taskIdentifier: idempotencyClaim.taskIdentifier,
+            idempotencyKey: idempotencyClaim.idempotencyKey,
+            token: idempotencyClaim.token,
+            runId: result.run.friendlyId,
+            ttlSeconds: env.TRIGGER_MOLLIFIER_CLAIM_TTL_SECONDS,
+          });
+        } else {
+          await releaseMollifierClaim(idempotencyClaim);
+        }
       }
       return result;
     } catch (err) {

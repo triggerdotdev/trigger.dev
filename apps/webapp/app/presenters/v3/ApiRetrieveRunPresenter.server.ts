@@ -23,6 +23,9 @@ import {
 } from "~/v3/mollifier/readFallback.server";
 import { generatePresignedUrl } from "~/v3/objectStore.server";
 import { runStore } from "~/v3/runStore.server";
+import { hydrateParentAndRoot, hydrateChildRuns } from "~/v3/runHierarchy.server";
+import { v2RunsMayExist } from "~/v3/runTableV2Status.server";
+import { env as serverEnv } from "~/env.server";
 import { tracer } from "~/v3/tracer.server";
 import { startSpanWithEnv } from "~/v3/tracing.server";
 
@@ -133,21 +136,44 @@ export class ApiRetrieveRunPresenter {
           attemptNumber: true,
           engine: true,
           taskEventStore: true,
-          parentTaskRun: {
-            select: commonRunSelect,
-          },
-          rootTaskRun: {
-            select: commonRunSelect,
-          },
-          childRuns: {
-            select: commonRunSelect,
-          },
+          parentTaskRunId: true,
+          rootTaskRunId: true,
         },
       },
       $replica
     );
 
-    if (pgRow) return { ...pgRow, isBuffered: false };
+    if (pgRow) {
+      // Resolve parent/root/children across both run tables. A single Prisma
+      // relation select is table-bound, so a v2 run's legacy parent (or a
+      // legacy run's v2 children), which arise in the mixed window, would come
+      // back null/empty. Resolve parent/root by id (RunStore routes by format)
+      // and children by a both-table predicate.
+      // Scope the cross-table reads on whether a v2 run could exist at all, NOT
+      // the org's current flag: a run's table is fixed by its id format, and an
+      // org that was on v2 then flipped off still HAS v2 runs (and v2 children)
+      // that stay readable. pgRow is routed here by id format, so it can be a v2
+      // run for a now-non-v2 org; scoping to "legacy" would then silently drop
+      // its v2 children/parent. v2RunsMayExist is monotonic (native on now, OR
+      // task_run_v2 already has rows), so turning the native master switch off
+      // does not re-scope to legacy and hide existing v2 runs. While no v2 run
+      // has ever existed it stays "legacy" and skips the empty task_run_v2 query.
+      // The reads also run in parallel.
+      const tables = v2RunsMayExist(serverEnv.REALTIME_BACKEND_NATIVE_ENABLED === "1")
+        ? "both"
+        : "legacy";
+      const [{ parentTaskRun, rootTaskRun }, childRuns] = await Promise.all([
+        hydrateParentAndRoot(
+          { parentTaskRunId: pgRow.parentTaskRunId, rootTaskRunId: pgRow.rootTaskRunId },
+          { runtimeEnvironmentId: env.id, tables },
+          commonRunSelect,
+          $replica
+        ),
+        hydrateChildRuns(pgRow.id, { runtimeEnvironmentId: env.id, tables }, commonRunSelect, $replica),
+      ]);
+
+      return { ...pgRow, parentTaskRun, rootTaskRun, childRuns, isBuffered: false };
+    }
 
     // Postgres miss → fall back to the mollifier buffer. When the gate
     // diverted a trigger, the run lives in Redis until the drainer replays

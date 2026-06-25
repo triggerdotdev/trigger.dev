@@ -232,6 +232,18 @@ export type ClearIdempotencyKeyInput =
 
 export type TaskRunWithWaitpoint = TaskRun & { associatedWaitpoint: Waitpoint | null };
 
+/**
+ * Which physical run tables a non-id `findRun` predicate should read.
+ *
+ * Defaults to `"both"` (the safe cross-table behaviour). A caller that KNOWS
+ * the run can only be in the legacy table — e.g. the idempotency-key dedup for
+ * an org that is not cut over to `task_run_v2` — can pass `"legacy"` to skip the
+ * second (empty) `task_run_v2` query and keep the trigger hot path single-table.
+ * Only meaningful for non-id predicates; id/friendlyId reads already route to
+ * exactly one table by id format.
+ */
+export type FindRunTableScope = "both" | "legacy";
+
 export interface RunStore {
   // Create
   createRun(params: CreateRunInput, tx?: PrismaClientOrTransaction): Promise<TaskRunWithWaitpoint>;
@@ -332,12 +344,12 @@ export interface RunStore {
   // Read
   findRun<S extends Prisma.TaskRunSelect>(
     where: Prisma.TaskRunWhereInput,
-    args: { select: S },
+    args: { select: S; tables?: FindRunTableScope },
     client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }> | null>;
   findRun<I extends Prisma.TaskRunInclude>(
     where: Prisma.TaskRunWhereInput,
-    args: { include: I },
+    args: { include: I; tables?: FindRunTableScope },
     client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }> | null>;
   findRun(where: Prisma.TaskRunWhereInput, client?: ReadClient): Promise<TaskRun | null>;
@@ -362,6 +374,7 @@ export interface RunStore {
       take?: number;
       skip?: number;
       cursor?: Prisma.TaskRunWhereUniqueInput;
+      tables?: FindRunTableScope;
     },
     client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>[]>;
@@ -373,6 +386,7 @@ export interface RunStore {
       take?: number;
       skip?: number;
       cursor?: Prisma.TaskRunWhereUniqueInput;
+      tables?: FindRunTableScope;
     },
     client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }>[]>;
@@ -383,6 +397,7 @@ export interface RunStore {
       take?: number;
       skip?: number;
       cursor?: Prisma.TaskRunWhereUniqueInput;
+      tables?: FindRunTableScope;
     },
     client?: ReadClient
   ): Promise<TaskRun[]>;

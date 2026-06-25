@@ -2,7 +2,7 @@ import { ActionFunctionArgs, LoaderFunctionArgs, json } from "@remix-run/server-
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
-import { validatePartialFeatureFlags } from "~/v3/featureFlags";
+import { validateFeatureFlagInvariants, validatePartialFeatureFlags } from "~/v3/featureFlags";
 
 const ParamsSchema = z.object({
   organizationId: z.string(),
@@ -84,6 +84,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
       ...(existingFlags.success ? existingFlags.data : {}),
       ...validationResult.data,
     };
+
+    // Enforce cross-flag invariants on the merged result (e.g. runTableV2
+    // requires realtimeBackend=native). Checked on the merge so it also rejects
+    // turning realtime back to Electric while runTableV2 stays on.
+    const invariant = validateFeatureFlagInvariants(mergedFlags);
+    if (!invariant.ok) {
+      return json({ error: invariant.error }, { status: 400 });
+    }
 
     // Update the organization's feature flags
     const updatedOrganization = await prisma.organization.update({

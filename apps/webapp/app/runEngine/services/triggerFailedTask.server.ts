@@ -10,6 +10,8 @@ import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRun
 import { DefaultQueueManager } from "../concerns/queues.server";
 import type { TriggerTaskRequest } from "../types";
 import { runStore } from "~/v3/runStore.server";
+import { canMintV2Run } from "~/v3/runTableV2Status.server";
+import { env } from "~/env.server";
 
 export type TriggerFailedTaskRequest = {
   /** The task identifier (e.g. "my-task") */
@@ -67,7 +69,19 @@ export class TriggerFailedTaskService {
   }
 
   async call(request: TriggerFailedTaskRequest): Promise<string | null> {
-    const failedRunFriendlyId = RunId.generate().friendlyId;
+    // Mint the failed run on the same physical table the org's other runs use:
+    // a v2 org's failed run is a KSUID (-> task_run_v2), not a cuid in legacy
+    // TaskRun. Otherwise every trigger-time failure (queue limits, validation,
+    // payload errors) would land in the wrong table and, when it has a parent or
+    // batch, create an ongoing cross-table edge on the failure path. Mirrors the
+    // mint gate in triggerTask.server.ts.
+    const failedRunFriendlyId = (
+      canMintV2Run(request.environment.organization.featureFlags, {
+        nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1",
+      })
+        ? RunId.generateKsuid()
+        : RunId.generate()
+    ).friendlyId;
     const taskRunError: TaskRunError = {
       type: "INTERNAL_ERROR" as const,
       code: request.errorCode ?? TaskRunErrorCodes.UNSPECIFIED_ERROR,
@@ -268,7 +282,25 @@ export class TriggerFailedTaskService {
     batch?: { id: string; index: number };
     errorCode?: TaskRunErrorCodes;
   }): Promise<string | null> {
-    const failedRunFriendlyId = RunId.generate().friendlyId;
+    // Keep the failed run on the org's table even on this degraded path. The
+    // caller couldn't fully resolve the environment, so load the org flags by id
+    // to decide; if even that fails, default to a legacy id (safe: RunStore
+    // routes by id format either way, and an unresolvable org is a rare edge).
+    let useV2RunTable = false;
+    try {
+      const org = await this.prisma.organization.findFirst({
+        where: { id: opts.organizationId },
+        select: { featureFlags: true },
+      });
+      useV2RunTable = canMintV2Run((org?.featureFlags as Record<string, unknown>) ?? null, {
+        nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1",
+      });
+    } catch {
+      // Leave useV2RunTable=false (legacy id).
+    }
+    const failedRunFriendlyId = (
+      useV2RunTable ? RunId.generateKsuid() : RunId.generate()
+    ).friendlyId;
 
     try {
       // Best-effort parent run lookup for rootTaskRunId/depth

@@ -5,7 +5,12 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireUser } from "~/services/session.server";
 import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
-import { FEATURE_FLAG, validatePartialFeatureFlags, getAllFlagControlTypes } from "~/v3/featureFlags";
+import {
+  FEATURE_FLAG,
+  validateFeatureFlagInvariants,
+  validatePartialFeatureFlags,
+  getAllFlagControlTypes,
+} from "~/v3/featureFlags";
 import { featuresForRequest } from "~/features.server";
 
 // Session-auth route for the admin feature flags dialog.
@@ -113,6 +118,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
         { status: 400 }
       );
     }
+
+    // Enforce cross-flag invariants (e.g. runTableV2 requires
+    // realtimeBackend=native). This route replaces the whole set, so the
+    // validated data IS the final resolved set.
+    const invariant = validateFeatureFlagInvariants(validationResult.data);
+    if (!invariant.ok) {
+      return json({ error: invariant.error }, { status: 400 });
+    }
+
     featureFlags = validationResult.data;
   }
 

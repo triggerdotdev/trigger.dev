@@ -17,6 +17,7 @@ export const FEATURE_FLAG = {
   computeMigrationFreePercentage: "computeMigrationFreePercentage",
   computeMigrationPaidPercentage: "computeMigrationPaidPercentage",
   computeMigrationRequireTemplate: "computeMigrationRequireTemplate",
+  runTableV2: "runTableV2",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -47,6 +48,12 @@ export const FeatureFlagCatalog = {
   // When on, migrated orgs build their compute template in required mode at deploy
   // (fails the deploy on error) instead of shadow. Strict boolean (see above).
   [FEATURE_FLAG.computeMigrationRequireTemplate]: z.boolean(),
+  // Per-org cutover to the parallel task_run_v2 table. When on, new runs for the
+  // org mint a KSUID id (routing them to task_run_v2); off (the default) keeps
+  // minting legacy ids. Strict boolean (see above): coercing a stringified
+  // "false" to true would cut an org over by mistake, and runs created on v2
+  // stay on v2.
+  [FEATURE_FLAG.runTableV2]: z.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
@@ -56,6 +63,11 @@ export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
 export const GLOBAL_LOCKED_FLAGS: FeatureFlagKey[] = [
   FEATURE_FLAG.defaultWorkerInstanceGroupId,
   FEATURE_FLAG.taskEventRepository,
+  // runTableV2 is resolved per-org only (`shouldUseV2RunTable` reads
+  // `Organization.featureFlags`, never the global FeatureFlag table), so a
+  // global toggle would be a silent no-op. Lock it on the global page to
+  // avoid that footgun; per-org control stays on the org dialog.
+  FEATURE_FLAG.runTableV2,
 ];
 
 // Flags that are read-only on the org-level dialog.
@@ -85,6 +97,45 @@ export function validateAllFeatureFlags(values: Record<string, unknown>) {
 // Utility function to validate partial feature flags (all keys optional)
 export function validatePartialFeatureFlags(values: Record<string, unknown>) {
   return FeatureFlagCatalogSchema.partial().safeParse(values);
+}
+
+/**
+ * Cross-field invariant on a RESOLVED org flag set: `runTableV2` may only be on
+ * when the org's `realtimeBackend` is "native".
+ *
+ * New v2 runs mint a KSUID id (routing them to task_run_v2) and are only
+ * observable in realtime on the native backend; Electric is bound to
+ * public."TaskRun", so a v2 run minted while the org is still on Electric is
+ * invisible in realtime. `shouldUseV2RunTable` already enforces this at read
+ * time, but this guard blocks the dangerous combination at WRITE time so it can
+ * never be configured, including the enable-race where `runTableV2` is flipped
+ * on before `realtimeBackend=native` has propagated past the realtime cache.
+ *
+ * Pass the FINAL resolved set (after any merge) so it also rejects turning
+ * `realtimeBackend` off/to "electric" while `runTableV2` is still on.
+ */
+export function validateFeatureFlagInvariants(
+  flags: Record<string, unknown>
+): { ok: true } | { ok: false; error: string } {
+  const runTableV2 = FeatureFlagCatalog[FEATURE_FLAG.runTableV2].safeParse(
+    flags[FEATURE_FLAG.runTableV2]
+  );
+  if (!(runTableV2.success && runTableV2.data === true)) {
+    return { ok: true };
+  }
+
+  const backend = FeatureFlagCatalog[FEATURE_FLAG.realtimeBackend].safeParse(
+    flags[FEATURE_FLAG.realtimeBackend]
+  );
+  if (backend.success && backend.data === "native") {
+    return { ok: true };
+  }
+
+  return {
+    ok: false,
+    error:
+      'runTableV2 can only be enabled when realtimeBackend is "native". Set realtimeBackend="native" first (and let it propagate past the realtime cache), then enable runTableV2.',
+  };
 }
 
 // Utility types for catalog-driven UI rendering

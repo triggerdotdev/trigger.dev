@@ -188,8 +188,13 @@ async function main() {
       console.log(`📊 Found ${runIds.length} runs in currentConcurrency set`);
 
       // Query database for latest snapshots and queue info of these runs.
-      // NOTE: raw join of TaskRunExecutionSnapshot to TaskRun, the one TaskRun read not behind
-      // RunStore (a join, not a by-id read, in an ops script). Revisit at table cutover.
+      // A snapshot's runId can reference a run in EITHER physical table during
+      // the runTableV2 cutover, so join against TaskRun UNION task_run_v2 by id;
+      // a stuck v2 (KSUID) run would otherwise be dropped from the join and never
+      // re-enqueued. UNION (not UNION ALL) so that if a future copy step leaves a
+      // run briefly in both tables under the same id, the identical clones collapse
+      // to one row and DISTINCT ON stays unambiguous. (Raw join in an ops script,
+      // not a by-id RunStore read.)
       const runInfo = await prisma.$queryRaw<
         Array<{
           runId: string;
@@ -214,7 +219,11 @@ async function main() {
           r."queue",
           r."concurrencyKey"
         FROM "TaskRunExecutionSnapshot" s
-        INNER JOIN "TaskRun" r ON r.id = s."runId"
+        INNER JOIN (
+          SELECT id, "organizationId", "projectId", "runtimeEnvironmentId", "taskIdentifier", "queue", "concurrencyKey" FROM "TaskRun" WHERE id = ANY(${runIds})
+          UNION
+          SELECT id, "organizationId", "projectId", "runtimeEnvironmentId", "taskIdentifier", "queue", "concurrencyKey" FROM task_run_v2 WHERE id = ANY(${runIds})
+        ) r ON r.id = s."runId"
         WHERE s."runId" = ANY(${runIds})
           AND s."isValid" = true
         ORDER BY s."runId", s."createdAt" DESC

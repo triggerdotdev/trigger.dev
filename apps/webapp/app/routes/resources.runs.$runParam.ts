@@ -7,6 +7,7 @@ import { requireUserId } from "~/services/session.server";
 import { v3RunParamsSchema } from "~/utils/pathBuilder";
 import { machinePresetFromName, machinePresetFromRun } from "~/v3/machinePresets.server";
 import { runStore } from "~/v3/runStore.server";
+import { hydrateParentAndRoot } from "~/v3/runHierarchy.server";
 import { FINAL_ATTEMPT_STATUSES, isFinalRunStatus } from "~/v3/taskStatus";
 
 export type RunInspectorData = UseDataFunctionReturn<typeof loader>;
@@ -102,16 +103,11 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
             },
           },
         },
-        parentTaskRun: {
-          select: {
-            friendlyId: true,
-          },
-        },
-        rootTaskRun: {
-          select: {
-            friendlyId: true,
-          },
-        },
+        // Scalar parent/root pointers, NOT the table-bound relations: a relation
+        // select resolves null for a cross-table parent/root (a v2 run's legacy
+        // parent or vice versa in the mixed window). Resolve by id below.
+        parentTaskRunId: true,
+        rootTaskRunId: true,
       },
     },
     $replica
@@ -120,6 +116,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   if (!run) {
     throw new Response("Not found", { status: 404 });
   }
+
+  // Resolve parent/root across both run tables by id (RunStore routes by id
+  // format), scoped to this run's environment.
+  const { parentTaskRun, rootTaskRun } = await hydrateParentAndRoot(
+    { parentTaskRunId: run.parentTaskRunId, rootTaskRunId: run.rootTaskRunId },
+    { runtimeEnvironmentId: run.runtimeEnvironment.id },
+    { friendlyId: true },
+    $replica
+  );
 
   const isFinished = isFinalRunStatus(run.status);
 
@@ -187,8 +192,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       baseCostInCents: run.baseCostInCents,
       maxAttempts: run.maxAttempts ?? undefined,
       version: run.lockedToVersion?.version,
-      parentTaskRunId: run.parentTaskRun?.friendlyId ?? undefined,
-      rootTaskRunId: run.rootTaskRun?.friendlyId ?? undefined,
+      parentTaskRunId: parentTaskRun?.friendlyId ?? undefined,
+      rootTaskRunId: rootTaskRun?.friendlyId ?? undefined,
     },
     queue: {
       name: run.queue,

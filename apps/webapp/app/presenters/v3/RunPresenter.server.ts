@@ -9,6 +9,7 @@ import { isFinalRunStatus } from "~/v3/taskStatus";
 import { env } from "~/env.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { runStore } from "~/v3/runStore.server";
+import { hydrateParentAndRoot } from "~/v3/runHierarchy.server";
 
 type Result = Awaited<ReturnType<RunPresenter["call"]>>;
 export type Run = Result["run"];
@@ -93,20 +94,8 @@ export class RunPresenter {
           completedAt: true,
           logsDeletedAt: true,
           annotations: true,
-          rootTaskRun: {
-            select: {
-              friendlyId: true,
-              spanId: true,
-              createdAt: true,
-            },
-          },
-          parentTaskRun: {
-            select: {
-              friendlyId: true,
-              spanId: true,
-              createdAt: true,
-            },
-          },
+          rootTaskRunId: true,
+          parentTaskRunId: true,
           runtimeEnvironment: {
             select: {
               id: true,
@@ -143,6 +132,16 @@ export class RunPresenter {
 
     const showLogs = showDeletedLogs || !run.logsDeletedAt;
 
+    // Resolve parent/root across both physical run tables: a v2 run can have a
+    // legacy parent/root (or vice versa) in the mixed window, which a
+    // table-bound Prisma relation select would miss.
+    const { parentTaskRun, rootTaskRun } = await hydrateParentAndRoot(
+      { parentTaskRunId: run.parentTaskRunId, rootTaskRunId: run.rootTaskRunId },
+      { runtimeEnvironmentId: run.runtimeEnvironment.id },
+      { friendlyId: true, spanId: true, createdAt: true },
+      this.#prismaClient
+    );
+
     const runData = {
       id: run.id,
       number: run.number,
@@ -154,8 +153,8 @@ export class RunPresenter {
       startedAt: run.startedAt,
       completedAt: run.completedAt,
       logsDeletedAt: showDeletedLogs ? null : run.logsDeletedAt,
-      rootTaskRun: run.rootTaskRun,
-      parentTaskRun: run.parentTaskRun,
+      rootTaskRun,
+      parentTaskRun,
       environment: {
         id: run.runtimeEnvironment.id,
         organizationId: run.runtimeEnvironment.organizationId,
@@ -184,7 +183,7 @@ export class RunPresenter {
       getTaskEventStoreTableForRun(run),
       run.runtimeEnvironment.id,
       run.traceId,
-      run.rootTaskRun?.createdAt ?? run.createdAt,
+      rootTaskRun?.createdAt ?? run.createdAt,
       run.completedAt ?? undefined,
       { includeDebugLogs: showDebug }
     );

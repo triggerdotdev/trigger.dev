@@ -354,18 +354,14 @@ export class UpdateMetadataService {
           metadata: true,
           metadataType: true,
           metadataVersion: true,
-          parentTaskRun: {
-            select: {
-              id: true,
-              status: true,
-            },
-          },
-          rootTaskRun: {
-            select: {
-              id: true,
-              status: true,
-            },
-          },
+          // Scalar parent/root pointers, NOT the parentTaskRun/rootTaskRun
+          // relations: a relation select is bound to one physical run table and
+          // resolves to null when the parent/root lives in the other table (a
+          // v2 child of a legacy parent in the mixed window). The scalar id is
+          // table-agnostic, and #ingestRunOperations only needs the id — the
+          // flusher routes by id format across both tables.
+          parentTaskRunId: true,
+          rootTaskRunId: true,
         },
       },
       this._prisma
@@ -380,11 +376,11 @@ export class UpdateMetadataService {
     }
 
     if (body.parentOperations && body.parentOperations.length > 0) {
-      this.#ingestRunOperations(taskRun.parentTaskRun?.id ?? taskRun.id, body.parentOperations);
+      this.#ingestRunOperations(taskRun.parentTaskRunId ?? taskRun.id, body.parentOperations);
     }
 
     if (body.rootOperations && body.rootOperations.length > 0) {
-      this.#ingestRunOperations(taskRun.rootTaskRun?.id ?? taskRun.id, body.rootOperations);
+      this.#ingestRunOperations(taskRun.rootTaskRunId ?? taskRun.id, body.rootOperations);
     }
 
     const result = await this.#updateRunMetadata({

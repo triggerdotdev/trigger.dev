@@ -126,6 +126,11 @@ export const loader = createLoaderApiRoute(
     const triggeredRuns = await runStore.findRuns(
       {
         take: 50,
+        // A parentSpanId predicate spans both run tables (it carries no id), so
+        // the cross-table store requires a total-order key to bound the merge;
+        // createdAt also makes the 50-row cap deterministic (most recent first)
+        // rather than an arbitrary single-table slice.
+        orderBy: { createdAt: "desc" },
         select: {
           friendlyId: true,
           taskIdentifier: true,

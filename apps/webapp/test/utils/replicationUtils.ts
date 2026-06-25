@@ -17,6 +17,10 @@ export async function setupClickhouseReplication({
   redisOptions: RedisOptions;
 }) {
   await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
+  // task_run_v2 is co-published with TaskRun; it needs FULL identity too so
+  // UPDATE/DELETE WAL events carry the old row (the delete transform reads
+  // organizationId/environmentType off it). Mirrors the TaskRun line above.
+  await prisma.$executeRawUnsafe(`ALTER TABLE public."task_run_v2" REPLICA IDENTITY FULL;`);
 
   const clickhouse = new ClickHouse({
     url: clickhouseUrl,

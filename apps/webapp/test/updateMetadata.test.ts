@@ -1,5 +1,6 @@
 import { containerTest } from "@internal/testcontainers";
 import { parsePacket } from "@trigger.dev/core/v3";
+import { isKsuidId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import { setTimeout } from "timers/promises";
 import { describe } from "vitest";
 import { PostgresRunStore } from "@internal/run-store";
@@ -1289,6 +1290,121 @@ describe("UpdateMetadataService.call", () => {
       });
 
       service.stopFlushing();
+    }
+  );
+
+  containerTest(
+    "routes parent metadata operations to a parent in the OTHER run table (cross-table hierarchy)",
+    async ({ prisma }) => {
+      const service = new UpdateMetadataService({
+        prisma,
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
+        flushIntervalMs: 100,
+        flushEnabled: true,
+        flushLoggingEnabled: true,
+        maximumSize: 1024 * 1024 * 1,
+        logLevel: "debug",
+      });
+
+      try {
+        const organization = await prisma.organization.create({
+          data: { title: "test", slug: "test" },
+        });
+        const project = await prisma.project.create({
+          data: {
+            name: "test",
+            slug: "test",
+            organizationId: organization.id,
+            externalRef: "test",
+          },
+        });
+        const runtimeEnvironment = await prisma.runtimeEnvironment.create({
+          data: {
+            slug: "test",
+            type: "DEVELOPMENT",
+            projectId: project.id,
+            organizationId: organization.id,
+            apiKey: "test",
+            pkApiKey: "test",
+            shortcode: "test",
+          },
+        });
+
+        // Legacy parent (cuid id) lives in TaskRun. This is the mixed-window
+        // hierarchy: an org flips runTableV2 on while a pre-flip parent is live,
+        // and its post-flip child mints a ksuid into task_run_v2.
+        const parentId = RunId.generate();
+        expect(isKsuidId(parentId.id)).toBe(false);
+        const parentTaskRun = await prisma.taskRun.create({
+          data: {
+            id: parentId.id,
+            friendlyId: parentId.friendlyId,
+            taskIdentifier: "my-task",
+            payload: "{}",
+            payloadType: "application/json",
+            traceId: "t",
+            spanId: "s",
+            queue: "test",
+            runtimeEnvironmentId: runtimeEnvironment.id,
+            projectId: project.id,
+            organizationId: organization.id,
+            environmentType: "DEVELOPMENT",
+            engine: "V2",
+          },
+        });
+
+        // v2 child (ksuid id) lives in task_run_v2 and points at the legacy
+        // parent by the scalar parentTaskRunId (no cross-table FK).
+        const childId = RunId.generateKsuid();
+        expect(isKsuidId(childId.id)).toBe(true);
+        await prisma.taskRunV2.create({
+          data: {
+            id: childId.id,
+            friendlyId: childId.friendlyId,
+            taskIdentifier: "my-child-task",
+            payload: "{}",
+            payloadType: "application/json",
+            traceId: "t",
+            spanId: "s",
+            queue: "test",
+            runtimeEnvironmentId: runtimeEnvironment.id,
+            projectId: project.id,
+            organizationId: organization.id,
+            environmentType: "DEVELOPMENT",
+            engine: "V2",
+            parentTaskRunId: parentTaskRun.id,
+          },
+        });
+
+        // The child applies metadata.parent operations. Pre-fix, the table-bound
+        // parentTaskRun relation resolved null (parent is in the OTHER table), so
+        // the ops fell back to the child's own id — corrupting the child and
+        // never touching the parent.
+        await service.call(childId.id, {
+          parentOperations: [
+            { type: "set", key: "foo", value: "bar" },
+            { type: "append", key: "bar", value: "baz" },
+          ],
+        });
+
+        // Wait for the buffered operations to flush.
+        await setTimeout(1000);
+
+        // The PARENT (in TaskRun) must have received the operations.
+        const updatedParent = await prisma.taskRun.findFirst({ where: { id: parentTaskRun.id } });
+        expect(
+          await parsePacket({
+            data: updatedParent?.metadata ?? undefined,
+            dataType: updatedParent?.metadataType ?? "application/json",
+          })
+        ).toEqual({ foo: "bar", bar: ["baz"] });
+
+        // The CHILD (in task_run_v2) must NOT have been polluted with parent ops.
+        const updatedChild = await prisma.taskRunV2.findFirst({ where: { id: childId.id } });
+        expect(updatedChild?.metadata ?? null).toBeNull();
+      } finally {
+        service.stopFlushing();
+      }
     }
   );
 });

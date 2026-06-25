@@ -1,6 +1,7 @@
 import { postgresTest } from "@internal/testcontainers";
+import { isKsuidId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClient } from "@trigger.dev/database";
-import { describe, expect } from "vitest";
+import { describe, expect, vi } from "vitest";
 import { PostgresRunStore } from "./PostgresRunStore.js";
 import type { CreateCancelledRunInput, CreateFailedRunInput, CreateRunInput } from "./types.js";
 
@@ -1771,4 +1772,1430 @@ describe("PostgresRunStore — read", () => {
     expect(found[0]?.taskIdentifier).toBe("my-task");
     expect(found[0]?.payloadType).toBe("application/json");
   });
+});
+
+describe("PostgresRunStore — table routing by id format", () => {
+  // Seed a run directly into one physical table, choosing the delegate by id
+  // format the same way the store does. Returns the ids used.
+  async function seedRoutedRun(
+    prisma: PrismaClient,
+    params: {
+      id: string;
+      friendlyId: string;
+      organizationId: string;
+      projectId: string;
+      runtimeEnvironmentId: string;
+      status?: string;
+      idempotencyKey?: string;
+      taskIdentifier?: string;
+      createdAt?: Date;
+      parentTaskRunId?: string;
+      rootTaskRunId?: string;
+    }
+  ) {
+    const delegate = isKsuidId(params.id)
+      ? (prisma.taskRunV2 as unknown as typeof prisma.taskRun)
+      : prisma.taskRun;
+
+    await delegate.create({
+      data: {
+        id: params.id,
+        engine: "V2",
+        status: (params.status as any) ?? "PENDING",
+        friendlyId: params.friendlyId,
+        runtimeEnvironmentId: params.runtimeEnvironmentId,
+        environmentType: "DEVELOPMENT",
+        organizationId: params.organizationId,
+        projectId: params.projectId,
+        taskIdentifier: params.taskIdentifier ?? "my-task",
+        payload: "{}",
+        payloadType: "application/json",
+        traceContext: {},
+        traceId: `trace_${params.id}`,
+        spanId: `span_${params.id}`,
+        queue: "task/my-task",
+        isTest: false,
+        taskEventStore: "taskEvent",
+        depth: 0,
+        ...(params.idempotencyKey !== undefined && { idempotencyKey: params.idempotencyKey }),
+        ...(params.createdAt !== undefined && { createdAt: params.createdAt }),
+        ...(params.parentTaskRunId !== undefined && { parentTaskRunId: params.parentTaskRunId }),
+        ...(params.rootTaskRunId !== undefined && { rootTaskRunId: params.rootTaskRunId }),
+      },
+    });
+  }
+
+  postgresTest(
+    "createRun with a cuid id lands a row in TaskRun and NOT in task_run_v2",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const cuid = RunId.generate();
+      expect(isKsuidId(cuid.id)).toBe(false);
+
+      await store.createRun({
+        data: {
+          id: cuid.id,
+          engine: "V2",
+          status: "PENDING",
+          friendlyId: cuid.friendlyId,
+          runtimeEnvironmentId: environment.id,
+          environmentType: "DEVELOPMENT",
+          organizationId: organization.id,
+          projectId: project.id,
+          taskIdentifier: "my-task",
+          payload: "{}",
+          payloadType: "application/json",
+          traceContext: {},
+          traceId: "trace_cuid",
+          spanId: "span_cuid",
+          queue: "task/my-task",
+          isTest: false,
+          taskEventStore: "taskEvent",
+          depth: 0,
+        },
+        snapshot: {
+          engine: "V2",
+          executionStatus: "RUN_CREATED",
+          description: "Run was created",
+          runStatus: "PENDING",
+          environmentId: environment.id,
+          environmentType: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+        },
+      });
+
+      // cuid run is in TaskRun, not in task_run_v2.
+      const legacyRow = await prisma.taskRun.findUnique({ where: { id: cuid.id } });
+      expect(legacyRow).not.toBeNull();
+      const cuidInV2 = await prisma.taskRunV2.findUnique({ where: { id: cuid.id } });
+      expect(cuidInV2).toBeNull();
+    }
+  );
+
+  postgresTest(
+    "createRun routes a KSUID id to task_run_v2: the scalar row lands there and not in TaskRun",
+    async ({ prisma }) => {
+      // This test exercises the routing decision in isolation by writing the
+      // scalar row directly to the table `createRun` would pick for a KSUID
+      // `data.id`, then asserts the row landed in task_run_v2 and not in TaskRun.
+      // The full v2 create path (run + nested snapshot + waitpoint) is covered
+      // by the "v2 nested writes" suite below.
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const ksuid = RunId.generateKsuid();
+      expect(isKsuidId(ksuid.id)).toBe(true);
+
+      await seedRoutedRun(prisma, {
+        id: ksuid.id,
+        friendlyId: ksuid.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+
+      const v2Row = await prisma.taskRunV2.findUnique({ where: { id: ksuid.id } });
+      expect(v2Row).not.toBeNull();
+      const ksuidInLegacy = await prisma.taskRun.findUnique({ where: { id: ksuid.id } });
+      expect(ksuidInLegacy).toBeNull();
+    }
+  );
+
+  postgresTest(
+    "findRun and updateMetadata route to task_run_v2 for a KSUID run and to TaskRun for a cuid run",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const ksuid = RunId.generateKsuid();
+      const cuid = RunId.generate();
+
+      await seedRoutedRun(prisma, {
+        id: ksuid.id,
+        friendlyId: ksuid.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      await seedRoutedRun(prisma, {
+        id: cuid.id,
+        friendlyId: cuid.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+
+      // By-id read finds each run in its own table.
+      const foundKsuid = await store.findRun({ id: ksuid.id }, { select: { id: true } });
+      expect(foundKsuid?.id).toBe(ksuid.id);
+      const foundCuid = await store.findRun({ id: cuid.id }, { select: { id: true } });
+      expect(foundCuid?.id).toBe(cuid.id);
+
+      // By-id write (updateMetadata) lands in the correct table.
+      const ksuidResult = await store.updateMetadata(
+        ksuid.id,
+        {
+          metadata: '{"routed":"v2"}',
+          metadataType: "application/json",
+          metadataVersion: { increment: 1 },
+          updatedAt: new Date(),
+        },
+        {}
+      );
+      expect(ksuidResult.count).toBe(1);
+
+      const cuidResult = await store.updateMetadata(
+        cuid.id,
+        {
+          metadata: '{"routed":"legacy"}',
+          metadataType: "application/json",
+          metadataVersion: { increment: 1 },
+          updatedAt: new Date(),
+        },
+        {}
+      );
+      expect(cuidResult.count).toBe(1);
+
+      // The write hit task_run_v2 for the KSUID run …
+      const v2Row = await prisma.taskRunV2.findUniqueOrThrow({
+        where: { id: ksuid.id },
+        select: { metadata: true },
+      });
+      expect(v2Row.metadata).toBe('{"routed":"v2"}');
+
+      // … and TaskRun for the cuid run.
+      const legacyRow = await prisma.taskRun.findUniqueOrThrow({
+        where: { id: cuid.id },
+        select: { metadata: true },
+      });
+      expect(legacyRow.metadata).toBe('{"routed":"legacy"}');
+    }
+  );
+
+  postgresTest(
+    "findRun resolves a non-id predicate (idempotency key) against a run in either table",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // A KSUID run carrying an idempotency key lands in task_run_v2 …
+      const ksuid = RunId.generateKsuid();
+      await seedRoutedRun(prisma, {
+        id: ksuid.id,
+        friendlyId: ksuid.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-v2",
+        taskIdentifier: "my-task",
+      });
+
+      // … and a cuid run carrying a different key lands in legacy TaskRun.
+      const cuid = RunId.generate();
+      await seedRoutedRun(prisma, {
+        id: cuid.id,
+        friendlyId: cuid.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-legacy",
+        taskIdentifier: "my-task",
+      });
+
+      // The lookup carries no id/friendlyId, so it must read BOTH tables —
+      // this is the mixed-window idempotency dedup. Miss either table and a
+      // reused key produces a duplicate run.
+      const v2Hit = await store.findRun({
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-v2",
+        taskIdentifier: "my-task",
+      });
+      expect(v2Hit?.id).toBe(ksuid.id);
+
+      const legacyHit = await store.findRun({
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-legacy",
+        taskIdentifier: "my-task",
+      });
+      expect(legacyHit?.id).toBe(cuid.id);
+
+      // A key in neither table returns null — no false dedup.
+      const miss = await store.findRun({
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-missing",
+        taskIdentifier: "my-task",
+      });
+      expect(miss).toBeNull();
+
+      // findRunOrThrow takes the same both-table path: it finds the v2 row …
+      const thrown = await store.findRunOrThrow({
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-v2",
+        taskIdentifier: "my-task",
+      });
+      expect(thrown.id).toBe(ksuid.id);
+
+      // … and throws when neither table matches.
+      await expect(
+        store.findRunOrThrow({
+          runtimeEnvironmentId: environment.id,
+          idempotencyKey: "idem-missing",
+          taskIdentifier: "my-task",
+        })
+      ).rejects.toThrow();
+    }
+  );
+
+  postgresTest(
+    "findRun tables:'legacy' skips the task_run_v2 query (idempotency hot-path scope)",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // A v2 (ksuid) run carrying an idempotency key — it lives only in
+      // task_run_v2.
+      const ksuid = RunId.generateKsuid();
+      await seedRoutedRun(prisma, {
+        id: ksuid.id,
+        friendlyId: ksuid.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-scope",
+        taskIdentifier: "my-task",
+      });
+
+      const where = {
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "idem-scope",
+        taskIdentifier: "my-task",
+      };
+
+      // Default (both tables) and an explicit "both" find the v2 run.
+      expect((await store.findRun(where))?.id).toBe(ksuid.id);
+      expect(
+        (await store.findRun(where, { select: { id: true }, tables: "both" }))?.id
+      ).toBe(ksuid.id);
+
+      // "legacy" scope skips task_run_v2 entirely, so the v2 run is NOT found.
+      // This is the hot-path optimisation for an org not cut over to v2: its
+      // runs only live in TaskRun, so the second (v2) query is always empty and
+      // can be skipped. (If a caller mis-scopes a genuinely-v2 org to legacy it
+      // would miss the run — hence it is gated on shouldUseV2RunTable upstream.)
+      expect(await store.findRun(where, { select: { id: true }, tables: "legacy" })).toBeNull();
+    }
+  );
+
+  postgresTest(
+    "findRuns tables:'legacy' skips task_run_v2 (cross-table children hot-path scope)",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // A legacy (cuid) child and a v2 (ksuid) child of the same parent — the
+      // cross-table mixed-window hierarchy.
+      const parentId = RunId.generate().id;
+      const legacyChild = RunId.generate();
+      const v2Child = RunId.generateKsuid();
+      for (const child of [legacyChild, v2Child]) {
+        await seedRoutedRun(prisma, {
+          id: child.id,
+          friendlyId: child.friendlyId,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+          parentTaskRunId: parentId,
+          taskIdentifier: "my-task",
+        });
+      }
+
+      const where = { parentTaskRunId: parentId, runtimeEnvironmentId: environment.id };
+
+      // Default (both tables) returns both children — required once an org is on v2.
+      const both = (await store.findRuns({ where, select: { id: true } })) as { id: string }[];
+      expect(new Set(both.map((r) => r.id))).toEqual(new Set([legacyChild.id, v2Child.id]));
+
+      // "legacy" scope skips task_run_v2 — the hot-path optimisation for an org
+      // not cut over to v2 (no v2 children exist), so only the legacy child.
+      const legacy = (await store.findRuns({
+        where,
+        select: { id: true },
+        tables: "legacy",
+      })) as { id: string }[];
+      expect(legacy.map((r) => r.id)).toEqual([legacyChild.id]);
+    }
+  );
+
+  postgresTest(
+    "clearIdempotencyKey fans out across both tables (byPredicate hits v2; byFriendlyIds partitions a mixed array)",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // byPredicate carries no id, so it must reach task_run_v2 to clear a v2 run.
+      const v2Pred = RunId.generateKsuid();
+      await seedRoutedRun(prisma, {
+        id: v2Pred.id,
+        friendlyId: v2Pred.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "kp-v2",
+        taskIdentifier: "my-task",
+      });
+
+      const predResult = await store.clearIdempotencyKey({
+        byPredicate: {
+          idempotencyKey: "kp-v2",
+          taskIdentifier: "my-task",
+          runtimeEnvironmentId: environment.id,
+        },
+      });
+      expect(predResult.count).toBe(1);
+      expect(
+        (
+          await prisma.taskRunV2.findFirst({
+            where: { id: v2Pred.id },
+            select: { idempotencyKey: true },
+          })
+        )?.idempotencyKey
+      ).toBeNull();
+
+      // byFriendlyIds with a MIXED (ksuid + cuid) array must clear rows in BOTH
+      // physical tables — the partition + sum is the cross-table behaviour.
+      const v2F = RunId.generateKsuid();
+      const legacyF = RunId.generate();
+      await seedRoutedRun(prisma, {
+        id: v2F.id,
+        friendlyId: v2F.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "kf-v2",
+        taskIdentifier: "my-task",
+      });
+      await seedRoutedRun(prisma, {
+        id: legacyF.id,
+        friendlyId: legacyF.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+        idempotencyKey: "kf-legacy",
+        taskIdentifier: "my-task",
+      });
+
+      const friendlyResult = await store.clearIdempotencyKey({
+        byFriendlyIds: [v2F.friendlyId, legacyF.friendlyId],
+      });
+      expect(friendlyResult.count).toBe(2);
+      expect(
+        (
+          await prisma.taskRunV2.findFirst({
+            where: { id: v2F.id },
+            select: { idempotencyKey: true },
+          })
+        )?.idempotencyKey
+      ).toBeNull();
+      expect(
+        (
+          await prisma.taskRun.findFirst({
+            where: { id: legacyF.id },
+            select: { idempotencyKey: true },
+          })
+        )?.idempotencyKey
+      ).toBeNull();
+    }
+  );
+
+  postgresTest(
+    "expireRunsBatch with a mixed array updates both tables and returns the combined count",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const ksuid = RunId.generateKsuid();
+      const cuid = RunId.generate();
+
+      await seedRoutedRun(prisma, {
+        id: ksuid.id,
+        friendlyId: ksuid.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      await seedRoutedRun(prisma, {
+        id: cuid.id,
+        friendlyId: cuid.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+
+      const now = new Date("2026-06-19T12:00:00.000Z");
+      const error = { type: "STRING_ERROR" as const, raw: "Run expired because the TTL was reached" };
+
+      const count = await store.expireRunsBatch([ksuid.id, cuid.id], { error, now });
+
+      expect(count).toBe(2);
+
+      const v2Row = await prisma.taskRunV2.findUniqueOrThrow({
+        where: { id: ksuid.id },
+        select: { status: true, completedAt: true, expiredAt: true },
+      });
+      expect(v2Row.status).toBe("EXPIRED");
+      expect(v2Row.completedAt).toEqual(now);
+      expect(v2Row.expiredAt).toEqual(now);
+
+      const legacyRow = await prisma.taskRun.findUniqueOrThrow({
+        where: { id: cuid.id },
+        select: { status: true, completedAt: true, expiredAt: true },
+      });
+      expect(legacyRow.status).toBe("EXPIRED");
+      expect(legacyRow.completedAt).toEqual(now);
+      expect(legacyRow.expiredAt).toEqual(now);
+    }
+  );
+
+  postgresTest(
+    "findRuns (unordered) returns runs from BOTH TaskRun and task_run_v2 in one env",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // Two legacy (cuid) runs + two new (ksuid) runs in the SAME env.
+      const legacyA = RunId.generate();
+      const legacyB = RunId.generate();
+      const v2A = RunId.generateKsuid();
+      const v2B = RunId.generateKsuid();
+      expect(isKsuidId(legacyA.id)).toBe(false);
+      expect(isKsuidId(v2A.id)).toBe(true);
+
+      for (const run of [legacyA, legacyB, v2A, v2B]) {
+        await seedRoutedRun(prisma, {
+          id: run.id,
+          friendlyId: run.friendlyId,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+        });
+      }
+
+      const found = await store.findRuns({
+        where: { runtimeEnvironmentId: environment.id },
+        select: { id: true },
+      });
+
+      // ALL four runs come back, regardless of which physical table they live in.
+      expect(found.map((r) => r.id).sort()).toEqual(
+        [legacyA.id, legacyB.id, v2A.id, v2B.id].sort()
+      );
+    }
+  );
+
+  postgresTest(
+    "findRuns (ordered+limited) 2-way merges both tables to the globally-correct first N",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // Interleave createdAt across the two tables so a per-table take+slice
+      // would be WRONG: the newest run is in v2, the 2nd-newest in legacy, etc.
+      // t5 (v2) > t4 (legacy) > t3 (v2) > t2 (legacy) > t1 (v2) > t0 (legacy)
+      const base = new Date("2026-06-01T00:00:00.000Z").getTime();
+      const at = (i: number) => new Date(base + i * 60_000);
+
+      const legacy0 = RunId.generate(); // t0 (oldest)
+      const v2_1 = RunId.generateKsuid(); // t1
+      const legacy2 = RunId.generate(); // t2
+      const v2_3 = RunId.generateKsuid(); // t3
+      const legacy4 = RunId.generate(); // t4
+      const v2_5 = RunId.generateKsuid(); // t5 (newest)
+
+      const seeded: Array<{ id: string; friendlyId: string; t: number }> = [
+        { id: legacy0.id, friendlyId: legacy0.friendlyId, t: 0 },
+        { id: v2_1.id, friendlyId: v2_1.friendlyId, t: 1 },
+        { id: legacy2.id, friendlyId: legacy2.friendlyId, t: 2 },
+        { id: v2_3.id, friendlyId: v2_3.friendlyId, t: 3 },
+        { id: legacy4.id, friendlyId: legacy4.friendlyId, t: 4 },
+        { id: v2_5.id, friendlyId: v2_5.friendlyId, t: 5 },
+      ];
+
+      for (const run of seeded) {
+        await seedRoutedRun(prisma, {
+          id: run.id,
+          friendlyId: run.friendlyId,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+          createdAt: at(run.t),
+        });
+      }
+
+      const found = await store.findRuns({
+        where: { runtimeEnvironmentId: environment.id },
+        select: { id: true },
+        orderBy: { createdAt: "desc" },
+        take: 3,
+      });
+
+      // The globally-newest 3 — drawn from BOTH tables in true createdAt order,
+      // NOT three rows from one table.
+      expect(found.map((r) => r.id)).toEqual([v2_5.id, legacy4.id, v2_3.id]);
+    }
+  );
+
+  postgresTest(
+    "findRuns scoping: a run in another env is NOT returned from either table",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // A second env in the same project.
+      const otherEnv = await prisma.runtimeEnvironment.create({
+        data: {
+          type: "PREVIEW",
+          slug: "other",
+          projectId: project.id,
+          organizationId: organization.id,
+          apiKey: "tr_other_apikey",
+          pkApiKey: "pk_other_apikey",
+          shortcode: "other_short_code",
+        },
+      });
+
+      // One legacy + one v2 run in the TARGET env.
+      const legacyTarget = RunId.generate();
+      const v2Target = RunId.generateKsuid();
+      // One legacy + one v2 run in the OTHER env (must never surface).
+      const legacyOther = RunId.generate();
+      const v2Other = RunId.generateKsuid();
+
+      await seedRoutedRun(prisma, {
+        id: legacyTarget.id,
+        friendlyId: legacyTarget.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      await seedRoutedRun(prisma, {
+        id: v2Target.id,
+        friendlyId: v2Target.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      await seedRoutedRun(prisma, {
+        id: legacyOther.id,
+        friendlyId: legacyOther.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: otherEnv.id,
+      });
+      await seedRoutedRun(prisma, {
+        id: v2Other.id,
+        friendlyId: v2Other.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: otherEnv.id,
+      });
+
+      const found = await store.findRuns({
+        where: { runtimeEnvironmentId: environment.id },
+        select: { id: true },
+      });
+
+      // The same `where` fences BOTH tables: only the target env's runs come back.
+      expect(found.map((r) => r.id).sort()).toEqual([legacyTarget.id, v2Target.id].sort());
+      const foundIds = new Set(found.map((r) => r.id));
+      expect(foundIds.has(legacyOther.id)).toBe(false);
+      expect(foundIds.has(v2Other.id)).toBe(false);
+    }
+  );
+
+  postgresTest(
+    "findRuns (include) returns hydrated relations from both tables",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const legacy = RunId.generate();
+      const v2 = RunId.generateKsuid();
+
+      await seedRoutedRun(prisma, {
+        id: legacy.id,
+        friendlyId: legacy.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      await seedRoutedRun(prisma, {
+        id: v2.id,
+        friendlyId: v2.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+
+      const found = await store.findRuns({
+        where: { runtimeEnvironmentId: environment.id },
+        include: { runtimeEnvironment: true },
+      });
+
+      expect(found).toHaveLength(2);
+      // Both rows — legacy and v2 — carry the hydrated relation.
+      for (const run of found) {
+        expect(run.runtimeEnvironment).not.toBeNull();
+        expect(run.runtimeEnvironment.id).toBe(environment.id);
+        expect(run.runtimeEnvironment.slug).toBe("dev");
+      }
+    }
+  );
+
+  // NOTE: `findRuns(take, no orderBy)` across both tables used to cap the
+  // concatenation to `take` (non-deterministic — could drop one table's rows).
+  // It now throws (see the guard test below, next to the skip/cursor guards).
+
+  postgresTest(
+    "findRuns (ordered+limited) by id alone is rejected: id is not a total cross-table order",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const legacy = RunId.generate();
+      await seedRoutedRun(prisma, {
+        id: legacy.id,
+        friendlyId: legacy.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+
+      await expect(
+        store.findRuns({
+          where: { runtimeEnvironmentId: environment.id },
+          select: { id: true },
+          orderBy: { id: "asc" },
+          take: 10,
+        })
+      ).rejects.toThrow(/total order/i);
+    }
+  );
+
+  postgresTest(
+    "findRuns (ordered+limited) rejects a Prisma cursor it cannot span across two tables",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const legacy = RunId.generate();
+      await seedRoutedRun(prisma, {
+        id: legacy.id,
+        friendlyId: legacy.friendlyId,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+
+      await expect(
+        store.findRuns({
+          where: { runtimeEnvironmentId: environment.id },
+          select: { id: true },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+          cursor: { id: legacy.id },
+        })
+      ).rejects.toThrow(/cursor/i);
+    }
+  );
+
+  postgresTest(
+    "findRuns rejects `skip` (offset pagination cannot span the two tables)",
+    async ({ prisma }) => {
+      const { environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      await expect(
+        store.findRuns({
+          where: { runtimeEnvironmentId: environment.id },
+          select: { id: true },
+          skip: 10,
+          take: 5,
+        })
+      ).rejects.toThrow(/skip/i);
+    }
+  );
+
+  postgresTest(
+    "findRuns rejects `take` without `orderBy` across both tables (non-deterministic cap)",
+    async ({ prisma }) => {
+      const { environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // A both-table predicate (no id-list) with `take` but no `orderBy` would
+      // cap each table independently and silently drop one table's overflow.
+      await expect(
+        store.findRuns({
+          where: { runtimeEnvironmentId: environment.id },
+          select: { id: true },
+          take: 5,
+        })
+      ).rejects.toThrow(/take.*orderBy/i);
+
+      // The same read WITH an `orderBy` is a valid bounded cross-table merge.
+      await expect(
+        store.findRuns({
+          where: { runtimeEnvironmentId: environment.id },
+          select: { id: true, createdAt: true },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+        })
+      ).resolves.toBeDefined();
+    }
+  );
+
+  postgresTest(
+    "findRuns with an id-list partitions by id format and skips the table with no candidate ids",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const cuid = RunId.generate();
+      const ksuid = RunId.generateKsuid();
+      for (const r of [cuid, ksuid]) {
+        await seedRoutedRun(prisma, {
+          id: r.id,
+          friendlyId: r.friendlyId,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+        });
+      }
+
+      const ids = (rows: unknown) =>
+        (rows as Array<{ id: string }>).map((r) => r.id).sort();
+
+      // Mixed list: both tables queried, both runs returned.
+      expect(
+        ids(await store.findRuns({ where: { id: { in: [cuid.id, ksuid.id] } }, select: { id: true } }))
+      ).toEqual([cuid.id, ksuid.id].sort());
+
+      // cuid-only list: the task_run_v2 query is skipped, legacy run still returned.
+      const v2Spy = vi.spyOn(prisma.taskRunV2, "findMany");
+      const legacyOnly = await store.findRuns({ where: { id: { in: [cuid.id] } }, select: { id: true } });
+      expect(ids(legacyOnly)).toEqual([cuid.id]);
+      expect(v2Spy).not.toHaveBeenCalled();
+      v2Spy.mockRestore();
+
+      // ksuid-only list: the TaskRun query is skipped, v2 run still returned.
+      const legacySpy = vi.spyOn(prisma.taskRun, "findMany");
+      const v2Only = await store.findRuns({ where: { id: { in: [ksuid.id] } }, select: { id: true } });
+      expect(ids(v2Only)).toEqual([ksuid.id]);
+      expect(legacySpy).not.toHaveBeenCalled();
+      legacySpy.mockRestore();
+
+      // Empty list matches nothing.
+      expect(ids(await store.findRuns({ where: { id: { in: [] } }, select: { id: true } }))).toEqual([]);
+    }
+  );
+
+  postgresTest(
+    "findRuns with a single-format id-list + non-time orderBy + take orders natively without the cross-table guard",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // Two v2 (ksuid) runs.
+      const k1 = RunId.generateKsuid();
+      const k2 = RunId.generateKsuid();
+      for (const r of [k1, k2]) {
+        await seedRoutedRun(prisma, {
+          id: r.id,
+          friendlyId: r.friendlyId,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+        });
+      }
+
+      // An all-ksuid id-list addresses task_run_v2 alone, so ordering by `id`
+      // (or any non-time key) with `take` must NOT trip the cross-table
+      // time-key guard — id is a valid total order within a single table.
+      const rows = (await store.findRuns({
+        where: { id: { in: [k1.id, k2.id] } },
+        select: { id: true },
+        orderBy: { id: "asc" },
+        take: 10,
+      })) as Array<{ id: string }>;
+      expect(rows.map((r) => r.id)).toEqual([k1.id, k2.id].sort());
+
+      // Same for an all-cuid id-list (legacy table only).
+      const c1 = RunId.generate();
+      const c2 = RunId.generate();
+      for (const r of [c1, c2]) {
+        await seedRoutedRun(prisma, {
+          id: r.id,
+          friendlyId: r.friendlyId,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+        });
+      }
+      const legacyRows = (await store.findRuns({
+        where: { id: { in: [c1.id, c2.id] } },
+        select: { id: true },
+        orderBy: { id: "desc" },
+        take: 10,
+      })) as Array<{ id: string }>;
+      expect(legacyRows.map((r) => r.id)).toEqual([c1.id, c2.id].sort().reverse());
+    }
+  );
+
+  postgresTest(
+    "merged keyset cursor enumerates every row exactly once at a tied createdAt across both tables (collation boundary)",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      // All four rows share the SAME createdAt, so pagination relies entirely on
+      // the id tiebreak. Hand-crafted ids straddle the collation divergence: a
+      // 27-char ksuid leading with an UPPERCASE letter routes to task_run_v2,
+      // and a lowercase cuid routes to TaskRun. Under the DB's en_US collation
+      // "c" < "Z", but by raw code unit "Z" < "c" — if the in-memory merge and
+      // the Postgres keyset disagree, a row is skipped or duplicated here.
+      const sameTime = new Date("2026-06-01T00:00:00.000Z");
+      const seeds = [
+        "Z" + "0".repeat(26), // ksuid -> task_run_v2 (uppercase lead)
+        "A" + "1".repeat(26), // ksuid -> task_run_v2
+        "c" + "z".repeat(24), // cuid  -> TaskRun (25 chars)
+        "c" + "a".repeat(24), // cuid  -> TaskRun
+      ];
+      for (const id of seeds) {
+        await seedRoutedRun(prisma, {
+          id,
+          friendlyId: `run_${id}`,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+          createdAt: sameTime,
+        });
+      }
+
+      // Paginate exactly like runsBackfiller: orderBy [createdAt asc, id asc],
+      // take 1 (forces the tie boundary on every page), cursor = (createdAt, id).
+      const seen: string[] = [];
+      let cursor: { createdAt: Date; id: string } | undefined;
+      for (let guard = 0; guard < 25; guard++) {
+        const page = (await store.findRuns({
+          where: {
+            runtimeEnvironmentId: environment.id,
+            ...(cursor
+              ? {
+                  OR: [
+                    { createdAt: { gt: cursor.createdAt } },
+                    { createdAt: cursor.createdAt, id: { gt: cursor.id } },
+                  ],
+                }
+              : {}),
+          },
+          select: { id: true, createdAt: true },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          take: 1,
+        })) as Array<{ id: string; createdAt: Date }>;
+        if (page.length === 0) break;
+        seen.push(page[0].id);
+        cursor = { createdAt: page[0].createdAt, id: page[0].id };
+      }
+
+      // Every seeded row enumerated exactly once: no skip, no duplicate.
+      expect(seen.slice().sort()).toEqual(seeds.slice().sort());
+      expect(new Set(seen).size).toBe(seeds.length);
+    }
+  );
+
+  postgresTest(
+    "cross-table run hierarchy resolves parent by id and children by predicate across both tables",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+      const base = {
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      };
+
+      // Legacy cuid PARENT in TaskRun, v2 ksuid CHILD in task_run_v2 pointing at
+      // it (a hierarchy straddling a runTableV2 flip). This is what the
+      // presenters resolve via hydrateParentAndRoot / hydrateChildRuns.
+      const parent = RunId.generate();
+      const child = RunId.generateKsuid();
+      await seedRoutedRun(prisma, { ...base, id: parent.id, friendlyId: parent.friendlyId });
+      await seedRoutedRun(prisma, {
+        ...base,
+        id: child.id,
+        friendlyId: child.friendlyId,
+        parentTaskRunId: parent.id,
+        rootTaskRunId: parent.id,
+      });
+
+      // child -> parent: by-id read routes to the legacy table.
+      const resolvedParent = await store.findRun({ id: parent.id }, { select: { id: true } });
+      expect(resolvedParent?.id).toBe(parent.id);
+      // parent -> children: a parentTaskRunId predicate spans both tables and
+      // finds the v2 child of the legacy parent.
+      const children = (await store.findRuns({
+        where: { parentTaskRunId: parent.id },
+        select: { id: true },
+      })) as Array<{ id: string }>;
+      expect(children.map((c) => c.id)).toEqual([child.id]);
+
+      // Mirror: ksuid parent in task_run_v2, cuid child in TaskRun.
+      const parent2 = RunId.generateKsuid();
+      const child2 = RunId.generate();
+      await seedRoutedRun(prisma, { ...base, id: parent2.id, friendlyId: parent2.friendlyId });
+      await seedRoutedRun(prisma, {
+        ...base,
+        id: child2.id,
+        friendlyId: child2.friendlyId,
+        parentTaskRunId: parent2.id,
+        rootTaskRunId: parent2.id,
+      });
+      const resolvedParent2 = await store.findRun({ id: parent2.id }, { select: { id: true } });
+      expect(resolvedParent2?.id).toBe(parent2.id);
+      const children2 = (await store.findRuns({
+        where: { parentTaskRunId: parent2.id },
+        select: { id: true },
+      })) as Array<{ id: string }>;
+      expect(children2.map((c) => c.id)).toEqual([child2.id]);
+    }
+  );
+});
+
+describe("PostgresRunStore — v2 nested writes (run + related rows via nested Prisma create)", () => {
+  // `task_run_v2` is a full clone of `TaskRun` down to its relations, so the nested Prisma
+  // create/include used by createRun/lifecycle methods targets it unchanged via the runModel cast.
+  // The child->run foreign keys (TaskRunExecutionSnapshot.runId, Waitpoint.completedByTaskRunId, …)
+  // are dropped in production and by the testcontainer harness, so a child row can reference a run
+  // in EITHER physical table (TaskRun or task_run_v2) by plain scalar id without a FK violation.
+
+  function runAssociatedWaitpoint(params: {
+    id: string;
+    friendlyId: string;
+    projectId: string;
+    environmentId: string;
+  }) {
+    return {
+      id: params.id,
+      friendlyId: params.friendlyId,
+      type: "RUN" as const,
+      status: "PENDING" as const,
+      idempotencyKey: `idem_${params.id}`,
+      userProvidedIdempotencyKey: false,
+      projectId: params.projectId,
+      environmentId: params.environmentId,
+    };
+  }
+
+  postgresTest(
+    "createRun for a KSUID run lands the run in task_run_v2, creates its snapshot keyed to the v2 run id, and creates the associated waitpoint",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const ksuid = RunId.generateKsuid();
+      expect(isKsuidId(ksuid.id)).toBe(true);
+
+      const input: CreateRunInput = {
+        ...buildCreateRunInput({
+          runId: ksuid.id,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+        }),
+        associatedWaitpoint: runAssociatedWaitpoint({
+          id: "wp_v2_create_1",
+          friendlyId: "wp_v2_create_friendly_1",
+          projectId: project.id,
+          environmentId: environment.id,
+        }),
+      };
+      input.data.friendlyId = ksuid.friendlyId;
+
+      const run = await store.createRun(input);
+
+      // Returns the TaskRunWithWaitpoint shape with the associated waitpoint included.
+      expect(run.id).toBe(ksuid.id);
+      expect(run.status).toBe("PENDING");
+      expect(run.associatedWaitpoint).not.toBeNull();
+      expect(run.associatedWaitpoint?.id).toBe("wp_v2_create_1");
+
+      // The run row landed in task_run_v2, not TaskRun.
+      const v2Row = await prisma.taskRunV2.findUnique({ where: { id: ksuid.id } });
+      expect(v2Row).not.toBeNull();
+      const legacyRow = await prisma.taskRun.findUnique({ where: { id: ksuid.id } });
+      expect(legacyRow).toBeNull();
+
+      // The execution snapshot is keyed to the v2 run id (in the shared snapshot table).
+      const snapshots = await prisma.taskRunExecutionSnapshot.findMany({
+        where: { runId: ksuid.id },
+      });
+      expect(snapshots).toHaveLength(1);
+      expect(snapshots[0]?.executionStatus).toBe("RUN_CREATED");
+      expect(snapshots[0]?.runStatus).toBe("PENDING");
+
+      // The waitpoint points back at the v2 run via the scalar FK column.
+      const waitpoint = await prisma.waitpoint.findUnique({ where: { id: "wp_v2_create_1" } });
+      expect(waitpoint?.completedByTaskRunId).toBe(ksuid.id);
+    }
+  );
+
+  postgresTest(
+    "v2 lifecycle: startAttempt then completeAttemptSuccess creates the completion snapshot keyed to the v2 run id",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const ksuid = RunId.generateKsuid();
+
+      const input = buildCreateRunInput({
+        runId: ksuid.id,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      input.data.friendlyId = ksuid.friendlyId;
+
+      await store.createRun(input);
+
+      const started = await store.startAttempt(
+        ksuid.id,
+        { attemptNumber: 1, isWarmStart: false },
+        { select: { id: true, status: true, attemptNumber: true } }
+      );
+      expect(started.status).toBe("EXECUTING");
+      expect(started.attemptNumber).toBe(1);
+
+      const completedAt = new Date("2026-06-19T11:00:00.000Z");
+      const completed = await store.completeAttemptSuccess(
+        ksuid.id,
+        {
+          completedAt,
+          output: '{"ok":true}',
+          outputType: "application/json",
+          usageDurationMs: 250,
+          costInCents: 4,
+          snapshot: {
+            executionStatus: "FINISHED",
+            description: "Task completed successfully",
+            runStatus: "COMPLETED_SUCCESSFULLY",
+            attemptNumber: 1,
+            environmentId: environment.id,
+            environmentType: "DEVELOPMENT",
+            projectId: project.id,
+            organizationId: organization.id,
+          },
+        },
+        { select: { id: true, status: true, completedAt: true, usageDurationMs: true, costInCents: true } }
+      );
+
+      expect(completed.id).toBe(ksuid.id);
+      expect(completed.status).toBe("COMPLETED_SUCCESSFULLY");
+      expect(completed.completedAt).toEqual(completedAt);
+      expect(completed.usageDurationMs).toBe(250);
+      expect(completed.costInCents).toBe(4);
+
+      // The run row updated in task_run_v2.
+      const v2Row = await prisma.taskRunV2.findUniqueOrThrow({
+        where: { id: ksuid.id },
+        select: { status: true },
+      });
+      expect(v2Row.status).toBe("COMPLETED_SUCCESSFULLY");
+
+      // The completion snapshot is keyed to the v2 run id.
+      const finished = await prisma.taskRunExecutionSnapshot.findMany({
+        where: { runId: ksuid.id, executionStatus: "FINISHED" },
+      });
+      expect(finished).toHaveLength(1);
+      expect(finished[0]?.runStatus).toBe("COMPLETED_SUCCESSFULLY");
+    }
+  );
+
+  postgresTest(
+    "createFailedRun for a KSUID run lands the run in task_run_v2 and creates the associated waitpoint keyed to the v2 run id",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const ksuid = RunId.generateKsuid();
+      const completedAt = new Date("2026-06-19T00:00:00.000Z");
+      const error = { type: "STRING_ERROR", raw: "system failure" };
+
+      const input: CreateFailedRunInput = {
+        data: {
+          id: ksuid.id,
+          engine: "V2",
+          status: "SYSTEM_FAILURE",
+          friendlyId: ksuid.friendlyId,
+          runtimeEnvironmentId: environment.id,
+          environmentType: "DEVELOPMENT",
+          organizationId: organization.id,
+          projectId: project.id,
+          taskIdentifier: "my-task",
+          payload: "{}",
+          payloadType: "application/json",
+          context: {},
+          traceContext: {},
+          traceId: "trace_v2_failed",
+          spanId: "span_v2_failed",
+          queue: "task/my-task",
+          isTest: false,
+          completedAt,
+          error: error as unknown as import("@trigger.dev/database").Prisma.InputJsonObject,
+          depth: 0,
+          taskEventStore: "taskEvent",
+        },
+        associatedWaitpoint: runAssociatedWaitpoint({
+          id: "wp_v2_failed_1",
+          friendlyId: "wp_v2_failed_friendly_1",
+          projectId: project.id,
+          environmentId: environment.id,
+        }),
+      };
+
+      const run = await store.createFailedRun(input);
+
+      expect(run.id).toBe(ksuid.id);
+      expect(run.status).toBe("SYSTEM_FAILURE");
+      expect(run.associatedWaitpoint).not.toBeNull();
+      expect(run.associatedWaitpoint?.id).toBe("wp_v2_failed_1");
+
+      const v2Row = await prisma.taskRunV2.findUnique({ where: { id: ksuid.id } });
+      expect(v2Row).not.toBeNull();
+      const legacyRow = await prisma.taskRun.findUnique({ where: { id: ksuid.id } });
+      expect(legacyRow).toBeNull();
+
+      const waitpoint = await prisma.waitpoint.findUnique({ where: { id: "wp_v2_failed_1" } });
+      expect(waitpoint?.completedByTaskRunId).toBe(ksuid.id);
+    }
+  );
+
+  postgresTest(
+    "createRun for a legacy cuid run with an associated waitpoint creates the run, its snapshot, and the waitpoint (regression: identical rows/shape)",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const cuid = RunId.generate();
+      expect(isKsuidId(cuid.id)).toBe(false);
+
+      const input: CreateRunInput = {
+        ...buildCreateRunInput({
+          runId: cuid.id,
+          organizationId: organization.id,
+          projectId: project.id,
+          runtimeEnvironmentId: environment.id,
+        }),
+        associatedWaitpoint: runAssociatedWaitpoint({
+          id: "wp_legacy_create_1",
+          friendlyId: "wp_legacy_create_friendly_1",
+          projectId: project.id,
+          environmentId: environment.id,
+        }),
+      };
+      input.data.friendlyId = cuid.friendlyId;
+
+      const run = await store.createRun(input);
+
+      // Same TaskRunWithWaitpoint shape as before.
+      expect(run.id).toBe(cuid.id);
+      expect(run.status).toBe("PENDING");
+      expect(run.associatedWaitpoint?.id).toBe("wp_legacy_create_1");
+
+      // Legacy run is in TaskRun, not task_run_v2.
+      const legacyRow = await prisma.taskRun.findUnique({ where: { id: cuid.id } });
+      expect(legacyRow).not.toBeNull();
+      const v2Row = await prisma.taskRunV2.findUnique({ where: { id: cuid.id } });
+      expect(v2Row).toBeNull();
+
+      // Snapshot keyed to the run, waitpoint linked back via the FK column.
+      const snapshots = await prisma.taskRunExecutionSnapshot.findMany({
+        where: { runId: cuid.id },
+      });
+      expect(snapshots).toHaveLength(1);
+      expect(snapshots[0]?.executionStatus).toBe("RUN_CREATED");
+
+      const waitpoint = await prisma.waitpoint.findUnique({ where: { id: "wp_legacy_create_1" } });
+      expect(waitpoint?.completedByTaskRunId).toBe(cuid.id);
+
+      // The FK still being live for the legacy table proves the waitpoint really
+      // resolves to a TaskRun row (the regression path is unchanged).
+      const reloaded = await prisma.taskRun.findUniqueOrThrow({
+        where: { id: cuid.id },
+        include: { associatedWaitpoint: true },
+      });
+      expect(reloaded.associatedWaitpoint?.id).toBe("wp_legacy_create_1");
+    }
+  );
+
+  postgresTest(
+    "createRun is atomic: a second create with the same id throws and leaves no dangling snapshot",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const cuid = RunId.generate();
+      const input = buildCreateRunInput({
+        runId: cuid.id,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      input.data.friendlyId = cuid.friendlyId;
+
+      await store.createRun(input);
+
+      const before = await prisma.taskRunExecutionSnapshot.count({ where: { runId: cuid.id } });
+      expect(before).toBe(1);
+
+      // A second createRun with the same id fails the unique-id insert and
+      // propagates the error. Because the run row and its snapshot are written by
+      // one nested Prisma create, the rollback leaves no extra snapshot behind.
+      await expect(store.createRun(input)).rejects.toThrow();
+
+      const after = await prisma.taskRunExecutionSnapshot.count({ where: { runId: cuid.id } });
+      expect(after).toBe(1);
+    }
+  );
+
+  postgresTest(
+    "lockRunToWorker for a KSUID run returns the run with runtimeEnvironment hydrated via include (no manual stitch)",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const ksuid = RunId.generateKsuid();
+      expect(isKsuidId(ksuid.id)).toBe(true);
+
+      const input = buildCreateRunInput({
+        runId: ksuid.id,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      input.data.friendlyId = ksuid.friendlyId;
+
+      await store.createRun(input);
+
+      const backgroundWorker = await prisma.backgroundWorker.create({
+        data: {
+          friendlyId: "worker_friendly_v2",
+          version: "20260601.1",
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+          contentHash: "abc123v2",
+          sdkVersion: "3.0.0",
+          cliVersion: "3.0.0",
+          metadata: {},
+        },
+      });
+
+      const workerTask = await prisma.backgroundWorkerTask.create({
+        data: {
+          friendlyId: "task_friendly_v2",
+          slug: "my-task",
+          filePath: "src/my-task.ts",
+          exportName: "myTask",
+          workerId: backgroundWorker.id,
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+        },
+      });
+
+      const queue = await prisma.taskQueue.create({
+        data: {
+          friendlyId: "queue_friendly_v2",
+          name: "task/my-task",
+          runtimeEnvironmentId: environment.id,
+          projectId: project.id,
+        },
+      });
+
+      const lockedAt = new Date("2026-06-19T13:00:00.000Z");
+      const startedAt = new Date("2026-06-19T13:00:01.000Z");
+      const snapshotId = "snap_lock_v2_1";
+
+      const locked = await store.lockRunToWorker(ksuid.id, {
+        lockedAt,
+        lockedById: workerTask.id,
+        lockedToVersionId: backgroundWorker.id,
+        lockedQueueId: queue.id,
+        startedAt,
+        baseCostInCents: 5,
+        machinePreset: "small-1x",
+        taskVersion: "20260601.1",
+        sdkVersion: "3.0.0",
+        cliVersion: "3.0.0",
+        maxDurationInSeconds: null,
+        snapshot: {
+          id: snapshotId,
+          previousSnapshotId: undefined,
+          environmentId: environment.id,
+          environmentType: "DEVELOPMENT",
+          projectId: project.id,
+          organizationId: organization.id,
+          completedWaitpointIds: [],
+          completedWaitpointOrder: [],
+        },
+      });
+
+      expect(locked.status).toBe("DEQUEUED");
+      // The relation is hydrated by the nested `include`, not stitched manually.
+      expect(locked.runtimeEnvironment).toBeDefined();
+      expect(locked.runtimeEnvironment.id).toBe(environment.id);
+
+      // The run row landed (and was updated) in task_run_v2.
+      const v2Row = await prisma.taskRunV2.findUniqueOrThrow({
+        where: { id: ksuid.id },
+        select: { status: true },
+      });
+      expect(v2Row.status).toBe("DEQUEUED");
+
+      // The dequeue snapshot is keyed to the v2 run id.
+      const snap = await prisma.taskRunExecutionSnapshot.findUnique({ where: { id: snapshotId } });
+      expect(snap?.executionStatus).toBe("PENDING_EXECUTING");
+    }
+  );
+
+  postgresTest(
+    "findRun with a runtimeEnvironment include resolves the relation for a KSUID run",
+    async ({ prisma }) => {
+      const { organization, project, environment } = await seedEnvironment(prisma);
+
+      const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
+
+      const ksuid = RunId.generateKsuid();
+      const input = buildCreateRunInput({
+        runId: ksuid.id,
+        organizationId: organization.id,
+        projectId: project.id,
+        runtimeEnvironmentId: environment.id,
+      });
+      input.data.friendlyId = ksuid.friendlyId;
+
+      await store.createRun(input);
+
+      const run = await store.findRun({ id: ksuid.id }, { include: { runtimeEnvironment: true } });
+
+      expect(run?.id).toBe(ksuid.id);
+      expect(run?.runtimeEnvironment).toBeDefined();
+      expect(run?.runtimeEnvironment.id).toBe(environment.id);
+    }
+  );
 });
