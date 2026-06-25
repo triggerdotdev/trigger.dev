@@ -539,10 +539,7 @@ export async function authenticatedEnvironmentForAuthentication(
       const environment = await $replica.runtimeEnvironment.findFirst({
         where: {
           projectId: project.id,
-          slug: slug,
-          type: {
-            in: ["PREVIEW", "DEVELOPMENT"],
-          },
+          type: slug === "dev" ? "DEVELOPMENT" : "PREVIEW",
           branchName: resolvedBranch,
           ...(slug === "dev"
             ? {
@@ -613,7 +610,6 @@ export async function authenticatedEnvironmentForAuthentication(
       const environment = await $replica.runtimeEnvironment.findFirst({
         where: {
           projectId: project.id,
-          slug: slug,
           // No Development branches for OAT
           type: "PREVIEW",
           branchName: resolvedBranch,

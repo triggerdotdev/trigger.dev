@@ -26,17 +26,19 @@ export function sortEnvironments<T extends SortType>(
     const difference = aIndex - bIndex;
 
     if (difference === 0) {
-      // Within the same env type, order by recency: most-recent dev activity
-      // first, falling back to updatedAt when there's no recorded activity,
-      // then to username when we have no timestamps at all.
-      const aTime = (a.lastActivity ?? a.updatedAt)?.getTime();
-      const bTime = (b.lastActivity ?? b.updatedAt)?.getTime();
+      if (a.type === "DEVELOPMENT" && b.type === "DEVELOPMENT") {
+        // Within the same env type, order by recency: most-recent dev activity
+        // first, falling back to updatedAt when there's no recorded activity,
+        // then to username when we have no timestamps at all.
+        const aTime = (a.lastActivity ?? a.updatedAt)?.getTime();
+        const bTime = (b.lastActivity ?? b.updatedAt)?.getTime();
 
-      if (aTime !== undefined && bTime !== undefined) {
-        return bTime - aTime;
+        if (aTime !== undefined && bTime !== undefined) {
+          return bTime - aTime;
+        }
+        if (aTime !== undefined) return -1;
+        if (bTime !== undefined) return 1;
       }
-      if (aTime !== undefined) return -1;
-      if (bTime !== undefined) return 1;
 
       const usernameA = a.userName || "";
       const usernameB = b.userName || "";

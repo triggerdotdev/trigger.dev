@@ -236,6 +236,7 @@ export async function checkBranchLimit({
   const baseLimit = await getLimit(organizationId, limitName, 100_000_000);
   const currentPlan = await getCurrentPlan(organizationId);
   const purchasedBranches = currentPlan?.v3Subscription?.addOns?.branches?.purchased ?? 0;
+  // We deliberately include purchased PREVIEW branches in DEV limits... (not documented anywhere)
   const limit = baseLimit + purchasedBranches;
 
   return {
