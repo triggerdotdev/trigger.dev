@@ -6,10 +6,9 @@ import { useCallback } from "react";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
-import { BranchesNoBranchableEnvironment } from "~/components/BlankStatePanels";
 import { V4Title } from "~/components/V4Badge";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
@@ -39,7 +38,6 @@ import {
 } from "~/components/primitives/Table";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 
@@ -52,6 +50,7 @@ import { ArchiveButton } from "../resources.branches.archive";
 import { NewBranchPanel } from "~/routes/resources.branches.create";
 import { BranchesOptions } from "~/utils/branches";
 import { IconArrowBearRight2 } from "@tabler/icons-react";
+import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
@@ -82,37 +81,19 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export default function Page() {
   const {
-    branchableEnvironment,
     branches,
-    hasFilters,
     limits,
     currentPage,
     totalPages,
-    hasBranches,
   } = useTypedLoaderData<typeof loader>();
+  useAutoRevalidate({ interval: 5000 });
 
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
 
-  const showSelfServe = useShowSelfServe();
   const atBranchLimit = limits.used >= limits.limit;
   const usageRatio = limits.limit > 0 ? Math.min(limits.used / limits.limit, 1) : 0;
-
-  if (!branchableEnvironment) {
-    return (
-      <PageContainer>
-        <NavBar>
-          <PageTitle title={<V4Title>Dev branches</V4Title>} />
-        </NavBar>
-        <PageBody>
-          <MainCenteredContainer className="max-w-md">
-            <BranchesNoBranchableEnvironment showSelfServe={showSelfServe} />
-          </MainCenteredContainer>
-        </PageBody>
-      </PageContainer>
-    );
-  }
 
   return (
     <PageContainer>

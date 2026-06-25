@@ -11,7 +11,7 @@ import { checkBranchLimit } from "~/services/upsertBranch.server";
 import { devPresence } from "./DevPresence.server";
 import { sortEnvironments } from "~/utils/environmentSort";
 import {
-    BranchableEnvironmentToken,
+  type BranchableEnvironmentToken,
   type BranchableEnvironmentType,
   toBranchableEnvironmentType,
 } from "~/utils/branchableEnvironment";
@@ -147,6 +147,9 @@ export class BranchesPresenter {
     const hasFilters = !!showArchived || (search !== undefined && search !== "");
 
     if (!branchableEnvironment) {
+      if (envType === "DEVELOPMENT") {
+        throw new Error("No branchable environment in development environment");
+      }
       return {
         branchableEnvironment: null,
         currentPage: page,
