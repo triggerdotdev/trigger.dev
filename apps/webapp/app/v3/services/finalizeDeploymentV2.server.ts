@@ -169,6 +169,11 @@ export class FinalizeDeploymentV2Service extends BaseService {
 
     const registryConfig = getRegistryConfig(deployment.type === "MANAGED");
 
+    // ECR-only: non-ECR (self-hosted) registries can't be checked this way, so skip.
+    if (!isEcrRegistry(registryConfig.host)) {
+      return;
+    }
+
     const result = await ecrImageExists({
       imageReference: deployment.imageReference,
       imageDigest: body.imageDigest,
@@ -181,9 +186,13 @@ export class FinalizeDeploymentV2Service extends BaseService {
       );
     }
 
-    // "unknown" (non-ECR registry, unparseable ref, or an API/permission error)
-    // is logged inside ecrImageExists - proceed, since a verifier failure must
-    // not become a deploy outage.
+    // Fail closed: if we can't confirm the image is present, don't promote a version
+    // that might not start. Set DEPLOY_IMAGE_VERIFICATION_ENABLED=0 for out-of-band pushes.
+    if (result === "unknown") {
+      throw new ServiceValidationError(
+        "Could not verify the deployment image exists in the registry. Aborting the deploy."
+      );
+    }
   }
 
   async #createTemplateIfNeeded(

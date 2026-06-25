@@ -1,3 +1,4 @@
+import { RepositoryNotFoundException } from "@aws-sdk/client-ecr";
 import { describe, expect, it } from "vitest";
 import {
   ecrImageExists,
@@ -77,6 +78,22 @@ describe("ecrImageExists", () => {
     expect(called).toBe(false);
   });
 
+  it("returns unknown for an unparseable ECR ref without calling the registry", async () => {
+    let called = false;
+    const result = await ecrImageExists(
+      {
+        imageReference: `${ECR_HOST}/deployments-test/proj_abc`,
+        registryConfig: ecrConfig,
+      },
+      async () => {
+        called = true;
+        return {} as any;
+      }
+    );
+    expect(result).toBe("unknown");
+    expect(called).toBe(false);
+  });
+
   it("returns found when the image exists", async () => {
     const result = await ecrImageExists(
       {
@@ -99,7 +116,7 @@ describe("ecrImageExists", () => {
     expect(result).toBe("missing");
   });
 
-  it("returns unknown (fails open) when the registry call throws", async () => {
+  it("returns unknown when the registry call throws an ambiguous error", async () => {
     const result = await ecrImageExists(
       {
         imageReference: `${ECR_HOST}/deployments-test/proj_abc:v1.prod.a1b2c3d4`,
@@ -110,6 +127,19 @@ describe("ecrImageExists", () => {
       }
     );
     expect(result).toBe("unknown");
+  });
+
+  it("returns missing when the repository does not exist", async () => {
+    const result = await ecrImageExists(
+      {
+        imageReference: `${ECR_HOST}/deployments-test/proj_abc:v1.prod.a1b2c3d4`,
+        registryConfig: ecrConfig,
+      },
+      async () => {
+        throw new RepositoryNotFoundException({ message: "not found", $metadata: {} });
+      }
+    );
+    expect(result).toBe("missing");
   });
 
   it("queries by digest when a valid digest is supplied", async () => {

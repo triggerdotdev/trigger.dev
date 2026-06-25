@@ -1,4 +1,8 @@
-import { BatchGetImageCommand, type BatchGetImageCommandOutput } from "@aws-sdk/client-ecr";
+import {
+  BatchGetImageCommand,
+  type BatchGetImageCommandOutput,
+  RepositoryNotFoundException,
+} from "@aws-sdk/client-ecr";
 import { tryCatch } from "@trigger.dev/core";
 import { logger } from "~/services/logger.server";
 import {
@@ -81,28 +85,17 @@ const sendBatchGetImage: BatchGetImageSender = async ({
   imageIds,
 }) => {
   const ecr = await createEcrClient({ region, assumeRole });
-  return ecr.send(
-    new BatchGetImageCommand({
-      repositoryName,
-      registryId,
-      imageIds,
-      // We only care whether the manifest exists, not its contents.
-      acceptedMediaTypes: [
-        "application/vnd.docker.distribution.manifest.v2+json",
-        "application/vnd.oci.image.manifest.v1+json",
-        "application/vnd.oci.image.index.v1+json",
-        "application/vnd.docker.distribution.manifest.list.v2+json",
-      ],
-    })
-  );
+  // No acceptedMediaTypes: only the single-manifest types are valid enum values, and
+  // we only care whether the image exists, not its manifest format.
+  return ecr.send(new BatchGetImageCommand({ repositoryName, registryId, imageIds }));
 };
 
 /**
  * Pre-promotion backstop: check the deployment image actually exists in ECR.
  *
- * Returns "unknown" for non-ECR registries or any error we can't read as a
- * definitive miss - callers treat "unknown" as "proceed", so a verifier failure
- * never becomes a deploy outage. `_send` is a test seam.
+ * "found"/"missing" are definitive (a nonexistent repo counts as missing).
+ * "unknown" means we couldn't determine it - non-ECR registry, unparseable ref, or
+ * an API error; the caller decides what to do with each. `_send` is a test seam.
  */
 export async function ecrImageExists(
   {
@@ -152,6 +145,11 @@ export async function ecrImageExists(
   );
 
   if (error) {
+    // A missing repo is a definitive miss, not an ambiguous error.
+    if (error instanceof RepositoryNotFoundException) {
+      return "missing";
+    }
+
     logger.error("Failed to verify deployment image in ECR", {
       imageReference,
       repositoryName: parsed.repositoryName,
