@@ -92,7 +92,7 @@ pnpm run changeset:add
 - Confirm with maintainers before selecting **minor** (new features)
 - **Never** select major without explicit approval
 
-When modifying only server components (`apps/webapp/`, `apps/supervisor/`, etc.) with no package changes, add a `.server-changes/` file instead. See `.server-changes/README.md` for format and documentation.
+When modifying server components (`apps/webapp/`, `apps/supervisor/`, etc.), add a `.server-changes/` file as well. See `.server-changes/README.md` for format and documentation.
 
 ## Dependency Pinning
 

@@ -6,9 +6,9 @@ This directory tracks changes to server-only components (webapp, supervisor, coo
 
 **Server-only PRs**: If your PR only changes `apps/webapp/`, `apps/supervisor/`, `apps/coordinator/`, or other server components (and does NOT change anything in `packages/`), add a `.server-changes/` file.
 
-**Mixed PRs** (both packages and server): Just add a changeset as usual. No `.server-changes/` file needed — the changeset covers it.
-
 **Package-only PRs**: Just add a changeset as usual.
+
+**Mixed PRs** (both packages and server): Do changeset and server-changes
 
 ## File format
 
