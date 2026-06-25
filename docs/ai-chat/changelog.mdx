@@ -4,6 +4,39 @@ sidebarTitle: "Changelog"
 description: "Pre-release updates for AI chat agents."
 ---
 
+<Update label="June 25, 2026" description="4.5.0-rc.8" tags={["SDK", "Bug fix"]}>
+
+## Point chat sessions at a different project or environment
+
+[`chat.headStart`](/ai-chat/fast-starts#head-start) and [`chat.createStartSessionAction`](/ai-chat/sessions) now take an `apiClient` option (`baseURL` + `accessToken`). The server that creates the session and triggers the run can target a different project or environment than its ambient Trigger config, without setting a global `TRIGGER_SECRET_KEY`. Useful when your `chat.agent` lives in a separate project from the app serving the route, or when one server starts chats across more than one environment. Your LLM provider keys stay in the `run` callback and are unaffected. ([#4018](https://github.com/triggerdotdev/trigger.dev/pull/4018))
+
+```ts
+export const POST = chat.headStart({
+  agentId: "my-agent",
+  apiClient: { baseURL, accessToken },
+  run: async ({ chat }) =>
+    streamText({ ...chat.toStreamTextOptions({ tools }), model: anthropic("claude-sonnet-4-6") }),
+});
+```
+
+```ts
+const startSession = chat.createStartSessionAction("my-chat", {
+  apiClient: { baseURL, accessToken },
+});
+
+await startSession({ chatId, clientData });
+```
+
+## Fix: chat agents on preview branches
+
+Messaging a `chat.agent` (or `AgentChat`) deployed to a preview branch failed with `x-trigger-branch header required for preview env`. The realtime message-append and stream-subscribe calls now send the `x-trigger-branch` header, resolved the same way `sessions.start` resolves it, so preview-branch chat agents work. ([#4018](https://github.com/triggerdotdev/trigger.dev/pull/4018))
+
+## Fix: Head Start handovers with a prepareMessages hook
+
+A [Head Start](/ai-chat/fast-starts#head-start) handover passes the first turn's pending tool call to the agent as a tool-approval round whose trailing tool message must reach the model untouched. A `prepareMessages` hook that rewrites the last message (for example the recommended [prompt-caching](/ai-chat/prompt-caching) breakpoint) could disturb that tail, so the turn failed with `tool_use ids were found without tool_result`. The agent now preserves the approval tail across `prepareMessages`, so prompt caching and Head Start compose cleanly. ([#4018](https://github.com/triggerdotdev/trigger.dev/pull/4018))
+
+</Update>
+
 <Update label="June 17, 2026" description="4.5.0-rc.7" tags={["SDK", "CLI", "Bug fix"]}>
 
 ## chat.headStart now works for custom agents and sessions
