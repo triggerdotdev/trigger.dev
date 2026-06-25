@@ -24,7 +24,7 @@ EOF
 - `area`: `webapp` | `supervisor` | `coordinator` | `kubernetes-provider` | `docker-provider`
 - `type`: `feature` | `fix` | `improvement` | `breaking`
 
-For **mixed PRs** (both packages and server): just add a changeset. No `.server-changes/` file needed.
+For **mixed PRs** (both packages and server): add both a changeset and a .server-changes file.
 
 See `.server-changes/README.md` for full documentation.
 

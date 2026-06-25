@@ -25,7 +25,7 @@ Reserve 🔴 for things that would page someone or block a rollback. In this cod
 
 - **Tests use testcontainers, not mocks.** Vitest with `redisTest` / `postgresTest` / `containerTest` from `@internal/testcontainers`. Any new `vi.mock(...)` on Redis, Postgres, BullMQ, or other infra is wrong here — 🔴 if added in production-path tests, 🟡 if isolated unit test.
 - **Public-package changes have a changeset.** `pnpm run changeset:add` produces `.changeset/*.md`. Required for any edit under `packages/*`. Missing → 🟡; missing on a breaking change → 🔴.
-- **Server-only changes have `.server-changes/*.md`.** Required for `apps/webapp/`, `apps/supervisor/` edits with no public-package change. Body should be 1-2 sentences (it has to fit as one bullet in a future changelog). Missing → 🟡.
+- **Server changes have `.server-changes/*.md`.** Required for `apps/webapp/`, `apps/supervisor/` edits. Body should be 1-2 sentences (it has to fit as one bullet in a future changelog). Missing → 🟡.
 - **Lua script naming.** Coexisting scripts use behavior-descriptive suffixes (`Tracked`), never `V2`. Old name must keep working until the next deploy clears it.
 - **RunQueue payload shape.** V2 run-queue payload's `projectId` is consumed by `workerQueueResolver` for override matching. If a PR drops it from the payload, 🔴.
 - **`safeSend` scope.** Defensive IPC wrappers belong on loop / interval / handler contexts, not one-shot terminal sends. If the PR adds `safeSend` to a single terminal call for consistency, 🟡 with a "remove this" suggestion.
