@@ -4,6 +4,7 @@ import {
   RepositoryNotFoundException,
 } from "@aws-sdk/client-ecr";
 import { tryCatch } from "@trigger.dev/core";
+import pRetry, { AbortError } from "p-retry";
 import { logger } from "~/services/logger.server";
 import {
   type AssumeRoleConfig,
@@ -129,19 +130,43 @@ export async function ecrImageExists(
     imageDigest && SHA256_DIGEST.test(imageDigest.trim()) ? imageDigest.trim() : undefined;
   const imageId = validDigest ? { imageDigest: validDigest } : { imageTag: parsed.tag };
 
+  const assumeRole = registryConfig.ecrAssumeRoleArn
+    ? {
+        roleArn: registryConfig.ecrAssumeRoleArn,
+        externalId: registryConfig.ecrAssumeRoleExternalId,
+      }
+    : undefined;
+
+  // Retry transient ECR failures (throttling/network) before giving up, so a blip
+  // doesn't fail an otherwise-fine deploy. A missing repo is definitive - don't retry.
   const [error, response] = await tryCatch(
-    _send({
-      region,
-      assumeRole: registryConfig.ecrAssumeRoleArn
-        ? {
-            roleArn: registryConfig.ecrAssumeRoleArn,
-            externalId: registryConfig.ecrAssumeRoleExternalId,
+    pRetry(
+      () =>
+        _send({
+          region,
+          assumeRole,
+          registryId: accountId,
+          repositoryName: parsed.repositoryName,
+          imageIds: [imageId],
+        }).catch((err) => {
+          if (err instanceof RepositoryNotFoundException) {
+            throw new AbortError(err);
           }
-        : undefined,
-      registryId: accountId,
-      repositoryName: parsed.repositoryName,
-      imageIds: [imageId],
-    })
+          throw err;
+        }),
+      {
+        retries: 2,
+        minTimeout: 200,
+        maxTimeout: 1000,
+        onFailedAttempt: (e) => {
+          logger.warn("Retrying ECR image verification", {
+            imageReference,
+            attempt: e.attemptNumber,
+            error: e.message,
+          });
+        },
+      }
+    )
   );
 
   if (error) {
