@@ -26,7 +26,7 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasLogsPageAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasAiAccess]: z.coerce.boolean(),
   // Gates the in-dashboard AI agent panel. Controllable globally and per-org
-  // (org wins); admins/impersonators always see it. Defaults off via DASHBOARD_AGENT_ENABLED.
+  // (org wins). Defaults off via DASHBOARD_AGENT_ENABLED.
   [FEATURE_FLAG.hasDashboardAgentAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasComputeAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasPrivateConnections]: z.coerce.boolean(),
