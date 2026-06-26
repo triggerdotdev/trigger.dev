@@ -5,10 +5,7 @@ import {
   type RealtimeListEnvironment,
 } from "~/services/realtime/nativeRealtimeClient.server";
 import { type RealtimeRunRow } from "~/services/realtime/electricStreamProtocol.server";
-import {
-  EnvChangeRouter,
-  type EnvChangeSource,
-} from "~/services/realtime/envChangeRouter.server";
+import { EnvChangeRouter, type EnvChangeSource } from "~/services/realtime/envChangeRouter.server";
 import { type ChangeRecord } from "~/services/realtime/runChangeNotifier.server";
 import { describe, expect, it, vi } from "vitest";
 
@@ -70,7 +67,7 @@ function makeClient(overrides: Record<string, unknown> = {}) {
     hydrator: { hydrateByIds: hydrateSpy },
     replayWindowMs: 0,
     unsubscribeLingerMs: 0,
-    ...(overrides.routerOptions as Record<string, unknown> ?? {}),
+    ...((overrides.routerOptions as Record<string, unknown>) ?? {}),
   });
   delete overrides.routerOptions;
 
@@ -87,7 +84,13 @@ function makeClient(overrides: Record<string, unknown> = {}) {
     ...overrides,
   });
 
-  return { client, src, hydrateSpy, resolveSpy, setRows: (rows: RealtimeRunRow[]) => (rowsToReturn = rows) };
+  return {
+    client,
+    src,
+    hydrateSpy,
+    resolveSpy,
+    setRows: (rows: RealtimeRunRow[]) => (rowsToReturn = rows),
+  };
 }
 
 function liveRuns(client: NativeRealtimeClient) {
@@ -163,7 +166,9 @@ describe("NativeRealtimeClient multi-run live path over the router", () => {
 
   it("a matching run created before the window floor is hydrated but dropped (keeps holding)", async () => {
     // Generous backstop so the "still holding" assertion can't race a timeout in slow CI.
-    const { client, src, hydrateSpy, resolveSpy, setRows } = makeClient({ livePollTimeoutMs: 1500 });
+    const { client, src, hydrateSpy, resolveSpy, setRows } = makeClient({
+      livePollTimeoutMs: 1500,
+    });
     setRows([row("run_1", FLOOR_MS + 5_000, { createdAtMs: FLOOR_MS - 10_000, tags: ["t"] })]);
 
     const responsePromise = liveRuns(client);
@@ -233,7 +238,14 @@ describe("NativeRealtimeClient multi-run live path over the router", () => {
     const url = `http://localhost:3030/realtime/v1/runs/run_1?offset=${FLOOR_MS + 1_000}_1&handle=run-run_1&live=true`;
 
     // First poll subscribes the env, then drains via its backstop.
-    const first = await client.streamRun(url, ENV, "run_1", CURRENT_API_VERSION, undefined, "1.0.0");
+    const first = await client.streamRun(
+      url,
+      ENV,
+      "run_1",
+      CURRENT_API_VERSION,
+      undefined,
+      "1.0.0"
+    );
     expect(first.status).toBe(200);
 
     // The record lands between polls; the lingering env subscription buffers it.

@@ -71,9 +71,7 @@ export const listProfilesTool = {
     }
 
     content.push("");
-    content.push(
-      "Use `switch_profile` to change the active profile for this session."
-    );
+    content.push("Use `switch_profile` to change the active profile for this session.");
 
     return {
       content: [{ type: "text" as const, text: content.join("\n") }],

@@ -9,9 +9,10 @@ export type RedisCacheStoreConfig = {
   useModernCacheKeyBuilder?: boolean;
 };
 
-export class RedisCacheStore<TNamespace extends string, TValue = any>
-  implements Store<TNamespace, TValue>
-{
+export class RedisCacheStore<TNamespace extends string, TValue = any> implements Store<
+  TNamespace,
+  TValue
+> {
   public readonly name = "redis";
   private readonly redis: Redis;
 

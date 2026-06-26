@@ -73,7 +73,9 @@ export function PromptSpanDetails({
       <div className="scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         {tab === "overview" && (
           <div className="flex flex-col px-3">
-            {startTime && <SpanHorizontalTimeline startTime={startTime} duration={duration ?? null} />}
+            {startTime && (
+              <SpanHorizontalTimeline startTime={startTime} duration={duration ?? null} />
+            )}
             <div className="flex flex-col gap-1 py-2.5">
               <div className="flex flex-col text-xs @container">
                 <MetricRow
@@ -132,9 +134,7 @@ export function PromptSpanDetails({
             <div className="rounded-md border border-grid-bright bg-charcoal-750/50 px-3.5 py-2">
               <div className="font-sans text-sm font-normal text-text-dimmed streamdown-container">
                 <Suspense
-                  fallback={
-                    <span className="whitespace-pre-wrap">{promptData.template!}</span>
-                  }
+                  fallback={<span className="whitespace-pre-wrap">{promptData.template!}</span>}
                 >
                   <StreamdownRenderer>{promptData.template!}</StreamdownRenderer>
                 </Suspense>
@@ -146,4 +146,3 @@ export function PromptSpanDetails({
     </div>
   );
 }
-

@@ -17,6 +17,13 @@ export const loader = createSSELoader({
     }
 
     const environmentId = authentication.environment.id;
+    const projectId = authentication.environment.projectId;
+    const userId = authentication.environment.orgMember?.userId;
+
+    if (!userId) {
+      throw json({ error: "Not a dev environment" }, { status: 400 });
+    }
+
     const ttl = env.DEV_PRESENCE_TTL_MS / 1000;
 
     return {
@@ -27,11 +34,11 @@ export const loader = createSSELoader({
       },
       initStream: async ({ send }) => {
         // Set initial presence with more context
-        await devPresence.setConnected(environmentId, ttl);
+        await devPresence.setConnected({ userId, projectId, environmentId, ttl });
         send({ event: "start", data: `Started ${id}` });
       },
       iterator: async ({ send, date }) => {
-        await devPresence.setConnected(environmentId, ttl);
+        await devPresence.setConnected({ userId, projectId, environmentId, ttl });
         send({ event: "time", data: new Date().toISOString() });
       },
       cleanup: async () => {},

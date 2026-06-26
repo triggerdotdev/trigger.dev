@@ -135,7 +135,7 @@ export async function archivePreviewBranch(
 ) {
   const apiClient = new CliApiClient(authorization.auth.apiUrl, authorization.auth.accessToken);
 
-  const result = await apiClient.archiveBranch(project, branch);
+  const result = await apiClient.archiveBranch(project, "preview", branch);
 
   if (result.success) {
     return true;

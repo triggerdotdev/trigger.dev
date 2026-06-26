@@ -33,7 +33,9 @@ vi.setConfig({ testTimeout: 60_000 });
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-function makeSnapshot(opts: { messages?: UIMessage[]; lastOutEventId?: string } = {}): ChatSnapshotV1 {
+function makeSnapshot(
+  opts: { messages?: UIMessage[]; lastOutEventId?: string } = {}
+): ChatSnapshotV1 {
   return {
     version: 1,
     savedAt: 1_700_000_000_000,
@@ -109,126 +111,136 @@ describe("chat snapshot integration (MinIO + SDK helpers)", () => {
     expect(result).toEqual(snapshot);
   });
 
-  postgresAndMinioTest("returns undefined for a fresh session with no snapshot", async ({ minioConfig }) => {
-    env.OBJECT_STORE_BASE_URL = minioConfig.baseUrl;
-    env.OBJECT_STORE_ACCESS_KEY_ID = minioConfig.accessKeyId;
-    env.OBJECT_STORE_SECRET_ACCESS_KEY = minioConfig.secretAccessKey;
-    env.OBJECT_STORE_REGION = minioConfig.region;
-    env.OBJECT_STORE_DEFAULT_PROTOCOL = undefined;
+  postgresAndMinioTest(
+    "returns undefined for a fresh session with no snapshot",
+    async ({ minioConfig }) => {
+      env.OBJECT_STORE_BASE_URL = minioConfig.baseUrl;
+      env.OBJECT_STORE_ACCESS_KEY_ID = minioConfig.accessKeyId;
+      env.OBJECT_STORE_SECRET_ACCESS_KEY = minioConfig.secretAccessKey;
+      env.OBJECT_STORE_REGION = minioConfig.region;
+      env.OBJECT_STORE_DEFAULT_PROTOCOL = undefined;
 
-    stubApiClient({ projectRef: "proj_snap_404", envSlug: "dev" });
+      stubApiClient({ projectRef: "proj_snap_404", envSlug: "dev" });
 
-    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    // Session never had a snapshot written — read returns undefined.
-    const result = await readChatSnapshot("sess_never_existed");
-    expect(result).toBeUndefined();
-  });
-
-  postgresAndMinioTest("overwrites a prior snapshot in place (single-writer)", async ({ minioConfig }) => {
-    // The runtime guarantees one attempt alive at a time, and
-    // `writeChatSnapshot` runs awaited after `onTurnComplete`. Verify
-    // that a second write to the same key replaces the first cleanly —
-    // the read-after-write reflects the latest blob.
-    env.OBJECT_STORE_BASE_URL = minioConfig.baseUrl;
-    env.OBJECT_STORE_ACCESS_KEY_ID = minioConfig.accessKeyId;
-    env.OBJECT_STORE_SECRET_ACCESS_KEY = minioConfig.secretAccessKey;
-    env.OBJECT_STORE_REGION = minioConfig.region;
-    env.OBJECT_STORE_DEFAULT_PROTOCOL = undefined;
-
-    stubApiClient({ projectRef: "proj_snap_overwrite", envSlug: "dev" });
-
-    const sessionId = "sess_overwrite";
-
-    const turn1 = makeSnapshot({
-      messages: [
-        { id: "u-1", role: "user", parts: [{ type: "text", text: "first" }] },
-      ],
-      lastOutEventId: "evt-turn1",
-    });
-    const turn2 = makeSnapshot({
-      messages: [
-        { id: "u-1", role: "user", parts: [{ type: "text", text: "first" }] },
-        { id: "a-1", role: "assistant", parts: [{ type: "text", text: "reply-1" }] },
-        { id: "u-2", role: "user", parts: [{ type: "text", text: "second" }] },
-        { id: "a-2", role: "assistant", parts: [{ type: "text", text: "reply-2" }] },
-      ],
-      lastOutEventId: "evt-turn2",
-    });
-
-    await writeChatSnapshot(sessionId, turn1);
-    await writeChatSnapshot(sessionId, turn2);
-
-    const result = await readChatSnapshot(sessionId);
-    expect(result).toEqual(turn2);
-    expect(result?.messages).toHaveLength(4);
-    expect(result?.lastOutEventId).toBe("evt-turn2");
-  });
-
-  postgresAndMinioTest("isolates snapshots by sessionId (no cross-talk)", async ({ minioConfig }) => {
-    env.OBJECT_STORE_BASE_URL = minioConfig.baseUrl;
-    env.OBJECT_STORE_ACCESS_KEY_ID = minioConfig.accessKeyId;
-    env.OBJECT_STORE_SECRET_ACCESS_KEY = minioConfig.secretAccessKey;
-    env.OBJECT_STORE_REGION = minioConfig.region;
-    env.OBJECT_STORE_DEFAULT_PROTOCOL = undefined;
-
-    stubApiClient({ projectRef: "proj_snap_iso", envSlug: "dev" });
-
-    const sessA = "sess_iso_A";
-    const sessB = "sess_iso_B";
-    const snapA = makeSnapshot({ lastOutEventId: "evt-A" });
-    const snapB = makeSnapshot({ lastOutEventId: "evt-B" });
-
-    await writeChatSnapshot(sessA, snapA);
-    await writeChatSnapshot(sessB, snapB);
-
-    const readA = await readChatSnapshot(sessA);
-    const readB = await readChatSnapshot(sessB);
-
-    expect(readA?.lastOutEventId).toBe("evt-A");
-    expect(readB?.lastOutEventId).toBe("evt-B");
-    // Distinct objects — modifying one shouldn't affect the other.
-    expect(readA?.lastOutEventId).not.toBe(readB?.lastOutEventId);
-  });
-
-  postgresAndMinioTest("handles snapshots with large message lists (~50 messages)", async ({ minioConfig }) => {
-    // Stress test: a 50-turn chat snapshot. Plan F.4 mentions the
-    // pre-change baseline grew past 512 KiB around turn 10-30 with tool
-    // use; the post-slim wire keeps wire payloads small but the snapshot
-    // itself can still get large. Verify the helpers handle a realistic
-    // payload size.
-    env.OBJECT_STORE_BASE_URL = minioConfig.baseUrl;
-    env.OBJECT_STORE_ACCESS_KEY_ID = minioConfig.accessKeyId;
-    env.OBJECT_STORE_SECRET_ACCESS_KEY = minioConfig.secretAccessKey;
-    env.OBJECT_STORE_REGION = minioConfig.region;
-    env.OBJECT_STORE_DEFAULT_PROTOCOL = undefined;
-
-    stubApiClient({ projectRef: "proj_snap_big", envSlug: "dev" });
-
-    const messages: UIMessage[] = [];
-    for (let i = 0; i < 50; i++) {
-      messages.push({
-        id: `u-${i}`,
-        role: "user",
-        parts: [{ type: "text", text: `user message ${i}: ${"x".repeat(200)}` }],
-      });
-      messages.push({
-        id: `a-${i}`,
-        role: "assistant",
-        parts: [{ type: "text", text: `assistant reply ${i}: ${"y".repeat(500)}` }],
-      });
+      // Session never had a snapshot written — read returns undefined.
+      const result = await readChatSnapshot("sess_never_existed");
+      expect(result).toBeUndefined();
     }
-    const snapshot = makeSnapshot({ messages, lastOutEventId: "evt-50" });
+  );
 
-    await writeChatSnapshot("sess_big_chat", snapshot);
-    const result = await readChatSnapshot("sess_big_chat");
+  postgresAndMinioTest(
+    "overwrites a prior snapshot in place (single-writer)",
+    async ({ minioConfig }) => {
+      // The runtime guarantees one attempt alive at a time, and
+      // `writeChatSnapshot` runs awaited after `onTurnComplete`. Verify
+      // that a second write to the same key replaces the first cleanly —
+      // the read-after-write reflects the latest blob.
+      env.OBJECT_STORE_BASE_URL = minioConfig.baseUrl;
+      env.OBJECT_STORE_ACCESS_KEY_ID = minioConfig.accessKeyId;
+      env.OBJECT_STORE_SECRET_ACCESS_KEY = minioConfig.secretAccessKey;
+      env.OBJECT_STORE_REGION = minioConfig.region;
+      env.OBJECT_STORE_DEFAULT_PROTOCOL = undefined;
 
-    expect(result).toBeDefined();
-    expect(result!.messages).toHaveLength(100);
-    expect(result!.lastOutEventId).toBe("evt-50");
-    // Spot-check ordering integrity — the messages array round-tripped
-    // in the same order.
-    expect(result!.messages[0]!.id).toBe("u-0");
-    expect(result!.messages[99]!.id).toBe("a-49");
-  });
+      stubApiClient({ projectRef: "proj_snap_overwrite", envSlug: "dev" });
+
+      const sessionId = "sess_overwrite";
+
+      const turn1 = makeSnapshot({
+        messages: [{ id: "u-1", role: "user", parts: [{ type: "text", text: "first" }] }],
+        lastOutEventId: "evt-turn1",
+      });
+      const turn2 = makeSnapshot({
+        messages: [
+          { id: "u-1", role: "user", parts: [{ type: "text", text: "first" }] },
+          { id: "a-1", role: "assistant", parts: [{ type: "text", text: "reply-1" }] },
+          { id: "u-2", role: "user", parts: [{ type: "text", text: "second" }] },
+          { id: "a-2", role: "assistant", parts: [{ type: "text", text: "reply-2" }] },
+        ],
+        lastOutEventId: "evt-turn2",
+      });
+
+      await writeChatSnapshot(sessionId, turn1);
+      await writeChatSnapshot(sessionId, turn2);
+
+      const result = await readChatSnapshot(sessionId);
+      expect(result).toEqual(turn2);
+      expect(result?.messages).toHaveLength(4);
+      expect(result?.lastOutEventId).toBe("evt-turn2");
+    }
+  );
+
+  postgresAndMinioTest(
+    "isolates snapshots by sessionId (no cross-talk)",
+    async ({ minioConfig }) => {
+      env.OBJECT_STORE_BASE_URL = minioConfig.baseUrl;
+      env.OBJECT_STORE_ACCESS_KEY_ID = minioConfig.accessKeyId;
+      env.OBJECT_STORE_SECRET_ACCESS_KEY = minioConfig.secretAccessKey;
+      env.OBJECT_STORE_REGION = minioConfig.region;
+      env.OBJECT_STORE_DEFAULT_PROTOCOL = undefined;
+
+      stubApiClient({ projectRef: "proj_snap_iso", envSlug: "dev" });
+
+      const sessA = "sess_iso_A";
+      const sessB = "sess_iso_B";
+      const snapA = makeSnapshot({ lastOutEventId: "evt-A" });
+      const snapB = makeSnapshot({ lastOutEventId: "evt-B" });
+
+      await writeChatSnapshot(sessA, snapA);
+      await writeChatSnapshot(sessB, snapB);
+
+      const readA = await readChatSnapshot(sessA);
+      const readB = await readChatSnapshot(sessB);
+
+      expect(readA?.lastOutEventId).toBe("evt-A");
+      expect(readB?.lastOutEventId).toBe("evt-B");
+      // Distinct objects — modifying one shouldn't affect the other.
+      expect(readA?.lastOutEventId).not.toBe(readB?.lastOutEventId);
+    }
+  );
+
+  postgresAndMinioTest(
+    "handles snapshots with large message lists (~50 messages)",
+    async ({ minioConfig }) => {
+      // Stress test: a 50-turn chat snapshot. Plan F.4 mentions the
+      // pre-change baseline grew past 512 KiB around turn 10-30 with tool
+      // use; the post-slim wire keeps wire payloads small but the snapshot
+      // itself can still get large. Verify the helpers handle a realistic
+      // payload size.
+      env.OBJECT_STORE_BASE_URL = minioConfig.baseUrl;
+      env.OBJECT_STORE_ACCESS_KEY_ID = minioConfig.accessKeyId;
+      env.OBJECT_STORE_SECRET_ACCESS_KEY = minioConfig.secretAccessKey;
+      env.OBJECT_STORE_REGION = minioConfig.region;
+      env.OBJECT_STORE_DEFAULT_PROTOCOL = undefined;
+
+      stubApiClient({ projectRef: "proj_snap_big", envSlug: "dev" });
+
+      const messages: UIMessage[] = [];
+      for (let i = 0; i < 50; i++) {
+        messages.push({
+          id: `u-${i}`,
+          role: "user",
+          parts: [{ type: "text", text: `user message ${i}: ${"x".repeat(200)}` }],
+        });
+        messages.push({
+          id: `a-${i}`,
+          role: "assistant",
+          parts: [{ type: "text", text: `assistant reply ${i}: ${"y".repeat(500)}` }],
+        });
+      }
+      const snapshot = makeSnapshot({ messages, lastOutEventId: "evt-50" });
+
+      await writeChatSnapshot("sess_big_chat", snapshot);
+      const result = await readChatSnapshot("sess_big_chat");
+
+      expect(result).toBeDefined();
+      expect(result!.messages).toHaveLength(100);
+      expect(result!.lastOutEventId).toBe("evt-50");
+      // Spot-check ordering integrity — the messages array round-tripped
+      // in the same order.
+      expect(result!.messages[0]!.id).toBe("u-0");
+      expect(result!.messages[99]!.id).toBe("a-49");
+    }
+  );
 });

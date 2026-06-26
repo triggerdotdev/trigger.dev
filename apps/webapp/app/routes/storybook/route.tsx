@@ -156,6 +156,12 @@ const stories: Story[] = [
     name: "Usage",
     slug: "usage",
   },
+  // Dashboard agent section
+  {
+    sectionTitle: "Dashboard agent",
+    name: "Agent UI",
+    slug: "agent-ui",
+  },
   // Forms section
   {
     sectionTitle: "Forms",

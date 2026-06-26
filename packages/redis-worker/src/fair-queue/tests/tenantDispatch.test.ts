@@ -801,10 +801,7 @@ describe("Two-Level Tenant Dispatch", () => {
         })();
 
         // Wait for t2's messages to be processed (they shouldn't be blocked by t1)
-        await waitFor(
-          () => processed.filter((p) => p.tenantId === "t2").length === 3,
-          10000
-        );
+        await waitFor(() => processed.filter((p) => p.tenantId === "t2").length === 3, 10000);
 
         const t2ProcessedCount = processed.filter((p) => p.tenantId === "t2").length;
         expect(t2ProcessedCount).toBe(3);

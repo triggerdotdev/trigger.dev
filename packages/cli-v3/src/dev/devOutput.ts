@@ -1,4 +1,5 @@
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import { DEFAULT_DEV_BRANCH } from "@trigger.dev/core/v3/utils/gitBranch";
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import {
   createTaskMetadataFailedErrorStack,
@@ -31,13 +32,14 @@ import { analyzeWorker } from "../utilities/analyze.js";
 
 export type DevOutputOptions = {
   name: string | undefined;
+  branch?: string;
   dashboardUrl: string;
   config: ResolvedConfig;
   args: DevCommandOptions;
 };
 
 export function startDevOutput(options: DevOutputOptions) {
-  const { dashboardUrl, config } = options;
+  const { branch, dashboardUrl, config } = options;
 
   const baseUrl = `${dashboardUrl}/projects/v3/${config.project}`;
 
@@ -90,7 +92,9 @@ export function startDevOutput(options: DevOutputOptions) {
     const runsLink = chalkLink(cliLink("View runs", runsUrl));
 
     const runtime = chalkGrey(`[${worker.build.runtime}]`);
-    const workerStarted = chalkGrey("Local worker ready");
+    const workerStarted = chalkGrey(
+      `Local worker ready on branch: ${branch ?? DEFAULT_DEV_BRANCH}`
+    );
     const workerVersion = chalkWorker(worker.serverWorker!.version);
 
     logParts.push(workerStarted, runtime, arrow, workerVersion);
@@ -194,8 +198,8 @@ export function startDevOutput(options: DevOutputOptions) {
       !completion.ok && completion.skippedRetrying
         ? " (retrying skipped)"
         : !completion.ok && completion.retry !== undefined
-        ? ` (retrying in ${completion.retry.delay}ms)`
-        : ""
+          ? ` (retrying in ${completion.retry.delay}ms)`
+          : ""
     );
 
     const resultText = !completion.ok
@@ -209,8 +213,8 @@ export function startDevOutput(options: DevOutputOptions) {
     const errorText = !completion.ok
       ? formatErrorLog(completion.error)
       : "retry" in completion
-      ? `retry in ${completion.retry}ms`
-      : "";
+        ? `retry in ${completion.retry}ms`
+        : "";
 
     const elapsedText = chalkGrey(
       `(${formatDurationMilliseconds(durationMs, { style: "short" })})`

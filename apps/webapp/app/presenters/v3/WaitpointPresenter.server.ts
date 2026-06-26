@@ -65,8 +65,8 @@ export class WaitpointPresenter extends BasePresenter {
       waitpoint.outputType === "application/store"
         ? `/resources/packets/${environmentId}/${waitpoint.output}`
         : typeof waitpoint.output !== "undefined" && waitpoint.output !== null
-        ? await prettyPrintPacket(waitpoint.output, waitpoint.outputType ?? undefined)
-        : undefined;
+          ? await prettyPrintPacket(waitpoint.output, waitpoint.outputType ?? undefined)
+          : undefined;
 
     let isTimeout = false;
     if (waitpoint.outputIsError && output) {
@@ -79,7 +79,10 @@ export class WaitpointPresenter extends BasePresenter {
     const connectedRuns: NextRunListItem[] = [];
 
     if (connectedRunIds.length > 0) {
-      const clickhouse = await clickhouseFactory.getClickhouseForOrganization(waitpoint.environment.organizationId, "standard");
+      const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+        waitpoint.environment.organizationId,
+        "standard"
+      );
       const runPresenter = new NextRunListPresenter(this._prisma, clickhouse);
       const { runs } = await runPresenter.call(
         waitpoint.environment.organizationId,

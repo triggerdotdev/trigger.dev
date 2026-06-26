@@ -54,8 +54,8 @@ const { action } = createActionApiRoute(
       params.target === "self"
         ? run
         : params.target === "parent"
-        ? run.parentTaskRun
-        : run.rootTaskRun;
+          ? run.parentTaskRun
+          : run.rootTaskRun;
 
     if (!targetRun?.friendlyId) {
       return new Response("Target not found", { status: 404 });
@@ -191,8 +191,8 @@ const loader = createLoaderApiRoute(
       params.target === "self"
         ? run
         : params.target === "parent"
-        ? run.parentTaskRun
-        : run.rootTaskRun;
+          ? run.parentTaskRun
+          : run.rootTaskRun;
 
     if (!targetRun?.friendlyId) {
       return new Response("Target not found", { status: 404 });
@@ -209,11 +209,9 @@ const loader = createLoaderApiRoute(
     const clientId = request.headers.get("X-Client-Id") || "default";
     const streamVersion = request.headers.get("X-Stream-Version") || "v1";
 
-    const realtimeStream = getRealtimeStreamInstance(
-      authentication.environment,
-      streamVersion,
-      { run: { streamBasinName: targetRun.streamBasinName ?? null } }
-    );
+    const realtimeStream = getRealtimeStreamInstance(authentication.environment, streamVersion, {
+      run: { streamBasinName: targetRun.streamBasinName ?? null },
+    });
 
     const lastChunkIndex = await realtimeStream.getLastChunkIndex(
       targetId,

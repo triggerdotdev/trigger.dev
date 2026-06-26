@@ -2,7 +2,10 @@ export class AsyncWorker {
   private running = false;
   private timeout?: NodeJS.Timeout;
 
-  constructor(private readonly fn: () => Promise<void>, private readonly interval: number) {}
+  constructor(
+    private readonly fn: () => Promise<void>,
+    private readonly interval: number
+  ) {}
 
   start() {
     if (this.running) {

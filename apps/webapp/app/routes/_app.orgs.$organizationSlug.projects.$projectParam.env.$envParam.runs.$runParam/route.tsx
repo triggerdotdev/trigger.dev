@@ -1269,8 +1269,8 @@ function TimelineView({
                             index === 0
                               ? "ml-1"
                               : index === tickCount - 1
-                              ? "-ml-1 -translate-x-full"
-                              : "-translate-x-1/2"
+                                ? "-ml-1 -translate-x-full"
+                                : "-translate-x-1/2"
                           )}
                         >
                           {formatDurationMilliseconds(ms, {

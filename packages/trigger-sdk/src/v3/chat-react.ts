@@ -174,10 +174,7 @@ export function useMultiTabChat<T = unknown>(
   useEffect(() => {
     if (!transport.hasClaim(chatId) && latestMessagesRef.current.length > 0) {
       if (idleRef.current !== null) {
-        const cancel =
-          typeof cancelIdleCallback === "function"
-            ? cancelIdleCallback
-            : clearTimeout;
+        const cancel = typeof cancelIdleCallback === "function" ? cancelIdleCallback : clearTimeout;
         cancel(idleRef.current as any);
         idleRef.current = null;
       }

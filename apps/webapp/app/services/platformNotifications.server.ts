@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { errAsync, fromPromise, type ResultAsync } from "neverthrow";
 import { prisma } from "~/db.server";
-import { type PlatformNotificationScope, type PlatformNotificationSurface } from "@trigger.dev/database";
+import {
+  type PlatformNotificationScope,
+  type PlatformNotificationSurface,
+} from "@trigger.dev/database";
 import { incrementCliRequestCounter } from "./platformNotificationCounter.server";
 
 // --- Payload schema (spec v1) ---
@@ -65,9 +68,7 @@ export async function getAdminNotificationsList({
   pageSize?: number;
   hideInactive?: boolean;
 }) {
-  const where = hideInactive
-    ? { archivedAt: null, endsAt: { gt: new Date() } }
-    : {};
+  const where = hideInactive ? { archivedAt: null, endsAt: { gt: new Date() } } : {};
 
   const [notifications, total] = await Promise.all([
     prisma.platformNotification.findMany({
@@ -114,7 +115,9 @@ export async function getAdminNotificationsList({
         payloadDescription: parsed.success ? parsed.data.data.description : null,
         payloadActionUrl: parsed.success ? parsed.data.data.actionUrl : null,
         payloadImage: parsed.success ? parsed.data.data.image : null,
-        payloadDismissOnAction: parsed.success ? (parsed.data.data.dismissOnAction ?? false) : false,
+        payloadDismissOnAction: parsed.success
+          ? (parsed.data.data.dismissOnAction ?? false)
+          : false,
         payloadDiscovery: parsed.success ? (parsed.data.data.discovery ?? null) : null,
         cliMaxShowCount: n.cliMaxShowCount,
         cliMaxDaysAfterFirstSeen: n.cliMaxDaysAfterFirstSeen,
@@ -514,8 +517,7 @@ export async function getNextCliNotification({
     // If this display reaches cliMaxShowCount, also set cliDismissedAt now
     // so it's recorded immediately rather than waiting for a future request.
     const reachedMaxShows =
-      n.cliMaxShowCount !== null &&
-      ((interaction?.showCount ?? 0) + 1) >= n.cliMaxShowCount;
+      n.cliMaxShowCount !== null && (interaction?.showCount ?? 0) + 1 >= n.cliMaxShowCount;
 
     const updated = await prisma.platformNotificationInteraction.upsert({
       where: { notificationId_userId: { notificationId: n.id, userId } },
@@ -699,9 +701,7 @@ export const UpdatePlatformNotificationSchema = z
     validateEndsAt(data, ctx);
   });
 
-type CreateError =
-  | { type: "validation"; issues: z.ZodIssue[] }
-  | { type: "db"; message: string };
+type CreateError = { type: "validation"; issues: z.ZodIssue[] } | { type: "db"; message: string };
 
 export function createPlatformNotification(
   input: CreatePlatformNotificationInput
@@ -765,7 +765,8 @@ export function updatePlatformNotification(
         startsAt: data.startsAt,
         endsAt: data.endsAt,
         priority: data.priority,
-        cliMaxDaysAfterFirstSeen: data.surface === "CLI" ? (data.cliMaxDaysAfterFirstSeen ?? null) : null,
+        cliMaxDaysAfterFirstSeen:
+          data.surface === "CLI" ? (data.cliMaxDaysAfterFirstSeen ?? null) : null,
         cliMaxShowCount: data.surface === "CLI" ? (data.cliMaxShowCount ?? null) : null,
         cliShowEvery: data.surface === "CLI" ? (data.cliShowEvery ?? null) : null,
       },

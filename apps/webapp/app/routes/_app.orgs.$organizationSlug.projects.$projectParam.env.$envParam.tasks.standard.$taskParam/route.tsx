@@ -108,7 +108,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       from: time.from,
       to: time.to,
     })
-    .catch(() => ({ data: [], statuses: [] } satisfies TaskActivity));
+    .catch(() => ({ data: [], statuses: [] }) satisfies TaskActivity);
 
   const runList = new NextRunListPresenter($replica, clickhouse)
     .call(project.organizationId, environment.id, {

@@ -33,7 +33,10 @@ function escapeCSVValue(value: unknown): string {
  * @param columns - Column metadata describing the result columns
  * @returns CSV string with header row and data rows
  */
-export function rowsToCSV(rows: Record<string, unknown>[], columns: OutputColumnMetadata[]): string {
+export function rowsToCSV(
+  rows: Record<string, unknown>[],
+  columns: OutputColumnMetadata[]
+): string {
   if (columns.length === 0) {
     return "";
   }
@@ -44,7 +47,9 @@ export function rowsToCSV(rows: Record<string, unknown>[], columns: OutputColumn
   const headerRow = columnNames.map(escapeCSVValue).join(",");
 
   // Data rows
-  const dataRows = rows.map((row) => columnNames.map((name) => escapeCSVValue(row[name])).join(","));
+  const dataRows = rows.map((row) =>
+    columnNames.map((name) => escapeCSVValue(row[name])).join(",")
+  );
 
   return [headerRow, ...dataRows].join("\n");
 }
@@ -75,5 +80,3 @@ export function downloadFile(content: string, filename: string, mimeType: string
   a.click();
   URL.revokeObjectURL(url);
 }
-
-

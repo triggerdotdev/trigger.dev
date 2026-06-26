@@ -1,7 +1,10 @@
 import type { MollifierBuffer } from "@trigger.dev/redis-worker";
 import { logger as defaultLogger } from "~/services/logger.server";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
-import { MollifierStaleSweepState, type StaleSweepStateStore } from "./mollifierStaleSweepState.server";
+import {
+  MollifierStaleSweepState,
+  type StaleSweepStateStore,
+} from "./mollifierStaleSweepState.server";
 import {
   recordStaleEntry as defaultRecordStaleEntry,
   reportStaleEntrySnapshot as defaultReportStaleEntrySnapshot,
@@ -81,12 +84,11 @@ export type StaleSweepResult = {
 //   every tick) does not bound work.
 export async function runStaleSweepOnce(
   config: StaleSweepConfig,
-  deps: StaleSweepDeps,
+  deps: StaleSweepDeps
 ): Promise<StaleSweepResult> {
   const getBuffer = deps.getBuffer ?? getMollifierBuffer;
   const recordStale = deps.recordStaleEntry ?? defaultRecordStaleEntry;
-  const reportSnapshot =
-    deps.reportStaleEntrySnapshot ?? defaultReportStaleEntrySnapshot;
+  const reportSnapshot = deps.reportStaleEntrySnapshot ?? defaultReportStaleEntrySnapshot;
   const log = deps.logger ?? defaultLogger;
   const now = (deps.now ?? Date.now)();
   const maxEntries = config.maxEntriesPerEnv ?? DEFAULT_MAX_ENTRIES_PER_ENV;
@@ -114,10 +116,7 @@ export async function runStaleSweepOnce(
     await deps.state.rebuildOrgList(orgs);
   }
 
-  const { orgs: slice, total } = await deps.state.readOrgListSlice(
-    cursor,
-    maxOrgsPerPass,
-  );
+  const { orgs: slice, total } = await deps.state.readOrgListSlice(cursor, maxOrgsPerPass);
 
   let envsScanned = 0;
   let entriesScanned = 0;
@@ -194,7 +193,7 @@ export type StaleSweepIntervalHandle = {
 // overlapping sweeps that all log the same stale entries).
 export function startStaleSweepInterval(
   config: StaleSweepConfig & { intervalMs: number },
-  deps: StaleSweepDeps,
+  deps: StaleSweepDeps
 ): StaleSweepIntervalHandle {
   let stopped = false;
   let inFlight = false;

@@ -379,7 +379,7 @@ export class LogsListPresenter extends BasePresenter {
     // bound only when a recent window doesn't fill the page.
     const ceil = decodedCursor
       ? convertClickhouseDateTime64ToJsDate(decodedCursor.triggeredTimestamp)
-      : clampedTo ?? new Date();
+      : (clampedTo ?? new Date());
 
     const probeFloors = buildProbeFloors(
       ceil,

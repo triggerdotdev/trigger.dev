@@ -112,6 +112,8 @@ Head Start runs step 1's LLM call in your warm server process while the agent ru
 
 `chat.headStart` returns a standard [Web Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) handler — `(req: Request) => Promise<Response>` — so it slots into any runtime that speaks Web Fetch.
 
+Drive it one of two ways: wire the handler into the transport's [`headStart` option](#the-transport-option) so the browser's first message POSTs to it (the setup below), or call [`chat.startHeadStart`](#detached-head-start) from a backend that creates the chat and triggers the run in one request, then resumes on a separate page.
+
 **Verified runtimes:** Node 18+, Bun, Deno, Cloudflare Workers, Vercel (Node and Edge), Netlify (Functions and Edge). The handler uses only `fetch` and Web `ReadableStream` / `TransformStream` (no `node:*` imports), and the S2 streaming dependency picks the right transport for each runtime automatically (HTTP/2 on Node/Deno, HTTP/1.1 on Bun/Workers/browsers).
 
 **Compatible frameworks (native Web Fetch):** Next.js App Router, Hono, SvelteKit, Remix, React Router v7, TanStack Start, Astro, Nitro/Nuxt, Elysia. Mount the handler directly.
@@ -545,6 +547,10 @@ Head Start composes with [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemes
 
 Your hydrate hook shapes **model context**, not the transcript — dropping reasoning-only entries or unresolved tool rows from the returned chain is fine and does not affect what `onTurnComplete` persists or what the UI renders.
 
+#### With `prepareMessages`
+
+When the first turn's handover carries a pending tool call, the runtime reshapes it into a tool-approval round: the partial assistant gets a `tool-approval-request` and the chain ends with a `tool` message holding the matching `tool-approval-response`. The agent's `streamText` reads that trailing row to execute the handed-over call before step 2. `chat.agent` keeps that tail intact across your [`prepareMessages`](/ai-chat/reference#chatagentoptions) hook, so the common [prompt-caching](/ai-chat/prompt-caching) pattern of rolling a cache breakpoint onto the last message is safe on a resume turn (the breakpoint lands on the next user or assistant message instead). If you hand-roll a backend with [`chat.customAgent`](#chatcustomagent) or [`chat.createSession`](#chatcreatesession), preserve that trailing approval row yourself.
+
 ### Handover with custom agents
 
 The route handler is backend-agnostic: `agentId` can point at a `chat.agent`, a [`chat.customAgent`](/ai-chat/custom-agents), or a [`chat.createSession`](/ai-chat/custom-agents#managed-loop-chatcreatesession) loop. With `chat.agent` the handover is consumed for you (the steps above). The two hand-rolled backends consume it explicitly on turn 0.
@@ -654,6 +660,86 @@ useTriggerChatTransport({
 Optional. When set, the FIRST message of a brand-new chat (no existing session state) routes through this URL. Subsequent turns bypass it and use the direct-trigger path.
 
 This is **not** a stock `useChat` `endpoint` — it's not the canonical request URL for every turn, just the first-turn shortcut.
+
+### Detached head start
+
+`chat.startHeadStart` runs the same head start as the [`chat.headStart` handler above](#setup); the difference is how step 1 reaches the browser. `chat.headStart` streams step 1 back over the live connection the browser opens when it sends the first message. `chat.startHeadStart` has no open browser connection to stream to, so it drains step 1 into the durable session stream and the browser **resumes** it when the chat page loads.
+
+Use it when there's no open connection at first-turn time, because the first message is captured outside the chat UI and the conversation renders on a separate page. A typical flow: a "new chat" form posts the prompt to your backend, which creates the chat row, starts the run with `chat.startHeadStart`, and returns a `chatId`; the browser then navigates to `/chats/{chatId}` and resumes. You still get the first-turn TTFC win; the browser picks step 1 up on resume instead of live.
+
+**1. Start the head start in your create endpoint.** Call `chat.startHeadStart`, keep `completion` alive past the response (`waitUntil` / Next.js `after`), and return the `chatId`.
+
+```ts app/api/chat/create/route.ts (your backend)
+import { chat } from "@trigger.dev/sdk/chat-server";
+import { streamText } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { after } from "next/server";
+// Schema-only tools; same bundle-isolation rule as chat.headStart.
+import { headStartTools } from "@/lib/chat-tools/schemas";
+
+export async function POST(req: Request) {
+  const { chatId, messages } = await req.json();
+  // Persist your own chat row + the first user message here.
+
+  const { completion } = await chat.startHeadStart({
+    agentId: "my-chat",
+    chatId, // session externalId; reuse it on the destination page
+    messages, // first-turn user history
+    run: async ({ chat: helper }) =>
+      streamText({
+        ...helper.toStreamTextOptions({ tools: headStartTools }),
+        model: anthropic("claude-sonnet-4-6"),
+        system: "You are a helpful assistant.",
+      }),
+  });
+
+  // Keep the function warm until step 1 drains and the handover dispatches.
+  after(completion);
+
+  return Response.json({ chatId });
+}
+```
+
+**2. Resume the chat on the destination page.** Set no `headStart` and no `startSession`: the run is already in flight, so the transport resumes `session.out` and replays step 1 (warm) then step 2+ (agent) under one assistant message.
+
+```tsx app/chats/[chatId]/page.tsx
+import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
+import { useChat } from "@ai-sdk/react";
+
+const transport = useTriggerChatTransport({
+  task: "my-chat",
+  accessToken: ({ chatId }) => mintChatAccessToken(chatId),
+});
+
+const { messages } = useChat({ id: chatId, transport, resume: true });
+```
+
+<Warning>
+  `completion` must run to completion, or step 1 never finishes draining and the turn stalls. On serverless, hand it to the platform's run-after-response primitive (`waitUntil`, Next.js `after`). On a long-lived server you can ignore it; it runs in the background.
+</Warning>
+
+<Warning>
+  If you hydrate the transport's session state yourself (the `sessions` option, e.g. so the same page can also resume already-stored chats from your session store), a head-started session is still mid-turn, so mark it `isStreaming: true`. A session hydrated as not streaming is treated as settled: the transport skips reconnecting to `session.out`, so the browser never sees the turn even though the run completed. The minimal example above sidesteps this by not hydrating a session at all (`resume: true` alone reconnects).
+</Warning>
+
+The `run` callback and bundle-isolation rule are the same as `chat.headStart`. Pass `metadata` to attach auth tokens or context to the run; it never reaches the browser. The cost over the transport-routed handler is one extra round trip: the create request, then the resume.
+
+#### The `chat.startHeadStart` API
+
+```ts
+chat.startHeadStart<TTools>({
+  agentId: string,                               // chat.agent / chat.customAgent / chat.createSession id
+  chatId: string,                                // session externalId; reuse on the destination page
+  messages: UIMessage[],                         // first-turn user history
+  run: (args: HeadStartRunArgs<TTools>) => Promise<StreamTextResult<any, any>>,
+  idleTimeoutInSeconds?: number,                 // how long the agent waits for the handover signal. Default: 60
+  triggerConfig?: Partial<SessionTriggerConfig>, // tags, queue, machine, …
+  apiClient?: ApiClientConfiguration,            // when the agent lives in another project/env
+  metadata?: Record<string, unknown>,            // merged into the run payload; never sent to the browser
+}): Promise<{ chatId: string; completion: Promise<void> }>
+```
+
+`completion` resolves once the head start finishes; `await` it or hand it to `waitUntil`. It rejects if the warm step or the dispatch fails.
 
 ### Limitations
 

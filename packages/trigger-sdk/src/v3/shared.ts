@@ -1038,7 +1038,10 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
           ctx,
         });
 
-        const runs = await handleBatchTaskRunExecutionResultV2(result.items, response.taskIdentifiers);
+        const runs = await handleBatchTaskRunExecutionResultV2(
+          result.items,
+          response.taskIdentifiers
+        );
 
         return {
           id: result.id,
@@ -1082,7 +1085,10 @@ export async function batchTriggerByIdAndWait<TTask extends AnyTask>(
           ctx,
         });
 
-        const runs = await handleBatchTaskRunExecutionResultV2(result.items, response.taskIdentifiers);
+        const runs = await handleBatchTaskRunExecutionResultV2(
+          result.items,
+          response.taskIdentifiers
+        );
 
         return {
           id: result.id,
@@ -1559,7 +1565,10 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
           ctx,
         });
 
-        const runs = await handleBatchTaskRunExecutionResultV2(result.items, response.taskIdentifiers);
+        const runs = await handleBatchTaskRunExecutionResultV2(
+          result.items,
+          response.taskIdentifiers
+        );
 
         return {
           id: result.id,
@@ -1606,7 +1615,10 @@ export async function batchTriggerAndWaitTasks<TTasks extends readonly AnyTask[]
           ctx,
         });
 
-        const runs = await handleBatchTaskRunExecutionResultV2(result.items, response.taskIdentifiers);
+        const runs = await handleBatchTaskRunExecutionResultV2(
+          result.items,
+          response.taskIdentifiers
+        );
 
         return {
           id: result.id,
@@ -2120,8 +2132,8 @@ async function* transformSingleTaskBatchItemsStream<TPayload>(
         queue: item.options?.queue
           ? { name: item.options.queue }
           : queue
-          ? { name: queue }
-          : undefined,
+            ? { name: queue }
+            : undefined,
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2181,8 +2193,8 @@ async function* transformSingleTaskBatchItemsStreamForWait<TPayload>(
         queue: item.options?.queue
           ? { name: item.options.queue }
           : queue
-          ? { name: queue }
-          : undefined,
+            ? { name: queue }
+            : undefined,
         concurrencyKey: item.options?.concurrencyKey,
         test: taskContext.ctx?.run.isTest,
         payloadType: payloadPacket.dataType,
@@ -2314,8 +2326,8 @@ async function batchTrigger_internal<TRunTypes extends AnyRunTypes>(
             queue: item.options?.queue
               ? { name: item.options.queue }
               : queue
-              ? { name: queue }
-              : undefined,
+                ? { name: queue }
+                : undefined,
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,
@@ -2736,8 +2748,8 @@ async function batchTriggerAndWait_internal<TIdentifier extends string, TPayload
             queue: item.options?.queue
               ? { name: item.options.queue }
               : queue
-              ? { name: queue }
-              : undefined,
+                ? { name: queue }
+                : undefined,
             concurrencyKey: item.options?.concurrencyKey,
             test: taskContext.ctx?.run.isTest,
             payloadType: payloadPacket.dataType,

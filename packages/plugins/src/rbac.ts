@@ -397,10 +397,7 @@ export interface RoleBaseAccessController {
   // Org-scoped only — project-scoped reads still go through getUserRole.
   // Returns a Map keyed by userId; users with no resolvable role map to
   // null. The default fallback returns a Map of all userIds → null.
-  getUserRoles(
-    userIds: string[],
-    organizationId: string
-  ): Promise<Map<string, Role | null>>;
+  getUserRoles(userIds: string[], organizationId: string): Promise<Map<string, Role | null>>;
 
   setUserRole(params: {
     userId: string;
@@ -422,9 +419,7 @@ export interface RoleBaseAccessController {
 
 // Mutation result for role create/update — success carries the new
 // `role`, failure carries a user-facing `error` string.
-export type RoleMutationResult =
-  | { ok: true; role: Role }
-  | { ok: false; error: string };
+export type RoleMutationResult = { ok: true; role: Role } | { ok: false; error: string };
 
 // Result for assignment / deletion mutations that don't return a value.
 export type RoleAssignmentResult = { ok: true } | { ok: false; error: string };

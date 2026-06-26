@@ -45,8 +45,8 @@ export class VisibilityManager {
     this.shardCount = options.shardCount;
     this.defaultTimeoutMs = options.defaultTimeoutMs;
     this.logger = options.logger ?? {
-      debug: () => { },
-      error: () => { },
+      debug: () => {},
+      error: () => {},
     };
 
     this.#registerCommands();

@@ -171,9 +171,8 @@ export const action = dashboardAction(
     }
 
     // Uninstall from Vercel side
-    const uninstallResult = await VercelIntegrationRepository.uninstallVercelIntegration(
-      vercelIntegration
-    );
+    const uninstallResult =
+      await VercelIntegrationRepository.uninstallVercelIntegration(vercelIntegration);
 
     if (uninstallResult.isErr()) {
       logger.error("Failed to uninstall Vercel integration", {

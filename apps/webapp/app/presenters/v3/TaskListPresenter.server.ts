@@ -82,7 +82,10 @@ export class TaskListPresenter {
     const slugs = tasks.map((t) => t.slug);
 
     // Create org-specific environment metrics repository
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      organizationId,
+      "standard"
+    );
     const environmentMetricsRepository = new ClickHouseEnvironmentMetricsRepository({
       clickhouse,
     });

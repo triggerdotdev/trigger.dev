@@ -23,11 +23,10 @@ import {
   XAIIcon,
 } from "~/assets/icons/AiProviderIcons";
 import { AttemptIcon } from "~/assets/icons/AttemptIcon";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { TaskCachedIcon, TaskIcon } from "~/assets/icons/TaskIcon";
 import { cn } from "~/utils/cn";
 import { tablerIcons } from "~/utils/tablerIcons";
 import tablerSpritePath from "~/components/primitives/tabler-sprite.svg";
-import { TaskCachedIcon } from "~/assets/icons/TaskCachedIcon";
 import { PauseIcon } from "~/assets/icons/PauseIcon";
 import { RunFunctionIcon } from "~/assets/icons/RunFunctionIcon";
 import { MiddlewareIcon } from "~/assets/icons/MiddlewareIcon";
@@ -65,7 +64,12 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     }
   }
 
-  if (!name) return <Squares2X2Icon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+  if (!name)
+    return (
+      <Squares2X2Icon
+        className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+      />
+    );
   if (tablerIcons.has(name)) {
     return <TablerIcon name={name} className={className} />;
   }
@@ -80,13 +84,25 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     case "scheduled":
       return <ClockIcon className={cn(className, "text-schedules")} />;
     case "attempt":
-      return <AttemptIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <AttemptIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "wait":
       return <PauseIcon className={cn(className, "text-sky-500")} />;
     case "trace":
-      return <TraceIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <TraceIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "tag":
-      return <TagIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <TagIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "queue":
       return <RectangleStackIcon className={cn(className, "text-queues")} />;
     case "trigger":
@@ -96,14 +112,22 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     case "wait-token":
       return <WaitpointTokenIcon className={cn(className, "text-sky-500")} />;
     case "function":
-      return <FunctionIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <FunctionIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "query":
       return <TableCellsIcon className={cn(className, "text-query")} />;
     //log levels
     case "debug":
     case "log":
     case "info":
-      return <InfoIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <InfoIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "warn":
       return <InfoIcon className={cn(className, "text-amber-400")} />;
     case "error":
@@ -111,9 +135,17 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     case "fatal":
       return <HandRaisedIcon className={cn(className, "text-error")} />;
     case "task-middleware":
-      return <MiddlewareIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <MiddlewareIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "task-fn-run":
-      return <RunFunctionIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <RunFunctionIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "task-hook-init":
     case "task-hook-onStart":
     case "task-hook-onStartAttempt":
@@ -123,40 +155,98 @@ export function RunIcon({ name, className, spanName }: TaskIconProps) {
     case "task-hook-onComplete":
     case "task-hook-cleanup":
     case "task-hook-onCancel":
-      return <FunctionIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <FunctionIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "task-hook-onFailure":
     case "task-hook-catchError":
       return <FunctionIcon className={cn(className, "text-error")} />;
     case "streams":
-      return <StreamsIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <StreamsIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "hero-sparkles":
-      return <SparklesIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <SparklesIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "hero-wrench":
-      return <WrenchIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <WrenchIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "tabler-brand-anthropic":
     case "ai-provider-anthropic":
-      return <AnthropicIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <AnthropicIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "ai-provider-openai":
-      return <OpenAIIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <OpenAIIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "ai-provider-gemini":
-      return <GeminiIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <GeminiIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "ai-provider-llama":
-      return <LlamaIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <LlamaIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "ai-provider-deepseek":
-      return <DeepseekIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <DeepseekIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "ai-provider-xai":
-      return <XAIIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <XAIIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "ai-provider-perplexity":
-      return <PerplexityIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <PerplexityIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "ai-provider-cerebras":
-      return <CerebrasIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <CerebrasIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "ai-provider-mistral":
-      return <MistralIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <MistralIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
     case "ai-provider-azure":
-      return <AzureIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+      return (
+        <AzureIcon
+          className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")}
+        />
+      );
   }
 
-  return <InfoIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />;
+  return (
+    <InfoIcon className={cn(className, "text-text-dimmed group-hover/spannode:text-text-bright")} />
+  );
 }
 
 function TablerIcon({ name, className }: { name: string; className?: string }) {

@@ -397,10 +397,7 @@ function RunBody({
             className="size-5 min-h-5 min-w-5"
           />
           <Header2
-            className={cn(
-              "overflow-x-hidden",
-              run.isAgentRun ? "text-agents" : "text-blue-500"
-            )}
+            className={cn("overflow-x-hidden", run.isAgentRun ? "text-agents" : "text-blue-500")}
           >
             <span className="truncate">
               {run.taskIdentifier}
@@ -1315,10 +1312,10 @@ function SpanEntity({ span }: { span: Span }) {
                   span.isCancelled
                     ? "CANCELED"
                     : span.isError
-                    ? "FAILED"
-                    : span.isPartial
-                    ? "EXECUTING"
-                    : "COMPLETED"
+                      ? "FAILED"
+                      : span.isPartial
+                        ? "EXECUTING"
+                        : "COMPLETED"
                 }
                 className="text-sm"
               />
@@ -1430,10 +1427,10 @@ function SpanEntity({ span }: { span: Span }) {
                 span.isCancelled
                   ? "CANCELED"
                   : span.isError
-                  ? "FAILED"
-                  : span.isPartial
-                  ? "EXECUTING"
-                  : "COMPLETED"
+                    ? "FAILED"
+                    : span.isPartial
+                      ? "EXECUTING"
+                      : "COMPLETED"
               }
               className="text-sm"
             />
@@ -1508,8 +1505,8 @@ function SpanEntity({ span }: { span: Span }) {
             typeof span.properties === "string"
               ? span.properties
               : span.properties != null
-              ? JSON.stringify(span.properties, null, 2)
-              : undefined
+                ? JSON.stringify(span.properties, null, 2)
+                : undefined
           }
           startTime={span.startTime}
           duration={span.duration}

@@ -56,9 +56,7 @@ export class TestPresenter extends BasePresenter {
         ORDER BY slug ASC;`;
     } else {
       const currentDeployment = await findCurrentWorkerDeployment({ environmentId: envId });
-      return (currentDeployment?.worker?.tasks ?? []).filter(
-        (t) => t.triggerSource !== "AGENT"
-      );
+      return (currentDeployment?.worker?.tasks ?? []).filter((t) => t.triggerSource !== "AGENT");
     }
   }
 }

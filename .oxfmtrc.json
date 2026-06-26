@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "semi": true,
+  "singleQuote": false,
+  "jsxSingleQuote": false,
+  "trailingComma": "es5",
+  "bracketSpacing": true,
+  "bracketSameLine": false,
+  "printWidth": 100,
+  "tabWidth": 2,
+  "useTabs": false,
+  "sortPackageJson": false,
+  "ignorePatterns": [
+    "node_modules",
+    ".env",
+    ".env.local",
+    "pnpm-lock.yaml",
+    "tailwind.css",
+    ".babelrc.json",
+    "**/.react-email/",
+    "**/storybook-static/",
+    "**/.changeset/",
+    "**/dist/",
+    "internal-packages/tsql/src/grammar/",
+    // Maybe turn these on in the future
+    "**/*.yaml",
+    "**/*.mdx",
+    "**/*.md"
+  ]
+}

@@ -39,7 +39,10 @@ const { action } = createActionApiRoute(
     // Only allow dev environments — this endpoint uses finalizeRun which
     // skips PENDING_CANCEL and immediately finalizes executing runs.
     if (authentication.environment.type !== "DEVELOPMENT") {
-      return json({ error: "This endpoint is only available for dev environments" }, { status: 403 });
+      return json(
+        { error: "This endpoint is only available for dev environments" },
+        { status: 403 }
+      );
     }
 
     const environmentId = authentication.environment.id;
@@ -48,7 +51,10 @@ const { action } = createActionApiRoute(
     const rateLimitResult = await disconnectRateLimiter.limit(environmentId);
     if (!rateLimitResult.success) {
       return json(
-        { error: "Rate limit exceeded", retryAfter: Math.ceil((rateLimitResult.reset - Date.now()) / 1000) },
+        {
+          error: "Rate limit exceeded",
+          retryAfter: Math.ceil((rateLimitResult.reset - Date.now()) / 1000),
+        },
         { status: 429 }
       );
     }
@@ -94,10 +100,7 @@ const { action } = createActionApiRoute(
   }
 );
 
-async function cancelRunsInline(
-  runFriendlyIds: string[],
-  environmentId: string
-): Promise<number> {
+async function cancelRunsInline(runFriendlyIds: string[], environmentId: string): Promise<number> {
   const runIds = runFriendlyIds.map((fid) => RunId.toId(fid));
 
   const runs = await runStore.findRuns(

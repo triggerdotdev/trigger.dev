@@ -134,7 +134,6 @@ class TestFairQueueHelper {
     return this.fairQueue.getTotalInflightCount();
   }
 
-
   registerTelemetryGauges(options?: { observedTenants?: string[] }) {
     return this.fairQueue.registerTelemetryGauges(options);
   }
@@ -1371,5 +1370,4 @@ describe("FairQueue", () => {
       }
     );
   });
-
 });

@@ -131,10 +131,7 @@ export async function updateLastAccessedAtIfStale(
   tokenId: string,
   lastAccessedAt: Date | null
 ): Promise<void> {
-  if (
-    lastAccessedAt &&
-    Date.now() - lastAccessedAt.getTime() <= PAT_LAST_ACCESSED_THROTTLE_MS
-  ) {
+  if (lastAccessedAt && Date.now() - lastAccessedAt.getTime() <= PAT_LAST_ACCESSED_THROTTLE_MS) {
     return; // fresh — no roundtrip
   }
   await prisma.personalAccessToken.updateMany({

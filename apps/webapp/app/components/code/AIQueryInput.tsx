@@ -356,10 +356,10 @@ export function AIQueryInput({
                       {isLoading
                         ? "AI is thinking…"
                         : lastResult === "success"
-                        ? "Query generated"
-                        : lastResult === "error"
-                        ? "Generation failed"
-                        : "AI response"}
+                          ? "Query generated"
+                          : lastResult === "error"
+                            ? "Generation failed"
+                            : "AI response"}
                     </span>
                   </div>
                   {isLoading ? (

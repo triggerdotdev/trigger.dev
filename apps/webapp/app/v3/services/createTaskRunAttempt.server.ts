@@ -126,8 +126,8 @@ export class CreateTaskRunAttemptService extends BaseService {
       const nextAttemptNumber = taskRun.attempts[0]
         ? taskRun.attempts[0].number + 1
         : startAtZero
-        ? 0
-        : 1;
+          ? 0
+          : 1;
 
       if (nextAttemptNumber > MAX_TASK_RUN_ATTEMPTS) {
         const service = new CrashTaskRunService(this._prisma);

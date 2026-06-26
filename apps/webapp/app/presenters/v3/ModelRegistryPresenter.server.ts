@@ -6,7 +6,10 @@ import { z } from "zod";
 
 /** Format a Date for ClickHouse DateTime64 string params. */
 function formatDateForCH(date: Date): string {
-  return date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, "");
+  return date
+    .toISOString()
+    .replace("T", " ")
+    .replace(/\.\d{3}Z$/, "");
 }
 
 // --- Helpers ---
@@ -15,11 +18,21 @@ function formatDateForCH(date: Date): string {
 function inferProvider(modelName: string): string {
   const lower = modelName.toLowerCase();
   // OpenAI
-  if (/^(gpt-|o[1-9]|chatgpt|davinci|babbage|curie|ada|text-embedding|text-davinci|text-ada|text-babbage|text-curie|ft:)/.test(lower)) return "openai";
+  if (
+    /^(gpt-|o[1-9]|chatgpt|davinci|babbage|curie|ada|text-embedding|text-davinci|text-ada|text-babbage|text-curie|ft:)/.test(
+      lower
+    )
+  )
+    return "openai";
   // Anthropic
   if (lower.startsWith("claude-")) return "anthropic";
   // Google
-  if (/^(gemini-|palm-|text-bison|chat-bison|code-bison|codechat-bison|text-unicorn|textembedding-gecko)/.test(lower)) return "google";
+  if (
+    /^(gemini-|palm-|text-bison|chat-bison|code-bison|codechat-bison|text-unicorn|textembedding-gecko)/.test(
+      lower
+    )
+  )
+    return "google";
   // Meta
   if (/^(llama|code-llama|codellama)/.test(lower)) return "meta";
   // Mistral
@@ -57,15 +70,7 @@ export function formatModelId(provider: string, modelName: string): string {
  * this list fall back to alphabetical order after the listed ones. Within a
  * provider, models are always sorted by release date (newest first).
  */
-const PROVIDER_IMPORTANCE = [
-  "anthropic",
-  "openai",
-  "google",
-  "xai",
-  "meta",
-  "mistral",
-  "deepseek",
-];
+const PROVIDER_IMPORTANCE = ["anthropic", "openai", "google", "xai", "meta", "mistral", "deepseek"];
 
 function providerRank(provider: string): number {
   const index = PROVIDER_IMPORTANCE.indexOf(provider);
@@ -157,7 +162,13 @@ export type ModelDetail = ModelCatalogItem & {
 
 function buildFeatures(
   capabilities: string[],
-  catalogEntry: { supportsStructuredOutput: boolean; supportsParallelToolCalls: boolean; supportsStreamingToolCalls: boolean } | undefined
+  catalogEntry:
+    | {
+        supportsStructuredOutput: boolean;
+        supportsParallelToolCalls: boolean;
+        supportsStreamingToolCalls: boolean;
+      }
+    | undefined
 ): string[] {
   const features = new Set(capabilities);
   if (catalogEntry?.supportsStructuredOutput) features.add("structured_output");
@@ -353,14 +364,15 @@ export class ModelRegistryPresenter extends BasePresenter {
 
       // Pick representative: prefer the actual base model (no _baseModelName),
       // then "-latest" variant, then the newest by release date
-      let representative = group.find((m) => !m._baseModelName)
-        ?? group.find((m) => m.modelName.endsWith("-latest"))
-        ?? group.sort((a, b) => {
-            if (!a.releaseDate && !b.releaseDate) return 0;
-            if (!a.releaseDate) return 1;
-            if (!b.releaseDate) return -1;
-            return b.releaseDate.localeCompare(a.releaseDate);
-          })[0];
+      let representative =
+        group.find((m) => !m._baseModelName) ??
+        group.find((m) => m.modelName.endsWith("-latest")) ??
+        group.sort((a, b) => {
+          if (!a.releaseDate && !b.releaseDate) return 0;
+          if (!a.releaseDate) return 1;
+          if (!b.releaseDate) return -1;
+          return b.releaseDate.localeCompare(a.releaseDate);
+        })[0];
 
       // Nest the others as variants, sorted newest first
       const others = group
@@ -585,13 +597,14 @@ export class ModelRegistryPresenter extends BasePresenter {
       totalOutputTokens: summary.total_output_tokens,
       avgTtfc: summary.avg_ttfc,
       avgTps: summary.avg_tps,
-      taskBreakdown: !taskError && taskRows
-        ? taskRows.map((r) => ({
-            taskIdentifier: r.task_identifier,
-            calls: r.calls,
-            cost: r.cost,
-          }))
-        : [],
+      taskBreakdown:
+        !taskError && taskRows
+          ? taskRows.map((r) => ({
+              taskIdentifier: r.task_identifier,
+              calls: r.calls,
+              cost: r.cost,
+            }))
+          : [],
     };
   }
 
@@ -800,9 +813,7 @@ export class ModelRegistryPresenter extends BasePresenter {
 
   /** Convert a sparkline query result to a zero-filled bucket map. */
   #buildSparklineMap(
-    queryResult:
-      | [Error, null]
-      | [null, { response_model: string; bucket: number; val: number }[]],
+    queryResult: [Error, null] | [null, { response_model: string; bucket: number; val: number }[]],
     keys: string[],
     bucketKeys: number[]
   ): Record<string, number[]> {

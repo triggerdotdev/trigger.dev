@@ -10,6 +10,7 @@ import { projectPubSub } from "./projectPubSub.server";
 import { FailDeploymentService } from "./failDeployment.server";
 import { TimeoutDeploymentService } from "./timeoutDeployment.server";
 import { DeploymentService } from "./deployment.server";
+import { recordDeploymentOutcome } from "./recordDeploymentOutcome.server";
 import { engine } from "../runEngine.server";
 import { tryCatch } from "@trigger.dev/core";
 
@@ -76,6 +77,15 @@ export class FinalizeDeploymentService extends BaseService {
         // Only add the digest, if any
         imageReference: imageDigest ? `${deployment.imageReference}@${imageDigest}` : undefined,
       },
+    });
+
+    recordDeploymentOutcome({
+      status: "DEPLOYED",
+      deploymentFriendlyId: deployment.friendlyId,
+      organizationId: authenticatedEnv.organizationId,
+      projectId: authenticatedEnv.projectId,
+      environmentId: authenticatedEnv.id,
+      environmentType: authenticatedEnv.type,
     });
 
     const deploymentService = new DeploymentService();

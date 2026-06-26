@@ -13,8 +13,25 @@ import { isOrgMigrated } from "~/runEngine/concerns/computeMigration.server";
 import { backingForQueue, workerRegionRegistry } from "~/v3/workerRegions.server";
 import { globalFlagsRegistry } from "~/v3/globalFlagsRegistry.server";
 import { getEntitlement } from "~/services/platform.v3.server";
+import { startActiveSpan, attributesFromAuthenticatedEnv } from "~/v3/tracer.server";
 
 type TemplateCreationMode = "required" | "shadow" | "skip";
+
+// Why the mode was chosen — slices the compute.template.create span by path.
+type TemplateModeReason =
+  | "no-client"
+  | "no-project"
+  | "microvm-native"
+  | "migrated"
+  | "compute-access"
+  | "rollout"
+  | "none";
+
+type ResolvedTemplateMode = {
+  mode: TemplateCreationMode;
+  migrated: boolean;
+  reason: TemplateModeReason;
+};
 
 type ResolvedPreset = {
   name: MachinePresetName;
@@ -60,89 +77,113 @@ export class ComputeTemplateCreationService {
     prisma: PrismaClientOrTransaction;
     writer?: WritableStreamDefaultWriter;
   }): Promise<void> {
-    const mode = await this.resolveMode(options.projectId, options.prisma);
+    return startActiveSpan("compute.template.create", async (span) => {
+      const { mode, migrated, reason } = await this.resolveMode(options.projectId, options.prisma);
 
-    if (mode === "skip") {
-      return;
-    }
+      span.setAttributes({
+        ...attributesFromAuthenticatedEnv(options.authenticatedEnv),
+        "compute.template.mode": mode,
+        "compute.template.migrated": migrated,
+        "compute.template.reason": reason,
+        "compute.template.deployment_id": options.deploymentFriendlyId,
+        "compute.template.presets_total": this.presets.length,
+        "compute.template.presets_required": this.requiredPresets.size,
+      });
 
-    if (mode === "shadow") {
-      this.createTemplate(options.imageReference, { background: true })
-        .then((outcome) => {
-          if (outcome.error) {
-            logger.error("Shadow template creation failed", {
+      if (mode === "skip") {
+        span.setAttribute("compute.template.result", "skipped");
+        return;
+      }
+
+      if (mode === "shadow") {
+        // Shadow is fire-and-forget (background build), so the span only records
+        // that it was dispatched — the build outcome lands server-side later.
+        span.setAttribute("compute.template.result", "shadow_dispatched");
+        this.createTemplate(options.imageReference, { background: true })
+          .then((outcome) => {
+            if (outcome.error) {
+              logger.error("Shadow template creation failed", {
+                id: options.deploymentFriendlyId,
+                imageReference: options.imageReference,
+                error: outcome.error,
+              });
+            }
+          })
+          .catch((error) => {
+            logger.error("Shadow template creation threw unexpectedly", {
               id: options.deploymentFriendlyId,
               imageReference: options.imageReference,
-              error: outcome.error,
+              error: error instanceof Error ? error.message : String(error),
             });
-          }
-        })
-        .catch((error) => {
-          logger.error("Shadow template creation threw unexpectedly", {
-            id: options.deploymentFriendlyId,
-            imageReference: options.imageReference,
-            error: error instanceof Error ? error.message : String(error),
           });
-        });
-      return;
-    }
-
-    // Required mode
-    if (options.writer) {
-      try {
-        await options.writer.write(
-          `event: log\ndata: ${JSON.stringify({ message: "Building compute template..." })}\n\n`
-        );
-      } catch {
-        // Stream may be closed if client disconnected - continue with template creation
+        return;
       }
-    }
 
-    logger.info("Creating compute template (required mode)", {
-      id: options.deploymentFriendlyId,
-      imageReference: options.imageReference,
-      presets: this.presets.map((p) => p.name),
-      requiredPresets: [...this.requiredPresets],
-    });
+      // Required mode
+      if (options.writer) {
+        try {
+          await options.writer.write(
+            `event: log\ndata: ${JSON.stringify({ message: "Building compute template..." })}\n\n`
+          );
+        } catch {
+          // Stream may be closed if client disconnected - continue with template creation
+        }
+      }
 
-    const outcome = await this.createTemplate(options.imageReference);
-    const failureMessage = this.failureMessageForRequiredMode(
-      outcome,
-      options.deploymentFriendlyId,
-      options.imageReference
-    );
-
-    if (failureMessage) {
-      logger.error("Compute template creation failed", {
+      logger.info("Creating compute template (required mode)", {
         id: options.deploymentFriendlyId,
         imageReference: options.imageReference,
-        error: failureMessage,
+        presets: this.presets.map((p) => p.name),
+        requiredPresets: [...this.requiredPresets],
       });
 
-      const failService = new FailDeploymentService();
-      await failService.call(options.authenticatedEnv, options.deploymentFriendlyId, {
-        error: {
-          name: "TemplateCreationFailed",
-          message: `Failed to create compute template: ${failureMessage}`,
-        },
+      const outcome = await this.createTemplate(options.imageReference);
+      span.setAttribute("compute.template.presets_built", outcome.results.length);
+
+      const failureMessage = this.failureMessageForRequiredMode(
+        outcome,
+        options.deploymentFriendlyId,
+        options.imageReference
+      );
+
+      if (failureMessage) {
+        span.setAttributes({
+          "compute.template.result": "failed",
+          "compute.template.failure": failureMessage,
+        });
+
+        logger.error("Compute template creation failed", {
+          id: options.deploymentFriendlyId,
+          imageReference: options.imageReference,
+          error: failureMessage,
+        });
+
+        const failService = new FailDeploymentService();
+        await failService.call(options.authenticatedEnv, options.deploymentFriendlyId, {
+          error: {
+            name: "TemplateCreationFailed",
+            message: `Failed to create compute template: ${failureMessage}`,
+          },
+        });
+
+        throw new ServiceValidationError(`Compute template creation failed: ${failureMessage}`);
+      }
+
+      span.setAttribute("compute.template.result", "created");
+      logger.info("Compute template created", {
+        id: options.deploymentFriendlyId,
+        imageReference: options.imageReference,
+        results: outcome.results.length,
       });
-
-      throw new ServiceValidationError(`Compute template creation failed: ${failureMessage}`);
-    }
-
-    logger.info("Compute template created", {
-      id: options.deploymentFriendlyId,
-      imageReference: options.imageReference,
-      results: outcome.results.length,
     });
   }
 
   async resolveMode(
     projectId: string,
     prisma: PrismaClientOrTransaction
-  ): Promise<TemplateCreationMode> {
+  ): Promise<ResolvedTemplateMode> {
     if (!this.client) {
-      return "skip";
+      return { mode: "skip", migrated: false, reason: "no-client" };
     }
 
     const project = await prisma.project.findFirst({
@@ -158,11 +199,11 @@ export class ComputeTemplateCreationService {
     });
 
     if (!project) {
-      return "skip";
+      return { mode: "skip", migrated: false, reason: "no-project" };
     }
 
     if (project.defaultWorkerGroup?.workloadType === "MICROVM") {
-      return "required";
+      return { mode: "required", migrated: false, reason: "microvm-native" };
     }
 
     // Migrated orgs route runs to the compute backing even though their stored
@@ -194,22 +235,26 @@ export class ComputeTemplateCreationService {
       }
       if (migrated) {
         // required => template built at deploy (deploy fails on error); off => shadow.
-        return decision.flags?.computeMigrationRequireTemplate ? "required" : "shadow";
+        return {
+          mode: decision.flags?.computeMigrationRequireTemplate ? "required" : "shadow",
+          migrated: true,
+          reason: "migrated",
+        };
       }
     }
 
     const hasComputeAccess = await resolveComputeAccess(prisma, project.organization.featureFlags);
 
     if (hasComputeAccess) {
-      return "shadow";
+      return { mode: "shadow", migrated: false, reason: "compute-access" };
     }
 
     const rolloutPct = Number(env.COMPUTE_TEMPLATE_SHADOW_ROLLOUT_PCT ?? "0");
     if (rolloutPct > 0 && Math.random() * 100 < rolloutPct) {
-      return "shadow";
+      return { mode: "shadow", migrated: false, reason: "rollout" };
     }
 
-    return "skip";
+    return { mode: "skip", migrated: false, reason: "none" };
   }
 
   async createTemplate(

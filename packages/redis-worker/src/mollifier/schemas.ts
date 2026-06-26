@@ -35,7 +35,10 @@ const stringToError = z.string().transform((v, ctx) => {
   try {
     return BufferEntryError.parse(JSON.parse(v));
   } catch {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "expected JSON-encoded BufferEntryError" });
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "expected JSON-encoded BufferEntryError",
+    });
     return z.NEVER;
   }
 });

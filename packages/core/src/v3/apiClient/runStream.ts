@@ -251,9 +251,7 @@ export class SSEStreamSubscription implements StreamSubscription {
     this.retryJitter = options.retryJitter ?? 0.5;
     this.fetchTimeoutMs = options.fetchTimeoutMs ?? 30_000;
     this.stallTimeoutMs = options.stallTimeoutMs ?? 0;
-    this.nonRetryableStatuses = new Set(
-      options.nonRetryableStatuses ?? [400, 404, 409, 410, 422]
-    );
+    this.nonRetryableStatuses = new Set(options.nonRetryableStatuses ?? [400, 404, 409, 410, 422]);
   }
 
   /**

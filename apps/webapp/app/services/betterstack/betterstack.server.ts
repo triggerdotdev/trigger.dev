@@ -42,9 +42,7 @@ export type IncidentStatus = {
   title: string | null;
 };
 
-type CachedResult =
-  | { success: true; data: IncidentStatus }
-  | { success: false; error: unknown };
+type CachedResult = { success: true; data: IncidentStatus } | { success: false; error: unknown };
 
 const ctx = new DefaultStatefulContext();
 const memory = createLRUMemoryStore(100);
@@ -79,10 +77,7 @@ export class BetterStackClient {
     return cachedResult.val;
   }
 
-  private async fetchIncidentStatus(
-    apiKey: string,
-    statusPageId: string
-  ): Promise<CachedResult> {
+  private async fetchIncidentStatus(apiKey: string, statusPageId: string): Promise<CachedResult> {
     const headers = {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",

@@ -26,6 +26,15 @@ import { v3BulkActionPath } from "~/utils/pathBuilder";
 import { formatDateTime } from "~/components/primitives/DateTime";
 import pMap from "p-map";
 
+export type ProcessToCompletionOptions = {
+  /** Absolute timestamp (ms) after which processing stops and returns incomplete. */
+  deadline?: number;
+};
+
+export type ProcessToCompletionResult = {
+  completed: boolean;
+};
+
 export class BulkActionService extends BaseService {
   public async create(
     organizationId: string,
@@ -38,7 +47,10 @@ export class BulkActionService extends BaseService {
     const filters = await getFilters(payload, request);
 
     // Count the runs that will be affected by the bulk action
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      organizationId,
+      "standard"
+    );
     const runsRepository = new RunsRepository({
       clickhouse,
       prisma: this._replica as PrismaClient,
@@ -85,7 +97,42 @@ export class BulkActionService extends BaseService {
     };
   }
 
-  public async process(bulkActionId: string) {
+  public async processToCompletion(
+    bulkActionId: string,
+    options?: ProcessToCompletionOptions
+  ): Promise<ProcessToCompletionResult> {
+    while (true) {
+      const group = await this._prisma.bulkActionGroup.findFirst({
+        where: { id: bulkActionId },
+        select: { status: true },
+      });
+
+      if (!group) {
+        throw new Error(`Bulk action group not found: ${bulkActionId}`);
+      }
+
+      if (group.status === BulkActionStatus.COMPLETED) {
+        return { completed: true };
+      }
+
+      if (group.status === BulkActionStatus.ABORTED) {
+        return { completed: false };
+      }
+
+      if (options?.deadline !== undefined && Date.now() >= options.deadline) {
+        return { completed: false };
+      }
+
+      await this.process(bulkActionId, { continueInline: true });
+    }
+  }
+
+  public async process(
+    bulkActionId: string,
+    options?: {
+      continueInline?: boolean;
+    }
+  ) {
     // 1. Get the bulk action group
     const group = await this._prisma.bulkActionGroup.findFirst({
       where: { id: bulkActionId },
@@ -138,6 +185,10 @@ export class BulkActionService extends BaseService {
       return;
     }
 
+    if (group.status === BulkActionStatus.COMPLETED) {
+      return;
+    }
+
     // 2. Parse the params
     const rawParams = group.params && typeof group.params === "object" ? group.params : {};
     const finalizeRun = "finalizeRun" in rawParams && (rawParams as any).finalizeRun === true;
@@ -148,7 +199,10 @@ export class BulkActionService extends BaseService {
       ...rawParams,
     });
 
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(group.project.organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      group.project.organizationId,
+      "standard"
+    );
     const runsRepository = new RunsRepository({
       clickhouse,
       prisma: this._replica as PrismaClient,
@@ -367,6 +421,10 @@ export class BulkActionService extends BaseService {
     }
 
     // 6. If there are more runs to process, queue the next batch
+    if (options?.continueInline) {
+      return;
+    }
+
     await commonWorker.enqueue({
       id: `processBulkAction-${bulkActionId}`,
       job: "processBulkAction",

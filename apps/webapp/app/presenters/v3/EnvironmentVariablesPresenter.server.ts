@@ -1,12 +1,9 @@
 import { $replica, PrismaClient, PrismaReplicaClient, prisma } from "~/db.server";
-import { Project } from "~/models/project.server";
-import { User } from "~/models/user.server";
+import type { Project } from "~/models/project.server";
+import type { User } from "~/models/user.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import type { EnvironmentVariableUpdater } from "~/v3/environmentVariables/repository";
-import {
-  SyncEnvVarsMapping,
-  EnvSlug,
-} from "~/v3/vercel/vercelProjectIntegrationSchema";
+import { SyncEnvVarsMapping, EnvSlug } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { loadEnvironmentVariablesEnvironments } from "./environmentVariablesEnvironments.server";
 
@@ -117,8 +114,10 @@ export class EnvironmentVariablesPresenter {
           })
         : [];
 
-    const usersRecord: Record<string, { id: string; name: string | null; displayName: string | null; avatarUrl: string | null }> =
-      Object.fromEntries(users.map((u) => [u.id, u]));
+    const usersRecord: Record<
+      string,
+      { id: string; name: string | null; displayName: string | null; avatarUrl: string | null }
+    > = Object.fromEntries(users.map((u) => [u.id, u]));
 
     const repository = new EnvironmentVariablesRepository(this.#prismaClient, this.#replicaClient);
 
@@ -146,7 +145,8 @@ export class EnvironmentVariablesPresenter {
 
     if (vercelIntegration) {
       vercelSyncEnvVarsMapping = vercelIntegration.parsedIntegrationData.syncEnvVarsMapping;
-      vercelPullEnvVarsBeforeBuild = vercelIntegration.parsedIntegrationData.config.pullEnvVarsBeforeBuild ?? null;
+      vercelPullEnvVarsBeforeBuild =
+        vercelIntegration.parsedIntegrationData.config.pullEnvVarsBeforeBuild ?? null;
     }
 
     return {

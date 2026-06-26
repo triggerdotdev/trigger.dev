@@ -222,13 +222,16 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
   }
 
   #orderQueuesByEnvs(envs: string[], snapshot: FairQueueSnapshot): Array<EnvQueues> {
-    const queuesByEnv = snapshot.queues.reduce((acc, queue) => {
-      if (!acc[queue.env]) {
-        acc[queue.env] = [];
-      }
-      acc[queue.env].push(queue);
-      return acc;
-    }, {} as Record<string, Array<FairQueue>>);
+    const queuesByEnv = snapshot.queues.reduce(
+      (acc, queue) => {
+        if (!acc[queue.env]) {
+          acc[queue.env] = [];
+        }
+        acc[queue.env].push(queue);
+        return acc;
+      },
+      {} as Record<string, Array<FairQueue>>
+    );
 
     return envs.reduce((acc, envId) => {
       if (queuesByEnv[envId]) {
@@ -391,12 +394,15 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
 
       const envIdsAtFullConcurrency = new Set(envsAtFullConcurrency.map((env) => env.id));
 
-      const envsSnapshot = envs.reduce((acc, env) => {
-        if (!envIdsAtFullConcurrency.has(env.id)) {
-          acc[env.id] = env;
-        }
-        return acc;
-      }, {} as Record<string, { concurrency: FairQueueConcurrency }>);
+      const envsSnapshot = envs.reduce(
+        (acc, env) => {
+          if (!envIdsAtFullConcurrency.has(env.id)) {
+            acc[env.id] = env;
+          }
+          return acc;
+        },
+        {} as Record<string, { concurrency: FairQueueConcurrency }>
+      );
 
       span.setAttributes({
         env_count: envs.length,
@@ -427,13 +433,16 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
 
   #selectTopEnvs(queues: FairQueue[], maximumEnvCount: number): Set<string> {
     // Group queues by env
-    const queuesByEnv = queues.reduce((acc, queue) => {
-      if (!acc[queue.env]) {
-        acc[queue.env] = [];
-      }
-      acc[queue.env].push(queue);
-      return acc;
-    }, {} as Record<string, FairQueue[]>);
+    const queuesByEnv = queues.reduce(
+      (acc, queue) => {
+        if (!acc[queue.env]) {
+          acc[queue.env] = [];
+        }
+        acc[queue.env].push(queue);
+        return acc;
+      },
+      {} as Record<string, FairQueue[]>
+    );
 
     // Calculate average age for each env
     const envAverageAges = Object.entries(queuesByEnv).map(([envId, envQueues]) => {

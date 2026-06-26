@@ -6,7 +6,18 @@
  */
 
 // Test main export
-import { task, logger, schedules, runs, configure, queue, retry, wait, metadata, tags } from "@trigger.dev/sdk";
+import {
+  task,
+  logger,
+  schedules,
+  runs,
+  configure,
+  queue,
+  retry,
+  wait,
+  metadata,
+  tags,
+} from "@trigger.dev/sdk";
 
 // Test /v3 subpath (legacy, but should still work)
 import { task as taskV3 } from "@trigger.dev/sdk/v3";

@@ -1790,17 +1790,17 @@ describe("StreamBatchItemsService", () => {
         `\n[streamBatchItems perf] runCount=${runCount}\n` +
           `  large payloads (${offloadLatencyMs}ms/item offload):\n` +
           `    concurrency=1   ${offloadSeqMs.toFixed(0)}ms\n` +
-          `    concurrency=10  ${offload10Ms.toFixed(0)}ms  (${(
-            offloadSeqMs / offload10Ms
-          ).toFixed(1)}x faster)\n` +
-          `    concurrency=50  ${offload50Ms.toFixed(0)}ms  (${(
-            offloadSeqMs / offload50Ms
-          ).toFixed(1)}x faster)\n` +
+          `    concurrency=10  ${offload10Ms.toFixed(0)}ms  (${(offloadSeqMs / offload10Ms).toFixed(
+            1
+          )}x faster)\n` +
+          `    concurrency=50  ${offload50Ms.toFixed(0)}ms  (${(offloadSeqMs / offload50Ms).toFixed(
+            1
+          )}x faster)\n` +
           `  small payloads (Redis enqueue only, no offload):\n` +
           `    concurrency=1   ${enqueueSeqMs.toFixed(0)}ms\n` +
-          `    concurrency=10  ${enqueue10Ms.toFixed(0)}ms  (${(
-            enqueueSeqMs / enqueue10Ms
-          ).toFixed(1)}x faster)\n`
+          `    concurrency=10  ${enqueue10Ms.toFixed(0)}ms  (${(enqueueSeqMs / enqueue10Ms).toFixed(
+            1
+          )}x faster)\n`
       );
 
       // Sequential floor: N items each held for offloadLatencyMs cannot finish

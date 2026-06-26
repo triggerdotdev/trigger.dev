@@ -68,9 +68,7 @@ export function MaxProjectsSection({
         <Property.Table>
           <Property.Item>
             <Property.Label>Limit</Property.Label>
-            <Property.Value>
-              {maximumProjectCount.toLocaleString()}
-            </Property.Value>
+            <Property.Value>{maximumProjectCount.toLocaleString()}</Property.Value>
           </Property.Item>
         </Property.Table>
       ) : (
@@ -89,11 +87,7 @@ export function MaxProjectsSection({
             <FormError>{fieldError("maximumProjectCount")}</FormError>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              type="submit"
-              variant="primary/medium"
-              disabled={isSubmitting || !value.trim()}
-            >
+            <Button type="submit" variant="primary/medium" disabled={isSubmitting || !value.trim()}>
               Save
             </Button>
             <Button

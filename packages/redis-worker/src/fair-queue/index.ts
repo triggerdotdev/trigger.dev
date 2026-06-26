@@ -192,7 +192,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
       shardCount: this.shardCount,
     });
 
-
     if (options.concurrencyGroups && options.concurrencyGroups.length > 0) {
       this.concurrencyManager = new ConcurrencyManager({
         redis: options.redis,
@@ -1248,11 +1247,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     }
 
     const descriptor: QueueDescriptor = storedMessage
-      ? this.queueDescriptorCache.get(queueId) ?? {
+      ? (this.queueDescriptorCache.get(queueId) ?? {
           id: queueId,
           tenantId: storedMessage.tenantId,
           metadata: storedMessage.metadata ?? {},
-        }
+        })
       : { id: queueId, tenantId: this.keys.extractTenantId(queueId), metadata: {} };
 
     // Complete in visibility manager
@@ -1264,10 +1263,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     }
 
     // Update both old and new indexes, clean up caches if queue is empty
-    const { queueEmpty } = await this.#updateAllIndexesAfterDequeue(
-      queueId,
-      descriptor.tenantId
-    );
+    const { queueEmpty } = await this.#updateAllIndexesAfterDequeue(queueId, descriptor.tenantId);
     if (queueEmpty) {
       this.queueDescriptorCache.delete(queueId);
       this.queueCooloffStates.delete(queueId);
@@ -1306,11 +1302,11 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     }
 
     const descriptor: QueueDescriptor = storedMessage
-      ? this.queueDescriptorCache.get(queueId) ?? {
+      ? (this.queueDescriptorCache.get(queueId) ?? {
           id: queueId,
           tenantId: storedMessage.tenantId,
           metadata: storedMessage.metadata ?? {},
-        }
+        })
       : { id: queueId, tenantId: this.keys.extractTenantId(queueId), metadata: {} };
 
     // Release back to queue (visibility manager updates dispatch indexes atomically)

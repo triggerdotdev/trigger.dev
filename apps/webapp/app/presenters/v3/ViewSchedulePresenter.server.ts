@@ -75,7 +75,10 @@ export class ViewSchedulePresenter {
       ? nextScheduledTimestamps(schedule.generatorExpression, schedule.timezone, new Date(), 5)
       : [];
 
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(schedule.project.organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      schedule.project.organizationId,
+      "standard"
+    );
     const runPresenter = new NextRunListPresenter(this.#prismaClient, clickhouse);
     const { runs } = await runPresenter.call(schedule.project.organizationId, environmentId, {
       projectId: schedule.project.id,
@@ -118,7 +121,7 @@ export class ViewSchedulePresenter {
       timezone: result.schedule.timezone,
       externalId: result.schedule.externalId ?? undefined,
       deduplicationKey: result.schedule.userProvidedDeduplicationKey
-        ? result.schedule.deduplicationKey ?? undefined
+        ? (result.schedule.deduplicationKey ?? undefined)
         : undefined,
       environments: result.schedule.instances.map((instance) => ({
         id: instance.environment.id,

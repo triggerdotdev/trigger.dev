@@ -231,16 +231,15 @@ export default function Page() {
     navigation.formMethod === "post" &&
     navigation.formData?.get("action") === "create";
 
-  const [form, { channelValue: channelValue, alertTypes, environmentTypes, type, integrationId }] =
-    useForm({
-      id: "create-alert",
-      // TODO: type this
-      lastSubmission: lastSubmission as any,
-      onValidate({ formData }) {
-        return parse(formData, { schema: FormSchema });
-      },
-      shouldRevalidate: "onSubmit",
-    });
+  const [form, { channelValue, alertTypes, environmentTypes, type, integrationId }] = useForm({
+    id: "create-alert",
+    // TODO: type this
+    lastSubmission: lastSubmission as any,
+    onValidate({ formData }) {
+      return parse(formData, { schema: FormSchema });
+    },
+    shouldRevalidate: "onSubmit",
+  });
 
   useEffect(() => {
     setIsOpen(true);

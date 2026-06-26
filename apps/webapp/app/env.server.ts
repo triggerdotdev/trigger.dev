@@ -97,6 +97,27 @@ const EnvironmentSchema = z
     DATABASE_CONNECTION_LIMIT: z.coerce.number().int().default(10),
     DATABASE_POOL_TIMEOUT: z.coerce.number().int().default(60),
     DATABASE_CONNECTION_TIMEOUT: z.coerce.number().int().default(20),
+    // Dashboard-agent conversation store. Cloud points this at the dedicated
+    // PlanetScale database; when unset it falls back to DATABASE_URL (OSS), where
+    // the tables live in the isolated `trigger_dashboard_agent` schema.
+    DASHBOARD_AGENT_DATABASE_URL: z.string().optional(),
+    // The secret key (tr_*) for the runtime environment the dashboard-agent task
+    // is deployed to. The chat session is created in that environment via the
+    // standard chat.agent SDK flow. When unset, the live agent is disabled — the
+    // conversation store / History still work, no chat can start.
+    DASHBOARD_AGENT_SECRET_KEY: z.string().optional(),
+    // Global default for the `hasDashboardAgentAccess` flag. "0" (off) ships the
+    // agent dark; flip to "1" to enable it for everyone at GA. Per-org overrides
+    // (org featureFlags) win regardless.
+    DASHBOARD_AGENT_ENABLED: z.string().default("0"),
+    // "1" gives admins/impersonators an everywhere-preview (default off),
+    // separate from the per-org rollout flag above.
+    DASHBOARD_AGENT_ADMIN_PREVIEW: z.string().default("0"),
+    // Anthropic key for the dashboard agent's Head Start route only (the warm
+    // first-turn step-1 LLM call runs in this process). The agent run itself
+    // uses its own key on the Trigger side. When unset, Head Start is disabled
+    // and the first turn falls back to the normal cold-start path.
+    ANTHROPIC_API_KEY: z.string().optional(),
     DIRECT_URL: z
       .string()
       .refine(
@@ -535,6 +556,9 @@ const EnvironmentSchema = z
     // log-only mode before enforcement.
     DEPRECATE_V3_CLI_DEPLOYS_ENABLED: z.string().default("0"),
 
+    // Verify the deploy image exists before promoting. Disable for out-of-band/air-gapped push. ECR only.
+    DEPLOY_IMAGE_VERIFICATION_ENABLED: BoolEnv.default(true),
+
     OBJECT_STORE_BASE_URL: z.string().optional(),
     OBJECT_STORE_BUCKET: z.string().optional(),
     OBJECT_STORE_ACCESS_KEY_ID: z.string().optional(),
@@ -809,7 +833,14 @@ const EnvironmentSchema = z
     RUN_ENGINE_RETRY_WARM_START_THRESHOLD_MS: z.coerce.number().int().default(30_000),
     RUN_ENGINE_PROCESS_WORKER_QUEUE_DEBOUNCE_MS: z.coerce.number().int().default(200),
     RUN_ENGINE_DEQUEUE_BLOCKING_TIMEOUT_SECONDS: z.coerce.number().int().default(10),
+    RUN_ENGINE_DEQUEUE_DISABLED_WORKER_QUEUES: z.string().optional(),
     RUN_ENGINE_MASTER_QUEUE_CONSUMERS_INTERVAL_MS: z.coerce.number().int().default(1000),
+    // Off by default. Enable on a single service (e.g. the engine worker) so only one
+    // instance reports worker queue length, rather than every replica.
+    RUN_ENGINE_WORKER_QUEUE_OBSERVER_ENABLED: z.string().default("0"),
+    RUN_ENGINE_WORKER_QUEUE_OBSERVER_INTERVAL_MS: z.coerce.number().int().default(30_000),
+    // Comma-separated cloud providers to exclude from worker queue length observation.
+    RUN_ENGINE_WORKER_QUEUE_OBSERVER_EXCLUDED_CLOUD_PROVIDERS: z.string().default("digitalocean"),
     RUN_ENGINE_MASTER_QUEUE_COOLOFF_PERIOD_MS: z.coerce.number().int().default(10_000),
     RUN_ENGINE_MASTER_QUEUE_COOLOFF_COUNT_THRESHOLD: z.coerce.number().int().default(10),
     RUN_ENGINE_MASTER_QUEUE_CONSUMER_DEQUEUE_COUNT: z.coerce.number().int().default(10),
@@ -1471,6 +1502,39 @@ const EnvironmentSchema = z
     ALERTS_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
     ALERTS_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+    BILLING_LIMIT_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
+    BILLING_LIMIT_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
+    BILLING_LIMIT_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+    BILLING_LIMIT_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
+    BILLING_LIMIT_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
+    BILLING_LIMIT_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(20),
+    BILLING_LIMIT_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+    BILLING_LIMIT_WORKER_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    BILLING_LIMIT_RECONCILE_INTERVAL_MS: z.coerce.number().int().default(90_000),
+    BILLING_LIMIT_WORKER_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    BILLING_LIMIT_WORKER_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
+      ),
+    BILLING_LIMIT_WORKER_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    BILLING_LIMIT_WORKER_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    BILLING_LIMIT_WORKER_REDIS_TLS_DISABLED: z
+      .string()
+      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
     SCHEDULE_ENGINE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
     SCHEDULE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     SCHEDULE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
@@ -1645,8 +1709,16 @@ const EnvironmentSchema = z
     // Bound read-in-order memory on object-storage reads: each part opens a per-column read
     // stream, and the default ~1 MiB+ S3 buffers dominate peak memory. These two byte sizes
     // cap the per-stream buffers and exist on every supported ClickHouse, so they are always on.
-    CLICKHOUSE_LOGS_LIST_PREFETCH_BUFFER_SIZE: z.coerce.number().int().nonnegative().default(262_144),
-    CLICKHOUSE_LOGS_LIST_MAX_READ_BUFFER_SIZE: z.coerce.number().int().nonnegative().default(262_144),
+    CLICKHOUSE_LOGS_LIST_PREFETCH_BUFFER_SIZE: z.coerce
+      .number()
+      .int()
+      .nonnegative()
+      .default(262_144),
+    CLICKHOUSE_LOGS_LIST_MAX_READ_BUFFER_SIZE: z.coerce
+      .number()
+      .int()
+      .nonnegative()
+      .default(262_144),
     // The decisive lever on Cloud SharedMergeTree, but it only exists on newer ClickHouse and
     // is a no-op on local-disk MergeTree, so it is opt-in: unset means it is never sent (safe on
     // any self-hosted version). Set to 0 on object-storage deployments to get the memory win.
@@ -1738,7 +1810,10 @@ const EnvironmentSchema = z
       .optional()
       .transform((v) => v ?? process.env.CLICKHOUSE_URL),
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
-    REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+    REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce
+      .number()
+      .int()
+      .optional(),
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_LOG_LEVEL: z
       .enum(["log", "error", "warn", "info", "debug"])

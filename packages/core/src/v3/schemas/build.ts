@@ -1,12 +1,6 @@
 import { z } from "zod";
 import { ConfigManifest } from "./config.js";
-import {
-  PromptManifest,
-  QueueManifest,
-  SkillManifest,
-  TaskFile,
-  TaskManifest,
-} from "./schemas.js";
+import { PromptManifest, QueueManifest, SkillManifest, TaskFile, TaskManifest } from "./schemas.js";
 
 export const BuildExternal = z.object({
   name: z.string(),

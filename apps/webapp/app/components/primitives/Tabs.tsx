@@ -207,9 +207,7 @@ export function TabButton({
     >
       <>
         <div className="flex items-center gap-1">
-          <span
-            className={"text-sm transition duration-200 text-text-bright"}
-          >
+          <span className={"text-sm transition duration-200 text-text-bright"}>
             {props.children}
           </span>
           {shortcut && <ShortcutKey className={cn("")} shortcut={shortcut} variant={"small"} />}

@@ -51,12 +51,7 @@ type EnsureRunForSessionParams = {
    */
   session: Pick<
     Session,
-    | "id"
-    | "friendlyId"
-    | "taskIdentifier"
-    | "triggerConfig"
-    | "currentRunId"
-    | "currentRunVersion"
+    "id" | "friendlyId" | "taskIdentifier" | "triggerConfig" | "currentRunId" | "currentRunVersion"
   >;
   environment: AuthenticatedEnvironment;
   reason: EnsureRunReason;
@@ -335,12 +330,7 @@ type SwapSessionRunParams = {
    */
   session: Pick<
     Session,
-    | "id"
-    | "friendlyId"
-    | "taskIdentifier"
-    | "triggerConfig"
-    | "currentRunId"
-    | "currentRunVersion"
+    "id" | "friendlyId" | "taskIdentifier" | "triggerConfig" | "currentRunId" | "currentRunVersion"
   >;
   /**
    * The run requesting the swap. Optimistic claim requires
@@ -382,9 +372,7 @@ export type SwapSessionRunResult = {
  * a parallel append-time probe that already swapped to a different
  * run wins the race and `swapped: false` is surfaced.
  */
-export async function swapSessionRun(
-  params: SwapSessionRunParams
-): Promise<SwapSessionRunResult> {
+export async function swapSessionRun(params: SwapSessionRunParams): Promise<SwapSessionRunResult> {
   const { session, callingRunId, environment, reason, payloadOverrides } = params;
 
   // `callingRunId` is the internal cuid (`Session.currentRunId` stores
@@ -515,11 +503,7 @@ async function getRunStatusAndFriendlyId(
  * acceptable degraded behavior.
  */
 async function resolveRunFriendlyId(runId: string): Promise<string> {
-  const row = await runStore.findRun(
-    { id: runId },
-    { select: { friendlyId: true } },
-    $replica
-  );
+  const row = await runStore.findRun({ id: runId }, { select: { friendlyId: true } }, $replica);
   return row?.friendlyId ?? runId;
 }
 

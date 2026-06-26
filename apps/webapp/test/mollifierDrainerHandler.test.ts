@@ -138,7 +138,7 @@ describe("createDrainerHandler", () => {
         payload: { taskIdentifier: "t" },
         attempts: 0,
         createdAt: new Date(),
-      } as any),
+      } as any)
     ).rejects.toThrow("Can't reach database server");
     // Retryable: we do NOT write a SYSTEM_FAILURE row, the entry should
     // be requeued for another shot.
@@ -173,7 +173,7 @@ describe("createDrainerHandler", () => {
         payload: { taskIdentifier: "t", environment: envFixture },
         attempts: 0,
         createdAt: new Date(),
-      } as any),
+      } as any)
     ).resolves.toBeUndefined();
 
     expect(trigger).toHaveBeenCalledOnce();
@@ -213,7 +213,7 @@ describe("createDrainerHandler", () => {
         },
         attempts: 0,
         createdAt: new Date(),
-      } as any),
+      } as any)
     ).resolves.toBeUndefined();
 
     expect(createFailedTaskRun).toHaveBeenCalledOnce();
@@ -244,7 +244,7 @@ describe("createDrainerHandler", () => {
         payload: { taskIdentifier: "t", environment: envFixture },
         attempts: 0,
         createdAt: new Date(),
-      } as any),
+      } as any)
     ).rejects.toThrow("engine rejected the snapshot");
     // Drainer's outer drainOne loop now decides retry vs buffer.fail.
     expect(createFailedTaskRun).toHaveBeenCalledOnce();
@@ -301,9 +301,7 @@ describe("createDrainerHandler", () => {
     // while the run keeps executing.
     const friendlyId = RunId.generate().friendlyId;
     const createCancelledRun = vi.fn(async () => {
-      throw new Error(
-        `createCancelledRun conflict: existing run ${friendlyId} has status PENDING`
-      );
+      throw new Error(`createCancelledRun conflict: existing run ${friendlyId} has status PENDING`);
     });
     const cancelRun = vi.fn(async () => ({ alreadyFinished: false }));
     const handler = createDrainerHandler({
@@ -462,7 +460,7 @@ describe("createDrainerHandler", () => {
         payload: { taskIdentifier: "t" /* no environment */ },
         attempts: 0,
         createdAt: new Date(),
-      } as any),
+      } as any)
     ).rejects.toThrow("engine rejected the snapshot");
     expect(createFailedTaskRun).not.toHaveBeenCalled();
   });

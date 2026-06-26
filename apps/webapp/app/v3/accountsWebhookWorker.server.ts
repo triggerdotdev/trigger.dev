@@ -79,9 +79,7 @@ function initializeWorker() {
   // Only poll on worker-role instances (same gate as commonWorker) and
   // only when the feature is enabled (no plugin loaded otherwise).
   if (env.COMMON_WORKER_ENABLED === "true" && env.SSO_ENABLED) {
-    logger.debug(
-      `👨‍🏭 Starting accounts webhook worker at host ${env.COMMON_WORKER_REDIS_HOST}`
-    );
+    logger.debug(`👨‍🏭 Starting accounts webhook worker at host ${env.COMMON_WORKER_REDIS_HOST}`);
     worker.start();
   }
 

@@ -462,9 +462,10 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
       | undefined;
     const baseURLOption = options.baseURL ?? DEFAULT_BASE_URL;
     const streamOverride = options.streamBaseURL;
-    this.resolveBaseURLFn = typeof baseURLOption === "function"
-      ? (ctx) => (ctx.endpoint === "out" && streamOverride ? streamOverride : baseURLOption(ctx))
-      : (ctx) => (ctx.endpoint === "out" && streamOverride ? streamOverride : baseURLOption);
+    this.resolveBaseURLFn =
+      typeof baseURLOption === "function"
+        ? (ctx) => (ctx.endpoint === "out" && streamOverride ? streamOverride : baseURLOption(ctx))
+        : (ctx) => (ctx.endpoint === "out" && streamOverride ? streamOverride : baseURLOption);
     this.fetchOverride = options.fetch;
     this.extraHeaders = options.headers ?? {};
     this.streamTimeoutSeconds = options.streamTimeoutSeconds ?? DEFAULT_STREAM_TIMEOUT_SECONDS;
@@ -687,9 +688,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
     });
 
     if (!response.ok) {
-      throw new Error(
-        `chat.handover endpoint returned ${response.status} ${response.statusText}`
-      );
+      throw new Error(`chat.handover endpoint returned ${response.status} ${response.statusText}`);
     }
     if (!response.body) {
       throw new Error("chat.handover endpoint returned no response body");
@@ -906,10 +905,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
    * `StreamTextResult`); for `void`-returning side-effect-only actions
    * the stream completes immediately with `trigger:turn-complete`.
    */
-  sendAction = async (
-    chatId: string,
-    action: unknown
-  ): Promise<ReadableStream<UIMessageChunk>> => {
+  sendAction = async (chatId: string, action: unknown): Promise<ReadableStream<UIMessageChunk>> => {
     if (this.coordinator) {
       if (this.coordinator.isReadOnly(chatId)) {
         throw new Error("This chat is active in another tab");
@@ -1320,7 +1316,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
         const sseCtx: ChatTransportEndpointContext = { endpoint: "out", chatId };
         const fetchOverride = this.fetchOverride;
         const sseFetchClient: typeof fetch | undefined = fetchOverride
-          ? ((input, init) => {
+          ? (((input, init) => {
               if (typeof input === "string") {
                 return fetchOverride(input, init ?? {}, sseCtx);
               }
@@ -1340,7 +1336,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
                 },
                 sseCtx
               );
-            }) as typeof fetch
+            }) as typeof fetch)
           : undefined;
         const connectSseOnce = async (token: string) => {
           const subscription = new SSEStreamSubscription(streamUrl, {
@@ -1448,9 +1444,7 @@ export class TriggerChatTransport implements ChatTransport<UIMessage> {
             // when no header is present so the deploy-skew window
             // closes turns correctly.
             let controlValue = controlSubtype(value.headers);
-            let legacyChunk:
-              | { type?: string; publicAccessToken?: string }
-              | undefined;
+            let legacyChunk: { type?: string; publicAccessToken?: string } | undefined;
             if (!controlValue && value.chunk && typeof value.chunk === "object") {
               const chunk = value.chunk as { type?: unknown; publicAccessToken?: unknown };
               if (chunk.type === "trigger:turn-complete") {

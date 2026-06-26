@@ -527,14 +527,17 @@ describe("FairDequeuingStrategy", () => {
       const result = flattenResults(envResult);
 
       // Group queues by environment
-      const queuesByEnv = result.reduce((acc, queueId) => {
-        const envId = keyProducer.envIdFromQueue(queueId);
-        if (!acc[envId]) {
-          acc[envId] = [];
-        }
-        acc[envId].push(queueId);
-        return acc;
-      }, {} as Record<string, string[]>);
+      const queuesByEnv = result.reduce(
+        (acc, queueId) => {
+          const envId = keyProducer.envIdFromQueue(queueId);
+          if (!acc[envId]) {
+            acc[envId] = [];
+          }
+          acc[envId].push(queueId);
+          return acc;
+        },
+        {} as Record<string, string[]>
+      );
 
       // Verify that:
       // 1. We got all queues

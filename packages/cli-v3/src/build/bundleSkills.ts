@@ -39,9 +39,7 @@ export type CopySkillFoldersOptions = {
  * and indirectly by the deploy path (via `bundleSkills` which discovers
  * skills via its own indexer pass first, then delegates here).
  */
-export async function copySkillFolders(
-  options: CopySkillFoldersOptions
-): Promise<SkillManifest[]> {
+export async function copySkillFolders(options: CopySkillFoldersOptions): Promise<SkillManifest[]> {
   const { skills, destinationRoot, workingDir, logger } = options;
 
   if (skills.length === 0) {
@@ -49,9 +47,7 @@ export async function copySkillFolders(
   }
 
   for (const skill of skills) {
-    const callerDir = skill.filePath
-      ? resolvePath(workingDir, skill.filePath, "..")
-      : workingDir;
+    const callerDir = skill.filePath ? resolvePath(workingDir, skill.filePath, "..") : workingDir;
     const sourcePath = isAbsolute(skill.sourcePath)
       ? skill.sourcePath
       : resolvePath(callerDir, skill.sourcePath);
@@ -101,9 +97,7 @@ export async function copySkillFolders(
  * No `trigger.config.ts` changes required — discovery is side-effect
  * based, same mechanism as task/prompt registration.
  */
-export async function bundleSkills(
-  options: BundleSkillsOptions
-): Promise<BundleSkillsResult> {
+export async function bundleSkills(options: BundleSkillsOptions): Promise<BundleSkillsResult> {
   const { buildManifest, buildManifestPath, workingDir, env, logger } = options;
 
   let skills: SkillManifest[];

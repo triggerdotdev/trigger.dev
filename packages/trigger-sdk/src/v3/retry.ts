@@ -164,12 +164,9 @@ async function retryFetch(
           const abortController = new AbortController();
 
           const timeoutId = init?.timeoutInMs
-            ? setTimeout(
-                () => {
-                  abortController.abort();
-                },
-                init?.timeoutInMs
-              )
+            ? setTimeout(() => {
+                abortController.abort();
+              }, init?.timeoutInMs)
             : undefined;
 
           init?.signal?.addEventListener("abort", () => {

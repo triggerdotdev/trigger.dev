@@ -83,10 +83,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     return new Response("Not found", { status: 404 });
   }
 
-  const eventRepository = await getEventRepositoryForStore(
-    run.taskEventStore,
-    run.organizationId
-  );
+  const eventRepository = await getEventRepositoryForStore(run.taskEventStore, run.organizationId);
 
   // Stream the trace straight from the store to the gzip response, one event at
   // a time, never materialising the full set or building a tree. This keeps the

@@ -48,56 +48,64 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     const deploymentService = new DeploymentService();
 
-    return await deploymentService.generateRegistryCredentials(authenticatedEnv, deploymentId).match(
-      (result) => {
-        return json(
-          {
-            username: result.username,
-            password: result.password,
-            expiresAt: result.expiresAt.toISOString(),
-            repositoryUri: result.repositoryUri,
-          } satisfies GenerateRegistryCredentialsResponseBody,
-          { status: 200 }
-        );
-      },
-      (error) => {
-        switch (error.type) {
-          case "deployment_not_found":
-            return json({ error: "Deployment not found" }, { status: 404 });
-          case "deployment_has_no_image_reference":
-            logger.error(
-              "Failed to generate registry credentials: deployment_has_no_image_reference",
-              { deploymentId }
-            );
-            return json({ error: "Deployment has no image reference" }, { status: 409 });
-          case "deployment_is_already_final":
-            return json(
-              { error: "Failed to generate registry credentials: deployment_is_already_final" },
-              { status: 409 }
-            );
-          case "missing_registry_credentials":
-            logger.error("Failed to generate registry credentials: missing_registry_credentials", {
-              deploymentId,
-            });
-            return json({ error: "Missing registry credentials" }, { status: 409 });
-          case "registry_not_supported":
-            logger.error("Failed to generate registry credentials: registry_not_supported", {
-              deploymentId,
-            });
-            return json({ error: "Registry not supported" }, { status: 409 });
-          case "registry_region_not_supported":
-            logger.error("Failed to generate registry credentials: registry_region_not_supported", {
-              deploymentId,
-            });
-            return json({ error: "Registry region not supported" }, { status: 409 });
-          case "other":
-          default:
-            error.type satisfies "other";
-            logger.error("Failed to generate registry credentials", { error: error.cause });
-            return json({ error: "Internal server error" }, { status: 500 });
+    return await deploymentService
+      .generateRegistryCredentials(authenticatedEnv, deploymentId)
+      .match(
+        (result) => {
+          return json(
+            {
+              username: result.username,
+              password: result.password,
+              expiresAt: result.expiresAt.toISOString(),
+              repositoryUri: result.repositoryUri,
+            } satisfies GenerateRegistryCredentialsResponseBody,
+            { status: 200 }
+          );
+        },
+        (error) => {
+          switch (error.type) {
+            case "deployment_not_found":
+              return json({ error: "Deployment not found" }, { status: 404 });
+            case "deployment_has_no_image_reference":
+              logger.error(
+                "Failed to generate registry credentials: deployment_has_no_image_reference",
+                { deploymentId }
+              );
+              return json({ error: "Deployment has no image reference" }, { status: 409 });
+            case "deployment_is_already_final":
+              return json(
+                { error: "Failed to generate registry credentials: deployment_is_already_final" },
+                { status: 409 }
+              );
+            case "missing_registry_credentials":
+              logger.error(
+                "Failed to generate registry credentials: missing_registry_credentials",
+                {
+                  deploymentId,
+                }
+              );
+              return json({ error: "Missing registry credentials" }, { status: 409 });
+            case "registry_not_supported":
+              logger.error("Failed to generate registry credentials: registry_not_supported", {
+                deploymentId,
+              });
+              return json({ error: "Registry not supported" }, { status: 409 });
+            case "registry_region_not_supported":
+              logger.error(
+                "Failed to generate registry credentials: registry_region_not_supported",
+                {
+                  deploymentId,
+                }
+              );
+              return json({ error: "Registry region not supported" }, { status: 409 });
+            case "other":
+            default:
+              error.type satisfies "other";
+              logger.error("Failed to generate registry credentials", { error: error.cause });
+              return json({ error: "Internal server error" }, { status: 500 });
+          }
         }
-      }
-    );
+      );
   } catch (error) {
     if (error instanceof Response) throw error;
     logger.error("Failed to generate registry credentials", { error });

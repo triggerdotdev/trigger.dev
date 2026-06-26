@@ -102,6 +102,11 @@ jobs:
               - 'pnpm-workspace.yaml'
               - 'turbo.json'
 
+  code-quality:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    uses: ./.github/workflows/code-quality.yml
+
   typecheck:
     needs: changes
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.typecheck_self == 'true'
@@ -155,6 +160,7 @@ jobs:
     name: All PR Checks
     needs:
       - changes
+      - code-quality
       - typecheck
       - webapp
       - e2e-webapp

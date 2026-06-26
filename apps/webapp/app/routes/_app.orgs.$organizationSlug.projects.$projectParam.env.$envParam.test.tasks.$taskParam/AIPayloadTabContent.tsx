@@ -310,10 +310,10 @@ export function AIPayloadTabContent({
                     {isLoading
                       ? "AI is thinking…"
                       : lastResult === "success"
-                      ? "Payload generated"
-                      : lastResult === "error"
-                      ? "Generation failed"
-                      : "AI response"}
+                        ? "Payload generated"
+                        : lastResult === "error"
+                          ? "Generation failed"
+                          : "AI response"}
                   </span>
                 </div>
                 <div className="flex items-center gap-0.5">

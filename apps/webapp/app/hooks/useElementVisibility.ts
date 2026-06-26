@@ -4,9 +4,7 @@ type UseElementVisibilityOptions = {
   onVisibilityChange?: (isVisible: boolean) => void;
 };
 
-export function useElementVisibility({
-  onVisibilityChange,
-}: UseElementVisibilityOptions = {}) {
+export function useElementVisibility({ onVisibilityChange }: UseElementVisibilityOptions = {}) {
   const ref = useRef<HTMLDivElement>(null);
   const isVisibleRef = useRef(false);
   const callbackRef = useRef(onVisibilityChange);

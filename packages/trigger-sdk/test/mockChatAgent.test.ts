@@ -205,9 +205,7 @@ describe("mockChatAgent", () => {
         // `upsertIncomingMessage` does.
         if (trigger === "submit-message" && incomingMessages.length > 0) {
           const newMsg = incomingMessages[incomingMessages.length - 1]!;
-          const exists = newMsg.id
-            ? stored.some((m) => m.id === newMsg.id)
-            : false;
+          const exists = newMsg.id ? stored.some((m) => m.id === newMsg.id) : false;
           if (!exists) stored.push(newMsg);
         }
         return [...stored];
@@ -308,7 +306,12 @@ describe("mockChatAgent", () => {
         });
       },
       run: async ({ messages, signal }) => {
-        return streamText({ model, messages, tools: { askUser: askUserTool }, abortSignal: signal });
+        return streamText({
+          model,
+          messages,
+          tools: { askUser: askUserTool },
+          abortSignal: signal,
+        });
       },
     });
 
@@ -404,9 +407,7 @@ describe("mockChatAgent", () => {
       hydrateMessages: async () => [dbAssistant as any],
       onTurnComplete: async ({ uiMessages }) => {
         const head = uiMessages.find((m: any) => m.id === HEAD_ID);
-        mergedToolPart = (head?.parts ?? []).find(
-          (p: any) => p?.toolCallId === TC
-        );
+        mergedToolPart = (head?.parts ?? []).find((p: any) => p?.toolCallId === TC);
       },
       run: async ({ messages, signal }) => {
         return streamText({
@@ -482,9 +483,7 @@ describe("mockChatAgent", () => {
       hydrateMessages: async () => [dbAssistant as any],
       onTurnComplete: async ({ uiMessages }) => {
         const head = uiMessages.find((m: any) => m.id === HEAD_ID);
-        mergedToolPart = (head?.parts ?? []).find(
-          (p: any) => p?.toolCallId === TC
-        );
+        mergedToolPart = (head?.parts ?? []).find((p: any) => p?.toolCallId === TC);
       },
       run: async ({ messages, signal }) => {
         return streamText({
@@ -560,9 +559,7 @@ describe("mockChatAgent", () => {
       hydrateMessages: async () => [dbAssistant as any],
       onTurnComplete: async ({ uiMessages }) => {
         const head = uiMessages.find((m: any) => m.id === HEAD_ID);
-        mergedToolPart = (head?.parts ?? []).find(
-          (p: any) => p?.toolCallId === TC
-        );
+        mergedToolPart = (head?.parts ?? []).find((p: any) => p?.toolCallId === TC);
       },
       run: async ({ messages, signal }) => {
         return streamText({
@@ -675,9 +672,7 @@ describe("mockChatAgent", () => {
         });
         // Recommended pattern: validate only user messages, since HITL
         // continuations carry slim assistants the AI SDK schema rejects.
-        const userMessages = messages.filter(
-          (m: any) => m.role === "user"
-        );
+        const userMessages = messages.filter((m: any) => m.role === "user");
         if (userMessages.length > 0) {
           await validateUIMessages({
             messages: userMessages,
@@ -824,9 +819,7 @@ describe("mockChatAgent", () => {
       await harness.sendMessage(userMessage("hi"));
       await new Promise((r) => setTimeout(r, 50));
 
-      const turn1Assistant = turnsSeen.at(-1)?.uiMessages.find(
-        (m: any) => m.role === "assistant"
-      );
+      const turn1Assistant = turnsSeen.at(-1)?.uiMessages.find((m: any) => m.role === "assistant");
       expect(turn1Assistant).toBeTruthy();
       const HEAD_ID = turn1Assistant!.id;
 
@@ -848,9 +841,7 @@ describe("mockChatAgent", () => {
 
       const turn2 = turnsSeen.at(-1);
       const head = turn2!.uiMessages.find((m: any) => m.id === HEAD_ID);
-      const toolPart = (head?.parts ?? []).find(
-        (p: any) => p?.toolCallId === TC
-      );
+      const toolPart = (head?.parts ?? []).find((p: any) => p?.toolCallId === TC);
       expect(toolPart?.state).toBe("output-available");
       expect(toolPart?.output).toEqual({ color: "blue" });
       // Snapshot's `input` survived the merge.
@@ -1038,9 +1029,7 @@ describe("mockChatAgent", () => {
       // No additional model call; console.warn fired with our marker text.
       expect(runSpy.mock.calls.length).toBe(baselineRun);
       expect(
-        warnSpy.mock.calls.some((args) =>
-          (args[0] as string).includes("no `onAction` handler")
-        )
+        warnSpy.mock.calls.some((args) => (args[0] as string).includes("no `onAction` handler"))
       ).toBe(true);
 
       const sawTurnComplete = actionTurn.rawChunks.some(
@@ -2061,8 +2050,7 @@ describe("mockChatAgent", () => {
         id: "onChatStart-gate.fresh-baseline",
         onChatStart,
         onTurnStart,
-        run: async ({ messages, signal }) =>
-          streamText({ model, messages, abortSignal: signal }),
+        run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
       });
       const harness = mockChatAgent(agent, { chatId: "fresh-baseline" });
       try {
@@ -2089,8 +2077,7 @@ describe("mockChatAgent", () => {
         hydrateMessages: async ({ incomingMessages }) => incomingMessages,
         onChatStart,
         onTurnStart,
-        run: async ({ messages, signal }) =>
-          streamText({ model, messages, abortSignal: signal }),
+        run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
       });
       const harness = mockChatAgent(agent, {
         chatId: "continuation-skip",
@@ -2124,8 +2111,7 @@ describe("mockChatAgent", () => {
         hydrateMessages: async ({ incomingMessages }) => incomingMessages,
         onChatStart,
         onTurnStart,
-        run: async ({ messages, signal }) =>
-          streamText({ model, messages, abortSignal: signal }),
+        run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
       });
       const harness = mockChatAgent(agent, {
         chatId: "oom-retry-skip",

@@ -1214,10 +1214,10 @@ async function handleNativeBuildServerDeploy({
           level === "error"
             ? chalk.bold(chalkError(message))
             : level === "warn"
-            ? chalkWarning(message)
-            : level === "debug"
-            ? chalkGrey(message)
-            : message;
+              ? chalkWarning(message)
+              : level === "debug"
+                ? chalkGrey(message)
+                : message;
 
         // We use console.log here instead of clack's logger as the current version does not support changing the line spacing.
         // And the logs look verbose with the default spacing.

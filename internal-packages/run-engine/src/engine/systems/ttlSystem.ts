@@ -157,136 +157,132 @@ export class TtlSystem {
     expired: string[];
     skipped: { runId: string; reason: string }[];
   }> {
-    return startSpan(
-      this.$.tracer,
-      "TtlSystem.expireRunsBatch",
-      async (span) => {
-        span.setAttribute("runCount", runIds.length);
+    return startSpan(this.$.tracer, "TtlSystem.expireRunsBatch", async (span) => {
+      span.setAttribute("runCount", runIds.length);
 
-        if (runIds.length === 0) {
-          return { expired: [], skipped: [] };
+      if (runIds.length === 0) {
+        return { expired: [], skipped: [] };
+      }
+
+      const expired: string[] = [];
+      const skipped: { runId: string; reason: string }[] = [];
+
+      // Fetch all runs in a single query (no snapshot data needed)
+      const runs = await this.$.runStore.findRuns({
+        where: { id: { in: runIds } },
+        select: {
+          id: true,
+          spanId: true,
+          status: true,
+          lockedAt: true,
+          ttl: true,
+          taskEventStore: true,
+          createdAt: true,
+          associatedWaitpoint: { select: { id: true } },
+          organizationId: true,
+          projectId: true,
+          runtimeEnvironmentId: true,
+        },
+      });
+
+      // Filter runs that can be expired
+      const runsToExpire: typeof runs = [];
+
+      for (const run of runs) {
+        if (run.status !== "PENDING") {
+          skipped.push({ runId: run.id, reason: `status_${run.status}` });
+          continue;
         }
 
-        const expired: string[] = [];
-        const skipped: { runId: string; reason: string }[] = [];
-
-        // Fetch all runs in a single query (no snapshot data needed)
-        const runs = await this.$.runStore.findRuns({
-          where: { id: { in: runIds } },
-          select: {
-            id: true,
-            spanId: true,
-            status: true,
-            lockedAt: true,
-            ttl: true,
-            taskEventStore: true,
-            createdAt: true,
-            associatedWaitpoint: { select: { id: true } },
-            organizationId: true,
-            projectId: true,
-            runtimeEnvironmentId: true,
-          },
-        });
-
-        // Filter runs that can be expired
-        const runsToExpire: typeof runs = [];
-
-        for (const run of runs) {
-          if (run.status !== "PENDING") {
-            skipped.push({ runId: run.id, reason: `status_${run.status}` });
-            continue;
-          }
-
-          if (run.lockedAt) {
-            skipped.push({ runId: run.id, reason: "locked" });
-            continue;
-          }
-
-          runsToExpire.push(run);
+        if (run.lockedAt) {
+          skipped.push({ runId: run.id, reason: "locked" });
+          continue;
         }
 
-        // Track runs that weren't found
-        const foundRunIds = new Set(runs.map((r) => r.id));
-        for (const runId of runIds) {
-          if (!foundRunIds.has(runId)) {
-            skipped.push({ runId, reason: "not_found" });
-          }
+        runsToExpire.push(run);
+      }
+
+      // Track runs that weren't found
+      const foundRunIds = new Set(runs.map((r) => r.id));
+      for (const runId of runIds) {
+        if (!foundRunIds.has(runId)) {
+          skipped.push({ runId, reason: "not_found" });
         }
+      }
 
-        if (runsToExpire.length === 0) {
-          span.setAttribute("expiredCount", 0);
-          span.setAttribute("skippedCount", skipped.length);
-          return { expired, skipped };
-        }
-
-        // Update all runs in a single SQL call (status, dates, and error JSON)
-        const now = new Date();
-        const runIdsToExpire = runsToExpire.map((r) => r.id);
-
-        const error: TaskRunError = {
-          type: "STRING_ERROR",
-          raw: "Run expired because the TTL was reached",
-        };
-
-        await this.$.runStore.expireRunsBatch(runIdsToExpire, { error, now }, this.$.prisma);
-
-        // Process each run: enqueue waitpoint completion jobs and emit events
-        await pMap(
-          runsToExpire,
-          async (run) => {
-            try {
-              // Enqueue a finishWaitpoint worker job for resilient waitpoint completion
-              if (run.associatedWaitpoint) {
-                await this.$.worker.enqueue({
-                  id: `finishWaitpoint.ttl.${run.associatedWaitpoint.id}`,
-                  job: "finishWaitpoint",
-                  payload: {
-                    waitpointId: run.associatedWaitpoint.id,
-                    error: JSON.stringify(error),
-                  },
-                });
-              }
-
-              // This should really never happen
-              if (!run.organizationId) {
-                return;
-              }
-
-              // Emit event
-              this.$.eventBus.emit("runExpired", {
-                run: {
-                  id: run.id,
-                  spanId: run.spanId,
-                  ttl: run.ttl,
-                  taskEventStore: run.taskEventStore,
-                  createdAt: run.createdAt,
-                  updatedAt: now,
-                  completedAt: now,
-                  expiredAt: now,
-                  status: "EXPIRED" as TaskRunStatus,
-                },
-                time: now,
-                organization: { id: run.organizationId },
-                project: { id: run.projectId },
-                environment: { id: run.runtimeEnvironmentId },
-              });
-
-              expired.push(run.id);
-            } catch (e) {
-              this.$.logger.error("Failed to process expired run", {
-                runId: run.id,
-                error: e,
-              });
-            }
-          },
-          { concurrency: 10, stopOnError: false }
-        );
-
-        span.setAttribute("expiredCount", expired.length);
+      if (runsToExpire.length === 0) {
+        span.setAttribute("expiredCount", 0);
         span.setAttribute("skippedCount", skipped.length);
-
         return { expired, skipped };
       }
-    );
+
+      // Update all runs in a single SQL call (status, dates, and error JSON)
+      const now = new Date();
+      const runIdsToExpire = runsToExpire.map((r) => r.id);
+
+      const error: TaskRunError = {
+        type: "STRING_ERROR",
+        raw: "Run expired because the TTL was reached",
+      };
+
+      await this.$.runStore.expireRunsBatch(runIdsToExpire, { error, now }, this.$.prisma);
+
+      // Process each run: enqueue waitpoint completion jobs and emit events
+      await pMap(
+        runsToExpire,
+        async (run) => {
+          try {
+            // Enqueue a finishWaitpoint worker job for resilient waitpoint completion
+            if (run.associatedWaitpoint) {
+              await this.$.worker.enqueue({
+                id: `finishWaitpoint.ttl.${run.associatedWaitpoint.id}`,
+                job: "finishWaitpoint",
+                payload: {
+                  waitpointId: run.associatedWaitpoint.id,
+                  error: JSON.stringify(error),
+                },
+              });
+            }
+
+            // This should really never happen
+            if (!run.organizationId) {
+              return;
+            }
+
+            // Emit event
+            this.$.eventBus.emit("runExpired", {
+              run: {
+                id: run.id,
+                spanId: run.spanId,
+                ttl: run.ttl,
+                taskEventStore: run.taskEventStore,
+                createdAt: run.createdAt,
+                updatedAt: now,
+                completedAt: now,
+                expiredAt: now,
+                status: "EXPIRED" as TaskRunStatus,
+              },
+              time: now,
+              organization: { id: run.organizationId },
+              project: { id: run.projectId },
+              environment: { id: run.runtimeEnvironmentId },
+            });
+
+            expired.push(run.id);
+          } catch (e) {
+            this.$.logger.error("Failed to process expired run", {
+              runId: run.id,
+              error: e,
+            });
+          }
+        },
+        { concurrency: 10, stopOnError: false }
+      );
+
+      span.setAttribute("expiredCount", expired.length);
+      span.setAttribute("skippedCount", skipped.length);
+
+      return { expired, skipped };
+    });
   }
 }

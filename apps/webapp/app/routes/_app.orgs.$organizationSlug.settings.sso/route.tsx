@@ -30,13 +30,14 @@ import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { Switch } from "~/components/primitives/Switch";
-import { $replica } from "~/db.server";
+import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { rbac } from "~/services/rbac.server";
 import { ssoController } from "~/services/sso.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
 import type { Role } from "@trigger.dev/plugins";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { v3BillingPath } from "~/utils/pathBuilder";
 
@@ -45,7 +46,10 @@ export const meta: MetaFunction = () => [{ title: "SSO settings | Trigger.dev" }
 const Params = z.object({ organizationSlug: z.string() });
 
 async function resolveOrg(slug: string) {
-  return $replica.organization.findFirst({
+  // Use primary: this slug→id lookup scopes the org-level RBAC/entitlement
+  // checks (loader and action), and replica lag could run them against a
+  // stale or missing org scope.
+  return prisma.organization.findFirst({
     where: { slug },
     select: { id: true, title: true },
   });
@@ -53,8 +57,7 @@ async function resolveOrg(slug: string) {
 
 function planAllowsSso(plan: unknown): boolean {
   if (!plan || typeof plan !== "object") return false;
-  const subscription = (plan as { v3Subscription?: { plan?: { code?: string } } })
-    .v3Subscription;
+  const subscription = (plan as { v3Subscription?: { plan?: { code?: string } } }).v3Subscription;
   return subscription?.plan?.code === "enterprise";
 }
 
@@ -68,6 +71,27 @@ async function requireSsoEntitlement(orgId: string): Promise<void> {
   }
 }
 
+const EMPTY_SSO_STATUS = {
+  hasIdpOrg: false,
+  enforced: false,
+  jitProvisioningEnabled: false,
+  jitDefaultRoleId: null,
+  idpOrgId: null,
+  primaryConnectionId: null,
+  domains: [] as Array<{
+    domain: string;
+    verified: boolean;
+    state: "pending" | "verified" | "failed";
+    verificationFailedReason: string | null;
+  }>,
+  connections: [] as Array<{
+    id: string;
+    name: string | null;
+    connectionType: string;
+    state: "active" | "inactive";
+  }>,
+};
+
 export const loader = dashboardLoader(
   {
     params: Params,
@@ -75,9 +99,13 @@ export const loader = dashboardLoader(
       const org = await resolveOrg(params.organizationSlug);
       return org ? { organizationId: org.id, orgTitle: org.title } : {};
     },
-    authorization: { action: "manage", resource: { type: "sso" } },
+    // No static `authorization` gate here: SSO is plan-gated *before* it's
+    // role-gated. A non-Enterprise org must render the upsell for everyone —
+    // gating on manage:sso at the wrapper would show a non-Owner "Permission
+    // denied" for a feature their org can't use yet. We resolve the plan in
+    // the body and only enforce manage:sso once the org is actually entitled.
   },
-  async ({ context, request }) => {
+  async ({ context, ability }) => {
     // True only when SSO_ENABLED is on and a real SSO plugin is loaded.
     if (!(await ssoController.isUsingPlugin())) {
       throw new Response("Not Found", { status: 404 });
@@ -88,46 +116,38 @@ export const loader = dashboardLoader(
       throw new Response("Not Found", { status: 404 });
     }
 
-    // The page is reachable on every paid + free plan; when the org
-    // isn't on Enterprise we render the upsell state instead of the
-    // SSO UI. Plan-tier enforcement lives in the React render so the
-    // sidebar entry and the page itself stay aligned.
+    // Plan first. When the org isn't on Enterprise the page renders the
+    // upsell state for every role, so we skip the role check (and the
+    // SSO/role queries it would gate) and return empty data.
+    const plan = await getCurrentPlan(orgId);
+    if (!planAllowsSso(plan)) {
+      return typedjson({
+        status: EMPTY_SSO_STATUS,
+        orgTitle: context.orgTitle,
+        jitRoles: [] as Role[],
+      });
+    }
+
+    // Entitled: the page is now a real config surface, so enforce the role
+    // gate. A non-Owner without manage:sso gets the permission panel — the
+    // same 403 the dashboardLoader `authorization` block would have thrown.
+    if (!ability.can("manage", { type: "sso" })) {
+      throwPermissionDenied();
+    }
+
     const [statusResult, allRoles, assignableIds] = await Promise.all([
       ssoController.getStatus(orgId),
       rbac.allRoles(orgId),
       rbac.getAssignableRoleIds(orgId),
     ]);
-    const status = statusResult.isOk()
-      ? statusResult.value
-      : {
-          hasIdpOrg: false,
-          enforced: false,
-          jitProvisioningEnabled: false,
-          jitDefaultRoleId: null,
-          idpOrgId: null,
-          primaryConnectionId: null,
-          domains: [] as Array<{
-            domain: string;
-            verified: boolean;
-            state: "pending" | "verified" | "failed";
-            verificationFailedReason: string | null;
-          }>,
-          connections: [] as Array<{
-            id: string;
-            name: string | null;
-            connectionType: string;
-            state: "active" | "inactive";
-          }>,
-        };
+    const status = statusResult.isOk() ? statusResult.value : EMPTY_SSO_STATUS;
 
     // JIT can't promote new users to Owner — that role is reserved for
     // the founding member and explicit transfers. Plan-gated roles are
     // filtered out via the assignable set so the UI doesn't offer
     // something the org can't actually use.
     const assignable = new Set(assignableIds);
-    const jitRoles = allRoles.filter(
-      (r) => r.name !== "Owner" && assignable.has(r.id)
-    );
+    const jitRoles = allRoles.filter((r) => r.name !== "Owner" && assignable.has(r.id));
 
     return typedjson({ status, orgTitle: context.orgTitle, jitRoles });
   }
@@ -138,9 +158,7 @@ const DEFAULT_JIT_ROLE_NAME = "Developer";
 
 // Don't use `z.coerce.boolean()` — it goes through JS `Boolean()`,
 // which treats the string "false" as truthy (any non-empty string).
-const boolish = z
-  .union([z.literal("true"), z.literal("false")])
-  .transform((v) => v === "true");
+const boolish = z.union([z.literal("true"), z.literal("false")]).transform((v) => v === "true");
 
 const ActionSchema = z.discriminatedUnion("action", [
   z.object({
@@ -190,8 +208,7 @@ export const action = dashboardAction(
 
     switch (parsed.data.action) {
       case "save_config": {
-        const jitRoleId =
-          parsed.data.jitRoleId === NULL_ROLE_VALUE ? null : parsed.data.jitRoleId;
+        const jitRoleId = parsed.data.jitRoleId === NULL_ROLE_VALUE ? null : parsed.data.jitRoleId;
         // The form is a single Save, so the three fields must commit
         // all-or-nothing: `updateConfig` writes them in one transaction
         // (with the JIT-role RBAC check inside it), so a failure leaves
@@ -225,10 +242,7 @@ export const action = dashboardAction(
   }
 );
 
-function defaultJitRoleId(
-  jitRoles: ReadonlyArray<Role>,
-  current: string | null
-): string {
+function defaultJitRoleId(jitRoles: ReadonlyArray<Role>, current: string | null): string {
   // Persisted value wins, even when it points at something the picker
   // can no longer offer — keeps the user's prior choice visible.
   if (current) return current;
@@ -285,10 +299,7 @@ export default function Page() {
 
   const openPortal = (intent: "sso" | "domain_verification") => {
     setPortalUrl(null);
-    portalFetcher.submit(
-      { action: "portal_link", intent },
-      { method: "POST" }
-    );
+    portalFetcher.submit({ action: "portal_link", intent }, { method: "POST" });
   };
 
   const submitSave = () => {
@@ -373,9 +384,9 @@ function EnterpriseUpsellState({ organizationSlug }: { organizationSlug: string 
         <Header2>SSO is available on the Enterprise plan</Header2>
       </div>
       <Paragraph variant="base">
-        Single sign-on (SAML / OIDC) lets your IT admins manage who can access Trigger.dev
-        through your identity provider — Okta, Azure AD, Google Workspace, OneLogin, and more.
-        Upgrade your organization to Enterprise to configure it.
+        Single sign-on (SAML / OIDC) lets your IT admins manage who can access Trigger.dev through
+        your identity provider — Okta, Azure AD, Google Workspace, OneLogin, and more. Upgrade your
+        organization to Enterprise to configure it.
       </Paragraph>
       <ul className="ml-4 list-disc space-y-1 text-sm text-text-dimmed">
         <li>Self-service domain verification and connection setup via the admin portal.</li>
@@ -386,11 +397,7 @@ function EnterpriseUpsellState({ organizationSlug }: { organizationSlug: string 
         <LinkButton variant="primary/small" to={v3BillingPath({ slug: organizationSlug })}>
           Talk to sales
         </LinkButton>
-        <LinkButton
-          variant="tertiary/small"
-          to="https://trigger.dev/contact"
-          target="_blank"
-        >
+        <LinkButton variant="tertiary/small" to="https://trigger.dev/contact" target="_blank">
           Contact us
         </LinkButton>
       </div>
@@ -403,9 +410,9 @@ function NoIdpOrgState({ onOpenPortal }: { onOpenPortal: () => void }) {
     <div className="space-y-3">
       <Header2>Configure SSO for your organization</Header2>
       <Paragraph variant="base">
-        Single sign-on lets your IT admins manage who can access Trigger.dev through your
-        identity provider (Okta, Azure AD, Google Workspace, OneLogin, and more). The first
-        click opens the admin portal in a 5-minute single-use link.
+        Single sign-on lets your IT admins manage who can access Trigger.dev through your identity
+        provider (Okta, Azure AD, Google Workspace, OneLogin, and more). The first click opens the
+        admin portal in a 5-minute single-use link.
       </Paragraph>
       <Button variant="primary/small" onClick={onOpenPortal} LeadingIcon={LockClosedIcon}>
         Open admin portal
@@ -611,11 +618,7 @@ function ActiveConnectionState({
               When on, users whose email matches a verified domain must use SSO to sign in.
             </Paragraph>
           </div>
-          <Switch
-            variant="small"
-            checked={draftEnforced}
-            onCheckedChange={onToggleEnforced}
-          />
+          <Switch variant="small" checked={draftEnforced} onCheckedChange={onToggleEnforced} />
         </div>
         <div className="flex items-center justify-between rounded-md border border-grid-bright px-3 py-2.5">
           <div>
@@ -626,11 +629,7 @@ function ActiveConnectionState({
               Auto-create memberships for first-time SSO sign-ins from your verified domains.
             </Paragraph>
           </div>
-          <Switch
-            variant="small"
-            checked={draftJitEnabled}
-            onCheckedChange={onToggleJit}
-          />
+          <Switch variant="small" checked={draftJitEnabled} onCheckedChange={onToggleJit} />
         </div>
         <div className="flex items-center justify-between rounded-md border border-grid-bright px-3 py-2.5">
           <div>
@@ -638,23 +637,20 @@ function ActiveConnectionState({
               Default role for JIT provisioned users
             </Paragraph>
             <Paragraph variant="extra-small" className="text-text-dimmed pr-0.5">
-              Role assigned to new users created via JIT provisioning. Owner is reserved
-              and cannot be granted automatically.
+              Role assigned to new users created via JIT provisioning. Owner is reserved and cannot
+              be granted automatically.
             </Paragraph>
           </div>
           <Select<string, Role | { id: string; name: string; description: string }>
             value={draftJitRoleId}
             setValue={(v) => onChangeJitRole(v === NULL_ROLE_VALUE ? null : v)}
-            items={[
-              { id: NULL_ROLE_VALUE, name: "None", description: "" },
-              ...jitRoles,
-            ]}
+            items={[{ id: NULL_ROLE_VALUE, name: "None", description: "" }, ...jitRoles]}
             variant="tertiary/small"
             dropdownIcon
             text={(v) =>
               v === NULL_ROLE_VALUE
                 ? "None"
-                : jitRoles.find((r) => r.id === v)?.name ?? "Select a role"
+                : (jitRoles.find((r) => r.id === v)?.name ?? "Select a role")
             }
           >
             {(items) =>
@@ -683,11 +679,7 @@ function ActiveConnectionState({
           >
             Open admin portal
           </LinkButton>
-          <Button
-            variant="primary/small"
-            disabled={!isDirty || isSaving}
-            onClick={onSave}
-          >
+          <Button variant="primary/small" disabled={!isDirty || isSaving} onClick={onSave}>
             {isSaving ? "Saving…" : "Save"}
           </Button>
         </div>
@@ -696,20 +688,14 @@ function ActiveConnectionState({
   );
 }
 
-function PortalLinkDialog({
-  url,
-  onClose,
-}: {
-  url: string | null;
-  onClose: () => void;
-}) {
+function PortalLinkDialog({ url, onClose }: { url: string | null; onClose: () => void }) {
   return (
     <Dialog open={url !== null} onOpenChange={(open) => (open ? undefined : onClose())}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>Admin portal link</DialogHeader>
         <DialogDescription>
-          This link is active for 5 minutes — copy it and share it with your IT contact via
-          whatever channel you prefer.
+          This link is active for 5 minutes — copy it and share it with your IT contact via whatever
+          channel you prefer.
         </DialogDescription>
         <div className="mt-4 break-all rounded-md border border-grid-bright bg-charcoal-800 p-3 font-mono text-xs">
           {url ?? ""}
@@ -765,13 +751,13 @@ function EnforceConfirmDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>Enable SSO enforcement for {orgTitle}?</DialogHeader>
         <DialogDescription>
-          Once enabled, users whose email domain matches your verified domains will be
-          redirected to your identity provider to sign in. They will no longer be able to use
-          magic link, GitHub, or Google via that domain.
+          Once enabled, users whose email domain matches your verified domains will be redirected to
+          your identity provider to sign in. They will no longer be able to use magic link, GitHub,
+          or Google via that domain.
           <br />
           <br />
-          Users with non-matching emails (e.g. contractors with personal emails) will continue
-          to use existing methods.
+          Users with non-matching emails (e.g. contractors with personal emails) will continue to
+          use existing methods.
         </DialogDescription>
         <DialogFooter>
           <Button variant="tertiary/small" onClick={onCancel}>

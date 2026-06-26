@@ -447,9 +447,7 @@ export class StreamBatchItemsService extends WithRunEngine {
     if (!parseResult.success) {
       const rawIndex = (rawItem as { index?: unknown } | null)?.index;
       const where = typeof rawIndex === "number" ? `index ${rawIndex}` : "unknown index";
-      throw new ServiceValidationError(
-        `Invalid item at ${where}: ${parseResult.error.message}`
-      );
+      throw new ServiceValidationError(`Invalid item at ${where}: ${parseResult.error.message}`);
     }
 
     const item = parseResult.data;

@@ -73,20 +73,18 @@ export type SchemaWithInputOutput<TInput, TParsedInput> =
 
 export type Schema = SchemaWithInputOutput<any, any> | SchemaWithoutInput<any>;
 
-export type inferSchema<TSchema extends Schema> = TSchema extends SchemaWithInputOutput<
-  infer $TIn,
-  infer $TOut
->
-  ? {
-      in: $TIn;
-      out: $TOut;
-    }
-  : TSchema extends SchemaWithoutInput<infer $InOut>
-  ? {
-      in: $InOut;
-      out: $InOut;
-    }
-  : never;
+export type inferSchema<TSchema extends Schema> =
+  TSchema extends SchemaWithInputOutput<infer $TIn, infer $TOut>
+    ? {
+        in: $TIn;
+        out: $TOut;
+      }
+    : TSchema extends SchemaWithoutInput<infer $InOut>
+      ? {
+          in: $InOut;
+          out: $InOut;
+        }
+      : never;
 
 export type inferSchemaIn<
   TSchema extends Schema | undefined,

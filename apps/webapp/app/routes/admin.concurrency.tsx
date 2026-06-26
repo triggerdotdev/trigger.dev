@@ -6,14 +6,11 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { concurrencyTracker } from "~/v3/services/taskRunConcurrencyTracker.server";
 
-export const loader = dashboardLoader(
-  { authorization: { requireSuper: true } },
-  async () => {
-    const deployedConcurrency = await concurrencyTracker.globalConcurrentRunCount(true);
-    const devConcurrency = await concurrencyTracker.globalConcurrentRunCount(false);
-    return typedjson({ deployedConcurrency, devConcurrency });
-  }
-);
+export const loader = dashboardLoader({ authorization: { requireSuper: true } }, async () => {
+  const deployedConcurrency = await concurrencyTracker.globalConcurrentRunCount(true);
+  const devConcurrency = await concurrencyTracker.globalConcurrentRunCount(false);
+  return typedjson({ deployedConcurrency, devConcurrency });
+});
 
 export default function AdminDashboardRoute() {
   const { deployedConcurrency, devConcurrency } = useTypedLoaderData<typeof loader>();

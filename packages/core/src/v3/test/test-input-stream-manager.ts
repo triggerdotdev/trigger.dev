@@ -184,9 +184,7 @@ export class TestInputStreamManager implements InputStreamManager {
     }
 
     if (hasHandlers) {
-      await Promise.all(
-        Array.from(handlers!).map((h) => Promise.resolve().then(() => h(data)))
-      );
+      await Promise.all(Array.from(handlers!).map((h) => Promise.resolve().then(() => h(data))));
     }
   }
 

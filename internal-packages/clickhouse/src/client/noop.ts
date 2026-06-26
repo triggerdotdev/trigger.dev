@@ -95,7 +95,10 @@ export class NoopClient implements ClickhouseReader, ClickhouseWriter {
     };
   }
 
-  public queryFastStream<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
+  public queryFastStream<
+    TOut extends Record<string, any>,
+    TParams extends Record<string, any>,
+  >(req: {
     name: string;
     query: string;
     columns: string[];

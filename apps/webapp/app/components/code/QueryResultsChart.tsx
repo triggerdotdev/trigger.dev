@@ -929,10 +929,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   );
 
   // Create value formatter for tooltips and legend based on column format
-  const tooltipValueFormatter = useMemo(
-    () => createValueFormatter(yAxisFormat),
-    [yAxisFormat]
-  );
+  const tooltipValueFormatter = useMemo(() => createValueFormatter(yAxisFormat), [yAxisFormat]);
 
   // Check if the group-by column has a runStatus customRenderType
   const groupByIsRunStatus = useMemo(() => {
@@ -1280,9 +1277,7 @@ function createYAxisFormatter(
   if (format === "bytes" || format === "decimalBytes") {
     const divisor = format === "bytes" ? 1024 : 1000;
     const units =
-      format === "bytes"
-        ? ["B", "KiB", "MiB", "GiB", "TiB"]
-        : ["B", "KB", "MB", "GB", "TB"];
+      format === "bytes" ? ["B", "KiB", "MiB", "GiB", "TiB"] : ["B", "KB", "MB", "GB", "TB"];
     return (value: number): string => {
       if (value === 0) return "0 B";
       // Use consistent unit for all ticks based on max value
@@ -1304,8 +1299,7 @@ function createYAxisFormatter(
   }
 
   if (format === "durationSeconds") {
-    return (value: number): string =>
-      formatDurationMilliseconds(value * 1000, { style: "short" });
+    return (value: number): string => formatDurationMilliseconds(value * 1000, { style: "short" });
   }
 
   if (format === "durationNs") {

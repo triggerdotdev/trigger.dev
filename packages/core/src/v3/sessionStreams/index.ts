@@ -1,10 +1,6 @@
 import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { NoopSessionStreamManager } from "./noopManager.js";
-import {
-  InputStreamOncePromise,
-  SessionChannelIO,
-  SessionStreamManager,
-} from "./types.js";
+import { InputStreamOncePromise, SessionChannelIO, SessionStreamManager } from "./types.js";
 import { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 
 const API_NAME = "session-streams";
@@ -63,11 +59,7 @@ export class SessionStreamsAPI implements SessionStreamManager {
     return this.#getManager().lastDispatchedSeqNum(sessionId, io);
   }
 
-  public setLastDispatchedSeqNum(
-    sessionId: string,
-    io: SessionChannelIO,
-    seqNum: number
-  ): void {
+  public setLastDispatchedSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void {
     this.#getManager().setLastDispatchedSeqNum(sessionId, io, seqNum);
   }
 

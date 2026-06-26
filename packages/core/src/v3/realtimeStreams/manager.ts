@@ -98,17 +98,13 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
     const abortController = new AbortController();
     // Chain with user-provided signal if present
     const combinedSignal = options?.signal
-      ? AbortSignal.any?.([options.signal, abortController.signal]) ?? abortController.signal
+      ? (AbortSignal.any?.([options.signal, abortController.signal]) ?? abortController.signal)
       : abortController.signal;
 
     // Capture which cached promise this writer uses so reactive
     // invalidation below evicts only if the cache still holds it (a
     // concurrent caller may have already refreshed it).
-    const activeCreatePromise = this.getCachedCreateStream(
-      runId,
-      key,
-      options?.requestOptions
-    );
+    const activeCreatePromise = this.getCachedCreateStream(runId, key, options?.requestOptions);
 
     const streamInstance = new StreamInstance({
       apiClient: this.apiClient,

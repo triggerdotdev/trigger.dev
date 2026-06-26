@@ -1689,9 +1689,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
   visitTsqlxTagElementClosed(ctx: TSQLxTagElementContext): TSQLXTag {
     const kind = this.visitIdentifier(ctx.identifier()[0]);
     const attributes = ctx.tSQLxTagAttribute()
-      ? ctx
-          .tSQLxTagAttribute()
-          .map((a: TSQLxTagAttributeContext) => this.visitTsqlxTagAttribute(a))
+      ? ctx.tSQLxTagAttribute().map((a: TSQLxTagAttributeContext) => this.visitTsqlxTagAttribute(a))
       : [];
     return { expression_type: "tsqlx_tag", kind, attributes };
   }
@@ -1706,9 +1704,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     }
 
     const attributes = ctx.tSQLxTagAttribute()
-      ? ctx
-          .tSQLxTagAttribute()
-          .map((a: TSQLxTagAttributeContext) => this.visitTsqlxTagAttribute(a))
+      ? ctx.tSQLxTagAttribute().map((a: TSQLxTagAttributeContext) => this.visitTsqlxTagAttribute(a))
       : [];
 
     // ── collect child nodes, discarding pure-indentation whitespace ──

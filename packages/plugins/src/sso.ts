@@ -32,9 +32,7 @@ export type OrgSsoStatus = {
   }>;
 };
 
-export type SsoRouteDecision =
-  | { kind: "no_sso" }
-  | { kind: "sso_required"; idpOrgId: string };
+export type SsoRouteDecision = { kind: "no_sso" } | { kind: "sso_required"; idpOrgId: string };
 
 export const SSO_FLOWS = [
   "user_initiated",
@@ -65,10 +63,7 @@ export type SsoResolutionDecision =
 
 export type SsoDecisionError = "internal";
 
-export type SsoBeginError =
-  | "no_org_for_domain"
-  | "no_active_connection"
-  | "feature_disabled";
+export type SsoBeginError = "no_org_for_domain" | "no_active_connection" | "feature_disabled";
 
 export type SsoCompleteError =
   | "state_replayed_or_expired"

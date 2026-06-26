@@ -14,10 +14,7 @@ export const PurchaseSchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("quota-increase"),
-    amount: z.coerce
-      .number()
-      .int("Must be a whole number")
-      .min(1, "Amount must be greater than 0"),
+    amount: z.coerce.number().int("Must be a whole number").min(1, "Amount must be greater than 0"),
   }),
 ]);
 
@@ -44,10 +41,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
   if (purchaseBlockReason === "managed_billing") {
-    return json(
-      { ok: false, error: "Contact us to request more schedules." } as const,
-      { status: 403 }
-    );
+    return json({ ok: false, error: "Contact us to request more schedules." } as const, {
+      status: 403,
+    });
   }
 
   const formData = await request.formData();

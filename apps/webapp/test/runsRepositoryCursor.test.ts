@@ -290,10 +290,7 @@ describe("RunsRepository cursor pagination", () => {
       });
 
       const returned = page.runs.map((r) => r.id).sort();
-      expect(returned).toEqual([
-        "aaaaaaaaaaaaaaaaaaaaaaaa",
-        "bbbbbbbbbbbbbbbbbbbbbbbb",
-      ]);
+      expect(returned).toEqual(["aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbb"]);
     }
   );
 

@@ -15,9 +15,7 @@ describe("runnerNameForAttempt", () => {
 
 describe("isRetryableCreateError", () => {
   it("retries statuses where the create definitely did not commit", () => {
-    expect(isRetryableCreateError(new ComputeClientError(500, "tap busy", "http://gw"))).toBe(
-      true
-    );
+    expect(isRetryableCreateError(new ComputeClientError(500, "tap busy", "http://gw"))).toBe(true);
     expect(isRetryableCreateError(new ComputeClientError(503, "no placement", "http://gw"))).toBe(
       true
     );

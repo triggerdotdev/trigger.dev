@@ -197,8 +197,8 @@ export default function Story() {
                             index === 0
                               ? "left-0.5"
                               : index === tickCount - 1
-                              ? "-right-0 -translate-x-full"
-                              : "left-1/2 -translate-x-1/2"
+                                ? "-right-0 -translate-x-full"
+                                : "left-1/2 -translate-x-1/2"
                           }
                         >
                           {formatDurationMilliseconds(ms, {

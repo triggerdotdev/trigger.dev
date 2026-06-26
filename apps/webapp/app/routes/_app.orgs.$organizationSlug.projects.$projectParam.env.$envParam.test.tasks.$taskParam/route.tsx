@@ -1012,11 +1012,7 @@ function ScheduledTaskForm({
   });
 
   return (
-    <Form
-      className="grid h-full max-h-full grid-rows-[1fr_auto]"
-      method="post"
-      {...form.props}
-    >
+    <Form className="grid h-full max-h-full grid-rows-[1fr_auto]" method="post" {...form.props}>
       <input
         type="hidden"
         {...conform.input(triggerSource, { type: "hidden" })}
@@ -1036,373 +1032,374 @@ function ScheduledTaskForm({
       <div className="grid min-h-0 grid-cols-1 grid-rows-1 overflow-hidden">
         <div className="col-start-1 row-start-1 overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <div className="mx-auto w-fit p-3">
-          <div className="mb-6 flex items-center gap-1.5">
-            <TaskTriggerSourceIcon source={"SCHEDULED"} />
-            <Header2 className="text-text-bright">{task.taskIdentifier}</Header2>
-          </div>
-          <Fieldset>
-            <InputGroup>
-              <Label htmlFor={timestamp.id} variant="small">
-                Timestamp UTC
-              </Label>
-              <input
-                type="hidden"
-                {...conform.input(timestamp, { type: "hidden" })}
-                value={timestampValue?.toISOString() ?? ""}
-              />
-              <DateField
-                label="Timestamp UTC"
-                defaultValue={timestampValue}
-                onValueChange={(val) => setTimestampValue(val)}
-                granularity="second"
-                showNowButton
-                variant="small"
-                utc
-              />
-              <Hint>
-                This is the timestamp of the CRON, it will come through to your run in the payload.
-              </Hint>
-              <FormError id={timestamp.errorId}>{timestamp.error}</FormError>
-            </InputGroup>
-            <InputGroup>
-              <Label htmlFor={lastTimestamp.id} variant="small">
-                Last timestamp UTC
-              </Label>
-              <input
-                type="hidden"
-                {...conform.input(lastTimestamp, { type: "hidden" })}
-                value={lastTimestampValue?.toISOString() ?? ""}
-              />
-              <DateField
-                label="Last timestamp UTC"
-                defaultValue={lastTimestampValue}
-                onValueChange={(val) => setLastTimestampValue(val)}
-                granularity="second"
-                showNowButton
-                showClearButton
-                variant="small"
-                utc
-              />
-              <Hint>
-                This is the timestamp of the previous run. You can use this in your code to find new
-                data since the previous run.
-              </Hint>
-              <FormError id={lastTimestamp.errorId}>{lastTimestamp.error}</FormError>
-            </InputGroup>
-            <InputGroup>
-              <Label htmlFor={timezone.id} variant="small">
-                Timezone
-              </Label>
-              <Select
-                {...conform.select(timezone)}
-                placeholder="Select a timezone"
-                defaultValue={timezoneValue}
-                value={timezoneValue}
-                setValue={(e) => {
-                  if (Array.isArray(e)) return;
-                  setTimezoneValue(e);
-                }}
-                items={possibleTimezones}
-                filter={{ keys: [(item) => item.replace(/\//g, " ").replace(/_/g, " ")] }}
-                dropdownIcon
-                variant="tertiary/small"
-              >
-                {(matches) => <TimezoneList timezones={matches} />}
-              </Select>
-              <Hint>
-                The Timestamp and Last timestamp are in UTC so this just changes the timezone string
-                that comes through in the payload.
-              </Hint>
-              <FormError id={timezone.errorId}>{timezone.error}</FormError>
-            </InputGroup>
-            <InputGroup>
-              <Label htmlFor={externalId.id} variant="small">
-                External ID
-              </Label>
-              <Input
-                {...conform.input(externalId, { type: "text" })}
-                placeholder="Optionally specify your own ID, e.g. user id"
-                value={externalIdValue ?? ""}
-                onChange={(e) => setExternalIdValue(e.target.value)}
-                variant="small"
-              />
-              <Hint>
-                Optionally, you can specify your own IDs (like a user ID) and then use it inside the
-                run function of your task.{" "}
-                <TextLink to={docsPath("v3/tasks-scheduled")}>Read the docs.</TextLink>
-              </Hint>
-              <FormError id={externalId.errorId}>{externalId.error}</FormError>
-            </InputGroup>
-            <div className="w-full border-b border-grid-bright" />
-            <Hint>
-              Options enable you to control the execution behavior of your task.{" "}
-              <TextLink to={docsPath("triggering#options")}>Read the docs.</TextLink>
-            </Hint>
-            <InputGroup>
-              <Label htmlFor={machine.id} variant="small">
-                Machine
-              </Label>
-              <Select
-                {...conform.select(machine)}
-                variant="tertiary/small"
-                placeholder="Select machine type"
-                dropdownIcon
-                items={machinePresets}
-                defaultValue={undefined}
-                value={machineValue}
-                setValue={(e) => {
-                  if (Array.isArray(e)) return;
-                  setMachineValue(e);
-                }}
-              >
-                {machinePresets.map((machine) => (
-                  <SelectItem key={machine} value={machine}>
-                    {machine}
-                  </SelectItem>
-                ))}
-              </Select>
-              <Hint>Overrides the machine preset.</Hint>
-              <FormError id={machine.errorId}>{machine.error}</FormError>
-            </InputGroup>
-            <InputGroup>
-              <Label htmlFor={version.id} variant="small">
-                Version
-              </Label>
-              <Select
-                {...conform.select(version)}
-                defaultValue="latest"
-                variant="tertiary/small"
-                placeholder="Select version"
-                dropdownIcon
-                disabled={disableVersionSelection}
-              >
-                {versions.map((version, i) => (
-                  <SelectItem key={version} value={i === 0 ? "latest" : version}>
-                    {version} {i === 0 && "(latest)"}
-                  </SelectItem>
-                ))}
-              </Select>
-              {disableVersionSelection ? (
-                <Hint>Only the latest version is available in the development environment.</Hint>
-              ) : (
-                <Hint>Runs task on a specific version.</Hint>
-              )}
-              <FormError id={version.errorId}>{version.error}</FormError>
-            </InputGroup>
-            {regionItems.length > 1 && (
+            <div className="mb-6 flex items-center gap-1.5">
+              <TaskTriggerSourceIcon source={"SCHEDULED"} />
+              <Header2 className="text-text-bright">{task.taskIdentifier}</Header2>
+            </div>
+            <Fieldset>
               <InputGroup>
-                <Label htmlFor={region.id} variant="small">
-                  Region
+                <Label htmlFor={timestamp.id} variant="small">
+                  Timestamp UTC
                 </Label>
-                {/* Our Select primitive uses Ariakit under the hood, which treats
-                  value={undefined} as uncontrolled, keeping stale internal state when
-                  switching environments. The key forces a remount so it reinitializes
-                  with the correct defaultValue. */}
+                <input
+                  type="hidden"
+                  {...conform.input(timestamp, { type: "hidden" })}
+                  value={timestampValue?.toISOString() ?? ""}
+                />
+                <DateField
+                  label="Timestamp UTC"
+                  defaultValue={timestampValue}
+                  onValueChange={(val) => setTimestampValue(val)}
+                  granularity="second"
+                  showNowButton
+                  variant="small"
+                  utc
+                />
+                <Hint>
+                  This is the timestamp of the CRON, it will come through to your run in the
+                  payload.
+                </Hint>
+                <FormError id={timestamp.errorId}>{timestamp.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={lastTimestamp.id} variant="small">
+                  Last timestamp UTC
+                </Label>
+                <input
+                  type="hidden"
+                  {...conform.input(lastTimestamp, { type: "hidden" })}
+                  value={lastTimestampValue?.toISOString() ?? ""}
+                />
+                <DateField
+                  label="Last timestamp UTC"
+                  defaultValue={lastTimestampValue}
+                  onValueChange={(val) => setLastTimestampValue(val)}
+                  granularity="second"
+                  showNowButton
+                  showClearButton
+                  variant="small"
+                  utc
+                />
+                <Hint>
+                  This is the timestamp of the previous run. You can use this in your code to find
+                  new data since the previous run.
+                </Hint>
+                <FormError id={lastTimestamp.errorId}>{lastTimestamp.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={timezone.id} variant="small">
+                  Timezone
+                </Label>
                 <Select
-                  key={`region-${environment.id}`}
-                  {...conform.select(region)}
-                  variant="tertiary/small"
-                  placeholder={isDev ? "–" : undefined}
+                  {...conform.select(timezone)}
+                  placeholder="Select a timezone"
+                  defaultValue={timezoneValue}
+                  value={timezoneValue}
+                  setValue={(e) => {
+                    if (Array.isArray(e)) return;
+                    setTimezoneValue(e);
+                  }}
+                  items={possibleTimezones}
+                  filter={{ keys: [(item) => item.replace(/\//g, " ").replace(/_/g, " ")] }}
                   dropdownIcon
-                  items={regionItems}
-                  defaultValue={isDev ? undefined : defaultRegion?.name}
-                  value={isDev ? undefined : regionValue}
-                  setValue={
-                    isDev
-                      ? undefined
-                      : (e) => {
-                          if (Array.isArray(e)) return;
-                          setRegionValue(e);
-                        }
-                  }
-                  disabled={isDev}
+                  variant="tertiary/small"
                 >
-                  {regionItems.map((r) => (
-                    <SelectItem key={r.value} value={r.value}>
-                      {r.label}
-                      {r.isDefault ? " (default)" : ""}
+                  {(matches) => <TimezoneList timezones={matches} />}
+                </Select>
+                <Hint>
+                  The Timestamp and Last timestamp are in UTC so this just changes the timezone
+                  string that comes through in the payload.
+                </Hint>
+                <FormError id={timezone.errorId}>{timezone.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={externalId.id} variant="small">
+                  External ID
+                </Label>
+                <Input
+                  {...conform.input(externalId, { type: "text" })}
+                  placeholder="Optionally specify your own ID, e.g. user id"
+                  value={externalIdValue ?? ""}
+                  onChange={(e) => setExternalIdValue(e.target.value)}
+                  variant="small"
+                />
+                <Hint>
+                  Optionally, you can specify your own IDs (like a user ID) and then use it inside
+                  the run function of your task.{" "}
+                  <TextLink to={docsPath("v3/tasks-scheduled")}>Read the docs.</TextLink>
+                </Hint>
+                <FormError id={externalId.errorId}>{externalId.error}</FormError>
+              </InputGroup>
+              <div className="w-full border-b border-grid-bright" />
+              <Hint>
+                Options enable you to control the execution behavior of your task.{" "}
+                <TextLink to={docsPath("triggering#options")}>Read the docs.</TextLink>
+              </Hint>
+              <InputGroup>
+                <Label htmlFor={machine.id} variant="small">
+                  Machine
+                </Label>
+                <Select
+                  {...conform.select(machine)}
+                  variant="tertiary/small"
+                  placeholder="Select machine type"
+                  dropdownIcon
+                  items={machinePresets}
+                  defaultValue={undefined}
+                  value={machineValue}
+                  setValue={(e) => {
+                    if (Array.isArray(e)) return;
+                    setMachineValue(e);
+                  }}
+                >
+                  {machinePresets.map((machine) => (
+                    <SelectItem key={machine} value={machine}>
+                      {machine}
                     </SelectItem>
                   ))}
                 </Select>
-                {isDev ? (
-                  <Hint>Region is not available in the development environment.</Hint>
-                ) : (
-                  <Hint>Overrides the region for this run.</Hint>
-                )}
-                <FormError id={region.errorId}>{region.error}</FormError>
+                <Hint>Overrides the machine preset.</Hint>
+                <FormError id={machine.errorId}>{machine.error}</FormError>
               </InputGroup>
-            )}
-            <InputGroup>
-              <Label htmlFor={queue.id} variant="small">
-                Queue
-              </Label>
-              {allowArbitraryQueues ? (
-                <Input
-                  {...conform.input(queue, { type: "text" })}
-                  variant="small"
-                  value={queueValue ?? ""}
-                  onChange={(e) => setQueueValue(e.target.value)}
-                />
-              ) : (
+              <InputGroup>
+                <Label htmlFor={version.id} variant="small">
+                  Version
+                </Label>
                 <Select
-                  name={queue.name}
-                  id={queue.id}
-                  placeholder="Select queue"
-                  heading="Filter queues"
+                  {...conform.select(version)}
+                  defaultValue="latest"
                   variant="tertiary/small"
+                  placeholder="Select version"
                   dropdownIcon
-                  items={queueItems}
-                  filter={{ keys: ["label"] }}
-                  value={queueValue}
-                  setValue={setQueueValue}
+                  disabled={disableVersionSelection}
                 >
-                  {(matches) =>
-                    matches.map((queueItem) => (
-                      <SelectItem
-                        key={queueItem.value}
-                        value={queueItem.value}
-                        className="max-w-[var(--popover-anchor-width)]"
-                        icon={
-                          queueItem.type === "task" ? (
-                            <TaskIcon className="size-4 shrink-0 text-blue-500" />
-                          ) : (
-                            <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
-                          )
-                        }
-                      >
-                        <div className="flex w-full min-w-0 items-center justify-between">
-                          <span className="truncate">{queueItem.label}</span>
-                          {queueItem.paused && (
-                            <Badge variant="extra-small" className="ml-1 text-warning">
-                              Paused
-                            </Badge>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))
-                  }
+                  {versions.map((version, i) => (
+                    <SelectItem key={version} value={i === 0 ? "latest" : version}>
+                      {version} {i === 0 && "(latest)"}
+                    </SelectItem>
+                  ))}
                 </Select>
+                {disableVersionSelection ? (
+                  <Hint>Only the latest version is available in the development environment.</Hint>
+                ) : (
+                  <Hint>Runs task on a specific version.</Hint>
+                )}
+                <FormError id={version.errorId}>{version.error}</FormError>
+              </InputGroup>
+              {regionItems.length > 1 && (
+                <InputGroup>
+                  <Label htmlFor={region.id} variant="small">
+                    Region
+                  </Label>
+                  {/* Our Select primitive uses Ariakit under the hood, which treats
+                  value={undefined} as uncontrolled, keeping stale internal state when
+                  switching environments. The key forces a remount so it reinitializes
+                  with the correct defaultValue. */}
+                  <Select
+                    key={`region-${environment.id}`}
+                    {...conform.select(region)}
+                    variant="tertiary/small"
+                    placeholder={isDev ? "–" : undefined}
+                    dropdownIcon
+                    items={regionItems}
+                    defaultValue={isDev ? undefined : defaultRegion?.name}
+                    value={isDev ? undefined : regionValue}
+                    setValue={
+                      isDev
+                        ? undefined
+                        : (e) => {
+                            if (Array.isArray(e)) return;
+                            setRegionValue(e);
+                          }
+                    }
+                    disabled={isDev}
+                  >
+                    {regionItems.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>
+                        {r.label}
+                        {r.isDefault ? " (default)" : ""}
+                      </SelectItem>
+                    ))}
+                  </Select>
+                  {isDev ? (
+                    <Hint>Region is not available in the development environment.</Hint>
+                  ) : (
+                    <Hint>Overrides the region for this run.</Hint>
+                  )}
+                  <FormError id={region.errorId}>{region.error}</FormError>
+                </InputGroup>
               )}
-              <Hint>Assign run to a specific queue.</Hint>
-              <FormError id={queue.errorId}>{queue.error}</FormError>
-            </InputGroup>
-            <InputGroup>
-              <Label htmlFor={tags.id} variant="small">
-                Tags
-              </Label>
-              <RunTagInput
-                name={tags.name}
-                id={tags.id}
-                variant="small"
-                tags={tagsValue}
-                onTagsChange={setTagsValue}
-              />
-              <Hint>Add tags to easily filter runs.</Hint>
-              <FormError id={tags.errorId}>{tags.error}</FormError>
-            </InputGroup>
-            <InputGroup>
-              <Label htmlFor={maxAttempts.id} variant="small">
-                Max attempts
-              </Label>
-              <Input
-                {...conform.input(maxAttempts, { type: "number" })}
-                className="[&::-webkit-inner-spin-button]:appearance-none"
-                variant="small"
-                min={1}
-                value={maxAttemptsValue}
-                onChange={(e) =>
-                  setMaxAttemptsValue(e.target.value ? parseInt(e.target.value) : undefined)
-                }
-                onKeyDown={(e) => {
-                  // only allow entering integers > 1
-                  if (["-", "+", ".", "e", "E"].includes(e.key)) {
-                    e.preventDefault();
+              <InputGroup>
+                <Label htmlFor={queue.id} variant="small">
+                  Queue
+                </Label>
+                {allowArbitraryQueues ? (
+                  <Input
+                    {...conform.input(queue, { type: "text" })}
+                    variant="small"
+                    value={queueValue ?? ""}
+                    onChange={(e) => setQueueValue(e.target.value)}
+                  />
+                ) : (
+                  <Select
+                    name={queue.name}
+                    id={queue.id}
+                    placeholder="Select queue"
+                    heading="Filter queues"
+                    variant="tertiary/small"
+                    dropdownIcon
+                    items={queueItems}
+                    filter={{ keys: ["label"] }}
+                    value={queueValue}
+                    setValue={setQueueValue}
+                  >
+                    {(matches) =>
+                      matches.map((queueItem) => (
+                        <SelectItem
+                          key={queueItem.value}
+                          value={queueItem.value}
+                          className="max-w-[var(--popover-anchor-width)]"
+                          icon={
+                            queueItem.type === "task" ? (
+                              <TaskIcon className="size-4 shrink-0 text-blue-500" />
+                            ) : (
+                              <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
+                            )
+                          }
+                        >
+                          <div className="flex w-full min-w-0 items-center justify-between">
+                            <span className="truncate">{queueItem.label}</span>
+                            {queueItem.paused && (
+                              <Badge variant="extra-small" className="ml-1 text-warning">
+                                Paused
+                              </Badge>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))
+                    }
+                  </Select>
+                )}
+                <Hint>Assign run to a specific queue.</Hint>
+                <FormError id={queue.errorId}>{queue.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={tags.id} variant="small">
+                  Tags
+                </Label>
+                <RunTagInput
+                  name={tags.name}
+                  id={tags.id}
+                  variant="small"
+                  tags={tagsValue}
+                  onTagsChange={setTagsValue}
+                />
+                <Hint>Add tags to easily filter runs.</Hint>
+                <FormError id={tags.errorId}>{tags.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={maxAttempts.id} variant="small">
+                  Max attempts
+                </Label>
+                <Input
+                  {...conform.input(maxAttempts, { type: "number" })}
+                  className="[&::-webkit-inner-spin-button]:appearance-none"
+                  variant="small"
+                  min={1}
+                  value={maxAttemptsValue}
+                  onChange={(e) =>
+                    setMaxAttemptsValue(e.target.value ? parseInt(e.target.value) : undefined)
                   }
-                }}
-                onBlur={(e) => {
-                  const value = parseInt(e.target.value);
-                  if (value < 1 && e.target.value !== "") {
-                    e.target.value = "1";
-                  }
-                }}
-              />
-              <Hint>Retries failed runs up to the specified number of attempts.</Hint>
-              <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
-            </InputGroup>
-            <InputGroup>
-              <Label htmlFor={maxDurationSeconds.id} variant="small">
-                Max duration
-              </Label>
-              <DurationPicker
-                name={maxDurationSeconds.name}
-                id={maxDurationSeconds.id}
-                value={maxDurationValue}
-                onChange={setMaxDurationValue}
-              />
-              <Hint>Overrides the maximum compute time limit for the run.</Hint>
-              <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
-            </InputGroup>
-            <InputGroup>
-              <Label htmlFor={idempotencyKey.id} variant="small">
-                Idempotency key
-              </Label>
-              <Input {...conform.input(idempotencyKey, { type: "text" })} variant="small" />
-              <FormError id={idempotencyKey.errorId}>{idempotencyKey.error}</FormError>
-              <Hint>
-                Specify an idempotency key to ensure that a task is only triggered once with the
-                same key.
-              </Hint>
-            </InputGroup>
-            <InputGroup>
-              <Label htmlFor={idempotencyKeyTTLSeconds.id} variant="small">
-                Idempotency key TTL
-              </Label>
-              <DurationPicker
-                name={idempotencyKeyTTLSeconds.name}
-                id={idempotencyKeyTTLSeconds.id}
-              />
-              <Hint>Keys expire after 30 days by default.</Hint>
-              <FormError id={idempotencyKeyTTLSeconds.errorId}>
-                {idempotencyKeyTTLSeconds.error}
-              </FormError>
-            </InputGroup>
-            <InputGroup>
-              <Label htmlFor={concurrencyKey.id} variant="small">
-                Concurrency key
-              </Label>
-              <Input
-                {...conform.input(concurrencyKey, { type: "text" })}
-                variant="small"
-                value={concurrencyKeyValue ?? ""}
-                onChange={(e) => setConcurrencyKeyValue(e.target.value)}
-              />
-              <Hint>
-                Limits concurrency by creating a separate queue for each value of the key.
-              </Hint>
-              <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
-            </InputGroup>
-            <InputGroup>
-              <Label htmlFor={prioritySeconds.id} variant="small">
-                Priority
-              </Label>
-              <DurationPicker name={prioritySeconds.name} id={prioritySeconds.id} />
-              <Hint>Sets the priority of the run. Higher values mean higher priority.</Hint>
-              <FormError id={prioritySeconds.errorId}>{prioritySeconds.error}</FormError>
-            </InputGroup>
-            <InputGroup>
-              <Label htmlFor={ttlSeconds.id} variant="small">
-                TTL
-              </Label>
-              <DurationPicker
-                name={ttlSeconds.name}
-                id={ttlSeconds.id}
-                value={ttlValue}
-                onChange={setTtlValue}
-              />
-              <Hint>Expires the run if it hasn't started within the TTL.</Hint>
-              <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
-            </InputGroup>
-          </Fieldset>
+                  onKeyDown={(e) => {
+                    // only allow entering integers > 1
+                    if (["-", "+", ".", "e", "E"].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
+                  onBlur={(e) => {
+                    const value = parseInt(e.target.value);
+                    if (value < 1 && e.target.value !== "") {
+                      e.target.value = "1";
+                    }
+                  }}
+                />
+                <Hint>Retries failed runs up to the specified number of attempts.</Hint>
+                <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={maxDurationSeconds.id} variant="small">
+                  Max duration
+                </Label>
+                <DurationPicker
+                  name={maxDurationSeconds.name}
+                  id={maxDurationSeconds.id}
+                  value={maxDurationValue}
+                  onChange={setMaxDurationValue}
+                />
+                <Hint>Overrides the maximum compute time limit for the run.</Hint>
+                <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={idempotencyKey.id} variant="small">
+                  Idempotency key
+                </Label>
+                <Input {...conform.input(idempotencyKey, { type: "text" })} variant="small" />
+                <FormError id={idempotencyKey.errorId}>{idempotencyKey.error}</FormError>
+                <Hint>
+                  Specify an idempotency key to ensure that a task is only triggered once with the
+                  same key.
+                </Hint>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={idempotencyKeyTTLSeconds.id} variant="small">
+                  Idempotency key TTL
+                </Label>
+                <DurationPicker
+                  name={idempotencyKeyTTLSeconds.name}
+                  id={idempotencyKeyTTLSeconds.id}
+                />
+                <Hint>Keys expire after 30 days by default.</Hint>
+                <FormError id={idempotencyKeyTTLSeconds.errorId}>
+                  {idempotencyKeyTTLSeconds.error}
+                </FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={concurrencyKey.id} variant="small">
+                  Concurrency key
+                </Label>
+                <Input
+                  {...conform.input(concurrencyKey, { type: "text" })}
+                  variant="small"
+                  value={concurrencyKeyValue ?? ""}
+                  onChange={(e) => setConcurrencyKeyValue(e.target.value)}
+                />
+                <Hint>
+                  Limits concurrency by creating a separate queue for each value of the key.
+                </Hint>
+                <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={prioritySeconds.id} variant="small">
+                  Priority
+                </Label>
+                <DurationPicker name={prioritySeconds.name} id={prioritySeconds.id} />
+                <Hint>Sets the priority of the run. Higher values mean higher priority.</Hint>
+                <FormError id={prioritySeconds.errorId}>{prioritySeconds.error}</FormError>
+              </InputGroup>
+              <InputGroup>
+                <Label htmlFor={ttlSeconds.id} variant="small">
+                  TTL
+                </Label>
+                <DurationPicker
+                  name={ttlSeconds.name}
+                  id={ttlSeconds.id}
+                  value={ttlValue}
+                  onChange={setTtlValue}
+                />
+                <Hint>Expires the run if it hasn't started within the TTL.</Hint>
+                <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
+              </InputGroup>
+            </Fieldset>
           </div>
         </div>
         {/* Toolbar overlay — same grid cell, sits above scrolling form. Outer

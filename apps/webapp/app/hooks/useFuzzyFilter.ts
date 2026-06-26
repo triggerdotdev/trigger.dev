@@ -24,7 +24,7 @@ import { matchSorter } from "match-sorter";
  * });
  * ```
  */
-export function useFuzzyFilter<T extends Object>({
+export function useFuzzyFilter<T extends object>({
   items,
   keys,
   filterText: controlledFilterText,

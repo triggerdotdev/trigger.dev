@@ -235,7 +235,7 @@ export class NextRunListPresenter {
           delayUntil: run.delayUntil ? run.delayUntil.toISOString() : undefined,
           hasFinished,
           finishedAt: hasFinished
-            ? run.completedAt?.toISOString() ?? run.updatedAt.toISOString()
+            ? (run.completedAt?.toISOString() ?? run.updatedAt.toISOString())
             : undefined,
           isTest: run.isTest,
           status: run.status,

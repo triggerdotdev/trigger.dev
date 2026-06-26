@@ -73,7 +73,16 @@ export function SaveToDashboardDialog({
         )
       );
     }
-  }, [fetcher.state, fetcher.data, selectedDashboardId, onOpenChange, navigate, organization.slug, project.slug, environment.slug]);
+  }, [
+    fetcher.state,
+    fetcher.data,
+    selectedDashboardId,
+    onOpenChange,
+    navigate,
+    organization.slug,
+    project.slug,
+    environment.slug,
+  ]);
 
   // Update selection if dashboards change
   useEffect(() => {
@@ -134,8 +143,8 @@ export function SaveToDashboardDialog({
                       isAtLimit
                         ? "cursor-not-allowed opacity-50"
                         : selectedDashboardId === dashboard.friendlyId
-                        ? "bg-charcoal-700 text-text-bright"
-                        : "text-text-dimmed hover:bg-charcoal-750 hover:text-text-bright"
+                          ? "bg-charcoal-700 text-text-bright"
+                          : "text-text-dimmed hover:bg-charcoal-750 hover:text-text-bright"
                     )}
                   >
                     {selectedDashboardId === dashboard.friendlyId ? (

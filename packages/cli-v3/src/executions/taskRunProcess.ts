@@ -213,9 +213,7 @@ export class TaskRunProcess {
           // expires — surfacing as TIMED_OUT/MAX_DURATION_EXCEEDED with empty attempts. Reject
           // any pending attempts now and gracefully terminate the worker so OTEL gets a flush
           // window before SIGKILL.
-          this.#rejectPendingAttempts(
-            new UncaughtExceptionError(message.error, message.origin)
-          );
+          this.#rejectPendingAttempts(new UncaughtExceptionError(message.error, message.origin));
 
           await this.#gracefullyTerminate(this.options.gracefulTerminationTimeoutInMs);
         },
@@ -317,11 +315,7 @@ export class TaskRunProcess {
 
       // @ts-expect-error - rejecter is assigned in the promise constructor above
       rejecter(
-        new UnexpectedExitError(
-          -1,
-          null,
-          "Child process is not connected, cannot execute task run"
-        )
+        new UnexpectedExitError(-1, null, "Child process is not connected, cannot execute task run")
       );
     }
 

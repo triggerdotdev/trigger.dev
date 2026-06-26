@@ -217,9 +217,8 @@ describe("RunEngine cancelling", () => {
         expect(childEvent.run.spanId).toBe(childRun.spanId);
 
         //concurrency should have been released
-        const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
-          authenticatedEnvironment
-        );
+        const envConcurrencyCompleted =
+          await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
         expect(envConcurrencyCompleted).toBe(0);
       } finally {
         await engine.quit();
@@ -313,9 +312,8 @@ describe("RunEngine cancelling", () => {
       expect(parentEvent.run.spanId).toBe(parentRun.spanId);
 
       //concurrency should have been released
-      const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
-        authenticatedEnvironment
-      );
+      const envConcurrencyCompleted =
+        await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
       expect(envConcurrencyCompleted).toBe(0);
     } finally {
       await engine.quit();
@@ -440,9 +438,8 @@ describe("RunEngine cancelling", () => {
       expect(parentEvent.run.spanId).toBe(parentRun.spanId);
 
       //concurrency should have been released
-      const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
-        authenticatedEnvironment
-      );
+      const envConcurrencyCompleted =
+        await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
       expect(envConcurrencyCompleted).toBe(0);
     } finally {
       await engine.quit();

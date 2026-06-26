@@ -1,0 +1,33 @@
+{
+  "name": "@internal/dashboard-agent",
+  "private": true,
+  "version": "0.0.1",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tool-schemas": "./src/tool-schemas.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.0",
+    "@internal/dashboard-agent-db": "workspace:*",
+    "@trigger.dev/sdk": "workspace:*",
+    "ai": "^6.0.116",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@ai-sdk/provider": "3.0.8",
+    "@trigger.dev/build": "workspace:*",
+    "trigger.dev": "workspace:*",
+    "vitest": "4.1.7"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:evals": "vitest run --config vitest.eval.config.ts",
+    "dev": "trigger dev",
+    "deploy": "trigger deploy"
+  }
+}

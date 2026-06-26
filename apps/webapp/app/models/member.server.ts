@@ -128,7 +128,7 @@ export async function inviteMembers({
         inviterId: userId,
         role: "MEMBER",
         rbacRoleId: rbacRoleId ?? null,
-      } satisfies Prisma.OrgMemberInviteCreateManyInput)
+      }) satisfies Prisma.OrgMemberInviteCreateManyInput
   );
 
   await prisma.orgMemberInvite.createMany({
@@ -215,7 +215,9 @@ export async function acceptInvite({
         organization: invite.organization,
         project,
         type: "DEVELOPMENT",
-        isBranchableEnvironment: false,
+        // We set this true but no backfill (yet!?) so never used
+        // for dev environments
+        isBranchableEnvironment: true,
         member,
         prismaClient: tx,
       });

@@ -113,7 +113,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       from: time.from,
       to: time.to,
     })
-    .catch(() => ({ data: [], statuses: [] } satisfies AgentActivity));
+    .catch(() => ({ data: [], statuses: [] }) satisfies AgentActivity);
 
   const sessionActivity = presenter
     .getSessionActivity({
@@ -124,7 +124,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       from: time.from,
       to: time.to,
     })
-    .catch(() => ({ data: [], statuses: [] } satisfies AgentActivity));
+    .catch(() => ({ data: [], statuses: [] }) satisfies AgentActivity);
 
   const llmCostActivity = presenter
     .getLlmCostActivity({
@@ -135,7 +135,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       from: time.from,
       to: time.to,
     })
-    .catch(() => ({ data: [], statuses: [] } satisfies AgentActivity));
+    .catch(() => ({ data: [], statuses: [] }) satisfies AgentActivity);
 
   const llmTokenActivity = presenter
     .getLlmTokenActivity({
@@ -146,7 +146,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       from: time.from,
       to: time.to,
     })
-    .catch(() => ({ data: [], statuses: [] } satisfies AgentActivity));
+    .catch(() => ({ data: [], statuses: [] }) satisfies AgentActivity);
 
   const runList = new NextRunListPresenter($replica, clickhouse)
     .call(project.organizationId, environment.id, {

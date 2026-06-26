@@ -37,11 +37,7 @@ export type TriggerTaskServiceOptions = {
   triggerAction?: string;
 };
 
-export class OutOfEntitlementError extends Error {
-  constructor() {
-    super("You can't trigger a task because you have run out of credits.");
-  }
-}
+export { OutOfEntitlementError } from "../outOfEntitlementError.server";
 
 export type TriggerTaskServiceResult = {
   run: TaskRun;

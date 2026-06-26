@@ -33,7 +33,8 @@ export function useYAxisWidth(
       }
     }
 
-    const fmt = tickFormatter ?? ((v: any) => (typeof v === "number" ? v.toLocaleString() : String(v)));
+    const fmt =
+      tickFormatter ?? ((v: any) => (typeof v === "number" ? v.toLocaleString() : String(v)));
     const label = fmt(max, 0);
     // Add one char of slack because recharts "nices" the domain up beyond data max.
     const charCount = label.length + 1;

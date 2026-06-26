@@ -80,19 +80,22 @@ const schema = z.object({
     if (i === "true") return true;
     return false;
   }, z.boolean()),
-  environmentIds: z.preprocess((i) => {
-    if (typeof i === "string") return [i];
+  environmentIds: z.preprocess(
+    (i) => {
+      if (typeof i === "string") return [i];
 
-    if (Array.isArray(i)) {
-      const ids = i.filter((v) => typeof v === "string" && v !== "");
-      if (ids.length === 0) {
-        return;
+      if (Array.isArray(i)) {
+        const ids = i.filter((v) => typeof v === "string" && v !== "");
+        if (ids.length === 0) {
+          return;
+        }
+        return ids;
       }
-      return ids;
-    }
 
-    return;
-  }, z.array(z.string(), { required_error: "At least one environment is required" })),
+      return;
+    },
+    z.array(z.string(), { required_error: "At least one environment is required" })
+  ),
   variables: z.preprocess((i) => {
     if (!Array.isArray(i)) {
       return [];
@@ -220,12 +223,14 @@ export default function Page() {
   const [selectedEnvironmentIds, setSelectedEnvironmentIds] = useState<Set<string>>(new Set());
   const [selectedBranchId, setSelectedBranchId] = useState<string | undefined>(undefined);
 
-  const branchEnvironments = environments.filter((env) => env.branchName);
-  const nonBranchEnvironments = environments.filter((env) => !env.branchName);
-  const selectedEnvironments = environments.filter((env) => selectedEnvironmentIds.has(env.id));
-  const previewIsSelected = selectedEnvironments.some(
-    (env) => env.branchName !== null || env.type === "PREVIEW"
+  // TODO for no we only support branch-specific env vars for Preview environments
+  // Mostly to keep the UX for setting consistent env-vars across Dev/Staging/Prod easier
+  const previewBranches = environments.filter(
+    (env) => env.type === "PREVIEW" && env.parentEnvironmentId !== null
   );
+  const nonBranchEnvironments = environments.filter((env) => env.parentEnvironmentId === null);
+  const selectedEnvironments = environments.filter((env) => selectedEnvironmentIds.has(env.id));
+  const previewIsSelected = selectedEnvironments.some((env) => env.type === "PREVIEW");
 
   const isLoading = navigation.state !== "idle" && navigation.formMethod === "post";
 
@@ -406,7 +411,7 @@ export default function Page() {
                     value={selectedBranchId ?? "all"}
                     setValue={handleBranchChange}
                     placeholder="All branches"
-                    items={[{ id: "all", branchName: "All branches" }, ...branchEnvironments]}
+                    items={[{ id: "all", branchName: "All branches" }, ...previewBranches]}
                     className="w-fit min-w-52"
                     filter={{
                       keys: [
@@ -414,7 +419,7 @@ export default function Page() {
                       ],
                     }}
                     text={(val) =>
-                      val ? branchEnvironments.find((b) => b.id === val)?.branchName : null
+                      val ? previewBranches.find((b) => b.id === val)?.branchName : null
                     }
                     dropdownIcon
                   >

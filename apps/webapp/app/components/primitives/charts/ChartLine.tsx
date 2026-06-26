@@ -83,7 +83,17 @@ export function ChartLineRenderer({
   width,
   height,
 }: ChartLineRendererProps) {
-  const { config, data, dataKey, dataKeys, visibleSeries, state, highlight, setActivePayload, showLegend } = useChartContext();
+  const {
+    config,
+    data,
+    dataKey,
+    dataKeys,
+    visibleSeries,
+    state,
+    highlight,
+    setActivePayload,
+    showLegend,
+  } = useChartContext();
   const hasNoData = useHasNoData();
   const yAxisTickFormatter = yAxisPropsProp?.tickFormatter ?? defaultYAxisTickFormatter;
   const computedYAxisWidth = useYAxisWidth(data, visibleSeries, yAxisTickFormatter);
@@ -214,11 +224,7 @@ export function ChartLineRenderer({
       <ChartTooltip
         cursor={{ stroke: "rgba(255, 255, 255, 0.1)", strokeWidth: 1 }}
         content={
-          showLegend ? (
-            () => null
-          ) : (
-            <ChartTooltipContent valueFormatter={tooltipValueFormatter} />
-          )
+          showLegend ? () => null : <ChartTooltipContent valueFormatter={tooltipValueFormatter} />
         }
         labelFormatter={tooltipLabelFormatter}
       />

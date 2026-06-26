@@ -162,13 +162,7 @@ function ChartRootInner({
   const enableZoom = zoom !== null;
 
   return (
-    <div
-      className={cn(
-        "relative flex w-full flex-col",
-        fillContainer && "h-full",
-        className
-      )}
-    >
+    <div className={cn("relative flex w-full flex-col", fillContainer && "h-full", className)}>
       <div
         className={cn(
           fillContainer ? "min-h-0 flex-1" : "h-full w-full",
@@ -182,7 +176,7 @@ function ChartRootInner({
             "h-full w-full",
             fillContainer && "!aspect-auto",
             enableZoom &&
-            "[&_.recharts-surface]:cursor-crosshair [&_.recharts-wrapper]:cursor-crosshair"
+              "[&_.recharts-surface]:cursor-crosshair [&_.recharts-wrapper]:cursor-crosshair"
           )}
           style={fillContainer ? undefined : minHeight ? { minHeight } : undefined}
         >

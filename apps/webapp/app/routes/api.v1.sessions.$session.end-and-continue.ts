@@ -8,10 +8,7 @@ import { $replica, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { swapSessionRun } from "~/services/realtime/sessionRunManager.server";
 import { resolveSessionByIdOrExternalId } from "~/services/realtime/sessions.server";
-import {
-  anyResource,
-  createActionApiRoute,
-} from "~/services/routeBuilders/apiBuilder.server";
+import { anyResource, createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({
@@ -67,17 +64,11 @@ const { action, loader } = createActionApiRoute(
     }
 
     if (session.closedAt) {
-      return json(
-        { error: "Cannot end-and-continue a closed session" },
-        { status: 400 }
-      );
+      return json({ error: "Cannot end-and-continue a closed session" }, { status: 400 });
     }
 
     if (session.expiresAt && session.expiresAt.getTime() < Date.now()) {
-      return json(
-        { error: "Cannot end-and-continue an expired session" },
-        { status: 400 }
-      );
+      return json({ error: "Cannot end-and-continue an expired session" }, { status: 400 });
     }
 
     // The wire `callingRunId` is a friendlyId (that's what the agent

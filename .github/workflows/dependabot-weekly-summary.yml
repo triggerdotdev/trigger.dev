@@ -2,7 +2,7 @@ name: Dependabot Weekly Summary
 
 on:
   schedule:
-    - cron: "0 8 * * 1"  # Mon 08:00 UTC
+    - cron: "0 8 * * 1" # Mon 08:00 UTC
   workflow_dispatch:
 
 # Single-purpose monitoring workflow; serialise on workflow name only - we never
@@ -12,9 +12,9 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read       # gh CLI baseline
-  pull-requests: read  # gh pr list (open dependabot PRs)
-  actions: read        # gh run list / view (parse latest dependabot run logs)
+  contents: read # gh CLI baseline
+  pull-requests: read # gh pr list (open dependabot PRs)
+  actions: read # gh run list / view (parse latest dependabot run logs)
 
 jobs:
   summary:

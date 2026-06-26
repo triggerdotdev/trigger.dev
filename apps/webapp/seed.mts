@@ -294,9 +294,7 @@ async function ensureDefaultWorkerGroup() {
 
     console.log(`✅ Created worker instance group: ${workerGroup.name} (${workerGroup.id})`);
   } else {
-    console.log(
-      `✅ Worker instance group already exists: ${workerGroup.name} (${workerGroup.id})`
-    );
+    console.log(`✅ Worker instance group already exists: ${workerGroup.name} (${workerGroup.id})`);
   }
 
   // Set the feature flag

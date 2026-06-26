@@ -111,7 +111,18 @@ export function ChartBarRenderer({
   width,
   height,
 }: ChartBarRendererProps) {
-  const { config, data, dataKey, dataKeys, visibleSeries, state, highlight, setActivePayload, zoom, showLegend } = useChartContext();
+  const {
+    config,
+    data,
+    dataKey,
+    dataKeys,
+    visibleSeries,
+    state,
+    highlight,
+    setActivePayload,
+    zoom,
+    showLegend,
+  } = useChartContext();
   const hasNoData = useHasNoData();
   const zoomHandlers = useZoomHandlers();
   const sync = useChartSync();
@@ -304,9 +315,7 @@ export function ChartBarRenderer({
 
       {visibleSeries.map((key, index, array) => {
         const dimmed =
-          !zoom?.isSelecting &&
-          highlight.activeBarKey !== null &&
-          highlight.activeBarKey !== key;
+          !zoom?.isSelecting && highlight.activeBarKey !== null && highlight.activeBarKey !== key;
 
         return (
           <Bar

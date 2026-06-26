@@ -2,7 +2,12 @@ import { describe, it, expect } from "vitest";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { assertNoDuplicateTaskIds } from "~/v3/services/duplicateTaskIds.server";
 
-function task(partial: { id: string; filePath?: string; exportName?: string; triggerSource?: string }) {
+function task(partial: {
+  id: string;
+  filePath?: string;
+  exportName?: string;
+  triggerSource?: string;
+}) {
   return {
     filePath: "src/trigger/example.ts",
     exportName: "exampleTask",

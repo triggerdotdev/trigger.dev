@@ -36,10 +36,10 @@ export function isOrgMigrated({
 
   const pct =
     planType === "free"
-      ? flags?.computeMigrationFreePercentage ?? 0
+      ? (flags?.computeMigrationFreePercentage ?? 0)
       : planType === "paid"
-      ? flags?.computeMigrationPaidPercentage ?? 0
-      : 0; // enterprise / undefined
+        ? (flags?.computeMigrationPaidPercentage ?? 0)
+        : 0; // enterprise / undefined
 
   return hashBucket(orgId) < pct;
 }
@@ -67,7 +67,11 @@ export function resolveComputeMigration({
   backing,
   envType,
   ...decision
-}: ResolveInput): { workerQueue: string | undefined; region: string | undefined; enableFastPath: boolean } {
+}: ResolveInput): {
+  workerQueue: string | undefined;
+  region: string | undefined;
+  enableFastPath: boolean;
+} {
   const passthrough = { workerQueue: baseWorkerQueue, region, enableFastPath: baseEnableFastPath };
   if (baseWorkerQueue === undefined) return passthrough;
   if (envType === "DEVELOPMENT") return passthrough;

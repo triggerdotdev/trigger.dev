@@ -382,8 +382,8 @@ function Upgradable({
                     unallocated > 0
                       ? "text-success"
                       : unallocated < 0
-                      ? "text-error"
-                      : "text-text-bright"
+                        ? "text-error"
+                        : "text-text-bright"
                   )}
                 >
                   {allocationModified ? (

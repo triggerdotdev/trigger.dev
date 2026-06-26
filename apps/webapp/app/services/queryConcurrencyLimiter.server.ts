@@ -26,4 +26,3 @@ export const DEFAULT_ORG_CONCURRENCY_LIMIT = env.QUERY_DEFAULT_ORG_CONCURRENCY_L
 
 /** Global concurrency limit from environment */
 export const GLOBAL_CONCURRENCY_LIMIT = env.QUERY_GLOBAL_CONCURRENCY_LIMIT;
-
