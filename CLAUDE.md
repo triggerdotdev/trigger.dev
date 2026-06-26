@@ -71,6 +71,16 @@ containerTest("should use both", async ({ prisma, redisOptions }) => {
 
 ## Code Style
 
+### Formatting and linting
+
+Format and lint are enforced by CI (`code-quality` check). Run before committing:
+
+```bash
+pnpm run format      # oxfmt — auto-fixes formatting
+pnpm run lint:fix    # oxlint — auto-fixes lint violations
+pnpm run lint        # oxlint — check only (no fixes)
+```
+
 ### Imports
 
 **Prefer static imports over dynamic imports.** Only use dynamic `import()` when:
