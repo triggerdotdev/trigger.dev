@@ -980,6 +980,13 @@ function renameVariables(variables: EnvironmentVariable[], renameMap: Record<str
   });
 }
 
+/**
+ * Resolves trigger-side built-in environment variables that are merged into a
+ * task run's env but can be overridden by user-defined variables on the
+ * environment. Values come from server-level `env` and are surfaced to runners
+ * so they can pick up rollouts (e.g. the realtime stream version) without a
+ * redeploy.
+ */
 async function resolveOverridableTriggerVariables(
   runtimeEnvironment: RuntimeEnvironmentForEnvRepo
 ) {
@@ -993,6 +1000,14 @@ async function resolveOverridableTriggerVariables(
   return result;
 }
 
+/**
+ * Resolves built-in environment variables that are injected into dev (CLI) task
+ * runs. Dev CLI typically runs on a developer's machine outside any cluster,
+ * so the runner-bypass `RUNTIME_API_ORIGIN` (which usually points at an
+ * in-cluster service URL) is intentionally NOT applied here -- using it would
+ * make the URL unreachable for the dev CLI. Dev keeps the original
+ * `API_ORIGIN`/`STREAM_ORIGIN`/`APP_ORIGIN` chain.
+ */
 async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironmentForEnvRepo) {
   let result: Array<EnvironmentVariable> = [
     {
@@ -1130,6 +1145,12 @@ async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment
   return [...result, ...commonVariables];
 }
 
+/**
+ * Resolves the OpenTelemetry collector endpoint advertised to dev (CLI) task
+ * runs. Defaults to the webapp's own `/otel` route under `APP_ORIGIN` so a
+ * vanilla self-host works without extra wiring; `DEV_OTEL_EXPORTER_OTLP_ENDPOINT`
+ * can override it to point spans/logs at an external collector.
+ */
 async function resolveOverridableOtelDevVariables(
   runtimeEnvironment: RuntimeEnvironmentForEnvRepo
 ) {
@@ -1143,6 +1164,22 @@ async function resolveOverridableOtelDevVariables(
   return result;
 }
 
+/**
+ * Resolves built-in environment variables that are injected into managed
+ * (deployed) task runs. `TRIGGER_API_URL` and `TRIGGER_STREAM_URL` prefer
+ * `RUNTIME_API_ORIGIN` over `API_ORIGIN`/`STREAM_ORIGIN` so self-hosted
+ * deployments can keep runner-to-webapp traffic on a cluster-internal hop
+ * (bypassing tracing-enabled gateways that rewrite the W3C `traceparent`
+ * header on egress) without affecting the public origins exposed to external
+ * clients.
+ *
+ * The stream URL deliberately prefers `RUNTIME_API_ORIGIN` ahead of
+ * `STREAM_ORIGIN`: the obvious reorder (`STREAM_ORIGIN ?? RUNTIME_API_ORIGIN`)
+ * would route the stream path back through the same gateway and re-expose it
+ * to the `traceparent` rewrite. The trade-off is that an operator wanting both
+ * an in-cluster runner hop *and* a separate external stream endpoint must keep
+ * `RUNTIME_API_ORIGIN` unset and rely on `STREAM_ORIGIN` instead.
+ */
 async function resolveBuiltInProdVariables(
   runtimeEnvironment: RuntimeEnvironmentForEnvRepo,
   parentEnvironment?: RuntimeEnvironmentForEnvRepo
@@ -1154,11 +1191,11 @@ async function resolveBuiltInProdVariables(
     },
     {
       key: "TRIGGER_API_URL",
-      value: env.API_ORIGIN ?? env.APP_ORIGIN,
+      value: env.RUNTIME_API_ORIGIN ?? env.API_ORIGIN ?? env.APP_ORIGIN,
     },
     {
       key: "TRIGGER_STREAM_URL",
-      value: env.STREAM_ORIGIN ?? env.API_ORIGIN ?? env.APP_ORIGIN,
+      value: env.RUNTIME_API_ORIGIN ?? env.STREAM_ORIGIN ?? env.API_ORIGIN ?? env.APP_ORIGIN,
     },
     {
       key: "TRIGGER_RUNTIME_WAIT_THRESHOLD_IN_MS",
