@@ -4,10 +4,13 @@ The conversation datastore for the in-dashboard agent, isolated from the main
 Prisma database. Drizzle (postgres-js) over a dedicated `trigger_dashboard_agent`
 Postgres schema.
 
-- **Cloud:** a separate PlanetScale Postgres database (`DASHBOARD_AGENT_DATABASE_URL`),
-  reached over a standard pooled connection.
-- **OSS / self-host:** falls back to the main `DATABASE_URL`; the tables live in
-  the dedicated `trigger_dashboard_agent` schema, isolated from Prisma's `public`.
+- **Cloud:** a separate PlanetScale Postgres database. The app connects over a
+  pooled connection (`DASHBOARD_AGENT_DATABASE_URL`); migrations run over a direct
+  (non-pooler) connection (`DASHBOARD_AGENT_DIRECT_URL`), since a transaction-mode
+  pooler can't run the migrator.
+- **OSS / self-host:** falls back to the main `DATABASE_URL` (and `DIRECT_URL` for
+  migrations); the tables live in the dedicated `trigger_dashboard_agent` schema,
+  isolated from Prisma's `public`.
 
 The schema is **foreign-key-free** — it references main entities (`organizationId`,
 `userId`) by id only, because in cloud it lives in a different database.
@@ -36,7 +39,7 @@ of truth.
 
 ```bash
 pnpm run db:generate   # generate SQL migration from src/schema.ts (offline)
-pnpm run db:migrate    # apply migrations (needs DASHBOARD_AGENT_DATABASE_URL or DATABASE_URL)
+pnpm run db:migrate    # apply migrations (direct url: DASHBOARD_AGENT_DIRECT_URL, falling back to DASHBOARD_AGENT_DATABASE_URL / DIRECT_URL / DATABASE_URL)
 ```
 
 drizzle-kit is scoped to the `trigger_dashboard_agent` schema (`schemaFilter`), so
