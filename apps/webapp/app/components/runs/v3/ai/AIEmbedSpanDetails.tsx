@@ -63,4 +63,3 @@ export function AIEmbedSpanDetails({ data }: { data: AIEmbedData }) {
     </div>
   );
 }
-

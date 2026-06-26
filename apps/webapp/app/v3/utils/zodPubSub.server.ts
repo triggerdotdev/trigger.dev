@@ -20,9 +20,9 @@ export interface ZodSubscriber<TMessageCatalog extends ZodMessageCatalogSchema> 
   stopListening(): Promise<void>;
 }
 
-class RedisZodSubscriber<TMessageCatalog extends ZodMessageCatalogSchema>
-  implements ZodSubscriber<TMessageCatalog>
-{
+class RedisZodSubscriber<
+  TMessageCatalog extends ZodMessageCatalogSchema,
+> implements ZodSubscriber<TMessageCatalog> {
   private _subscriber: RedisClient;
   private _listeners: Map<string, (payload: unknown) => Promise<void>> = new Map();
   private _messageHandler: ZodMessageHandler<TMessageCatalog>;

@@ -234,9 +234,7 @@ function parseMessagesToDisplayItems(raw: unknown): DisplayItem[] | undefined {
           });
 
           const result = resultMsg
-            ? extractToolResults(resultMsg.content).find(
-              (r) => r.toolCallId === tc.toolCallId
-            )
+            ? extractToolResults(resultMsg.content).find((r) => r.toolCallId === tc.toolCallId)
             : undefined;
 
           return {
@@ -430,9 +428,7 @@ function parseToolDefinitions(raw: unknown): ToolDefinition[] | undefined {
         name,
         description: str(o.description),
         parametersJson:
-          schema && typeof schema === "object"
-            ? JSON.stringify(schema, null, 2)
-            : undefined,
+          schema && typeof schema === "object" ? JSON.stringify(schema, null, 2) : undefined,
       });
     }
     return defs.length > 0 ? defs : undefined;
@@ -684,4 +680,3 @@ function appendGenAiMessages(items: DisplayItem[], messages: GenAiMessage[]): vo
     i++;
   }
 }
-

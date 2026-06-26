@@ -5,10 +5,7 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { TaskRunHeartbeatFailedService } from "./taskRunHeartbeatFailed.server";
-import {
-  completeBatchTaskRunItemV3,
-  tryCompleteBatchV3,
-} from "./services/batchTriggerV3.server";
+import { completeBatchTaskRunItemV3, tryCompleteBatchV3 } from "./services/batchTriggerV3.server";
 import { prisma } from "~/db.server";
 import { marqs } from "./marqs/index.server";
 

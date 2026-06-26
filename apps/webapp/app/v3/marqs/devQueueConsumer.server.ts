@@ -398,8 +398,8 @@ export class DevQueueConsumer {
     }
 
     const backgroundWorker = existingTaskRun.lockedToVersionId
-      ? this._deprecatedWorkers.get(existingTaskRun.lockedToVersionId) ??
-        this._backgroundWorkers.get(existingTaskRun.lockedToVersionId)
+      ? (this._deprecatedWorkers.get(existingTaskRun.lockedToVersionId) ??
+        this._backgroundWorkers.get(existingTaskRun.lockedToVersionId))
       : this.#getLatestBackgroundWorker();
 
     if (!backgroundWorker) {

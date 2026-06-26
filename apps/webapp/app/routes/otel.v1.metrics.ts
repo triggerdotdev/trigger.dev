@@ -13,9 +13,7 @@ export async function action({ request }: ActionFunctionArgs) {
       const exporter = await otlpExporter;
       const body = await request.json();
 
-      const exportResponse = await exporter.exportMetrics(
-        body as ExportMetricsServiceRequest
-      );
+      const exportResponse = await exporter.exportMetrics(body as ExportMetricsServiceRequest);
 
       return json(exportResponse, { status: 200 });
     } else if (contentType.startsWith("application/x-protobuf")) {

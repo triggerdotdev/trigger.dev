@@ -26,11 +26,7 @@ describe("Dashboard", () => {
   // already proves. If the wrapper config drifts per-route in the
   // future, add targeted tests for the divergent ones.
   describe("Admin pages — requireSuper gate", () => {
-    const adminRoutes = [
-      "/admin",
-      "/admin/concurrency",
-      "/admin/back-office",
-    ];
+    const adminRoutes = ["/admin", "/admin/concurrency", "/admin/back-office"];
 
     for (const path of adminRoutes) {
       describe(`GET ${path}`, () => {

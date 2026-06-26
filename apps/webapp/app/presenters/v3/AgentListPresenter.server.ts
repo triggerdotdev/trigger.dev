@@ -99,7 +99,11 @@ export class AgentListPresenter {
 
     // All queries are deferred for streaming
     const activeStates = this.#getActiveStates(clickhouse, environmentId, slugs);
-    const conversationSparklines = this.#getConversationSparklines(clickhouse, environmentId, slugs);
+    const conversationSparklines = this.#getConversationSparklines(
+      clickhouse,
+      environmentId,
+      slugs
+    );
     const costSparklines = this.#getCostSparklines(clickhouse, environmentId, slugs);
     const tokenSparklines = this.#getTokenSparklines(clickhouse, environmentId, slugs);
 

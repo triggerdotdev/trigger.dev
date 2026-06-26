@@ -176,7 +176,10 @@ describe("NativeRealtimeClient resolve admission gate (mass-reconnect stampede)"
     };
   }
 
-  function makeGatedClient(resolveAdmissionLimit: number, resolver: ReturnType<typeof gatedResolver>) {
+  function makeGatedClient(
+    resolveAdmissionLimit: number,
+    resolver: ReturnType<typeof gatedResolver>
+  ) {
     const hydrateSpy = vi.fn(async (_env: string, ids: string[]) => ids.map(row));
     return new NativeRealtimeClient({
       runReader: { getRunById: async () => null, hydrateByIds: hydrateSpy } as any,

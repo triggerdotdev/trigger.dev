@@ -531,10 +531,10 @@ export function TierFree({
                 {subscription?.plan === undefined
                   ? "Select plan"
                   : subscription.plan.type === "free"
-                  ? "Current plan"
-                  : subscription.canceledAt !== undefined
-                  ? "Current plan"
-                  : "Select plan"}
+                    ? "Current plan"
+                    : subscription.canceledAt !== undefined
+                      ? "Current plan"
+                      : "Select plan"}
               </Button>
             </Form>
           )}
@@ -657,10 +657,10 @@ export function TierHobby({
             {subscription?.plan === undefined
               ? "Select plan"
               : subscription.plan.type === "free" || subscription.canceledAt !== undefined
-              ? `Upgrade to ${plan.title}`
-              : subscription.plan.code === plan.code
-              ? "Current plan"
-              : `Upgrade to ${plan.title}`}
+                ? `Upgrade to ${plan.title}`
+                : subscription.plan.code === plan.code
+                  ? "Current plan"
+                  : `Upgrade to ${plan.title}`}
           </Button>
         )}
       </Form>
@@ -802,10 +802,10 @@ export function TierPro({
               {subscription?.plan === undefined
                 ? "Select plan"
                 : subscription.plan.type === "free" || subscription.canceledAt !== undefined
-                ? `Upgrade to ${plan.title}`
-                : subscription.plan.code === plan.code
-                ? "Current plan"
-                : `Upgrade to ${plan.title}`}
+                  ? `Upgrade to ${plan.title}`
+                  : subscription.plan.code === plan.code
+                    ? "Current plan"
+                    : `Upgrade to ${plan.title}`}
             </Button>
           )}
         </div>

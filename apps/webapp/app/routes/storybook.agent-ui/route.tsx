@@ -34,7 +34,8 @@ const fullDiagnosis: DiagnosisBlock = {
       reference: "error_emptyorder",
     },
   ],
-  impact: "14 runs of process-order failed with this error in the last 24 hours, all in production.",
+  impact:
+    "14 runs of process-order failed with this error in the last 24 hours, all in production.",
   nextSteps: [
     "Guard against an empty items array at the top of processOrder and return early.",
     "Validate the payload before triggering so empty orders never reach the task.",
@@ -54,7 +55,11 @@ const externalServiceDiagnosis: DiagnosisBlock = {
     "The Stripe call has no timeout or retry, so a slow upstream response runs past the task's max duration.",
   confidence: "medium",
   evidence: [
-    { type: "error", detail: "TimeoutError: Stripe API timed out after 30s", reference: "run_f6g7h8i9j0" },
+    {
+      type: "error",
+      detail: "TimeoutError: Stripe API timed out after 30s",
+      reference: "run_f6g7h8i9j0",
+    },
     { type: "deploy", detail: "First seen on version 20260620.2", reference: "20260620.2" },
   ],
   impact: "Intermittent: 3 of the last 50 charge-payment runs timed out.",
@@ -68,7 +73,8 @@ const externalServiceDiagnosis: DiagnosisBlock = {
 const lowConfidenceDiagnosis: DiagnosisBlock = {
   type: "diagnosis",
   runId: "run_k1l2m3n4o5",
-  summary: "The run crashed without a captured error, so the cause isn't conclusive from the available signals.",
+  summary:
+    "The run crashed without a captured error, so the cause isn't conclusive from the available signals.",
   category: "unknown",
   likelyCause:
     "The container exited without writing an error. This is consistent with an out-of-memory kill, but there's no OOM signal in the trace to confirm it.",

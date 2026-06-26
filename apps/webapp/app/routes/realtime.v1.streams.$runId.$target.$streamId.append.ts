@@ -59,8 +59,8 @@ const { action } = createActionApiRoute(
       params.target === "self"
         ? run.friendlyId
         : params.target === "parent"
-        ? run.parentTaskRun?.friendlyId
-        : run.rootTaskRun?.friendlyId;
+          ? run.parentTaskRun?.friendlyId
+          : run.rootTaskRun?.friendlyId;
 
     if (!targetId) {
       return new Response("Target not found", { status: 404 });

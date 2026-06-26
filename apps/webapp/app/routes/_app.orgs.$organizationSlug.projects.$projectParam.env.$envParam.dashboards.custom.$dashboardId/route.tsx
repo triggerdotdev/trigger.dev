@@ -566,8 +566,8 @@ export default function Page() {
                 editorProps.editorDefaultResultsView === "chart"
                   ? "graph"
                   : editorProps.editorDefaultResultsView === "bignumber"
-                  ? "bignumber"
-                  : "table"
+                    ? "bignumber"
+                    : "table"
               }
               defaultChartConfig={editorProps.editorDefaultChartConfig}
               defaultBigNumberConfig={editorProps.editorDefaultBigNumberConfig}

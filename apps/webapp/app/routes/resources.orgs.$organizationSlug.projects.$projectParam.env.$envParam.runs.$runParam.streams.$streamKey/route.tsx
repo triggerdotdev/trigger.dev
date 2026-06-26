@@ -95,9 +95,15 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     { run }
   );
 
-  return realtimeStream.streamResponse(request, run.friendlyId, streamKey, getRequestAbortSignal(), {
-    lastEventId,
-  });
+  return realtimeStream.streamResponse(
+    request,
+    run.friendlyId,
+    streamKey,
+    getRequestAbortSignal(),
+    {
+      lastEventId,
+    }
+  );
 };
 
 export function RealtimeStreamViewer({
@@ -338,8 +344,8 @@ export function RealtimeStreamViewer({
                       chunks.length === 0
                         ? "cursor-not-allowed opacity-50"
                         : copied
-                        ? "text-success hover:cursor-pointer"
-                        : "text-text-dimmed hover:cursor-pointer hover:text-text-bright"
+                          ? "text-success hover:cursor-pointer"
+                          : "text-text-dimmed hover:cursor-pointer hover:text-text-bright"
                     )}
                   >
                     {copied ? (

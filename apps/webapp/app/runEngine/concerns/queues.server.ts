@@ -16,7 +16,12 @@ import { env } from "~/env.server";
 import { tryCatch } from "@trigger.dev/core/v3";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { isInfrastructureError } from "~/utils/prismaErrors";
-import { createCache, createLRUMemoryStore, DefaultStatefulContext, Namespace } from "@internal/cache";
+import {
+  createCache,
+  createLRUMemoryStore,
+  DefaultStatefulContext,
+  Namespace,
+} from "@internal/cache";
 import { singleton } from "~/utils/singleton";
 import type { TaskMetadataCache, TaskMetadataEntry } from "~/services/taskMetadataCache.server";
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
@@ -111,7 +116,8 @@ export class DefaultQueueManager implements QueueManager {
 
         if (!specifiedQueue) {
           throw new ServiceValidationError(
-            `Specified queue '${specifiedQueueName}' not found or not associated with locked version '${lockedBackgroundWorker.version ?? "<unknown>"
+            `Specified queue '${specifiedQueueName}' not found or not associated with locked version '${
+              lockedBackgroundWorker.version ?? "<unknown>"
             }'.`
           );
         }
@@ -151,7 +157,8 @@ export class DefaultQueueManager implements QueueManager {
 
         if (!lockedMeta) {
           throw new ServiceValidationError(
-            `Task '${request.taskId}' not found on locked version '${lockedBackgroundWorker.version ?? "<unknown>"
+            `Task '${request.taskId}' not found on locked version '${
+              lockedBackgroundWorker.version ?? "<unknown>"
             }'.`
           );
         }
@@ -167,7 +174,8 @@ export class DefaultQueueManager implements QueueManager {
             version: lockedBackgroundWorker.version,
           });
           throw new ServiceValidationError(
-            `Default queue configuration for task '${request.taskId}' missing on locked version '${lockedBackgroundWorker.version ?? "<unknown>"
+            `Default queue configuration for task '${request.taskId}' missing on locked version '${
+              lockedBackgroundWorker.version ?? "<unknown>"
             }'.`
           );
         }
@@ -474,7 +482,9 @@ export class DefaultQueueManager implements QueueManager {
   }
 }
 
-export function getMaximumSizeForEnvironment(environment: AuthenticatedEnvironment): number | undefined {
+export function getMaximumSizeForEnvironment(
+  environment: AuthenticatedEnvironment
+): number | undefined {
   if (environment.type === "DEVELOPMENT") {
     return environment.organization.maximumDevQueueSize ?? env.MAXIMUM_DEV_QUEUE_SIZE;
   } else {

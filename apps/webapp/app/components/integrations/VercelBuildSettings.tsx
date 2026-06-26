@@ -113,9 +113,7 @@ export function BuildSettingsFields({
               </div>
             );
             if (disabled && disabledReason) {
-              return (
-                <SimpleTooltip key={slug} button={row} content={disabledReason} side="left" />
-              );
+              return <SimpleTooltip key={slug} button={row} content={disabledReason} side="left" />;
             }
             return row;
           })}
@@ -140,9 +138,7 @@ export function BuildSettingsFields({
                 disabled={!enabledSlugs.some((s) => pullEnvVarsBeforeBuild.includes(s))}
                 onCheckedChange={(checked) => {
                   onDiscoverEnvVarsChange(
-                    checked
-                      ? enabledSlugs.filter((s) => pullEnvVarsBeforeBuild.includes(s))
-                      : []
+                    checked ? enabledSlugs.filter((s) => pullEnvVarsBeforeBuild.includes(s)) : []
                   );
                 }}
               />
@@ -185,9 +181,7 @@ export function BuildSettingsFields({
               </div>
             );
             if (disabled && disabledReason) {
-              return (
-                <SimpleTooltip key={slug} button={row} content={disabledReason} side="left" />
-              );
+              return <SimpleTooltip key={slug} button={row} content={disabledReason} side="left" />;
             }
             return row;
           })}
@@ -208,10 +202,12 @@ export function BuildSettingsFields({
         </div>
         <Hint className="pr-6">
           When enabled, production deployments wait for Vercel deployment to complete before
-          promoting the Trigger.dev deployment. This will disable the "Auto-assign Custom
-          Production Domains" option in your Vercel project settings to perform staged
-          deployments.{" "}
-          <TextLink href="https://trigger.dev/docs/vercel-integration#atomic-deployments" target="_blank">
+          promoting the Trigger.dev deployment. This will disable the "Auto-assign Custom Production
+          Domains" option in your Vercel project settings to perform staged deployments.{" "}
+          <TextLink
+            href="https://trigger.dev/docs/vercel-integration#atomic-deployments"
+            target="_blank"
+          >
             Learn more
           </TextLink>
           .
@@ -225,9 +221,8 @@ export function BuildSettingsFields({
         )}
         {!currentTriggerVersion && currentTriggerVersionFetchFailed && (
           <Hint className="pr-6 text-warning">
-            Couldn't read{" "}
-            <span className="font-mono text-text-bright">TRIGGER_VERSION</span> from Vercel —
-            check the Vercel dashboard to confirm the production pin.
+            Couldn't read <span className="font-mono text-text-bright">TRIGGER_VERSION</span> from
+            Vercel — check the Vercel dashboard to confirm the production pin.
           </Hint>
         )}
       </div>
@@ -244,9 +239,9 @@ export function BuildSettingsFields({
             />
           </div>
           <Hint className="pr-6">
-            When enabled, the integration automatically promotes the Vercel deployment after
-            the Trigger.dev build completes. Turn off to manually promote from your Vercel
-            dashboard — Trigger.dev will then promote automatically once you do.
+            When enabled, the integration automatically promotes the Vercel deployment after the
+            Trigger.dev build completes. Turn off to manually promote from your Vercel dashboard —
+            Trigger.dev will then promote automatically once you do.
           </Hint>
         </div>
       )}

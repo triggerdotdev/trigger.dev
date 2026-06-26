@@ -367,12 +367,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonPropsType>(
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className={cn("flex", isDisabled && "cursor-default")}>
-                {buttonElement}
-              </span>
+              <span className={cn("flex", isDisabled && "cursor-default")}>{buttonElement}</span>
             </TooltipTrigger>
             <TooltipContent className="flex items-center gap-1.5 py-1.5 pl-2.5 pr-2 text-xs text-text-bright">
-              {props.tooltip} {props.shortcut && !props.hideShortcutKey && (
+              {props.tooltip}{" "}
+              {props.shortcut && !props.hideShortcutKey && (
                 <ShortcutKey shortcut={props.shortcut} variant="medium" />
               )}
             </TooltipContent>
@@ -401,7 +400,7 @@ export const LinkButton = ({
   ...props
 }: LinkPropsType) => {
   const innerRef = useRef<HTMLAnchorElement>(null);
-  
+
   useShortcutKeys({
     shortcut: props.shortcut,
     action: () => {

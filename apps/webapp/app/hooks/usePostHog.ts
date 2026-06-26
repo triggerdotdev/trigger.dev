@@ -70,12 +70,9 @@ export const usePostHog = (apiKey?: string, logging = false, debug = false): voi
 };
 
 export function usePostHogTracking() {
-  const capture = useCallback(
-    (eventName: string, properties?: Record<string, unknown>) => {
-      posthog.capture(eventName, properties);
-    },
-    []
-  );
+  const capture = useCallback((eventName: string, properties?: Record<string, unknown>) => {
+    posthog.capture(eventName, properties);
+  }, []);
 
   const startSessionRecording = useCallback(() => {
     posthog.startSessionRecording();

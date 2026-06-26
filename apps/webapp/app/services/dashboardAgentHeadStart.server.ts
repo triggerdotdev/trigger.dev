@@ -34,8 +34,7 @@ export async function startDashboardAgentHeadStart(params: {
   mode: "assistant" | "code";
   metadata: Record<string, unknown>;
 }): Promise<void> {
-  const tools =
-    params.mode === "code" ? dashboardAgentCodeToolSchemas : dashboardAgentToolSchemas;
+  const tools = params.mode === "code" ? dashboardAgentCodeToolSchemas : dashboardAgentToolSchemas;
   const system =
     params.mode === "code" ? DASHBOARD_AGENT_CODE_SYSTEM_PROMPT : DASHBOARD_AGENT_SYSTEM_PROMPT;
 

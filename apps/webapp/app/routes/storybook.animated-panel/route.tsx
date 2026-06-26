@@ -30,16 +30,76 @@ type DemoItem = {
 };
 
 const demoItems: DemoItem[] = [
-  { id: "run_a1b2c3d4", name: "Process invoices", status: "completed", duration: "2.3s", task: "invoice/process" },
-  { id: "run_e5f6g7h8", name: "Send welcome email", status: "running", duration: "0.8s", task: "email/welcome" },
-  { id: "run_i9j0k1l2", name: "Generate report", status: "failed", duration: "12.1s", task: "report/generate" },
-  { id: "run_m3n4o5p6", name: "Sync inventory", status: "completed", duration: "5.7s", task: "inventory/sync" },
-  { id: "run_q7r8s9t0", name: "Resize images", status: "queued", duration: "—", task: "image/resize" },
-  { id: "run_u1v2w3x4", name: "Update search index", status: "completed", duration: "1.1s", task: "search/index" },
-  { id: "run_y5z6a7b8", name: "Calculate analytics", status: "running", duration: "8.4s", task: "analytics/calc" },
-  { id: "run_c9d0e1f2", name: "Deploy preview", status: "completed", duration: "34.2s", task: "deploy/preview" },
-  { id: "run_g3h4i5j6", name: "Run migrations", status: "failed", duration: "0.3s", task: "db/migrate" },
-  { id: "run_k7l8m9n0", name: "Notify Slack", status: "completed", duration: "0.5s", task: "notify/slack" },
+  {
+    id: "run_a1b2c3d4",
+    name: "Process invoices",
+    status: "completed",
+    duration: "2.3s",
+    task: "invoice/process",
+  },
+  {
+    id: "run_e5f6g7h8",
+    name: "Send welcome email",
+    status: "running",
+    duration: "0.8s",
+    task: "email/welcome",
+  },
+  {
+    id: "run_i9j0k1l2",
+    name: "Generate report",
+    status: "failed",
+    duration: "12.1s",
+    task: "report/generate",
+  },
+  {
+    id: "run_m3n4o5p6",
+    name: "Sync inventory",
+    status: "completed",
+    duration: "5.7s",
+    task: "inventory/sync",
+  },
+  {
+    id: "run_q7r8s9t0",
+    name: "Resize images",
+    status: "queued",
+    duration: "—",
+    task: "image/resize",
+  },
+  {
+    id: "run_u1v2w3x4",
+    name: "Update search index",
+    status: "completed",
+    duration: "1.1s",
+    task: "search/index",
+  },
+  {
+    id: "run_y5z6a7b8",
+    name: "Calculate analytics",
+    status: "running",
+    duration: "8.4s",
+    task: "analytics/calc",
+  },
+  {
+    id: "run_c9d0e1f2",
+    name: "Deploy preview",
+    status: "completed",
+    duration: "34.2s",
+    task: "deploy/preview",
+  },
+  {
+    id: "run_g3h4i5j6",
+    name: "Run migrations",
+    status: "failed",
+    duration: "0.3s",
+    task: "db/migrate",
+  },
+  {
+    id: "run_k7l8m9n0",
+    name: "Notify Slack",
+    status: "completed",
+    duration: "0.5s",
+    task: "notify/slack",
+  },
 ];
 
 const statusColors: Record<DemoItem["status"], string> = {
@@ -144,10 +204,7 @@ export default function Story() {
             </Table>
           </div>
         </ResizablePanel>
-        <ResizableHandle
-          id="animated-panel-handle"
-          className={collapsibleHandleClassName(show)}
-        />
+        <ResizableHandle id="animated-panel-handle" className={collapsibleHandleClassName(show)} />
         <ResizablePanel
           id="animated-panel-detail"
           min="280px"

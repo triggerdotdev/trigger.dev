@@ -108,9 +108,7 @@ export default function AdminLlmModelsMissingRoute() {
                 <Paragraph>All models have pricing data</Paragraph>
               </TableBlankRow>
             ) : (
-              models.map((m) => (
-                <MissingModelRow key={`${m.system}/${m.model}`} model={m} />
-              ))
+              models.map((m) => <MissingModelRow key={`${m.system}/${m.model}`} model={m} />)
             )}
           </TableBody>
         </Table>
@@ -123,7 +121,11 @@ export default function AdminLlmModelsMissingRoute() {
 // Row component with link to detail page
 // ---------------------------------------------------------------------------
 
-function MissingModelRow({ model: m }: { model: { model: string; system: string; count: number } }) {
+function MissingModelRow({
+  model: m,
+}: {
+  model: { model: string; system: string; count: number };
+}) {
   return (
     <TableRow>
       <TableCell>

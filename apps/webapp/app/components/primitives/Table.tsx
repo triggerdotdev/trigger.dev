@@ -298,8 +298,8 @@ export const TableCell = forwardRef<HTMLTableCellElement, TableCellProps>(
       alignment === "left"
         ? "justify-start text-left"
         : alignment === "center"
-        ? "justify-center text-center"
-        : "justify-end text-right"
+          ? "justify-center text-center"
+          : "justify-end text-right"
     );
 
     return (
@@ -456,7 +456,9 @@ export const TableCellMenu = forwardRef<
     const [isOpen, setIsOpen] = useState(false);
     const { variant } = useContext(TableContext);
     const resolvedContent =
-      typeof popoverContent === "function" ? popoverContent(() => setIsOpen(false)) : popoverContent;
+      typeof popoverContent === "function"
+        ? popoverContent(() => setIsOpen(false))
+        : popoverContent;
 
     return (
       <TableCell

@@ -186,6 +186,15 @@ export function useZoomSelection(): UseZoomSelectionReturn {
       clearInspectionLine,
       reset,
     }),
-    [state, startSelection, updateSelection, finishSelection, cancelSelection, toggleInspectionLine, clearInspectionLine, reset]
+    [
+      state,
+      startSelection,
+      updateSelection,
+      finishSelection,
+      cancelSelection,
+      toggleInspectionLine,
+      clearInspectionLine,
+      reset,
+    ]
   );
 }

@@ -32,7 +32,11 @@ function narrowMachinePreset(value: string | undefined): SpanRun["machinePreset"
 // snapshot fields as inline packets.
 export async function buildSyntheticSpanRun(args: {
   run: SyntheticRun;
-  environment: { id: string; slug: string; type: "PRODUCTION" | "DEVELOPMENT" | "STAGING" | "PREVIEW" };
+  environment: {
+    id: string;
+    slug: string;
+    type: "PRODUCTION" | "DEVELOPMENT" | "STAGING" | "PREVIEW";
+  };
 }): Promise<SpanRun> {
   const { run, environment } = args;
 
@@ -63,8 +67,8 @@ export async function buildSyntheticSpanRun(args: {
   const idempotencyKeyStatus: SpanRun["idempotencyKeyStatus"] = idempotencyKey
     ? "active"
     : idempotencyKeyScope
-    ? "inactive"
-    : undefined;
+      ? "inactive"
+      : undefined;
 
   const taskKind = RunAnnotations.safeParse(run.annotations).data?.taskKind;
   const isAgentRun = taskKind === "AGENT";
@@ -82,8 +86,8 @@ export async function buildSyntheticSpanRun(args: {
   const status: SpanRun["status"] = isCancelled
     ? "CANCELED"
     : isFailed
-    ? "SYSTEM_FAILURE"
-    : "PENDING";
+      ? "SYSTEM_FAILURE"
+      : "PENDING";
 
   // Mirror ApiRetrieveRunPresenter's STRING_ERROR synthesis so the panel
   // shows why a buffered run failed instead of an empty error block.
@@ -97,10 +101,10 @@ export async function buildSyntheticSpanRun(args: {
     friendlyId: run.friendlyId,
     status,
     statusReason: isCancelled
-      ? run.cancelReason ?? undefined
+      ? (run.cancelReason ?? undefined)
       : isFailed
-      ? run.error?.message ?? undefined
-      : undefined,
+        ? (run.error?.message ?? undefined)
+        : undefined,
     createdAt: run.createdAt,
     startedAt: null,
     executedAt: null,
@@ -177,7 +181,7 @@ export async function buildSyntheticSpanRun(args: {
         },
       },
       null,
-      2,
+      2
     ),
     metadata,
     maxDurationInSeconds: getMaxDuration(run.maxDurationInSeconds),

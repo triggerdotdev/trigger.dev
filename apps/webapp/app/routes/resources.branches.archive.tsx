@@ -46,8 +46,8 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (result.success) {
     return redirectWithSuccessMessage(
-      result.branch.type === "DEVELOPMENT" ?
-        branchesDevPath(result.organization, result.project, result.branch)
+      result.branch.type === "DEVELOPMENT"
+        ? branchesDevPath(result.organization, result.project, result.branch)
         : branchesPath(result.organization, result.project, result.branch),
       request,
       `Branch "${result.branch.branchName}" archived`

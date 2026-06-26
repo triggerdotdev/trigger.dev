@@ -620,11 +620,11 @@ export class SharedQueueConsumer {
       return existingTaskRun.lockedById
         ? await getWorkerDeploymentFromWorkerTask(existingTaskRun.lockedById)
         : existingTaskRun.lockedToVersionId
-        ? await getWorkerDeploymentFromWorker(existingTaskRun.lockedToVersionId)
-        : await findCurrentWorkerDeployment({
-            environmentId: existingTaskRun.runtimeEnvironmentId,
-            type: "V1",
-          });
+          ? await getWorkerDeploymentFromWorker(existingTaskRun.lockedToVersionId)
+          : await findCurrentWorkerDeployment({
+              environmentId: existingTaskRun.runtimeEnvironmentId,
+              type: "V1",
+            });
     });
 
     const worker = deployment?.worker;

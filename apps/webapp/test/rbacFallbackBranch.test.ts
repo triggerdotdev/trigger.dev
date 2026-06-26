@@ -82,27 +82,30 @@ describe("RBAC fallback — DEVELOPMENT branch pivot", () => {
     expect(result.environment.apiKey).toBe(devRoot.apiKey);
   });
 
-  postgresTest("the 'default' sentinel resolves the root dev env (no pivot)", async ({ prisma }) => {
-    const { organization, project, orgMember } = await createTestOrgProjectWithMember(prisma);
-    const rbac = makeController(prisma);
+  postgresTest(
+    "the 'default' sentinel resolves the root dev env (no pivot)",
+    async ({ prisma }) => {
+      const { organization, project, orgMember } = await createTestOrgProjectWithMember(prisma);
+      const rbac = makeController(prisma);
 
-    const devRoot = await createEnv(prisma, project.id, organization.id, {
-      type: "DEVELOPMENT",
-      orgMemberId: orgMember.id,
-    });
-    await createEnv(prisma, project.id, organization.id, {
-      type: "DEVELOPMENT",
-      orgMemberId: orgMember.id,
-      parentEnvironmentId: devRoot.id,
-      branchName: "my-feature",
-    });
+      const devRoot = await createEnv(prisma, project.id, organization.id, {
+        type: "DEVELOPMENT",
+        orgMemberId: orgMember.id,
+      });
+      await createEnv(prisma, project.id, organization.id, {
+        type: "DEVELOPMENT",
+        orgMemberId: orgMember.id,
+        parentEnvironmentId: devRoot.id,
+        branchName: "my-feature",
+      });
 
-    const result = await rbac.authenticateBearer(bearerRequest(devRoot.apiKey, "default"));
+      const result = await rbac.authenticateBearer(bearerRequest(devRoot.apiKey, "default"));
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.environment.id).toBe(devRoot.id);
-  });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.environment.id).toBe(devRoot.id);
+    }
+  );
 
   postgresTest("no branch header resolves the root dev env", async ({ prisma }) => {
     const { organization, project, orgMember } = await createTestOrgProjectWithMember(prisma);
@@ -120,23 +123,24 @@ describe("RBAC fallback — DEVELOPMENT branch pivot", () => {
     expect(result.environment.id).toBe(devRoot.id);
   });
 
-  postgresTest("a named branch that doesn't exist is rejected (not a fall-through)", async ({
-    prisma,
-  }) => {
-    const { organization, project, orgMember } = await createTestOrgProjectWithMember(prisma);
-    const rbac = makeController(prisma);
+  postgresTest(
+    "a named branch that doesn't exist is rejected (not a fall-through)",
+    async ({ prisma }) => {
+      const { organization, project, orgMember } = await createTestOrgProjectWithMember(prisma);
+      const rbac = makeController(prisma);
 
-    const devRoot = await createEnv(prisma, project.id, organization.id, {
-      type: "DEVELOPMENT",
-      orgMemberId: orgMember.id,
-    });
+      const devRoot = await createEnv(prisma, project.id, organization.id, {
+        type: "DEVELOPMENT",
+        orgMemberId: orgMember.id,
+      });
 
-    const result = await rbac.authenticateBearer(bearerRequest(devRoot.apiKey, "nope"));
+      const result = await rbac.authenticateBearer(bearerRequest(devRoot.apiKey, "nope"));
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.status).toBe(401);
-  });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.status).toBe(401);
+    }
+  );
 });
 
 describe("RBAC fallback — branch header guards", () => {
@@ -145,29 +149,30 @@ describe("RBAC fallback — branch header guards", () => {
   // PREVIEW branch literally named "default" is reachable and the request pivots
   // to it like any other branch. (Preview branch names are normally PR refs, so
   // a branch named "default" is unusual — but it's supported, not a collision.)
-  postgresTest("preview + 'default' pivots to the branch named 'default' (sentinel is dev-only)", async ({
-    prisma,
-  }) => {
-    const { organization, project } = await createTestOrgProjectWithMember(prisma);
-    const rbac = makeController(prisma);
+  postgresTest(
+    "preview + 'default' pivots to the branch named 'default' (sentinel is dev-only)",
+    async ({ prisma }) => {
+      const { organization, project } = await createTestOrgProjectWithMember(prisma);
+      const rbac = makeController(prisma);
 
-    const previewParent = await createEnv(prisma, project.id, organization.id, {
-      type: "PREVIEW",
-      isBranchableEnvironment: true,
-    });
-    const previewDefaultBranch = await createEnv(prisma, project.id, organization.id, {
-      type: "PREVIEW",
-      parentEnvironmentId: previewParent.id,
-      branchName: "default",
-    });
+      const previewParent = await createEnv(prisma, project.id, organization.id, {
+        type: "PREVIEW",
+        isBranchableEnvironment: true,
+      });
+      const previewDefaultBranch = await createEnv(prisma, project.id, organization.id, {
+        type: "PREVIEW",
+        parentEnvironmentId: previewParent.id,
+        branchName: "default",
+      });
 
-    const result = await rbac.authenticateBearer(bearerRequest(previewParent.apiKey, "default"));
+      const result = await rbac.authenticateBearer(bearerRequest(previewParent.apiKey, "default"));
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // Pivots to the branch named "default", carrying the parent's api key.
-    expect(result.environment.id).toBe(previewDefaultBranch.id);
-    expect(result.environment.id).not.toBe(previewParent.id);
-    expect(result.environment.apiKey).toBe(previewParent.apiKey);
-  });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      // Pivots to the branch named "default", carrying the parent's api key.
+      expect(result.environment.id).toBe(previewDefaultBranch.id);
+      expect(result.environment.id).not.toBe(previewParent.id);
+      expect(result.environment.apiKey).toBe(previewParent.apiKey);
+    }
+  );
 });

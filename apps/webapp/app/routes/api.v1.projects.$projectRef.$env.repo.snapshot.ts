@@ -27,7 +27,10 @@ const ParamsSchema = z.object({
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
   try {
-    const bearer = request.headers.get("Authorization")?.replace(/^Bearer /, "").trim();
+    const bearer = request.headers
+      .get("Authorization")
+      ?.replace(/^Bearer /, "")
+      .trim();
     let authenticationResult: AuthenticationResult | undefined;
     if (bearer && isUserActorToken(bearer)) {
       const claims = await verifyUserActorToken($env.SESSION_SECRET, bearer);

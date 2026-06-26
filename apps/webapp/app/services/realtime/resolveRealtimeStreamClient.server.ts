@@ -37,7 +37,7 @@ export async function resolveRealtimeStreamClient(
   // The authenticated environment already carries the org's feature flags; pass them
   // through so a cache miss doesn't need an extra organization read.
   const orgFeatureFlags = environment.organization
-    ? environment.organization.featureFlags ?? {}
+    ? (environment.organization.featureFlags ?? {})
     : undefined;
 
   switch (await getRealtimeBackend(environment.organizationId, orgFeatureFlags)) {

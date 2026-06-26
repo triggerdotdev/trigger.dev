@@ -62,15 +62,13 @@ const platformClientMeter = metrics.getMeter("trigger.dev/platform-client");
 const platformClientFailuresCounter = platformClientMeter.createCounter(
   "platform_client.failures_total",
   {
-    description:
-      "Failures returned or thrown by @trigger.dev/platform billing client calls",
+    description: "Failures returned or thrown by @trigger.dev/platform billing client calls",
   }
 );
 
 function recordPlatformFailure(fn: string, kind: "caught" | "no_success") {
   platformClientFailuresCounter.add(1, { function: fn, kind });
 }
-
 
 function initializePlatformCache() {
   const ctx = new DefaultStatefulContext();

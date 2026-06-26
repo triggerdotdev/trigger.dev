@@ -232,7 +232,7 @@ export class QueueListPresenter extends BasePresenter {
         concurrencyLimitBase: queue.concurrencyLimitBase ?? null,
         concurrencyLimitOverriddenAt: queue.concurrencyLimitOverriddenAt ?? null,
         concurrencyLimitOverriddenBy: queue.concurrencyLimitOverriddenBy
-          ? overriddenByMap.get(queue.concurrencyLimitOverriddenBy) ?? null
+          ? (overriddenByMap.get(queue.concurrencyLimitOverriddenBy) ?? null)
           : null,
         paused: queue.paused,
       })

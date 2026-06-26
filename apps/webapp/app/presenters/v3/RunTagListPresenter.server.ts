@@ -37,7 +37,10 @@ export class RunTagListPresenter extends BasePresenter {
   }: TagListOptions) {
     const hasFilters = Boolean(name?.trim());
 
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      organizationId,
+      "standard"
+    );
     const runsRepository = new RunsRepository({
       clickhouse,
       prisma: this._replica as PrismaClient,

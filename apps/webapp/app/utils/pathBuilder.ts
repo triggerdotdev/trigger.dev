@@ -733,7 +733,6 @@ export function branchesDevPath(
   return `${v3EnvironmentPath(organization, project, environment)}/dev-branches`;
 }
 
-
 export function concurrencyPath(
   organization: OrgForPath,
   project: ProjectForPath,

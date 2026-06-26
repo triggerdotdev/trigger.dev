@@ -65,15 +65,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
         authenticationResult.type === "organizationAccessToken"
           ? { id: authenticationResult.result.organizationId }
           : {
-            members: {
-              some: {
-                userId: authenticationResult.result.userId,
+              members: {
+                some: {
+                  userId: authenticationResult.result.userId,
+                },
               },
             },
-          },
       // Dev branches are per-org-member: only the owner may archive their own.
       ...(authenticationResult.type !== "organizationAccessToken" &&
-        environmentType === "DEVELOPMENT"
+      environmentType === "DEVELOPMENT"
         ? { orgMember: { userId: authenticationResult.result.userId } }
         : {}),
       project: {
@@ -96,7 +96,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
     activeEnvironments.length > 1
   ) {
     return json(
-      { error: "Branch name is ambiguous for development environments. Use a personal access token scoped to the branch owner." },
+      {
+        error:
+          "Branch name is ambiguous for development environments. Use a personal access token scoped to the branch owner.",
+      },
       { status: 409 }
     );
   }

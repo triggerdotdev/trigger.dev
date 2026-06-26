@@ -53,14 +53,17 @@ export function concreteStateFromPartialState<TData>(
   tree: FlatTree<TData>,
   state: PartialNodeState
 ): NodesState {
-  const concreteState = tree.reduce((acc, node) => {
-    acc[node.id] = {
-      selected: acc[node.id]?.selected ?? defaultSelected,
-      expanded: acc[node.id]?.expanded ?? defaultExpanded,
-      visible: acc[node.id]?.visible ?? true,
-    };
-    return acc;
-  }, state as Record<string, NodeState>);
+  const concreteState = tree.reduce(
+    (acc, node) => {
+      acc[node.id] = {
+        selected: acc[node.id]?.selected ?? defaultSelected,
+        expanded: acc[node.id]?.expanded ?? defaultExpanded,
+        visible: acc[node.id]?.visible ?? true,
+      };
+      return acc;
+    },
+    state as Record<string, NodeState>
+  );
 
   return applyVisibility(tree, concreteState);
 }

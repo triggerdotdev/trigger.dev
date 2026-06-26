@@ -12,7 +12,13 @@ import { useOrganization, type MatchedOrganization } from "~/hooks/useOrganizati
 import { useProject } from "~/hooks/useProject";
 import { cn } from "~/utils/cn";
 import { branchesPath, branchesDevPath, docsPath, v3BillingPath } from "~/utils/pathBuilder";
-import { EnvironmentCombo, EnvironmentIcon, EnvironmentLabel, environmentFullTitle, environmentTextClassName } from "../environments/EnvironmentLabel";
+import {
+  EnvironmentCombo,
+  EnvironmentIcon,
+  EnvironmentLabel,
+  environmentFullTitle,
+  environmentTextClassName,
+} from "../environments/EnvironmentLabel";
 import { ButtonContent } from "../primitives/Buttons";
 import { Header2 } from "../primitives/Headers";
 import { Paragraph } from "../primitives/Paragraph";
@@ -113,14 +119,14 @@ export function EnvironmentSelector({
               // multi-branch dev flag on. Without it, dev renders as a plain
               // selector button (the original behavior). PREVIEW is unaffected.
               const renderAsBranchable =
-                isBranchableEnvironment(env) &&
-                (env.type !== "DEVELOPMENT" || devBranchesEnabled);
+                isBranchableEnvironment(env) && (env.type !== "DEVELOPMENT" || devBranchesEnabled);
 
               if (renderAsBranchable) {
                 const branchEnvironments = project.environments.filter(
                   (e) => e.parentEnvironmentId === env.id
                 );
-                const allBranchEnvironments = env.type === "DEVELOPMENT" ? [env, ...branchEnvironments] : branchEnvironments;
+                const allBranchEnvironments =
+                  env.type === "DEVELOPMENT" ? [env, ...branchEnvironments] : branchEnvironments;
                 return (
                   <Branches
                     key={env.id}
@@ -135,9 +141,7 @@ export function EnvironmentSelector({
                 <PopoverMenuItem
                   key={env.id}
                   to={urlForEnvironment(env)}
-                  title={
-                    <EnvironmentCombo environment={env} className="mx-auto grow text-2sm" />
-                  }
+                  title={<EnvironmentCombo environment={env} className="mx-auto grow text-2sm" />}
                   isSelected={env.id === environment.id}
                 />
               );
@@ -232,8 +236,8 @@ function Branches({
     branchEnvironments.length === 0
       ? "no-branches"
       : activeBranches.length === 0
-      ? "no-active-branches"
-      : "has-branches";
+        ? "no-active-branches"
+        : "has-branches";
 
   // Only surface the active environment's archived-branch item in the submenu it
   // actually belongs to. Both Development and Preview render this component, so
@@ -276,11 +280,15 @@ function Branches({
                 to={urlForEnvironment(environment)}
                 title={
                   <>
-                    <span className={cn("block w-full", envTextClassName)}>{environment.branchName}</span>
+                    <span className={cn("block w-full", envTextClassName)}>
+                      {environment.branchName}
+                    </span>
                     <Badge variant="extra-small">Archived</Badge>
                   </>
                 }
-                icon={<BranchEnvironmentIconSmall className={cn("size-4 shrink-0", envTextClassName)} />}
+                icon={
+                  <BranchEnvironmentIconSmall className={cn("size-4 shrink-0", envTextClassName)} />
+                }
                 isSelected={environment.id === currentEnvironment.id}
               />
             )}
@@ -292,8 +300,16 @@ function Branches({
                     <PopoverMenuItem
                       key={env.id}
                       to={urlForEnvironment(env)}
-                      title={<span className={cn("block w-full", envTextClassName)}>{env.branchName ?? DEFAULT_DEV_BRANCH}</span>}
-                      icon={<BranchEnvironmentIconSmall className={cn("size-4 shrink-0", envTextClassName)} />}
+                      title={
+                        <span className={cn("block w-full", envTextClassName)}>
+                          {env.branchName ?? DEFAULT_DEV_BRANCH}
+                        </span>
+                      }
+                      icon={
+                        <BranchEnvironmentIconSmall
+                          className={cn("size-4 shrink-0", envTextClassName)}
+                        />
+                      }
                       isSelected={env.id === currentEnvironment.id}
                     />
                   ))}

@@ -889,7 +889,7 @@ export class ClickhouseEventRepository implements IEventRepository {
 
     const traceId = options.spanParentAsLink
       ? generateTraceId()
-      : propagatedContext?.traceparent?.traceId ?? generateTraceId();
+      : (propagatedContext?.traceparent?.traceId ?? generateTraceId());
     const parentId = options.spanParentAsLink ? undefined : propagatedContext?.traceparent?.spanId;
     const spanId = options.spanIdSeed
       ? generateDeterministicSpanId(traceId, options.spanIdSeed)

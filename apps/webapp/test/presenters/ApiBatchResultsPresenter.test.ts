@@ -1,5 +1,10 @@
 import { containerTest } from "@internal/testcontainers";
-import type { Organization, PrismaClient, Project, RuntimeEnvironment } from "@trigger.dev/database";
+import type {
+  Organization,
+  PrismaClient,
+  Project,
+  RuntimeEnvironment,
+} from "@trigger.dev/database";
 import { customAlphabet } from "nanoid";
 import { expect, vi } from "vitest";
 import { ApiBatchResultsPresenter } from "~/presenters/v3/ApiBatchResultsPresenter.server";
@@ -31,7 +36,10 @@ type SeedContext = {
   queueId: string;
 };
 
-async function seedWorker(prisma: PrismaClient, ctx: Omit<SeedContext, "backgroundWorkerId" | "backgroundWorkerTaskId" | "queueId">) {
+async function seedWorker(
+  prisma: PrismaClient,
+  ctx: Omit<SeedContext, "backgroundWorkerId" | "backgroundWorkerTaskId" | "queueId">
+) {
   const queue = await prisma.taskQueue.create({
     data: {
       friendlyId: `queue_${idGenerator()}`,
@@ -136,7 +144,7 @@ containerTest(
     // A successful run, a failed run, and an executing run (no terminal attempt → undefined).
     const successRun = await seedRunWithAttempt(prisma, ctx, {
       status: "COMPLETED_SUCCESSFULLY",
-      attempt: { status: "COMPLETED", output: "\"hello\"", outputType: "application/json" },
+      attempt: { status: "COMPLETED", output: '"hello"', outputType: "application/json" },
     });
     const failedRun = await seedRunWithAttempt(prisma, ctx, {
       status: "COMPLETED_WITH_ERRORS",
@@ -170,7 +178,10 @@ containerTest(
     }
 
     const presenter = new ApiBatchResultsPresenter(prisma);
-    const result = await presenter.call(batchFriendlyId, authEnv(environment, project, organization));
+    const result = await presenter.call(
+      batchFriendlyId,
+      authEnv(environment, project, organization)
+    );
 
     expect(result).toBeDefined();
     expect(result?.id).toBe(batchFriendlyId);
@@ -182,7 +193,7 @@ containerTest(
     expect(first.ok).toBe(true);
     expect(first.id).toBe(successRun.friendlyId);
     if (first.ok) {
-      expect(first.output).toBe("\"hello\"");
+      expect(first.output).toBe('"hello"');
       expect(first.taskIdentifier).toBe("test-task");
     }
 
@@ -212,7 +223,7 @@ containerTest(
     const pendingRun = await seedRunWithAttempt(prisma, ctx, { status: "EXECUTING" });
     const successRun = await seedRunWithAttempt(prisma, ctx, {
       status: "COMPLETED_SUCCESSFULLY",
-      attempt: { status: "COMPLETED", output: "\"ok\"", outputType: "application/json" },
+      attempt: { status: "COMPLETED", output: '"ok"', outputType: "application/json" },
     });
 
     const batchInternalId = idGenerator();
@@ -233,7 +244,10 @@ containerTest(
     }
 
     const presenter = new ApiBatchResultsPresenter(prisma);
-    const result = await presenter.call(batchFriendlyId, authEnv(environment, project, organization));
+    const result = await presenter.call(
+      batchFriendlyId,
+      authEnv(environment, project, organization)
+    );
 
     expect(result?.items).toHaveLength(1);
     expect(result?.items[0]?.id).toBe(successRun.friendlyId);

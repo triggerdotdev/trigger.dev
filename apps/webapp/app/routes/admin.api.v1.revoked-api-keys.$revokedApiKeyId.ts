@@ -20,7 +20,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const parsedBody = RequestBodySchema.safeParse(rawBody);
 
   if (!parsedBody.success) {
-    return json({ error: "Invalid request body", issues: parsedBody.error.issues }, { status: 400 });
+    return json(
+      { error: "Invalid request body", issues: parsedBody.error.issues },
+      { status: 400 }
+    );
   }
 
   const existing = await prisma.revokedApiKey.findFirst({

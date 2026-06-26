@@ -55,7 +55,9 @@ export type ReloadingRegistryOptions<T> = {
  * contract as the datastore / LLM-pricing registries. Interval-only: no pub/sub
  * (a follow-up if sub-second propagation is ever needed).
  */
-export function createReloadingRegistry<T>(opts: ReloadingRegistryOptions<T>): ReloadingRegistry<T> {
+export function createReloadingRegistry<T>(
+  opts: ReloadingRegistryOptions<T>
+): ReloadingRegistry<T> {
   let snapshot: T | undefined;
   let loaded = false;
   let loadSeq = 0;

@@ -253,10 +253,13 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
     taskIds: string[]
   ): Promise<Record<string, number>> {
     const counts = await this.getTaskCounts(projectId, taskIds);
-    return taskIds.reduce((acc, taskId, index) => {
-      acc[taskId] = counts[index] ?? 0;
-      return acc;
-    }, {} as Record<string, number>);
+    return taskIds.reduce(
+      (acc, taskId, index) => {
+        acc[taskId] = counts[index] ?? 0;
+        return acc;
+      },
+      {} as Record<string, number>
+    );
   }
 
   async environmentConcurrentRunCounts(
@@ -273,14 +276,17 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
         return Object.fromEntries(environmentIds.map((id) => [id, 0]));
       }
 
-      return results.reduce((acc, [err, count], index) => {
-        if (err) {
-          console.error("Error in environmentConcurrentRunCounts:", err);
+      return results.reduce(
+        (acc, [err, count], index) => {
+          if (err) {
+            console.error("Error in environmentConcurrentRunCounts:", err);
+            return acc;
+          }
+          acc[environmentIds[index]] = count as number;
           return acc;
-        }
-        acc[environmentIds[index]] = count as number;
-        return acc;
-      }, {} as Record<string, number>);
+        },
+        {} as Record<string, number>
+      );
     } catch (error) {
       logger.error("TaskRunConcurrencyTracker.environmentConcurrentRunCounts() error", { error });
       return Object.fromEntries(environmentIds.map((id) => [id, 0]));

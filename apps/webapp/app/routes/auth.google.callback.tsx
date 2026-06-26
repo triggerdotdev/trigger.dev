@@ -95,4 +95,3 @@ export let loader: LoaderFunction = async ({ request }) => {
 
   return redirect(redirectTo, { headers });
 };
-

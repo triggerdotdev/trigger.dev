@@ -502,12 +502,12 @@ export default function PromptDetailPage() {
   // Selected version from URL or default to current
   const versionParam = searchValue("version");
   const selectedVersion = versionParam
-    ? versions.find((v) => v.version === Number(versionParam)) ?? versions[0]
+    ? (versions.find((v) => v.version === Number(versionParam)) ?? versions[0])
     : overrideVersion
-    ? versions.find((v) => v.id === overrideVersion.id) ?? versions[0]
-    : currentVersion
-    ? versions.find((v) => v.id === currentVersion.id) ?? versions[0]
-    : versions[0];
+      ? (versions.find((v) => v.id === overrideVersion.id) ?? versions[0])
+      : currentVersion
+        ? (versions.find((v) => v.id === currentVersion.id) ?? versions[0])
+        : versions[0];
 
   const content = selectedVersion ? getVersionContent(selectedVersion) : "";
   const isCurrent = selectedVersion?.labels.includes("current") ?? false;
@@ -548,8 +548,8 @@ export default function PromptDetailPage() {
                     selectedVersion.labels.includes("override")
                       ? "bg-amber-400"
                       : isCurrent
-                      ? "bg-green-500"
-                      : "bg-charcoal-550"
+                        ? "bg-green-500"
+                        : "bg-charcoal-550"
                   )}
                 />
                 <span className="text-xs text-text-dimmed">v{selectedVersion.version}</span>
@@ -850,7 +850,9 @@ export default function PromptDetailPage() {
         }
         isEditingOverride={!!overrideVersion}
         currentOverrideModel={
-          overrideVersion ? versions.find((v) => v.id === overrideVersion.id)?.model ?? null : null
+          overrideVersion
+            ? (versions.find((v) => v.id === overrideVersion.id)?.model ?? null)
+            : null
         }
         onSave={(textContent, commitMessage, model) => {
           const intent = overrideVersion ? "updateOverride" : "saveVersion";

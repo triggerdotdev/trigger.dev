@@ -335,9 +335,7 @@ function RateLimitsSection({
                 />
               </span>
             </TableHeaderCell>
-            {showSelfServe ? (
-              <TableHeaderCell alignment="right">Upgrade</TableHeaderCell>
-            ) : null}
+            {showSelfServe ? <TableHeaderCell alignment="right">Upgrade</TableHeaderCell> : null}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -557,9 +555,7 @@ function QuotasSection({
             <TableHeaderCell alignment="right">Limit</TableHeaderCell>
             <TableHeaderCell alignment="right">Current</TableHeaderCell>
             <TableHeaderCell alignment="right">Source</TableHeaderCell>
-            {showSelfServe ? (
-              <TableHeaderCell alignment="right">Upgrade</TableHeaderCell>
-            ) : null}
+            {showSelfServe ? <TableHeaderCell alignment="right">Upgrade</TableHeaderCell> : null}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -738,9 +734,7 @@ function FeaturesSection({
           <TableRow>
             <TableHeaderCell>Feature</TableHeaderCell>
             <TableHeaderCell alignment="right">Status</TableHeaderCell>
-            {showSelfServe ? (
-              <TableHeaderCell alignment="right">Upgrade</TableHeaderCell>
-            ) : null}
+            {showSelfServe ? <TableHeaderCell alignment="right">Upgrade</TableHeaderCell> : null}
           </TableRow>
         </TableHeader>
         <TableBody>

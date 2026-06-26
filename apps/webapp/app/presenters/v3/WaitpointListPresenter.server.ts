@@ -271,7 +271,7 @@ export class WaitpointListPresenter extends BasePresenter {
         timeoutAt: token.completedAfter ?? undefined,
         completedAfter: token.completedAfter ?? undefined,
         idempotencyKey: token.userProvidedIdempotencyKey
-          ? token.inactiveIdempotencyKey ?? token.idempotencyKey
+          ? (token.inactiveIdempotencyKey ?? token.idempotencyKey)
           : undefined,
         idempotencyKeyExpiresAt: token.idempotencyKeyExpiresAt ?? undefined,
         tags: token.tags ? token.tags.sort((a, b) => a.localeCompare(b)) : [],

@@ -67,7 +67,7 @@ export function InputNumberStepper({
   const isMaxDisabled = max !== undefined && !Number.isNaN(numericValue) && numericValue >= max;
 
   function clamp(val: number): number {
-    if (Number.isNaN(val)) return typeof value === "number" ? value : min ?? 0;
+    if (Number.isNaN(val)) return typeof value === "number" ? value : (min ?? 0);
     let next = val;
     if (min !== undefined) next = Math.max(min, next);
     if (max !== undefined) next = Math.min(max, next);

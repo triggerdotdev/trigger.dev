@@ -73,14 +73,8 @@ export type GateDependencies = {
   isShadowModeOn: () => boolean;
   resolveOrgFlag: (inputs: GateInputs) => Promise<boolean>;
   evaluator: TripEvaluator;
-  logShadow: (
-    inputs: GateInputs,
-    decision: Extract<TripDecision, { divert: true }>,
-  ) => void;
-  logMollified: (
-    inputs: GateInputs,
-    decision: Extract<TripDecision, { divert: true }>,
-  ) => void;
+  logShadow: (inputs: GateInputs, decision: Extract<TripDecision, { divert: true }>) => void;
+  logMollified: (inputs: GateInputs, decision: Extract<TripDecision, { divert: true }>) => void;
   recordDecision: (outcome: DecisionOutcome, opts: RecordDecisionOptions) => void;
 };
 
@@ -99,7 +93,7 @@ const defaultEvaluator = createRealTripEvaluator({
 function logDivertDecision(
   message: "mollifier.would_mollify" | "mollifier.mollified",
   inputs: GateInputs,
-  decision: Extract<TripDecision, { divert: true }>,
+  decision: Extract<TripDecision, { divert: true }>
 ): void {
   logger.debug(message, {
     envId: inputs.envId,
@@ -140,16 +134,14 @@ export const defaultGateDependencies: GateDependencies = {
   isShadowModeOn: () => env.TRIGGER_MOLLIFIER_SHADOW_MODE === "1",
   resolveOrgFlag: resolveMollifierFlag,
   evaluator: defaultEvaluator,
-  logShadow: (inputs, decision) =>
-    logDivertDecision("mollifier.would_mollify", inputs, decision),
-  logMollified: (inputs, decision) =>
-    logDivertDecision("mollifier.mollified", inputs, decision),
+  logShadow: (inputs, decision) => logDivertDecision("mollifier.would_mollify", inputs, decision),
+  logMollified: (inputs, decision) => logDivertDecision("mollifier.mollified", inputs, decision),
   recordDecision,
 };
 
 export async function evaluateGate(
   inputs: GateInputs,
-  deps: Partial<GateDependencies> = {},
+  deps: Partial<GateDependencies> = {}
 ): Promise<GateOutcome> {
   const d = { ...defaultGateDependencies, ...deps };
 

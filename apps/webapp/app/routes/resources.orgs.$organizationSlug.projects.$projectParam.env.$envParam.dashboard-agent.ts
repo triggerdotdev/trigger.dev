@@ -55,7 +55,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = user.id;
   const { organizationSlug, projectParam } = EnvironmentParamSchema.parse(params);
 
-  if (!(await canAccessDashboardAgent({ userId, isAdmin: user.admin, isImpersonating: user.isImpersonating, organizationSlug }))) {
+  if (
+    !(await canAccessDashboardAgent({
+      userId,
+      isAdmin: user.admin,
+      isImpersonating: user.isImpersonating,
+      organizationSlug,
+    }))
+  ) {
     return json({ error: "Not found" }, { status: 404 });
   }
 
@@ -83,7 +90,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const userId = user.id;
   const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
-  if (!(await canAccessDashboardAgent({ userId, isAdmin: user.admin, isImpersonating: user.isImpersonating, organizationSlug }))) {
+  if (
+    !(await canAccessDashboardAgent({
+      userId,
+      isAdmin: user.admin,
+      isImpersonating: user.isImpersonating,
+      organizationSlug,
+    }))
+  ) {
     return json({ error: "Not found" }, { status: 404 });
   }
 
@@ -186,7 +200,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       // id). The transport falls back here to re-establish a session for an
       // existing chat (e.g. after its token expired), so verify ownership before
       // issuing one — a client-supplied chatId must belong to the caller.
-      if (!(await chatExists(dashboardAgentDb, { chatId, userId, organizationId: project.organizationId }))) {
+      if (
+        !(await chatExists(dashboardAgentDb, {
+          chatId,
+          userId,
+          organizationId: project.organizationId,
+        }))
+      ) {
         return json({ error: "Chat not found" }, { status: 404 });
       }
       let clientData: Record<string, unknown> | undefined;
@@ -215,7 +235,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       }
       // Only mint a session token for a chat the caller owns, so a client-supplied
       // chatId can't be used to get a token for someone else's session.
-      if (!(await chatExists(dashboardAgentDb, { chatId, userId, organizationId: project.organizationId }))) {
+      if (
+        !(await chatExists(dashboardAgentDb, {
+          chatId,
+          userId,
+          organizationId: project.organizationId,
+        }))
+      ) {
         return json({ error: "Chat not found" }, { status: 404 });
       }
       return json({ token: await mintDashboardAgentToken(chatId) });

@@ -82,7 +82,9 @@ export const action = dashboardAction(
     if (_action === "seed") {
       console.log("[admin] seed action started");
       const result = await seedLlmPricing(prisma);
-      console.log(`[admin] seed complete: ${result.modelsCreated} created, ${result.modelsSkipped} skipped, ${result.modelsUpdated} updated`);
+      console.log(
+        `[admin] seed complete: ${result.modelsCreated} created, ${result.modelsSkipped} skipped, ${result.modelsUpdated} updated`
+      );
       await llmPricingRegistry?.reload();
       console.log("[admin] registry reloaded after seed");
       return typedjson({
@@ -94,7 +96,9 @@ export const action = dashboardAction(
     if (_action === "sync") {
       console.log("[admin] sync catalog action started");
       const result = await syncLlmCatalog(prisma);
-      console.log(`[admin] sync complete: ${result.modelsUpdated} updated, ${result.modelsSkipped} skipped`);
+      console.log(
+        `[admin] sync complete: ${result.modelsUpdated} updated, ${result.modelsSkipped} skipped`
+      );
       await llmPricingRegistry?.reload();
       console.log("[admin] registry reloaded after sync");
       return typedjson({
@@ -122,9 +126,7 @@ export const action = dashboardAction(
       return typedjson({
         testResult: {
           modelString,
-          match: matched
-            ? { friendlyId: matched.friendlyId, modelName: matched.modelName }
-            : null,
+          match: matched ? { friendlyId: matched.friendlyId, modelName: matched.modelName } : null,
         },
       });
     }
@@ -143,8 +145,7 @@ export const action = dashboardAction(
 );
 
 export default function AdminLlmModelsRoute() {
-  const { models, filters, page, pageCount, total } =
-    useTypedLoaderData<typeof loader>();
+  const { models, filters, page, pageCount, total } = useTypedLoaderData<typeof loader>();
   const seedFetcher = useFetcher();
   const syncFetcher = useFetcher();
   const reloadFetcher = useFetcher();
@@ -234,18 +235,15 @@ export default function AdminLlmModelsRoute() {
               fullWidth
               className="font-mono text-xs"
             />
-            <Button
-              type="submit"
-              variant="secondary/small"
-              disabled={testFetcher.state !== "idle"}
-            >
+            <Button type="submit" variant="secondary/small" disabled={testFetcher.state !== "idle"}>
               Test
             </Button>
           </testFetcher.Form>
           {testResult !== undefined && testResult !== null && (
             <div className="text-xs space-y-1">
               <span className="text-text-dimmed">
-                Testing: <span className="font-mono text-text-bright">{testResult.modelString}</span>
+                Testing:{" "}
+                <span className="font-mono text-text-bright">{testResult.modelString}</span>
               </span>
               {testResult.match ? (
                 <div className="text-green-400">
@@ -258,9 +256,7 @@ export default function AdminLlmModelsRoute() {
                   </Link>
                 </div>
               ) : (
-                <div className="text-red-400">
-                  No match found — this model has no pricing data
-                </div>
+                <div className="text-red-400">No match found — this model has no pricing data</div>
               )}
             </div>
           )}
@@ -337,7 +333,10 @@ export default function AdminLlmModelsRoute() {
                     </TableCell>
                     <TableCell>
                       {otherPrices.length > 0 ? (
-                        <span className="text-xs text-text-dimmed" title={otherPrices.map((p) => p.usageType).join(", ")}>
+                        <span
+                          className="text-xs text-text-dimmed"
+                          title={otherPrices.map((p) => p.usageType).join(", ")}
+                        >
                           +{otherPrices.length} more
                         </span>
                       ) : (

@@ -10,12 +10,9 @@ import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashb
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";
 
-export const loader = dashboardLoader(
-  { authorization: { requireSuper: true } },
-  async () => {
-    return typedjson({});
-  }
-);
+export const loader = dashboardLoader({ authorization: { requireSuper: true } }, async () => {
+  return typedjson({});
+});
 
 const CreateSchema = z.object({
   modelName: z.string().min(1),
@@ -40,7 +37,10 @@ export const action = dashboardAction(
 
     if (!parsed.success) {
       console.log("[admin] create model validation error:", JSON.stringify(parsed.error.issues));
-      return typedjson({ error: "Invalid form data", details: parsed.error.issues }, { status: 400 });
+      return typedjson(
+        { error: "Invalid form data", details: parsed.error.issues },
+        { status: 400 }
+      );
     }
 
     const { modelName, matchPattern, pricingTiersJson } = parsed.data;
@@ -66,7 +66,15 @@ export const action = dashboardAction(
       return typedjson({ error: "Invalid pricing tiers JSON" }, { status: 400 });
     }
 
-    const { provider, description, contextWindow, maxOutputTokens, capabilities, isHidden, pricingUnit } = parsed.data;
+    const {
+      provider,
+      description,
+      contextWindow,
+      maxOutputTokens,
+      capabilities,
+      isHidden,
+      pricingUnit,
+    } = parsed.data;
 
     const model = await prisma.llmModel.create({
       data: {
@@ -78,7 +86,12 @@ export const action = dashboardAction(
         description: description || null,
         contextWindow: contextWindow ? parseInt(contextWindow) || null : null,
         maxOutputTokens: maxOutputTokens ? parseInt(maxOutputTokens) || null : null,
-        capabilities: capabilities ? capabilities.split(",").map((s) => s.trim()).filter(Boolean) : [],
+        capabilities: capabilities
+          ? capabilities
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [],
         isHidden: isHidden === "on",
         pricingUnit: pricingUnit || null,
       },
@@ -123,15 +136,19 @@ export default function AdminLlmModelNewRoute() {
   const [pricingUnit, setPricingUnit] = useState("tokens");
   const [testInput, setTestInput] = useState("");
   const [tiers, setTiers] = useState<TierData[]>([
-    { name: "Standard", isDefault: true, priority: 0, conditions: [], prices: { input: 0, output: 0 } },
+    {
+      name: "Standard",
+      isDefault: true,
+      priority: 0,
+      conditions: [],
+      prices: { input: 0, output: 0 },
+    },
   ]);
 
   let testResult: boolean | null = null;
   if (testInput && matchPattern) {
     try {
-      const pattern = matchPattern.startsWith("(?i)")
-        ? matchPattern.slice(4)
-        : matchPattern;
+      const pattern = matchPattern.startsWith("(?i)") ? matchPattern.slice(4) : matchPattern;
       testResult = new RegExp(pattern, "i").test(testInput);
     } catch {
       testResult = null;
@@ -174,7 +191,9 @@ export default function AdminLlmModelNewRoute() {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-text-dimmed">Match Pattern (regex)</label>
+                <label className="text-xs font-medium text-text-dimmed">
+                  Match Pattern (regex)
+                </label>
                 <button
                   type="button"
                   onClick={autoPattern}
@@ -270,7 +289,9 @@ export default function AdminLlmModelNewRoute() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-text-dimmed">Features (comma-separated)</label>
+                  <label className="text-xs font-medium text-text-dimmed">
+                    Features (comma-separated)
+                  </label>
                   <Input
                     name="capabilities"
                     value={capabilities}
@@ -386,7 +407,15 @@ type TierData = {
   prices: Record<string, number>;
 };
 
-const PRICING_UNITS = ["tokens", "characters", "images", "minutes", "requests", "free", "not_findable"];
+const PRICING_UNITS = [
+  "tokens",
+  "characters",
+  "images",
+  "minutes",
+  "requests",
+  "free",
+  "not_findable",
+];
 
 const COMMON_USAGE_TYPES = [
   "input",
@@ -495,9 +524,7 @@ function TierEditor({
               variant="tertiary/small"
               onClick={() => {
                 const key =
-                  newUsageType === "__custom"
-                    ? prompt("Usage type name:") ?? ""
-                    : newUsageType;
+                  newUsageType === "__custom" ? (prompt("Usage type name:") ?? "") : newUsageType;
                 if (key) {
                   onChange({ ...tier, prices: { ...tier.prices, [key]: 0 } });
                   setNewUsageType("");

@@ -194,10 +194,9 @@ export default function Page() {
 
   // Live-reload on WORKER_CREATED.
   const revalidator = useRevalidator();
-  const streamedEvents = useEventSource(
-    v3TasksStreamingPath(organization, project, environment),
-    { event: "message" }
-  );
+  const streamedEvents = useEventSource(v3TasksStreamingPath(organization, project, environment), {
+    event: "message",
+  });
   useEffect(() => {
     if (streamedEvents !== null) {
       revalidator.revalidate();
@@ -407,8 +406,8 @@ function TaskRow({
     item.kind === "AGENT"
       ? v3AgentTaskPath(organization, project, environment, item.slug)
       : item.kind === "SCHEDULED"
-      ? v3ScheduledTaskPath(organization, project, environment, item.slug)
-      : v3StandardTaskPath(organization, project, environment, item.slug);
+        ? v3ScheduledTaskPath(organization, project, environment, item.slug)
+        : v3StandardTaskPath(organization, project, environment, item.slug);
 
   const testPath =
     item.kind === "AGENT"

@@ -148,7 +148,7 @@ export class SelectBestEnvironmentPresenter {
       slug: string;
       parentEnvironmentId: string | null;
       orgMember: { userId: string } | null;
-    }
+    },
   >(projectId: string, user: UserFromSession, environments: T[]): Promise<T> {
     //try get current environment from prefs
     const currentEnvironmentId: string | undefined =

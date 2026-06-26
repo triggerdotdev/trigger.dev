@@ -109,7 +109,7 @@ export class ApiRetrieveRunPresenter {
 
   public static async findRun(
     friendlyId: string,
-    env: AuthenticatedEnvironment,
+    env: AuthenticatedEnvironment
   ): Promise<FoundRun | null> {
     const pgRow = await runStore.findRun(
       {
@@ -240,7 +240,7 @@ export class ApiRetrieveRunPresenter {
         schedule: await resolveSchedule(taskRun),
         // We're removing attempts from the API
         attemptCount:
-          taskRun.engine === "V1" ? taskRun.attempts.length : taskRun.attemptNumber ?? 0,
+          taskRun.engine === "V1" ? taskRun.attempts.length : (taskRun.attemptNumber ?? 0),
         attempts: [],
         relatedRuns: {
           root: taskRun.rootTaskRun
@@ -643,8 +643,7 @@ export function synthesiseFoundRunFromBuffer(buffered: SyntheticRun): FoundRun {
     // FAILED (the buffer entry has no separate "failedAt" — the
     // best-available approximation of when the terminal state landed
     // is the entry's creation time).
-    completedAt:
-      buffered.cancelledAt ?? (status === "SYSTEM_FAILURE" ? buffered.createdAt : null),
+    completedAt: buffered.cancelledAt ?? (status === "SYSTEM_FAILURE" ? buffered.createdAt : null),
     expiredAt: null,
     delayUntil: buffered.delayUntil ?? null,
     metadata,

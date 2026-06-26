@@ -67,24 +67,21 @@ describe("createDeploymentWithNextVersion", () => {
     }
   );
 
-  containerTest(
-    "propagates non-P2002 errors immediately without retrying",
-    async ({ prisma }) => {
-      const { environment } = await seedEnvironment(prisma);
+  containerTest("propagates non-P2002 errors immediately without retrying", async ({ prisma }) => {
+    const { environment } = await seedEnvironment(prisma);
 
-      let buildDataCalls = 0;
-      const buildData = () => {
-        buildDataCalls++;
-        throw new Error("builder boom");
-      };
+    let buildDataCalls = 0;
+    const buildData = () => {
+      buildDataCalls++;
+      throw new Error("builder boom");
+    };
 
-      await expect(
-        createDeploymentWithNextVersion(prisma, environment.id, buildData)
-      ).rejects.toThrow("builder boom");
+    await expect(
+      createDeploymentWithNextVersion(prisma, environment.id, buildData)
+    ).rejects.toThrow("builder boom");
 
-      expect(buildDataCalls).toBe(1);
-    }
-  );
+    expect(buildDataCalls).toBe(1);
+  });
 
   containerTest(
     "wraps exhausted retries in DeploymentVersionCollisionError with the P2002 as cause",
@@ -113,9 +110,7 @@ describe("createDeploymentWithNextVersion", () => {
       );
 
       const fulfilled = settled.filter((s) => s.status === "fulfilled");
-      const rejected = settled.filter(
-        (s): s is PromiseRejectedResult => s.status === "rejected"
-      );
+      const rejected = settled.filter((s): s is PromiseRejectedResult => s.status === "rejected");
 
       expect(fulfilled.length).toBeGreaterThanOrEqual(1);
       expect(rejected.length).toBeGreaterThanOrEqual(1);

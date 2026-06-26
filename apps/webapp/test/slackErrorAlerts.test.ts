@@ -67,8 +67,7 @@ function createMockErrorPayload(
 
 // Skip tests if Slack credentials not configured
 const hasSlackCredentials =
-  !!process.env.TEST_SLACK_CHANNEL_ID &&
-  !!process.env.TEST_SLACK_BOT_TOKEN;
+  !!process.env.TEST_SLACK_CHANNEL_ID && !!process.env.TEST_SLACK_BOT_TOKEN;
 
 describe.skipIf(!hasSlackCredentials)("Slack Error Alert Visual Tests", () => {
   beforeAll(async () => {
@@ -76,9 +75,7 @@ describe.skipIf(!hasSlackCredentials)("Slack Error Alert Visual Tests", () => {
     prisma = dbModule.prisma;
     const secretModule = await import("../app/services/secrets/secretStore.server.js");
     getSecretStore = secretModule.getSecretStore;
-    const alertModule = await import(
-      "../app/v3/services/alerts/deliverErrorGroupAlert.server.js"
-    );
+    const alertModule = await import("../app/v3/services/alerts/deliverErrorGroupAlert.server.js");
     DeliverErrorGroupAlertService = alertModule.DeliverErrorGroupAlertService;
 
     const organization = await prisma.organization.create({

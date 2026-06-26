@@ -78,10 +78,7 @@ export class ComputeTemplateCreationService {
     writer?: WritableStreamDefaultWriter;
   }): Promise<void> {
     return startActiveSpan("compute.template.create", async (span) => {
-      const { mode, migrated, reason } = await this.resolveMode(
-        options.projectId,
-        options.prisma
-      );
+      const { mode, migrated, reason } = await this.resolveMode(options.projectId, options.prisma);
 
       span.setAttributes({
         ...attributesFromAuthenticatedEnv(options.authenticatedEnv),

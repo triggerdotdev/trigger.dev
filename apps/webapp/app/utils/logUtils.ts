@@ -54,9 +54,7 @@ export function highlightSearchText(
       parts.push(text.substring(lastIndex, match.index));
     }
     // Add highlighted match
-    parts.push(
-      createElement("span", { key: `match-${matchCount}`, style }, match[0])
-    );
+    parts.push(createElement("span", { key: `match-${matchCount}`, style }, match[0]));
     lastIndex = regex.lastIndex;
     matchCount++;
   }

@@ -318,10 +318,10 @@ function getApiKeyResult(apiKey: string): {
   const type = isPublicApiKey(apiKey)
     ? "PUBLIC"
     : isSecretApiKey(apiKey)
-    ? "PRIVATE"
-    : isPublicJWT(apiKey)
-    ? "PUBLIC_JWT"
-    : "PRIVATE"; // Fallback to private key
+      ? "PRIVATE"
+      : isPublicJWT(apiKey)
+        ? "PUBLIC_JWT"
+        : "PRIVATE"; // Fallback to private key
   return { apiKey, type };
 }
 
@@ -351,7 +351,7 @@ const defaultAllowedAuthenticationMethods: AllowedAuthenticationMethods = {
 };
 
 type FilteredAuthenticationResult<
-  T extends AllowedAuthenticationMethods = AllowedAuthenticationMethods
+  T extends AllowedAuthenticationMethods = AllowedAuthenticationMethods,
 > =
   | (T["personalAccessToken"] extends true
       ? Extract<AuthenticationResult, { type: "personalAccessToken" }>
@@ -387,7 +387,7 @@ type FilteredAuthenticationResult<
  * ```
  */
 export async function authenticateRequest<
-  T extends AllowedAuthenticationMethods = AllowedAuthenticationMethods
+  T extends AllowedAuthenticationMethods = AllowedAuthenticationMethods,
 >(
   request: Request,
   allowedAuthenticationMethods?: T
@@ -484,7 +484,10 @@ export async function authenticatedEnvironmentForAuthentication(
         );
       }
 
-      if (auth.result.environment.slug !== slug && auth.result.environment.branchName !== resolvedBranch) {
+      if (
+        auth.result.environment.slug !== slug &&
+        auth.result.environment.branchName !== resolvedBranch
+      ) {
         throw json(
           {
             error:
@@ -520,10 +523,10 @@ export async function authenticatedEnvironmentForAuthentication(
             slug: slug,
             ...(slug === "dev"
               ? {
-                orgMember: {
-                  userId: user.id,
-                },
-              }
+                  orgMember: {
+                    userId: user.id,
+                  },
+                }
               : {}),
           },
           include: authIncludeBase,
@@ -543,10 +546,10 @@ export async function authenticatedEnvironmentForAuthentication(
           branchName: resolvedBranch,
           ...(slug === "dev"
             ? {
-              orgMember: {
-                userId: user.id,
-              },
-            }
+                orgMember: {
+                  userId: user.id,
+                },
+              }
             : {}),
           archivedAt: null,
         },

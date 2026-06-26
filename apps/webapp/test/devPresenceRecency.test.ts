@@ -14,13 +14,16 @@ function ids() {
 const recentKey = (userId: string, projectId: string) => `dev-recent:${userId}:${projectId}`;
 
 describe("DevPresence — recency ZSET", () => {
-  redisTest("getRecentBranchIds returns an empty map when nothing has pinged", async ({ redisOptions }) => {
-    const presence = new DevPresence(redisOptions);
-    const { userId, projectId } = ids();
+  redisTest(
+    "getRecentBranchIds returns an empty map when nothing has pinged",
+    async ({ redisOptions }) => {
+      const presence = new DevPresence(redisOptions);
+      const { userId, projectId } = ids();
 
-    const result = await presence.getRecentBranchIds(userId, projectId);
-    expect(result.size).toBe(0);
-  });
+      const result = await presence.getRecentBranchIds(userId, projectId);
+      expect(result.size).toBe(0);
+    }
+  );
 
   redisTest("a ping records the branch as recently active", async ({ redisOptions }) => {
     const presence = new DevPresence(redisOptions);
@@ -87,21 +90,24 @@ describe("DevPresence — recency ZSET", () => {
     await redis.quit();
   });
 
-  redisTest("caps cardinality at 50 even under a flood of distinct branches", async ({ redisOptions }) => {
-    const presence = new DevPresence(redisOptions);
-    const redis = new Redis(redisOptions);
-    const { userId, projectId } = ids();
+  redisTest(
+    "caps cardinality at 50 even under a flood of distinct branches",
+    async ({ redisOptions }) => {
+      const presence = new DevPresence(redisOptions);
+      const redis = new Redis(redisOptions);
+      const { userId, projectId } = ids();
 
-    // 60 distinct envs, each with its own debounce key, so each performs a ZADD.
-    for (let i = 0; i < 60; i++) {
-      // eslint-disable-next-line no-await-in-loop
-      await presence.setConnected({ userId, projectId, environmentId: `env_${i}`, ttl: 60 });
+      // 60 distinct envs, each with its own debounce key, so each performs a ZADD.
+      for (let i = 0; i < 60; i++) {
+        // eslint-disable-next-line no-await-in-loop
+        await presence.setConnected({ userId, projectId, environmentId: `env_${i}`, ttl: 60 });
+      }
+
+      expect(await redis.zcard(recentKey(userId, projectId))).toBe(50);
+
+      await redis.quit();
     }
-
-    expect(await redis.zcard(recentKey(userId, projectId))).toBe(50);
-
-    await redis.quit();
-  });
+  );
 
   redisTest("returns recent branches in most-recent-first order", async ({ redisOptions }) => {
     const presence = new DevPresence(redisOptions);

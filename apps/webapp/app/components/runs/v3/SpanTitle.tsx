@@ -32,9 +32,7 @@ export function SpanTitle(event: SpanTitleProps) {
     finalTextClass === "text-text-dimmed" ? "group-hover/spannode:text-text-bright" : undefined;
 
   return (
-    <span
-      className={cn("flex items-center gap-x-2 overflow-x-hidden", finalTextClass, hoverClass)}
-    >
+    <span className={cn("flex items-center gap-x-2 overflow-x-hidden", finalTextClass, hoverClass)}>
       <span className="truncate">{event.message}</span>{" "}
       {!event.hideAccessory && (
         <SpanAccessory accessory={event.style.accessory} size={event.size} />

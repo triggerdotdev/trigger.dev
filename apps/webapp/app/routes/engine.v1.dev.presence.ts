@@ -12,7 +12,6 @@ export const loader = createSSELoader({
   handler: async ({ id, controller, debug, request }) => {
     const authentication = await authenticateApiRequestWithFailure(request);
 
-
     if (!authentication.ok) {
       throw json({ error: "Invalid or Missing API key" }, { status: 401 });
     }

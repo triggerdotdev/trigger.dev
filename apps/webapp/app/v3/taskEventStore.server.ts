@@ -56,7 +56,10 @@ export function getTaskEventStore(): TaskEventStoreTable {
 }
 
 export class TaskEventStore {
-  constructor(private db: PrismaClient, private readReplica: PrismaReplicaClient) {}
+  constructor(
+    private db: PrismaClient,
+    private readReplica: PrismaReplicaClient
+  ) {}
 
   /**
    * Insert one record.

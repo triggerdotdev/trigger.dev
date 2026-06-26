@@ -37,7 +37,11 @@ function initializeShadowRealtimeClient(): ShadowRealtimeClient {
     onOutcome: (outcome) => {
       const { feed } = outcome;
       if (outcome.serializationMatched) {
-        compares.add(outcome.serializationMatched, { feed, kind: "serialization", result: "match" });
+        compares.add(outcome.serializationMatched, {
+          feed,
+          kind: "serialization",
+          result: "match",
+        });
       }
       if (outcome.serializationDiverged) {
         compares.add(outcome.serializationDiverged, {

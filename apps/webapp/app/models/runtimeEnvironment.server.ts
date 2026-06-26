@@ -39,7 +39,7 @@ type PrismaEnvWithAuthAndParent = Prisma.RuntimeEnvironmentGetPayload<{
 // plain number (lossless at this scale). The optional union accepts both
 // query shapes — with parentEnvironment loaded, or without it.
 export function toAuthenticated(
-  env: PrismaEnvWithAuth | PrismaEnvWithAuthAndParent,
+  env: PrismaEnvWithAuth | PrismaEnvWithAuthAndParent
 ): AuthenticatedEnvironment {
   return {
     id: env.id,
@@ -103,11 +103,11 @@ export async function findEnvironmentByApiKey(
     ...authIncludeBase,
     childEnvironments: branch
       ? {
-        where: {
-          branchName: branch,
-          archivedAt: null,
-        },
-      }
+          where: {
+            branchName: branch,
+            archivedAt: null,
+          },
+        }
       : undefined,
   } satisfies Prisma.RuntimeEnvironmentInclude;
 
@@ -182,7 +182,6 @@ export async function findEnvironmentByApiKey(
 
     //A branch was specified but no child environment was found
     return null;
-
   }
 
   return toAuthenticated(environment);

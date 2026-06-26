@@ -168,7 +168,6 @@ function ChartsDashboard() {
           </Card.Content>
         </Card>
 
-
         {/* Simple Line Chart (no zoom, but synced with date range) */}
         <Card>
           <Card.Header>

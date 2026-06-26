@@ -23,7 +23,7 @@ async function createOrFindVercelIntegration(
   projectId: string,
   tokenResponse: TokenResponse,
   configurationId: string | undefined,
-  origin: 'marketplace' | 'dashboard'
+  origin: "marketplace" | "dashboard"
 ): Promise<void> {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
@@ -47,7 +47,7 @@ async function createOrFindVercelIntegration(
       teamId: tokenResponse.teamId ?? null,
       userId: tokenResponse.userId,
       installationId: configurationId,
-      raw: tokenResponse.raw
+      raw: tokenResponse.raw,
     });
   } else {
     await VercelIntegrationRepository.createVercelOrgIntegration({
@@ -146,7 +146,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
   );
 
   const result = await fromPromise(
-    createOrFindVercelIntegration(stateData.organizationId, stateData.projectId, tokenResponse, configurationId, origin),
+    createOrFindVercelIntegration(
+      stateData.organizationId,
+      stateData.projectId,
+      tokenResponse,
+      configurationId,
+      origin
+    ),
     (error) => error
   );
 

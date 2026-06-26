@@ -91,10 +91,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       const snapshotDelayUntil =
         typeof snapshot.delayUntil === "string" ? snapshot.delayUntil : undefined;
       if (!snapshotDelayUntil) {
-        return json(
-          { error: "Cannot reschedule a run that is not delayed" },
-          { status: 422 },
-        );
+        return json({ error: "Cannot reschedule a run that is not delayed" }, { status: 422 });
       }
     }
 

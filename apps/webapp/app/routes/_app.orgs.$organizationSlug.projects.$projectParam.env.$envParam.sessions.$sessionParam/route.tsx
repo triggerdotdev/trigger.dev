@@ -121,8 +121,8 @@ export default function Page() {
     session.closedAt != null
       ? "CLOSED"
       : session.expiresAt != null && new Date(session.expiresAt).getTime() < Date.now()
-      ? "EXPIRED"
-      : "ACTIVE";
+        ? "EXPIRED"
+        : "ACTIVE";
 
   const displayId = session.externalId ?? session.friendlyId;
   const sessionsPath = v3SessionsPath(organization, project, environment);
@@ -423,8 +423,8 @@ function RawConversationView({
               totalChunks === 0
                 ? "cursor-not-allowed opacity-50"
                 : copied
-                ? "text-success hover:cursor-pointer"
-                : "text-text-dimmed hover:cursor-pointer hover:text-text-bright"
+                  ? "text-success hover:cursor-pointer"
+                  : "text-text-dimmed hover:cursor-pointer hover:text-text-bright"
             )}
           >
             {copied ? <ClipboardCheck className="size-4" /> : <Clipboard className="size-4" />}
