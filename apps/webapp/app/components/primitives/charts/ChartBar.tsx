@@ -20,9 +20,9 @@ import { useXAxisTicks } from "./useXAxisTicks";
 import { useChartSync } from "./ChartSyncContext";
 import { ZoomTooltip, useZoomHandlers } from "./ChartZoom";
 
-// charcoal-600 — a subtle vertical line used to mirror the hovered x position
-// across charts in the same ChartSyncProvider group.
-const SYNC_LINE_COLOR = "#3B3E45";
+// charcoal-500 — a subtle, dashed vertical line used to mirror the hovered x
+// position across charts in the same ChartSyncProvider group.
+const SYNC_LINE_COLOR = "#5F6570";
 
 // Chart margins, shared with ChartLine so bar/line align when toggling between
 // them. The right margin keeps the centered last x-axis label (e.g. "Jun 22")
@@ -351,13 +351,15 @@ export function ChartBarRenderer({
         />
       )}
 
-      {/* Synced hover indicator — mirrors the hovered x across charts in the same ChartSyncProvider group.
+      {/* Synced hover indicator: mirrored onto the *other* charts in the group, but
+          not the chart being hovered (it already shows its own tooltip cursor).
           pointer-events-none so it never steals hover from the bar underneath it. */}
-      {syncActiveX != null && (
+      {syncActiveX != null && !highlight.tooltipActive && (
         <ReferenceLine
           x={syncActiveX}
           stroke={SYNC_LINE_COLOR}
           strokeWidth={1}
+          strokeDasharray="4 4"
           isFront
           className="pointer-events-none"
         />
