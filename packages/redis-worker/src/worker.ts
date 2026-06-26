@@ -66,10 +66,11 @@ export type JobHandler<Catalog extends WorkerCatalog, K extends keyof Catalog> =
   params: JobHandlerParams<Catalog, K>
 ) => Promise<void>;
 
-type JobHandlerFor<Catalog extends WorkerCatalog, K extends keyof Catalog> =
-  Catalog[K] extends { batch: BatchConfig }
-    ? (items: Array<JobHandlerParams<Catalog, K>>) => Promise<void>
-    : (params: JobHandlerParams<Catalog, K>) => Promise<void>;
+type JobHandlerFor<Catalog extends WorkerCatalog, K extends keyof Catalog> = Catalog[K] extends {
+  batch: BatchConfig;
+}
+  ? (items: Array<JobHandlerParams<Catalog, K>>) => Promise<void>
+  : (params: JobHandlerParams<Catalog, K>) => Promise<void>;
 
 export type WorkerConcurrencyOptions = {
   workers?: number;
@@ -583,15 +584,15 @@ class Worker<TCatalog extends WorkerCatalog> {
               await this.flushBatch(queueItem.job, workerId, limiter);
             }
           } else {
-            limiter(() =>
-              this.processItem(queueItem, items.length, workerId, limiter)
-            ).catch((err) => {
-              this.logger.error("Unhandled error in processItem:", {
-                error: err,
-                workerId,
-                item,
-              });
-            });
+            limiter(() => this.processItem(queueItem, items.length, workerId, limiter)).catch(
+              (err) => {
+                this.logger.error("Unhandled error in processItem:", {
+                  error: err,
+                  workerId,
+                  item,
+                });
+              }
+            );
           }
         }
       } catch (error) {
@@ -785,13 +786,25 @@ class Worker<TCatalog extends WorkerCatalog> {
             };
 
             if (!shouldLogError) {
-              this.logger.info(`Worker batch item reached max attempts. Moving to DLQ.`, dlqLogAttributes);
+              this.logger.info(
+                `Worker batch item reached max attempts. Moving to DLQ.`,
+                dlqLogAttributes
+              );
             } else if (errorLogLevel === "warn") {
-              this.logger.warn(`Worker batch item reached max attempts. Moving to DLQ.`, dlqLogAttributes);
+              this.logger.warn(
+                `Worker batch item reached max attempts. Moving to DLQ.`,
+                dlqLogAttributes
+              );
             } else if (errorLogLevel === "info") {
-              this.logger.info(`Worker batch item reached max attempts. Moving to DLQ.`, dlqLogAttributes);
+              this.logger.info(
+                `Worker batch item reached max attempts. Moving to DLQ.`,
+                dlqLogAttributes
+              );
             } else {
-              this.logger.error(`Worker batch item reached max attempts. Moving to DLQ.`, dlqLogAttributes);
+              this.logger.error(
+                `Worker batch item reached max attempts. Moving to DLQ.`,
+                dlqLogAttributes
+              );
             }
 
             await this.queue.moveToDeadLetterQueue(item.id, errorMessage);

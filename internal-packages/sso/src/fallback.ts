@@ -102,10 +102,7 @@ class SsoFallbackController implements SsoController {
     return errAsync("feature_disabled" as const);
   }
 
-  completeAuthorization(_params: {
-    code: string;
-    state: string;
-  }): ResultAsync<
+  completeAuthorization(_params: { code: string; state: string }): ResultAsync<
     {
       profile: SsoProfile;
       redirectTo: string;

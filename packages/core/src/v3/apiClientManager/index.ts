@@ -114,7 +114,13 @@ export class APIClientManagerAPI {
     const requestOptions = source?.requestOptions;
     const futureFlags = source?.future;
 
-    return new ApiClient(this.baseURL, this.accessToken, this.branchName, requestOptions, futureFlags);
+    return new ApiClient(
+      this.baseURL,
+      this.accessToken,
+      this.branchName,
+      requestOptions,
+      futureFlags
+    );
   }
 
   clientOrThrow(config?: ApiClientConfiguration): ApiClient {

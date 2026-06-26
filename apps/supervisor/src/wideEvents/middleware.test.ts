@@ -124,7 +124,8 @@ describe("runWideEvent", () => {
         {
           service: "supervisor",
           env: {},
-          enabled: true, op: "test",
+          enabled: true,
+          op: "test",
           setup: (state) => {
             state.meta.run_id = "run_abc";
             state.extras.iteration = "dequeue";
@@ -158,16 +159,13 @@ describe("runWideEvent", () => {
     const lines = await captureStdout(async () => {
       await Promise.all(
         ["a", "b", "c"].map((tag) =>
-          runWideEvent(
-            { service: "supervisor", env: {}, enabled: true, op: "test" },
-            async () => {
-              const s = fromContext();
-              if (!s) throw new Error("no state");
-              s.meta.tag = tag;
-              await new Promise((r) => setTimeout(r, 5));
-              expect(s.meta.tag).toBe(tag);
-            }
-          )
+          runWideEvent({ service: "supervisor", env: {}, enabled: true, op: "test" }, async () => {
+            const s = fromContext();
+            if (!s) throw new Error("no state");
+            s.meta.tag = tag;
+            await new Promise((r) => setTimeout(r, 5));
+            expect(s.meta.tag).toBe(tag);
+          })
         )
       );
     });
@@ -182,7 +180,8 @@ describe("emitOneShot", () => {
       emitOneShot({
         service: "supervisor",
         env: {},
-        enabled: true, op: "test",
+        enabled: true,
+        op: "test",
         populate: (s) => {
           s.meta.run_id = "run_abc";
           s.extras.event = "run:start";

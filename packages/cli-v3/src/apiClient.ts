@@ -320,11 +320,7 @@ export class CliApiClient {
     );
   }
 
-  async archiveBranch(
-    projectRef: string,
-    env: UpsertBranchRequestBody["env"],
-    branch: string
-  ) {
+  async archiveBranch(projectRef: string, env: UpsertBranchRequestBody["env"], branch: string) {
     if (!this.accessToken) {
       throw new Error("archiveBranch: No access token");
     }

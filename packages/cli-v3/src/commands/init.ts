@@ -107,7 +107,10 @@ Examples:
         "Additional arguments to pass to the package manager, accepts CSV for multiple args"
       )
       .option("-y, --yes", "Skip all prompts and use defaults (requires --project-ref)")
-      .option("--no-browser", "Don't automatically open the browser during login; print the URL only")
+      .option(
+        "--no-browser",
+        "Don't automatically open the browser during login; print the URL only"
+      )
   )
     .addOption(
       new CommandOption(

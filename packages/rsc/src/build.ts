@@ -90,7 +90,7 @@ export function rscExtension(options?: RSCExtensionOptions): BuildExtension {
 
           build.onResolve({ filter: /^react-dom\/server$/ }, (args) => {
             const condition =
-              context.config.runtime === "bun" ? "bun" : options?.reactDomEnvironment ?? "node";
+              context.config.runtime === "bun" ? "bun" : (options?.reactDomEnvironment ?? "node");
 
             context.logger.debug("Resolving react-dom/server", { args, condition });
 

@@ -452,8 +452,8 @@ function constantTypeToSerializedFieldType(
       return printed === "String"
         ? DatabaseSerializedFieldType.STRING
         : printed === "JSON"
-        ? DatabaseSerializedFieldType.JSON
-        : DatabaseSerializedFieldType.ARRAY;
+          ? DatabaseSerializedFieldType.JSON
+          : DatabaseSerializedFieldType.ARRAY;
     }
     if (printed === "Boolean") return DatabaseSerializedFieldType.BOOLEAN;
     if (printed === "Date") return DatabaseSerializedFieldType.DATE;

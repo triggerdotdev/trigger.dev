@@ -134,10 +134,7 @@ export class ModelPricingRegistry {
     return null;
   }
 
-  calculateCost(
-    responseModel: string,
-    usageDetails: Record<string, number>
-  ): LlmCostResult | null {
+  calculateCost(responseModel: string, usageDetails: Record<string, number>): LlmCostResult | null {
     const model = this.match(responseModel);
     if (!model) return null;
 

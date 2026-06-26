@@ -4,10 +4,7 @@ import {
   InputStreamTimeoutError,
 } from "../inputStreams/types.js";
 import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
-import type {
-  SessionChannelIO,
-  SessionStreamManager,
-} from "../sessionStreams/types.js";
+import type { SessionChannelIO, SessionStreamManager } from "../sessionStreams/types.js";
 
 type OnceWaiter = {
   resolve: (value: InputStreamOnceResult<unknown>) => void;
@@ -40,11 +37,7 @@ export class TestSessionStreamManager implements SessionStreamManager {
   private buffer = new Map<string, unknown[]>();
   private seqNums = new Map<string, number>();
 
-  on(
-    sessionId: string,
-    io: SessionChannelIO,
-    handler: Handler
-  ): { off: () => void } {
+  on(sessionId: string, io: SessionChannelIO, handler: Handler): { off: () => void } {
     const key = keyFor(sessionId, io);
 
     let set = this.handlers.get(key);
@@ -167,11 +160,7 @@ export class TestSessionStreamManager implements SessionStreamManager {
     return undefined;
   }
 
-  setLastDispatchedSeqNum(
-    _sessionId: string,
-    _io: SessionChannelIO,
-    _seqNum: number
-  ): void {
+  setLastDispatchedSeqNum(_sessionId: string, _io: SessionChannelIO, _seqNum: number): void {
     // no-op — see comment on `lastDispatchedSeqNum`.
   }
 
@@ -242,11 +231,7 @@ export class TestSessionStreamManager implements SessionStreamManager {
    * resolves. Consumption is decided on the synchronous return value,
    * exactly like production.
    */
-  async __sendFromTest(
-    sessionId: string,
-    io: SessionChannelIO,
-    data: unknown
-  ): Promise<void> {
+  async __sendFromTest(sessionId: string, io: SessionChannelIO, data: unknown): Promise<void> {
     const key = keyFor(sessionId, io);
 
     const waiters = this.onceWaiters.get(key);

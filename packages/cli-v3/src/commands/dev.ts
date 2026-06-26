@@ -7,7 +7,12 @@ import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { Command, Option as CommandOption } from "commander";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
-import { CommonCommandOptions, commonOptions, handleTelemetry, wrapCommandAction } from "../cli/common.js";
+import {
+  CommonCommandOptions,
+  commonOptions,
+  handleTelemetry,
+  wrapCommandAction,
+} from "../cli/common.js";
 import { watchConfig } from "../config.js";
 import { DevSessionInstance, startDevSession } from "../dev/devSession.js";
 import { createLockFile } from "../dev/lock.js";
@@ -214,7 +219,8 @@ export async function devCommand(options: DevCommandOptions) {
       );
     } else {
       logger.log(
-        `${chalkError("X Error:")} You must login first. Use the \`login\` CLI command.\n\n${authorization.error
+        `${chalkError("X Error:")} You must login first. Use the \`login\` CLI command.\n\n${
+          authorization.error
         }`
       );
     }
@@ -253,9 +259,9 @@ async function startDev(options: StartDevOptions) {
     const notificationPromise = options.skipPlatformNotifications
       ? undefined
       : fetchPlatformNotification({
-        apiClient,
-        projectRef: options.projectRef,
-      });
+          apiClient,
+          projectRef: options.projectRef,
+        });
 
     await printStandloneInitialBanner(true, options.profile);
 
@@ -275,7 +281,6 @@ async function startDev(options: StartDevOptions) {
     let devInstance: DevSessionInstance | undefined;
 
     printDevBanner(displayedUpdateMessage);
-
 
     if (envVars.TRIGGER_PROJECT_REF) {
       logger.debug("Using project ref from env", { ref: envVars.TRIGGER_PROJECT_REF });
@@ -342,7 +347,7 @@ async function startDev(options: StartDevOptions) {
 
     devInstance = await bootDevSession(watcher.config);
 
-    const waitUntilExit = async () => { };
+    const waitUntilExit = async () => {};
 
     return {
       watcher,
@@ -370,7 +375,6 @@ async function devArchiveCommand(dir: string, options: unknown) {
     }
   );
 }
-
 
 async function archiveDevBranchCommand(dir: string, options: DevArchiveCommandOptions) {
   intro(`Archiving dev branch`);
@@ -429,11 +433,7 @@ async function archiveDevBranchCommand(dir: string, options: DevArchiveCommandOp
   return result;
 }
 
-async function archiveDevBranch(
-  authorization: LoginResultOk,
-  branch: string,
-  project: string
-) {
+async function archiveDevBranch(authorization: LoginResultOk, branch: string, project: string) {
   const apiClient = new CliApiClient(authorization.auth.apiUrl, authorization.auth.accessToken);
 
   const result = await apiClient.archiveBranch(project, "development", branch);

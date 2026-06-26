@@ -475,21 +475,14 @@ export type BatchRunHandle<TTaskIdentifier extends string, TPayload, TOutput> = 
   TPayload
 >;
 
-export type RunHandleOutput<TRunHandle> = TRunHandle extends RunHandle<string, any, infer TOutput>
-  ? TOutput
-  : never;
+export type RunHandleOutput<TRunHandle> =
+  TRunHandle extends RunHandle<string, any, infer TOutput> ? TOutput : never;
 
-export type RunHandlePayload<TRunHandle> = TRunHandle extends RunHandle<string, infer TPayload, any>
-  ? TPayload
-  : never;
+export type RunHandlePayload<TRunHandle> =
+  TRunHandle extends RunHandle<string, infer TPayload, any> ? TPayload : never;
 
-export type RunHandleTaskIdentifier<TRunHandle> = TRunHandle extends RunHandle<
-  infer TTaskIdentifier,
-  any,
-  any
->
-  ? TTaskIdentifier
-  : never;
+export type RunHandleTaskIdentifier<TRunHandle> =
+  TRunHandle extends RunHandle<infer TTaskIdentifier, any, any> ? TTaskIdentifier : never;
 
 export type TaskRunResult<TIdentifier extends string, TOutput = any> =
   | {
@@ -507,13 +500,10 @@ export type TaskRunResult<TIdentifier extends string, TOutput = any> =
 
 export type AnyTaskRunResult = TaskRunResult<string, any>;
 
-export type TaskRunResultFromTask<TTask extends AnyTask> = TTask extends Task<
-  infer TIdentifier,
-  any,
-  infer TOutput
->
-  ? TaskRunResult<TIdentifier, TOutput>
-  : never;
+export type TaskRunResultFromTask<TTask extends AnyTask> =
+  TTask extends Task<infer TIdentifier, any, infer TOutput>
+    ? TaskRunResult<TIdentifier, TOutput>
+    : never;
 
 export type BatchResult<TIdentifier extends string, TOutput = any> = {
   id: string;
@@ -668,7 +658,7 @@ export interface Task<TIdentifier extends string, TInput = void, TOutput = any> 
    */
   triggerAndSubscribe: (
     payload: TInput,
-    options?: TriggerAndSubscribeOptions,
+    options?: TriggerAndSubscribeOptions
   ) => TaskRunPromise<TIdentifier, TOutput>;
 
   /**
@@ -722,33 +712,24 @@ export interface ToolTask<
 
 export type AnyTask = Task<string, any, any>;
 
-export type TaskPayload<TTask extends AnyTask> = TTask extends Task<string, infer TInput, any>
-  ? TInput
-  : never;
+export type TaskPayload<TTask extends AnyTask> =
+  TTask extends Task<string, infer TInput, any> ? TInput : never;
 
-export type TaskOutput<TTask extends AnyTask> = TTask extends Task<string, any, infer TOutput>
-  ? TOutput
-  : never;
+export type TaskOutput<TTask extends AnyTask> =
+  TTask extends Task<string, any, infer TOutput> ? TOutput : never;
 
-export type TaskOutputHandle<TTask extends AnyTask> = TTask extends Task<
-  infer TIdentifier,
-  infer TInput,
-  infer TOutput
->
-  ? RunHandle<TIdentifier, TOutput, TInput>
-  : never;
+export type TaskOutputHandle<TTask extends AnyTask> =
+  TTask extends Task<infer TIdentifier, infer TInput, infer TOutput>
+    ? RunHandle<TIdentifier, TOutput, TInput>
+    : never;
 
-export type TaskBatchOutputHandle<TTask extends AnyTask> = TTask extends Task<
-  infer TIdentifier,
-  infer TInput,
-  infer TOutput
->
-  ? BatchRunHandle<TIdentifier, TOutput, TInput>
-  : never;
+export type TaskBatchOutputHandle<TTask extends AnyTask> =
+  TTask extends Task<infer TIdentifier, infer TInput, infer TOutput>
+    ? BatchRunHandle<TIdentifier, TOutput, TInput>
+    : never;
 
-export type TaskIdentifier<TTask extends AnyTask> = TTask extends Task<infer TIdentifier, any, any>
-  ? TIdentifier
-  : never;
+export type TaskIdentifier<TTask extends AnyTask> =
+  TTask extends Task<infer TIdentifier, any, any> ? TIdentifier : never;
 
 export type TaskFromIdentifier<
   TTask extends AnyTask,
@@ -1087,17 +1068,14 @@ export type RunTypes<TTaskIdentifier extends string, TPayload, TOutput> = {
 
 export type AnyRunTypes = RunTypes<string, any, any>;
 
-export type InferRunTypes<T> = T extends RunHandle<
-  infer TTaskIdentifier,
-  infer TPayload,
-  infer TOutput
->
-  ? RunTypes<TTaskIdentifier, TPayload, TOutput>
-  : T extends BatchedRunHandle<infer TTaskIdentifier, infer TPayload, infer TOutput>
-  ? RunTypes<TTaskIdentifier, TPayload, TOutput>
-  : T extends Task<infer TTaskIdentifier, infer TPayload, infer TOutput>
-  ? RunTypes<TTaskIdentifier, TPayload, TOutput>
-  : AnyRunTypes;
+export type InferRunTypes<T> =
+  T extends RunHandle<infer TTaskIdentifier, infer TPayload, infer TOutput>
+    ? RunTypes<TTaskIdentifier, TPayload, TOutput>
+    : T extends BatchedRunHandle<infer TTaskIdentifier, infer TPayload, infer TOutput>
+      ? RunTypes<TTaskIdentifier, TPayload, TOutput>
+      : T extends Task<infer TTaskIdentifier, infer TPayload, infer TOutput>
+        ? RunTypes<TTaskIdentifier, TPayload, TOutput>
+        : AnyRunTypes;
 
 export type RunHandleFromTypes<TRunTypes extends AnyRunTypes> = RunHandle<
   TRunTypes["taskIdentifier"],

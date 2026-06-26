@@ -204,8 +204,8 @@ await sendMessageInCatalog(
         typeof processKeepAlive === "object"
           ? processKeepAlive
           : typeof processKeepAlive === "boolean"
-          ? { enabled: processKeepAlive }
-          : undefined,
+            ? { enabled: processKeepAlive }
+            : undefined,
       timings,
     },
     importErrors,

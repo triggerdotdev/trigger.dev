@@ -15,4 +15,3 @@ datasources:
       httpMethod: POST
       manageAlerts: true
       prometheusType: Prometheus
-

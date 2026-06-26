@@ -48,7 +48,10 @@ const messageDev: InputPayload = {
 
 vi.setConfig({ testTimeout: 60_000 });
 
-function createQueue(redisContainer: { getHost: () => string; getPort: () => number }, prefix = "runqueue:test:") {
+function createQueue(
+  redisContainer: { getHost: () => string; getPort: () => number },
+  prefix = "runqueue:test:"
+) {
   return new RunQueue({
     ...testOptions,
     queueSelectionStrategy: new FairQueueSelectionStrategy({
@@ -133,45 +136,48 @@ describe("RunQueue.enqueueMessage", () => {
 });
 
 describe("RunQueue.enqueueMessage fast path", () => {
-  redisTest("should fast-path to worker queue when queue is empty and concurrency available", async ({ redisContainer }) => {
-    const queue = createQueue(redisContainer, "runqueue:fp1:");
+  redisTest(
+    "should fast-path to worker queue when queue is empty and concurrency available",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer, "runqueue:fp1:");
 
-    try {
-      // Set concurrency limits
-      await queue.updateEnvConcurrencyLimits(authenticatedEnvDev);
+      try {
+        // Set concurrency limits
+        await queue.updateEnvConcurrencyLimits(authenticatedEnvDev);
 
-      // Enqueue with fast path enabled
-      await queue.enqueueMessage({
-        env: authenticatedEnvDev,
-        message: messageDev,
-        workerQueue: authenticatedEnvDev.id,
-        enableFastPath: true,
-      });
+        // Enqueue with fast path enabled
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: messageDev,
+          workerQueue: authenticatedEnvDev.id,
+          enableFastPath: true,
+        });
 
-      // Queue sorted set should be empty (fast path skips it)
-      const queueLength = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
-      expect(queueLength).toBe(0);
+        // Queue sorted set should be empty (fast path skips it)
+        const queueLength = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
+        expect(queueLength).toBe(0);
 
-      // Queue concurrency should be claimed (operational concurrency)
-      const queueConcurrency = await queue.currentConcurrencyOfQueue(
-        authenticatedEnvDev,
-        messageDev.queue
-      );
-      expect(queueConcurrency).toBe(1);
+        // Queue concurrency should be claimed (operational concurrency)
+        const queueConcurrency = await queue.currentConcurrencyOfQueue(
+          authenticatedEnvDev,
+          messageDev.queue
+        );
+        expect(queueConcurrency).toBe(1);
 
-      // Message should be directly in worker queue - dequeue it
-      const dequeued = await queue.dequeueMessageFromWorkerQueue(
-        "test_12345",
-        authenticatedEnvDev.id,
-        { blockingPop: false }
-      );
-      assertNonNullable(dequeued);
-      expect(dequeued.messageId).toEqual(messageDev.runId);
-      expect(dequeued.message.version).toEqual("2");
-    } finally {
-      await queue.quit();
+        // Message should be directly in worker queue - dequeue it
+        const dequeued = await queue.dequeueMessageFromWorkerQueue(
+          "test_12345",
+          authenticatedEnvDev.id,
+          { blockingPop: false }
+        );
+        assertNonNullable(dequeued);
+        expect(dequeued.messageId).toEqual(messageDev.runId);
+        expect(dequeued.message.version).toEqual("2");
+      } finally {
+        await queue.quit();
+      }
     }
-  });
+  );
 
   redisTest("should take slow path when enableFastPath is false", async ({ redisContainer }) => {
     const queue = createQueue(redisContainer, "runqueue:fp2:");
@@ -201,105 +207,111 @@ describe("RunQueue.enqueueMessage fast path", () => {
     }
   });
 
-  redisTest("should take slow path when queue has available messages", async ({ redisContainer }) => {
-    const queue = createQueue(redisContainer, "runqueue:fp3:");
+  redisTest(
+    "should take slow path when queue has available messages",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer, "runqueue:fp3:");
 
-    try {
-      await queue.updateEnvConcurrencyLimits(authenticatedEnvDev);
+      try {
+        await queue.updateEnvConcurrencyLimits(authenticatedEnvDev);
 
-      // Enqueue a first message (slow path to populate the queue)
-      const message1: InputPayload = {
-        ...messageDev,
-        runId: "r1111",
-        timestamp: Date.now() - 1000, // in the past, so it's "available"
-      };
-      await queue.enqueueMessage({
-        env: authenticatedEnvDev,
-        message: message1,
-        workerQueue: authenticatedEnvDev.id,
-        enableFastPath: false,
-      });
+        // Enqueue a first message (slow path to populate the queue)
+        const message1: InputPayload = {
+          ...messageDev,
+          runId: "r1111",
+          timestamp: Date.now() - 1000, // in the past, so it's "available"
+        };
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: message1,
+          workerQueue: authenticatedEnvDev.id,
+          enableFastPath: false,
+        });
 
-      // Now enqueue a second message with fast path
-      const message2: InputPayload = {
-        ...messageDev,
-        runId: "r2222",
-        timestamp: Date.now(),
-      };
-      await queue.enqueueMessage({
-        env: authenticatedEnvDev,
-        message: message2,
-        workerQueue: authenticatedEnvDev.id,
-        enableFastPath: true,
-      });
+        // Now enqueue a second message with fast path
+        const message2: InputPayload = {
+          ...messageDev,
+          runId: "r2222",
+          timestamp: Date.now(),
+        };
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: message2,
+          workerQueue: authenticatedEnvDev.id,
+          enableFastPath: true,
+        });
 
-      // Both messages should be in the queue sorted set (slow path for both)
-      const queueLength = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
-      expect(queueLength).toBe(2);
-    } finally {
-      await queue.quit();
+        // Both messages should be in the queue sorted set (slow path for both)
+        const queueLength = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
+        expect(queueLength).toBe(2);
+      } finally {
+        await queue.quit();
+      }
     }
-  });
+  );
 
-  redisTest("should fast-path when queue only has future-scored messages", async ({ redisContainer }) => {
-    const queue = createQueue(redisContainer, "runqueue:fp4:");
+  redisTest(
+    "should fast-path when queue only has future-scored messages",
+    async ({ redisContainer }) => {
+      const queue = createQueue(redisContainer, "runqueue:fp4:");
 
-    try {
-      await queue.updateEnvConcurrencyLimits(authenticatedEnvDev);
+      try {
+        await queue.updateEnvConcurrencyLimits(authenticatedEnvDev);
 
-      // Enqueue a message with a future timestamp (simulating a nacked retry)
-      const futureMessage: InputPayload = {
-        ...messageDev,
-        runId: "r_future",
-        timestamp: Date.now() + 60_000, // 60 seconds in the future
-      };
-      await queue.enqueueMessage({
-        env: authenticatedEnvDev,
-        message: futureMessage,
-        workerQueue: authenticatedEnvDev.id,
-        enableFastPath: false,
-      });
+        // Enqueue a message with a future timestamp (simulating a nacked retry)
+        const futureMessage: InputPayload = {
+          ...messageDev,
+          runId: "r_future",
+          timestamp: Date.now() + 60_000, // 60 seconds in the future
+        };
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: futureMessage,
+          workerQueue: authenticatedEnvDev.id,
+          enableFastPath: false,
+        });
 
-      // Queue has 1 message but it's not available (future score)
-      const queueLength = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
-      expect(queueLength).toBe(1);
+        // Queue has 1 message but it's not available (future score)
+        const queueLength = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
+        expect(queueLength).toBe(1);
 
-      // Now enqueue a new message with fast path
-      const newMessage: InputPayload = {
-        ...messageDev,
-        runId: "r_new",
-        timestamp: Date.now(),
-      };
-      await queue.enqueueMessage({
-        env: authenticatedEnvDev,
-        message: newMessage,
-        workerQueue: authenticatedEnvDev.id,
-        enableFastPath: true,
-      });
+        // Now enqueue a new message with fast path
+        const newMessage: InputPayload = {
+          ...messageDev,
+          runId: "r_new",
+          timestamp: Date.now(),
+        };
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: newMessage,
+          workerQueue: authenticatedEnvDev.id,
+          enableFastPath: true,
+        });
 
-      // The future message stays in queue, new message went to worker queue
-      const queueLength2 = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
-      expect(queueLength2).toBe(1); // Only the future message
+        // The future message stays in queue, new message went to worker queue
+        const queueLength2 = await queue.lengthOfQueue(authenticatedEnvDev, messageDev.queue);
+        expect(queueLength2).toBe(1); // Only the future message
 
-      // Queue concurrency claimed for the fast-pathed message
-      const queueConcurrency = await queue.currentConcurrencyOfQueue(
-        authenticatedEnvDev,
-        messageDev.queue
-      );
-      expect(queueConcurrency).toBe(1);
+        // Queue concurrency claimed for the fast-pathed message
+        const queueConcurrency = await queue.currentConcurrencyOfQueue(
+          authenticatedEnvDev,
+          messageDev.queue
+        );
+        expect(queueConcurrency).toBe(1);
 
-      // Can dequeue the fast-pathed message from worker queue
-      const dequeued = await queue.dequeueMessageFromWorkerQueue(
-        "test_12345",
-        authenticatedEnvDev.id,
-        { blockingPop: false }
-      );
-      assertNonNullable(dequeued);
-      expect(dequeued.messageId).toEqual("r_new");
-    } finally {
-      await queue.quit();
+        // Can dequeue the fast-pathed message from worker queue
+        const dequeued = await queue.dequeueMessageFromWorkerQueue(
+          "test_12345",
+          authenticatedEnvDev.id,
+          { blockingPop: false }
+        );
+        assertNonNullable(dequeued);
+        expect(dequeued.messageId).toEqual("r_new");
+      } finally {
+        await queue.quit();
+      }
     }
-  });
+  );
 
   redisTest("should take slow path when env concurrency is full", async ({ redisContainer }) => {
     // Use a low concurrency limit

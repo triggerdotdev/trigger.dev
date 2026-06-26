@@ -33,10 +33,7 @@ function normalizeConnectionString(value) {
   }
 }
 
-const journalPath = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "drizzle/meta/_journal.json"
-);
+const journalPath = join(dirname(fileURLToPath(import.meta.url)), "drizzle/meta/_journal.json");
 const sql = postgres(normalizeConnectionString(connectionString), {
   max: 1,
   prepare: false,
@@ -59,9 +56,7 @@ async function main() {
   }
 
   const pending = entries.filter((e) => e.when > lastAppliedAt);
-  console.log(
-    `${entries.length} migration(s) found, ${entries.length - pending.length} applied`
-  );
+  console.log(`${entries.length} migration(s) found, ${entries.length - pending.length} applied`);
 
   if (pending.length > 0) {
     console.log(`${pending.length} pending migration(s):`);

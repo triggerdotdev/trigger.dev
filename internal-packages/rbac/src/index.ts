@@ -108,10 +108,8 @@ class LazyController implements RoleBaseAccessController {
       // specifier in the error message is the plugin's own moduleName.
       const code = (err as NodeJS.ErrnoException | undefined)?.code;
       const message = err instanceof Error ? err.message : String(err);
-      const isModuleNotFound =
-        code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND";
-      const isPluginItselfMissing =
-        isModuleNotFound && message.includes(moduleName);
+      const isModuleNotFound = code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND";
+      const isPluginItselfMissing = isModuleNotFound && message.includes(moduleName);
 
       if (!isPluginItselfMissing) {
         // Either the error wasn't a missing-module error at all, or the
@@ -122,9 +120,7 @@ class LazyController implements RoleBaseAccessController {
           err
         );
       } else if (process.env.RBAC_LOG_FALLBACK === "1") {
-        console.log(
-          "RBAC: no plugin installed (ERR_MODULE_NOT_FOUND); using fallback"
-        );
+        console.log("RBAC: no plugin installed (ERR_MODULE_NOT_FOUND); using fallback");
       }
 
       // Fail-fast for deployments that require plugins to be present. Set
@@ -135,9 +131,7 @@ class LazyController implements RoleBaseAccessController {
       // rolled back. Self-hosters leave REQUIRE_PLUGINS unset and continue
       // to use the fallback when no plugin is installed.
       if (process.env.REQUIRE_PLUGINS === "1") {
-        throw new Error(
-          `REQUIRE_PLUGINS=1 but plugin "${moduleName}" did not load: ${message}`
-        );
+        throw new Error(`REQUIRE_PLUGINS=1 but plugin "${moduleName}" did not load: ${message}`);
       }
 
       return new RoleBaseAccessFallback(prisma, {
@@ -289,10 +283,7 @@ class LazyController implements RoleBaseAccessController {
 class RoleBaseAccess {
   // Synchronous — returns a lazy controller that resolves any installed
   // plugin on first call.
-  create(
-    prisma: RbacPrismaInput,
-    options?: RbacCreateOptions
-  ): RoleBaseAccessController {
+  create(prisma: RbacPrismaInput, options?: RbacCreateOptions): RoleBaseAccessController {
     return new LazyController(prisma, options);
   }
 }

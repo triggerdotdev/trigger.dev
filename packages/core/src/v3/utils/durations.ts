@@ -46,8 +46,8 @@ export function formatDurationMilliseconds(
     units: options?.units
       ? options.units
       : milliseconds < 1000
-      ? belowOneSecondUnits
-      : aboveOneSecondUnits,
+        ? belowOneSecondUnits
+        : aboveOneSecondUnits,
     maxDecimalPoints: options?.maxDecimalPoints ?? 1,
     largest: options?.maxUnits ?? 2,
   });

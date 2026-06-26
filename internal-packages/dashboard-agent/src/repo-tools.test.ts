@@ -67,7 +67,12 @@ afterAll(async () => {
 describe("repo-tools", () => {
   it("get_repo_info returns the connected repo and pinned commit", async () => {
     const res = await call(tools.get_repo_info, {});
-    expect(res).toEqual({ owner: "acme", repo: "demo", sha: "deadbeefdeadbeef", defaultBranch: "main" });
+    expect(res).toEqual({
+      owner: "acme",
+      repo: "demo",
+      sha: "deadbeefdeadbeef",
+      defaultBranch: "main",
+    });
   });
 
   it("read_file reads a file from the workspace", async () => {
@@ -78,7 +83,11 @@ describe("repo-tools", () => {
   });
 
   it("read_file honors a line range", async () => {
-    const res: any = await call(tools.read_file, { path: "src/trigger/order.ts", startLine: 2, endLine: 2 });
+    const res: any = await call(tools.read_file, {
+      path: "src/trigger/order.ts",
+      startLine: 2,
+      endLine: 2,
+    });
     expect(res.content).toBe("const LIMIT = 10000;");
     expect(res.startLine).toBe(2);
     expect(res.endLine).toBe(2);
@@ -99,7 +108,10 @@ describe("repo-tools", () => {
   it("read_file with runId reads the run's pinned commit", async () => {
     const def: any = await call(tools.read_file, { path: "src/trigger/order.ts" });
     expect(def.content).toContain("const LIMIT = 10000;");
-    const pinned: any = await call(tools.read_file, { path: "src/trigger/order.ts", runId: "run_pinned" });
+    const pinned: any = await call(tools.read_file, {
+      path: "src/trigger/order.ts",
+      runId: "run_pinned",
+    });
     expect(pinned.error).toBeUndefined();
     expect(pinned.content).toContain("const LIMIT = 5000;");
   });
@@ -110,14 +122,19 @@ describe("repo-tools", () => {
   });
 
   it("read_file with an unresolvable runId errors instead of falling back", async () => {
-    const res: any = await call(tools.read_file, { path: "src/trigger/order.ts", runId: "run_unknown" });
+    const res: any = await call(tools.read_file, {
+      path: "src/trigger/order.ts",
+      runId: "run_unknown",
+    });
     expect(res.error).toMatch(/Couldn't resolve the source/);
   });
 
   it.runIf(hasRg)("search_code finds a match (and does not hang on stdin)", async () => {
     const res: any = await call(tools.search_code, { query: "const LIMIT" });
     expect(res.error).toBeUndefined();
-    expect(res.matches.some((m: any) => String(m.file).includes("order.ts") && /LIMIT/.test(m.text))).toBe(true);
+    expect(
+      res.matches.some((m: any) => String(m.file).includes("order.ts") && /LIMIT/.test(m.text))
+    ).toBe(true);
   });
 
   it.runIf(hasRg)("list_files lists workspace files", async () => {

@@ -43,9 +43,7 @@ export type InferChatClientData<T> =
 
 /** Extract the UIMessage type from a chat agent task. */
 export type InferChatUIMessage<T> =
-  T extends Task<any, ChatTaskWirePayload<infer TUIMessage, any>, any>
-    ? TUIMessage
-    : UIMessage;
+  T extends Task<any, ChatTaskWirePayload<infer TUIMessage, any>, any> ? TUIMessage : UIMessage;
 
 // ─── Types ─────────────────────────────────────────────────────────
 
@@ -100,10 +98,7 @@ export type AgentChatOptions<TAgent = unknown> = {
    * Called when a turn completes. Persist `lastEventId` for stream
    * resumption across requests.
    */
-  onTurnComplete?: (event: {
-    chatId: string;
-    lastEventId?: string;
-  }) => void | Promise<void>;
+  onTurnComplete?: (event: { chatId: string; lastEventId?: string }) => void | Promise<void>;
   /** SSE timeout in seconds. @default 120 */
   streamTimeoutSeconds?: number;
   /**
@@ -328,9 +323,10 @@ export class AgentChat<TAgent = unknown> {
     this.onTriggered = options.onTriggered;
     this.onTurnComplete = options.onTurnComplete;
     const baseURLOption = options.baseURL;
-    this.baseURLResolver = typeof baseURLOption === "function"
-      ? baseURLOption
-      : () => baseURLOption ?? apiClientManager.baseURL ?? "https://api.trigger.dev";
+    this.baseURLResolver =
+      typeof baseURLOption === "function"
+        ? baseURLOption
+        : () => baseURLOption ?? apiClientManager.baseURL ?? "https://api.trigger.dev";
     this.fetchOverride = options.fetch;
 
     // Hydration: a non-empty `session` means the caller knows the
@@ -372,10 +368,7 @@ export class AgentChat<TAgent = unknown> {
    * const text = await stream.text();
    * ```
    */
-  async sendMessage(
-    text: string,
-    options?: { abortSignal?: AbortSignal }
-  ): Promise<ChatStream> {
+  async sendMessage(text: string, options?: { abortSignal?: AbortSignal }): Promise<ChatStream> {
     const msgId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const message: UIMessage = {
       id: msgId,
@@ -389,12 +382,14 @@ export class AgentChat<TAgent = unknown> {
 
   /** Send raw UIMessage-like objects. Use `sendMessage()` for simple text. */
   async sendRaw(
-    messages: UIMessage[] | Array<{
-      id: string;
-      role: string;
-      parts?: unknown[];
-      [key: string]: unknown;
-    }>,
+    messages:
+      | UIMessage[]
+      | Array<{
+          id: string;
+          role: string;
+          parts?: unknown[];
+          [key: string]: unknown;
+        }>,
     options?: {
       trigger?: "submit-message" | "regenerate-message";
       abortSignal?: AbortSignal;
@@ -416,9 +411,7 @@ export class AgentChat<TAgent = unknown> {
     // payload — reasoning blobs, text, and tool `input` come from the
     // agent's authoritative chain. `regenerate-message` omits `message`.
     if (triggerType === "submit-message" && messages.length === 0) {
-      throw new Error(
-        "AgentChat.sendRaw: 'submit-message' trigger requires at least one message"
-      );
+      throw new Error("AgentChat.sendRaw: 'submit-message' trigger requires at least one message");
     }
     const lastIfSubmit =
       triggerType === "submit-message"
@@ -542,10 +535,7 @@ export class AgentChat<TAgent = unknown> {
    * }
    * ```
    */
-  async sendAction(
-    action: unknown,
-    options?: { abortSignal?: AbortSignal }
-  ): Promise<ChatStream> {
+  async sendAction(action: unknown, options?: { abortSignal?: AbortSignal }): Promise<ChatStream> {
     await this.ensureStarted();
 
     const payload: ChatTaskWirePayload = {
@@ -587,9 +577,7 @@ export class AgentChat<TAgent = unknown> {
   }
 
   /** Reconnect to the response stream (e.g. after a disconnect). */
-  async reconnect(
-    abortSignal?: AbortSignal
-  ): Promise<ReadableStream<UIMessageChunk> | null> {
+  async reconnect(abortSignal?: AbortSignal): Promise<ReadableStream<UIMessageChunk> | null> {
     if (!this.state.started) return null;
     return this.subscribeToSessionStream(abortSignal, { sendStopOnAbort: false });
   }
@@ -662,15 +650,9 @@ export class AgentChat<TAgent = unknown> {
         chatId: this.chatId,
         ...(this.clientData ? { metadata: this.clientData } : {}),
       },
-      ...(this.triggerConfigDefault?.machine
-        ? { machine: this.triggerConfigDefault.machine }
-        : {}),
-      ...(this.triggerConfigDefault?.queue
-        ? { queue: this.triggerConfigDefault.queue }
-        : {}),
-      ...(this.triggerConfigDefault?.tags
-        ? { tags: this.triggerConfigDefault.tags }
-        : {}),
+      ...(this.triggerConfigDefault?.machine ? { machine: this.triggerConfigDefault.machine } : {}),
+      ...(this.triggerConfigDefault?.queue ? { queue: this.triggerConfigDefault.queue } : {}),
+      ...(this.triggerConfigDefault?.tags ? { tags: this.triggerConfigDefault.tags } : {}),
       ...(this.triggerConfigDefault?.maxAttempts !== undefined
         ? { maxAttempts: this.triggerConfigDefault.maxAttempts }
         : {}),
@@ -678,8 +660,7 @@ export class AgentChat<TAgent = unknown> {
       this.triggerConfigDefault?.idleTimeoutInSeconds !== undefined
         ? {
             idleTimeoutInSeconds:
-              options?.idleTimeoutInSeconds ??
-              this.triggerConfigDefault?.idleTimeoutInSeconds!,
+              options?.idleTimeoutInSeconds ?? this.triggerConfigDefault?.idleTimeoutInSeconds!,
           }
         : {}),
     };
@@ -709,7 +690,7 @@ export class AgentChat<TAgent = unknown> {
     const sseCtx: AgentChatEndpointContext = { endpoint: "out", chatId };
     const fetchOverride = this.fetchOverride;
     const sseFetchClient: typeof fetch | undefined = fetchOverride
-      ? ((input, init) => {
+      ? (((input, init) => {
           if (typeof input === "string") {
             return fetchOverride(input, init ?? {}, sseCtx);
           }
@@ -728,7 +709,7 @@ export class AgentChat<TAgent = unknown> {
             },
             sseCtx
           );
-        }) as typeof fetch
+        }) as typeof fetch)
       : undefined;
 
     const internalAbort = new AbortController();

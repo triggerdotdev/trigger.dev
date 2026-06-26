@@ -1418,8 +1418,8 @@ export class TaskExecutor {
           error instanceof Error
             ? `${error.name}: ${error.message}`
             : typeof error === "string"
-            ? error
-            : undefined,
+              ? error
+              : undefined,
         stackTrace: error instanceof Error ? error.stack : undefined,
       },
       skippedRetrying,

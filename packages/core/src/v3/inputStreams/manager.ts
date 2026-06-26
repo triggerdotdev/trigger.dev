@@ -23,7 +23,6 @@ type OnceWaiter = {
   abortHandler?: () => void;
 };
 
-
 type TailState = {
   abortController: AbortController;
   promise: Promise<void>;
@@ -198,7 +197,8 @@ export class StandardInputStreamManager implements InputStreamManager {
 
     // Abort tails that no longer have any once waiters either
     for (const [streamId, tail] of this.tails) {
-      const hasWaiters = this.onceWaiters.has(streamId) && this.onceWaiters.get(streamId)!.length > 0;
+      const hasWaiters =
+        this.onceWaiters.has(streamId) && this.onceWaiters.get(streamId)!.length > 0;
       if (!hasWaiters) {
         tail.abortController.abort();
         this.tails.delete(streamId);
@@ -304,8 +304,7 @@ export class StandardInputStreamManager implements InputStreamManager {
           // failure (auth rejected, 5xx, DNS) would reconnect in a tight
           // loop because `#runTail`'s error path only logs. `#dispatch`
           // resets the counter on every successful record.
-          const hasHandlers =
-            this.handlers.has(streamId) && this.handlers.get(streamId)!.size > 0;
+          const hasHandlers = this.handlers.has(streamId) && this.handlers.get(streamId)!.size > 0;
           const hasWaiters =
             this.onceWaiters.has(streamId) && this.onceWaiters.get(streamId)!.length > 0;
           if (hasHandlers || hasWaiters) {
@@ -318,8 +317,7 @@ export class StandardInputStreamManager implements InputStreamManager {
               const stillHasHandlers =
                 this.handlers.has(streamId) && this.handlers.get(streamId)!.size > 0;
               const stillHasWaiters =
-                this.onceWaiters.has(streamId) &&
-                this.onceWaiters.get(streamId)!.length > 0;
+                this.onceWaiters.has(streamId) && this.onceWaiters.get(streamId)!.length > 0;
               if (!stillHasHandlers && !stillHasWaiters) return;
               this.#ensureStreamTailConnected(streamId);
             }, delayMs);
@@ -332,34 +330,30 @@ export class StandardInputStreamManager implements InputStreamManager {
   async #runTail(runId: string, streamId: string, signal: AbortSignal): Promise<void> {
     try {
       const lastSeq = this.seqNums.get(streamId);
-      const stream = await this.apiClient.fetchStream<unknown>(
-        runId,
-        `input/${streamId}`,
-        {
-          signal,
-          baseUrl: this.baseUrl,
-          // Max allowed by the SSE endpoint is 600s; the tail will reconnect on close
-          timeoutInSeconds: 600,
-          // Resume from last seen sequence number to avoid replaying history on reconnect
-          lastEventId: lastSeq !== undefined ? String(lastSeq) : undefined,
-          onPart: (part) => {
-            const seqNum = parseInt(part.id, 10);
-            if (Number.isFinite(seqNum)) {
-              this.seqNums.set(streamId, seqNum);
-            }
-          },
-          onComplete: () => {
-            if (this.debug) {
-              console.log(`[InputStreamManager] Tail stream completed for "${streamId}"`);
-            }
-          },
-          onError: (error) => {
-            if (this.debug) {
-              console.error(`[InputStreamManager] Tail stream error for "${streamId}":`, error);
-            }
-          },
-        }
-      );
+      const stream = await this.apiClient.fetchStream<unknown>(runId, `input/${streamId}`, {
+        signal,
+        baseUrl: this.baseUrl,
+        // Max allowed by the SSE endpoint is 600s; the tail will reconnect on close
+        timeoutInSeconds: 600,
+        // Resume from last seen sequence number to avoid replaying history on reconnect
+        lastEventId: lastSeq !== undefined ? String(lastSeq) : undefined,
+        onPart: (part) => {
+          const seqNum = parseInt(part.id, 10);
+          if (Number.isFinite(seqNum)) {
+            this.seqNums.set(streamId, seqNum);
+          }
+        },
+        onComplete: () => {
+          if (this.debug) {
+            console.log(`[InputStreamManager] Tail stream completed for "${streamId}"`);
+          }
+        },
+        onError: (error) => {
+          if (this.debug) {
+            console.error(`[InputStreamManager] Tail stream error for "${streamId}":`, error);
+          }
+        },
+      });
 
       for await (const record of stream) {
         if (signal.aborted) break;

@@ -75,9 +75,21 @@ export const Env = z
     TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_TLS_DISABLED: BoolEnv.default(false),
     TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENABLED: BoolEnv.default(false),
     TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_DRY_RUN: BoolEnv.default(true),
-    TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE: z.coerce.number().int().positive().default(10_000),
-    TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE: z.coerce.number().int().positive().default(5_000),
-    TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_REFRESH_MS: z.coerce.number().int().positive().default(5_000),
+    TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_ENGAGE: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(10_000),
+    TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_RELEASE: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(5_000),
+    TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_REFRESH_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(5_000),
     // Hard timeout on the apiserver /metrics scrape. A hung request would otherwise
     // never settle and freeze the monitor's refresh loop (fail-open silently).
     TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_SCRAPE_TIMEOUT_MS: z.coerce
@@ -350,7 +362,10 @@ export const Env = z
         path: ["TRIGGER_WORKLOAD_API_DOMAIN"],
       });
     }
-    if (data.TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED && !data.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST) {
+    if (
+      data.TRIGGER_DEQUEUE_BACKPRESSURE_ENABLED &&
+      !data.TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_HOST
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:

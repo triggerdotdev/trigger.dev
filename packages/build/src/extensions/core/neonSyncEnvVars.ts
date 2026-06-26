@@ -85,8 +85,7 @@ export function syncNeonEnvVars(options?: {
   envVarPrefix?: string;
 }): BuildExtension {
   const sync = syncEnvVars(async (ctx) => {
-    const projectId =
-      options?.projectId ?? process.env.NEON_PROJECT_ID ?? ctx.env.NEON_PROJECT_ID;
+    const projectId = options?.projectId ?? process.env.NEON_PROJECT_ID ?? ctx.env.NEON_PROJECT_ID;
     const neonAccessToken =
       options?.neonAccessToken ?? process.env.NEON_ACCESS_TOKEN ?? ctx.env.NEON_ACCESS_TOKEN;
     const branch = options?.branch ?? ctx.branch;

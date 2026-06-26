@@ -108,10 +108,14 @@ export const ExportLogsServiceRequest = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportLogsServiceRequest>, I>>(base?: I): ExportLogsServiceRequest {
+  create<I extends Exact<DeepPartial<ExportLogsServiceRequest>, I>>(
+    base?: I
+  ): ExportLogsServiceRequest {
     return ExportLogsServiceRequest.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<ExportLogsServiceRequest>, I>>(object: I): ExportLogsServiceRequest {
+  fromPartial<I extends Exact<DeepPartial<ExportLogsServiceRequest>, I>>(
+    object: I
+  ): ExportLogsServiceRequest {
     const message = createBaseExportLogsServiceRequest();
     message.resourceLogs = object.resourceLogs?.map((e) => ResourceLogs.fromPartial(e)) || [];
     return message;
@@ -169,14 +173,19 @@ export const ExportLogsServiceResponse = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportLogsServiceResponse>, I>>(base?: I): ExportLogsServiceResponse {
+  create<I extends Exact<DeepPartial<ExportLogsServiceResponse>, I>>(
+    base?: I
+  ): ExportLogsServiceResponse {
     return ExportLogsServiceResponse.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<ExportLogsServiceResponse>, I>>(object: I): ExportLogsServiceResponse {
+  fromPartial<I extends Exact<DeepPartial<ExportLogsServiceResponse>, I>>(
+    object: I
+  ): ExportLogsServiceResponse {
     const message = createBaseExportLogsServiceResponse();
-    message.partialSuccess = (object.partialSuccess !== undefined && object.partialSuccess !== null)
-      ? ExportLogsPartialSuccess.fromPartial(object.partialSuccess)
-      : undefined;
+    message.partialSuccess =
+      object.partialSuccess !== undefined && object.partialSuccess !== null
+        ? ExportLogsPartialSuccess.fromPartial(object.partialSuccess)
+        : undefined;
     return message;
   },
 };
@@ -189,7 +198,9 @@ export const ExportLogsPartialSuccess = {
   encode(message: ExportLogsPartialSuccess, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
     if (message.rejectedLogRecords !== BigInt("0")) {
       if (BigInt.asIntN(64, message.rejectedLogRecords) !== message.rejectedLogRecords) {
-        throw new globalThis.Error("value provided for field message.rejectedLogRecords of type int64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.rejectedLogRecords of type int64 too large"
+        );
       }
       writer.uint32(8).int64(message.rejectedLogRecords.toString());
     }
@@ -231,7 +242,9 @@ export const ExportLogsPartialSuccess = {
 
   fromJSON(object: any): ExportLogsPartialSuccess {
     return {
-      rejectedLogRecords: isSet(object.rejectedLogRecords) ? BigInt(object.rejectedLogRecords) : BigInt("0"),
+      rejectedLogRecords: isSet(object.rejectedLogRecords)
+        ? BigInt(object.rejectedLogRecords)
+        : BigInt("0"),
       errorMessage: isSet(object.errorMessage) ? globalThis.String(object.errorMessage) : "",
     };
   },
@@ -247,10 +260,14 @@ export const ExportLogsPartialSuccess = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExportLogsPartialSuccess>, I>>(base?: I): ExportLogsPartialSuccess {
+  create<I extends Exact<DeepPartial<ExportLogsPartialSuccess>, I>>(
+    base?: I
+  ): ExportLogsPartialSuccess {
     return ExportLogsPartialSuccess.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<ExportLogsPartialSuccess>, I>>(object: I): ExportLogsPartialSuccess {
+  fromPartial<I extends Exact<DeepPartial<ExportLogsPartialSuccess>, I>>(
+    object: I
+  ): ExportLogsPartialSuccess {
     const message = createBaseExportLogsPartialSuccess();
     message.rejectedLogRecords = object.rejectedLogRecords ?? BigInt("0");
     message.errorMessage = object.errorMessage ?? "";
@@ -293,14 +310,19 @@ interface Rpc {
 
 type Builtin = Date | Function | Uint8Array | string | number | boolean | bigint | undefined;
 
-export type DeepPartial<T> = T extends Builtin ? T
-  : T extends globalThis.Array<infer U> ? globalThis.Array<DeepPartial<U>>
-  : T extends ReadonlyArray<infer U> ? ReadonlyArray<DeepPartial<U>>
-  : T extends {} ? { [K in keyof T]?: DeepPartial<T[K]> }
-  : Partial<T>;
+export type DeepPartial<T> = T extends Builtin
+  ? T
+  : T extends globalThis.Array<infer U>
+    ? globalThis.Array<DeepPartial<U>>
+    : T extends ReadonlyArray<infer U>
+      ? ReadonlyArray<DeepPartial<U>>
+      : T extends {}
+        ? { [K in keyof T]?: DeepPartial<T[K]> }
+        : Partial<T>;
 
 type KeysOfUnion<T> = T extends T ? keyof T : never;
-export type Exact<P, I extends P> = P extends Builtin ? P
+export type Exact<P, I extends P> = P extends Builtin
+  ? P
   : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 
 function longToBigint(long: Long) {

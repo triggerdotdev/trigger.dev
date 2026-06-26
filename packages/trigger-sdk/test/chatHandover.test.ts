@@ -98,8 +98,12 @@ describe("chat.handover", () => {
 
     const agent = chat.agent({
       id: "chat.handover.pure-text",
-      onChatStart: () => { order.push("onChatStart"); },
-      onTurnStart: () => { order.push("onTurnStart"); },
+      onChatStart: () => {
+        order.push("onChatStart");
+      },
+      onTurnStart: () => {
+        order.push("onTurnStart");
+      },
       onTurnComplete: ({ responseMessage }) => {
         order.push("onTurnComplete");
         capturedResponse = {
@@ -265,9 +269,7 @@ describe("chat.handover", () => {
     // synthesized partial must carry it (with provider metadata, so an
     // Anthropic signature survives a UIMessage -> ModelMessage round
     // trip) or the durable history loses the step-1 thinking.
-    let captured:
-      | { partTypes?: string[]; reasoningText?: string; meta?: unknown }
-      | undefined;
+    let captured: { partTypes?: string[]; reasoningText?: string; meta?: unknown } | undefined;
 
     const agent = chat.agent({
       id: "chat.handover.reasoning",
@@ -279,9 +281,9 @@ describe("chat.handover", () => {
             .filter((p) => p.type === "reasoning")
             .map((p) => (p as { text?: string }).text || "")
             .join(""),
-          meta: (parts.find((p) => p.type === "reasoning") as
-            | { providerMetadata?: unknown }
-            | undefined)?.providerMetadata,
+          meta: (
+            parts.find((p) => p.type === "reasoning") as { providerMetadata?: unknown } | undefined
+          )?.providerMetadata,
         };
       },
       run: async ({ messages, signal }) => {
@@ -338,9 +340,7 @@ describe("chat.handover", () => {
     const runFn = vi.fn();
     const stored: { id: string; role: string; parts: unknown[] }[] = [];
     const hydrateIncomingRoles: string[] = [];
-    let captured:
-      | { responseId?: string; responseText?: string; roles?: string[] }
-      | undefined;
+    let captured: { responseId?: string; responseText?: string; roles?: string[] } | undefined;
 
     const agent = chat.agent({
       id: "chat.handover.hydrate-pure-text",

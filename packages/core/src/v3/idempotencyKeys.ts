@@ -10,7 +10,10 @@ import { digestSHA256 } from "./utils/crypto.js";
 import type { ZodFetchOptions } from "./apiClient/core.js";
 
 // Re-export types from catalog for backwards compatibility
-export type { IdempotencyKeyScope, IdempotencyKeyOptions } from "./idempotency-key-catalog/catalog.js";
+export type {
+  IdempotencyKeyScope,
+  IdempotencyKeyOptions,
+} from "./idempotency-key-catalog/catalog.js";
 
 /**
  * Extracts the user-provided key and scope from an idempotency key created with `idempotencyKeys.create()`.
@@ -227,9 +230,7 @@ export async function resetIdempotencyKey(
 
   // Try to extract options from an IdempotencyKey created with idempotencyKeys.create()
   const attachedOptions =
-    typeof idempotencyKey === "string"
-      ? getIdempotencyKeyOptions(idempotencyKey)
-      : undefined;
+    typeof idempotencyKey === "string" ? getIdempotencyKeyOptions(idempotencyKey) : undefined;
 
   const scope = attachedOptions?.scope ?? options?.scope ?? "run";
   const keyArray = Array.isArray(idempotencyKey)

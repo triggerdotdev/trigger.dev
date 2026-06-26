@@ -33,11 +33,7 @@ export function getBranch({
   return undefined;
 }
 
-export function getDevBranch({
-  specified,
-}: {
-  specified?: string;
-}): string | undefined {
+export function getDevBranch({ specified }: { specified?: string }): string | undefined {
   // For development we don't look at git/Vercel — only the flag and our env var.
   const branch = specified ?? getEnvVar("TRIGGER_DEV_BRANCH");
 

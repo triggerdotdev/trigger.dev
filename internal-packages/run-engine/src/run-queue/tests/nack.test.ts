@@ -89,9 +89,8 @@ describe("RunQueue.nackMessage", () => {
       );
       expect(queueCurrentConcurrency).toBe(1);
 
-      const envCurrentConcurrency = await queue.currentConcurrencyOfEnvironment(
-        authenticatedEnvDev
-      );
+      const envCurrentConcurrency =
+        await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
       expect(envCurrentConcurrency).toBe(1);
 
       // Nack the message
@@ -107,9 +106,8 @@ describe("RunQueue.nackMessage", () => {
       );
       expect(queueCurrentConcurrencyAfterNack).toBe(0);
 
-      const envCurrentConcurrencyAfterNack = await queue.currentConcurrencyOfEnvironment(
-        authenticatedEnvDev
-      );
+      const envCurrentConcurrencyAfterNack =
+        await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
       expect(envCurrentConcurrencyAfterNack).toBe(0);
 
       const envQueueLength = await queue.lengthOfEnvQueue(authenticatedEnvDev);
@@ -196,9 +194,8 @@ describe("RunQueue.nackMessage", () => {
         const envQueueLengthDequeue = await queue.lengthOfEnvQueue(authenticatedEnvDev);
         expect(envQueueLengthDequeue).toBe(0);
 
-        const deadLetterQueueLengthBefore = await queue.lengthOfDeadLetterQueue(
-          authenticatedEnvDev
-        );
+        const deadLetterQueueLengthBefore =
+          await queue.lengthOfDeadLetterQueue(authenticatedEnvDev);
         expect(deadLetterQueueLengthBefore).toBe(0);
 
         await queue.nackMessage({
@@ -209,9 +206,8 @@ describe("RunQueue.nackMessage", () => {
         const envQueueLengthAfterNack = await queue.lengthOfEnvQueue(authenticatedEnvDev);
         expect(envQueueLengthAfterNack).toBe(0);
 
-        const deadLetterQueueLengthAfterNack = await queue.lengthOfDeadLetterQueue(
-          authenticatedEnvDev
-        );
+        const deadLetterQueueLengthAfterNack =
+          await queue.lengthOfDeadLetterQueue(authenticatedEnvDev);
         expect(deadLetterQueueLengthAfterNack).toBe(1);
       } finally {
         await queue.quit();

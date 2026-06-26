@@ -172,13 +172,8 @@ export type ChatInputChunk<TMessage extends UIMessage = UIMessage, TMetadata = u
  * type MyClientData = InferChatClientData<typeof myChat>;
  * ```
  */
-export type InferChatClientData<TTask extends AnyTask> = TTask extends Task<
-  string,
-  ChatTaskWirePayload<any, infer TMetadata>,
-  any
->
-  ? TMetadata
-  : unknown;
+export type InferChatClientData<TTask extends AnyTask> =
+  TTask extends Task<string, ChatTaskWirePayload<any, infer TMetadata>, any> ? TMetadata : unknown;
 
 /**
  * Extracts the UI message type from a chat task (wire payload `message` items).
@@ -191,13 +186,10 @@ export type InferChatClientData<TTask extends AnyTask> = TTask extends Task<
  * type Msg = InferChatUIMessage<typeof myChat>;
  * ```
  */
-export type InferChatUIMessage<TTask extends AnyTask> = TTask extends Task<
-  string,
-  ChatTaskWirePayload<infer TUIM extends UIMessage, any>,
-  any
->
-  ? TUIM
-  : UIMessage;
+export type InferChatUIMessage<TTask extends AnyTask> =
+  TTask extends Task<string, ChatTaskWirePayload<infer TUIM extends UIMessage, any>, any>
+    ? TUIM
+    : UIMessage;
 
 /**
  * Derive the chat `UIMessage` type for a given tool set. The tool-part types
@@ -326,18 +318,13 @@ function isToolPartType(type: unknown): boolean {
  * Pairs with the per-turn merge on the agent side
  * (`mergeIncomingIntoHydrated` in `ai.ts`).
  */
-export function slimSubmitMessageForWire<TMsg extends UIMessage | undefined>(
-  message: TMsg
-): TMsg {
+export function slimSubmitMessageForWire<TMsg extends UIMessage | undefined>(message: TMsg): TMsg {
   if (!message) return message;
   if (message.role !== "assistant") return message;
   const parts = (message.parts ?? []) as any[];
   const advancedToolParts = parts.filter(
     (p) =>
-      p &&
-      typeof p === "object" &&
-      isToolPartType(p.type) &&
-      isWireAdvanceableToolState(p.state)
+      p && typeof p === "object" && isToolPartType(p.type) && isWireAdvanceableToolState(p.state)
   );
   if (advancedToolParts.length === 0) return message;
   const slimParts = advancedToolParts.map((p: any) => {

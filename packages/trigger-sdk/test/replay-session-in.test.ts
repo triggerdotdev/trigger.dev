@@ -48,11 +48,21 @@ describe("replaySessionInTail", () => {
     stubReadRecords([
       {
         kind: "message",
-        payload: { chatId: "c1", trigger: "submit-message", message: u1, metadata: { userId: "a" } },
+        payload: {
+          chatId: "c1",
+          trigger: "submit-message",
+          message: u1,
+          metadata: { userId: "a" },
+        },
       },
       {
         kind: "message",
-        payload: { chatId: "c1", trigger: "submit-message", message: u2, metadata: { userId: "b" } },
+        payload: {
+          chatId: "c1",
+          trigger: "submit-message",
+          message: u2,
+          metadata: { userId: "b" },
+        },
       },
     ]);
 

@@ -159,7 +159,12 @@ export type CreateRunInput = {
 };
 
 export type CreateCancelledRunInput = {
-  data: CreateRunData & { error: Prisma.InputJsonValue; completedAt: Date; updatedAt: Date; attemptNumber: 0 };
+  data: CreateRunData & {
+    error: Prisma.InputJsonValue;
+    completedAt: Date;
+    updatedAt: Date;
+    attemptNumber: 0;
+  };
   snapshot: CreateRunSnapshotInput;
 };
 
@@ -227,7 +232,11 @@ export type RewriteDebouncedRunData = {
 
 export type ClearIdempotencyKeyInput =
   | { byId: { runId: string; idempotencyKey: string }; byPredicate?: never; byFriendlyIds?: never }
-  | { byPredicate: { idempotencyKey: string; taskIdentifier: string; runtimeEnvironmentId: string }; byId?: never; byFriendlyIds?: never }
+  | {
+      byPredicate: { idempotencyKey: string; taskIdentifier: string; runtimeEnvironmentId: string };
+      byId?: never;
+      byFriendlyIds?: never;
+    }
   | { byFriendlyIds: string[]; byId?: never; byPredicate?: never };
 
 export type TaskRunWithWaitpoint = TaskRun & { associatedWaitpoint: Waitpoint | null };
@@ -235,8 +244,14 @@ export type TaskRunWithWaitpoint = TaskRun & { associatedWaitpoint: Waitpoint | 
 export interface RunStore {
   // Create
   createRun(params: CreateRunInput, tx?: PrismaClientOrTransaction): Promise<TaskRunWithWaitpoint>;
-  createCancelledRun(params: CreateCancelledRunInput, tx?: PrismaClientOrTransaction): Promise<TaskRun>;
-  createFailedRun(params: CreateFailedRunInput, tx?: PrismaClientOrTransaction): Promise<TaskRunWithWaitpoint>;
+  createCancelledRun(
+    params: CreateCancelledRunInput,
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRun>;
+  createFailedRun(
+    params: CreateFailedRunInput,
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRunWithWaitpoint>;
 
   // Attempt lifecycle
   startAttempt<S extends Prisma.TaskRunSelect>(
@@ -247,7 +262,14 @@ export interface RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   completeAttemptSuccess<S extends Prisma.TaskRunSelect>(
     runId: string,
-    data: { completedAt: Date; output?: string; outputType: string; usageDurationMs: number; costInCents: number; snapshot: CompletionSnapshotInput },
+    data: {
+      completedAt: Date;
+      output?: string;
+      outputType: string;
+      usageDurationMs: number;
+      costInCents: number;
+      snapshot: CompletionSnapshotInput;
+    },
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
@@ -262,16 +284,32 @@ export interface RunStore {
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
-  recordBulkActionMembership(runId: string, bulkActionId: string, tx?: PrismaClientOrTransaction): Promise<void>;
+  recordBulkActionMembership(
+    runId: string,
+    bulkActionId: string,
+    tx?: PrismaClientOrTransaction
+  ): Promise<void>;
   cancelRun<S extends Prisma.TaskRunSelect>(
     runId: string,
-    data: { completedAt?: Date; error: TaskRunError; bulkActionId?: string; usageDurationMs?: number; costInCents?: number },
+    data: {
+      completedAt?: Date;
+      error: TaskRunError;
+      bulkActionId?: string;
+      usageDurationMs?: number;
+      costInCents?: number;
+    },
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
   failRunPermanently<S extends Prisma.TaskRunSelect>(
     runId: string,
-    data: { status: TaskRunStatus; completedAt: Date; error: TaskRunError; usageDurationMs: number; costInCents: number },
+    data: {
+      status: TaskRunStatus;
+      completedAt: Date;
+      error: TaskRunError;
+      usageDurationMs: number;
+      costInCents: number;
+    },
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
@@ -279,11 +317,20 @@ export interface RunStore {
   // Expiry
   expireRun<S extends Prisma.TaskRunSelect>(
     runId: string,
-    data: { error: TaskRunError; completedAt: Date; expiredAt: Date; snapshot: ExpireSnapshotInput },
+    data: {
+      error: TaskRunError;
+      completedAt: Date;
+      expiredAt: Date;
+      snapshot: ExpireSnapshotInput;
+    },
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
-  expireRunsBatch(runIds: string[], data: { error: TaskRunError; now: Date }, tx?: PrismaClientOrTransaction): Promise<number>;
+  expireRunsBatch(
+    runIds: string[],
+    data: { error: TaskRunError; now: Date },
+    tx?: PrismaClientOrTransaction
+  ): Promise<number>;
 
   // Dequeue / version / checkpoint
   lockRunToWorker(
@@ -297,7 +344,10 @@ export interface RunStore {
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
-  promotePendingVersionRuns(runId: string, tx?: PrismaClientOrTransaction): Promise<{ count: number }>;
+  promotePendingVersionRuns(
+    runId: string,
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ count: number }>;
   suspendForCheckpoint<I extends Prisma.TaskRunInclude>(
     runId: string,
     args: { include: I },
@@ -315,19 +365,44 @@ export interface RunStore {
     data: { delayUntil: Date; queueTimestamp?: Date; snapshot?: RescheduleSnapshotInput },
     tx?: PrismaClientOrTransaction
   ): Promise<TaskRun>;
-  enqueueDelayedRun(runId: string, data: { queuedAt: Date }, tx?: PrismaClientOrTransaction): Promise<TaskRun>;
-  rewriteDebouncedRun(runId: string, data: RewriteDebouncedRunData, tx?: PrismaClientOrTransaction): Promise<TaskRunWithWaitpoint>;
+  enqueueDelayedRun(
+    runId: string,
+    data: { queuedAt: Date },
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRun>;
+  rewriteDebouncedRun(
+    runId: string,
+    data: RewriteDebouncedRunData,
+    tx?: PrismaClientOrTransaction
+  ): Promise<TaskRunWithWaitpoint>;
 
   // Field touches
   updateMetadata(
     runId: string,
-    data: { metadata: string | null; metadataType?: string; metadataVersion: { increment: number }; updatedAt: Date },
+    data: {
+      metadata: string | null;
+      metadataType?: string;
+      metadataVersion: { increment: number };
+      updatedAt: Date;
+    },
     options: { expectedMetadataVersion?: number },
     tx?: PrismaClientOrTransaction
   ): Promise<{ count: number }>;
-  clearIdempotencyKey(params: ClearIdempotencyKeyInput, tx?: PrismaClientOrTransaction): Promise<{ count: number }>;
-  pushTags(runId: string, tags: string[], where: { runtimeEnvironmentId: string }, tx?: PrismaClientOrTransaction): Promise<{ updatedAt: Date }>;
-  pushRealtimeStream(runId: string, streamId: string, tx?: PrismaClientOrTransaction): Promise<void>;
+  clearIdempotencyKey(
+    params: ClearIdempotencyKeyInput,
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ count: number }>;
+  pushTags(
+    runId: string,
+    tags: string[],
+    where: { runtimeEnvironmentId: string },
+    tx?: PrismaClientOrTransaction
+  ): Promise<{ updatedAt: Date }>;
+  pushRealtimeStream(
+    runId: string,
+    streamId: string,
+    tx?: PrismaClientOrTransaction
+  ): Promise<void>;
 
   // Read
   findRun<S extends Prisma.TaskRunSelect>(
