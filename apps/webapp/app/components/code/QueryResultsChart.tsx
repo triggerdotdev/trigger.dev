@@ -1187,6 +1187,40 @@ export const QueryResultsChart = memo(function QueryResultsChart({
 
   if (chartType === "bar") {
     return (
+      <div ref={chartMeasureRef} className="h-full w-full">
+        <Chart.Root
+          config={chartConfig}
+          data={data}
+          dataKey={xDataKey}
+          series={sortedSeries}
+          visibleSeries={visibleSeries}
+          labelFormatter={legendLabelFormatter}
+          showLegend={showLegend}
+          maxLegendItems={fullLegend ? Infinity : 5}
+          legendAggregation={config.aggregation}
+          legendValueFormatter={tooltipValueFormatter}
+          minHeight="300px"
+          fillContainer
+          onViewAllLegendItems={onViewAllLegendItems}
+          legendScrollable={legendScrollable}
+          state={isLoading ? "loading" : "loaded"}
+          beforeLegend={seriesLimitCallout}
+        >
+          <Chart.Bar
+            xAxisProps={xAxisPropsForBar}
+            yAxisProps={yAxisProps}
+            stackId={stacked ? "stack" : undefined}
+            tooltipLabelFormatter={tooltipLabelFormatter}
+            tooltipValueFormatter={tooltipValueFormatter}
+          />
+        </Chart.Root>
+      </div>
+    );
+  }
+
+  // Line or stacked area chart
+  return (
+    <div ref={chartMeasureRef} className="h-full w-full">
       <Chart.Root
         config={chartConfig}
         data={data}
@@ -1205,47 +1239,15 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         state={isLoading ? "loading" : "loaded"}
         beforeLegend={seriesLimitCallout}
       >
-        <Chart.Bar
-          xAxisProps={xAxisPropsForBar}
+        <Chart.Line
+          xAxisProps={xAxisPropsForLine}
           yAxisProps={yAxisProps}
-          stackId={stacked ? "stack" : undefined}
+          stacked={stacked && visibleSeries.length > 1}
           tooltipLabelFormatter={tooltipLabelFormatter}
           tooltipValueFormatter={tooltipValueFormatter}
+          lineType="linear"
         />
       </Chart.Root>
-    );
-  }
-
-  // Line or stacked area chart
-  return (
-    <div ref={chartMeasureRef} className="h-full w-full">
-    <Chart.Root
-      config={chartConfig}
-      data={data}
-      dataKey={xDataKey}
-      series={sortedSeries}
-      visibleSeries={visibleSeries}
-      labelFormatter={legendLabelFormatter}
-      showLegend={showLegend}
-      maxLegendItems={fullLegend ? Infinity : 5}
-      legendAggregation={config.aggregation}
-      legendValueFormatter={tooltipValueFormatter}
-      minHeight="300px"
-      fillContainer
-      onViewAllLegendItems={onViewAllLegendItems}
-      legendScrollable={legendScrollable}
-      state={isLoading ? "loading" : "loaded"}
-      beforeLegend={seriesLimitCallout}
-    >
-      <Chart.Line
-        xAxisProps={xAxisPropsForLine}
-        yAxisProps={yAxisProps}
-        stacked={stacked && visibleSeries.length > 1}
-        tooltipLabelFormatter={tooltipLabelFormatter}
-        tooltipValueFormatter={tooltipValueFormatter}
-        lineType="linear"
-      />
-    </Chart.Root>
     </div>
   );
 });
