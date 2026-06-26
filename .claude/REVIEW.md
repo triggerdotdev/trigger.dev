@@ -65,7 +65,7 @@ Every PR gets a performance pass — not just the ones that look perf-sensitive.
 
 ## Skip (do NOT flag)
 
-- Anything Prettier / ESLint catches. CI runs both.
+- Anything oxfmt / oxlint catches. CI enforces both via the `code-quality` check.
 - TypeScript style preferences (`type` vs `interface`) — already covered by repo standards.
 - Test coverage exhortations as a generic suggestion. Only flag missing tests when a specific code path is genuinely untested and the path has prior incidents.
 - `agentcrumbs` markers (`// @crumbs`, `// #region @crumbs`) and `agentcrumbs` imports — these are temporary debug instrumentation stripped before merge.
