@@ -343,6 +343,7 @@ model RuntimeEnvironment {
   maximumConcurrencyLimit     Int     @default(5)
   concurrencyLimitBurstFactor Decimal @default("2.00") @db.Decimal(4, 2)
   paused                      Boolean @default(false)
+  pauseSource                 EnvironmentPauseSource?
 
   autoEnableInternalSources Boolean @default(true)
 
@@ -420,6 +421,10 @@ enum RuntimeEnvironmentType {
   STAGING
   DEVELOPMENT
   PREVIEW
+}
+
+enum EnvironmentPauseSource {
+  BILLING_LIMIT
 }
 
 model Project {
@@ -2492,6 +2497,8 @@ model BulkActionGroup {
   queryName    String?
   /// The params that will be passed to the query
   params       Json?
+  /// Billing-limit dedupe key (grace hitAt or resolve job key). Null for dashboard bulk actions.
+  dedupeKey    String?
   /// The cursor that will be passed to the query (null for the first page)
   cursor       Json?
   /// The number of runs that have been processed successfully
@@ -2517,6 +2524,12 @@ model BulkActionGroup {
   updatedAt DateTime @updatedAt
 
   @@index([environmentId, createdAt(sort: Desc)])
+  // NOTE: the real index is PARTIAL (`WHERE "dedupeKey" IS NOT NULL`) and created
+  // CONCURRENTLY — see migration 20260626120001_bulk_action_group_dedupe_key_index.
+  // Prisma can't express partial indexes, so this @@index is an approximation (as with
+  // the INCLUDE/fillfactor indexes elsewhere in this schema). `migrate dev` will report
+  // drift here; do NOT accept its drop/recreate — keep the hand-written migration.
+  @@index([environmentId, type, dedupeKey])
 }
 
 enum BulkActionType {

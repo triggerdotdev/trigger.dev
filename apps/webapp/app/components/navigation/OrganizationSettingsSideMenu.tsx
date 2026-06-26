@@ -20,7 +20,7 @@ import {
   organizationTeamPath,
   organizationVercelIntegrationPath,
   rootPath,
-  v3BillingAlertsPath,
+  v3BillingLimitsPath,
   v3BillingPath,
   v3PrivateConnectionsPath,
   v3UsagePath,
@@ -109,12 +109,12 @@ export function OrganizationSettingsSideMenu({
               />
               {showSelfServe ? (
                 <SideMenuItem
-                  name="Billing alerts"
+                  name="Billing limits"
                   icon={BellIcon}
                   activeIconColor="text-text-bright"
                   inactiveIconColor="text-text-dimmed"
-                  to={v3BillingAlertsPath(organization)}
-                  data-action="billing-alerts"
+                  to={v3BillingLimitsPath(organization)}
+                  data-action="billing-limits"
                 />
               ) : null}
             </>
