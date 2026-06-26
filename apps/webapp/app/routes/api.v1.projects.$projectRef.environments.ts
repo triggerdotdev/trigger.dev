@@ -5,6 +5,7 @@ import { $replica } from "~/db.server";
 import { findProjectByRef } from "~/models/project.server";
 import { createLoaderPATApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { sortEnvironments } from "~/utils/environmentSort";
+import { isBranchableEnvironment } from "~/utils/branchableEnvironment";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -52,6 +53,7 @@ export const loader = createLoaderPATApiRoute(
         slug: true,
         type: true,
         isBranchableEnvironment: true,
+        parentEnvironmentId: true,
         branchName: true,
         paused: true,
       },
@@ -61,7 +63,7 @@ export const loader = createLoaderPATApiRoute(
       id: env.id,
       slug: env.slug,
       type: env.type,
-      isBranchableEnvironment: env.isBranchableEnvironment,
+      isBranchableEnvironment: isBranchableEnvironment(env),
       branchName: env.branchName,
       paused: env.paused,
     }));

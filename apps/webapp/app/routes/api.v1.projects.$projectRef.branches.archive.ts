@@ -5,12 +5,15 @@ import { prisma } from "~/db.server";
 import { authenticateRequest } from "~/services/apiAuth.server";
 import { ArchiveBranchService } from "~/services/archiveBranch.server";
 import { logger } from "~/services/logger.server";
+import { toBranchableEnvironmentType } from "~/utils/branchableEnvironment";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
 });
 
 const BodySchema = z.object({
+  // Defaults to "preview" so existing CLIs that don't send `env` keep working.
+  env: z.enum(["preview", "development"]).default("preview"),
   branch: z.string(),
 });
 
@@ -49,6 +52,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: parsed.error.message }, { status: 400 });
   }
 
+  const { env, branch } = parsed.data;
+
+  const environmentType = toBranchableEnvironmentType(env);
   const environments = await prisma.runtimeEnvironment.findMany({
     select: {
       id: true,
@@ -59,16 +65,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
         authenticationResult.type === "organizationAccessToken"
           ? { id: authenticationResult.result.organizationId }
           : {
-              members: {
-                some: {
-                  userId: authenticationResult.result.userId,
-                },
+            members: {
+              some: {
+                userId: authenticationResult.result.userId,
               },
             },
+          },
+      // Dev branches are per-org-member: only the owner may archive their own.
+      ...(authenticationResult.type !== "organizationAccessToken" &&
+        environmentType === "DEVELOPMENT"
+        ? { orgMember: { userId: authenticationResult.result.userId } }
+        : {}),
       project: {
         externalRef: projectRef,
       },
-      branchName: parsed.data.branch,
+      type: environmentType,
+      branchName: branch,
     },
   });
 
@@ -76,7 +88,21 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Branch not found" }, { status: 404 });
   }
 
-  const environment = environments.find((env) => env.archivedAt === null);
+  const activeEnvironments = environments.filter((env) => env.archivedAt === null);
+
+  if (
+    authenticationResult.type === "organizationAccessToken" &&
+    environmentType === "DEVELOPMENT" &&
+    activeEnvironments.length > 1
+  ) {
+    return json(
+      { error: "Branch name is ambiguous for development environments. Use a personal access token scoped to the branch owner." },
+      { status: 409 }
+    );
+  }
+
+  const environment = activeEnvironments[0];
+
   if (!environment) {
     return json({ error: "Branch already archived" }, { status: 400 });
   }

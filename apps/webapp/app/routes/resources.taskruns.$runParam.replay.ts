@@ -71,6 +71,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
                 type: true,
                 slug: true,
                 branchName: true,
+                parentEnvironmentId: true,
                 orgMember: {
                   select: {
                     user: true,
@@ -145,6 +146,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
             type: true,
             slug: true,
             branchName: true,
+            parentEnvironmentId: true,
             orgMember: { select: { user: true } },
           },
           where: {
@@ -248,7 +250,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     },
     environments: sortEnvironments(
       run.project.environments
-        .filter((env) => env.type !== "PREVIEW" || env.branchName)
+        .filter((env) => env.type !== "PREVIEW" || env.parentEnvironmentId !== null)
         .map((env) => ({
           ...displayableEnvironment(env, userId),
           branchName: env.branchName ?? undefined,

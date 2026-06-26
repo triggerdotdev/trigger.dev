@@ -134,7 +134,7 @@
     "@trigger.dev/rbac": "workspace:*",
     "@trigger.dev/sso": "workspace:*",
     "@trigger.dev/otlp-importer": "workspace:*",
-    "@trigger.dev/platform": "1.0.28",
+    "@trigger.dev/platform": "1.0.29",
     "@trigger.dev/redis-worker": "workspace:*",
     "@trigger.dev/sdk": "workspace:*",
     "@types/pg": "8.6.6",

@@ -576,8 +576,8 @@ importers:
         specifier: workspace:*
         version: link:../../internal-packages/otlp-importer
       '@trigger.dev/platform':
-        specifier: 1.0.28
-        version: 1.0.28
+        specifier: 1.0.29
+        version: 1.0.29
       '@trigger.dev/plugins':
         specifier: workspace:*
         version: link:../../packages/plugins
@@ -8520,8 +8520,8 @@ packages:
       react: 18.3.1
       react-dom: 18.3.1
 
-  '@trigger.dev/platform@1.0.28':
-    resolution: {integrity: sha512-UVb7FlGljThZH5FJtXv5BvQQTGot510OAMZR98UJ1TLFuTvTwKo+NITf0yimYiDW5YaP768p6v1nVERx8MwpNw==}
+  '@trigger.dev/platform@1.0.29':
+    resolution: {integrity: sha512-75lsz0igwY9tqWfT6U7Huj+94VWic3//B4Cux4muCzH/ZC8Hz22O9fsMe+R7JtQy7HsemG42R+Zwy5ITnSgFYg==}
 
   '@types/acorn@4.0.6':
     resolution: {integrity: sha512-veQTnWP+1D/xbxVrPC3zHnCZRjSrKfhbMUlEA43iMZLu7EsnTtkJklIuwrCPbOi8YkvDQAiW05VQQFvvz9oieQ==}
@@ -25914,7 +25914,7 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@trigger.dev/platform@1.0.28':
+  '@trigger.dev/platform@1.0.29':
     dependencies:
       zod: 3.23.8
 

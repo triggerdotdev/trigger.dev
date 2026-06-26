@@ -17,6 +17,7 @@ export const FEATURE_FLAG = {
   computeMigrationFreePercentage: "computeMigrationFreePercentage",
   computeMigrationPaidPercentage: "computeMigrationPaidPercentage",
   computeMigrationRequireTemplate: "computeMigrationRequireTemplate",
+  devBranchesEnabled: "devBranchesEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -47,6 +48,8 @@ export const FeatureFlagCatalog = {
   // When on, migrated orgs build their compute template in required mode at deploy
   // (fails the deploy on error) instead of shadow. Strict boolean (see above).
   [FEATURE_FLAG.computeMigrationRequireTemplate]: z.boolean(),
+  // Per-org access to development branches. Off unless enabled for the org.
+  [FEATURE_FLAG.devBranchesEnabled]: z.coerce.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

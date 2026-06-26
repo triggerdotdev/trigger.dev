@@ -1,7 +1,7 @@
 import {
   type RuntimeEnvironment,
   type PrismaClient,
-  RuntimeEnvironmentType,
+  type RuntimeEnvironmentType,
 } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
@@ -49,6 +49,7 @@ export class SelectBestEnvironmentPresenter {
               id: true,
               type: true,
               slug: true,
+              parentEnvironmentId: true,
               paused: true,
               orgMember: {
                 select: {
@@ -73,6 +74,7 @@ export class SelectBestEnvironmentPresenter {
             id: true,
             type: true,
             slug: true,
+            parentEnvironmentId: true,
             paused: true,
             orgMember: {
               select: {
@@ -140,7 +142,13 @@ export class SelectBestEnvironmentPresenter {
   }
 
   async selectBestEnvironment<
-    T extends { id: string; type: RuntimeEnvironmentType; orgMember: { userId: string } | null }
+    T extends {
+      id: string;
+      type: RuntimeEnvironmentType;
+      slug: string;
+      parentEnvironmentId: string | null;
+      orgMember: { userId: string } | null;
+    }
   >(projectId: string, user: UserFromSession, environments: T[]): Promise<T> {
     //try get current environment from prefs
     const currentEnvironmentId: string | undefined =
@@ -153,7 +161,11 @@ export class SelectBestEnvironmentPresenter {
 
     //otherwise show their dev environment
     const yourDevEnvironment = environments.find(
-      (env) => env.type === "DEVELOPMENT" && env.orgMember?.userId === user.id
+      // Return the default dev environment (the root, no parent), not a branch
+      (env) =>
+        env.type === "DEVELOPMENT" &&
+        env.parentEnvironmentId === null &&
+        env.orgMember?.userId === user.id
     );
     if (yourDevEnvironment) {
       return yourDevEnvironment;

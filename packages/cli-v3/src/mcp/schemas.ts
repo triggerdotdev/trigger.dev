@@ -54,7 +54,9 @@ export const CommonProjectsInput = z.object({
     .default("dev"),
   branch: z
     .string()
-    .describe("The branch to get tasks for, only used for preview environments")
+    .describe(
+      "The branch to get tasks for, only used for preview environments and branchable development environments"
+    )
     .optional(),
 });
 

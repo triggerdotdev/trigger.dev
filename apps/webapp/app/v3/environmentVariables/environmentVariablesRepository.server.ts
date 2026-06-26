@@ -1114,6 +1114,17 @@ async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment
     ]);
   }
 
+  // Dev branches set branchName too, so carry it to the task via the same
+  // TRIGGER_PREVIEW_BRANCH var the prod path uses.
+  if (runtimeEnvironment.branchName) {
+    result = result.concat([
+      {
+        key: "TRIGGER_PREVIEW_BRANCH",
+        value: runtimeEnvironment.branchName,
+      },
+    ]);
+  }
+
   const commonVariables = await resolveCommonBuiltInVariables(runtimeEnvironment);
 
   return [...result, ...commonVariables];

@@ -1,10 +1,21 @@
 import { ApiClient } from "../apiClient/index.js";
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { getEnvVar } from "../utils/getEnv.js";
+import { isDefaultDevBranch } from "../utils/gitBranch.js";
 import { sdkScope } from "../sdkScope/index.js";
 import { ApiClientConfiguration } from "./types.js";
 
 const API_NAME = "api-client";
+
+/**
+ * Read the dev-side branch carrier env var, collapsing the `"default"` sentinel
+ * to `undefined` so it never leaks into the `x-trigger-branch` header (the
+ * sentinel refers to the root dev env, which carries no branch).
+ */
+function getDevBranchEnvVar(): string | undefined {
+  const value = getEnvVar("TRIGGER_DEV_BRANCH");
+  return value && !isDefaultDevBranch(value) ? value : undefined;
+}
 
 export class ApiClientMissingError extends Error {
   constructor(message: string) {
@@ -56,6 +67,9 @@ export class APIClientManagerAPI {
   get branchName(): string | undefined {
     const scoped = sdkScope.getStore();
     if (scoped) {
+      // previewBranch carries the branch for any branchable env (preview or dev) —
+      // they share the x-trigger-branch header. resolveApiClientConfig folds in the
+      // dev-side TRIGGER_DEV_BRANCH carrier when building the scoped config.
       const value = scoped.apiClientConfig.previewBranch;
       return value ? value : undefined;
     }
@@ -64,6 +78,9 @@ export class APIClientManagerAPI {
       config?.previewBranch ??
       getEnvVar("TRIGGER_PREVIEW_BRANCH") ??
       getEnvVar("VERCEL_GIT_COMMIT_REF") ??
+      // Dev branches share the x-trigger-branch header; TRIGGER_DEV_BRANCH is the
+      // dev-side carrier. Never read the "default" sentinel.
+      getDevBranchEnvVar() ??
       undefined;
     return value ? value : undefined;
   }
@@ -80,7 +97,8 @@ export class APIClientManagerAPI {
       previewBranch:
         partial.previewBranch ??
         getEnvVar("TRIGGER_PREVIEW_BRANCH") ??
-        getEnvVar("VERCEL_GIT_COMMIT_REF"),
+        getEnvVar("VERCEL_GIT_COMMIT_REF") ??
+        getDevBranchEnvVar(),
       requestOptions: partial.requestOptions,
       future: partial.future,
     };

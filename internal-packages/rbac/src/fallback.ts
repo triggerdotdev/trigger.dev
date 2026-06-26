@@ -17,7 +17,7 @@ import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/plugins";
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@trigger.dev/database";
 import { validateJWT } from "@trigger.dev/core/v3/jwt";
-import { sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
+import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
 import { buildFallbackAbility, buildJwtAbility, permissiveAbility } from "./ability.js";
 
 export type FallbackPrismaClients = {
@@ -146,7 +146,7 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       };
     }
 
-    // PREVIEW envs are parents — operating "on a branch" means routing
+    // PREVIEW (and DEVELOPMENT) envs are parents — operating "on a branch" means routing
     // to a child env keyed by branchName. The customer authenticates
     // with the parent's apiKey + an `x-trigger-branch` header. Mirror
     // findEnvironmentByApiKey: include the matching child env so the
@@ -192,34 +192,37 @@ class RoleBaseAccessFallbackController implements RoleBaseAccessController {
       return { ok: false, status: 401, error: "Invalid API key" };
     }
 
-    // PREVIEW env requires a branch header; pivot to the child env so
-    // downstream code operates on the branch (its own id, but the
-    // parent's apiKey/orgMember/organization/project — exactly what
-    // findEnvironmentByApiKey does for the legacy auth path).
-    if (env.type === "PREVIEW") {
-      if (!branchName) {
-        return {
-          ok: false,
-          status: 401,
-          error: "x-trigger-branch header required for preview env",
+    if (env.type === "PREVIEW" && !branchName) {
+      return {
+        ok: false,
+        status: 401,
+        error: "x-trigger-branch header required for preview env",
+      };
+    }
+
+    if (env.type === "PREVIEW" || env.type === "DEVELOPMENT") {
+      // The "default" root branch is DEVELOPMENT-only: it maps to the dev root env
+      // (which carries no branch), so we skip the pivot there. For PREVIEW,
+      // "default" is an ordinary branch name and must still pivot to its child.
+      const isDevAndDefault = env.type === "DEVELOPMENT" && isDefaultDevBranch(branchName);
+      if (branchName !== null && !isDevAndDefault) {
+        const child = env.childEnvironments?.[0];
+        if (!child) {
+          return { ok: false, status: 401, error: "No matching branch env" };
+        }
+        // Pivot to the child env: child's id/type/branchName, parent's
+        // apiKey/orgMember/organization/project. parentEnvironment is set
+        // explicitly here so the slim shape stays internally consistent.
+        env = {
+          ...child,
+          apiKey: env.apiKey,
+          orgMember: env.orgMember,
+          organization: env.organization,
+          project: env.project,
+          parentEnvironment: { id: env.id, apiKey: env.apiKey },
+          childEnvironments: [],
         };
       }
-      const child = env.childEnvironments?.[0];
-      if (!child) {
-        return { ok: false, status: 401, error: "No matching branch env" };
-      }
-      // Pivot to the child env: child's id/type/branchName, parent's
-      // apiKey/orgMember/organization/project. parentEnvironment is set
-      // explicitly here so the slim shape stays internally consistent.
-      env = {
-        ...child,
-        apiKey: env.apiKey,
-        orgMember: env.orgMember,
-        organization: env.organization,
-        project: env.project,
-        parentEnvironment: { id: env.id, apiKey: env.apiKey },
-        childEnvironments: [],
-      };
     }
 
     const subject: RbacSubject = {

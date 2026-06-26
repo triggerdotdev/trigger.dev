@@ -31,9 +31,12 @@ import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 import type { Metafile } from "esbuild";
 import { TaskRunProcessPool } from "./taskRunProcessPool.js";
 import { tryCatch } from "@trigger.dev/core/utils";
+import { devBranchPathSegment } from "../utilities/devBranch.js";
+import { getTmpRoot } from "../utilities/tempDirectories.js";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;
+  branch?: string;
   config: ResolvedConfig;
   args: DevCommandOptions;
   client: CliApiClient;
@@ -206,8 +209,14 @@ class DevSupervisor implements WorkerRuntime {
       mkdirSync(triggerDir, { recursive: true });
     }
 
-    this.activeRunsPath = join(triggerDir, "active-runs.json");
-    this.watchdogPidPath = join(triggerDir, "watchdog.pid");
+    // Namespace watchdog state per branch so concurrent dev sessions on
+    // different branches don't share a single watchdog instance (the
+    // single-instance guard would otherwise kill the other branch's watchdog).
+    const safeBranch = devBranchPathSegment(this.options.branch);
+    const suffix = safeBranch ? `-${safeBranch}` : "";
+
+    this.activeRunsPath = join(triggerDir, `active-runs${suffix}.json`);
+    this.watchdogPidPath = join(triggerDir, `watchdog${suffix}.pid`);
 
     // Write empty active-runs file
     this.#updateActiveRunsFile();
@@ -232,7 +241,7 @@ class DevSupervisor implements WorkerRuntime {
           WATCHDOG_API_KEY: this.options.client.accessToken ?? "",
           WATCHDOG_ACTIVE_RUNS: this.activeRunsPath,
           WATCHDOG_PID_FILE: this.watchdogPidPath,
-          WATCHDOG_TMP_DIR: join(triggerDir, "tmp"),
+          WATCHDOG_TMP_DIR: getTmpRoot(this.options.config.workingDir, this.options.branch),
         },
       });
 

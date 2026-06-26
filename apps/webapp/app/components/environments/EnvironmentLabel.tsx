@@ -178,7 +178,7 @@ export function environmentFullTitle(environment: Environment) {
   }
 }
 
-export function environmentTextClassName(environment: Environment) {
+export function environmentTextClassName(environment: { type: Environment["type"] }) {
   switch (environment.type) {
     case "PRODUCTION":
       return "text-prod";
