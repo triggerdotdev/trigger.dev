@@ -9,11 +9,14 @@ import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { OrganizationsPresenter } from "~/presenters/OrganizationsPresenter.server";
 import { RegionsPresenter, type Region } from "~/presenters/v3/RegionsPresenter.server";
 import { getImpersonationId } from "~/services/impersonation.server";
-import { getCachedUsage, getCurrentPlan } from "~/services/platform.v3.server";
+import { getCachedUsage, getBillingLimit, getCurrentPlan } from "~/services/platform.v3.server";
+import { rbac } from "~/services/rbac.server";
+import { canManageBilling } from "~/services/routeBuilders/permissions.server";
 import { requireUser } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { organizationPath } from "~/utils/pathBuilder";
 import { isEnvironmentPauseResumeFormSubmission } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues/route";
+import { isBillingLimitSettingsFormSubmission } from "../_app.orgs.$organizationSlug.settings.billing-limits/billingLimitsRevalidation";
 
 const ParamsSchema = z.object({
   organizationSlug: z.string(),
@@ -53,6 +56,10 @@ export const shouldRevalidate: ShouldRevalidateFunction = (params) => {
     return true;
   }
 
+  if (isBillingLimitSettingsFormSubmission(params.formMethod, params.formData)) {
+    return true;
+  }
+
   // This prevents revalidation when there are search params changes
   // IMPORTANT: If the loader function depends on search params, this should be updated
   return params.currentUrl.pathname !== params.nextUrl.pathname;
@@ -85,15 +92,22 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // Using the 1st day of next month means we get the usage for the current month
   // and the cache key for getCachedUsage is stable over the month
   const firstDayOfNextMonth = new Date();
-  firstDayOfNextMonth.setUTCMonth(firstDayOfNextMonth.getUTCMonth() + 1);
   firstDayOfNextMonth.setUTCDate(1);
   firstDayOfNextMonth.setUTCHours(0, 0, 0, 0);
+  firstDayOfNextMonth.setUTCMonth(firstDayOfNextMonth.getUTCMonth() + 1);
 
   const shouldLoadRegions = !!projectParam && !!environment && environment.type !== "DEVELOPMENT";
 
-  const [plan, usage, customDashboards, regions] = await Promise.all([
+  const [sessionAuth, plan, usage, billingLimit, customDashboards, regions] = await Promise.all([
+    rbac
+      .authenticateSession(request, {
+        userId: user.id,
+        organizationId: organization.id,
+      })
+      .catch(() => ({ ok: false as const, reason: "unauthorized" as const })),
     getCurrentPlan(organization.id),
     getCachedUsage(organization.id, { from: firstDayOfMonth, to: firstDayOfNextMonth }),
+    getBillingLimit(organization.id),
     prisma.metricsDashboard.findMany({
       where: { organizationId: organization.id },
       select: {
@@ -110,6 +124,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           .catch(() => [] as Region[])
       : Promise.resolve([] as Region[]),
   ]);
+  const userCanManageBilling = sessionAuth.ok ? canManageBilling(sessionAuth.ability) : false;
 
   let hasExceededFreeTier = false;
   let usagePercentage = 0;
@@ -159,12 +174,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     regions,
     isImpersonating: !!impersonationId,
     currentPlan: { ...plan, v3Usage: { ...usage, hasExceededFreeTier, usagePercentage } },
+    billingLimit,
     customDashboards: customDashboardsWithWidgetCount,
     dashboardLimits: {
       used: customDashboards.length,
       limit: dashboardLimit,
     },
     widgetLimitPerDashboard,
+    canManageBilling: userCanManageBilling,
   });
 };
 

@@ -14,6 +14,10 @@ import { getCurrentPlan, getLimit } from "./platform.v3.server";
 import { type z } from "zod";
 import invariant from "tiny-invariant";
 import { type CreateBranchOptions } from "~/utils/branches";
+import {
+  applyBillingLimitPauseAfterEnvCreate,
+  getInitialEnvPauseStateForBillingLimit,
+} from "~/v3/services/billingLimit/getInitialEnvPauseStateForBillingLimit.server";
 
 type CreateBranchOptions = z.infer<typeof CreateBranchOptions>;
 
@@ -138,6 +142,10 @@ export class UpsertBranchService {
       const apiKey = createApiKeyForEnv(parentEnvironment.type);
       const pkApiKey = createPkApiKeyForEnv(parentEnvironment.type);
       const shortcode = branchSlug;
+      const billingPause = await getInitialEnvPauseStateForBillingLimit(
+        parentEnvironment.organization.id,
+        parentEnvironment.type
+      );
 
       const now = new Date();
       const branch = await this.#prismaClient.runtimeEnvironment.upsert({
@@ -153,6 +161,8 @@ export class UpsertBranchService {
           pkApiKey,
           shortcode,
           maximumConcurrencyLimit: parentEnvironment.maximumConcurrencyLimit,
+          paused: billingPause.paused,
+          pauseSource: billingPause.pauseSource,
           organization: {
             connect: {
               id: parentEnvironment.organization.id,
@@ -174,9 +184,14 @@ export class UpsertBranchService {
         update: {
           git: git ?? undefined,
         },
+        include: {
+          organization: true,
+          project: true,
+        },
       });
 
       const alreadyExisted = branch.createdAt < now;
+      await applyBillingLimitPauseAfterEnvCreate(branch);
 
       return {
         success: true as const,

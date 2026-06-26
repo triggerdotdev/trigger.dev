@@ -1502,6 +1502,39 @@ const EnvironmentSchema = z
     ALERTS_WORKER_REDIS_TLS_DISABLED: z.string().default(process.env.REDIS_TLS_DISABLED ?? "false"),
     ALERTS_WORKER_REDIS_CLUSTER_MODE_ENABLED: z.string().default("0"),
 
+    BILLING_LIMIT_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
+    BILLING_LIMIT_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),
+    BILLING_LIMIT_WORKER_CONCURRENCY_TASKS_PER_WORKER: z.coerce.number().int().default(10),
+    BILLING_LIMIT_WORKER_POLL_INTERVAL: z.coerce.number().int().default(1000),
+    BILLING_LIMIT_WORKER_IMMEDIATE_POLL_INTERVAL: z.coerce.number().int().default(50),
+    BILLING_LIMIT_WORKER_CONCURRENCY_LIMIT: z.coerce.number().int().default(20),
+    BILLING_LIMIT_WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().default(60_000),
+    BILLING_LIMIT_WORKER_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    BILLING_LIMIT_RECONCILE_INTERVAL_MS: z.coerce.number().int().default(90_000),
+    BILLING_LIMIT_WORKER_REDIS_HOST: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_HOST),
+    BILLING_LIMIT_WORKER_REDIS_PORT: z.coerce
+      .number()
+      .optional()
+      .transform(
+        (v) => v ?? (process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT) : undefined)
+      ),
+    BILLING_LIMIT_WORKER_REDIS_USERNAME: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_USERNAME),
+    BILLING_LIMIT_WORKER_REDIS_PASSWORD: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.REDIS_PASSWORD),
+    BILLING_LIMIT_WORKER_REDIS_TLS_DISABLED: z
+      .string()
+      .default(process.env.REDIS_TLS_DISABLED ?? "false"),
+
     SCHEDULE_ENGINE_LOG_LEVEL: z.enum(["log", "error", "warn", "info", "debug"]).default("info"),
     SCHEDULE_WORKER_ENABLED: z.string().default(process.env.WORKER_ENABLED ?? "true"),
     SCHEDULE_WORKER_CONCURRENCY_WORKERS: z.coerce.number().int().default(2),

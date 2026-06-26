@@ -103,6 +103,10 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
 
   // Remix fingerprints its assets so we can cache forever.
   app.use("/build", express.static("public/build", { immutable: true, maxAge: "1y" }));
+  // Stale dev builds can request an old hashed manifest; don't fall through to Remix.
+  app.use("/build", (_req, res) => {
+    res.status(404).end();
+  });
 
   // Everything else (like favicon.ico) is cached for an hour. You may want to be
   // more aggressive with this caching.

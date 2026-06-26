@@ -6,6 +6,7 @@ import { Suspense, useMemo } from "react";
 import { redirect, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { URL } from "url";
 import { UsageBar } from "~/components/billing/UsageBar";
+import { getUsageBarBillingLimitDollars } from "~/components/billing/billingAlertsFormat";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Card } from "~/components/primitives/charts/Card";
 import type { ChartConfig } from "~/components/primitives/charts/Chart";
@@ -30,6 +31,7 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { UsagePresenter, type UsageSeriesData } from "~/presenters/v3/UsagePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { formatCurrency, formatCurrencyAccurate, formatNumber } from "~/utils/numberFormatter";
+import { useBillingLimit } from "~/hooks/useOrganizations";
 import { OrganizationParamsSchema, organizationPath } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 
@@ -96,6 +98,11 @@ const monthDateFormatter = new Intl.DateTimeFormat("en-US", {
 export default function Page() {
   const { usage, tasks, months, isCurrentMonth } = useTypedLoaderData<typeof loader>();
   const currentPlan = useCurrentPlan();
+  const billingLimit = useBillingLimit();
+  const planLimitCents = currentPlan?.v3Subscription?.plan?.limits.includedUsage ?? 0;
+  const billingLimitDollars = isCurrentMonth
+    ? getUsageBarBillingLimitDollars(billingLimit, planLimitCents)
+    : undefined;
   const { value, replace } = useSearchParams();
 
   const month = value("month") ?? months[0].toISOString();
@@ -155,11 +162,8 @@ export default function Page() {
                       <UsageBar
                         current={usage.overall.current}
                         isPaying={currentPlan?.v3Subscription?.isPaying ?? false}
-                        tierLimit={
-                          isCurrentMonth
-                            ? (currentPlan?.v3Subscription?.plan?.limits.includedUsage ?? 0) / 100
-                            : undefined
-                        }
+                        tierLimit={isCurrentMonth ? planLimitCents / 100 : undefined}
+                        billingLimit={billingLimitDollars}
                       />
                     </div>
                   )}

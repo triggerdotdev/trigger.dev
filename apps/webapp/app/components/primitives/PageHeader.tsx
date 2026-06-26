@@ -1,13 +1,11 @@
 import { Link, useNavigation } from "@remix-run/react";
 import { type ReactNode } from "react";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
-import { useOptionalOrganization } from "~/hooks/useOrganizations";
-import { UpgradePrompt, useShowUpgradePrompt } from "../billing/UpgradePrompt";
+import { OrgBanner } from "../billing/OrgBanner";
 import { BreadcrumbIcon } from "./BreadcrumbIcon";
 import { Header2 } from "./Headers";
 import { LoadingBarDivider } from "./LoadingBarDivider";
 import { SimpleTooltip } from "./Tooltip";
-import { EnvironmentBanner } from "../navigation/EnvironmentBanner";
 import { DashboardAgentLauncher } from "../dashboard-agent/dashboardAgentLauncher";
 
 type WithChildren = {
@@ -16,9 +14,6 @@ type WithChildren = {
 };
 
 export function NavBar({ children }: WithChildren) {
-  const organization = useOptionalOrganization();
-  const showUpgradePrompt = useShowUpgradePrompt(organization);
-
   const navigation = useNavigation();
   const isLoading = navigation.state === "loading" || navigation.state === "submitting";
 
@@ -31,7 +26,7 @@ export function NavBar({ children }: WithChildren) {
         </div>
         <LoadingBarDivider isLoading={isLoading} />
       </div>
-      {showUpgradePrompt.shouldShow && organization ? <UpgradePrompt /> : <EnvironmentBanner />}
+      <OrgBanner />
     </div>
   );
 }

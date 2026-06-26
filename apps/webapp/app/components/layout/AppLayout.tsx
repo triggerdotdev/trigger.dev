@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import { cn } from "~/utils/cn";
 
 /** This container is used to surround the entire app, it correctly places the nav bar */
@@ -34,17 +35,17 @@ export function PageContainer({
   );
 }
 
-export function PageBody({
-  children,
-  scrollable = true,
-  className,
-}: {
-  children: React.ReactNode;
-  scrollable?: boolean;
-  className?: string;
-}) {
+export const PageBody = forwardRef<
+  HTMLDivElement,
+  {
+    children: React.ReactNode;
+    scrollable?: boolean;
+    className?: string;
+  }
+>(function PageBody({ children, scrollable = true, className }, ref) {
   return (
     <div
+      ref={ref}
       className={cn(
         scrollable
           ? "overflow-y-auto p-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
@@ -55,7 +56,7 @@ export function PageBody({
       {children}
     </div>
   );
-}
+});
 
 export function MainCenteredContainer({
   children,
