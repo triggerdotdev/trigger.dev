@@ -27,6 +27,8 @@ import type { ApiClientConfiguration, TaskRunContext } from "@trigger.dev/core/v
 
 export type { ApiClientConfiguration, TaskRunContext };
 
+export type { RunStatus } from "@trigger.dev/core/v3";
+
 export {
   ApiError,
   AuthenticationError,
