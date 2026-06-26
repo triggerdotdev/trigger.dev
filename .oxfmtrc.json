@@ -12,6 +12,7 @@
   "sortPackageJson": false,
   "ignorePatterns": [
     "node_modules",
+    "apps/webapp",
     ".env",
     ".env.local",
     "pnpm-lock.yaml",

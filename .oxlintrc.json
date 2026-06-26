@@ -7,7 +7,8 @@
     "**/*.d.ts",
     "**/seed.js",
     "**/seedCloud.ts",
-    "**/populate.js"
+    "**/populate.js",
+    "apps/webapp/**"
   ],
   // All rules below are disabled because they currently fire on the existing
   // codebase (1748 warnings across these 20 rules as of this commit). Disabled
