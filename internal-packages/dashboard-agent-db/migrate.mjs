@@ -10,13 +10,19 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 
-// Cloud points at the dedicated dashboard-agent database; OSS falls back to the
-// main DATABASE_URL (tables still land in the `trigger_dashboard_agent` schema).
-const connectionString = process.env.DASHBOARD_AGENT_DATABASE_URL ?? process.env.DATABASE_URL;
+// Migrations need a direct (non-pooler) connection; a transaction-mode pooler
+// can't run the migrator. Prefer the agent's direct url, then its pooled url,
+// then the main DIRECT_URL/DATABASE_URL (OSS single-database fallback; tables
+// still land in the `trigger_dashboard_agent` schema).
+const connectionString =
+  process.env.DASHBOARD_AGENT_DIRECT_URL ??
+  process.env.DASHBOARD_AGENT_DATABASE_URL ??
+  process.env.DIRECT_URL ??
+  process.env.DATABASE_URL;
 
 if (!connectionString) {
   console.error(
-    "[dashboard-agent-db] DASHBOARD_AGENT_DATABASE_URL / DATABASE_URL not set; cannot migrate."
+    "[dashboard-agent-db] No database url set (DASHBOARD_AGENT_DIRECT_URL / DASHBOARD_AGENT_DATABASE_URL / DIRECT_URL / DATABASE_URL); cannot migrate."
   );
   process.exit(1);
 }

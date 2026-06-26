@@ -1,9 +1,13 @@
 import { defineConfig } from "drizzle-kit";
 
-// Cloud points at the dedicated PlanetScale database; OSS falls back to the main
-// DATABASE_URL (tables still land in the trigger_dashboard_agent schema).
+// Migrations need a direct (non-pooler) connection; a transaction-mode pooler
+// can't run the migrator. Prefer the agent's direct url, then its pooled url,
+// then the main DIRECT_URL/DATABASE_URL (OSS single-database fallback; tables
+// still land in the trigger_dashboard_agent schema).
 const url =
+  process.env.DASHBOARD_AGENT_DIRECT_URL ??
   process.env.DASHBOARD_AGENT_DATABASE_URL ??
+  process.env.DIRECT_URL ??
   process.env.DATABASE_URL ??
   "postgres://placeholder"; // generate is offline; a real url is only needed for migrate/studio
 

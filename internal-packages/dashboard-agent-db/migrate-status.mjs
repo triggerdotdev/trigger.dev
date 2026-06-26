@@ -8,11 +8,16 @@ import postgres from "postgres";
 const MIGRATIONS_SCHEMA = "drizzle";
 const MIGRATIONS_TABLE = "__dashboard_agent_migrations";
 
-const connectionString = process.env.DASHBOARD_AGENT_DATABASE_URL ?? process.env.DATABASE_URL;
+// Match migrate.mjs: a direct (non-pooler) connection, same precedence.
+const connectionString =
+  process.env.DASHBOARD_AGENT_DIRECT_URL ??
+  process.env.DASHBOARD_AGENT_DATABASE_URL ??
+  process.env.DIRECT_URL ??
+  process.env.DATABASE_URL;
 
 if (!connectionString) {
   console.error(
-    "[dashboard-agent-db] DASHBOARD_AGENT_DATABASE_URL / DATABASE_URL not set; cannot check status."
+    "[dashboard-agent-db] No database url set (DASHBOARD_AGENT_DIRECT_URL / DASHBOARD_AGENT_DATABASE_URL / DIRECT_URL / DATABASE_URL); cannot check status."
   );
   process.exit(2);
 }
