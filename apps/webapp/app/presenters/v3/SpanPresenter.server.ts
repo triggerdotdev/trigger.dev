@@ -257,17 +257,17 @@ export class SpanPresenter extends BasePresenter {
     const output = !isFinished
       ? undefined
       : run.outputType === "application/store"
-      ? `/resources/packets/${run.runtimeEnvironment.id}/${run.output}`
-      : typeof run.output !== "undefined" && run.output !== null
-      ? await prettyPrintPacket(run.output, run.outputType ?? undefined)
-      : undefined;
+        ? `/resources/packets/${run.runtimeEnvironment.id}/${run.output}`
+        : typeof run.output !== "undefined" && run.output !== null
+          ? await prettyPrintPacket(run.output, run.outputType ?? undefined)
+          : undefined;
 
     const payload =
       run.payloadType === "application/store"
         ? `/resources/packets/${run.runtimeEnvironment.id}/${run.payload}`
         : typeof run.payload !== "undefined" && run.payload !== null
-        ? await prettyPrintPacket(run.payload, run.payloadType ?? undefined)
-        : undefined;
+          ? await prettyPrintPacket(run.payload, run.payloadType ?? undefined)
+          : undefined;
 
     let error: TaskRunError | undefined = undefined;
 
@@ -354,9 +354,9 @@ export class SpanPresenter extends BasePresenter {
             sessionRun.session.closedAt != null
               ? ("CLOSED" as const)
               : sessionRun.session.expiresAt != null &&
-                sessionRun.session.expiresAt.getTime() < Date.now()
-              ? ("EXPIRED" as const)
-              : ("ACTIVE" as const),
+                  sessionRun.session.expiresAt.getTime() < Date.now()
+                ? ("EXPIRED" as const)
+                : ("ACTIVE" as const),
           reason: sessionRun.reason,
           triggeredAt: sessionRun.triggeredAt,
         }
@@ -509,119 +509,119 @@ export class SpanPresenter extends BasePresenter {
             runtimeEnvironmentId: environmentId,
           },
       {
-      select: {
-        id: true,
-        spanId: true,
-        traceId: true,
-        traceContext: true,
-        //metadata
-        number: true,
-        taskIdentifier: true,
-        friendlyId: true,
-        isTest: true,
-        maxDurationInSeconds: true,
-        taskEventStore: true,
-        runTags: true,
-        machinePreset: true,
-        lockedToVersion: {
-          select: {
-            version: true,
-            sdkVersion: true,
-            runtime: true,
-            runtimeVersion: true,
+        select: {
+          id: true,
+          spanId: true,
+          traceId: true,
+          traceContext: true,
+          //metadata
+          number: true,
+          taskIdentifier: true,
+          friendlyId: true,
+          isTest: true,
+          maxDurationInSeconds: true,
+          taskEventStore: true,
+          runTags: true,
+          machinePreset: true,
+          lockedToVersion: {
+            select: {
+              version: true,
+              sdkVersion: true,
+              runtime: true,
+              runtimeVersion: true,
+            },
+          },
+          engine: true,
+          workerQueue: true,
+          region: true,
+          error: true,
+          output: true,
+          outputType: true,
+          //status + duration
+          status: true,
+          statusReason: true,
+          startedAt: true,
+          executedAt: true,
+          createdAt: true,
+          updatedAt: true,
+          queuedAt: true,
+          completedAt: true,
+          logsDeletedAt: true,
+          //idempotency
+          idempotencyKey: true,
+          idempotencyKeyExpiresAt: true,
+          idempotencyKeyOptions: true,
+          //debounce
+          debounce: true,
+          //delayed
+          delayUntil: true,
+          //ttl
+          ttl: true,
+          expiredAt: true,
+          //queue
+          queue: true,
+          concurrencyKey: true,
+          //schedule
+          scheduleId: true,
+          //usage
+          baseCostInCents: true,
+          costInCents: true,
+          usageDurationMs: true,
+          //env
+          runtimeEnvironment: {
+            select: { id: true, slug: true, type: true },
+          },
+          payload: true,
+          payloadType: true,
+          metadata: true,
+          metadataType: true,
+          annotations: true,
+          maxAttempts: true,
+          project: {
+            include: {
+              organization: true,
+            },
+          },
+          lockedBy: {
+            select: {
+              filePath: true,
+            },
+          },
+          //relationships
+          rootTaskRun: {
+            select: {
+              taskIdentifier: true,
+              friendlyId: true,
+              spanId: true,
+              createdAt: true,
+            },
+          },
+          parentTaskRun: {
+            select: {
+              taskIdentifier: true,
+              friendlyId: true,
+              spanId: true,
+            },
+          },
+          batch: {
+            select: {
+              friendlyId: true,
+            },
+          },
+          replayedFromTaskRunFriendlyId: true,
+          attempts: {
+            take: 1,
+            orderBy: {
+              createdAt: "desc",
+            },
+            select: {
+              number: true,
+              status: true,
+              createdAt: true,
+              friendlyId: true,
+            },
           },
         },
-        engine: true,
-        workerQueue: true,
-        region: true,
-        error: true,
-        output: true,
-        outputType: true,
-        //status + duration
-        status: true,
-        statusReason: true,
-        startedAt: true,
-        executedAt: true,
-        createdAt: true,
-        updatedAt: true,
-        queuedAt: true,
-        completedAt: true,
-        logsDeletedAt: true,
-        //idempotency
-        idempotencyKey: true,
-        idempotencyKeyExpiresAt: true,
-        idempotencyKeyOptions: true,
-        //debounce
-        debounce: true,
-        //delayed
-        delayUntil: true,
-        //ttl
-        ttl: true,
-        expiredAt: true,
-        //queue
-        queue: true,
-        concurrencyKey: true,
-        //schedule
-        scheduleId: true,
-        //usage
-        baseCostInCents: true,
-        costInCents: true,
-        usageDurationMs: true,
-        //env
-        runtimeEnvironment: {
-          select: { id: true, slug: true, type: true },
-        },
-        payload: true,
-        payloadType: true,
-        metadata: true,
-        metadataType: true,
-        annotations: true,
-        maxAttempts: true,
-        project: {
-          include: {
-            organization: true,
-          },
-        },
-        lockedBy: {
-          select: {
-            filePath: true,
-          },
-        },
-        //relationships
-        rootTaskRun: {
-          select: {
-            taskIdentifier: true,
-            friendlyId: true,
-            spanId: true,
-            createdAt: true,
-          },
-        },
-        parentTaskRun: {
-          select: {
-            taskIdentifier: true,
-            friendlyId: true,
-            spanId: true,
-          },
-        },
-        batch: {
-          select: {
-            friendlyId: true,
-          },
-        },
-        replayedFromTaskRunFriendlyId: true,
-        attempts: {
-          take: 1,
-          orderBy: {
-            createdAt: "desc",
-          },
-          select: {
-            number: true,
-            status: true,
-            createdAt: true,
-            friendlyId: true,
-          },
-        },
-      },
       },
       this._replica
     );

@@ -1,4 +1,8 @@
-import { type PrismaClient, type PrismaClientOrTransaction, TaskTriggerSource } from "@trigger.dev/database";
+import {
+  type PrismaClient,
+  type PrismaClientOrTransaction,
+  TaskTriggerSource,
+} from "@trigger.dev/database";
 import { $replica, prisma } from "~/db.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";
 import { logger } from "./logger.server";
@@ -99,8 +103,7 @@ export async function syncTaskIdentifiers(
 
 function sortEntries(entries: TaskIdentifierEntry[]): TaskIdentifierEntry[] {
   return entries.sort((a, b) => {
-    if (a.isInLatestDeployment !== b.isInLatestDeployment)
-      return a.isInLatestDeployment ? -1 : 1;
+    if (a.isInLatestDeployment !== b.isInLatestDeployment) return a.isInLatestDeployment ? -1 : 1;
     return a.slug.localeCompare(b.slug);
   });
 }

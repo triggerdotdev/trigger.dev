@@ -61,7 +61,10 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
 
   const [error, connections] = await tryCatch(getPrivateLinks(organization.id));
   if (error) {
-    logger.error("Error loading private link connections", { error, organizationId: organization.id });
+    logger.error("Error loading private link connections", {
+      error,
+      organizationId: organization.id,
+    });
   }
 
   return typedjson({
@@ -229,15 +232,10 @@ export default function Page() {
             ) : (
               <div className="flex flex-col gap-3">
                 {connections.map((connection) => (
-                  <div
-                    key={connection.id}
-                    className="rounded-lg border border-grid-dimmed p-4"
-                  >
+                  <div key={connection.id} className="rounded-lg border border-grid-dimmed p-4">
                     <div>
                       <div className="mb-1 flex items-center gap-2">
-                        <span className="font-medium text-text-bright">
-                          {connection.name}
-                        </span>
+                        <span className="font-medium text-text-bright">{connection.name}</span>
                         <StatusBadge status={connection.status} />
                         {connection.status !== "DELETING" && (
                           <Form method="POST" className="ml-auto">
@@ -291,9 +289,7 @@ export default function Page() {
                         )}
                         <div className="flex items-center text-xs text-text-dimmed">
                           <span className="w-24 shrink-0">Created:</span>
-                          <span>
-                            {new Date(connection.createdAt).toLocaleDateString()}
-                          </span>
+                          <span>{new Date(connection.createdAt).toLocaleDateString()}</span>
                         </div>
                       </div>
                     </div>

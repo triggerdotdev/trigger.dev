@@ -186,10 +186,10 @@ const fuzzyFilter: FilterFn<RowData> = (row, columnId, value, addMeta) => {
     cellValue === null
       ? "NULL"
       : cellValue === undefined
-      ? ""
-      : typeof cellValue === "object"
-      ? JSON.stringify(cellValue)
-      : String(cellValue);
+        ? ""
+        : typeof cellValue === "object"
+          ? JSON.stringify(cellValue)
+          : String(cellValue);
 
   // Build searchable strings - formatted value (if we have column metadata)
   const formattedValue = meta?.outputColumn
@@ -569,12 +569,8 @@ function CellValue({
         if (typeof value === "string") {
           const spanId = row?.["span_id"];
           const runPath = v3RunPathFromFriendlyId(value);
-          const href = typeof spanId === "string" && spanId
-            ? `${runPath}?span=${spanId}`
-            : runPath;
-          const tooltip = typeof spanId === "string" && spanId
-            ? "Jump to span"
-            : "Jump to run";
+          const href = typeof spanId === "string" && spanId ? `${runPath}?span=${spanId}` : runPath;
+          const tooltip = typeof spanId === "string" && spanId ? "Jump to span" : "Jump to run";
           return (
             <SimpleTooltip
               content={tooltip}
@@ -590,8 +586,8 @@ function CellValue({
         const status = isTaskRunStatus(value)
           ? value
           : isRunFriendlyStatus(value)
-          ? runStatusFromFriendlyTitle(value)
-          : undefined;
+            ? runStatusFromFriendlyTitle(value)
+            : undefined;
         if (status) {
           return (
             <SimpleTooltip
@@ -1047,7 +1043,8 @@ export const TSQLResultsTable = memo(function TSQLResultsTable({
   // Create TanStack Table column definitions from OutputColumnMetadata
   // Calculate column widths based on content
   const visibleColumns = useMemo(
-    () => hiddenColumns?.length ? columns.filter((col) => !hiddenColumns.includes(col.name)) : columns,
+    () =>
+      hiddenColumns?.length ? columns.filter((col) => !hiddenColumns.includes(col.name)) : columns,
     [columns, hiddenColumns]
   );
   const columnDefs = useMemo<ColumnDef<RowData, unknown>[]>(

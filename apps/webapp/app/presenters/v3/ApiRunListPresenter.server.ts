@@ -275,7 +275,10 @@ export class ApiRunListPresenter extends BasePresenter {
         options.machines = searchParams["filter[machine]"];
       }
 
-      const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
+      const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+        organizationId,
+        "standard"
+      );
       const presenter = new NextRunListPresenter(this._replica, clickhouse);
 
       logger.debug("Calling RunListPresenter", { options });

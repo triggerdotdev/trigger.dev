@@ -15,12 +15,7 @@ describe("sortEnvironments", () => {
       { type: "STAGING" },
     ]);
 
-    expect(sorted.map((e) => e.type)).toEqual([
-      "DEVELOPMENT",
-      "STAGING",
-      "PREVIEW",
-      "PRODUCTION",
-    ]);
+    expect(sorted.map((e) => e.type)).toEqual(["DEVELOPMENT", "STAGING", "PREVIEW", "PRODUCTION"]);
   });
 
   it("sorts same-type rows by lastActivity desc when both have it", () => {
@@ -95,10 +90,7 @@ describe("filterOrphanedEnvironments", () => {
       { type: "PRODUCTION" } as any,
     ]);
 
-    expect(result).toEqual([
-      { type: "DEVELOPMENT", orgMemberId: "om_1" },
-      { type: "PRODUCTION" },
-    ]);
+    expect(result).toEqual([{ type: "DEVELOPMENT", orgMemberId: "om_1" }, { type: "PRODUCTION" }]);
   });
 
   it("keeps DEVELOPMENT envs whose orgMember relation is loaded", () => {
@@ -121,9 +113,6 @@ describe("onlyDevEnvironments / exceptDevEnvironments", () => {
 
   it("partitions on the development type", () => {
     expect(onlyDevEnvironments([...envs])).toEqual([{ type: "DEVELOPMENT" }]);
-    expect(exceptDevEnvironments([...envs])).toEqual([
-      { type: "PREVIEW" },
-      { type: "PRODUCTION" },
-    ]);
+    expect(exceptDevEnvironments([...envs])).toEqual([{ type: "PREVIEW" }, { type: "PRODUCTION" }]);
   });
 });

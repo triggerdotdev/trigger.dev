@@ -6,10 +6,7 @@ type BranchableEnvironmentInput = {
   isBranchableEnvironment: boolean;
 };
 
-export type BranchableEnvironmentType = Extract<
-  RuntimeEnvironmentType,
-  "PREVIEW" | "DEVELOPMENT"
->;
+export type BranchableEnvironmentType = Extract<RuntimeEnvironmentType, "PREVIEW" | "DEVELOPMENT">;
 
 /**
  * The wire/form token for a branchable environment kind, as sent by the CLI and
@@ -21,8 +18,10 @@ export function toBranchableEnvironmentType(
   env: BranchableEnvironmentToken
 ): BranchableEnvironmentType {
   switch (env) {
-    case "preview": return "PREVIEW";
-    case "development": return "DEVELOPMENT";
+    case "preview":
+      return "PREVIEW";
+    case "development":
+      return "DEVELOPMENT";
   }
 }
 

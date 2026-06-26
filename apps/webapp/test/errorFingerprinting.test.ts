@@ -156,18 +156,13 @@ describe("normalizeErrorMessage", () => {
     });
 
     it("message with both a URL and a timestamp", () => {
-      const message =
-        "Request to https://api.example.com/data failed at 2025-06-15T10:30:00Z";
-      expect(normalizeErrorMessage(message)).toBe(
-        "Request to <url> failed at <timestamp>"
-      );
+      const message = "Request to https://api.example.com/data failed at 2025-06-15T10:30:00Z";
+      expect(normalizeErrorMessage(message)).toBe("Request to <url> failed at <timestamp>");
     });
 
     it("message with a URL and a unix timestamp", () => {
       const message = "Callback to https://example.com/hook timed out after 1700000000";
-      expect(normalizeErrorMessage(message)).toBe(
-        "Callback to <url> timed out after <timestamp>"
-      );
+      expect(normalizeErrorMessage(message)).toBe("Callback to <url> timed out after <timestamp>");
     });
 
     it("path-like string that is NOT a URL should still become <path>", () => {

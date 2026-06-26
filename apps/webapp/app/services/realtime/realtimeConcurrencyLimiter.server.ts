@@ -27,7 +27,11 @@ export class RealtimeConcurrencyLimiter {
     this.#registerCommands();
   }
 
-  async incrementAndCheck(environmentId: string, requestId: string, limit: number): Promise<boolean> {
+  async incrementAndCheck(
+    environmentId: string,
+    requestId: string,
+    limit: number
+  ): Promise<boolean> {
     const key = this.#getKey(environmentId);
     const now = Date.now();
 

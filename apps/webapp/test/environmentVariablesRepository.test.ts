@@ -11,9 +11,7 @@ vi.mock("~/db.server", () => ({
     fnOrOptions?: ((tx: unknown) => Promise<unknown>) | unknown
   ) => {
     const fn =
-      typeof nameOrFn === "string"
-        ? (fnOrOptions as (tx: unknown) => Promise<unknown>)
-        : nameOrFn;
+      typeof nameOrFn === "string" ? (fnOrOptions as (tx: unknown) => Promise<unknown>) : nameOrFn;
 
     return prismaClient.$transaction(fn);
   },
@@ -58,46 +56,49 @@ describe("EnvironmentVariablesRepository.getVariableValuesForKeys", () => {
     expect(result.has(`${environment.id}:DOES_NOT_EXIST`)).toBe(false);
   });
 
-  postgresTest("returns requested values with correct map keys and decrypted values", async ({ prisma }) => {
-    const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
-    const environment = await createRuntimeEnvironment(prisma, {
-      projectId: project.id,
-      organizationId: organization.id,
-      type: "PRODUCTION",
-    });
+  postgresTest(
+    "returns requested values with correct map keys and decrypted values",
+    async ({ prisma }) => {
+      const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
+      const environment = await createRuntimeEnvironment(prisma, {
+        projectId: project.id,
+        organizationId: organization.id,
+        type: "PRODUCTION",
+      });
 
-    const repository = new EnvironmentVariablesRepository(prisma, prisma);
+      const repository = new EnvironmentVariablesRepository(prisma, prisma);
 
-    await createEnvironmentVariable(repository, project.id, {
-      environmentId: environment.id,
-      key: "VAR_A",
-      value: "value-a",
-      userId: user.id,
-    });
-    await createEnvironmentVariable(repository, project.id, {
-      environmentId: environment.id,
-      key: "VAR_B",
-      value: "value-b",
-      userId: user.id,
-    });
-    await createEnvironmentVariable(repository, project.id, {
-      environmentId: environment.id,
-      key: "VAR_C",
-      value: "value-c",
-      userId: user.id,
-    });
+      await createEnvironmentVariable(repository, project.id, {
+        environmentId: environment.id,
+        key: "VAR_A",
+        value: "value-a",
+        userId: user.id,
+      });
+      await createEnvironmentVariable(repository, project.id, {
+        environmentId: environment.id,
+        key: "VAR_B",
+        value: "value-b",
+        userId: user.id,
+      });
+      await createEnvironmentVariable(repository, project.id, {
+        environmentId: environment.id,
+        key: "VAR_C",
+        value: "value-c",
+        userId: user.id,
+      });
 
-    const result = await repository.getVariableValuesForKeys(project.id, [
-      { environmentId: environment.id, key: "VAR_A" },
-      { environmentId: environment.id, key: "VAR_C" },
-    ]);
+      const result = await repository.getVariableValuesForKeys(project.id, [
+        { environmentId: environment.id, key: "VAR_A" },
+        { environmentId: environment.id, key: "VAR_C" },
+      ]);
 
-    expect(result).toBeInstanceOf(Map);
-    expect(result.size).toBe(2);
-    expect(result.get(`${environment.id}:VAR_A`)).toBe("value-a");
-    expect(result.get(`${environment.id}:VAR_C`)).toBe("value-c");
-    expect(result.has(`${environment.id}:VAR_B`)).toBe(false);
-  });
+      expect(result).toBeInstanceOf(Map);
+      expect(result.size).toBe(2);
+      expect(result.get(`${environment.id}:VAR_A`)).toBe("value-a");
+      expect(result.get(`${environment.id}:VAR_C`)).toBe("value-c");
+      expect(result.has(`${environment.id}:VAR_B`)).toBe(false);
+    }
+  );
 
   postgresTest("deduplicates duplicate environmentId and key requests", async ({ prisma }) => {
     const { user, organization, project } = await createTestOrgProjectWithMember(prisma);
@@ -117,7 +118,11 @@ describe("EnvironmentVariablesRepository.getVariableValuesForKeys", () => {
     });
 
     const request = { environmentId: environment.id, key: "DEDUP_KEY" };
-    const result = await repository.getVariableValuesForKeys(project.id, [request, request, request]);
+    const result = await repository.getVariableValuesForKeys(project.id, [
+      request,
+      request,
+      request,
+    ]);
 
     expect(result.size).toBe(1);
     expect(result.get(`${environment.id}:DEDUP_KEY`)).toBe("dedup-value");

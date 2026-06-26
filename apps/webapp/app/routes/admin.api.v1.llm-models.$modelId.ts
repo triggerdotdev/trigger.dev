@@ -87,7 +87,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return json({ error: "Invalid request body", details: parsed.error.issues }, { status: 400 });
   }
 
-  const { modelName, matchPattern, startDate, pricingTiers, provider, description, contextWindow, maxOutputTokens, capabilities, isHidden, pricingUnit } = parsed.data;
+  const {
+    modelName,
+    matchPattern,
+    startDate,
+    pricingTiers,
+    provider,
+    description,
+    contextWindow,
+    maxOutputTokens,
+    capabilities,
+    isHidden,
+    pricingUnit,
+  } = parsed.data;
 
   // Validate regex if provided — strip (?i) POSIX flag since our registry handles it
   if (matchPattern) {

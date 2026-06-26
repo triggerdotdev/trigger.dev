@@ -27,8 +27,7 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
         file: "src/trigger/chat.ts",
         event: "import",
         duration: 67,
-        entryPoint:
-          "/project/.trigger/tmp/build-AL7zTl/src/trigger/chat.mjs",
+        entryPoint: "/project/.trigger/tmp/build-AL7zTl/src/trigger/chat.mjs",
       },
     },
   ];
@@ -52,8 +51,7 @@ describe("createTimelineSpanEventsFromSpanEvents", () => {
         file: "src/trigger/chat.ts",
         event: "import",
         duration: 67,
-        entryPoint:
-          "/project/.trigger/tmp/build-AL7zTl/src/trigger/chat.mjs",
+        entryPoint: "/project/.trigger/tmp/build-AL7zTl/src/trigger/chat.mjs",
       },
     },
   ];

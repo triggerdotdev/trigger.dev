@@ -61,7 +61,8 @@ export function ChartLegendCompound({
   const totals = useSeriesTotal(aggregation);
 
   // Derive the effective label from the aggregation type when no explicit label is provided
-  const effectiveTotalLabel = totalLabel ?? (aggregation ? aggregationLabels[aggregation] : "Total");
+  const effectiveTotalLabel =
+    totalLabel ?? (aggregation ? aggregationLabels[aggregation] : "Total");
 
   // Calculate grand total by aggregating across all per-series values
   const grandTotal = useMemo(() => {
@@ -83,9 +84,7 @@ export function ChartLegendCompound({
 
     const rawValues = dataKeys.map((key) => dataRow[key]);
 
-    const values = rawValues
-      .filter((v): v is number => v != null)
-      .map((v) => Number(v) || 0);
+    const values = rawValues.filter((v): v is number => v != null).map((v) => Number(v) || 0);
 
     // All null → gap-filled point, return null to show dash
     if (values.length === 0) return null;
@@ -170,7 +169,11 @@ export function ChartLegendCompound({
 
   return (
     <div
-      className={cn("flex flex-col px-2 pb-2 pt-4 text-sm", scrollable && "max-h-[50%] min-h-0", className)}
+      className={cn(
+        "flex flex-col px-2 pb-2 pt-4 text-sm",
+        scrollable && "max-h-[50%] min-h-0",
+        className
+      )}
     >
       {/* Total row */}
       <div
@@ -329,7 +332,12 @@ type HoveredHiddenItemRowProps = {
   valueFormatter?: (value: number) => string;
 };
 
-function HoveredHiddenItemRow({ item, value, remainingCount, valueFormatter }: HoveredHiddenItemRowProps) {
+function HoveredHiddenItemRow({
+  item,
+  value,
+  remainingCount,
+  valueFormatter,
+}: HoveredHiddenItemRowProps) {
   return (
     <div className="relative flex w-full items-center justify-between gap-2 rounded px-2 py-1">
       {/* Active highlight background */}

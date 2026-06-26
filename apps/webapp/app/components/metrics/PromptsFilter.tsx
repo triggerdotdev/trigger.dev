@@ -114,7 +114,12 @@ function PromptsDropdown({
         <ComboBox placeholder="Filter by prompt..." value={searchValue} />
         <SelectList>
           {filtered.map((slug) => (
-            <SelectItem key={slug} value={slug} className="text-text-bright" icon={<DocumentTextIcon className="size-4 text-text-dimmed" />}>
+            <SelectItem
+              key={slug}
+              value={slug}
+              className="text-text-bright"
+              icon={<DocumentTextIcon className="size-4 text-text-dimmed" />}
+            >
               {slug}
             </SelectItem>
           ))}

@@ -335,15 +335,18 @@ export class BatchTriggerV3Service extends BaseService {
     }
 
     // Group items by taskIdentifier
-    const itemsByTask = body.items.reduce((acc, item) => {
-      if (!item.options?.idempotencyKey) return acc;
+    const itemsByTask = body.items.reduce(
+      (acc, item) => {
+        if (!item.options?.idempotencyKey) return acc;
 
-      if (!acc[item.task]) {
-        acc[item.task] = [];
-      }
-      acc[item.task].push(item);
-      return acc;
-    }, {} as Record<string, typeof body.items>);
+        if (!acc[item.task]) {
+          acc[item.task] = [];
+        }
+        acc[item.task].push(item);
+        return acc;
+      },
+      {} as Record<string, typeof body.items>
+    );
 
     logger.debug("[BatchTriggerV2][call] Grouped items by task identifier", {
       itemsByTask,
@@ -933,7 +936,12 @@ export class BatchTriggerV3Service extends BaseService {
 
       const filename = `${pathPrefix}/payload.json`;
 
-      const uploadedFilename = await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
+      const uploadedFilename = await uploadPacketToObjectStore(
+        filename,
+        packet.data,
+        packet.dataType,
+        environment
+      );
 
       return {
         data: uploadedFilename,

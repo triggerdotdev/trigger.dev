@@ -52,13 +52,7 @@ export type TaskActivity = {
 
 const TERMINAL_GROUPS = {
   COMPLETED: ["COMPLETED_SUCCESSFULLY"],
-  FAILED: [
-    "COMPLETED_WITH_ERRORS",
-    "SYSTEM_FAILURE",
-    "CRASHED",
-    "INTERRUPTED",
-    "TIMED_OUT",
-  ],
+  FAILED: ["COMPLETED_WITH_ERRORS", "SYSTEM_FAILURE", "CRASHED", "INTERRUPTED", "TIMED_OUT"],
   CANCELED: ["CANCELED", "EXPIRED"],
   RUNNING: [
     "EXECUTING",
@@ -188,11 +182,7 @@ export class TaskDetailPresenter {
     const oneDay = 24 * oneHour;
 
     const bucketSeconds =
-      rangeMs <= oneDay
-        ? 60 * 60
-        : rangeMs <= 7 * oneDay
-        ? 6 * 60 * 60
-        : 24 * 60 * 60;
+      rangeMs <= oneDay ? 60 * 60 : rangeMs <= 7 * oneDay ? 6 * 60 * 60 : 24 * 60 * 60;
 
     // FINAL + _is_deleted = 0 because task_runs_v2 is a ReplacingMergeTree;
     // org/project filters engage the sort-key prefix for partition pruning.

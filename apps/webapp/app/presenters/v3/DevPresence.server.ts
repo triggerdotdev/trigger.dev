@@ -27,7 +27,17 @@ export class DevPresence {
     return new Map(environmentIds.map((id, i) => [id, !!values[i]]));
   }
 
-  async setConnected({ userId, projectId, environmentId, ttl }: { userId: string; projectId: string; environmentId: string; ttl: number; }) {
+  async setConnected({
+    userId,
+    projectId,
+    environmentId,
+    ttl,
+  }: {
+    userId: string;
+    projectId: string;
+    environmentId: string;
+    ttl: number;
+  }) {
     const presenceKey = this.getPresenceKey(environmentId);
     await this.redis.setex(presenceKey, ttl, new Date().toISOString());
 
@@ -51,7 +61,12 @@ export class DevPresence {
   async getRecentBranchIds(userId: string, projectId: string) {
     const recentKey = this.getRecentKey(userId, projectId);
     const threeDaysAgo = subDays(Date.now(), RECENCY_DAYS);
-    const raw = await this.redis.zrevrangebyscore(recentKey, "+inf", threeDaysAgo.getTime(), "WITHSCORES");
+    const raw = await this.redis.zrevrangebyscore(
+      recentKey,
+      "+inf",
+      threeDaysAgo.getTime(),
+      "WITHSCORES"
+    );
 
     const branches = new Map<string, Date>();
     for (let i = 0; i < raw.length; i += 2) {

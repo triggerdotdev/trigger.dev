@@ -1,8 +1,5 @@
 import { type ClickHouse } from "@internal/clickhouse";
-import {
-  type PrismaClientOrTransaction,
-  type RuntimeEnvironmentType,
-} from "@trigger.dev/database";
+import { type PrismaClientOrTransaction, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 
@@ -25,13 +22,7 @@ export type AgentActivity = {
 
 const TERMINAL_GROUPS = {
   COMPLETED: ["COMPLETED_SUCCESSFULLY"],
-  FAILED: [
-    "COMPLETED_WITH_ERRORS",
-    "SYSTEM_FAILURE",
-    "CRASHED",
-    "INTERRUPTED",
-    "TIMED_OUT",
-  ],
+  FAILED: ["COMPLETED_WITH_ERRORS", "SYSTEM_FAILURE", "CRASHED", "INTERRUPTED", "TIMED_OUT"],
   CANCELED: ["CANCELED", "EXPIRED"],
   RUNNING: [
     "EXECUTING",
@@ -135,8 +126,8 @@ export class AgentDetailPresenter {
       rangeMs <= oneDay
         ? 60 * 60 // 1h buckets
         : rangeMs <= 7 * oneDay
-        ? 6 * 60 * 60 // 6h buckets
-        : 24 * 60 * 60; // 1d buckets
+          ? 6 * 60 * 60 // 6h buckets
+          : 24 * 60 * 60; // 1d buckets
 
     // NOTE: We intentionally don't filter by `task_kind = 'AGENT'` here:
     // ClickHouse stores `task_kind = ""` for pre-migration rows and rows
@@ -244,11 +235,7 @@ export class AgentDetailPresenter {
     const oneDay = 24 * oneHour;
 
     const bucketSeconds =
-      rangeMs <= oneDay
-        ? 60 * 60
-        : rangeMs <= 7 * oneDay
-        ? 6 * 60 * 60
-        : 24 * 60 * 60;
+      rangeMs <= oneDay ? 60 * 60 : rangeMs <= 7 * oneDay ? 6 * 60 * 60 : 24 * 60 * 60;
 
     // FINAL collapses ReplacingMergeTree versions so we see each session's
     // latest state — important since closed_at / expires_at are mutated

@@ -197,8 +197,7 @@ export class EnvironmentVariablesRepository implements Repository {
               existingSecret &&
               existingSecret.secret === variable.value &&
               existingValueRecord &&
-              (options.isSecret === undefined ||
-                existingValueRecord.isSecret === options.isSecret);
+              (options.isSecret === undefined || existingValueRecord.isSecret === options.isSecret);
             if (canSkip) {
               continue;
             }

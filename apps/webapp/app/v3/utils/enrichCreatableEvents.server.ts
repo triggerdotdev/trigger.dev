@@ -163,19 +163,22 @@ function enrichLlmMetrics(event: CreateEventInput): void {
   // v6 emits ai.response.finishReason (plain string); v7 (@ai-sdk/otel) emits
   // gen_ai.response.finish_reasons as a JSON array string (e.g. `["stop"]`).
   const finishReason = readFinishReason(props);
-  const operationId = typeof props["ai.operationId"] === "string"
-    ? props["ai.operationId"]
-    : typeof props["gen_ai.operation.name"] === "string"
-      ? props["gen_ai.operation.name"]
-      : typeof props["operation.name"] === "string"
-        ? props["operation.name"]
-        : "";
-  const msToFirstChunk = typeof props["ai.response.msToFirstChunk"] === "number"
-    ? props["ai.response.msToFirstChunk"]
-    : 0;
-  const avgTokensPerSec = typeof props["ai.response.avgOutputTokensPerSecond"] === "number"
-    ? props["ai.response.avgOutputTokensPerSecond"]
-    : 0;
+  const operationId =
+    typeof props["ai.operationId"] === "string"
+      ? props["ai.operationId"]
+      : typeof props["gen_ai.operation.name"] === "string"
+        ? props["gen_ai.operation.name"]
+        : typeof props["operation.name"] === "string"
+          ? props["operation.name"]
+          : "";
+  const msToFirstChunk =
+    typeof props["ai.response.msToFirstChunk"] === "number"
+      ? props["ai.response.msToFirstChunk"]
+      : 0;
+  const avgTokensPerSec =
+    typeof props["ai.response.avgOutputTokensPerSecond"] === "number"
+      ? props["ai.response.avgOutputTokensPerSecond"]
+      : 0;
   const costSource = cost ? "registry" : providerCost ? providerCost.source : "";
   const providerCostValue = providerCost?.totalCost ?? 0;
 
@@ -187,7 +190,10 @@ function enrichLlmMetrics(event: CreateEventInput): void {
         : typeof props["gen_ai.provider.name"] === "string"
           ? props["gen_ai.provider.name"]
           : "unknown",
-    requestModel: typeof props["gen_ai.request.model"] === "string" ? props["gen_ai.request.model"] : responseModel,
+    requestModel:
+      typeof props["gen_ai.request.model"] === "string"
+        ? props["gen_ai.request.model"]
+        : responseModel,
     responseModel,
     baseResponseModel: modelCatalog[responseModel]?.baseModelName ?? responseModel,
     matchedModelId: cost?.matchedModelId ?? "",
@@ -195,10 +201,12 @@ function enrichLlmMetrics(event: CreateEventInput): void {
     finishReason,
     costSource,
     pricingTierId: cost?.pricingTierId ?? (providerCost ? `provider:${providerCost.source}` : ""),
-    pricingTierName: cost?.pricingTierName ?? (providerCost ? `${providerCost.source} reported` : ""),
+    pricingTierName:
+      cost?.pricingTierName ?? (providerCost ? `${providerCost.source} reported` : ""),
     inputTokens: usageDetails["input"] ?? 0,
     outputTokens: usageDetails["output"] ?? 0,
-    totalTokens: usageDetails["total"] ?? (usageDetails["input"] ?? 0) + (usageDetails["output"] ?? 0),
+    totalTokens:
+      usageDetails["total"] ?? (usageDetails["input"] ?? 0) + (usageDetails["output"] ?? 0),
     usageDetails,
     inputCost: cost?.inputCost ?? 0,
     outputCost: cost?.outputCost ?? 0,

@@ -29,7 +29,9 @@ describe("RunChangeNotifier", () => {
       const notifier = new RunChangeNotifier({ redis: toRedisOptions(redisOptions) });
       try {
         const received: ChangeRecord[] = [];
-        const unsubscribe = notifier.subscribeToEnv("env_1", (records) => received.push(...records));
+        const unsubscribe = notifier.subscribeToEnv("env_1", (records) =>
+          received.push(...records)
+        );
         expect(notifier.activeSubscriptionCount).toBe(1);
 
         await sleep(SUBSCRIBE_SETTLE_MS);

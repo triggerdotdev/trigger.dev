@@ -40,9 +40,7 @@ export const batchRateLimitDomain: RateLimitDomain = {
   },
 };
 
-export function resolveEffectiveBatchRateLimit(
-  override: unknown
-): EffectiveRateLimit {
+export function resolveEffectiveBatchRateLimit(override: unknown): EffectiveRateLimit {
   return resolveEffectiveRateLimit(override, batchRateLimitDomain);
 }
 

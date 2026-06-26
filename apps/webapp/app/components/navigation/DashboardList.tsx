@@ -170,8 +170,8 @@ function DashboardChildMenuItem({
         ? item.activeColor
         : undefined
       : isCollapsed
-      ? "text-text-bright"
-      : undefined;
+        ? "text-text-bright"
+        : undefined;
 
   const inactiveIconColor = isCollapsed ? "text-text-dimmed" : "text-charcoal-700";
 

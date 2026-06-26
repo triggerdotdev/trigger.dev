@@ -114,10 +114,7 @@ async function $transactionInner<R>(
 
 export { Prisma };
 
-function tagDatasource<T extends PrismaClient>(
-  datasource: "writer" | "replica",
-  client: T
-): T {
+function tagDatasource<T extends PrismaClient>(datasource: "writer" | "replica", client: T): T {
   return client.$extends({
     name: "datasource-tagger",
     query: {

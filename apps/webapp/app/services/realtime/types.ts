@@ -30,11 +30,7 @@ export interface StreamIngestor {
 
   getLastChunkIndex(runId: string, streamId: string, clientId: string): Promise<number>;
 
-  readRecords(
-    runId: string,
-    streamId: string,
-    afterSeqNum?: number
-  ): Promise<StreamRecord[]>;
+  readRecords(runId: string, streamId: string, afterSeqNum?: number): Promise<StreamRecord[]>;
 }
 
 export type StreamResponseOptions = {

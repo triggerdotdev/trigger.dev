@@ -11,10 +11,7 @@ import type { WidgetData, QueryWidgetConfig } from "~/components/metrics/QueryWi
 // Types
 // ============================================================================
 
-type EditorMode =
-  | null
-  | { type: "add" }
-  | { type: "edit"; widgetId: string; widget: WidgetData };
+type EditorMode = null | { type: "add" } | { type: "edit"; widgetId: string; widget: WidgetData };
 
 type DashboardState = {
   /** The layout items (positions/sizes) */
@@ -136,7 +133,11 @@ function dashboardReducer(state: DashboardState, action: DashboardAction): Dashb
     case "OPEN_EDIT_EDITOR":
       return {
         ...state,
-        editorMode: { type: "edit", widgetId: action.payload.widgetId, widget: action.payload.widget },
+        editorMode: {
+          type: "edit",
+          widgetId: action.payload.widgetId,
+          widget: action.payload.widget,
+        },
       };
 
     case "CLOSE_EDITOR":
@@ -211,7 +212,10 @@ export function useDashboardEditor({
   const isSyncingRef = useRef(false);
 
   // Reset state when initialData changes (e.g., navigating to different dashboard)
-  const initialDataJson = JSON.stringify({ layout: initialData.layout, widgets: initialData.widgets });
+  const initialDataJson = JSON.stringify({
+    layout: initialData.layout,
+    widgets: initialData.widgets,
+  });
   useEffect(() => {
     // Cancel any pending layout save
     if (layoutDebounceRef.current) {

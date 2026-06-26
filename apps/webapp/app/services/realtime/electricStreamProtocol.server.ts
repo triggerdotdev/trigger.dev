@@ -185,7 +185,9 @@ export function buildElectricSchemaHeader(skipColumns: string[] = []): string {
     if (skip.has(column.name)) {
       continue;
     }
-    schema[column.name] = column.dims ? { type: column.type, dims: column.dims } : { type: column.type };
+    schema[column.name] = column.dims
+      ? { type: column.type, dims: column.dims }
+      : { type: column.type };
   }
 
   return JSON.stringify(schema);

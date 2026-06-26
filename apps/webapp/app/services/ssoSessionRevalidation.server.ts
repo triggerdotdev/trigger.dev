@@ -77,7 +77,9 @@ export async function revalidateSsoSession(
   // `sso.revalidation.timeout` warn for alerting.
   const timeoutMs = env.SSO_SESSION_REVALIDATION_TIMEOUT_MS;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let result: Awaited<ReturnType<typeof ssoController.validateSession>> | typeof REVALIDATION_TIMEOUT;
+  let result:
+    | Awaited<ReturnType<typeof ssoController.validateSession>>
+    | typeof REVALIDATION_TIMEOUT;
   try {
     result = await Promise.race([
       // ResultAsync is a PromiseLike; Promise.resolve unwraps it to a Result.

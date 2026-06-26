@@ -101,10 +101,15 @@ export class OrganizationsPresenter {
       throw redirect(newProjectPath(organization));
     }
 
-    const environments = fullProject.
-      environments.filter((env) => env.type !== "DEVELOPMENT" || env.orgMember?.userId === user.id);
+    const environments = fullProject.environments.filter(
+      (env) => env.type !== "DEVELOPMENT" || env.orgMember?.userId === user.id
+    );
 
-    const environmentsWithActivity = await hydrateEnvsWithActivity(user.id, fullProject.id, environments);
+    const environmentsWithActivity = await hydrateEnvsWithActivity(
+      user.id,
+      fullProject.id,
+      environments
+    );
 
     const environment = this.#getEnvironment({
       user,

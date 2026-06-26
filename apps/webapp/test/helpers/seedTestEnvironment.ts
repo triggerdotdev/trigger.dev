@@ -2,7 +2,9 @@ import type { PrismaClient } from "@trigger.dev/database";
 import { randomBytes } from "crypto";
 
 function randomHex(len = 12): string {
-  return randomBytes(Math.ceil(len / 2)).toString("hex").slice(0, len);
+  return randomBytes(Math.ceil(len / 2))
+    .toString("hex")
+    .slice(0, len);
 }
 
 export async function seedTestEnvironment(prisma: PrismaClient) {

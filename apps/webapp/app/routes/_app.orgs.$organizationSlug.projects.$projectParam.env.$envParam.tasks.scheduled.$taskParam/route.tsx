@@ -149,7 +149,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       from: time.from,
       to: time.to,
     })
-    .catch(() => ({ data: [], statuses: [] } satisfies TaskActivity));
+    .catch(() => ({ data: [], statuses: [] }) satisfies TaskActivity);
 
   const pageRaw = parseFiniteInt(url.searchParams.get("page"));
   const schedulesPage = pageRaw !== undefined && pageRaw > 0 ? pageRaw : 1;
@@ -653,8 +653,7 @@ function ScheduleSheet({
   // Only show the loading spinner when we actually lack good data —
   // background reloads (e.g. after enable/disable) keep the inspector
   // visible with its current values until the fresh data arrives.
-  const isDetailLoading =
-    isStaleSchedule || (!!openScheduleId && detailFetcher.data === undefined);
+  const isDetailLoading = isStaleSchedule || (!!openScheduleId && detailFetcher.data === undefined);
   // Distinct from loading: the loader has resolved and the schedule is
   // genuinely gone (returned `null`, e.g. deleted externally).
   const isScheduleMissing =

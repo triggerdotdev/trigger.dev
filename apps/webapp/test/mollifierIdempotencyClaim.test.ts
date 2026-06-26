@@ -2,15 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("~/db.server", () => ({ prisma: {}, $replica: {} }));
 
-import {
-  claimOrAwait,
-  publishClaim,
-  releaseClaim,
-} from "~/v3/mollifier/idempotencyClaim.server";
-import type {
-  IdempotencyClaimResult,
-  MollifierBuffer,
-} from "@trigger.dev/redis-worker";
+import { claimOrAwait, publishClaim, releaseClaim } from "~/v3/mollifier/idempotencyClaim.server";
+import type { IdempotencyClaimResult, MollifierBuffer } from "@trigger.dev/redis-worker";
 
 type ClaimState = {
   value: string | null;
@@ -190,7 +183,7 @@ describe("publishClaim", () => {
 
   it("no-op when buffer is null", async () => {
     await expect(
-      publishClaim({ ...baseInput, token: "owner-token", runId: "run_X", buffer: null }),
+      publishClaim({ ...baseInput, token: "owner-token", runId: "run_X", buffer: null })
     ).resolves.toBeUndefined();
   });
 
@@ -201,7 +194,7 @@ describe("publishClaim", () => {
       }),
     } as unknown as MollifierBuffer;
     await expect(
-      publishClaim({ ...baseInput, token: "owner-token", runId: "run_X", buffer }),
+      publishClaim({ ...baseInput, token: "owner-token", runId: "run_X", buffer })
     ).resolves.toBeUndefined();
   });
 });
@@ -214,7 +207,9 @@ describe("releaseClaim", () => {
   });
 
   it("no-op when buffer is null", async () => {
-    await expect(releaseClaim({ ...baseInput, token: "owner-token", buffer: null })).resolves.toBeUndefined();
+    await expect(
+      releaseClaim({ ...baseInput, token: "owner-token", buffer: null })
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -250,7 +245,7 @@ describe("claim ownership token wiring", () => {
       expect.objectContaining({
         token: "owner-token-xyz",
         runId: "run_X",
-      }),
+      })
     );
   });
 
@@ -262,7 +257,7 @@ describe("claim ownership token wiring", () => {
       buffer,
     });
     expect(buffer.releaseClaim).toHaveBeenCalledWith(
-      expect.objectContaining({ token: "owner-token-xyz" }),
+      expect.objectContaining({ token: "owner-token-xyz" })
     );
   });
 });

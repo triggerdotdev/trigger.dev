@@ -59,14 +59,16 @@ export const loader = createLoaderPATApiRoute(
       },
     });
 
-    const result: GetProjectEnvironmentsResponseBody = sortEnvironments(environments).map((env) => ({
-      id: env.id,
-      slug: env.slug,
-      type: env.type,
-      isBranchableEnvironment: isBranchableEnvironment(env),
-      branchName: env.branchName,
-      paused: env.paused,
-    }));
+    const result: GetProjectEnvironmentsResponseBody = sortEnvironments(environments).map(
+      (env) => ({
+        id: env.id,
+        slug: env.slug,
+        type: env.type,
+        isBranchableEnvironment: isBranchableEnvironment(env),
+        branchName: env.branchName,
+        paused: env.paused,
+      })
+    );
 
     return json(result);
   }

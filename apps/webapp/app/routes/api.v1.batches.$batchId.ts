@@ -33,11 +33,7 @@ export const loader = createLoaderApiRoute(
       // SDK-issued tokens in the wild — a `read:runs` JWT still passes
       // batch retrieval. Per-id `read:batch:<id>` and type-level
       // `read:batch` still grant via the first element.
-      resource: (batch) =>
-        anyResource([
-          { type: "batch", id: batch.friendlyId },
-          { type: "runs" },
-        ]),
+      resource: (batch) => anyResource([{ type: "batch", id: batch.friendlyId }, { type: "runs" }]),
     },
   },
   async ({ resource: batch }) => {

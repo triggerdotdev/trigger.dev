@@ -55,7 +55,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
         // Check if it's a Prisma error
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
           return json(
-            { error: error.code === "P2025" ? "Schedule not found" : clientSafeErrorMessage(error) },
+            {
+              error: error.code === "P2025" ? "Schedule not found" : clientSafeErrorMessage(error),
+            },
             { status: error.code === "P2025" ? 404 : 422 }
           );
         } else {

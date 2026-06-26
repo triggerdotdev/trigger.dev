@@ -165,7 +165,7 @@ export class DeploymentListPresenter {
         environmentId: string;
         builtAt: Date | null;
         deployedAt: Date | null;
-        tasksCount: BigInt | null;
+        tasksCount: bigint | null;
         userId: string | null;
         userName: string | null;
         userDisplayName: string | null;
@@ -234,7 +234,12 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
         );
 
         let vercelDeploymentUrl: string | null = null;
-        if (hasVercelIntegration && deployment.integrationDeploymentId && vercelTeamSlug && vercelProjectName) {
+        if (
+          hasVercelIntegration &&
+          deployment.integrationDeploymentId &&
+          vercelTeamSlug &&
+          vercelProjectName
+        ) {
           vercelDeploymentUrl = buildVercelDeploymentUrl(
             vercelTeamSlug,
             vercelProjectName,
@@ -314,7 +319,7 @@ LIMIT ${pageSize} OFFSET ${pageSize * (page - 1)};`;
     }
 
     // Find how many deployments have been made since this version
-    const deploymentsSinceVersion = await this.#prismaClient.$queryRaw<{ count: BigInt }[]>`
+    const deploymentsSinceVersion = await this.#prismaClient.$queryRaw<{ count: bigint }[]>`
       SELECT COUNT(*) as count
       FROM ${sqlDatabaseSchema}."WorkerDeployment"
       WHERE "projectId" = ${project.id}

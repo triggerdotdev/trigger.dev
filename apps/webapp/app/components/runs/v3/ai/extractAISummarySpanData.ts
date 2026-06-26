@@ -34,10 +34,8 @@ export function extractAISummarySpanData(
   const operationName = str(ai.operationId) ?? "";
 
   // Token usage
-  const inputTokens =
-    num(aiUsage.inputTokens) ?? num(aiUsage.promptTokens) ?? 0;
-  const outputTokens =
-    num(aiUsage.outputTokens) ?? num(aiUsage.completionTokens) ?? 0;
+  const inputTokens = num(aiUsage.inputTokens) ?? num(aiUsage.promptTokens) ?? 0;
+  const outputTokens = num(aiUsage.outputTokens) ?? num(aiUsage.completionTokens) ?? 0;
   const totalTokens = num(aiUsage.totalTokens) ?? inputTokens + outputTokens;
 
   const tokensPerSecond =
@@ -63,7 +61,9 @@ export function extractAISummarySpanData(
 
   // Parse the prompt JSON to build display items
   const promptJson = str(ai.prompt);
-  const items = promptJson ? parsePromptToDisplayItems(promptJson, str(aiResponse.text)) : undefined;
+  const items = promptJson
+    ? parsePromptToDisplayItems(promptJson, str(aiResponse.text))
+    : undefined;
 
   // Count messages from the parsed prompt
   let messageCount: number | undefined;
@@ -194,4 +194,3 @@ function extractMessageContent(content: unknown): string | undefined {
   }
   return undefined;
 }
-

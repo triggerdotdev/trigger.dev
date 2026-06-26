@@ -6,13 +6,13 @@ export type SignalsEvents = {
     {
       time: Date;
       signal: NodeJS.Signals;
-    }
+    },
   ];
   SIGINT: [
     {
       time: Date;
       signal: NodeJS.Signals;
-    }
+    },
   ];
 };
 

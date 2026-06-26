@@ -12,10 +12,7 @@ export function sanitizeVercelNextUrl(url: string | undefined | null): string | 
 
   try {
     const parsed = new URL(url);
-    if (
-      parsed.protocol === "https:" &&
-      /^([a-z0-9-]+\.)*vercel\.com$/i.test(parsed.hostname)
-    ) {
+    if (parsed.protocol === "https:" && /^([a-z0-9-]+\.)*vercel\.com$/i.test(parsed.hostname)) {
       return parsed.toString();
     }
   } catch {

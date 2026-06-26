@@ -500,8 +500,8 @@ export class EventRepository implements IEventRepository {
         const isError = isCancelled
           ? false
           : typeof overrides?.isError === "boolean"
-          ? overrides.isError
-          : event.isError;
+            ? overrides.isError
+            : event.isError;
 
         const span = {
           id: event.spanId,
@@ -632,8 +632,8 @@ export class EventRepository implements IEventRepository {
         const isError = isCancelled
           ? false
           : typeof overrides?.isError === "boolean"
-          ? overrides.isError
-          : event.isError;
+            ? overrides.isError
+            : event.isError;
 
         const properties = event.properties
           ? removePrivateProperties(event.properties as Attributes)
@@ -700,7 +700,7 @@ export class EventRepository implements IEventRepository {
       { includeDebugLogs: options?.includeDebugLogs }
     )) {
       const properties = event.properties
-        ? removePrivateProperties(event.properties as Attributes) ?? {}
+        ? (removePrivateProperties(event.properties as Attributes) ?? {})
         : {};
 
       yield {
@@ -932,8 +932,8 @@ export class EventRepository implements IEventRepository {
       const isError = isCancelled
         ? false
         : typeof overrides?.isError === "boolean"
-        ? overrides.isError
-        : event.isError;
+          ? overrides.isError
+          : event.isError;
 
       const span = {
         id: event.spanId,
@@ -1199,7 +1199,7 @@ export class EventRepository implements IEventRepository {
 
     const traceId = options.spanParentAsLink
       ? generateTraceId()
-      : propagatedContext?.traceparent?.traceId ?? generateTraceId();
+      : (propagatedContext?.traceparent?.traceId ?? generateTraceId());
     const parentId = options.spanParentAsLink ? undefined : propagatedContext?.traceparent?.spanId;
     const tracestate = options.spanParentAsLink ? undefined : propagatedContext?.tracestate;
     const spanId = options.spanIdSeed

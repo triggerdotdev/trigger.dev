@@ -91,7 +91,6 @@ const PurchaseSchema = z.discriminatedUnion("action", [
   }),
 ]);
 
-
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
   const { projectParam } = ProjectParamSchema.parse(params);
@@ -147,10 +146,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
       );
     }
     if (purchaseBlockReason === "managed_billing") {
-      return json(
-        { ok: false, error: "Contact us to request more branches." } as const,
-        { status: 403 }
-      );
+      return json({ ok: false, error: "Contact us to request more branches." } as const, {
+        status: 403,
+      });
     }
 
     const submission = parse(formData, { schema: PurchaseSchema });
@@ -873,4 +871,3 @@ function updateBranchState({
   if (value > quota) return "above_quota";
   return "increase";
 }
-

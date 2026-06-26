@@ -44,11 +44,7 @@ export class SessionListPresenter {
     private readonly clickhouse: ClickHouse
   ) {}
 
-  public async call(
-    organizationId: string,
-    environmentId: string,
-    options: SessionListOptions
-  ) {
+  public async call(organizationId: string, environmentId: string, options: SessionListOptions) {
     return startActiveSpan(
       "SessionListPresenter.call",
       (span) => this.#call(organizationId, environmentId, options, span),
@@ -159,13 +155,11 @@ export class SessionListPresenter {
 
     let hasAnySessions = sessions.length > 0;
     if (!hasAnySessions) {
-      const firstSession = await startActiveSpan(
-        "SessionListPresenter.hasAnySessions",
-        () =>
-          this.replica.session.findFirst({
-            where: { runtimeEnvironmentId: environmentId },
-            select: { id: true },
-          })
+      const firstSession = await startActiveSpan("SessionListPresenter.hasAnySessions", () =>
+        this.replica.session.findFirst({
+          where: { runtimeEnvironmentId: environmentId },
+          select: { id: true },
+        })
       );
       if (firstSession) {
         hasAnySessions = true;

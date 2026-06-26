@@ -28,7 +28,10 @@ const RequestBodySchema = z.object({
 
 export async function action({ request, params }: ActionFunctionArgs) {
   try {
-    const bearer = request.headers.get("Authorization")?.replace(/^Bearer /, "").trim();
+    const bearer = request.headers
+      .get("Authorization")
+      ?.replace(/^Bearer /, "")
+      .trim();
     const isUat = !!bearer && isUserActorToken(bearer);
 
     // A delegated user-actor token authenticates as its user, like a PAT. We

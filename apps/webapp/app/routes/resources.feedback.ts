@@ -49,10 +49,7 @@ export const feedbackTypes = {
     labelTypeId: "lt_01KS54WBRYKE6DY369KPK2SS4W",
     threadTitle: "Web app: HIPAA BAA request",
   },
-} as const satisfies Record<
-  string,
-  { label: string; labelTypeId?: string; threadTitle: string }
->;
+} as const satisfies Record<string, { label: string; labelTypeId?: string; threadTitle: string }>;
 
 export type FeedbackType = keyof typeof feedbackTypes;
 

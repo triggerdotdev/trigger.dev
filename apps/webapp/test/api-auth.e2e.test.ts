@@ -177,7 +177,6 @@ describe("API bearer auth — action requests", () => {
     });
     expect(res.status).toBe(401);
   });
-
 });
 
 describe("JWT bearer auth — action requests", () => {
@@ -353,7 +352,7 @@ describe("JWT bearer auth — resource-scoped scopes", () => {
 // - multi-key resource callbacks (runs/tags/batch/tasks) — any key match grants access
 // - empty resource callbacks relying on superScopes
 describe("JWT bearer auth — behaviours to preserve through TRI-8719", () => {
-  it("custom action: type-level write:tasks scope satisfies action=\"trigger\" (auth passes)", async () => {
+  it('custom action: type-level write:tasks scope satisfies action="trigger" (auth passes)', async () => {
     const { environment } = await seedTestEnvironment(server.prisma);
     // Current SDK + MCP JWTs for task-trigger use type-level scope, e.g. write:tasks.
     // Legacy checkAuthorization passes via exact superScope match ["write:tasks", "admin"].

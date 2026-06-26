@@ -325,8 +325,8 @@ export class MarQS {
           typeof timestamp === "undefined"
             ? Date.now()
             : typeof timestamp === "number"
-            ? timestamp
-            : timestamp.getTime();
+              ? timestamp
+              : timestamp.getTime();
 
         const messagePayload: MessagePayload = {
           version: "1",

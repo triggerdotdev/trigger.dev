@@ -122,9 +122,7 @@ export function wrapVercelCallWithRecovery<T>(
 export const VercelSchemas = {
   getTeam: z.object({ slug: z.string() }).passthrough(),
 
-  getAuthUser: z
-    .object({ user: z.object({ username: z.string() }).passthrough() })
-    .passthrough(),
+  getAuthUser: z.object({ user: z.object({ username: z.string() }).passthrough() }).passthrough(),
 
   getCustomEnvironments: z
     .object({
@@ -161,9 +159,7 @@ export const VercelSchemas = {
     z.array(z.object({ id: z.string(), name: z.string() }).passthrough()),
     z
       .object({
-        projects: z.array(
-          z.object({ id: z.string(), name: z.string() }).passthrough()
-        ),
+        projects: z.array(z.object({ id: z.string(), name: z.string() }).passthrough()),
         pagination: z.unknown().optional(),
       })
       .passthrough(),

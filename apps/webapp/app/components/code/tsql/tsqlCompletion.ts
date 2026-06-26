@@ -92,8 +92,8 @@ function createFunctionCompletions(): Completion[] {
       meta.maxArgs === 0
         ? "()"
         : meta.minArgs === meta.maxArgs
-        ? `(${meta.minArgs} args)`
-        : `(${meta.minArgs}${meta.maxArgs ? `-${meta.maxArgs}` : "+"} args)`;
+          ? `(${meta.minArgs} args)`
+          : `(${meta.minArgs}${meta.maxArgs ? `-${meta.maxArgs}` : "+"} args)`;
 
     functions.push({
       label: name,
@@ -111,8 +111,8 @@ function createFunctionCompletions(): Completion[] {
       meta.maxArgs === 0
         ? "()"
         : meta.minArgs === meta.maxArgs
-        ? `(${meta.minArgs} args)`
-        : `(${meta.minArgs}${meta.maxArgs ? `-${meta.maxArgs}` : "+"} args)`;
+          ? `(${meta.minArgs} args)`
+          : `(${meta.minArgs}${meta.maxArgs ? `-${meta.maxArgs}` : "+"} args)`;
 
     functions.push({
       label: name,

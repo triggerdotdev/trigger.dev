@@ -219,7 +219,7 @@ class PrismaSecretStore implements SecretStoreProvider {
 
 export function getSecretStore<
   K extends SecretStoreOptions,
-  TOptions extends ProviderInitializationOptions[K]
+  TOptions extends ProviderInitializationOptions[K],
 >(provider: K, options?: TOptions): SecretStore {
   switch (provider) {
     case "DATABASE": {

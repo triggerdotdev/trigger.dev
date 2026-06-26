@@ -1,8 +1,5 @@
 import type { ClickHouse } from "@internal/clickhouse";
-import {
-  ClickhouseFactory,
-  type ClientType,
-} from "~/services/clickhouse/clickhouseFactory.server";
+import { ClickhouseFactory, type ClientType } from "~/services/clickhouse/clickhouseFactory.server";
 import type { OrganizationDataStoresRegistry } from "~/services/dataStores/organizationDataStoresRegistry.server";
 
 const testReplicationRegistryStub = {

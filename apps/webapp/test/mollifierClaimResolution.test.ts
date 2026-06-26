@@ -31,7 +31,7 @@ function makeConcern(prisma: { findFirst: () => Promise<unknown> }) {
   return new IdempotencyKeyConcern(
     { taskRun: { findFirst: prisma.findFirst } } as never,
     {} as never, // engine — unused on this path
-    {} as never, // traceEventConcern — unused on this path
+    {} as never // traceEventConcern — unused on this path
   );
 }
 

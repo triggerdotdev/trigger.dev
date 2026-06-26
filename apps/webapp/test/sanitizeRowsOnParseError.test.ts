@@ -90,7 +90,12 @@ describe("sanitizeUnknownInPlace", () => {
   });
 
   it("walks arrays recursively", () => {
-    const value = ["ok", `bad ${LOW_SURROGATE} value`, "also ok", { nested: `also bad ${HIGH_SURROGATE}` }];
+    const value = [
+      "ok",
+      `bad ${LOW_SURROGATE} value`,
+      "also ok",
+      { nested: `also bad ${HIGH_SURROGATE}` },
+    ];
     const result = sanitizeUnknownInPlace(value);
     expect(result.fixed).toBe(2);
     expect(value[1]).toBe(INVALID_UTF16_SENTINEL);
@@ -196,9 +201,9 @@ describe("sanitizeUnknownInPlace", () => {
     };
     const result = sanitizeUnknownInPlace(row);
     expect(result.fixed).toBe(1);
-    expect(
-      (row.output.data.profiles[1].spec_format![0].platform_variables[0] as any).value
-    ).toBe("117039831458782870000");
+    expect((row.output.data.profiles[1].spec_format![0].platform_variables[0] as any).value).toBe(
+      "117039831458782870000"
+    );
     // Untouched neighbours
     expect(row.output.data.profiles[0].module).toBe("linktree");
     expect(row.output.data.profiles[1].spec_format![0].platform_variables[0].type).toBe("int");

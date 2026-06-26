@@ -80,19 +80,22 @@ const schema = z.object({
     if (i === "true") return true;
     return false;
   }, z.boolean()),
-  environmentIds: z.preprocess((i) => {
-    if (typeof i === "string") return [i];
+  environmentIds: z.preprocess(
+    (i) => {
+      if (typeof i === "string") return [i];
 
-    if (Array.isArray(i)) {
-      const ids = i.filter((v) => typeof v === "string" && v !== "");
-      if (ids.length === 0) {
-        return;
+      if (Array.isArray(i)) {
+        const ids = i.filter((v) => typeof v === "string" && v !== "");
+        if (ids.length === 0) {
+          return;
+        }
+        return ids;
       }
-      return ids;
-    }
 
-    return;
-  }, z.array(z.string(), { required_error: "At least one environment is required" })),
+      return;
+    },
+    z.array(z.string(), { required_error: "At least one environment is required" })
+  ),
   variables: z.preprocess((i) => {
     if (!Array.isArray(i)) {
       return [];
@@ -222,7 +225,9 @@ export default function Page() {
 
   // TODO for no we only support branch-specific env vars for Preview environments
   // Mostly to keep the UX for setting consistent env-vars across Dev/Staging/Prod easier
-  const previewBranches = environments.filter((env) => env.type === "PREVIEW" && env.parentEnvironmentId !== null);
+  const previewBranches = environments.filter(
+    (env) => env.type === "PREVIEW" && env.parentEnvironmentId !== null
+  );
   const nonBranchEnvironments = environments.filter((env) => env.parentEnvironmentId === null);
   const selectedEnvironments = environments.filter((env) => selectedEnvironmentIds.has(env.id));
   const previewIsSelected = selectedEnvironments.some((env) => env.type === "PREVIEW");

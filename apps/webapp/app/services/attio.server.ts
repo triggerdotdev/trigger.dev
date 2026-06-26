@@ -33,7 +33,11 @@ class AttioClient {
   constructor(private readonly apiKey: string) {}
 
   // Create-or-update by unique attribute; returns the record id. Throws on failure so the worker retries.
-  async #assert(object: string, matchingAttribute: string, values: Record<string, unknown>): Promise<string> {
+  async #assert(
+    object: string,
+    matchingAttribute: string,
+    values: Record<string, unknown>
+  ): Promise<string> {
     const url = `${ATTIO_API}/objects/${object}/records?matching_attribute=${matchingAttribute}`;
     const response = await fetch(url, {
       method: "PUT",
@@ -43,7 +47,12 @@ class AttioClient {
 
     if (!response.ok) {
       const body = await response.text();
-      logger.error("Attio assert failed", { object, matchingAttribute, status: response.status, body });
+      logger.error("Attio assert failed", {
+        object,
+        matchingAttribute,
+        status: response.status,
+        body,
+      });
       throw new Error(`Attio assert ${object} failed with status ${response.status}`);
     }
 
@@ -105,7 +114,11 @@ export async function enqueueAttioWorkspaceSync(payload: AttioWorkspaceSync) {
   try {
     // Lazy import to avoid a circular dependency with commonWorker (which imports this module's schemas).
     const { commonWorker } = await import("~/v3/commonWorker.server");
-    await commonWorker.enqueue({ id: `attio:workspace:${payload.orgId}`, job: "attio.syncWorkspace", payload });
+    await commonWorker.enqueue({
+      id: `attio:workspace:${payload.orgId}`,
+      job: "attio.syncWorkspace",
+      payload,
+    });
   } catch (error) {
     logger.error("Failed to enqueue Attio workspace sync", { orgId: payload.orgId, error });
   }
@@ -115,7 +128,11 @@ export async function enqueueAttioUserSync(payload: AttioUserSync) {
   if (!attioClient) return;
   try {
     const { commonWorker } = await import("~/v3/commonWorker.server");
-    await commonWorker.enqueue({ id: `attio:user:${payload.userId}`, job: "attio.syncUser", payload });
+    await commonWorker.enqueue({
+      id: `attio:user:${payload.userId}`,
+      job: "attio.syncUser",
+      payload,
+    });
   } catch (error) {
     logger.error("Failed to enqueue Attio user sync", { userId: payload.userId, error });
   }

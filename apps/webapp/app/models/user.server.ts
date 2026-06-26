@@ -395,7 +395,14 @@ export function updateUser({
 }) {
   return prisma.user.update({
     where: { id },
-    data: { name, email, marketingEmails, referralSource, onboardingData, confirmedBasicDetails: true },
+    data: {
+      name,
+      email,
+      marketingEmails,
+      referralSource,
+      onboardingData,
+      confirmedBasicDetails: true,
+    },
   });
 }
 

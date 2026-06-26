@@ -2,10 +2,7 @@ import { json } from "@remix-run/server-runtime";
 import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import { $replica } from "~/db.server";
-import {
-  anyResource,
-  createLoaderApiRoute,
-} from "~/services/routeBuilders/apiBuilder.server";
+import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
@@ -24,13 +21,13 @@ const ParamsSchema = z.object({
 // pass-through control case in scripts/mollifier-api-parity.sh).
 type ResolvedRun =
   | { source: "pg"; run: Awaited<ReturnType<typeof findPgRun>> & {} }
-  | { source: "buffer"; run: NonNullable<Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>>> };
+  | {
+      source: "buffer";
+      run: NonNullable<Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>>>;
+    };
 
 async function findPgRun(runId: string, environmentId: string) {
-  return runStore.findRun(
-    { friendlyId: runId, runtimeEnvironmentId: environmentId },
-    $replica
-  );
+  return runStore.findRun({ friendlyId: runId, runtimeEnvironmentId: environmentId }, $replica);
 }
 
 export const loader = createLoaderApiRoute(

@@ -224,7 +224,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         ? undefined
         : regionForDisplay(run.region, run.workerQueue),
     regions: regionsResult.regions,
-    ttlSeconds: run.ttl ? parseDuration(run.ttl, "s") ?? undefined : undefined,
+    ttlSeconds: run.ttl ? (parseDuration(run.ttl, "s") ?? undefined) : undefined,
     idempotencyKey: run.idempotencyKey,
     runTags: run.runTags,
     payload,

@@ -246,7 +246,11 @@ export class BranchesPresenter {
         branchName: branch.branchName ?? DEFAULT_DEV_BRANCH,
       }));
 
-    const branchesWithActivity = await hydrateEnvsWithActivity(userId, project.id, branchesFiltered);
+    const branchesWithActivity = await hydrateEnvsWithActivity(
+      userId,
+      project.id,
+      branchesFiltered
+    );
     const branchesSorted = sortEnvironments(branchesWithActivity);
 
     return {
@@ -267,7 +271,7 @@ export class BranchesPresenter {
 }
 
 export async function hydrateEnvsWithActivity<
-  T extends { type: RuntimeEnvironmentType; id: string }
+  T extends { type: RuntimeEnvironmentType; id: string },
 >(
   userId: string,
   projectId: string,
