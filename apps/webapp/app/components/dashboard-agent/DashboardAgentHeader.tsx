@@ -14,7 +14,7 @@ export function DashboardAgentHeader({
 }) {
   return (
     <div className="flex items-center justify-between border-b border-grid-bright px-3 py-2">
-      <span className="text-sm font-medium text-text-bright">Dashboard agent</span>
+      <span className="text-sm font-medium text-text-bright">Chat</span>
       <div className="flex items-center gap-0.5">
         <IconButton label="New chat" icon={PencilSquareIcon} onClick={onNewChat} />
         <IconButton

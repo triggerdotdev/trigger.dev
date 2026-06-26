@@ -8,6 +8,7 @@ import { Header2 } from "./Headers";
 import { LoadingBarDivider } from "./LoadingBarDivider";
 import { SimpleTooltip } from "./Tooltip";
 import { EnvironmentBanner } from "../navigation/EnvironmentBanner";
+import { DashboardAgentLauncher } from "../dashboard-agent/dashboardAgentLauncher";
 
 type WithChildren = {
   children: React.ReactNode;
@@ -24,7 +25,10 @@ export function NavBar({ children }: WithChildren) {
   return (
     <div>
       <div className="grid h-10 w-full grid-rows-[auto_1px] bg-background-bright">
-        <div className="flex w-full items-center justify-between pl-3 pr-2">{children}</div>
+        <div className="flex w-full items-center gap-2 pl-3 pr-2">
+          <div className="flex flex-1 items-center justify-between">{children}</div>
+          <DashboardAgentLauncher />
+        </div>
         <LoadingBarDivider isLoading={isLoading} />
       </div>
       {showUpgradePrompt.shouldShow && organization ? <UpgradePrompt /> : <EnvironmentBanner />}
