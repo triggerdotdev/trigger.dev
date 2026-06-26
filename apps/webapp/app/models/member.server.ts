@@ -1,4 +1,4 @@
-import { type Prisma, prisma } from "~/db.server";
+import { prisma } from "~/db.server";
 import { createEnvironment } from "./organization.server";
 import { customAlphabet } from "nanoid";
 import { logger } from "~/services/logger.server";
@@ -119,35 +119,38 @@ export async function inviteMembers({
     throw new Error("User does not have access to this organization");
   }
 
-  const invites = [...new Set(emails)].map(
-    (email) =>
-      ({
-        email,
-        token: tokenGenerator(),
-        organizationId: org.id,
-        inviterId: userId,
-        role: "MEMBER",
-        rbacRoleId: rbacRoleId ?? null,
-      } satisfies Prisma.OrgMemberInviteCreateManyInput)
+  // Re-inviting an already-invited email is treated as a resend with
+  // last-write-wins semantics: the role and inviter are refreshed, the
+  // token is kept so previously-emailed links remain valid.
+  return await Promise.all(
+    [...new Set(emails)].map((email) =>
+      prisma.orgMemberInvite.upsert({
+        where: {
+          organizationId_email: {
+            organizationId: org.id,
+            email,
+          },
+        },
+        create: {
+          email,
+          token: tokenGenerator(),
+          organizationId: org.id,
+          inviterId: userId,
+          role: "MEMBER",
+          rbacRoleId: rbacRoleId ?? null,
+        },
+        update: {
+          inviterId: userId,
+          role: "MEMBER",
+          rbacRoleId: rbacRoleId ?? null,
+        },
+        include: {
+          organization: true,
+          inviter: true,
+        },
+      })
+    )
   );
-
-  await prisma.orgMemberInvite.createMany({
-    data: invites,
-  });
-
-  return await prisma.orgMemberInvite.findMany({
-    where: {
-      organizationId: org.id,
-      inviterId: userId,
-      email: {
-        in: emails,
-      },
-    },
-    include: {
-      organization: true,
-      inviter: true,
-    },
-  });
 }
 
 export async function getInviteFromToken({ token }: { token: string }) {
@@ -165,7 +168,7 @@ export async function getInviteFromToken({ token }: { token: string }) {
 export async function getUsersInvites({ email }: { email: string }) {
   return await prisma.orgMemberInvite.findMany({
     where: {
-      email,
+      email: { equals: email, mode: "insensitive" },
       organization: {
         deletedAt: null,
       },
@@ -189,7 +192,7 @@ export async function acceptInvite({
     const invite = await tx.orgMemberInvite.delete({
       where: {
         id: inviteId,
-        email: user.email,
+        email: { equals: user.email, mode: "insensitive" },
       },
       include: {
         organization: {
@@ -223,10 +226,19 @@ export async function acceptInvite({
       });
     }
 
-    // 4. Check for other invites
+    // 4. Consume any case-variant duplicate invites for this org (rows
+    // created before invite emails were lowercased)
+    await tx.orgMemberInvite.deleteMany({
+      where: {
+        organizationId: invite.organizationId,
+        email: { equals: user.email, mode: "insensitive" },
+      },
+    });
+
+    // 5. Check for other invites
     const remainingInvites = await tx.orgMemberInvite.findMany({
       where: {
-        email: user.email,
+        email: { equals: user.email, mode: "insensitive" },
       },
     });
 
@@ -283,10 +295,10 @@ export async function declineInvite({
 }) {
   return await prisma.$transaction(async (tx) => {
     //1. delete invite
-    const declinedInvite = await prisma.orgMemberInvite.delete({
+    const declinedInvite = await tx.orgMemberInvite.delete({
       where: {
         id: inviteId,
-        email: user.email,
+        email: { equals: user.email, mode: "insensitive" },
       },
       include: {
         organization: true,
@@ -294,9 +306,9 @@ export async function declineInvite({
     });
 
     //2. check for other invites
-    const remainingInvites = await prisma.orgMemberInvite.findMany({
+    const remainingInvites = await tx.orgMemberInvite.findMany({
       where: {
-        email: user.email,
+        email: { equals: user.email, mode: "insensitive" },
       },
     });
 

@@ -158,7 +158,7 @@ const schema = z.object({
     }
 
     return [""];
-  }, z.string().email().array().nonempty("At least one email is required")),
+  }, z.string().trim().toLowerCase().email().array().nonempty("At least one email is required")),
   rbacRoleId: z.string().optional(),
 });
 
