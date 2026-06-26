@@ -24,6 +24,28 @@ import type { InferUITools, ModelMessage, ToolSet, UIDataTypes, UIMessage } from
  */
 export const PENDING_MESSAGE_INJECTED_TYPE = "data-pending-message-injected" as const;
 
+/** Trigger.dev Cloud api host. */
+export const CLOUD_API_BASE_URL = "https://api.trigger.dev";
+
+/**
+ * Trigger.dev Cloud host that serves realtime chat-session endpoints
+ * (`/realtime/v1/sessions/*`). These are long-lived SSE reads and frequent
+ * input appends, so Cloud serves them from a dedicated host rather than
+ * loading the api service. Mirrors the worker-side `STREAM_ORIGIN` config.
+ */
+export const CLOUD_STREAM_BASE_URL = "https://realtime.trigger.dev";
+
+/**
+ * Map a chat client base URL to the host that should serve its realtime
+ * session endpoints. On Trigger.dev Cloud the realtime endpoints live on a
+ * dedicated host, so the Cloud api host is routed there. Any other base URL (a
+ * custom domain or a self-hosted instance) is returned unchanged, since those
+ * serve realtime on the same origin as the api.
+ */
+export function resolveChatStreamBaseURL(baseURL: string): string {
+  return baseURL.replace(/\/$/, "") === CLOUD_API_BASE_URL ? CLOUD_STREAM_BASE_URL : baseURL;
+}
+
 /**
  * The wire payload shape sent by `TriggerChatTransport`.
  * Uses `metadata` to match the AI SDK's `ChatRequestOptions` field name.
