@@ -108,8 +108,11 @@ const EnvironmentSchema = z
     DASHBOARD_AGENT_SECRET_KEY: z.string().optional(),
     // Global default for the `hasDashboardAgentAccess` flag. "0" (off) ships the
     // agent dark; flip to "1" to enable it for everyone at GA. Per-org overrides
-    // (org featureFlags) and admins/impersonators win regardless.
+    // (org featureFlags) win regardless.
     DASHBOARD_AGENT_ENABLED: z.string().default("0"),
+    // "1" gives admins/impersonators an everywhere-preview (default off),
+    // separate from the per-org rollout flag above.
+    DASHBOARD_AGENT_ADMIN_PREVIEW: z.string().default("0"),
     // Anthropic key for the dashboard agent's Head Start route only (the warm
     // first-turn step-1 LLM call runs in this process). The agent run itself
     // uses its own key on the Trigger side. When unset, Head Start is disabled
