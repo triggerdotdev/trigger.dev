@@ -610,6 +610,32 @@ export class MollifierBuffer {
     return { count: result[0], tripped: result[1] === 1 };
   }
 
+  // Fleet-wide variant of `evaluateTrip`. Every trigger increments the SAME
+  // fixed-window counter regardless of which env it belongs to, so the gate
+  // bounds the *aggregate* trigger.run rate — the thing that actually saturates
+  // shared infra (the primary DB), and which per-env tripping structurally
+  // cannot bound (N envs each just under their per-env threshold sum to N× the
+  // intended ceiling). Used when the gate runs in "global" mode. Reuses the
+  // same Lua as the per-env path; only the keys differ. The `{global}` hash tag
+  // keeps both keys in one slot so the two-key script is Cluster-safe.
+  async evaluateTripGlobal(options: {
+    windowMs: number;
+    threshold: number;
+    holdMs: number;
+  }): Promise<{ tripped: boolean; count: number }> {
+    const rateKey = "mollifier:rate:{global}";
+    const trippedKey = "mollifier:tripped:{global}";
+    const result = (await this.redis.mollifierEvaluateTrip(
+      rateKey,
+      trippedKey,
+      String(options.windowMs),
+      String(options.threshold),
+      String(options.holdMs),
+    )) as [number, number];
+
+    return { count: result[0], tripped: result[1] === 1 };
+  }
+
   async close(): Promise<void> {
     await this.redis.quit();
   }
