@@ -160,9 +160,8 @@ describe("RunEngine dequeuing", () => {
         expect(executionDataBefore.snapshot.executionStatus).toBe("PENDING_EXECUTING");
 
         // Verify run is in concurrency
-        const envConcurrencyBefore = await engine.runQueue.currentConcurrencyOfEnvironment(
-          authenticatedEnvironment
-        );
+        const envConcurrencyBefore =
+          await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
         expect(envConcurrencyBefore).toBe(1);
 
         // Simulate DB failure fallback: call nackMessage directly via Redis
@@ -174,9 +173,8 @@ describe("RunEngine dequeuing", () => {
 
         // Verify concurrency is cleared - this is the key fix!
         // Without this fix, the run would stay in concurrency sets forever
-        const envConcurrencyAfter = await engine.runQueue.currentConcurrencyOfEnvironment(
-          authenticatedEnvironment
-        );
+        const envConcurrencyAfter =
+          await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
         expect(envConcurrencyAfter).toBe(0);
 
         // Verify the message is back in the queue

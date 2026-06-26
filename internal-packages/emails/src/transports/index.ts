@@ -18,7 +18,7 @@ export type PlainTextMailMessage = {
   replyTo: string;
   subject: string;
   text: string;
-}
+};
 
 export interface MailTransport {
   send(message: MailMessage): Promise<void>;
@@ -33,13 +33,13 @@ export class EmailError extends Error {
 }
 
 export type MailTransportOptions =
-  AwsSesMailTransportOptions |
-  ResendMailTransportOptions |
-  NullMailTransportOptions |
-  SmtpMailTransportOptions
+  | AwsSesMailTransportOptions
+  | ResendMailTransportOptions
+  | NullMailTransportOptions
+  | SmtpMailTransportOptions;
 
 export function constructMailTransport(options: MailTransportOptions): MailTransport {
-  switch(options.type) {
+  switch (options.type) {
     case "aws-ses":
       return new AwsSesMailTransport(options);
     case "resend":

@@ -80,11 +80,7 @@ export class WeightedScheduler extends BaseScheduler {
     consumerId: string,
     context: SchedulerContext
   ): Promise<TenantQueues[]> {
-    const snapshot = await this.#getOrCreateSnapshot(
-      masterQueueShard,
-      consumerId,
-      context
-    );
+    const snapshot = await this.#getOrCreateSnapshot(masterQueueShard, consumerId, context);
 
     if (snapshot.queues.length === 0) {
       return [];
@@ -431,4 +427,3 @@ export class WeightedScheduler extends BaseScheduler {
     return result;
   }
 }
-

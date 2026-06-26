@@ -174,7 +174,11 @@ function curateTrace(data: unknown) {
     for (const child of span.children ?? []) walk(child, depth + 1);
   };
   walk(root, 0);
-  return { traceId: (data as any)?.trace?.traceId, spans, truncated: spans.length >= MAX_TRACE_SPANS };
+  return {
+    traceId: (data as any)?.trace?.traceId,
+    spans,
+    truncated: spans.length >= MAX_TRACE_SPANS,
+  };
 }
 
 function curateErrors(data: unknown) {
@@ -260,7 +264,13 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
     if (!result.ok) return null;
     const d = result.data as Partial<RepoSnapshot> | undefined;
     if (!d?.tarballUrl || !d.owner || !d.repo || !d.sha) return null;
-    return { tarballUrl: d.tarballUrl, owner: d.owner, repo: d.repo, sha: d.sha, defaultBranch: d.defaultBranch };
+    return {
+      tarballUrl: d.tarballUrl,
+      owner: d.owner,
+      repo: d.repo,
+      sha: d.sha,
+      defaultBranch: d.defaultBranch,
+    };
   };
 
   const apiTools: ToolSet = {
@@ -280,7 +290,11 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         if (!hasAuth) return NO_AUTH;
         const ref = inputRef ?? projectRef;
         if (!ref) return { error: "No project ref available. Ask the user which project." };
-        const result = await apiGet(origin, `/api/v1/projects/${ref}/environments`, userActorToken!);
+        const result = await apiGet(
+          origin,
+          `/api/v1/projects/${ref}/environments`,
+          userActorToken!
+        );
         if (!result.ok) return { error: `Couldn't list environments (status ${result.status}).` };
         return curateEnvironments(result.data);
       },
@@ -340,7 +354,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         const envJwt = await getEnvJwt();
         if (!envJwt) return { error: "No current environment is available to read runs from." };
         const result = await apiGet(origin, `/api/v1/runs/${runId}/trace`, envJwt);
-        if (!result.ok) return { error: `Couldn't get the trace for ${runId} (status ${result.status}).` };
+        if (!result.ok)
+          return { error: `Couldn't get the trace for ${runId} (status ${result.status}).` };
         return curateTrace(result.data);
       },
     }),
@@ -368,7 +383,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         const envJwt = await getEnvJwt();
         if (!envJwt) return { error: "No current environment is available to read errors from." };
         const result = await apiGet(origin, `/api/v1/errors/${errorId}`, envJwt);
-        if (!result.ok) return { error: `Couldn't get error ${errorId} (status ${result.status}).` };
+        if (!result.ok)
+          return { error: `Couldn't get error ${errorId} (status ${result.status}).` };
         return curateError(result.data);
       },
     }),
@@ -379,7 +395,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         const envJwt = await getEnvJwt();
         if (!envJwt) return { error: "No current environment is available to query." };
         const result = await apiGet(origin, "/api/v1/query/schema", envJwt);
-        if (!result.ok) return { error: `Couldn't load the query schema (status ${result.status}).` };
+        if (!result.ok)
+          return { error: `Couldn't load the query schema (status ${result.status}).` };
         const tables = ((result.data as { tables?: any[] })?.tables ?? []) as any[];
         // No table → list what's queryable; a table → its columns.
         if (!table) {
@@ -393,7 +410,9 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         }
         const match = tables.find((t) => t.name === table);
         if (!match) {
-          return { error: `Unknown table "${table}". Available: ${tables.map((t) => t.name).join(", ")}.` };
+          return {
+            error: `Unknown table "${table}". Available: ${tables.map((t) => t.name).join(", ")}.`,
+          };
         }
         return {
           name: match.name,
@@ -433,7 +452,9 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
         // the model can fix the query rather than the turn dying.
         const data = (await res.json().catch(() => ({}))) as { results?: unknown; error?: string };
         if (!res.ok) return { error: data.error ?? `Query failed (status ${res.status}).` };
-        const rows = Array.isArray(data.results) ? (data.results as Array<Record<string, unknown>>) : [];
+        const rows = Array.isArray(data.results)
+          ? (data.results as Array<Record<string, unknown>>)
+          : [];
         const cap = 200;
         return { rows: rows.slice(0, cap), rowCount: rows.length, truncated: rows.length > cap };
       },
@@ -448,7 +469,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
       execute: async ({ question }) => {
         const url = process.env.SUPPORT_ASK_URL ?? "http://localhost:3939/api/ask";
         const secret = process.env.SUPPORT_ASK_SECRET;
-        if (!secret) return { error: "The support assistant isn't configured in this environment." };
+        if (!secret)
+          return { error: "The support assistant isn't configured in this environment." };
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 60_000);
         try {
@@ -461,7 +483,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
             }),
             signal: controller.signal,
           });
-          if (!res.ok) return { error: `The support assistant request failed (status ${res.status}).` };
+          if (!res.ok)
+            return { error: `The support assistant request failed (status ${res.status}).` };
           // The endpoint streams a UI-message SSE; accumulate the text-delta
           // chunks into the final answer (tool-output-error chunks are noise).
           const body = await res.text();
@@ -472,7 +495,8 @@ export function buildDashboardAgentTools(ctx: DashboardAgentToolContext): ToolSe
             if (!payload || payload === "[DONE]") continue;
             try {
               const chunk = JSON.parse(payload) as { type?: string; delta?: string };
-              if (chunk.type === "text-delta" && typeof chunk.delta === "string") answer += chunk.delta;
+              if (chunk.type === "text-delta" && typeof chunk.delta === "string")
+                answer += chunk.delta;
             } catch {
               // Skip keepalives / non-JSON lines.
             }

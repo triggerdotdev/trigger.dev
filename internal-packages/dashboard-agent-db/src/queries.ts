@@ -1,6 +1,12 @@
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { DashboardAgentDb } from "./client.js";
-import { chats, chatSessions, chatTurnEvals, type ChatSession, type NewChatTurnEval } from "./schema.js";
+import {
+  chats,
+  chatSessions,
+  chatTurnEvals,
+  type ChatSession,
+  type NewChatTurnEval,
+} from "./schema.js";
 
 /**
  * The access-pattern layer. Every query that touches user data is scoped by
@@ -64,11 +70,7 @@ export async function getChatMessages(
     .select({ messages: chats.messages })
     .from(chats)
     .where(
-      and(
-        eq(chats.id, params.chatId),
-        eq(chats.userId, params.userId),
-        isNull(chats.deletedAt)
-      )
+      and(eq(chats.id, params.chatId), eq(chats.userId, params.userId), isNull(chats.deletedAt))
     )
     .limit(1);
   return rows[0]?.messages ?? null;
@@ -175,11 +177,7 @@ export async function setChatTitleIfDefault(
     .update(chats)
     .set({ title: params.title, updatedAt: sql`now()` })
     .where(
-      and(
-        eq(chats.id, params.chatId),
-        eq(chats.title, DEFAULT_CHAT_TITLE),
-        isNull(chats.deletedAt)
-      )
+      and(eq(chats.id, params.chatId), eq(chats.title, DEFAULT_CHAT_TITLE), isNull(chats.deletedAt))
     );
 }
 

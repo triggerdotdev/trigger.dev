@@ -200,7 +200,9 @@ export type RealtimeDefinedInputStream<TData> = {
    * then suspends via `.wait()` if no data arrives. If data arrives during
    * the idle phase the task responds instantly without suspending.
    */
-  waitWithIdleTimeout: (options: InputStreamWaitWithIdleTimeoutOptions) => Promise<{ ok: true; output: TData } | { ok: false; error?: any }>;
+  waitWithIdleTimeout: (
+    options: InputStreamWaitWithIdleTimeoutOptions
+  ) => Promise<{ ok: true; output: TData } | { ok: false; error?: any }>;
   /**
    * Send data to this input stream on a specific run.
    * This is used from outside the task (e.g., from your backend or another task).
@@ -272,9 +274,8 @@ export type InputStreamWaitWithIdleTimeoutOptions = {
   skipSuspend?: boolean;
 };
 
-export type InferInputStreamType<T> = T extends RealtimeDefinedInputStream<infer TData>
-  ? TData
-  : unknown;
+export type InferInputStreamType<T> =
+  T extends RealtimeDefinedInputStream<infer TData> ? TData : unknown;
 
 /**
  * Internal record format for multiplexed input stream data on S2.

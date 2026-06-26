@@ -52,7 +52,10 @@ describe("StandardSessionStreamManager — minTimestamp filter", () => {
       { id: "0", chunk: { kind: "message", payload: { id: "u1" } }, timestamp: 1000 },
       { id: "1", chunk: { kind: "message", payload: { id: "u2" } }, timestamp: 2000 },
     ];
-    const manager = new StandardSessionStreamManager(singleShotApiClient(records), "http://localhost");
+    const manager = new StandardSessionStreamManager(
+      singleShotApiClient(records),
+      "http://localhost"
+    );
 
     const first = await manager.once(sessionId, io);
     expect(first).toEqual({ ok: true, output: { kind: "message", payload: { id: "u1" } } });
@@ -70,7 +73,10 @@ describe("StandardSessionStreamManager — minTimestamp filter", () => {
       { id: "1", chunk: { kind: "message", payload: { id: "u2" } }, timestamp: 2000 },
       { id: "2", chunk: { kind: "message", payload: { id: "u3" } }, timestamp: 3000 },
     ];
-    const manager = new StandardSessionStreamManager(singleShotApiClient(records), "http://localhost");
+    const manager = new StandardSessionStreamManager(
+      singleShotApiClient(records),
+      "http://localhost"
+    );
 
     // Cutoff at 2000 (inclusive: `<=` is dropped). Only u3 should pass.
     manager.setMinTimestamp(sessionId, io, 2000);
@@ -86,7 +92,10 @@ describe("StandardSessionStreamManager — minTimestamp filter", () => {
     const records = [
       { id: "0", chunk: { kind: "message", payload: { id: "u1" } }, timestamp: 1000 },
     ];
-    const manager = new StandardSessionStreamManager(singleShotApiClient(records), "http://localhost");
+    const manager = new StandardSessionStreamManager(
+      singleShotApiClient(records),
+      "http://localhost"
+    );
 
     manager.setMinTimestamp(sessionId, io, 5000);
     manager.setMinTimestamp(sessionId, io, undefined);
@@ -99,9 +108,7 @@ describe("StandardSessionStreamManager — minTimestamp filter", () => {
   });
 
   it("filter is per-(sessionId, io) and doesn't bleed across streams", async () => {
-    const inApi = singleShotApiClient([
-      { id: "0", chunk: { kind: "in-record" }, timestamp: 1000 },
-    ]);
+    const inApi = singleShotApiClient([{ id: "0", chunk: { kind: "in-record" }, timestamp: 1000 }]);
     const manager = new StandardSessionStreamManager(inApi, "http://localhost");
 
     manager.setMinTimestamp(sessionId, "in", 5000);
@@ -137,7 +144,10 @@ describe("StandardSessionStreamManager — minTimestamp filter", () => {
     const records = [
       { id: "0", chunk: { kind: "message", payload: { id: "u1" } }, timestamp: 1000 },
     ];
-    const manager = new StandardSessionStreamManager(singleShotApiClient(records), "http://localhost");
+    const manager = new StandardSessionStreamManager(
+      singleShotApiClient(records),
+      "http://localhost"
+    );
 
     manager.setMinTimestamp(sessionId, io, 5000);
     manager.reset();

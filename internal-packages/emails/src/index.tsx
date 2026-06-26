@@ -2,9 +2,7 @@ import { ReactElement } from "react";
 
 import { z } from "zod";
 import AlertAttemptFailureEmail, { AlertAttemptEmailSchema } from "../emails/alert-attempt-failure";
-import AlertErrorGroupEmail, {
-  AlertErrorGroupEmailSchema,
-} from "../emails/alert-error-group";
+import AlertErrorGroupEmail, { AlertErrorGroupEmailSchema } from "../emails/alert-error-group";
 import AlertRunFailureEmail, { AlertRunEmailSchema } from "../emails/alert-run-failure";
 import { setGlobalBasePath } from "../emails/components/BasePath";
 import AlertDeploymentFailureEmail, {

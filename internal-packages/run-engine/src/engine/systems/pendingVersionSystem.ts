@@ -73,8 +73,8 @@ export class PendingVersionSystem {
 
     // Step 1: ask the injected lookup (typically ClickHouse-backed) for
     // candidate run ids. Best-effort — results may be stale or incomplete.
-    const { runIds: candidateIds } = await this.$.pendingVersionRunIdLookup
-      .lookupPendingVersionRunIds({
+    const { runIds: candidateIds } =
+      await this.$.pendingVersionRunIdLookup.lookupPendingVersionRunIds({
         organizationId: backgroundWorker.runtimeEnvironment.organizationId,
         projectId: backgroundWorker.projectId,
         environmentId: backgroundWorker.runtimeEnvironmentId,

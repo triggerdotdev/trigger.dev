@@ -92,7 +92,9 @@ export function startDevOutput(options: DevOutputOptions) {
     const runsLink = chalkLink(cliLink("View runs", runsUrl));
 
     const runtime = chalkGrey(`[${worker.build.runtime}]`);
-    const workerStarted = chalkGrey(`Local worker ready on branch: ${branch ?? DEFAULT_DEV_BRANCH}`);
+    const workerStarted = chalkGrey(
+      `Local worker ready on branch: ${branch ?? DEFAULT_DEV_BRANCH}`
+    );
     const workerVersion = chalkWorker(worker.serverWorker!.version);
 
     logParts.push(workerStarted, runtime, arrow, workerVersion);
@@ -196,8 +198,8 @@ export function startDevOutput(options: DevOutputOptions) {
       !completion.ok && completion.skippedRetrying
         ? " (retrying skipped)"
         : !completion.ok && completion.retry !== undefined
-        ? ` (retrying in ${completion.retry.delay}ms)`
-        : ""
+          ? ` (retrying in ${completion.retry.delay}ms)`
+          : ""
     );
 
     const resultText = !completion.ok
@@ -211,8 +213,8 @@ export function startDevOutput(options: DevOutputOptions) {
     const errorText = !completion.ok
       ? formatErrorLog(completion.error)
       : "retry" in completion
-      ? `retry in ${completion.retry}ms`
-      : "";
+        ? `retry in ${completion.retry}ms`
+        : "";
 
     const elapsedText = chalkGrey(
       `(${formatDurationMilliseconds(durationMs, { style: "short" })})`

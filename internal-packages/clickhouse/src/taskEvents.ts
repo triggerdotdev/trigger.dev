@@ -213,10 +213,7 @@ export function insertTaskEventsV2(ch: ClickhouseWriter, settings?: ClickHouseSe
   });
 }
 
-export function getTraceSummaryQueryBuilderV2(
-  ch: ClickhouseReader,
-  settings?: ClickHouseSettings
-) {
+export function getTraceSummaryQueryBuilderV2(ch: ClickhouseReader, settings?: ClickHouseSettings) {
   return ch.queryBuilderFast<TaskEventSummaryV1Result>({
     name: "getTraceEventsV2",
     table: "trigger_dev.task_events_v2",
@@ -258,10 +255,7 @@ export function getTraceDetailedSummaryQueryBuilderV2(
   });
 }
 
-export function getSpanDetailsQueryBuilderV2(
-  ch: ClickhouseReader,
-  settings?: ClickHouseSettings
-) {
+export function getSpanDetailsQueryBuilderV2(ch: ClickhouseReader, settings?: ClickHouseSettings) {
   return ch.queryBuilder({
     name: "getSpanDetailsV2",
     baseQuery:
@@ -282,7 +276,6 @@ export function getTraceEventsForExportQueryBuilderV2(
     settings,
   });
 }
-
 
 // ============================================================================
 // Search Table Query Builders (for logs page, using task_events_search_v1)
@@ -350,7 +343,7 @@ export const LogDetailV2Result = z.object({
   kind: z.string(),
   status: z.string(),
   duration: z.number().or(z.string()),
-  attributes_text: z.string()
+  attributes_text: z.string(),
 });
 
 export type LogDetailV2Result = z.output<typeof LogDetailV2Result>;

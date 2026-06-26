@@ -28,7 +28,8 @@ export const systemPrompt = prompts.define({
 // repo, so the agent has the source-reading tools too.
 export const codeSystemPrompt = prompts.define({
   id: "dashboard-agent-system-code",
-  description: "System prompt for the in-dashboard agent when the project's GitHub repo is connected.",
+  description:
+    "System prompt for the in-dashboard agent when the project's GitHub repo is connected.",
   model: `anthropic:${DASHBOARD_AGENT_MODEL}`,
   content: DASHBOARD_AGENT_CODE_SYSTEM_PROMPT,
 });

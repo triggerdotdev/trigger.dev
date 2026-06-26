@@ -751,10 +751,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
   return {
     id: opts.id,
     on(handler) {
-      return inputStreams.on(
-        opts.id,
-        handler as (data: unknown) => void | Promise<void>
-      );
+      return inputStreams.on(opts.id, handler as (data: unknown) => void | Promise<void>);
     },
     once(options) {
       const ctx = taskContext.ctx;
@@ -774,9 +771,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
               attributes: {
                 [SemanticInternalAttributes.STYLE_ICON]: "streams",
                 [SemanticInternalAttributes.ENTITY_TYPE]: "input-stream",
-                ...(runId
-                  ? { [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${opts.id}` }
-                  : {}),
+                ...(runId ? { [SemanticInternalAttributes.ENTITY_ID]: `${runId}:${opts.id}` } : {}),
                 streamId: opts.id,
                 ...accessoryAttributes({
                   items: [{ text: opts.id, variant: "normal" }],
@@ -815,7 +810,6 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
           const result = await tracer.startActiveSpan(
             options?.spanName ?? `inputStream.wait()`,
             async (span) => {
-
               // 1. Block the run on the waitpoint
               const waitResponse = await apiClient.waitForWaitpointToken({
                 runFriendlyId: ctx.run.id,
@@ -839,12 +833,12 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
               const data =
                 waitResult.output !== undefined
                   ? await conditionallyImportAndParsePacket(
-                    {
-                      data: waitResult.output,
-                      dataType: waitResult.outputType ?? "application/json",
-                    },
-                    apiClient
-                  )
+                      {
+                        data: waitResult.output,
+                        dataType: waitResult.outputType ?? "application/json",
+                      },
+                      apiClient
+                    )
                   : undefined;
 
               if (waitResult.ok) {
@@ -916,9 +910,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
             span.setAttribute("wait.resolved", "skipped");
             return {
               ok: false as const,
-              error: new WaitpointTimeoutError(
-                "Idle timeout elapsed and skipSuspend is set"
-              ),
+              error: new WaitpointTimeoutError("Idle timeout elapsed and skipSuspend is set"),
             };
           }
 

@@ -20,9 +20,7 @@ import { ResultAsync } from "neverthrow";
 import { SsoFallback } from "./fallback.js";
 export type { SsoController } from "@trigger.dev/plugins";
 
-export type SsoPrismaInput =
-  | PrismaClient
-  | { primary: PrismaClient; replica: PrismaClient };
+export type SsoPrismaInput = PrismaClient | { primary: PrismaClient; replica: PrismaClient };
 
 export type SsoCreateOptions = {
   // When true, skip loading the plugin. Useful for tests and for
@@ -44,17 +42,13 @@ export class LazyController implements SsoController {
     this._init = this.load(prisma, options);
   }
 
-  private async load(
-    prisma: SsoPrismaInput,
-    options?: SsoCreateOptions
-  ): Promise<SsoController> {
+  private async load(prisma: SsoPrismaInput, options?: SsoCreateOptions): Promise<SsoController> {
     if (options?.forceFallback) {
       return new SsoFallback(prisma).create();
     }
     const moduleName = "@triggerdotdev/plugins/sso";
     const importer =
-      options?.importer ??
-      ((m: string) => import(m) as Promise<{ default: SsoPlugin }>);
+      options?.importer ?? ((m: string) => import(m) as Promise<{ default: SsoPlugin }>);
     try {
       const module = await importer(moduleName);
       const plugin: SsoPlugin = module.default;
@@ -75,10 +69,8 @@ export class LazyController implements SsoController {
       // plugin's own module name.
       const code = (err as NodeJS.ErrnoException | undefined)?.code;
       const message = err instanceof Error ? err.message : String(err);
-      const isModuleNotFound =
-        code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND";
-      const isPluginItselfMissing =
-        isModuleNotFound && message.includes(moduleName);
+      const isModuleNotFound = code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND";
+      const isPluginItselfMissing = isModuleNotFound && message.includes(moduleName);
 
       if (!isPluginItselfMissing) {
         console.error(

@@ -985,8 +985,8 @@ describe("RunEngine batchTriggerAndWait", () => {
           result.failedRunCount > 0 && result.successfulRunCount === 0
             ? "ABORTED"
             : result.failedRunCount > 0
-            ? "PARTIAL_FAILED"
-            : "PENDING";
+              ? "PARTIAL_FAILED"
+              : "PENDING";
 
         // Update batch in database
         await prisma.batchTaskRun.update({

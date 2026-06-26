@@ -303,10 +303,7 @@
       "compositePrimaryKeys": {
         "chat_turn_evals_chat_id_turn_pk": {
           "name": "chat_turn_evals_chat_id_turn_pk",
-          "columns": [
-            "chat_id",
-            "turn"
-          ]
+          "columns": ["chat_id", "turn"]
         }
       },
       "uniqueConstraints": {},

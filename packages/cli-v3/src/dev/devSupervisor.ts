@@ -1,5 +1,12 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, mkdirSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  unlinkSync,
+  existsSync,
+  mkdirSync,
+} from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as awaitTimeout } from "node:timers/promises";
@@ -83,7 +90,7 @@ class DevSupervisor implements WorkerRuntime {
   private activeRunsPath?: string;
   private watchdogPidPath?: string;
 
-  constructor(public readonly options: WorkerRuntimeOptions) { }
+  constructor(public readonly options: WorkerRuntimeOptions) {}
 
   async init(): Promise<void> {
     logger.debug("[DevSupervisor] initialized worker runtime", { options: this.options });
@@ -124,10 +131,10 @@ class DevSupervisor implements WorkerRuntime {
           : false;
 
     const maxPoolSize =
-      typeof processKeepAlive === "object" ? processKeepAlive.devMaxPoolSize ?? 25 : 25;
+      typeof processKeepAlive === "object" ? (processKeepAlive.devMaxPoolSize ?? 25) : 25;
 
     const maxExecutionsPerProcess =
-      typeof processKeepAlive === "object" ? processKeepAlive.maxExecutionsPerProcess ?? 50 : 50;
+      typeof processKeepAlive === "object" ? (processKeepAlive.maxExecutionsPerProcess ?? 50) : 50;
 
     if (enableProcessReuse) {
       logger.debug("[DevSupervisor] Enabling process reuse", {
@@ -288,10 +295,10 @@ class DevSupervisor implements WorkerRuntime {
     // Clean up files
     try {
       if (this.activeRunsPath) unlinkSync(this.activeRunsPath);
-    } catch { }
+    } catch {}
     try {
       if (this.watchdogPidPath) unlinkSync(this.watchdogPidPath);
-    } catch { }
+    } catch {}
   }
 
   #updateActiveRunsFile() {
@@ -535,7 +542,6 @@ class DevSupervisor implements WorkerRuntime {
           taskRunProcessPool: this.taskRunProcessPool,
           cwd,
           onFinished: () => {
-
             logger.debug("[DevSupervisor] Run finished", { runId: message.run.friendlyId });
 
             //stop the run controller, and remove it
@@ -910,4 +916,3 @@ function generateValidationIssueMessage(
     }
   }
 }
-

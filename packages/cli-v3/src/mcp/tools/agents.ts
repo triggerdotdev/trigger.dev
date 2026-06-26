@@ -60,9 +60,7 @@ export const listAgentsTool = {
     contents.push(
       "Use `start_agent_chat` with an agent's slug as the `agentId` to start a conversation."
     );
-    contents.push(
-      "Use `get_task_schema` with an agent's slug to see its payload schema."
-    );
+    contents.push("Use `get_task_schema` with an agent's slug to see its payload schema.");
 
     return {
       content: [{ type: "text", text: contents.join("\n") }],

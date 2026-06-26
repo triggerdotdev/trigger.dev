@@ -576,7 +576,7 @@ export class ScheduleEngine {
         // last-fire timestamp with a series of skipped slots.
         const carriedLastScheduleTime = shouldTrigger
           ? scheduleTimestamp
-          : params.lastScheduleTime ?? instance.lastScheduledTimestamp ?? undefined;
+          : (params.lastScheduleTime ?? instance.lastScheduledTimestamp ?? undefined);
 
         const [nextRunError] = await tryCatch(
           this.registerNextTaskScheduleInstance({

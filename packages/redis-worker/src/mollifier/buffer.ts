@@ -55,7 +55,7 @@ export function mollifierReconnectDelayMs(
   times: number,
   random: () => number = Math.random,
   stepMs: number = DEFAULT_RECONNECT_STEP_MS,
-  maxMs: number = DEFAULT_RECONNECT_MAX_MS,
+  maxMs: number = DEFAULT_RECONNECT_MAX_MS
 ): number {
   const base = Math.min(times * stepMs, maxMs);
   const half = Math.floor(base / 2);
@@ -73,11 +73,7 @@ export type SnapshotPatch =
   | { type: "set_delay"; delayUntil: string }
   | { type: "mark_cancelled"; cancelledAt: string; cancelReason?: string };
 
-export type MutateSnapshotResult =
-  | "applied_to_snapshot"
-  | "not_found"
-  | "busy"
-  | "limit_exceeded";
+export type MutateSnapshotResult = "applied_to_snapshot" | "not_found" | "busy" | "limit_exceeded";
 
 export type CasSetMetadataResult =
   | { kind: "applied"; newVersion: number }
@@ -160,7 +156,7 @@ export class MollifierBuffer {
         onError: (error) => {
           this.logger.error("MollifierBuffer redis client error:", { error });
         },
-      },
+      }
     );
     this.#registerCommands();
   }
@@ -216,7 +212,7 @@ export class MollifierBuffer {
       String(createdAtMicros),
       "mollifier:org-envs:",
       idempotencyLookupKey,
-      "mollifier:entries:",
+      "mollifier:entries:"
     );
     // Lua returns 1 (accepted), 0 (duplicate runId), or a string runId
     // (duplicate idempotency — value is the existing winner's runId).
@@ -237,7 +233,7 @@ export class MollifierBuffer {
       DRAINING_SET_KEY,
       entryPrefix,
       envId,
-      "mollifier:org-envs:",
+      "mollifier:org-envs:"
     )) as string | null;
     if (!encoded) return null;
 
@@ -304,11 +300,7 @@ export class MollifierBuffer {
   // not an error.
   async listEntriesForEnv(envId: string, maxCount: number): Promise<BufferEntry[]> {
     if (maxCount <= 0) return [];
-    const runIds = await this.redis.lrange(
-      `mollifier:queue:${envId}`,
-      0,
-      maxCount - 1,
-    );
+    const runIds = await this.redis.lrange(`mollifier:queue:${envId}`, 0, maxCount - 1);
     if (runIds.length === 0) return [];
 
     const pipeline = this.redis.pipeline();
@@ -356,7 +348,7 @@ export class MollifierBuffer {
   async mutateSnapshot(runId: string, patch: SnapshotPatch): Promise<MutateSnapshotResult> {
     const result = (await this.redis.mutateMollifierSnapshot(
       `mollifier:entries:${runId}`,
-      JSON.stringify(patch),
+      JSON.stringify(patch)
     )) as string;
     if (
       result === "applied_to_snapshot" ||
@@ -386,7 +378,7 @@ export class MollifierBuffer {
       entryKey,
       String(input.expectedVersion),
       input.newMetadata,
-      input.newMetadataType,
+      input.newMetadataType
     )) as string;
     if (raw === "not_found") return { kind: "not_found" };
     if (raw === "busy") return { kind: "busy" };
@@ -417,14 +409,14 @@ export class MollifierBuffer {
   // - "resolved": the claim already holds a runId; the caller can
   //   return that runId as a cached hit.
   async claimIdempotency(
-    input: IdempotencyLookupInput & { token: string; ttlSeconds: number },
+    input: IdempotencyLookupInput & { token: string; ttlSeconds: number }
   ): Promise<IdempotencyClaimResult> {
     const claimKey = makeIdempotencyClaimKey(input);
     const raw = (await this.redis.claimMollifierIdempotency(
       claimKey,
       `${PENDING_PREFIX}${input.token}`,
       PENDING_PREFIX,
-      String(input.ttlSeconds),
+      String(input.ttlSeconds)
     )) as string;
     if (raw === "claimed") return { kind: "claimed" };
     if (raw === "pending") return { kind: "pending" };
@@ -445,14 +437,14 @@ export class MollifierBuffer {
   // Returns true if we published; false if the claim slot was no longer
   // ours.
   async publishClaim(
-    input: IdempotencyLookupInput & { token: string; runId: string; ttlSeconds: number },
+    input: IdempotencyLookupInput & { token: string; runId: string; ttlSeconds: number }
   ): Promise<boolean> {
     const claimKey = makeIdempotencyClaimKey(input);
     const result = (await this.redis.publishMollifierClaim(
       claimKey,
       `${PENDING_PREFIX}${input.token}`,
       input.runId,
-      String(input.ttlSeconds),
+      String(input.ttlSeconds)
     )) as number;
     return result === 1;
   }
@@ -466,10 +458,7 @@ export class MollifierBuffer {
   // never wiped by a slow predecessor.
   async releaseClaim(input: IdempotencyLookupInput & { token: string }): Promise<void> {
     const claimKey = makeIdempotencyClaimKey(input);
-    await this.redis.releaseMollifierClaim(
-      claimKey,
-      `${PENDING_PREFIX}${input.token}`,
-    );
+    await this.redis.releaseMollifierClaim(claimKey, `${PENDING_PREFIX}${input.token}`);
   }
 
   // Read the current claim value, used by the wait/poll loop on losers
@@ -511,7 +500,7 @@ export class MollifierBuffer {
     const clearedRunId = (await this.redis.resetMollifierIdempotency(
       lookupKey,
       "mollifier:entries:",
-      claimKey,
+      claimKey
     )) as string;
     return { clearedRunId: clearedRunId.length > 0 ? clearedRunId : null };
   }
@@ -526,7 +515,7 @@ export class MollifierBuffer {
       `mollifier:entries:${runId}`,
       DRAINING_SET_KEY,
       String(this.ackGraceTtlSeconds),
-      runId,
+      runId
     );
   }
 
@@ -537,7 +526,7 @@ export class MollifierBuffer {
       DRAINING_SET_KEY,
       "mollifier:queue:",
       runId,
-      "mollifier:org-envs:",
+      "mollifier:org-envs:"
     );
   }
 
@@ -552,7 +541,7 @@ export class MollifierBuffer {
       `mollifier:entries:${runId}`,
       DRAINING_SET_KEY,
       JSON.stringify(error),
-      runId,
+      runId
     );
     return result === 1;
   }
@@ -579,7 +568,7 @@ export class MollifierBuffer {
       String(maxScore),
       "LIMIT",
       0,
-      Math.max(0, limit),
+      Math.max(0, limit)
     );
   }
 
@@ -592,10 +581,9 @@ export class MollifierBuffer {
     return this.redis.ttl(`mollifier:entries:${runId}`);
   }
 
-
   async evaluateTrip(
     envId: string,
-    options: { windowMs: number; threshold: number; holdMs: number },
+    options: { windowMs: number; threshold: number; holdMs: number }
   ): Promise<{ tripped: boolean; count: number }> {
     const rateKey = `mollifier:rate:${envId}`;
     const trippedKey = `mollifier:tripped:${envId}`;
@@ -604,7 +592,7 @@ export class MollifierBuffer {
       trippedKey,
       String(options.windowMs),
       String(options.threshold),
-      String(options.holdMs),
+      String(options.holdMs)
     )) as [number, number];
 
     return { count: result[0], tripped: result[1] === 1 };
@@ -1171,7 +1159,7 @@ declare module "@internal/redis" {
       orgEnvsPrefix: string,
       idempotencyLookupKey: string,
       entryPrefix: string,
-      callback?: Callback<number | string>,
+      callback?: Callback<number | string>
     ): Result<number | string, Context>;
     popAndMarkDraining(
       queueKey: string,
@@ -1180,7 +1168,7 @@ declare module "@internal/redis" {
       entryPrefix: string,
       envId: string,
       orgEnvsPrefix: string,
-      callback?: Callback<string | null>,
+      callback?: Callback<string | null>
     ): Result<string | null, Context>;
     requeueMollifierEntry(
       entryKey: string,
@@ -1189,63 +1177,63 @@ declare module "@internal/redis" {
       queuePrefix: string,
       runId: string,
       orgEnvsPrefix: string,
-      callback?: Callback<number>,
+      callback?: Callback<number>
     ): Result<number, Context>;
     mutateMollifierSnapshot(
       entryKey: string,
       patchJson: string,
-      callback?: Callback<string>,
+      callback?: Callback<string>
     ): Result<string, Context>;
     casSetMollifierMetadata(
       entryKey: string,
       expectedVersion: string,
       newMetadata: string,
       newMetadataType: string,
-      callback?: Callback<string>,
+      callback?: Callback<string>
     ): Result<string, Context>;
     resetMollifierIdempotency(
       lookupKey: string,
       entryPrefix: string,
       claimKey: string,
-      callback?: Callback<string>,
+      callback?: Callback<string>
     ): Result<string, Context>;
     claimMollifierIdempotency(
       claimKey: string,
       pendingMarker: string,
       pendingPrefix: string,
       ttlSeconds: string,
-      callback?: Callback<string>,
+      callback?: Callback<string>
     ): Result<string, Context>;
     publishMollifierClaim(
       claimKey: string,
       ownerMarker: string,
       runId: string,
       ttlSeconds: string,
-      callback?: Callback<number>,
+      callback?: Callback<number>
     ): Result<number, Context>;
     releaseMollifierClaim(
       claimKey: string,
       ownerMarker: string,
-      callback?: Callback<number>,
+      callback?: Callback<number>
     ): Result<number, Context>;
     ackMollifierEntry(
       entryKey: string,
       drainingSetKey: string,
       graceTtlSeconds: string,
       runId: string,
-      callback?: Callback<number>,
+      callback?: Callback<number>
     ): Result<number, Context>;
     failMollifierEntry(
       entryKey: string,
       drainingSetKey: string,
       errorPayload: string,
       runId: string,
-      callback?: Callback<number>,
+      callback?: Callback<number>
     ): Result<number, Context>;
     delMollifierKeyIfEquals(
       key: string,
       expected: string,
-      callback?: Callback<number>,
+      callback?: Callback<number>
     ): Result<number, Context>;
     mollifierEvaluateTrip(
       rateKey: string,
@@ -1253,7 +1241,7 @@ declare module "@internal/redis" {
       windowMs: string,
       threshold: string,
       holdMs: string,
-      callback?: Callback<[number, number]>,
+      callback?: Callback<[number, number]>
     ): Result<[number, number], Context>;
   }
 }

@@ -75,10 +75,7 @@ async function main() {
     stderr: "pipe",
   });
 
-  const client = new Client(
-    { name: "mcp-smoke-test", version: "1.0.0" },
-    { capabilities: {} }
-  );
+  const client = new Client({ name: "mcp-smoke-test", version: "1.0.0" }, { capabilities: {} });
 
   await client.connect(transport);
 
@@ -95,7 +92,13 @@ async function main() {
       const duration = Date.now() - start;
 
       if (isError) {
-        results.push({ tool: name, status: "fail", duration, error: preview(text), preview: preview(text) });
+        results.push({
+          tool: name,
+          status: "fail",
+          duration,
+          error: preview(text),
+          preview: preview(text),
+        });
         return null;
       }
 
@@ -166,10 +169,14 @@ async function main() {
   if (runsText) {
     const runMatch = runsText.match(/run_\w+/);
     if (runMatch) {
-      await test("get_run_details", { ...commonArgs, runId: runMatch[0], maxTraceLines: 10 }, (text) => {
-        assert(text.includes("Run Details"), "Expected run details header");
-        assert(text.includes("Run Trace"), "Expected trace section");
-      });
+      await test(
+        "get_run_details",
+        { ...commonArgs, runId: runMatch[0], maxTraceLines: 10 },
+        (text) => {
+          assert(text.includes("Run Details"), "Expected run details header");
+          assert(text.includes("Run Trace"), "Expected trace section");
+        }
+      );
     }
   }
 
@@ -198,11 +205,20 @@ async function main() {
   });
 
   // 14. query
-  await test("query", { ...commonArgs, query: "SELECT status, count() as total FROM runs GROUP BY status ORDER BY total DESC LIMIT 5", period: "7d" }, (text) => {
-    assert(text.includes("Query Results"), "Expected results header");
-    assert(text.includes("status"), "Expected status column");
-    assert(!text.includes("```json"), "Should use text table, not JSON code block");
-  });
+  await test(
+    "query",
+    {
+      ...commonArgs,
+      query:
+        "SELECT status, count() as total FROM runs GROUP BY status ORDER BY total DESC LIMIT 5",
+      period: "7d",
+    },
+    (text) => {
+      assert(text.includes("Query Results"), "Expected results header");
+      assert(text.includes("status"), "Expected status column");
+      assert(!text.includes("```json"), "Should use text table, not JSON code block");
+    }
+  );
 
   // 15. list_dashboards
   await test("list_dashboards", commonArgs, (text) => {
@@ -211,9 +227,13 @@ async function main() {
   });
 
   // 16. run_dashboard_query
-  await test("run_dashboard_query", { ...commonArgs, dashboardKey: "overview", widgetId: "9lDDdebQ", period: "7d" }, (text) => {
-    assert(text.includes("Total runs"), "Expected widget title");
-  });
+  await test(
+    "run_dashboard_query",
+    { ...commonArgs, dashboardKey: "overview", widgetId: "9lDDdebQ", period: "7d" },
+    (text) => {
+      assert(text.includes("Total runs"), "Expected widget title");
+    }
+  );
 
   // 17. dev_server_status (should show stopped)
   await test("dev_server_status", {}, (text) => {
@@ -234,7 +254,12 @@ async function main() {
   for (const r of results) {
     const icon = r.status === "pass" ? "✓" : r.status === "fail" ? "✗" : "○";
     const dur = `${r.duration}ms`.padStart(6);
-    const status = r.status === "pass" ? "\x1b[32mpass\x1b[0m" : r.status === "fail" ? "\x1b[31mfail\x1b[0m" : "\x1b[33mskip\x1b[0m";
+    const status =
+      r.status === "pass"
+        ? "\x1b[32mpass\x1b[0m"
+        : r.status === "fail"
+          ? "\x1b[31mfail\x1b[0m"
+          : "\x1b[33mskip\x1b[0m";
 
     console.log(`  ${icon} ${r.tool.padEnd(25)} ${status} ${dur}  ${r.error ?? r.preview ?? ""}`);
 

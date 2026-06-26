@@ -55,9 +55,7 @@ function resolveSha() {
 const sha = resolveSha().slice(0, 7);
 const previewVersion = `0.0.0-preview-${sha}`;
 
-const dirs = readdirSync(PACKAGES_DIR, { withFileTypes: true }).filter((e) =>
-  e.isDirectory()
-);
+const dirs = readdirSync(PACKAGES_DIR, { withFileTypes: true }).filter((e) => e.isDirectory());
 
 // First pass: collect every public package name so we know which workspace
 // specifiers point at a sibling whose version we are about to change.

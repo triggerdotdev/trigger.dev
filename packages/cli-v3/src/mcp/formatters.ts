@@ -473,10 +473,10 @@ export function formatSpanDetail(span: RetrieveSpanDetailResponseBody): string {
   const statusIndicator = span.isCancelled
     ? "[CANCELLED]"
     : span.isError
-    ? "[ERROR]"
-    : span.isPartial
-    ? "[IN PROGRESS]"
-    : "[COMPLETED]";
+      ? "[ERROR]"
+      : span.isPartial
+        ? "[IN PROGRESS]"
+        : "[COMPLETED]";
 
   lines.push(`## Span: ${span.message} ${statusIndicator}`);
   lines.push(`Span ID: ${span.spanId}`);

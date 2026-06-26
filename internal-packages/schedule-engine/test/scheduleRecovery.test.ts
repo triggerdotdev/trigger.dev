@@ -565,7 +565,8 @@ describe("Schedule Recovery", () => {
 
         const job = await engine.getJob(`scheduled-task-instance:${scheduleInstance.id}`);
         expect(job).not.toBeNull();
-        const enqueuedLastScheduleTime = (job?.item as { lastScheduleTime?: Date }).lastScheduleTime;
+        const enqueuedLastScheduleTime = (job?.item as { lastScheduleTime?: Date })
+          .lastScheduleTime;
         // Brand-new schedule: cron's previous slot predates instance.createdAt,
         // so the function leaves lastScheduleTime undefined — the first fire
         // will report `payload.lastTimestamp: undefined` and customer first-run

@@ -139,14 +139,12 @@ export const toolsMetadata = {
   whoami: {
     name: "whoami",
     title: "Who Am I",
-    description:
-      "Show the current authenticated user, active CLI profile, email, and API URL.",
+    description: "Show the current authenticated user, active CLI profile, email, and API URL.",
   },
   list_profiles: {
     name: "list_profiles",
     title: "List Profiles",
-    description:
-      "List all configured CLI profiles. Shows which profile is currently active.",
+    description: "List all configured CLI profiles. Shows which profile is currently active.",
   },
   switch_profile: {
     name: "switch_profile",

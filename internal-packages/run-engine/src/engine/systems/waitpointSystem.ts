@@ -450,7 +450,7 @@ export class WaitpointSystem {
       // isolation, each statement gets its own snapshot. The CTE's snapshot is taken when
       // it starts, so if a concurrent completeWaitpoint commits during the CTE, the CTE
       // won't see it. This fresh query gets a new snapshot that reflects the latest commits.
-      const pendingCheck = await prisma.$queryRaw<{ pending_count: BigInt }[]>`
+      const pendingCheck = await prisma.$queryRaw<{ pending_count: bigint }[]>`
         SELECT COUNT(*) as pending_count
         FROM "Waitpoint"
         WHERE id IN (${Prisma.join($waitpoints)})

@@ -144,9 +144,7 @@ export const getQuerySchemaTool = {
 
     if (!table) {
       const available = schema.tables.map((t) => `${t.name} (${t.description ?? ""})`).join(", ");
-      return respondWithError(
-        `Table "${input.table}" not found. Available tables: ${available}`
-      );
+      return respondWithError(`Table "${input.table}" not found. Available tables: ${available}`);
     }
 
     const content = [formatSchemaTable(table)];

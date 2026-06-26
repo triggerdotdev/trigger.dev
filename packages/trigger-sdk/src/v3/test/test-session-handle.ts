@@ -27,7 +27,10 @@ import {
  * network call.
  */
 class TestSessionInputChannel extends SessionInputChannel {
-  constructor(sessionId: string, private readonly getAbortSignal: () => AbortSignal | undefined) {
+  constructor(
+    sessionId: string,
+    private readonly getAbortSignal: () => AbortSignal | undefined
+  ) {
     super(sessionId);
   }
 
@@ -35,26 +38,28 @@ class TestSessionInputChannel extends SessionInputChannel {
   // continue to flow through the real `sessionStreams` global, which
   // the mock task context installs as a `TestSessionStreamManager`.
   wait<T = unknown>(): ManualWaitpointPromise<T> {
-    return new ManualWaitpointPromise<T>((resolve: (value: { ok: false; error: Error }) => void) => {
-      const signal = this.getAbortSignal();
-      if (!signal) {
-        // Harness hasn't wired up its run signal yet — nothing to abort
-        // on. Stay pending; the run loop should never reach this state
-        // in practice but we don't want to throw here either.
-        return;
+    return new ManualWaitpointPromise<T>(
+      (resolve: (value: { ok: false; error: Error }) => void) => {
+        const signal = this.getAbortSignal();
+        if (!signal) {
+          // Harness hasn't wired up its run signal yet — nothing to abort
+          // on. Stay pending; the run loop should never reach this state
+          // in practice but we don't want to throw here either.
+          return;
+        }
+        const onAbort = () => {
+          resolve({
+            ok: false,
+            error: new Error("session.in.wait() aborted by test harness"),
+          });
+        };
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        signal.addEventListener("abort", onAbort, { once: true });
       }
-      const onAbort = () => {
-        resolve({
-          ok: false,
-          error: new Error("session.in.wait() aborted by test harness"),
-        });
-      };
-      if (signal.aborted) {
-        onAbort();
-        return;
-      }
-      signal.addEventListener("abort", onAbort, { once: true });
-    });
+    );
   }
 }
 
@@ -198,9 +203,7 @@ export class TestSessionOutputChannel extends SessionOutputChannel {
           notify(state, part);
         },
         merge(streamArg) {
-          ongoing.push(
-            drainInto(streamArg, state).catch(() => {})
-          );
+          ongoing.push(drainInto(streamArg, state).catch(() => {}));
         },
       });
 
