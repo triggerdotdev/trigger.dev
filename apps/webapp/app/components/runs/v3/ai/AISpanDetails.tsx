@@ -49,7 +49,13 @@ export function AISpanDetails({
       ? {
           slug: aiData.promptSlug,
           version: aiData.promptVersion,
-          path: v3PromptPath(organization, project, environment, aiData.promptSlug, aiData.promptVersion),
+          path: v3PromptPath(
+            organization,
+            project,
+            environment,
+            aiData.promptSlug,
+            aiData.promptVersion
+          ),
         }
       : undefined;
 
@@ -106,7 +112,11 @@ export function AISpanDetails({
       <div className="scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
         {tab === "overview" && (
           <>
-            {startTime && <div className="px-3"><SpanHorizontalTimeline startTime={startTime} duration={duration ?? null} /></div>}
+            {startTime && (
+              <div className="px-3">
+                <SpanHorizontalTimeline startTime={startTime} duration={duration ?? null} />
+              </div>
+            )}
             <OverviewTab aiData={aiData} />
           </>
         )}
@@ -168,13 +178,7 @@ function OverviewTab({ aiData }: { aiData: AISpanData }) {
   );
 }
 
-function MessagesTab({
-  aiData,
-  promptLink,
-}: {
-  aiData: AISpanData;
-  promptLink?: PromptLink;
-}) {
+function MessagesTab({ aiData, promptLink }: { aiData: AISpanData; promptLink?: PromptLink }) {
   const showFallbackText = aiData.responseText && !hasAssistantItem(aiData.items);
   const showFallbackObject =
     !showFallbackText && aiData.responseObject && !hasAssistantItem(aiData.items);
@@ -238,7 +242,10 @@ function PromptTab({
   promptLink?: PromptLink;
 }) {
   const labels = promptData.labels
-    ? promptData.labels.split(",").map((l) => l.trim()).filter(Boolean)
+    ? promptData.labels
+        .split(",")
+        .map((l) => l.trim())
+        .filter(Boolean)
     : [];
 
   return (
@@ -294,7 +301,6 @@ function PromptTab({
     </div>
   );
 }
-
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -274,7 +274,10 @@ class ManagedSupervisor {
           rampMs: env.TRIGGER_DEQUEUE_BACKPRESSURE_RAMP_MS,
           dryRun: env.TRIGGER_DEQUEUE_BACKPRESSURE_POD_COUNT_DRY_RUN,
           logger: this.logger,
-          metrics: new BackpressureMetrics({ register, prefix: "supervisor_backpressure_pod_count" }),
+          metrics: new BackpressureMetrics({
+            register,
+            prefix: "supervisor_backpressure_pod_count",
+          }),
         })
       );
       this.logger.log("🛑 Dequeue backpressure enabled (pod-count source)", {

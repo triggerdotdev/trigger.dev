@@ -241,8 +241,8 @@ export function UpsertScheduleForm({
           {schedule?.friendlyId
             ? "Edit schedule"
             : defaultTaskIdentifier
-            ? `New schedule for ${defaultTaskIdentifier}`
-            : "New schedule"}
+              ? `New schedule for ${defaultTaskIdentifier}`
+              : "New schedule"}
         </Header2>
       </div>
       <div className="overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">

@@ -122,10 +122,7 @@ describe("SSO LazyController", () => {
         const controller = new LazyController(fakePrisma, { importer });
         await controller.isUsingPlugin();
         const fallbackLogs = logSpy.mock.calls.filter((args) =>
-          args.some(
-            (a) =>
-              typeof a === "string" && a.includes("no plugin installed")
-          )
+          args.some((a) => typeof a === "string" && a.includes("no plugin installed"))
         );
         expect(fallbackLogs.length).toBe(0);
         expect(errorSpy).not.toHaveBeenCalled();
@@ -152,9 +149,7 @@ describe("SSO LazyController", () => {
         const controller = new LazyController(fakePrisma, { importer });
         await controller.isUsingPlugin();
         const fallbackLogs = logSpy.mock.calls.filter((args) =>
-          args.some(
-            (a) => typeof a === "string" && a.includes("no plugin installed")
-          )
+          args.some((a) => typeof a === "string" && a.includes("no plugin installed"))
         );
         expect(fallbackLogs.length).toBe(1);
       } finally {
@@ -170,10 +165,9 @@ describe("SSO LazyController", () => {
       const importer = vi.fn(async () => {
         // Module-not-found from a *transitive* dep, not the plugin
         // itself — its `message` won't contain the plugin's moduleName.
-        const err = Object.assign(
-          new Error(`Cannot find module 'some-transitive-dep'`),
-          { code: "ERR_MODULE_NOT_FOUND" }
-        );
+        const err = Object.assign(new Error(`Cannot find module 'some-transitive-dep'`), {
+          code: "ERR_MODULE_NOT_FOUND",
+        });
         throw err;
       });
       const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);

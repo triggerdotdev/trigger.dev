@@ -158,5 +158,4 @@ export class PromptService extends BaseService {
       WHERE "promptId" = ${promptId} AND ${label} = ANY("labels")
     `;
   }
-
 }

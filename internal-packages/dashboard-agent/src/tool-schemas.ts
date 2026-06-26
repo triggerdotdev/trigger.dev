@@ -48,12 +48,20 @@ export const listRunsSchema = tool({
     errorId: z
       .string()
       .optional()
-      .describe("Only runs that hit this error group (an error_... id from list_errors/get_error)."),
+      .describe(
+        "Only runs that hit this error group (an error_... id from list_errors/get_error)."
+      ),
     period: z
       .string()
       .optional()
       .describe("Relative window, e.g. 1h, 24h, 7d. Max 30d; larger values are capped at 30d."),
-    limit: z.number().int().positive().max(50).optional().describe("Max runs to return (default 10)."),
+    limit: z
+      .number()
+      .int()
+      .positive()
+      .max(50)
+      .optional()
+      .describe("Max runs to return (default 10)."),
   }),
 });
 
@@ -119,7 +127,9 @@ export const getQuerySchemaSchema = tool({
     table: z
       .string()
       .optional()
-      .describe("A table name (e.g. 'runs') to get its columns. Omit to list the available tables."),
+      .describe(
+        "A table name (e.g. 'runs') to get its columns. Omit to list the available tables."
+      ),
   }),
 });
 
@@ -129,11 +139,15 @@ export const runQuerySchema = tool({
   inputSchema: z.object({
     query: z
       .string()
-      .describe("The TRQL query. A read-only SELECT over runs / metrics / llm_metrics / llm_models."),
+      .describe(
+        "The TRQL query. A read-only SELECT over runs / metrics / llm_metrics / llm_models."
+      ),
     period: z
       .string()
       .optional()
-      .describe("Time window shorthand like '24h', '7d', '30d' (max 30d), applied to the table's time column."),
+      .describe(
+        "Time window shorthand like '24h', '7d', '30d' (max 30d), applied to the table's time column."
+      ),
   }),
 });
 
@@ -141,7 +155,9 @@ export const askSupportSchema = tool({
   description:
     "Ask the Trigger.dev support assistant a question about how Trigger.dev works: docs, concepts, features, configuration, best practices, and troubleshooting how-tos (e.g. 'how do retries work?', 'how do I set a concurrency limit?', 'does Trigger.dev support cron schedules?'). Use this for product/knowledge questions, NOT for the user's own runs, errors, or data (use the read and query tools for those). Returns a composed answer.",
   inputSchema: z.object({
-    question: z.string().describe("The user's question about how Trigger.dev works, in natural language."),
+    question: z
+      .string()
+      .describe("The user's question about how Trigger.dev works, in natural language."),
   }),
 });
 
@@ -183,7 +199,9 @@ export const diagnosisBlockSchema = z.object({
     .describe("Your classification of the root cause."),
   likelyCause: z
     .string()
-    .describe("The most probable root cause, in specific terms — name the code, config, or dependency."),
+    .describe(
+      "The most probable root cause, in specific terms — name the code, config, or dependency."
+    ),
   confidence: z
     .enum(["high", "medium", "low"])
     .describe("How confident you are in this diagnosis given the evidence. Be honest."),
@@ -208,7 +226,9 @@ export const diagnosisBlockSchema = z.object({
           ),
       })
     )
-    .describe("The concrete signals behind the diagnosis. Cite real ids, spans, versions, or file:line."),
+    .describe(
+      "The concrete signals behind the diagnosis. Cite real ids, spans, versions, or file:line."
+    ),
   impact: z
     .string()
     .optional()
@@ -220,7 +240,9 @@ export const diagnosisBlockSchema = z.object({
         label: z.string().describe("Button text, e.g. 'View run' or 'Read the retries docs'."),
         kind: z
           .enum(["view_run", "docs"])
-          .describe("view_run links to a run page in this environment; docs opens an external URL."),
+          .describe(
+            "view_run links to a run page in this environment; docs opens an external URL."
+          ),
         target: z.string().describe("For view_run: a run id (run_...). For docs: an https URL."),
       })
     )
@@ -244,13 +266,19 @@ export const chartBlockSchema = z.object({
   period: z
     .string()
     .optional()
-    .describe("Time window shorthand like '24h', '7d', '30d' (max 30d), applied to the table's time column."),
+    .describe(
+      "Time window shorthand like '24h', '7d', '30d' (max 30d), applied to the table's time column."
+    ),
   chartType: z
     .enum(["line", "bar"])
-    .describe("line for trends over time, bar for comparing categories. Stack with `stacked` for composition."),
+    .describe(
+      "line for trends over time, bar for comparing categories. Stack with `stacked` for composition."
+    ),
   xAxisColumn: z
     .string()
-    .describe("The result column for the x-axis: a time bucket (for line) or a category (for bar)."),
+    .describe(
+      "The result column for the x-axis: a time bucket (for line) or a category (for bar)."
+    ),
   yAxisColumns: z
     .array(z.string())
     .min(1)
@@ -258,15 +286,23 @@ export const chartBlockSchema = z.object({
   groupByColumn: z
     .string()
     .nullish()
-    .describe("Optional result column to split a single yAxisColumn into one series per distinct value."),
-  stacked: z.boolean().optional().describe("Stack the series (cumulative/composition). Default false."),
+    .describe(
+      "Optional result column to split a single yAxisColumn into one series per distinct value."
+    ),
+  stacked: z
+    .boolean()
+    .optional()
+    .describe("Stack the series (cumulative/composition). Default false."),
   aggregation: z
     .enum(["sum", "avg", "count", "min", "max"])
     .optional()
     .describe("How to combine values that share an x point. Default sum."),
 });
 
-export const viewBlockSchema = z.discriminatedUnion("type", [diagnosisBlockSchema, chartBlockSchema]);
+export const viewBlockSchema = z.discriminatedUnion("type", [
+  diagnosisBlockSchema,
+  chartBlockSchema,
+]);
 
 export type DiagnosisBlock = z.infer<typeof diagnosisBlockSchema>;
 export type ChartBlock = z.infer<typeof chartBlockSchema>;
@@ -303,7 +339,10 @@ export const listFilesSchema = tool({
     "List source files in the connected repository (respecting .gitignore). Optionally filter by a glob like '**/*.ts' or scope to a subdirectory. Use this to find where something lives before reading it.",
   inputSchema: z.object({
     glob: z.string().optional().describe("Glob filter, e.g. 'src/**/*.ts' or '*.json'."),
-    path: z.string().optional().describe("Subdirectory (relative to repo root) to scope the listing to."),
+    path: z
+      .string()
+      .optional()
+      .describe("Subdirectory (relative to repo root) to scope the listing to."),
     runId: runIdField,
   }),
 });
@@ -312,7 +351,9 @@ export const readFileSchema = tool({
   description:
     "Read a file from the connected repository by its path relative to the repo root. Optionally restrict to a line range. Use this to read the actual task source behind a run or error.",
   inputSchema: z.object({
-    path: z.string().describe("File path relative to the repo root, e.g. src/trigger/processOrder.ts."),
+    path: z
+      .string()
+      .describe("File path relative to the repo root, e.g. src/trigger/processOrder.ts."),
     startLine: z.number().int().positive().optional().describe("First line to include (1-based)."),
     endLine: z.number().int().positive().optional().describe("Last line to include (1-based)."),
     runId: runIdField,
@@ -325,7 +366,13 @@ export const searchCodeSchema = tool({
   inputSchema: z.object({
     query: z.string().describe("The ripgrep pattern to search for."),
     glob: z.string().optional().describe("Restrict the search to files matching this glob."),
-    maxResults: z.number().int().positive().max(80).optional().describe("Max matches to return (default 40)."),
+    maxResults: z
+      .number()
+      .int()
+      .positive()
+      .max(80)
+      .optional()
+      .describe("Max matches to return (default 40)."),
     runId: runIdField,
   }),
 });

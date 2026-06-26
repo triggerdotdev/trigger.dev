@@ -108,8 +108,11 @@ const EnvironmentSchema = z
     DASHBOARD_AGENT_SECRET_KEY: z.string().optional(),
     // Global default for the `hasDashboardAgentAccess` flag. "0" (off) ships the
     // agent dark; flip to "1" to enable it for everyone at GA. Per-org overrides
-    // (org featureFlags) and admins/impersonators win regardless.
+    // (org featureFlags) win regardless.
     DASHBOARD_AGENT_ENABLED: z.string().default("0"),
+    // "1" gives admins/impersonators an everywhere-preview (default off),
+    // separate from the per-org rollout flag above.
+    DASHBOARD_AGENT_ADMIN_PREVIEW: z.string().default("0"),
     // Anthropic key for the dashboard agent's Head Start route only (the warm
     // first-turn step-1 LLM call runs in this process). The agent run itself
     // uses its own key on the Trigger side. When unset, Head Start is disabled
@@ -552,6 +555,9 @@ const EnvironmentSchema = z
     // so they are unaffected. Defaults to off so detection can run in
     // log-only mode before enforcement.
     DEPRECATE_V3_CLI_DEPLOYS_ENABLED: z.string().default("0"),
+
+    // Verify the deploy image exists before promoting. Disable for out-of-band/air-gapped push. ECR only.
+    DEPLOY_IMAGE_VERIFICATION_ENABLED: BoolEnv.default(true),
 
     OBJECT_STORE_BASE_URL: z.string().optional(),
     OBJECT_STORE_BUCKET: z.string().optional(),
@@ -1670,8 +1676,16 @@ const EnvironmentSchema = z
     // Bound read-in-order memory on object-storage reads: each part opens a per-column read
     // stream, and the default ~1 MiB+ S3 buffers dominate peak memory. These two byte sizes
     // cap the per-stream buffers and exist on every supported ClickHouse, so they are always on.
-    CLICKHOUSE_LOGS_LIST_PREFETCH_BUFFER_SIZE: z.coerce.number().int().nonnegative().default(262_144),
-    CLICKHOUSE_LOGS_LIST_MAX_READ_BUFFER_SIZE: z.coerce.number().int().nonnegative().default(262_144),
+    CLICKHOUSE_LOGS_LIST_PREFETCH_BUFFER_SIZE: z.coerce
+      .number()
+      .int()
+      .nonnegative()
+      .default(262_144),
+    CLICKHOUSE_LOGS_LIST_MAX_READ_BUFFER_SIZE: z.coerce
+      .number()
+      .int()
+      .nonnegative()
+      .default(262_144),
     // The decisive lever on Cloud SharedMergeTree, but it only exists on newer ClickHouse and
     // is a no-op on local-disk MergeTree, so it is opt-in: unset means it is never sent (safe on
     // any self-hosted version). Set to 0 on object-storage deployments to get the memory win.
@@ -1763,7 +1777,10 @@ const EnvironmentSchema = z
       .optional()
       .transform((v) => v ?? process.env.CLICKHOUSE_URL),
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
-    REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+    REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce
+      .number()
+      .int()
+      .optional(),
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_LOG_LEVEL: z
       .enum(["log", "error", "warn", "info", "debug"])

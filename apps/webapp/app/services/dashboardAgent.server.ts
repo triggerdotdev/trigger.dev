@@ -91,7 +91,10 @@ export type DashboardAgentRepoSnapshot = {
 // The GitHub archive redirect URL is valid for a few minutes; cache the resolved
 // pointer briefly so multi-turn chats don't re-mint a token + re-resolve on every
 // message. Keyed by project + ref.
-const repoSnapshotCache = new Map<string, { snapshot: DashboardAgentRepoSnapshot; expiresAt: number }>();
+const repoSnapshotCache = new Map<
+  string,
+  { snapshot: DashboardAgentRepoSnapshot; expiresAt: number }
+>();
 const REPO_SNAPSHOT_TTL_MS = 60_000;
 const REPO_SNAPSHOT_MAX_ENTRIES = 1_000;
 

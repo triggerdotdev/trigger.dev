@@ -315,8 +315,8 @@ export default function Page() {
     environment.running === environment.concurrencyLimit * environment.burstFactor
       ? "limit"
       : environment.running > environment.concurrencyLimit
-      ? "burst"
-      : "within";
+        ? "burst"
+        : "within";
 
   const limitClassName =
     limitStatus === "burst" ? "text-warning" : limitStatus === "limit" ? "text-error" : undefined;
@@ -441,9 +441,7 @@ export default function Page() {
                 <PaginationControls
                   currentPage={pagination.currentPage}
                   totalPages={pagination.mode === "unfiltered" ? pagination.totalPages : 1}
-                  hasNextPage={
-                    pagination.mode === "filtered" ? pagination.hasMore : undefined
-                  }
+                  hasNextPage={pagination.mode === "filtered" ? pagination.hasMore : undefined}
                   showPageNumbers={false}
                 />
               </div>
@@ -676,7 +674,6 @@ export default function Page() {
                   )}
                 </TableBody>
               </Table>
-
             </div>
           ) : (
             <div className="grid place-items-center py-6 text-text-dimmed">
@@ -907,7 +904,7 @@ function QueueOverrideConcurrencyButton({
 
   const isLoading = Boolean(
     navigation.formData?.get("action") === "queue-override" ||
-      navigation.formData?.get("action") === "queue-remove-override"
+    navigation.formData?.get("action") === "queue-remove-override"
   );
 
   return (

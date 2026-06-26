@@ -10,6 +10,7 @@ import {
   type AuthenticationResult,
   authenticatedEnvironmentForAuthentication,
   authenticateRequest,
+  branchNameFromRequest,
 } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 
@@ -17,10 +18,6 @@ const ParamsSchema = z.object({
   projectRef: z.string(),
   tagName: z.string(),
   env: z.enum(["dev", "staging", "prod", "preview"]),
-});
-
-const HeadersSchema = z.object({
-  "x-trigger-branch": z.string().optional(),
 });
 
 type ParamsSchema = z.infer<typeof ParamsSchema>;
@@ -33,7 +30,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     // on the user's behalf. Identity-only, same as the PAT path below — there's
     // no ability check on this route, so the cap isn't enforced here (matches
     // PAT behavior).
-    const bearer = request.headers.get("Authorization")?.replace(/^Bearer /, "").trim();
+    const bearer = request.headers
+      .get("Authorization")
+      ?.replace(/^Bearer /, "")
+      .trim();
     let authenticationResult: AuthenticationResult | undefined;
     if (bearer && isUserActorToken(bearer)) {
       const claims = await verifyUserActorToken($env.SESSION_SECRET, bearer);
@@ -60,10 +60,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     }
     const { projectRef, env } = parsedParams.data;
 
-    const parsedHeaders = HeadersSchema.safeParse(Object.fromEntries(request.headers));
-    const triggerBranch = parsedHeaders.success
-      ? parsedHeaders.data["x-trigger-branch"]
-      : undefined;
+    const triggerBranch = branchNameFromRequest(request);
 
     const runtimeEnv = await authenticatedEnvironmentForAuthentication(
       authenticationResult,
@@ -73,63 +70,63 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     );
 
     const currentWorker = await findCurrentWorkerFromEnvironment(
-    {
-      id: runtimeEnv.id,
-      type: runtimeEnv.type,
-    },
-    $replica,
-    params.tagName
-  );
+      {
+        id: runtimeEnv.id,
+        type: runtimeEnv.type,
+      },
+      $replica,
+      params.tagName
+    );
 
-  if (!currentWorker) {
-    return json({ error: "Worker not found" }, { status: 404 });
-  }
+    if (!currentWorker) {
+      return json({ error: "Worker not found" }, { status: 404 });
+    }
 
-  const tasks = await $replica.backgroundWorkerTask.findMany({
-    where: {
-      workerId: currentWorker.id,
-    },
-    select: {
-      friendlyId: true,
-      slug: true,
-      filePath: true,
-      triggerSource: true,
-      createdAt: true,
-      payloadSchema: true,
-    },
-    orderBy: {
-      slug: "asc",
-    },
-  });
+    const tasks = await $replica.backgroundWorkerTask.findMany({
+      where: {
+        workerId: currentWorker.id,
+      },
+      select: {
+        friendlyId: true,
+        slug: true,
+        filePath: true,
+        triggerSource: true,
+        createdAt: true,
+        payloadSchema: true,
+      },
+      orderBy: {
+        slug: "asc",
+      },
+    });
 
-  const urls = {
-    runs: `${$env.APP_ORIGIN}${v3RunsPath(
-      { slug: runtimeEnv.organization.slug },
-      { slug: runtimeEnv.project.slug },
-      { slug: runtimeEnv.slug },
-      { versions: [currentWorker.version] }
-    )}`,
-  };
+    const urls = {
+      runs: `${$env.APP_ORIGIN}${v3RunsPath(
+        { slug: runtimeEnv.organization.slug },
+        { slug: runtimeEnv.project.slug },
+        { slug: runtimeEnv.slug },
+        { versions: [currentWorker.version] }
+      )}`,
+    };
 
-  // Prepare the response object
-  const response: GetWorkerByTagResponse = {
-    worker: {
-      id: currentWorker.friendlyId,
-      version: currentWorker.version,
-      engine: currentWorker.engine,
-      sdkVersion: currentWorker.sdkVersion,
-      cliVersion: currentWorker.cliVersion,
-      tasks: tasks.map((task) => ({
-        id: task.friendlyId,
-        slug: task.slug,
-        filePath: task.filePath,
-        triggerSource: task.triggerSource,
-        createdAt: task.createdAt,
-        payloadSchema: task.payloadSchema,
-      })),
-    },
-    urls,
-  };
+    // Prepare the response object
+    const response: GetWorkerByTagResponse = {
+      worker: {
+        id: currentWorker.friendlyId,
+        version: currentWorker.version,
+        engine: currentWorker.engine,
+        sdkVersion: currentWorker.sdkVersion,
+        cliVersion: currentWorker.cliVersion,
+        tasks: tasks.map((task) => ({
+          id: task.friendlyId,
+          slug: task.slug,
+          filePath: task.filePath,
+          triggerSource: task.triggerSource,
+          createdAt: task.createdAt,
+          payloadSchema: task.payloadSchema,
+        })),
+      },
+      urls,
+    };
 
     return json(response);
   } catch (error) {

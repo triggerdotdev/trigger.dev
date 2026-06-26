@@ -433,14 +433,14 @@ function parseAttributes(attributes: any): ExecuteTaskTraceEvent["attributes"] {
     acc[attribute.key] = isStringValue(attribute.value)
       ? attribute.value.stringValue
       : isIntValue(attribute.value)
-      ? Number(attribute.value.intValue)
-      : isDoubleValue(attribute.value)
-      ? attribute.value.doubleValue
-      : isBoolValue(attribute.value)
-      ? attribute.value.boolValue
-      : isBytesValue(attribute.value)
-      ? binaryToHex(attribute.value.bytesValue)
-      : undefined;
+        ? Number(attribute.value.intValue)
+        : isDoubleValue(attribute.value)
+          ? attribute.value.doubleValue
+          : isBoolValue(attribute.value)
+            ? attribute.value.boolValue
+            : isBytesValue(attribute.value)
+              ? binaryToHex(attribute.value.bytesValue)
+              : undefined;
 
     return acc;
   }, {});

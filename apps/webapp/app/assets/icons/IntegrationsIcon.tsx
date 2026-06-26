@@ -13,11 +13,7 @@ export function IntegrationsIcon({ className }: { className?: string }) {
         stroke="currentColor"
         strokeWidth="2"
       />
-      <path
-        d="M4 7H10V14H3V8C3 7.44772 3.44772 7 4 7Z"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
+      <path d="M4 7H10V14H3V8C3 7.44772 3.44772 7 4 7Z" stroke="currentColor" strokeWidth="2" />
       <path
         d="M17 14V20C17 20.5523 16.5523 21 16 21H10V14H17Z"
         stroke="currentColor"

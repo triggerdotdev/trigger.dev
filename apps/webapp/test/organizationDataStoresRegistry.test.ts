@@ -62,23 +62,26 @@ describe("OrganizationDataStoresRegistry", () => {
     expect(secret).not.toBeNull();
   });
 
-  postgresTest("loadFromDatabase resolves secrets and makes orgs available via get", async ({ prisma }) => {
-    const registry = new OrganizationDataStoresRegistry(prisma, prisma);
+  postgresTest(
+    "loadFromDatabase resolves secrets and makes orgs available via get",
+    async ({ prisma }) => {
+      const registry = new OrganizationDataStoresRegistry(prisma, prisma);
 
-    await registry.addDataStore({
-      key: "hipaa-store",
-      kind: "CLICKHOUSE",
-      organizationIds: ["org-hipaa"],
-      config: ClickhouseConnectionSchema.parse({ url: TEST_URL }),
-    });
+      await registry.addDataStore({
+        key: "hipaa-store",
+        kind: "CLICKHOUSE",
+        organizationIds: ["org-hipaa"],
+        config: ClickhouseConnectionSchema.parse({ url: TEST_URL }),
+      });
 
-    await registry.loadFromDatabase();
+      await registry.loadFromDatabase();
 
-    const result = registry.get("org-hipaa", "CLICKHOUSE");
-    expect(result).not.toBeNull();
-    expect(result?.kind).toBe("CLICKHOUSE");
-    expect(result?.url).toBe(TEST_URL);
-  });
+      const result = registry.get("org-hipaa", "CLICKHOUSE");
+      expect(result).not.toBeNull();
+      expect(result?.kind).toBe("CLICKHOUSE");
+      expect(result?.url).toBe(TEST_URL);
+    }
+  );
 
   postgresTest("get returns null for orgs not in any data store", async ({ prisma }) => {
     const registry = new OrganizationDataStoresRegistry(prisma, prisma);
@@ -144,36 +147,38 @@ describe("OrganizationDataStoresRegistry", () => {
 
       await registry.loadFromDatabase();
 
-      const expectedUrl =
-        winner!.key === "dup-overlap-first" ? TEST_URL : TEST_URL_2;
+      const expectedUrl = winner!.key === "dup-overlap-first" ? TEST_URL : TEST_URL_2;
       expect(registry.get(sharedOrg, "CLICKHOUSE")?.url).toBe(expectedUrl);
     }
   );
 
-  postgresTest("updateDataStore updates organizationIds and rotates the secret", async ({ prisma }) => {
-    const registry = new OrganizationDataStoresRegistry(prisma, prisma);
+  postgresTest(
+    "updateDataStore updates organizationIds and rotates the secret",
+    async ({ prisma }) => {
+      const registry = new OrganizationDataStoresRegistry(prisma, prisma);
 
-    await registry.addDataStore({
-      key: "update-store",
-      kind: "CLICKHOUSE",
-      organizationIds: ["org-old"],
-      config: ClickhouseConnectionSchema.parse({ url: TEST_URL }),
-    });
+      await registry.addDataStore({
+        key: "update-store",
+        kind: "CLICKHOUSE",
+        organizationIds: ["org-old"],
+        config: ClickhouseConnectionSchema.parse({ url: TEST_URL }),
+      });
 
-    await registry.updateDataStore({
-      key: "update-store",
-      kind: "CLICKHOUSE",
-      organizationIds: ["org-new-1", "org-new-2"],
-      config: ClickhouseConnectionSchema.parse({ url: TEST_URL_2 }),
-    });
+      await registry.updateDataStore({
+        key: "update-store",
+        kind: "CLICKHOUSE",
+        organizationIds: ["org-new-1", "org-new-2"],
+        config: ClickhouseConnectionSchema.parse({ url: TEST_URL_2 }),
+      });
 
-    const row = await prisma.organizationDataStore.findFirst({ where: { key: "update-store" } });
-    expect(row?.organizationIds).toEqual(["org-new-1", "org-new-2"]);
+      const row = await prisma.organizationDataStore.findFirst({ where: { key: "update-store" } });
+      expect(row?.organizationIds).toEqual(["org-new-1", "org-new-2"]);
 
-    await registry.loadFromDatabase();
-    expect(registry.get("org-new-1", "CLICKHOUSE")?.url).toBe(TEST_URL_2);
-    expect(registry.get("org-old", "CLICKHOUSE")).toBeNull();
-  });
+      await registry.loadFromDatabase();
+      expect(registry.get("org-new-1", "CLICKHOUSE")?.url).toBe(TEST_URL_2);
+      expect(registry.get("org-old", "CLICKHOUSE")).toBeNull();
+    }
+  );
 
   postgresTest("reload picks up changes made after initial load", async ({ prisma }) => {
     const registry = new OrganizationDataStoresRegistry(prisma, prisma);
@@ -205,8 +210,12 @@ describe("OrganizationDataStoresRegistry", () => {
 
     await registry.deleteDataStore({ key: "delete-store", kind: "CLICKHOUSE" });
 
-    expect(await prisma.organizationDataStore.findFirst({ where: { key: "delete-store" } })).toBeNull();
-    expect(await prisma.secretStore.findFirst({ where: { key: "data-store:delete-store:clickhouse" } })).toBeNull();
+    expect(
+      await prisma.organizationDataStore.findFirst({ where: { key: "delete-store" } })
+    ).toBeNull();
+    expect(
+      await prisma.secretStore.findFirst({ where: { key: "data-store:delete-store:clickhouse" } })
+    ).toBeNull();
   });
 
   postgresTest("after delete and reload, org no longer has a data store", async ({ prisma }) => {

@@ -30,11 +30,7 @@ import {
   reactivatePromptOverrideTool,
 } from "./tools/prompts.js";
 import { listAgentsTool } from "./tools/agents.js";
-import {
-  startAgentChatTool,
-  sendAgentMessageTool,
-  closeAgentChatTool,
-} from "./tools/agentChat.js";
+import { startAgentChatTool, sendAgentMessageTool, closeAgentChatTool } from "./tools/agentChat.js";
 import { respondWithError } from "./utils.js";
 
 /** Tool names that perform write/mutating operations. */

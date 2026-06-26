@@ -132,7 +132,6 @@ export class DevRunController {
     });
   }
 
-
   // This should only be used when we're already executing a run. Attempt number changes are not allowed.
   private updateRunPhase(run: Run, snapshot: Snapshot) {
     if (this.state.phase !== "RUN") {

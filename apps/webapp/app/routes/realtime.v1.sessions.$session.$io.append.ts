@@ -15,10 +15,7 @@ import {
   drainSessionStreamWaitpoints,
   releaseSessionStreamPart,
 } from "~/services/sessionStreamWaitpointCache.server";
-import {
-  anyResource,
-  createActionApiRoute,
-} from "~/services/routeBuilders/apiBuilder.server";
+import { anyResource, createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { engine } from "~/v3/runEngine.server";
 import { ServiceValidationError } from "~/v3/services/common.server";
 
@@ -82,17 +79,11 @@ const { action, loader } = createActionApiRoute(
     }
 
     if (session.closedAt) {
-      return json(
-        { ok: false, error: "Cannot append to a closed session" },
-        { status: 400 }
-      );
+      return json({ ok: false, error: "Cannot append to a closed session" }, { status: 400 });
     }
 
     if (session.expiresAt && session.expiresAt.getTime() < Date.now()) {
-      return json(
-        { ok: false, error: "Cannot append to an expired session" },
-        { status: 400 }
-      );
+      return json({ ok: false, error: "Cannot append to an expired session" }, { status: 400 });
     }
 
     // `.out` is the agent→client channel. Only PRIVATE (secret key) auth —

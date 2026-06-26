@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   authenticatedEnvironmentForAuthentication,
   authenticateRequest,
+  branchNameFromRequest,
   type AuthenticationResult,
 } from "~/services/apiAuth.server";
 import { env as appEnv } from "~/env.server";
@@ -27,7 +28,10 @@ const RequestBodySchema = z.object({
 
 export async function action({ request, params }: ActionFunctionArgs) {
   try {
-    const bearer = request.headers.get("Authorization")?.replace(/^Bearer /, "").trim();
+    const bearer = request.headers
+      .get("Authorization")
+      ?.replace(/^Bearer /, "")
+      .trim();
     const isUat = !!bearer && isUserActorToken(bearer);
 
     // A delegated user-actor token authenticates as its user, like a PAT. We
@@ -69,7 +73,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     const { projectRef, env } = parsedParams.data;
-    const triggerBranch = request.headers.get("x-trigger-branch") ?? undefined;
+    const triggerBranch = branchNameFromRequest(request);
 
     const runtimeEnv = await authenticatedEnvironmentForAuthentication(
       authenticationResult,

@@ -381,7 +381,7 @@ async function createWorkerTask(
           : ("STANDARD" as const);
 
     resolvedTtl =
-      typeof task.ttl === "number" ? stringifyDuration(task.ttl) ?? null : task.ttl ?? null;
+      typeof task.ttl === "number" ? (stringifyDuration(task.ttl) ?? null) : (task.ttl ?? null);
 
     await prisma.backgroundWorkerTask.create({
       data: {

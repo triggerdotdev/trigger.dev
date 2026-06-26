@@ -237,8 +237,7 @@ export class RunPresenter {
 
     // Resolve agent-kind once so the tree renderer can swap icon/colour for
     // the current run's spans without doing per-row lookups.
-    const isAgentRun =
-      RunAnnotations.safeParse(run.annotations).data?.taskKind === "AGENT";
+    const isAgentRun = RunAnnotations.safeParse(run.annotations).data?.taskKind === "AGENT";
 
     //this tree starts at the passed in span (hides parent elements if there are any)
     const tree = createTreeFromFlatItems(traceSummary.spans, run.spanId);

@@ -103,9 +103,8 @@ describe("RunEngine trigger()", () => {
       expect(queueLength).toBe(1);
 
       //concurrency before
-      const envConcurrencyBefore = await engine.runQueue.currentConcurrencyOfEnvironment(
-        authenticatedEnvironment
-      );
+      const envConcurrencyBefore =
+        await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
       expect(envConcurrencyBefore).toBe(0);
 
       await setTimeout(500);
@@ -119,9 +118,8 @@ describe("RunEngine trigger()", () => {
       expect(dequeued[0].run.id).toBe(run.id);
       expect(dequeued[0].run.attemptNumber).toBe(1);
 
-      const envConcurrencyAfter = await engine.runQueue.currentConcurrencyOfEnvironment(
-        authenticatedEnvironment
-      );
+      const envConcurrencyAfter =
+        await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
       expect(envConcurrencyAfter).toBe(1);
 
       let attemptEvent: EventBusEventArgs<"runAttemptStarted">[0] | undefined = undefined;
@@ -186,9 +184,8 @@ describe("RunEngine trigger()", () => {
       expect(completedEvent.run.outputType).toBe("application/json");
 
       //concurrency should have been released
-      const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
-        authenticatedEnvironment
-      );
+      const envConcurrencyCompleted =
+        await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
       expect(envConcurrencyCompleted).toBe(0);
 
       //standalone triggers don't create waitpoints, so none should exist
@@ -312,9 +309,8 @@ describe("RunEngine trigger()", () => {
       expect(executionData3.run.status).toBe("COMPLETED_WITH_ERRORS");
 
       //concurrency should have been released
-      const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
-        authenticatedEnvironment
-      );
+      const envConcurrencyCompleted =
+        await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
       expect(envConcurrencyCompleted).toBe(0);
 
       //standalone triggers don't create waitpoints, so none should exist
@@ -526,5 +522,4 @@ describe("RunEngine trigger()", () => {
       }
     }
   );
-
 });

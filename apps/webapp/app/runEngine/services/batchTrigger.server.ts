@@ -16,7 +16,10 @@ import { env } from "~/env.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { batchTriggerWorker } from "~/v3/batchTriggerWorker.server";
-import { downloadPacketFromObjectStore, uploadPacketToObjectStore } from "../../v3/objectStore.server";
+import {
+  downloadPacketFromObjectStore,
+  uploadPacketToObjectStore,
+} from "../../v3/objectStore.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 import { TriggerTaskService } from "../../v3/services/triggerTask.server";
 import { startActiveSpan } from "../../v3/tracer.server";
@@ -559,11 +562,14 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
       if (!runFriendlyId) {
         const errorMessage =
           "Trigger failed for batch item (queue limit, entitlement, or validation error)";
-        logger.debug("[RunEngineBatchTrigger][processBatchTaskRun] Item trigger failed, creating pre-failed run", {
-          batchId: batch.friendlyId,
-          currentIndex: workingIndex,
-          task: item.task,
-        });
+        logger.debug(
+          "[RunEngineBatchTrigger][processBatchTaskRun] Item trigger failed, creating pre-failed run",
+          {
+            batchId: batch.friendlyId,
+            currentIndex: workingIndex,
+            task: item.task,
+          }
+        );
 
         const failedRunId = await triggerFailedTaskService.call({
           taskId: item.task,
@@ -583,10 +589,13 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         if (failedRunId) {
           runFriendlyId = failedRunId;
         } else {
-          logger.error("[RunEngineBatchTrigger][processBatchTaskRun] Failed to create pre-failed run", {
-            batchId: batch.friendlyId,
-            currentIndex: workingIndex,
-          });
+          logger.error(
+            "[RunEngineBatchTrigger][processBatchTaskRun] Failed to create pre-failed run",
+            {
+              batchId: batch.friendlyId,
+              currentIndex: workingIndex,
+            }
+          );
 
           return {
             status: "ERROR",
@@ -717,7 +726,12 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
       const filename = `${pathPrefix}/payload.json`;
 
-      const uploadedFilename = await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
+      const uploadedFilename = await uploadPacketToObjectStore(
+        filename,
+        packet.data,
+        packet.dataType,
+        environment
+      );
 
       return {
         data: uploadedFilename,

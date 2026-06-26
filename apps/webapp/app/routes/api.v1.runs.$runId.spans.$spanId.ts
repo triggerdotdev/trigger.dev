@@ -3,10 +3,7 @@ import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { extractAISpanData } from "~/components/runs/v3/ai";
-import {
-  anyResource,
-  createLoaderApiRoute,
-} from "~/services/routeBuilders/apiBuilder.server";
+import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { getEventRepositoryForStore } from "~/v3/eventRepository/index.server";
 import { getTaskEventStoreTableForRun } from "~/v3/taskEventStore.server";
 import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.server";
@@ -26,13 +23,13 @@ const ParamsSchema = z.object({
 // same 200 contract they'd get for a freshly-triggered run.
 type ResolvedRun =
   | { source: "pg"; run: Awaited<ReturnType<typeof findPgRun>> & {} }
-  | { source: "buffer"; run: NonNullable<Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>>> };
+  | {
+      source: "buffer";
+      run: NonNullable<Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>>>;
+    };
 
 async function findPgRun(runId: string, environmentId: string) {
-  return runStore.findRun(
-    { friendlyId: runId, runtimeEnvironmentId: environmentId },
-    $replica
-  );
+  return runStore.findRun({ friendlyId: runId, runtimeEnvironmentId: environmentId }, $replica);
 }
 
 export const loader = createLoaderApiRoute(

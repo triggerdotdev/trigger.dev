@@ -42,8 +42,8 @@ const ClientTabs = React.forwardRef<
     valueProp !== undefined
       ? { value: valueProp }
       : defaultValue !== undefined
-      ? { defaultValue }
-      : {};
+        ? { defaultValue }
+        : {};
 
   const contextValue = React.useMemo<ClientTabsContextValue>(() => ({ value }), [value]);
 
@@ -193,11 +193,7 @@ const ClientTabsContent = React.forwardRef<
   <TabsPrimitive.Content
     ref={ref}
     tabIndex={-1}
-    className={cn(
-      "mt-1 outline-none",
-      className,
-      "data-[state=inactive]:hidden"
-    )}
+    className={cn("mt-1 outline-none", className, "data-[state=inactive]:hidden")}
     {...props}
   />
 ));

@@ -374,8 +374,8 @@ export function SideMenu({
                             {isConnected === undefined
                               ? "Checking connection…"
                               : isConnected
-                              ? "Your dev server is connected"
-                              : "Your dev server is not connected"}
+                                ? "Your dev server is connected"
+                                : "Your dev server is not connected"}
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>

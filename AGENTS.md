@@ -55,7 +55,7 @@ For full setup instructions see `CONTRIBUTING.md`.
 Refer to `ai/references/tests.md` for details on writing tests. Tests should avoid mocks or stubs and use the helpers from `@internal/testcontainers` when Redis or Postgres are needed.
 
 ## Coding style
-- Formatting is enforced using Prettier. Run `pnpm run format` before committing.
+- Formatting is enforced using oxfmt. Run `pnpm run format` before committing.
 - Follow the existing project conventions. Test files live beside the files under test and use descriptive `describe` and `it` blocks.
 - Do not commit directly to the `main` branch. All changes should be made in a separate branch and go through a pull request.
 

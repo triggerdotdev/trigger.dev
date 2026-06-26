@@ -22,36 +22,39 @@ function fakePrisma(member: { id: string } | null) {
 }
 
 describe("findBufferedRunRedirectInfo (testcontainers)", () => {
-  redisTest("returns slugs + spanId for a real buffer entry when user is a member", async ({ redisOptions }) => {
-    const buffer = new MollifierBuffer({ redisOptions });
-    try {
-      await buffer.accept({
-        runId: "run_real_1",
-        envId: "env_a",
-        orgId: "org_1",
-        payload: JSON.stringify(SNAPSHOT),
-      });
-      const info = await findBufferedRunRedirectInfo(
-        { runFriendlyId: "run_real_1", userId: "user_1" },
-        { getBuffer: () => buffer, prismaClient: fakePrisma({ id: "member_1" }) },
-      );
-      expect(info).toEqual({
-        organizationSlug: "references-6120",
-        projectSlug: "hello-world-bN7m",
-        environmentSlug: "dev",
-        spanId: "span_1",
-      });
-    } finally {
-      await buffer.close();
+  redisTest(
+    "returns slugs + spanId for a real buffer entry when user is a member",
+    async ({ redisOptions }) => {
+      const buffer = new MollifierBuffer({ redisOptions });
+      try {
+        await buffer.accept({
+          runId: "run_real_1",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: JSON.stringify(SNAPSHOT),
+        });
+        const info = await findBufferedRunRedirectInfo(
+          { runFriendlyId: "run_real_1", userId: "user_1" },
+          { getBuffer: () => buffer, prismaClient: fakePrisma({ id: "member_1" }) }
+        );
+        expect(info).toEqual({
+          organizationSlug: "references-6120",
+          projectSlug: "hello-world-bN7m",
+          environmentSlug: "dev",
+          spanId: "span_1",
+        });
+      } finally {
+        await buffer.close();
+      }
     }
-  });
+  );
 
   redisTest("returns null when no buffer entry exists for the runId", async ({ redisOptions }) => {
     const buffer = new MollifierBuffer({ redisOptions });
     try {
       const info = await findBufferedRunRedirectInfo(
         { runFriendlyId: "run_missing", userId: "user_1" },
-        { getBuffer: () => buffer, prismaClient: fakePrisma({ id: "member_1" }) },
+        { getBuffer: () => buffer, prismaClient: fakePrisma({ id: "member_1" }) }
       );
       expect(info).toBeNull();
     } finally {
@@ -59,48 +62,56 @@ describe("findBufferedRunRedirectInfo (testcontainers)", () => {
     }
   });
 
-  redisTest("returns null when the user is not an org member (default check enforced)", async ({ redisOptions }) => {
-    const buffer = new MollifierBuffer({ redisOptions });
-    try {
-      await buffer.accept({
-        runId: "run_real_2",
-        envId: "env_a",
-        orgId: "org_1",
-        payload: JSON.stringify(SNAPSHOT),
-      });
-      const info = await findBufferedRunRedirectInfo(
-        { runFriendlyId: "run_real_2", userId: "user_other" },
-        { getBuffer: () => buffer, prismaClient: fakePrisma(null) },
-      );
-      expect(info).toBeNull();
-    } finally {
-      await buffer.close();
+  redisTest(
+    "returns null when the user is not an org member (default check enforced)",
+    async ({ redisOptions }) => {
+      const buffer = new MollifierBuffer({ redisOptions });
+      try {
+        await buffer.accept({
+          runId: "run_real_2",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: JSON.stringify(SNAPSHOT),
+        });
+        const info = await findBufferedRunRedirectInfo(
+          { runFriendlyId: "run_real_2", userId: "user_other" },
+          { getBuffer: () => buffer, prismaClient: fakePrisma(null) }
+        );
+        expect(info).toBeNull();
+      } finally {
+        await buffer.close();
+      }
     }
-  });
+  );
 
-  redisTest("skips the org-membership check when skipOrgMembershipCheck is set (admin path)", async ({ redisOptions }) => {
-    const buffer = new MollifierBuffer({ redisOptions });
-    try {
-      await buffer.accept({
-        runId: "run_real_3",
-        envId: "env_a",
-        orgId: "org_1",
-        payload: JSON.stringify(SNAPSHOT),
-      });
-      const findFirst = vi.fn();
-      const info = await findBufferedRunRedirectInfo(
-        { runFriendlyId: "run_real_3", userId: "user_admin", skipOrgMembershipCheck: true },
-        {
-          getBuffer: () => buffer,
-          prismaClient: { orgMember: { findFirst } } as unknown as Parameters<typeof findBufferedRunRedirectInfo>[1]["prismaClient"],
-        },
-      );
-      expect(info?.organizationSlug).toBe("references-6120");
-      expect(findFirst).not.toHaveBeenCalled();
-    } finally {
-      await buffer.close();
+  redisTest(
+    "skips the org-membership check when skipOrgMembershipCheck is set (admin path)",
+    async ({ redisOptions }) => {
+      const buffer = new MollifierBuffer({ redisOptions });
+      try {
+        await buffer.accept({
+          runId: "run_real_3",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: JSON.stringify(SNAPSHOT),
+        });
+        const findFirst = vi.fn();
+        const info = await findBufferedRunRedirectInfo(
+          { runFriendlyId: "run_real_3", userId: "user_admin", skipOrgMembershipCheck: true },
+          {
+            getBuffer: () => buffer,
+            prismaClient: { orgMember: { findFirst } } as unknown as Parameters<
+              typeof findBufferedRunRedirectInfo
+            >[1]["prismaClient"],
+          }
+        );
+        expect(info?.organizationSlug).toBe("references-6120");
+        expect(findFirst).not.toHaveBeenCalled();
+      } finally {
+        await buffer.close();
+      }
     }
-  });
+  );
 
   redisTest("returns null when snapshot is malformed JSON", async ({ redisOptions }) => {
     const buffer = new MollifierBuffer({ redisOptions });
@@ -113,7 +124,7 @@ describe("findBufferedRunRedirectInfo (testcontainers)", () => {
       });
       const info = await findBufferedRunRedirectInfo(
         { runFriendlyId: "run_real_4", userId: "user_1" },
-        { getBuffer: () => buffer, prismaClient: fakePrisma({ id: "member_1" }) },
+        { getBuffer: () => buffer, prismaClient: fakePrisma({ id: "member_1" }) }
       );
       expect(info).toBeNull();
     } finally {
@@ -132,7 +143,7 @@ describe("findBufferedRunRedirectInfo (testcontainers)", () => {
       });
       const info = await findBufferedRunRedirectInfo(
         { runFriendlyId: "run_real_5", userId: "user_1" },
-        { getBuffer: () => buffer, prismaClient: fakePrisma({ id: "member_1" }) },
+        { getBuffer: () => buffer, prismaClient: fakePrisma({ id: "member_1" }) }
       );
       expect(info).toBeNull();
     } finally {
@@ -140,25 +151,28 @@ describe("findBufferedRunRedirectInfo (testcontainers)", () => {
     }
   });
 
-  redisTest("returns info with undefined spanId when snapshot has no spanId", async ({ redisOptions }) => {
-    const buffer = new MollifierBuffer({ redisOptions });
-    try {
-      await buffer.accept({
-        runId: "run_real_6",
-        envId: "env_a",
-        orgId: "org_1",
-        payload: JSON.stringify({ environment: SNAPSHOT.environment }),
-      });
-      const info = await findBufferedRunRedirectInfo(
-        { runFriendlyId: "run_real_6", userId: "user_1" },
-        { getBuffer: () => buffer, prismaClient: fakePrisma({ id: "member_1" }) },
-      );
-      expect(info?.spanId).toBeUndefined();
-      expect(info?.environmentSlug).toBe("dev");
-    } finally {
-      await buffer.close();
+  redisTest(
+    "returns info with undefined spanId when snapshot has no spanId",
+    async ({ redisOptions }) => {
+      const buffer = new MollifierBuffer({ redisOptions });
+      try {
+        await buffer.accept({
+          runId: "run_real_6",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: JSON.stringify({ environment: SNAPSHOT.environment }),
+        });
+        const info = await findBufferedRunRedirectInfo(
+          { runFriendlyId: "run_real_6", userId: "user_1" },
+          { getBuffer: () => buffer, prismaClient: fakePrisma({ id: "member_1" }) }
+        );
+        expect(info?.spanId).toBeUndefined();
+        expect(info?.environmentSlug).toBe("dev");
+      } finally {
+        await buffer.close();
+      }
     }
-  });
+  );
 
   redisTest(
     "rejects snapshots where a slug is the wrong type (Zod guard, not just typeof)",
@@ -186,12 +200,12 @@ describe("findBufferedRunRedirectInfo (testcontainers)", () => {
         });
         const info = await findBufferedRunRedirectInfo(
           { runFriendlyId: "run_real_7", userId: "user_1" },
-          { getBuffer: () => buffer, prismaClient: fakePrisma({ id: "member_1" }) },
+          { getBuffer: () => buffer, prismaClient: fakePrisma({ id: "member_1" }) }
         );
         expect(info).toBeNull();
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });

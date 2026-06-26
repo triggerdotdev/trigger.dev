@@ -40,9 +40,7 @@ export const apiRateLimitDomain: RateLimitDomain = {
   },
 };
 
-export function resolveEffectiveApiRateLimit(
-  override: unknown
-): EffectiveRateLimit {
+export function resolveEffectiveApiRateLimit(override: unknown): EffectiveRateLimit {
   return resolveEffectiveRateLimit(override, apiRateLimitDomain);
 }
 

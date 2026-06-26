@@ -86,7 +86,8 @@ async function ensureWorkspace(snapshot: RepoSnapshot): Promise<string> {
       const length = Number(res.headers.get("content-length") ?? 0);
       if (length > MAX_ARCHIVE_BYTES) throw new Error(`archive too large (${length} bytes)`);
       const bytes = new Uint8Array(await res.arrayBuffer());
-      if (bytes.length > MAX_ARCHIVE_BYTES) throw new Error(`archive too large (${bytes.length} bytes)`);
+      if (bytes.length > MAX_ARCHIVE_BYTES)
+        throw new Error(`archive too large (${bytes.length} bytes)`);
 
       const scratch = await mkdtemp(join(tmpdir(), "dashboard-agent-tar-"));
       tarPath = join(scratch, "repo.tar.gz");
@@ -149,7 +150,8 @@ export function buildRepoTools(
   // (resolved server-side), otherwise the default tracked-branch snapshot.
   async function snapshotFor(runId?: string): Promise<RepoSnapshot | { error: string }> {
     if (!runId) return defaultSnapshot;
-    if (!resolveRunSnapshot) return { error: "Reading a specific run's source isn't available here." };
+    if (!resolveRunSnapshot)
+      return { error: "Reading a specific run's source isn't available here." };
     const snap = await resolveRunSnapshot(runId);
     return (
       snap ?? {
@@ -177,7 +179,12 @@ export function buildRepoTools(
       execute: async ({ runId }) => {
         const snap = await snapshotFor(runId);
         if ("error" in snap) return snap;
-        return { owner: snap.owner, repo: snap.repo, sha: snap.sha, defaultBranch: snap.defaultBranch };
+        return {
+          owner: snap.owner,
+          repo: snap.repo,
+          sha: snap.sha,
+          defaultBranch: snap.defaultBranch,
+        };
       },
     }),
 
@@ -199,8 +206,14 @@ export function buildRepoTools(
         const cwd = realSub ?? sub;
         try {
           const { stdout } = await execFileAsync("rg", args, { cwd, maxBuffer: 16 * 1024 * 1024 });
-          const files = stdout.split("\n").filter(Boolean).map((f) => relative(workdir, resolve(cwd, f)));
-          return { files: files.slice(0, MAX_LIST_FILES), truncated: files.length > MAX_LIST_FILES };
+          const files = stdout
+            .split("\n")
+            .filter(Boolean)
+            .map((f) => relative(workdir, resolve(cwd, f)));
+          return {
+            files: files.slice(0, MAX_LIST_FILES),
+            truncated: files.length > MAX_LIST_FILES,
+          };
         } catch (error) {
           // rg exits 1 when there are no matches; treat as empty, not an error.
           if ((error as { code?: number }).code === 1) return { files: [], truncated: false };
@@ -256,14 +269,19 @@ export function buildRepoTools(
         // in a spawned process) and blocks forever. The "." makes it search files.
         args.push("-e", query, ".");
         try {
-          const { stdout } = await execFileAsync("rg", args, { cwd: workdir, maxBuffer: 16 * 1024 * 1024 });
+          const { stdout } = await execFileAsync("rg", args, {
+            cwd: workdir,
+            maxBuffer: 16 * 1024 * 1024,
+          });
           const matches = stdout
             .split("\n")
             .filter(Boolean)
             .slice(0, cap)
             .map((line) => {
               const m = line.match(/^([^:]+):(\d+):(.*)$/);
-              return m ? { file: m[1], line: Number(m[2]), text: m[3].slice(0, 300) } : { text: line };
+              return m
+                ? { file: m[1], line: Number(m[2]), text: m[3].slice(0, 300) }
+                : { text: line };
             });
           return { matches, truncated: matches.length >= cap };
         } catch (error) {

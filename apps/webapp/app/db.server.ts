@@ -114,10 +114,7 @@ async function $transactionInner<R>(
 
 export { Prisma };
 
-function tagDatasource<T extends PrismaClient>(
-  datasource: "writer" | "replica",
-  client: T
-): T {
+function tagDatasource<T extends PrismaClient>(datasource: "writer" | "replica", client: T): T {
   return client.$extends({
     name: "datasource-tagger",
     query: {
@@ -255,8 +252,14 @@ function getClient() {
     queryPerformanceMonitor.onQuery("writer", log);
   });
 
-  // connect eagerly
-  client.$connect();
+  // Connect eagerly; Prisma will connect on use anyway.
+  // Swallow the error when testing (DB likely unavailable)
+  const connectPromise = client.$connect();
+  if (env.NODE_ENV === "test") {
+    connectPromise.catch((error) => {
+      logger.warn("Failed to eagerly connect prisma client (writer)", { error });
+    });
+  }
 
   console.log(`🔌 prisma client connected`);
 
@@ -378,8 +381,14 @@ function getReplicaClient() {
     queryPerformanceMonitor.onQuery("replica", log);
   });
 
-  // connect eagerly
-  replicaClient.$connect();
+  // Connect eagerly; Prisma will connect on use anyway.
+  // Swallow the error when testing (DB likely unavailable)
+  const connectPromise = replicaClient.$connect();
+  if (env.NODE_ENV === "test") {
+    connectPromise.catch((error) => {
+      logger.warn("Failed to eagerly connect prisma client (replica)", { error });
+    });
+  }
 
   console.log(`🔌 read replica connected`);
 

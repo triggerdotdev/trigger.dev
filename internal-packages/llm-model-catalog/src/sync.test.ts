@@ -32,10 +32,7 @@ const STALE_BASE_MODEL_NAME = "wrong-base-model-sentinel";
 const STALE_INPUT_PRICE = 0.099;
 const STALE_OUTPUT_PRICE = 0.088;
 
-async function createGpt4oWithStalePricing(
-  prisma: PrismaClient,
-  source: "default" | "admin"
-) {
+async function createGpt4oWithStalePricing(prisma: PrismaClient, source: "default" | "admin") {
   const model = await prisma.llmModel.create({
     data: {
       friendlyId: generateFriendlyId("llm_model"),
@@ -129,7 +126,9 @@ async function loadGpt4oWithTiers(prisma: PrismaClient) {
   });
 }
 
-function expectBundledGpt4oPricing(model: NonNullable<Awaited<ReturnType<typeof loadGpt4oWithTiers>>>) {
+function expectBundledGpt4oPricing(
+  model: NonNullable<Awaited<ReturnType<typeof loadGpt4oWithTiers>>>
+) {
   expect(model.matchPattern).toBe(gpt4oDef.matchPattern);
   expect(model.pricingTiers).toHaveLength(gpt4oDef.pricingTiers.length);
 

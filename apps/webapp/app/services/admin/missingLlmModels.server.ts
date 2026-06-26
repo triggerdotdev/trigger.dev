@@ -7,9 +7,11 @@ export type MissingLlmModel = {
   count: number;
 };
 
-export async function getMissingLlmModels(opts: {
-  lookbackHours?: number;
-} = {}): Promise<MissingLlmModel[]> {
+export async function getMissingLlmModels(
+  opts: {
+    lookbackHours?: number;
+  } = {}
+): Promise<MissingLlmModel[]> {
   const lookbackHours = opts.lookbackHours ?? 24;
   const since = new Date(Date.now() - lookbackHours * 60 * 60 * 1000);
 
@@ -100,14 +102,7 @@ export async function getMissingModelSamples(opts: {
   const createBuilder = adminClickhouse.reader.queryBuilderFast<MissingModelSample>({
     name: "missingModelSamples",
     table: "trigger_dev.task_events_v2",
-    columns: [
-      "span_id",
-      "run_id",
-      "message",
-      "attributes_text",
-      "duration",
-      "start_time",
-    ],
+    columns: ["span_id", "run_id", "message", "attributes_text", "duration", "start_time"],
   });
   const qb = createBuilder();
 

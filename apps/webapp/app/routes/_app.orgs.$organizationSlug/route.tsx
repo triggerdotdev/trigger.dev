@@ -89,8 +89,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   firstDayOfNextMonth.setUTCDate(1);
   firstDayOfNextMonth.setUTCHours(0, 0, 0, 0);
 
-  const shouldLoadRegions =
-    !!projectParam && !!environment && environment.type !== "DEVELOPMENT";
+  const shouldLoadRegions = !!projectParam && !!environment && environment.type !== "DEVELOPMENT";
 
   const [plan, usage, customDashboards, regions] = await Promise.all([
     getCurrentPlan(organization.id),
@@ -124,14 +123,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const dashboardLimit =
     typeof metricDashboardsLimitValue === "number"
       ? metricDashboardsLimitValue
-      : metricDashboardsLimitValue?.number ?? 3;
+      : (metricDashboardsLimitValue?.number ?? 3);
 
   // Derive widget-per-dashboard limit from plan, fallback to 16
   const metricWidgetsLimitValue = plan?.v3Subscription?.plan?.limits?.metricWidgetsPerDashboard;
   const widgetLimitPerDashboard =
     typeof metricWidgetsLimitValue === "number"
       ? metricWidgetsLimitValue
-      : metricWidgetsLimitValue?.number ?? 16;
+      : (metricWidgetsLimitValue?.number ?? 16);
 
   // Compute widget counts per dashboard from layout JSON
   const customDashboardsWithWidgetCount = customDashboards.map((d) => {

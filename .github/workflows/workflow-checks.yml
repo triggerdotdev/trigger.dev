@@ -4,14 +4,14 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/workflows/**'
-      - '.github/actions/**'
-      - '.github/zizmor.yml'
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - ".github/zizmor.yml"
   pull_request:
     paths:
-      - '.github/workflows/**'
-      - '.github/actions/**'
-      - '.github/zizmor.yml'
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - ".github/zizmor.yml"
 
 permissions: {}
 

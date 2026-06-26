@@ -440,18 +440,15 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
 
     let res: Response;
     try {
-      res = await fetch(
-        `${this.baseUrl}/streams/${encodeURIComponent(s2Stream)}/records?${qs}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${this.token}`,
-            Accept: "application/json",
-            "S2-Format": "raw",
-            "S2-Basin": this.basin,
-          },
-        }
-      );
+      res = await fetch(`${this.baseUrl}/streams/${encodeURIComponent(s2Stream)}/records?${qs}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          Accept: "application/json",
+          "S2-Format": "raw",
+          "S2-Basin": this.basin,
+        },
+      });
     } catch (err) {
       this.logger.warn("S2 peek last record: fetch failed", { err, stream: s2Stream });
       return false;
@@ -569,9 +566,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
           return (await res.json()) as S2AppendAck;
         }
         const text = await res.text().catch(() => "");
-        const httpError = new Error(
-          `S2 append failed: ${res.status} ${res.statusText} ${text}`
-        );
+        const httpError = new Error(`S2 append failed: ${res.status} ${res.statusText} ${text}`);
         if (res.status >= 400 && res.status < 500) {
           // 4xx — caller-side problem (auth, malformed body, closed stream).
           // Retrying won't help.

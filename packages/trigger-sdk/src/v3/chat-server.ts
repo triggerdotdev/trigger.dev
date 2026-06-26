@@ -145,9 +145,7 @@ export type HeadStartSession = {
    * fire-and-forget. Returns a passthrough that the caller can use as
    * the HTTP response body.
    */
-  tee(
-    stream: ReadableStream<UIMessageChunk>
-  ): ReadableStream<UIMessageChunk>;
+  tee(stream: ReadableStream<UIMessageChunk>): ReadableStream<UIMessageChunk>;
   /**
    * Awaits `result.finishReason` and dispatches `handover` (with the
    * partial assistant ModelMessages) or `handover-skip`.
@@ -593,9 +591,9 @@ async function openHandoverSession(opts: {
     idleTimeoutInSeconds * 1000
   );
 
-  const buildStreamTextOptions = (
-    spreadOpts?: { tools?: Record<string, Tool> }
-  ): Record<string, unknown> => {
+  const buildStreamTextOptions = (spreadOpts?: {
+    tools?: Record<string, Tool>;
+  }): Record<string, unknown> => {
     // The customer spreads this object into their `streamText` call
     // and then adds `model`, `system`, etc. on top. We set the four
     // keys handover correctness depends on:
@@ -850,9 +848,7 @@ async function openHandoverSession(opts: {
             chatId,
             "out",
             {
-              ...(customerLastEventId != null
-                ? { lastEventId: customerLastEventId }
-                : {}),
+              ...(customerLastEventId != null ? { lastEventId: customerLastEventId } : {}),
               signal: AbortSignal.any([abortController.signal, subscriptionAbort.signal]),
               onPart: (part) => {
                 if (part.id) latestEventId = part.id;
@@ -1083,7 +1079,8 @@ function toNodeListener(
         res.setHeader(key, value);
       });
       const setCookies =
-        typeof (webRes.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie === "function"
+        typeof (webRes.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie ===
+        "function"
           ? (webRes.headers as Headers & { getSetCookie: () => string[] }).getSetCookie()
           : [];
       if (setCookies.length > 0) {

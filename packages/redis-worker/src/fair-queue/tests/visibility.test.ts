@@ -41,7 +41,13 @@ describe("VisibilityManager", () => {
         await redis.hset(queueItemsKey, messageId, JSON.stringify(storedMessage));
 
         // Claim the message (moves it to in-flight set)
-        const claimResult = await manager.claim(queueId, queueKey, queueItemsKey, "consumer-1", 5000);
+        const claimResult = await manager.claim(
+          queueId,
+          queueKey,
+          queueItemsKey,
+          "consumer-1",
+          5000
+        );
         expect(claimResult.claimed).toBe(true);
 
         // Heartbeat should succeed since message is in-flight
@@ -110,7 +116,13 @@ describe("VisibilityManager", () => {
         await redis.zadd(queueKey, storedMessage.timestamp, messageId);
         await redis.hset(queueItemsKey, messageId, JSON.stringify(storedMessage));
 
-        const claimResult = await manager.claim(queueId, queueKey, queueItemsKey, "consumer-1", 5000);
+        const claimResult = await manager.claim(
+          queueId,
+          queueKey,
+          queueItemsKey,
+          "consumer-1",
+          5000
+        );
         expect(claimResult.claimed).toBe(true);
 
         // Heartbeat should work before complete
@@ -358,7 +370,13 @@ describe("VisibilityManager", () => {
         }
 
         // Request 10 messages but only 3 exist
-        const claimed = await manager.claimBatch(queueId, queueKey, queueItemsKey, "consumer-1", 10);
+        const claimed = await manager.claimBatch(
+          queueId,
+          queueKey,
+          queueItemsKey,
+          "consumer-1",
+          10
+        );
 
         expect(claimed).toHaveLength(3);
         expect(claimed[0]!.messageId).toBe("msg-1");
@@ -546,7 +564,15 @@ describe("VisibilityManager", () => {
         const dispatchKey = keys.dispatchKey(0);
 
         // Should not throw when releasing empty array
-        await manager.releaseBatch([], queueId, queueKey, queueItemsKey, tenantQueueIndexKey, dispatchKey, "t1");
+        await manager.releaseBatch(
+          [],
+          queueId,
+          queueKey,
+          queueItemsKey,
+          tenantQueueIndexKey,
+          dispatchKey,
+          "t1"
+        );
 
         await manager.close();
       }
@@ -591,7 +617,15 @@ describe("VisibilityManager", () => {
         const claimed = await manager.claimBatch(queueId, queueKey, queueItemsKey, "consumer-1", 3);
 
         // Release all messages back
-        await manager.releaseBatch(claimed, queueId, queueKey, queueItemsKey, tenantQueueIndexKey, dispatchKey, "t1");
+        await manager.releaseBatch(
+          claimed,
+          queueId,
+          queueKey,
+          queueItemsKey,
+          tenantQueueIndexKey,
+          dispatchKey,
+          "t1"
+        );
 
         // Tenant queue index should have the queue with correct score
         const tenantQueueScore = await redis.zscore(tenantQueueIndexKey, queueId);
@@ -644,7 +678,13 @@ describe("VisibilityManager", () => {
         await redis.hset(queueItemsKey, messageId, JSON.stringify(storedMessage));
 
         // Claim with very short timeout
-        const claimResult = await manager.claim(queueId, queueKey, queueItemsKey, "consumer-1", 100);
+        const claimResult = await manager.claim(
+          queueId,
+          queueKey,
+          queueItemsKey,
+          "consumer-1",
+          100
+        );
         expect(claimResult.claimed).toBe(true);
 
         // Wait for timeout to expire
@@ -836,7 +876,13 @@ describe("VisibilityManager", () => {
         await redis.hset(queueItemsKey, messageId, JSON.stringify(storedMessage));
 
         // Claim the message
-        const claimResult = await manager.claim(queueId, queueKey, queueItemsKey, "consumer-1", 100);
+        const claimResult = await manager.claim(
+          queueId,
+          queueKey,
+          queueItemsKey,
+          "consumer-1",
+          100
+        );
         expect(claimResult.claimed).toBe(true);
 
         // Corrupt the in-flight data by setting invalid JSON
@@ -868,4 +914,3 @@ describe("VisibilityManager", () => {
     );
   });
 });
-

@@ -32,7 +32,13 @@ export class DefaultPayloadProcessor implements PayloadProcessor {
       const filename = `${request.friendlyId}/payload.json`;
 
       const [uploadError, uploadedFilename] = await tryCatch(
-        uploadPacketToObjectStore(filename, packet.data, packet.dataType, request.environment, env.OBJECT_STORE_DEFAULT_PROTOCOL)
+        uploadPacketToObjectStore(
+          filename,
+          packet.data,
+          packet.dataType,
+          request.environment,
+          env.OBJECT_STORE_DEFAULT_PROTOCOL
+        )
       );
 
       if (uploadError) {

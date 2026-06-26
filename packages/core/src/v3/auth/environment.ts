@@ -20,11 +20,7 @@
 // them here keeps the contract structural (no @trigger.dev/database
 // import) while giving downstream consumers the same exact union they
 // expect when this value is passed to a Prisma column.
-export type RuntimeEnvironmentType =
-  | "PRODUCTION"
-  | "STAGING"
-  | "DEVELOPMENT"
-  | "PREVIEW";
+export type RuntimeEnvironmentType = "PRODUCTION" | "STAGING" | "DEVELOPMENT" | "PREVIEW";
 
 export type RunEngineVersion = "V1" | "V2";
 

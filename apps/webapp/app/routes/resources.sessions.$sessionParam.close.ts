@@ -49,11 +49,7 @@ export const action: ActionFunction = async ({ request, params }) => {
       return json(submission);
     }
 
-    const session = await resolveSessionByIdOrExternalId(
-      $replica,
-      environment.id,
-      sessionParam
-    );
+    const session = await resolveSessionByIdOrExternalId($replica, environment.id, sessionParam);
 
     if (!session) {
       submission.error = { sessionParam: ["Session not found"] };

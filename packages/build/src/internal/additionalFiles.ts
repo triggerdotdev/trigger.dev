@@ -1,10 +1,6 @@
 import { BuildManifest } from "@trigger.dev/core/v3";
 import { BuildContext } from "@trigger.dev/core/v3/build";
-import {
-  copyMatcherResults,
-  findFilesByMatchers,
-  type MatcherResult,
-} from "./copyFiles.js";
+import { copyMatcherResults, findFilesByMatchers, type MatcherResult } from "./copyFiles.js";
 
 export type AdditionalFilesOptions = {
   files: string[];

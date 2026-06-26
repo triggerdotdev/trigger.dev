@@ -274,7 +274,7 @@ export async function convertRunListInputOptionsToFilterRunsOptions(
     from: options.from,
     to: options.to,
   });
-  convertedOptions.period = time.period ? parseDuration(time.period) ?? undefined : undefined;
+  convertedOptions.period = time.period ? (parseDuration(time.period) ?? undefined) : undefined;
 
   // Batch friendlyId to id
   if (options.batchId && options.batchId.startsWith("batch_")) {

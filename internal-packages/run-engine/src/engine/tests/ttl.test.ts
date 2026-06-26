@@ -115,9 +115,8 @@ describe("RunEngine ttl", () => {
       expect(expiredRun?.status).toBe("EXPIRED");
 
       //concurrency should have been released
-      const envConcurrencyCompleted = await engine.runQueue.currentConcurrencyOfEnvironment(
-        authenticatedEnvironment
-      );
+      const envConcurrencyCompleted =
+        await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
       expect(envConcurrencyCompleted).toBe(0);
 
       // Queue sorted set should be empty (run removed from queue)
@@ -634,9 +633,8 @@ describe("RunEngine ttl", () => {
       }
 
       // Concurrency should be released for all
-      const envConcurrency = await engine.runQueue.currentConcurrencyOfEnvironment(
-        authenticatedEnvironment
-      );
+      const envConcurrency =
+        await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
       expect(envConcurrency).toBe(0);
 
       // Queue sorted set should be empty (all runs removed from queue)
@@ -986,9 +984,8 @@ describe("RunEngine ttl", () => {
         expect(expiredRunData?.status).toBe("EXPIRED");
 
         // Concurrency should be released
-        const envConcurrency = await engine.runQueue.currentConcurrencyOfEnvironment(
-          authenticatedEnvironment
-        );
+        const envConcurrency =
+          await engine.runQueue.currentConcurrencyOfEnvironment(authenticatedEnvironment);
         expect(envConcurrency).toBe(0);
       } finally {
         await engine.quit();
@@ -1070,9 +1067,8 @@ describe("RunEngine ttl", () => {
         await engine.runQueue.redis.sadd(envConcurrencyKey, run.id);
         await engine.runQueue.redis.sadd(envDequeuedKey, run.id);
 
-        const concurrencyBefore = await engine.runQueue.getCurrentConcurrencyOfEnvironment(
-          authenticatedEnvironment
-        );
+        const concurrencyBefore =
+          await engine.runQueue.getCurrentConcurrencyOfEnvironment(authenticatedEnvironment);
         expect(concurrencyBefore).toContain(run.id);
 
         await setTimeout(1_500);
@@ -1090,9 +1086,8 @@ describe("RunEngine ttl", () => {
           { timeout: 15_000, interval: 200 }
         );
 
-        const concurrencyAfter = await engine.runQueue.getCurrentConcurrencyOfEnvironment(
-          authenticatedEnvironment
-        );
+        const concurrencyAfter =
+          await engine.runQueue.getCurrentConcurrencyOfEnvironment(authenticatedEnvironment);
         expect(concurrencyAfter).not.toContain(run.id);
 
         const stillInDequeued = await engine.runQueue.redis.sismember(envDequeuedKey, run.id);

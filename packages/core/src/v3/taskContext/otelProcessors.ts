@@ -190,8 +190,7 @@ export class TaskContextMetricExporter implements PushMetricExporter {
     }
 
     if (taskContext.conversationId) {
-      contextAttrs[SemanticInternalAttributes.GEN_AI_CONVERSATION_ID] =
-        taskContext.conversationId;
+      contextAttrs[SemanticInternalAttributes.GEN_AI_CONVERSATION_ID] = taskContext.conversationId;
     }
 
     const modified: ResourceMetrics = {
@@ -288,7 +287,10 @@ export class BufferingMetricExporter implements PushMetricExporter {
     const base = batch[0]!;
 
     // Merge all scopeMetrics by scope name, then metrics by descriptor name
-    const scopeMap = new Map<string, { scope: ScopeMetrics["scope"]; metricsMap: Map<string, MetricData> }>();
+    const scopeMap = new Map<
+      string,
+      { scope: ScopeMetrics["scope"]; metricsMap: Map<string, MetricData> }
+    >();
 
     for (const rm of batch) {
       for (const sm of rm.scopeMetrics) {

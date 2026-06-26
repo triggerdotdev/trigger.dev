@@ -87,7 +87,9 @@ function enhanceExecutionSnapshotWithWaitpoints(
           type: w.type,
           completedAt: w.completedAt ?? new Date(),
           idempotencyKey:
-            w.userProvidedIdempotencyKey && !w.inactiveIdempotencyKey ? w.idempotencyKey : undefined,
+            w.userProvidedIdempotencyKey && !w.inactiveIdempotencyKey
+              ? w.idempotencyKey
+              : undefined,
           completedByTaskRun: w.completedByTaskRunId
             ? {
                 id: w.completedByTaskRunId,

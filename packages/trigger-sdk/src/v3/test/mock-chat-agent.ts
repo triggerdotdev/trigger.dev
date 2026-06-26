@@ -1,14 +1,8 @@
 import type { UIMessage, UIMessageChunk } from "ai";
 import { resourceCatalog } from "@trigger.dev/core/v3";
 import type { LocalsKey } from "@trigger.dev/core/v3";
-import {
-  runInMockTaskContext,
-  type MockTaskContextOptions,
-} from "@trigger.dev/core/v3/test";
-import {
-  __setSessionOpenImplForTests,
-  __setSessionStartImplForTests,
-} from "../sessions.js";
+import { runInMockTaskContext, type MockTaskContextOptions } from "@trigger.dev/core/v3/test";
+import { __setSessionOpenImplForTests, __setSessionStartImplForTests } from "../sessions.js";
 import {
   __setReadChatSnapshotImplForTests,
   __setReplaySessionInTailImplForTests,
@@ -16,10 +10,7 @@ import {
   __setWriteChatSnapshotImplForTests,
   type ChatSnapshotV1,
 } from "../ai.js";
-import {
-  createTestSessionHandle,
-  type TestSessionOutState,
-} from "./test-session-handle.js";
+import { createTestSessionHandle, type TestSessionOutState } from "./test-session-handle.js";
 
 /** Pre-seed locals before the agent's `run()` starts. */
 export type SetupLocals = (locals: {
@@ -287,10 +278,7 @@ export type MockChatAgentHarness = {
   readonly allRawChunks: unknown[];
 };
 
-const CONTROL_CHUNK_TYPES = new Set([
-  "trigger:turn-complete",
-  "trigger:upgrade-required",
-]);
+const CONTROL_CHUNK_TYPES = new Set(["trigger:turn-complete", "trigger:upgrade-required"]);
 
 function isControlChunk(chunk: unknown): boolean {
   if (typeof chunk !== "object" || chunk === null) return false;
@@ -407,9 +395,11 @@ export function mockChatAgent(
   __setReadChatSnapshotImplForTests(<T extends UIMessage>(_id: string) => {
     return seededSnapshot as ChatSnapshotV1<T> | undefined;
   });
-  __setWriteChatSnapshotImplForTests(<T extends UIMessage>(_id: string, snapshot: ChatSnapshotV1<T>) => {
-    lastWrittenSnapshot = snapshot as ChatSnapshotV1;
-  });
+  __setWriteChatSnapshotImplForTests(
+    <T extends UIMessage>(_id: string, snapshot: ChatSnapshotV1<T>) => {
+      lastWrittenSnapshot = snapshot as ChatSnapshotV1;
+    }
+  );
 
   // Replay override: install a default that returns whatever
   // `seededReplayChunks` reduces to. `mockChatAgent` doesn't model the
@@ -487,83 +477,80 @@ export function mockChatAgent(
     };
   });
 
-  taskFinished = runInMockTaskContext(
-    async (drivers) => {
-      runSignal = new AbortController();
+  taskFinished = runInMockTaskContext(async (drivers) => {
+    runSignal = new AbortController();
 
-      // For `mode: "continuation"`, omit `trigger` from the wire payload —
-      // mirrors what the server's `ensureRunForSession` / `swapSessionRun`
-      // produces (the continuation overrides clear `trigger` so the SDK
-      // boot path falls into the continuation-wait branch instead of
-      // re-firing the basePayload's stale first-run trigger). `continuation:
-      // true` is set unconditionally for this mode so the boot path's
-      // continuation-wait condition matches.
-      const isContinuationMode = mode === "continuation";
-      const initialPayload: ChatWirePayload = {
-        chatId,
-        ...(isContinuationMode
-          ? { trigger: undefined as never, continuation: true }
-          : { trigger: mode }),
-        metadata: clientData,
-        ...(!isContinuationMode && options.continuation ? { continuation: true } : {}),
-        ...(options.previousRunId ? { previousRunId: options.previousRunId } : {}),
-        ...(options.headStartMessages ? { headStartMessages: options.headStartMessages } : {}),
-      };
+    // For `mode: "continuation"`, omit `trigger` from the wire payload —
+    // mirrors what the server's `ensureRunForSession` / `swapSessionRun`
+    // produces (the continuation overrides clear `trigger` so the SDK
+    // boot path falls into the continuation-wait branch instead of
+    // re-firing the basePayload's stale first-run trigger). `continuation:
+    // true` is set unconditionally for this mode so the boot path's
+    // continuation-wait condition matches.
+    const isContinuationMode = mode === "continuation";
+    const initialPayload: ChatWirePayload = {
+      chatId,
+      ...(isContinuationMode
+        ? { trigger: undefined as never, continuation: true }
+        : { trigger: mode }),
+      metadata: clientData,
+      ...(!isContinuationMode && options.continuation ? { continuation: true } : {}),
+      ...(options.previousRunId ? { previousRunId: options.previousRunId } : {}),
+      ...(options.headStartMessages ? { headStartMessages: options.headStartMessages } : {}),
+    };
 
-      sendSessionInput = drivers.sessions.in.send;
-      closeSessionInput = drivers.sessions.in.close;
+    sendSessionInput = drivers.sessions.in.send;
+    closeSessionInput = drivers.sessions.in.close;
 
-      // Record every chunk written to session.out, detect turn-complete.
-      const listener = (chunk: unknown) => {
-        allRawChunks.push(chunk);
-        if (!isControlChunk(chunk)) {
-          allChunks.push(chunk as UIMessageChunk);
-        }
-        if (
-          typeof chunk === "object" &&
-          chunk !== null &&
-          (chunk as { type?: string }).type === "trigger:turn-complete"
-        ) {
-          const resolvers = turnCompleteResolvers;
-          turnCompleteResolvers = [];
-          for (const resolve of resolvers) resolve();
-        }
-      };
-      sessionOutState.listeners.add(listener);
-      const unsubscribe = () => sessionOutState.listeners.delete(listener);
-
-      if (options.setupLocals) {
-        await options.setupLocals({ set: drivers.locals.set });
+    // Record every chunk written to session.out, detect turn-complete.
+    const listener = (chunk: unknown) => {
+      allRawChunks.push(chunk);
+      if (!isControlChunk(chunk)) {
+        allChunks.push(chunk as UIMessageChunk);
       }
-
-      harnessReadyResolve();
-
-      try {
-        if (process.env.TRIGGER_CHAT_TEST_DEBUG === "1") {
-          console.log("[mockChatAgent] Starting runFn with payload:", initialPayload);
-        }
-        await runFn(initialPayload, {
-          ctx: drivers.ctx,
-          signal: runSignal.signal,
-        });
-        if (process.env.TRIGGER_CHAT_TEST_DEBUG === "1") {
-          console.log("[mockChatAgent] runFn returned");
-        }
-      } catch (err) {
-        if (process.env.TRIGGER_CHAT_TEST_DEBUG === "1") {
-          console.log("[mockChatAgent] runFn threw:", err);
-        }
-        throw err;
-      } finally {
-        unsubscribe();
-        // Resolve any outstanding turn-complete waiters so callers don't hang
+      if (
+        typeof chunk === "object" &&
+        chunk !== null &&
+        (chunk as { type?: string }).type === "trigger:turn-complete"
+      ) {
         const resolvers = turnCompleteResolvers;
         turnCompleteResolvers = [];
         for (const resolve of resolvers) resolve();
       }
-    },
-    options.taskContext
-  )
+    };
+    sessionOutState.listeners.add(listener);
+    const unsubscribe = () => sessionOutState.listeners.delete(listener);
+
+    if (options.setupLocals) {
+      await options.setupLocals({ set: drivers.locals.set });
+    }
+
+    harnessReadyResolve();
+
+    try {
+      if (process.env.TRIGGER_CHAT_TEST_DEBUG === "1") {
+        console.log("[mockChatAgent] Starting runFn with payload:", initialPayload);
+      }
+      await runFn(initialPayload, {
+        ctx: drivers.ctx,
+        signal: runSignal.signal,
+      });
+      if (process.env.TRIGGER_CHAT_TEST_DEBUG === "1") {
+        console.log("[mockChatAgent] runFn returned");
+      }
+    } catch (err) {
+      if (process.env.TRIGGER_CHAT_TEST_DEBUG === "1") {
+        console.log("[mockChatAgent] runFn threw:", err);
+      }
+      throw err;
+    } finally {
+      unsubscribe();
+      // Resolve any outstanding turn-complete waiters so callers don't hang
+      const resolvers = turnCompleteResolvers;
+      turnCompleteResolvers = [];
+      for (const resolve of resolvers) resolve();
+    }
+  }, options.taskContext)
     .catch((err) => {
       // Propagate errors to pending turn waiters instead of dropping them
       const resolvers = turnCompleteResolvers;
@@ -581,18 +568,14 @@ export function mockChatAgent(
       __setReplaySessionInTailImplForTests(undefined);
     });
 
-  const sendPayloadAndWait = async (
-    payload: ChatWirePayload
-  ): Promise<MockChatAgentTurn> => {
+  const sendPayloadAndWait = async (payload: ChatWirePayload): Promise<MockChatAgentTurn> => {
     await harnessReady;
     const before = allRawChunks.length;
     const turnComplete = waitForTurnComplete();
     await sendSessionInput(sessionId, { kind: "message", payload });
     await turnComplete;
     const rawChunks = allRawChunks.slice(before);
-    const chunks = rawChunks.filter(
-      (c) => !isControlChunk(c)
-    ) as UIMessageChunk[];
+    const chunks = rawChunks.filter((c) => !isControlChunk(c)) as UIMessageChunk[];
     return { chunks, rawChunks };
   };
 
@@ -745,7 +728,9 @@ export function mockChatAgent(
 async function reduceChunksToMessages(chunks: UIMessageChunk[]): Promise<UIMessage[]> {
   if (chunks.length === 0) return [];
   const aiModule = (await import("ai")) as {
-    readUIMessageStream?: (args: { stream: ReadableStream<UIMessageChunk> }) => AsyncIterable<UIMessage>;
+    readUIMessageStream?: (args: {
+      stream: ReadableStream<UIMessageChunk>;
+    }) => AsyncIterable<UIMessage>;
     cleanupAbortedParts?: (msg: UIMessage) => UIMessage;
   };
   const readUIMessageStream = aiModule.readUIMessageStream;

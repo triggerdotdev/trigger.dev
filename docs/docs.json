@@ -10,11 +10,7 @@
   },
   "favicon": "/images/favicon.png",
   "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "claude"
-    ]
+    "options": ["copy", "view", "claude"]
   },
   "navigation": {
     "dropdowns": [
@@ -40,11 +36,7 @@
             "pages": [
               {
                 "group": "Tasks",
-                "pages": [
-                  "tasks/overview",
-                  "tasks/schemaTask",
-                  "tasks/scheduled"
-                ]
+                "pages": ["tasks/overview", "tasks/schemaTask", "tasks/scheduled"]
               },
               "triggering",
               "runs",
@@ -57,10 +49,7 @@
               "building-with-ai",
               {
                 "group": "MCP Server",
-                "pages": [
-                  "mcp-introduction",
-                  "mcp-tools"
-                ]
+                "pages": ["mcp-introduction", "mcp-tools"]
               },
               "skills",
               "mcp-agent-rules"
@@ -74,12 +63,7 @@
               "errors-retrying",
               {
                 "group": "Wait",
-                "pages": [
-                  "wait",
-                  "wait-for",
-                  "wait-until",
-                  "wait-for-token"
-                ]
+                "pages": ["wait", "wait-for", "wait-until", "wait-for-token"]
               },
               "queue-concurrency",
               "versioning",
@@ -199,13 +183,11 @@
               "deploy-environment-variables",
               "github-actions",
               "deployment/preview-branches",
+              "deployment/dev-branches",
               "deployment/atomic-deployment",
               {
                 "group": "Deployment integrations",
-                "pages": [
-                  "github-integration",
-                  "vercel-integration"
-                ]
+                "pages": ["github-integration", "vercel-integration"]
               }
             ]
           },
@@ -269,19 +251,11 @@
           },
           {
             "group": "Observability",
-            "pages": [
-              "observability/query",
-              "observability/dashboards"
-            ]
+            "pages": ["observability/query", "observability/dashboards"]
           },
           {
             "group": "Using the Dashboard",
-            "pages": [
-              "run-tests",
-              "troubleshooting-alerts",
-              "replaying",
-              "bulk-actions"
-            ]
+            "pages": ["run-tests", "troubleshooting-alerts", "replaying", "bulk-actions"]
           },
           {
             "group": "Troubleshooting",
@@ -304,30 +278,18 @@
               "self-hosting/kubernetes",
               {
                 "group": "Environment variables",
-                "pages": [
-                  "self-hosting/env/webapp",
-                  "self-hosting/env/supervisor"
-                ]
+                "pages": ["self-hosting/env/webapp", "self-hosting/env/supervisor"]
               },
               "open-source-self-hosting"
             ]
           },
           {
             "group": "Open source",
-            "pages": [
-              "open-source-contributing",
-              "github-repo",
-              "changelog",
-              "roadmap"
-            ]
+            "pages": ["open-source-contributing", "github-repo", "changelog", "roadmap"]
           },
           {
             "group": "Help",
-            "pages": [
-              "community",
-              "help-slack",
-              "help-email"
-            ]
+            "pages": ["community", "help-slack", "help-email"]
           }
         ]
       },
@@ -470,9 +432,7 @@
         "groups": [
           {
             "group": "Introduction",
-            "pages": [
-              "guides/introduction"
-            ]
+            "pages": ["guides/introduction"]
           },
           {
             "group": "Frameworks",
@@ -538,10 +498,7 @@
           },
           {
             "group": "Migration guides",
-            "pages": [
-              "migration-mergent",
-              "migration-n8n"
-            ]
+            "pages": ["migration-mergent", "migration-n8n"]
           },
           {
             "group": "Use cases",
@@ -632,10 +589,7 @@
     "href": "https://trigger.dev"
   },
   "api": {
-    "openapi": [
-      "openapi.yml",
-      "v3-openapi.yaml"
-    ],
+    "openapi": ["openapi.yml", "v3-openapi.yaml"],
     "playground": {
       "display": "simple"
     }

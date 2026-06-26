@@ -26,7 +26,7 @@ describe("createRealTripEvaluator", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -57,7 +57,7 @@ describe("createRealTripEvaluator", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest("returns divert=false when getBuffer returns null (fail-open)", async () => {
@@ -70,21 +70,18 @@ describe("createRealTripEvaluator", () => {
     expect(decision).toEqual({ divert: false });
   });
 
-  redisTest(
-    "returns divert=false when buffer throws (fail-open)",
-    async ({ redisOptions }) => {
-      const buffer = new MollifierBuffer({ redisOptions });
-      // Closing the client up front means evaluateTrip will throw on the first
-      // Redis command — a real failure mode, not a stub.
-      await buffer.close();
+  redisTest("returns divert=false when buffer throws (fail-open)", async ({ redisOptions }) => {
+    const buffer = new MollifierBuffer({ redisOptions });
+    // Closing the client up front means evaluateTrip will throw on the first
+    // Redis command — a real failure mode, not a stub.
+    await buffer.close();
 
-      const evaluator = createRealTripEvaluator({
-        getBuffer: () => buffer,
-        options: () => ({ windowMs: 200, threshold: 100, holdMs: 500 }),
-      });
+    const evaluator = createRealTripEvaluator({
+      getBuffer: () => buffer,
+      options: () => ({ windowMs: 200, threshold: 100, holdMs: 500 }),
+    });
 
-      const decision = await evaluator(inputs);
-      expect(decision).toEqual({ divert: false });
-    },
-  );
+    const decision = await evaluator(inputs);
+    expect(decision).toEqual({ divert: false });
+  });
 });

@@ -144,17 +144,17 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     finishedAttempt === null
       ? undefined
       : finishedAttempt.outputType === "application/store"
-      ? `/resources/packets/${run.runtimeEnvironment.id}/${finishedAttempt.output}`
-      : typeof finishedAttempt.output !== "undefined" && finishedAttempt.output !== null
-      ? await prettyPrintPacket(finishedAttempt.output, finishedAttempt.outputType ?? undefined)
-      : undefined;
+        ? `/resources/packets/${run.runtimeEnvironment.id}/${finishedAttempt.output}`
+        : typeof finishedAttempt.output !== "undefined" && finishedAttempt.output !== null
+          ? await prettyPrintPacket(finishedAttempt.output, finishedAttempt.outputType ?? undefined)
+          : undefined;
 
   const payload =
     run.payloadType === "application/store"
       ? `/resources/packets/${run.runtimeEnvironment.id}/${run.payload}`
       : typeof run.payload !== "undefined" && run.payload !== null
-      ? await prettyPrintPacket(run.payload, run.payloadType ?? undefined)
-      : undefined;
+        ? await prettyPrintPacket(run.payload, run.payloadType ?? undefined)
+        : undefined;
 
   let error: TaskRunError | undefined = undefined;
   if (finishedAttempt?.error) {

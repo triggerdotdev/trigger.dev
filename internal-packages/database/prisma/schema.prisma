@@ -324,6 +324,7 @@ model RuntimeEnvironment {
 
   // Preview branches
   /// If true, this environment has branches and is treated differently in the dashboard/API
+  /// NB: this flag is NOT used for Development branches, instead (type, parentEnvironmentId) = (DEVELOPMENT, NULL) is used
   isBranchableEnvironment Boolean              @default(false)
   branchName              String?
   parentEnvironment       RuntimeEnvironment?  @relation("parentEnvironment", fields: [parentEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)

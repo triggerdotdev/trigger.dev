@@ -33,6 +33,7 @@ import { join } from "node:path";
 
 export type DevSessionOptions = {
   name: string | undefined;
+  branch?: string;
   dashboardUrl: string;
   initialMode: "local";
   showInteractiveDevSession: boolean | undefined;
@@ -50,18 +51,20 @@ export type DevSessionInstance = {
 export async function startDevSession({
   rawConfig,
   name,
+  branch,
   rawArgs,
   client,
   dashboardUrl,
   keepTmpFiles,
 }: DevSessionOptions): Promise<DevSessionInstance> {
-  clearTmpDirs(rawConfig.workingDir);
-  const destination = getTmpDir(rawConfig.workingDir, "build", keepTmpFiles);
+  clearTmpDirs(rawConfig.workingDir, branch);
+  const destination = getTmpDir(rawConfig.workingDir, "build", keepTmpFiles, branch);
   // Create shared store directory for deduplicating chunk files across rebuilds
-  const storeDir = getStoreDir(rawConfig.workingDir, keepTmpFiles);
+  const storeDir = getStoreDir(rawConfig.workingDir, keepTmpFiles, branch);
 
   const runtime = await startWorkerRuntime({
     name,
+    branch,
     config: rawConfig,
     args: rawArgs,
     client,
@@ -81,6 +84,7 @@ export async function startDevSession({
 
   const stopOutput = startDevOutput({
     name,
+    branch,
     dashboardUrl,
     config: rawConfig,
     args: rawArgs,
@@ -187,7 +191,7 @@ export async function startDevSession({
           return;
         }
 
-        const workerDir = getTmpDir(rawConfig.workingDir, "build", keepTmpFiles);
+        const workerDir = getTmpDir(rawConfig.workingDir, "build", keepTmpFiles, branch);
         await updateBuild(result, workerDir);
       });
     },

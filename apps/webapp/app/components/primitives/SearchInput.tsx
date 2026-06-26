@@ -42,7 +42,7 @@ export function SearchInput({
   const { value, replace, del } = useSearchParams();
   const isControlled = onValueChange !== undefined;
 
-  const initialSearch = isControlled ? controlledValue ?? "" : value(paramName) ?? "";
+  const initialSearch = isControlled ? (controlledValue ?? "") : (value(paramName) ?? "");
 
   const [text, setText] = useState(initialSearch);
   const [isFocused, setIsFocused] = useState(false);

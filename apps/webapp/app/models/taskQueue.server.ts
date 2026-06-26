@@ -24,12 +24,12 @@ export async function findQueueInEnvironment(
   const task = backgroundTask
     ? backgroundTask
     : backgroundWorkerTaskId
-    ? await prisma.backgroundWorkerTask.findFirst({
-        where: {
-          id: backgroundWorkerTaskId,
-        },
-      })
-    : undefined;
+      ? await prisma.backgroundWorkerTask.findFirst({
+          where: {
+            id: backgroundWorkerTaskId,
+          },
+        })
+      : undefined;
 
   if (!task) {
     return;

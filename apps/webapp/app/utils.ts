@@ -83,10 +83,13 @@ export function useMatchesData(id: string | string[], debug: boolean = false): U
   const paths = Array.isArray(id) ? id : [id];
 
   // Get the first matching route
-  const route = paths.reduce((acc, path) => {
-    if (acc) return acc;
-    return matchingRoutes.find((route) => route.id === path);
-  }, undefined as UIMatch | undefined);
+  const route = paths.reduce(
+    (acc, path) => {
+      if (acc) return acc;
+      return matchingRoutes.find((route) => route.id === path);
+    },
+    undefined as UIMatch | undefined
+  );
 
   return route;
 }

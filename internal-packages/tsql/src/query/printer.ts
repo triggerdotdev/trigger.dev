@@ -741,7 +741,9 @@ export class ClickHousePrinter {
       }
 
       // Set format hint from prettyFormat() or auto-populate from customRenderType
-      const sourceWithFormat = sourceColumn as (Partial<ColumnSchema> & { format?: ColumnFormatType }) | null;
+      const sourceWithFormat = sourceColumn as
+        | (Partial<ColumnSchema> & { format?: ColumnFormatType })
+        | null;
       if (sourceWithFormat?.format) {
         metadata.format = sourceWithFormat.format;
       } else if (sourceColumn?.customRenderType) {
@@ -2990,10 +2992,7 @@ export class ClickHousePrinter {
   private visitCallArgs(functionName: string, args: Expression[]): string[] {
     const lowerName = functionName.toLowerCase();
 
-    if (
-      ClickHousePrinter.DATE_FUNCTIONS_WITH_INTERVAL_UNIT.has(lowerName) &&
-      args.length > 0
-    ) {
+    if (ClickHousePrinter.DATE_FUNCTIONS_WITH_INTERVAL_UNIT.has(lowerName) && args.length > 0) {
       const firstArg = args[0];
       const intervalUnit = this.extractIntervalUnit(firstArg);
 

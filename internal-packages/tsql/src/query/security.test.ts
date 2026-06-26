@@ -614,11 +614,11 @@ describe("Multi-join Tenant Guard Qualification", () => {
     // The guards should be table-qualified to prevent binding to the wrong table
     // Look for pattern like: r.organization_id and e.organization_id (with table alias prefix)
     // The exact format in ClickHouse SQL is just "alias.column" after resolution
-    
+
     // Count qualified organization_id references (should have table prefixes)
     // In the WHERE clause, we should see both r.organization_id and e.organization_id
     const whereClause = sql.substring(sql.indexOf("WHERE"));
-    
+
     // Both tables should have their own qualified tenant guards
     // The pattern should be: table_alias.organization_id for each table
     expect(whereClause).toMatch(/\br\b[^,]*organization_id/);
@@ -633,7 +633,7 @@ describe("Multi-join Tenant Guard Qualification", () => {
     `);
 
     const whereClause = sql.substring(sql.indexOf("WHERE"));
-    
+
     // Both tables should have qualified guards
     expect(whereClause).toMatch(/\br\b[^,]*organization_id/);
     expect(whereClause).toMatch(/\be\b[^,]*organization_id/);
@@ -648,7 +648,7 @@ describe("Multi-join Tenant Guard Qualification", () => {
     `);
 
     const whereClause = sql.substring(sql.indexOf("WHERE"));
-    
+
     // All three table aliases should have qualified guards
     expect(whereClause).toMatch(/\br\b[^,]*organization_id/);
     expect(whereClause).toMatch(/\be1\b[^,]*organization_id/);
@@ -667,13 +667,13 @@ describe("Multi-join Tenant Guard Qualification", () => {
     // This ensures each table gets its own guard, not shared/ambiguous references
     const orgIdPattern = /(\w+)\.organization_id/g;
     const matches = [...sql.matchAll(orgIdPattern)];
-    const tableAliases = matches.map(m => m[1]);
-    
+    const tableAliases = matches.map((m) => m[1]);
+
     // Should have at least 2 different table aliases for organization_id
     // (one for task_runs alias 'r' and one for task_events alias 'e')
     expect(tableAliases).toContain("r");
     expect(tableAliases).toContain("e");
-    
+
     // Both should use the same tenant value (parameterized)
     expect(Object.values(params)).toContain("org_tenant1");
   });

@@ -1,8 +1,18 @@
+import { intro } from "@clack/prompts";
+import { resolve } from "node:path";
+import { spinner } from "../utilities/windows.js";
+import { loadConfig } from "../config.js";
+import { verifyDirectory } from "./deploy.js";
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import { Command, Option as CommandOption } from "commander";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
-import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
+import {
+  CommonCommandOptions,
+  commonOptions,
+  handleTelemetry,
+  wrapCommandAction,
+} from "../cli/common.js";
 import { watchConfig } from "../config.js";
 import { DevSessionInstance, startDevSession } from "../dev/devSession.js";
 import { createLockFile } from "../dev/lock.js";
@@ -27,11 +37,22 @@ import { installMcpServer } from "./install-mcp.js";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { VERSION } from "@trigger.dev/core";
 import { initiateSkillsInstallWizard } from "./skills.js";
+import { getDevBranch } from "@trigger.dev/core/v3";
+
+const DevArchiveCommandOptions = CommonCommandOptions.extend({
+  branch: z.string().optional(),
+  config: z.string().optional(),
+  projectRef: z.string().optional(),
+  skipUpdateCheck: z.boolean().default(false),
+});
+
+type DevArchiveCommandOptions = z.infer<typeof DevArchiveCommandOptions>;
 
 const DevCommandOptions = CommonCommandOptions.extend({
   debugOtel: z.boolean().default(false),
   config: z.string().optional(),
   projectRef: z.string().optional(),
+  branch: z.string().optional(),
   skipUpdateCheck: z.boolean().default(false),
   skipPlatformNotifications: z.boolean().default(false),
   envFile: z.string().optional(),
@@ -48,14 +69,22 @@ const DevCommandOptions = CommonCommandOptions.extend({
 export type DevCommandOptions = z.infer<typeof DevCommandOptions>;
 
 export function configureDevCommand(program: Command) {
-  return commonOptions(
-    program
-      .command("dev")
+  // `dev` is the root command that defaults to the `start` subcommand,
+  // maintains existing behaviour for `trigger dev` but `trigger dev --help` a bit different
+  const devBase = program.command("dev").description("Run your Trigger.dev tasks locally");
+
+  commonOptions(
+    devBase
+      .command("start", { isDefault: true })
       .description("Run your Trigger.dev tasks locally")
       .option("-c, --config <config file>", "The name of the config file")
       .option(
         "-p, --project-ref <project ref>",
         "The project ref. Required if there is no config file."
+      )
+      .option(
+        "-b, --branch <branch>",
+        "The dev branch to use. If not provided, we'll use the default branch."
       )
       .option(
         "--env-file <env file>",
@@ -98,6 +127,32 @@ export function configureDevCommand(program: Command) {
   ).action(async (options) => {
     wrapCommandAction("dev", DevCommandOptions, options, async (opts) => {
       await devCommand(opts);
+    });
+  });
+
+  commonOptions(
+    devBase
+      .command("archive")
+      .description("Archive a dev branch")
+      .argument("[path]", "The path to the project", ".")
+      .option(
+        "-b, --branch <branch>",
+        "The dev branch to archive. Defaults to the TRIGGER_DEV_BRANCH environment variable if set."
+      )
+      .option("--skip-update-check", "Skip checking for @trigger.dev package updates")
+      .option("-c, --config <config file>", "The name of the config file, found at [path]")
+      .option(
+        "-p, --project-ref <project ref>",
+        "The project ref. Required if there is no config file. This will override the project specified in the config file."
+      )
+      .option(
+        "--env-file <env file>",
+        "Path to the .env file to load into the CLI process. Defaults to .env in the project directory."
+      )
+  ).action(async (path, options) => {
+    await handleTelemetry(async () => {
+      await printStandloneInitialBanner(true, options.profile);
+      await devArchiveCommand(path, options);
     });
   });
 }
@@ -192,16 +247,19 @@ async function startDev(options: StartDevOptions) {
   logger.debug("Starting dev CLI", { options });
 
   let watcher: Awaited<ReturnType<typeof watchConfig>> | undefined;
+  let removeLockFile: (() => void) | undefined;
 
   try {
     if (options.logLevel) {
       logger.loggerLevel = options.logLevel;
     }
 
+    const apiClient = new CliApiClient(options.login.auth.apiUrl, options.login.auth.accessToken);
+
     const notificationPromise = options.skipPlatformNotifications
       ? undefined
       : fetchPlatformNotification({
-          apiClient: new CliApiClient(options.login.auth.apiUrl, options.login.auth.accessToken),
+          apiClient,
           projectRef: options.projectRef,
         });
 
@@ -215,13 +273,14 @@ async function startDev(options: StartDevOptions) {
       displayedUpdateMessage = await updateTriggerPackages(options.cwd, { ...options }, true, true);
     }
 
-    const removeLockFile = await createLockFile(options.cwd);
+    const envVars = resolveLocalEnvVars(options.envFile);
+    const branch = getDevBranch({ specified: options.branch ?? envVars.TRIGGER_DEV_BRANCH });
+
+    removeLockFile = await createLockFile(options.cwd, branch);
 
     let devInstance: DevSessionInstance | undefined;
 
     printDevBanner(displayedUpdateMessage);
-
-    const envVars = resolveLocalEnvVars(options.envFile);
 
     if (envVars.TRIGGER_PROJECT_REF) {
       logger.debug("Using project ref from env", { ref: envVars.TRIGGER_PROJECT_REF });
@@ -246,6 +305,18 @@ async function startDev(options: StartDevOptions) {
 
     logger.debug("Initial config", watcher.config);
 
+    if (branch) {
+      const upsertResult = await apiClient.upsertBranch(watcher.config.project, {
+        branch,
+        env: "development",
+      });
+
+      if (!upsertResult.success) {
+        logger.error(`Failed to use branch "${branch}": ${upsertResult.error}`);
+        process.exit(1);
+      }
+    }
+
     // eslint-disable-next-line no-inner-declarations
     async function bootDevSession(configParam: ResolvedConfig) {
       const projectClient = await getProjectClient({
@@ -253,6 +324,7 @@ async function startDev(options: StartDevOptions) {
         apiUrl: options.login.auth.apiUrl,
         projectRef: configParam.project,
         env: "dev",
+        branch,
         profile: options.profile,
       });
 
@@ -262,6 +334,7 @@ async function startDev(options: StartDevOptions) {
 
       return startDevSession({
         name: projectClient.name,
+        branch,
         rawArgs: options,
         rawConfig: configParam,
         client: projectClient.client,
@@ -281,12 +354,94 @@ async function startDev(options: StartDevOptions) {
       stop: async () => {
         devInstance?.stop();
         await watcher?.stop();
-        removeLockFile();
+        removeLockFile?.();
       },
       waitUntilExit,
     };
   } catch (error) {
+    removeLockFile?.();
     await watcher?.stop();
     throw error;
+  }
+}
+
+async function devArchiveCommand(dir: string, options: unknown) {
+  return await wrapCommandAction(
+    "devArchiveCommand",
+    DevArchiveCommandOptions,
+    options,
+    async (opts) => {
+      return await archiveDevBranchCommand(dir, opts);
+    }
+  );
+}
+
+async function archiveDevBranchCommand(dir: string, options: DevArchiveCommandOptions) {
+  intro(`Archiving dev branch`);
+
+  if (!options.skipUpdateCheck) {
+    await updateTriggerPackages(dir, { ...options }, true, true);
+  }
+
+  const cwd = process.cwd();
+  const projectPath = resolve(cwd, dir);
+
+  verifyDirectory(dir, projectPath);
+
+  const authorization = await login({
+    embedded: true,
+    defaultApiUrl: options.apiUrl,
+    profile: options.profile,
+  });
+
+  if (!authorization.ok) {
+    if (authorization.error === "fetch failed") {
+      throw new Error(
+        `Failed to connect to ${authorization.auth?.apiUrl}. Are you sure it's the correct URL?`
+      );
+    } else {
+      throw new Error(
+        `You must login first. Use the \`login\` CLI command.\n\n${authorization.error}`
+      );
+    }
+  }
+
+  const resolvedConfig = await loadConfig({
+    cwd: projectPath,
+    overrides: { project: options.projectRef },
+    configFile: options.config,
+  });
+
+  logger.debug("Resolved config", resolvedConfig);
+
+  const branch = getDevBranch({ specified: options.branch });
+
+  // getDevBranch returns undefined for the default branch (the root dev env),
+  // which can't be archived. Require the user to name a real branch instead.
+  if (!branch) {
+    throw new Error(
+      "You need to specify which dev branch to archive (the default branch can't be archived). Use --branch <branch>."
+    );
+  }
+
+  const $buildSpinner = spinner();
+  $buildSpinner.start(`Archiving "${branch}"`);
+  const result = await archiveDevBranch(authorization, branch, resolvedConfig.project);
+  $buildSpinner.stop(
+    result ? `Successfully archived "${branch}"` : `Failed to archive "${branch}".`
+  );
+  return result;
+}
+
+async function archiveDevBranch(authorization: LoginResultOk, branch: string, project: string) {
+  const apiClient = new CliApiClient(authorization.auth.apiUrl, authorization.auth.accessToken);
+
+  const result = await apiClient.archiveBranch(project, "development", branch);
+
+  if (result.success) {
+    return true;
+  } else {
+    logger.error(result.error);
+    return false;
   }
 }

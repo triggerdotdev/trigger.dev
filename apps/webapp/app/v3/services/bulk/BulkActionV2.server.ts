@@ -38,7 +38,10 @@ export class BulkActionService extends BaseService {
     const filters = await getFilters(payload, request);
 
     // Count the runs that will be affected by the bulk action
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      organizationId,
+      "standard"
+    );
     const runsRepository = new RunsRepository({
       clickhouse,
       prisma: this._replica as PrismaClient,
@@ -148,7 +151,10 @@ export class BulkActionService extends BaseService {
       ...rawParams,
     });
 
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(group.project.organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      group.project.organizationId,
+      "standard"
+    );
     const runsRepository = new RunsRepository({
       clickhouse,
       prisma: this._replica as PrismaClient,

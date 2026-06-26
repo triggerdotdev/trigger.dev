@@ -41,9 +41,7 @@ export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
 
   const events = tree
     ? flattenTree(tree).map((n) => {
-        const offset = millisecondsToNanoseconds(
-          n.data.startTime.getTime() - treeRootStartTimeMs
-        );
+        const offset = millisecondsToNanoseconds(n.data.startTime.getTime() - treeRootStartTimeMs);
         // Mirror RunPresenter: raw span events stay server-side, only
         // timelineEvents ship to the client.
         const { events: spanEvents, ...data } = n.data;
@@ -51,7 +49,11 @@ export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
           ...n,
           data: {
             ...data,
-            timelineEvents: createTimelineSpanEventsFromSpanEvents(spanEvents, false, treeRootStartTimeMs),
+            timelineEvents: createTimelineSpanEventsFromSpanEvents(
+              spanEvents,
+              false,
+              treeRootStartTimeMs
+            ),
             duration: n.data.isPartial ? null : n.data.duration,
             offset,
             isRoot: n.id === spanId,

@@ -46,13 +46,13 @@ export type ScheduleOptions<
         timezone?: string;
         /** You can optionally specify which environments this schedule should run in.
          * When not specified, the schedule will run in all environments.
-         * 
+         *
          * @example
          * ```ts
          * environments: ["PRODUCTION", "STAGING"]
          * ```
-         * 
-         * @example 
+         *
+         * @example
          * ```ts
          * environments: ["PRODUCTION"] // Only run in production
          * ```

@@ -181,7 +181,9 @@ describe("Object Storage", () => {
       const key = `packets/proj_ref/dev/${path}`;
       const normalized = normalizeObjectStoreLogicalKeyPathname(key);
       expect(normalized).toBe(`/packets/proj_ref/dev/${path}`);
-      expect(() => assertPacketObjectStoreKeyUnderPrefix(key, "packets/proj_ref/dev")).not.toThrow();
+      expect(() =>
+        assertPacketObjectStoreKeyUnderPrefix(key, "packets/proj_ref/dev")
+      ).not.toThrow();
     });
   });
 
@@ -206,7 +208,9 @@ describe("Object Storage", () => {
 
     it("rejects env-level traversal via encoded parent segments", () => {
       const traversalKey = `${prefix}/%2e%2e/secret.json`;
-      expect(normalizeObjectStoreLogicalKeyPathname(traversalKey)).toBe("/packets/proj_ref/secret.json");
+      expect(normalizeObjectStoreLogicalKeyPathname(traversalKey)).toBe(
+        "/packets/proj_ref/secret.json"
+      );
 
       expect(() => assertPacketObjectStoreKeyUnderPrefix(traversalKey, prefix)).toThrow(
         ServiceValidationError
@@ -217,9 +221,7 @@ describe("Object Storage", () => {
   describe("normalizeObjectStoreLogicalKeyPathname (Aws4FetchClient behavior)", () => {
     it("decodes %2e%2e segments into parent directory traversal", () => {
       const key = "packets/proj_ref/dev/run/%2e%2e/secret.json";
-      expect(normalizeObjectStoreLogicalKeyPathname(key)).toBe(
-        "/packets/proj_ref/dev/secret.json"
-      );
+      expect(normalizeObjectStoreLogicalKeyPathname(key)).toBe("/packets/proj_ref/dev/secret.json");
     });
   });
 
@@ -241,7 +243,8 @@ describe("Object Storage", () => {
       });
       expect(response.status).toBe(500);
       expect(await response.json()).toEqual({
-        error: "Failed to generate presigned URL: Object store is not configured for protocol: default",
+        error:
+          "Failed to generate presigned URL: Object store is not configured for protocol: default",
       });
     });
 
@@ -265,16 +268,13 @@ describe("Object Storage", () => {
       "run/%2e%2e/secret.json",
       "%2e%2e/secret.json",
       "%2E%2E/secret.json",
-    ])(
-      "returns 400 failure for unsafe path %s without calling object store",
-      async (filename) => {
-        const result = await generatePresignedUrl("proj_test", "dev", filename, "PUT");
-        expect(result.success).toBe(false);
-        if (result.success) throw new Error("expected presign to fail");
-        expect(result.error).toBe(INVALID_PACKET_STORAGE_PATH);
-        expect(result.status).toBe(400);
-      }
-    );
+    ])("returns 400 failure for unsafe path %s without calling object store", async (filename) => {
+      const result = await generatePresignedUrl("proj_test", "dev", filename, "PUT");
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error("expected presign to fail");
+      expect(result.error).toBe(INVALID_PACKET_STORAGE_PATH);
+      expect(result.status).toBe(400);
+    });
 
     it("allows presign for valid packet paths when object store is not configured", async () => {
       env.OBJECT_STORE_BASE_URL = undefined;
@@ -309,7 +309,9 @@ describe("Object Storage", () => {
 
     it("PUT with forceNoPrefix skips OBJECT_STORE_DEFAULT_PROTOCOL for unprefixed keys", () => {
       env.OBJECT_STORE_DEFAULT_PROTOCOL = "s3";
-      expect(resolveStoreProtocolForPacketPresign("a/b.json", "PUT", true).storeProtocol).toBeUndefined();
+      expect(
+        resolveStoreProtocolForPacketPresign("a/b.json", "PUT", true).storeProtocol
+      ).toBeUndefined();
     });
 
     it("explicit protocol in key wins for PUT with forceNoPrefix", () => {
@@ -687,7 +689,12 @@ describe("Object Storage", () => {
       });
       expect(putResponse.ok).toBe(true);
 
-      const getResult = await generatePresignedUrl(projectRef, envSlug, putResult.storagePath!, "GET");
+      const getResult = await generatePresignedUrl(
+        projectRef,
+        envSlug,
+        putResult.storagePath!,
+        "GET"
+      );
       expect(getResult.success).toBe(true);
       if (!getResult.success) throw new Error(getResult.error);
 

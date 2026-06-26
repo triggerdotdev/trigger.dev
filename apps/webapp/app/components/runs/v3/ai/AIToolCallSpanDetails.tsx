@@ -73,4 +73,3 @@ export function AIToolCallSpanDetails({ data }: { data: AIToolCallData }) {
     </div>
   );
 }
-

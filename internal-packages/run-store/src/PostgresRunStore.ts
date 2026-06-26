@@ -299,7 +299,12 @@ export class PostgresRunStore implements RunStore {
 
   async expireRun<S extends Prisma.TaskRunSelect>(
     runId: string,
-    data: { error: TaskRunError; completedAt: Date; expiredAt: Date; snapshot: ExpireSnapshotInput },
+    data: {
+      error: TaskRunError;
+      completedAt: Date;
+      expiredAt: Date;
+      snapshot: ExpireSnapshotInput;
+    },
     args: { select: S },
     tx?: PrismaClientOrTransaction
   ): Promise<Prisma.TaskRunGetPayload<{ select: S }>> {
@@ -629,10 +634,7 @@ export class PostgresRunStore implements RunStore {
     args: { include: I },
     client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }> | null>;
-  findRun(
-    where: Prisma.TaskRunWhereInput,
-    client?: ReadClient
-  ): Promise<TaskRun | null>;
+  findRun(where: Prisma.TaskRunWhereInput, client?: ReadClient): Promise<TaskRun | null>;
   async findRun(
     where: Prisma.TaskRunWhereInput,
     argsOrClient?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude } | ReadClient,
@@ -656,10 +658,7 @@ export class PostgresRunStore implements RunStore {
     args: { include: I },
     client?: ReadClient
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
-  findRunOrThrow(
-    where: Prisma.TaskRunWhereInput,
-    client?: ReadClient
-  ): Promise<TaskRun>;
+  findRunOrThrow(where: Prisma.TaskRunWhereInput, client?: ReadClient): Promise<TaskRun>;
   async findRunOrThrow(
     where: Prisma.TaskRunWhereInput,
     argsOrClient?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude } | ReadClient,

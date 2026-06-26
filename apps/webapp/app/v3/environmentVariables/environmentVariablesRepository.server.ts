@@ -197,8 +197,7 @@ export class EnvironmentVariablesRepository implements Repository {
               existingSecret &&
               existingSecret.secret === variable.value &&
               existingValueRecord &&
-              (options.isSecret === undefined ||
-                existingValueRecord.isSecret === options.isSecret);
+              (options.isSecret === undefined || existingValueRecord.isSecret === options.isSecret);
             if (canSkip) {
               continue;
             }
@@ -1110,6 +1109,17 @@ async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment
       {
         key: "OTEL_LOG_MAX_QUEUE_SIZE",
         value: env.DEV_OTEL_LOG_MAX_QUEUE_SIZE,
+      },
+    ]);
+  }
+
+  // Dev branches set branchName too, so carry it to the task via the same
+  // TRIGGER_PREVIEW_BRANCH var the prod path uses.
+  if (runtimeEnvironment.branchName) {
+    result = result.concat([
+      {
+        key: "TRIGGER_PREVIEW_BRANCH",
+        value: runtimeEnvironment.branchName,
       },
     ]);
   }

@@ -119,4 +119,3 @@ export class BatchPresenter extends BasePresenter {
     };
   }
 }
-

@@ -75,10 +75,7 @@ export function isSessionFriendlyIdForm(value: string): boolean {
  *     Friendlyid-form callers without a matching row are rejected by
  *     the route handler before this is reached.
  */
-export function canonicalSessionAddressingKey(
-  row: Session | null,
-  paramSession: string
-): string {
+export function canonicalSessionAddressingKey(row: Session | null, paramSession: string): string {
   if (row) {
     return row.externalId ?? row.friendlyId;
   }
@@ -126,9 +123,7 @@ export function serializeSession(session: Session): SessionItem {
  * `$replica` — a TaskRun's `friendlyId` is immutable so replica lag is
  * harmless, and serializing on the writer would just add hot-path load.
  */
-export async function serializeSessionWithFriendlyRunId(
-  session: Session
-): Promise<SessionItem> {
+export async function serializeSessionWithFriendlyRunId(session: Session): Promise<SessionItem> {
   const base = serializeSession(session);
   if (!session.currentRunId) return base;
 
@@ -155,7 +150,9 @@ export async function serializeSessionsWithFriendlyRunIds(
   sessions: Session[],
   scope: { projectId: string; runtimeEnvironmentId: string }
 ): Promise<SessionItem[]> {
-  const runIds = [...new Set(sessions.map((s) => s.currentRunId).filter((id): id is string => !!id))];
+  const runIds = [
+    ...new Set(sessions.map((s) => s.currentRunId).filter((id): id is string => !!id)),
+  ];
 
   // `currentRunId` is a plain string pointer (no FK), so scope the lookup to
   // the caller's tenant — a stale value must not resolve a run in another env.
@@ -177,7 +174,7 @@ export async function serializeSessionsWithFriendlyRunIds(
   return sessions.map((session) => ({
     ...serializeSession(session),
     currentRunId: session.currentRunId
-      ? friendlyIdByRunId.get(session.currentRunId) ?? null
+      ? (friendlyIdByRunId.get(session.currentRunId) ?? null)
       : null,
   }));
 }

@@ -63,10 +63,7 @@ export function configureSkillsCommand(program: Command) {
       "Choose the target (or targets) to install the Trigger.dev skills into. Native install is supported for: " +
         targets.join(", ")
     )
-    .option(
-      "-y, --yes",
-      "Install all available skills for the selected targets without prompting"
-    )
+    .option("-y, --yes", "Install all available skills for the selected targets without prompting")
     .option(
       "-l, --log-level <level>",
       "The CLI log level to use (debug, info, log, warn, error, none). This does not effect the log level of your trigger.dev tasks.",
@@ -85,13 +82,18 @@ export function configureSkillsCommand(program: Command) {
 }
 
 export async function installSkillsCommand(options: unknown) {
-  return await wrapCommandAction("installSkillsCommand", SkillsCommandOptions, options, async (opts) => {
-    if (opts.logLevel) {
-      logger.loggerLevel = opts.logLevel;
-    }
+  return await wrapCommandAction(
+    "installSkillsCommand",
+    SkillsCommandOptions,
+    options,
+    async (opts) => {
+      if (opts.logLevel) {
+        logger.loggerLevel = opts.logLevel;
+      }
 
-    return await _installSkillsCommand(opts);
-  });
+      return await _installSkillsCommand(opts);
+    }
+  );
 }
 
 /**
@@ -107,9 +109,9 @@ export async function installSkillsCommand(options: unknown) {
  * that resolves correctly both when bundled (`<root>/dist/esm`) and from source
  * (`<root>/src`, run via tsx in dev/tests).
  */
-export async function resolveBundledPackageJSON(startDir: string = sourceDir): Promise<
-  string | null
-> {
+export async function resolveBundledPackageJSON(
+  startDir: string = sourceDir
+): Promise<string | null> {
   let searchDir = startDir;
 
   for (let i = 0; i < 10; i++) {
@@ -340,7 +342,9 @@ async function installSkillsForTarget(
   if (targetName === "unsupported") {
     // This should not happen as unsupported targets are handled separately,
     // but if it does, provide helpful output.
-    log.message(`${chalk.yellow("⚠")} Skipping unsupported target - see manual configuration above`);
+    log.message(
+      `${chalk.yellow("⚠")} Skipping unsupported target - see manual configuration above`
+    );
     return;
   }
 
@@ -427,7 +431,9 @@ type SkillsPointer = { file: string; mode: "region" | "dedicated" };
  * shared (a marked block is upserted so we never clobber other content); "dedicated"
  * files are ours to own and overwrite.
  */
-function resolveSkillsPointerForTarget(targetName: (typeof targets)[number]): SkillsPointer | undefined {
+function resolveSkillsPointerForTarget(
+  targetName: (typeof targets)[number]
+): SkillsPointer | undefined {
   switch (targetName) {
     case "claude-code": {
       return { file: "CLAUDE.md", mode: "region" };

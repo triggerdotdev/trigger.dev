@@ -22,8 +22,9 @@ export type GenerationsResponse = {
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam, organizationSlug, envParam, promptSlug } =
-    EnvironmentParamSchema.extend({ promptSlug: z.string() }).parse(params);
+  const { projectParam, organizationSlug, envParam, promptSlug } = EnvironmentParamSchema.extend({
+    promptSlug: z.string(),
+  }).parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) throw new Response("Project not found", { status: 404 });
@@ -59,7 +60,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const operations = url.searchParams.getAll("operations").filter(Boolean);
   const providers = url.searchParams.getAll("providers").filter(Boolean);
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
   const presenter = new PromptPresenter(clickhouse);
   const result = await presenter.listGenerations({
     environmentId: environment.id,

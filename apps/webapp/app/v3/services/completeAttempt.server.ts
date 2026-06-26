@@ -563,7 +563,7 @@ export class CompleteAttemptService extends BaseService {
           properties: {
             retryAt: retryAt.toISOString(),
             previousMachine: oomMachine
-              ? taskRunAttempt.taskRun.machinePreset ?? undefined
+              ? (taskRunAttempt.taskRun.machinePreset ?? undefined)
               : undefined,
             nextMachine: oomMachine,
           },

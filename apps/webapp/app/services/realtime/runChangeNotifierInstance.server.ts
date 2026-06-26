@@ -14,7 +14,8 @@ function initializeRunChangeNotifier(): RunChangeNotifier {
   const clusterMode = env.REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_CLUSTER_MODE_ENABLED === "1";
   // Sharded pub/sub only works against a cluster; classic pub/sub there would
   // broadcast every message to every node, so this is what actually shards load.
-  const shardedPubSub = clusterMode && env.REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_SHARDED_ENABLED === "1";
+  const shardedPubSub =
+    clusterMode && env.REALTIME_BACKEND_NATIVE_PUBSUB_REDIS_SHARDED_ENABLED === "1";
 
   const meter = getMeter("realtime-notifier");
 

@@ -96,7 +96,14 @@ function DiagnosisActions({ actions }: { actions: NonNullable<DiagnosisBlock["ac
     <div className="flex flex-wrap gap-2 pt-1">
       {actions.map((action, i) => {
         if (action.kind === "view_run" && /^run_[a-z0-9]+$/i.test(action.target)) {
-          return <RunActionButton key={i} runId={action.target} label={action.label} className={buttonClass} />;
+          return (
+            <RunActionButton
+              key={i}
+              runId={action.target}
+              label={action.label}
+              className={buttonClass}
+            />
+          );
         }
         if (action.kind === "docs") {
           const safeUrl = toSafeUrl(action.target);

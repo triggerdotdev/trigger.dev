@@ -39,8 +39,7 @@ export default function Email(props: MfaEnabledEmailProps) {
           </Text>
           <Text style={paragraphLight}>
             • Keep your authenticator app safe and secured
-            <br />
-            • Never share your MFA codes with anyone
+            <br />• Never share your MFA codes with anyone
             <br />• Store your recovery codes in a secure location
           </Text>
           <Text

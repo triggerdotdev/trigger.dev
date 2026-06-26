@@ -78,7 +78,7 @@ export class TriggerTaskServiceV1 extends BaseService {
       const ttl =
         typeof body.options?.ttl === "number"
           ? stringifyDuration(body.options?.ttl)
-          : body.options?.ttl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined);
+          : (body.options?.ttl ?? (environment.type === "DEVELOPMENT" ? "10m" : undefined));
 
       const existingRun = idempotencyKey
         ? await this._prisma.taskRun.findFirst({
@@ -352,10 +352,10 @@ export class TriggerTaskServiceV1 extends BaseService {
                 const depth = dependentAttempt
                   ? dependentAttempt.taskRun.depth + 1
                   : parentAttempt
-                  ? parentAttempt.taskRun.depth + 1
-                  : dependentBatchRun?.dependentTaskAttempt
-                  ? dependentBatchRun.dependentTaskAttempt.taskRun.depth + 1
-                  : 0;
+                    ? parentAttempt.taskRun.depth + 1
+                    : dependentBatchRun?.dependentTaskAttempt
+                      ? dependentBatchRun.dependentTaskAttempt.taskRun.depth + 1
+                      : 0;
 
                 const queueTimestamp =
                   options.queueTimestamp ??
@@ -738,7 +738,12 @@ export class TriggerTaskServiceV1 extends BaseService {
 
       const filename = `${pathPrefix}/payload.json`;
 
-      const uploadedFilename = await uploadPacketToObjectStore(filename, packet.data, packet.dataType, environment);
+      const uploadedFilename = await uploadPacketToObjectStore(
+        filename,
+        packet.data,
+        packet.dataType,
+        environment
+      );
 
       return {
         data: uploadedFilename,

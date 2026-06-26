@@ -85,11 +85,11 @@ export class RegionsPresenter extends BasePresenter {
       where: isAdmin
         ? undefined
         : // Hide hidden unless they're allowed to use them
-        project.allowedWorkerQueues.length > 0
-        ? {
-            masterQueue: { in: project.allowedWorkerQueues },
-          }
-        : defaultVisibilityFilter(hasComputeAccess),
+          project.allowedWorkerQueues.length > 0
+          ? {
+              masterQueue: { in: project.allowedWorkerQueues },
+            }
+          : defaultVisibilityFilter(hasComputeAccess),
       orderBy: {
         name: "asc",
       },

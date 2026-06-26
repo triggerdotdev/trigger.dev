@@ -138,8 +138,8 @@ export function createLimiterFromConfig(config: RateLimiterConfig): Limiter {
   return config.type === "fixedWindow"
     ? Ratelimit.fixedWindow(config.tokens, config.window)
     : config.type === "tokenBucket"
-    ? Ratelimit.tokenBucket(config.refillRate, config.interval, config.maxTokens)
-    : Ratelimit.slidingWindow(config.tokens, config.window);
+      ? Ratelimit.tokenBucket(config.refillRate, config.interval, config.maxTokens)
+      : Ratelimit.slidingWindow(config.tokens, config.window);
 }
 
 //returns an Express middleware that rate limits using the Bearer token in the Authorization header

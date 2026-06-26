@@ -15,38 +15,47 @@ const safeJsonParse = Result.fromThrowable(
  * Zod transform for form fields that submit JSON-encoded arrays.
  * Parses the string as JSON and returns the array, or null if invalid.
  */
-export const jsonArrayField = z.string().optional().transform((val) => {
-  if (!val) return null;
-  return safeJsonParse(val).match(
-    (parsed) => (Array.isArray(parsed) ? parsed : null),
-    () => null
-  );
-});
+export const jsonArrayField = z
+  .string()
+  .optional()
+  .transform((val) => {
+    if (!val) return null;
+    return safeJsonParse(val).match(
+      (parsed) => (Array.isArray(parsed) ? parsed : null),
+      () => null
+    );
+  });
 
 /**
  * Zod transform for form fields that submit JSON-encoded EnvSlug arrays.
  * Parses the string as JSON and validates each element is a valid EnvSlug.
  * Invalid elements are filtered out rather than rejecting the whole array.
  */
-export const envSlugArrayField = z.string().optional().transform((val): EnvSlug[] | null => {
-  if (!val) return null;
-  return safeJsonParse(val).match(
-    (parsed) => {
-      if (!Array.isArray(parsed)) return null;
-      return parsed.filter((item): item is EnvSlug => EnvSlugSchema.safeParse(item).success);
-    },
-    () => null
-  );
-});
+export const envSlugArrayField = z
+  .string()
+  .optional()
+  .transform((val): EnvSlug[] | null => {
+    if (!val) return null;
+    return safeJsonParse(val).match(
+      (parsed) => {
+        if (!Array.isArray(parsed)) return null;
+        return parsed.filter((item): item is EnvSlug => EnvSlugSchema.safeParse(item).success);
+      },
+      () => null
+    );
+  });
 
 export const VercelIntegrationConfigSchema = z.object({
   atomicBuilds: z.array(EnvSlugSchema).nullable().optional(),
   pullEnvVarsBeforeBuild: z.array(EnvSlugSchema).nullable().optional(),
   /** Maps a custom Vercel environment to Trigger.dev's staging environment. */
-  vercelStagingEnvironment: z.object({
-    environmentId: z.string(),
-    displayName: z.string(),
-  }).nullable().optional(),
+  vercelStagingEnvironment: z
+    .object({
+      environmentId: z.string(),
+      displayName: z.string(),
+    })
+    .nullable()
+    .optional(),
   discoverEnvVars: z.array(EnvSlugSchema).nullable().optional(),
   autoPromote: z.boolean().optional().default(true),
 });
@@ -61,7 +70,9 @@ export type TriggerEnvironmentType = z.infer<typeof TriggerEnvironmentType>;
  * Missing env slug = sync all vars. Missing var in env = sync by default.
  * Only explicitly `false` entries disable sync.
  */
-export const SyncEnvVarsMappingSchema = z.record(EnvSlugSchema, z.record(z.string(), z.boolean())).default({});
+export const SyncEnvVarsMappingSchema = z
+  .record(EnvSlugSchema, z.record(z.string(), z.boolean()))
+  .default({});
 
 export type SyncEnvVarsMapping = z.infer<typeof SyncEnvVarsMappingSchema>;
 
@@ -135,7 +146,9 @@ export function getAvailableEnvSlugsForBuildSettings(
   hasStagingEnvironment: boolean,
   hasPreviewEnvironment: boolean
 ): EnvSlug[] {
-  return getAvailableEnvSlugs(hasStagingEnvironment, hasPreviewEnvironment).filter((s) => s !== "dev");
+  return getAvailableEnvSlugs(hasStagingEnvironment, hasPreviewEnvironment).filter(
+    (s) => s !== "dev"
+  );
 }
 
 export function isDiscoverEnvVarsEnabledForEnvironment(

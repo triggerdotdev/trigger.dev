@@ -38,6 +38,17 @@ export class ArchiveBranchService {
                   },
                 }
               : { id: orgFilter.organizationId },
+          // Dev branches are per-org-member, so org membership alone isn't enough:
+          // only the owner may archive their own dev branch. Non-dev branches (e.g.
+          // preview) remain scoped by org membership only.
+          ...(orgFilter.type === "userMembership"
+            ? {
+                OR: [
+                  { type: { not: "DEVELOPMENT" as const } },
+                  { orgMember: { userId: orgFilter.userId } },
+                ],
+              }
+            : {}),
         },
         include: {
           organization: {
@@ -56,10 +67,16 @@ export class ArchiveBranchService {
         },
       });
 
+      // A branch is defined by having a parent; any root (dev/preview parent,
+      // prod, staging) has none and can't be archived. For dev, that root is
+      // the default branch, so give the clearer message.
       if (!environment.parentEnvironmentId) {
         return {
           success: false as const,
-          error: "This isn't a branch, and cannot be archived.",
+          error:
+            environment.type === "DEVELOPMENT"
+              ? "The default development branch cannot be archived."
+              : "This isn't a branch, and cannot be archived.",
         };
       }
 

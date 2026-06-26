@@ -339,13 +339,9 @@ export function sanitizeError(error: TaskRunError): TaskRunError {
         type: "INTERNAL_ERROR",
         code: error.code,
         message:
-          error.message != null
-            ? truncateMessage(error.message.replace(/\0/g, ""))
-            : undefined,
+          error.message != null ? truncateMessage(error.message.replace(/\0/g, "")) : undefined,
         stackTrace:
-          error.stackTrace != null
-            ? truncateStack(error.stackTrace.replace(/\0/g, ""))
-            : undefined,
+          error.stackTrace != null ? truncateStack(error.stackTrace.replace(/\0/g, "")) : undefined,
       };
     }
   }

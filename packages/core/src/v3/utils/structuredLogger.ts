@@ -26,8 +26,8 @@ export class SimpleStructuredLogger implements StructuredLogger {
     private level: LogLevel = ["1", "true"].includes(process.env.VERBOSE ?? "")
       ? LogLevel.verbose
       : ["1", "true"].includes(process.env.DEBUG ?? "")
-      ? LogLevel.debug
-      : LogLevel.info,
+        ? LogLevel.debug
+        : LogLevel.info,
     private fields?: Record<string, unknown>
   ) {}
 

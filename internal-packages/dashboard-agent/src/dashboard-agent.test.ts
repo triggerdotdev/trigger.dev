@@ -302,7 +302,9 @@ describe("buildDashboardAgentTools", () => {
           category: "user_code_error",
           likelyCause: "processOrder throws when items is empty.",
           confidence: "high",
-          evidence: [{ type: "error", detail: "Error: order has no items", reference: "run_abc123" }],
+          evidence: [
+            { type: "error", detail: "Error: order has no items", reference: "run_abc123" },
+          ],
           nextSteps: ["Validate the payload before triggering."],
         },
       ],

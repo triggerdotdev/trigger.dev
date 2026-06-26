@@ -95,9 +95,7 @@ async function loadSystemRolesForUser(userId: string) {
   // anything else would be a noisy create-time failure (or, with a
   // permissive fallback, a token bound to a role this org isn't
   // allowed to issue).
-  const availableIds = new Set(
-    (systemRoles ?? []).filter((r) => r.available).map((r) => r.id)
-  );
+  const availableIds = new Set((systemRoles ?? []).filter((r) => r.available).map((r) => r.id));
   const roles = allRoles.filter((r) => r.isSystem && availableIds.has(r.id));
 
   return {

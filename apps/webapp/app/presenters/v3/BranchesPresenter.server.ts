@@ -1,16 +1,55 @@
 import { GitMeta } from "@trigger.dev/core/v3";
+import { DEFAULT_DEV_BRANCH } from "@trigger.dev/core/v3/utils/gitBranch";
+import { type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { type z } from "zod";
 import { type Prisma, type PrismaClient, prisma } from "~/db.server";
 import { type Project } from "~/models/project.server";
 import { type User } from "~/models/user.server";
-import { type BranchesOptions } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.branches/route";
+import { type BranchesOptions } from "~/utils/branches";
 import { getCurrentPlan, getPlans } from "~/services/platform.v3.server";
 import { checkBranchLimit } from "~/services/upsertBranch.server";
+import { devPresence } from "./DevPresence.server";
+import { sortEnvironments } from "~/utils/environmentSort";
+import {
+  type BranchableEnvironmentToken,
+  type BranchableEnvironmentType,
+  toBranchableEnvironmentType,
+} from "~/utils/branchableEnvironment";
 
 type Result = Awaited<ReturnType<BranchesPresenter["call"]>>;
 export type Branch = Result["branches"][number];
 
 const BRANCHES_PER_PAGE = 25;
+
+/**
+ * Prisma `where` fragment that scopes the branches list by branch name, keyed by
+ * environment type. Spread it into the query's `where` (it contributes either a
+ * `branchName` constraint or a top-level `OR`).
+ *
+ * The default DEV branch is the root dev env, stored with `branchName: null`, so
+ * for DEVELOPMENT we always include the null-branchName root (and still match it
+ * when searching — hence the top-level `OR`, since a scalar field filter can't
+ * express "matches search OR is null"). PREVIEW only ever lists real branches, so
+ * its root (null) is excluded. Passing no `search` yields the "all branches of
+ * this type" fragment.
+ */
+function branchNameFilter(
+  envType: BranchableEnvironmentType,
+  search?: string
+): Prisma.RuntimeEnvironmentWhereInput {
+  switch (envType) {
+    case "DEVELOPMENT":
+      return search
+        ? { OR: [{ branchName: { contains: search, mode: "insensitive" } }, { branchName: null }] }
+        : {};
+    case "PREVIEW":
+      return search
+        ? { branchName: { contains: search, mode: "insensitive" } }
+        : { branchName: { not: null } };
+    default:
+      throw new Error(`branchNameFilter: unsupported environment type "${envType}"`);
+  }
+}
 
 type Options = z.infer<typeof BranchesOptions>;
 
@@ -58,12 +97,14 @@ export class BranchesPresenter {
   public async call({
     userId,
     projectSlug,
+    env,
     showArchived = false,
     search,
     page = 1,
   }: {
     userId: User["id"];
     projectSlug: Project["slug"];
+    env: BranchableEnvironmentToken;
   } & Options) {
     const project = await this.#prismaClient.project.findFirst({
       select: {
@@ -86,19 +127,29 @@ export class BranchesPresenter {
       throw new Error("Project not found");
     }
 
+    const envType = toBranchableEnvironmentType(env);
+
     const branchableEnvironment = await this.#prismaClient.runtimeEnvironment.findFirst({
       select: {
         id: true,
       },
       where: {
         projectId: project.id,
-        isBranchableEnvironment: true,
+        type: envType,
+        // The branchable parent is the root env (no parent). For dev that's
+        // derivable; for preview we trust the isBranchableEnvironment column.
+        ...(envType === "DEVELOPMENT"
+          ? { parentEnvironmentId: null, orgMember: { userId } }
+          : { isBranchableEnvironment: true }),
       },
     });
 
     const hasFilters = !!showArchived || (search !== undefined && search !== "");
 
     if (!branchableEnvironment) {
+      if (envType === "DEVELOPMENT") {
+        throw new Error("No branchable environment in development environment");
+      }
       return {
         branchableEnvironment: null,
         currentPage: page,
@@ -119,23 +170,26 @@ export class BranchesPresenter {
       };
     }
 
+    const branchNameWhere = branchNameFilter(envType, search);
+    const orgMemberWhere = envType === "DEVELOPMENT" ? { orgMember: { userId } } : {};
+
     const visibleCount = await this.#prismaClient.runtimeEnvironment.count({
       where: {
         projectId: project.id,
-        branchName: search
-          ? {
-              contains: search,
-              mode: "insensitive",
-            }
-          : {
-              not: null,
-            },
+        type: envType,
+        ...branchNameWhere,
+        ...orgMemberWhere,
         ...(showArchived ? {} : { archivedAt: null }),
       },
     });
 
-    // Limits
-    const limits = await checkBranchLimit(this.#prismaClient, project.organizationId, project.id);
+    const limits = await checkBranchLimit({
+      prisma: this.#prismaClient,
+      organizationId: project.organizationId,
+      projectId: project.id,
+      userId,
+      type: envType,
+    });
 
     const [currentPlan, plans] = await Promise.all([
       getCurrentPlan(project.organizationId),
@@ -154,21 +208,18 @@ export class BranchesPresenter {
         id: true,
         slug: true,
         branchName: true,
+        parentEnvironmentId: true,
         type: true,
         archivedAt: true,
         createdAt: true,
+        updatedAt: true,
         git: true,
       },
       where: {
         projectId: project.id,
-        branchName: search
-          ? {
-              contains: search,
-              mode: "insensitive",
-            }
-          : {
-              not: null,
-            },
+        type: envType,
+        ...branchNameWhere,
+        ...orgMemberWhere,
         ...(showArchived ? {} : { archivedAt: null }),
       },
       orderBy: {
@@ -181,32 +232,33 @@ export class BranchesPresenter {
     const totalBranches = await this.#prismaClient.runtimeEnvironment.count({
       where: {
         projectId: project.id,
-        branchName: {
-          not: null,
-        },
+        type: envType,
+        ...branchNameFilter(envType),
+        ...orgMemberWhere,
       },
     });
+
+    const branchesFiltered = branches
+      .filter((branch) => envType === "DEVELOPMENT" || branch.branchName !== null)
+      .map((branch) => ({
+        ...branch,
+        git: processGitMetadata(branch.git),
+        branchName: branch.branchName ?? DEFAULT_DEV_BRANCH,
+      }));
+
+    const branchesWithActivity = await hydrateEnvsWithActivity(
+      userId,
+      project.id,
+      branchesFiltered
+    );
+    const branchesSorted = sortEnvironments(branchesWithActivity);
 
     return {
       branchableEnvironment,
       currentPage: page,
       totalPages: Math.ceil(visibleCount / BRANCHES_PER_PAGE),
       hasBranches: totalBranches > 0,
-      branches: branches.flatMap((branch) => {
-        if (branch.branchName === null) {
-          return [];
-        }
-
-        const git = processGitMetadata(branch.git);
-
-        return [
-          {
-            ...branch,
-            branchName: branch.branchName,
-            git,
-          } as const,
-        ];
-      }),
+      branches: branchesSorted,
       hasFilters,
       limits,
       canPurchaseBranches,
@@ -216,6 +268,32 @@ export class BranchesPresenter {
       planBranchLimit,
     };
   }
+}
+
+export async function hydrateEnvsWithActivity<
+  T extends { type: RuntimeEnvironmentType; id: string },
+>(
+  userId: string,
+  projectId: string,
+  environments: T[]
+): Promise<Array<T & { lastActivity: Date | undefined; isConnected: boolean | undefined }>> {
+  const recentDevBranchIds = await devPresence.getRecentBranchIds(userId, projectId);
+
+  const devEnvIds = environments
+    .filter((env) => env.type === "DEVELOPMENT" && recentDevBranchIds.has(env.id))
+    .map((env) => env.id);
+  const connectedMap = await devPresence.isConnectedMany(devEnvIds);
+
+  return environments.map((env) => {
+    if (env.type !== "DEVELOPMENT") {
+      return { ...env, lastActivity: undefined, isConnected: undefined };
+    }
+
+    const devHit = recentDevBranchIds.get(env.id);
+    const lastActivity = devHit === undefined ? undefined : devHit;
+    const isConnected = devHit === undefined ? undefined : (connectedMap.get(env.id) ?? false);
+    return { ...env, lastActivity, isConnected };
+  });
 }
 
 export function processGitMetadata(data: Prisma.JsonValue): GitMetaLinks | null {

@@ -43,7 +43,8 @@ if (existsSync(pricesJsonPath)) {
 
   let out = 'import type { DefaultModelDefinition } from "./types.js";\n\n';
   out += "// Auto-generated from default-model-prices.json — do not edit manually.\n";
-  out += "// Run `pnpm run sync-prices` to update the JSON, then `pnpm run generate` to regenerate.\n";
+  out +=
+    "// Run `pnpm run sync-prices` to update the JSON, then `pnpm run generate` to regenerate.\n";
   out += "// Source: https://github.com/langfuse/langfuse\n\n";
   out += "export const defaultModelPrices: DefaultModelDefinition[] = ";
   out += JSON.stringify(stripped, null, 2) + ";\n";
@@ -65,9 +66,12 @@ if (existsSync(catalogJsonPath)) {
   for (const key of Object.keys(data)) {
     if (data[key].releaseDate === undefined) data[key].releaseDate = null;
     if (data[key].isHidden === undefined) data[key].isHidden = false;
-    if (data[key].supportsStructuredOutput === undefined) data[key].supportsStructuredOutput = false;
-    if (data[key].supportsParallelToolCalls === undefined) data[key].supportsParallelToolCalls = false;
-    if (data[key].supportsStreamingToolCalls === undefined) data[key].supportsStreamingToolCalls = false;
+    if (data[key].supportsStructuredOutput === undefined)
+      data[key].supportsStructuredOutput = false;
+    if (data[key].supportsParallelToolCalls === undefined)
+      data[key].supportsParallelToolCalls = false;
+    if (data[key].supportsStreamingToolCalls === undefined)
+      data[key].supportsStreamingToolCalls = false;
     if (data[key].deprecationDate === undefined) data[key].deprecationDate = null;
     if (data[key].knowledgeCutoff === undefined) data[key].knowledgeCutoff = null;
     if (data[key].resolvedAt === undefined) data[key].resolvedAt = new Date().toISOString();
@@ -82,7 +86,8 @@ if (existsSync(catalogJsonPath)) {
 
   let out = 'import type { ModelCatalogEntry } from "./types.js";\n\n';
   out += "// Auto-generated from model-catalog.json — do not edit manually.\n";
-  out += "// Run `pnpm run generate-catalog` to update the JSON, then `pnpm run generate` to regenerate.\n\n";
+  out +=
+    "// Run `pnpm run generate-catalog` to update the JSON, then `pnpm run generate` to regenerate.\n\n";
   out += "export const modelCatalog: Record<string, ModelCatalogEntry> = ";
   out += JSON.stringify(data, null, 2) + ";\n";
 

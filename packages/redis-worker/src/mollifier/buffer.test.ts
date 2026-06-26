@@ -42,9 +42,7 @@ describe("mollifierReconnectDelayMs", () => {
   });
 
   it("decorrelates concurrent reconnects (distinct values across random draws)", () => {
-    const draws = [0.05, 0.3, 0.55, 0.8, 0.95].map((r) =>
-      mollifierReconnectDelayMs(20, () => r),
-    );
+    const draws = [0.05, 0.3, 0.55, 0.8, 0.95].map((r) => mollifierReconnectDelayMs(20, () => r));
     // Lockstep would collapse to a single value; jitter spreads them.
     expect(new Set(draws).size).toBeGreaterThan(1);
   });
@@ -127,107 +125,123 @@ describe("MollifierBuffer construction", () => {
 });
 
 describe("MollifierBuffer.accept", () => {
-  redisTest("accept writes entry, enqueues, and tracks env", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      logger: new Logger("test", "log"),
-    });
-
-    try {
-      await buffer.accept({
-        runId: "run_1",
-        envId: "env_a",
-        orgId: "org_1",
-        payload: serialiseSnapshot({ taskId: "t" }),
+  redisTest(
+    "accept writes entry, enqueues, and tracks env",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
       });
 
-      const entry = await buffer.getEntry("run_1");
-      expect(entry).not.toBeNull();
-      expect(entry!.runId).toBe("run_1");
-      expect(entry!.envId).toBe("env_a");
-      expect(entry!.orgId).toBe("org_1");
-      expect(entry!.status).toBe("QUEUED");
-      expect(entry!.attempts).toBe(0);
-      expect(entry!.createdAt).toBeInstanceOf(Date);
+      try {
+        await buffer.accept({
+          runId: "run_1",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: serialiseSnapshot({ taskId: "t" }),
+        });
 
-      const envs = await buffer.listEnvsForOrg("org_1");
-      expect(envs).toContain("env_a");
-    } finally {
-      await buffer.close();
+        const entry = await buffer.getEntry("run_1");
+        expect(entry).not.toBeNull();
+        expect(entry!.runId).toBe("run_1");
+        expect(entry!.envId).toBe("env_a");
+        expect(entry!.orgId).toBe("org_1");
+        expect(entry!.status).toBe("QUEUED");
+        expect(entry!.attempts).toBe(0);
+        expect(entry!.createdAt).toBeInstanceOf(Date);
+
+        const envs = await buffer.listEnvsForOrg("org_1");
+        expect(envs).toContain("env_a");
+      } finally {
+        await buffer.close();
+      }
     }
-  });
+  );
 });
 
 describe("MollifierBuffer.pop", () => {
-  redisTest("pop returns next QUEUED entry and transitions to DRAINING", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      logger: new Logger("test", "log"),
-    });
+  redisTest(
+    "pop returns next QUEUED entry and transitions to DRAINING",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
 
-    try {
-      await buffer.accept({ runId: "run_1", envId: "env_a", orgId: "org_1", payload: "{}" });
-      await buffer.accept({ runId: "run_2", envId: "env_a", orgId: "org_1", payload: "{}" });
+      try {
+        await buffer.accept({ runId: "run_1", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await buffer.accept({ runId: "run_2", envId: "env_a", orgId: "org_1", payload: "{}" });
 
-      const popped = await buffer.pop("env_a");
-      expect(popped).not.toBeNull();
-      expect(popped!.runId).toBe("run_1");
-      expect(popped!.status).toBe("DRAINING");
+        const popped = await buffer.pop("env_a");
+        expect(popped).not.toBeNull();
+        expect(popped!.runId).toBe("run_1");
+        expect(popped!.status).toBe("DRAINING");
 
-      const stored = await buffer.getEntry("run_1");
-      expect(stored!.status).toBe("DRAINING");
-    } finally {
-      await buffer.close();
+        const stored = await buffer.getEntry("run_1");
+        expect(stored!.status).toBe("DRAINING");
+      } finally {
+        await buffer.close();
+      }
     }
-  });
+  );
 
-  redisTest("pop returns null when env queue is empty", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      logger: new Logger("test", "log"),
-    });
+  redisTest(
+    "pop returns null when env queue is empty",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
 
-    try {
-      const popped = await buffer.pop("env_nonexistent");
-      expect(popped).toBeNull();
-    } finally {
-      await buffer.close();
+      try {
+        const popped = await buffer.pop("env_nonexistent");
+        expect(popped).toBeNull();
+      } finally {
+        await buffer.close();
+      }
     }
-  });
+  );
 
-  redisTest("atomic RPOP across two parallel pops on the same env", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      logger: new Logger("test", "log"),
-    });
+  redisTest(
+    "atomic RPOP across two parallel pops on the same env",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
 
-    try {
-      await buffer.accept({ runId: "only", envId: "env_a", orgId: "org_1", payload: "{}" });
+      try {
+        await buffer.accept({ runId: "only", envId: "env_a", orgId: "org_1", payload: "{}" });
 
-      const [a, b] = await Promise.all([buffer.pop("env_a"), buffer.pop("env_a")]);
-      const winners = [a, b].filter((x) => x !== null);
-      expect(winners).toHaveLength(1);
-      expect(winners[0]!.runId).toBe("only");
-    } finally {
-      await buffer.close();
+        const [a, b] = await Promise.all([buffer.pop("env_a"), buffer.pop("env_a")]);
+        const winners = [a, b].filter((x) => x !== null);
+        expect(winners).toHaveLength(1);
+        expect(winners[0]!.runId).toBe("only");
+      } finally {
+        await buffer.close();
+      }
     }
-  });
+  );
 });
 
 describe("MollifierBuffer.ack", () => {
@@ -261,7 +275,7 @@ describe("MollifierBuffer.ack", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest("ack on missing entry is a no-op", { timeout: 20_000 }, async ({ redisContainer }) => {
@@ -318,7 +332,7 @@ describe("MollifierBuffer.pop orphan handling", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -364,36 +378,40 @@ describe("MollifierBuffer.pop orphan handling", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });
 
 describe("MollifierBuffer.requeue", () => {
-  redisTest("requeue increments attempts, restores QUEUED, re-LPUSHes", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      logger: new Logger("test", "log"),
-    });
+  redisTest(
+    "requeue increments attempts, restores QUEUED, re-LPUSHes",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
 
-    try {
-      await buffer.accept({ runId: "run_r", envId: "env_a", orgId: "org_1", payload: "{}" });
-      await buffer.pop("env_a");
-      await buffer.requeue("run_r");
+      try {
+        await buffer.accept({ runId: "run_r", envId: "env_a", orgId: "org_1", payload: "{}" });
+        await buffer.pop("env_a");
+        await buffer.requeue("run_r");
 
-      const entry = await buffer.getEntry("run_r");
-      expect(entry!.status).toBe("QUEUED");
-      expect(entry!.attempts).toBe(1);
+        const entry = await buffer.getEntry("run_r");
+        expect(entry!.status).toBe("QUEUED");
+        expect(entry!.attempts).toBe(1);
 
-      const popped = await buffer.pop("env_a");
-      expect(popped!.runId).toBe("run_r");
-    } finally {
-      await buffer.close();
+        const popped = await buffer.pop("env_a");
+        expect(popped!.runId).toBe("run_r");
+      } finally {
+        await buffer.close();
+      }
     }
-  });
+  );
 });
 
 describe("MollifierBuffer.fail", () => {
@@ -432,7 +450,7 @@ describe("MollifierBuffer.fail", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -460,7 +478,7 @@ describe("MollifierBuffer.fail", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -516,7 +534,7 @@ describe("MollifierBuffer.fail", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });
 
@@ -548,7 +566,7 @@ describe("MollifierBuffer TTL", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });
 
@@ -567,7 +585,7 @@ describe("MollifierBuffer payload encoding", () => {
       });
 
       const tricky = {
-        quotes: 'a"b\'c',
+        quotes: "a\"b'c",
         backslash: "x\\y\\z",
         newlines: "line1\nline2\r\nline3",
         tab: "col1\tcol2",
@@ -589,7 +607,7 @@ describe("MollifierBuffer payload encoding", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });
 
@@ -618,7 +636,7 @@ describe("MollifierBuffer.requeue on missing entry", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });
 
@@ -663,7 +681,7 @@ describe("MollifierBuffer.requeue ordering", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });
 
@@ -674,127 +692,147 @@ describe("MollifierBuffer.evaluateTrip", () => {
     holdMs: 100,
   };
 
-  redisTest("under threshold: not tripped, count increments", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      logger: new Logger("test", "log"),
-    });
+  redisTest(
+    "under threshold: not tripped, count increments",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
 
-    try {
-      const r1 = await buffer.evaluateTrip("env_a", tripOptions);
-      expect(r1).toEqual({ tripped: false, count: 1 });
+      try {
+        const r1 = await buffer.evaluateTrip("env_a", tripOptions);
+        expect(r1).toEqual({ tripped: false, count: 1 });
 
-      const r2 = await buffer.evaluateTrip("env_a", tripOptions);
-      expect(r2).toEqual({ tripped: false, count: 2 });
-    } finally {
-      await buffer.close();
-    }
-  });
-
-  redisTest("crossing threshold sets the tripped marker", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      logger: new Logger("test", "log"),
-    });
-
-    try {
-      for (let i = 0; i < 5; i++) {
-        const r = await buffer.evaluateTrip("env_a", tripOptions);
-        expect(r.tripped).toBe(false);
+        const r2 = await buffer.evaluateTrip("env_a", tripOptions);
+        expect(r2).toEqual({ tripped: false, count: 2 });
+      } finally {
+        await buffer.close();
       }
-
-      const after = await buffer.evaluateTrip("env_a", tripOptions);
-      expect(after).toEqual({ tripped: true, count: 6 });
-
-      const sticky = await buffer.evaluateTrip("env_a", tripOptions);
-      expect(sticky.tripped).toBe(true);
-    } finally {
-      await buffer.close();
     }
-  });
+  );
 
-  redisTest("hold-down marker expires after holdMs and env resets", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      logger: new Logger("test", "log"),
-    });
+  redisTest(
+    "crossing threshold sets the tripped marker",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
 
-    try {
-      const fastWindow = { windowMs: 100, threshold: 2, holdMs: 100 };
-      await buffer.evaluateTrip("env_a", fastWindow);
-      await buffer.evaluateTrip("env_a", fastWindow);
-      const tripped = await buffer.evaluateTrip("env_a", fastWindow);
-      expect(tripped.tripped).toBe(true);
+      try {
+        for (let i = 0; i < 5; i++) {
+          const r = await buffer.evaluateTrip("env_a", tripOptions);
+          expect(r.tripped).toBe(false);
+        }
 
-      // Wait past windowMs AND holdMs so both rate counter and tripped marker expire
-      await new Promise((r) => setTimeout(r, 220));
+        const after = await buffer.evaluateTrip("env_a", tripOptions);
+        expect(after).toEqual({ tripped: true, count: 6 });
 
-      const recovered = await buffer.evaluateTrip("env_a", fastWindow);
-      expect(recovered).toEqual({ tripped: false, count: 1 });
-    } finally {
-      await buffer.close();
-    }
-  });
-
-  redisTest("env isolation: tripping env_a does not affect env_b", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      logger: new Logger("test", "log"),
-    });
-
-    try {
-      for (let i = 0; i < 6; i++) {
-        await buffer.evaluateTrip("env_a", tripOptions);
+        const sticky = await buffer.evaluateTrip("env_a", tripOptions);
+        expect(sticky.tripped).toBe(true);
+      } finally {
+        await buffer.close();
       }
-      const aTripped = await buffer.evaluateTrip("env_a", tripOptions);
-      expect(aTripped.tripped).toBe(true);
-
-      const b = await buffer.evaluateTrip("env_b", tripOptions);
-      expect(b).toEqual({ tripped: false, count: 1 });
-    } finally {
-      await buffer.close();
     }
-  });
+  );
 
-  redisTest("window expires and counter resets when no traffic", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      logger: new Logger("test", "log"),
-    });
+  redisTest(
+    "hold-down marker expires after holdMs and env resets",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
 
-    try {
-      const fastWindow = { windowMs: 100, threshold: 100, holdMs: 100 };
-      await buffer.evaluateTrip("env_x", fastWindow);
-      await buffer.evaluateTrip("env_x", fastWindow);
-      // both incremented within a fresh window — count should be 2
+      try {
+        const fastWindow = { windowMs: 100, threshold: 2, holdMs: 100 };
+        await buffer.evaluateTrip("env_a", fastWindow);
+        await buffer.evaluateTrip("env_a", fastWindow);
+        const tripped = await buffer.evaluateTrip("env_a", fastWindow);
+        expect(tripped.tripped).toBe(true);
 
-      await new Promise((r) => setTimeout(r, 150));
-      const fresh = await buffer.evaluateTrip("env_x", fastWindow);
-      expect(fresh.count).toBe(1);
-    } finally {
-      await buffer.close();
+        // Wait past windowMs AND holdMs so both rate counter and tripped marker expire
+        await new Promise((r) => setTimeout(r, 220));
+
+        const recovered = await buffer.evaluateTrip("env_a", fastWindow);
+        expect(recovered).toEqual({ tripped: false, count: 1 });
+      } finally {
+        await buffer.close();
+      }
     }
-  });
+  );
+
+  redisTest(
+    "env isolation: tripping env_a does not affect env_b",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        for (let i = 0; i < 6; i++) {
+          await buffer.evaluateTrip("env_a", tripOptions);
+        }
+        const aTripped = await buffer.evaluateTrip("env_a", tripOptions);
+        expect(aTripped.tripped).toBe(true);
+
+        const b = await buffer.evaluateTrip("env_b", tripOptions);
+        expect(b).toEqual({ tripped: false, count: 1 });
+      } finally {
+        await buffer.close();
+      }
+    }
+  );
+
+  redisTest(
+    "window expires and counter resets when no traffic",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
+
+      try {
+        const fastWindow = { windowMs: 100, threshold: 100, holdMs: 100 };
+        await buffer.evaluateTrip("env_x", fastWindow);
+        await buffer.evaluateTrip("env_x", fastWindow);
+        // both incremented within a fresh window — count should be 2
+
+        await new Promise((r) => setTimeout(r, 150));
+        const fresh = await buffer.evaluateTrip("env_x", fastWindow);
+        expect(fresh.count).toBe(1);
+      } finally {
+        await buffer.close();
+      }
+    }
+  );
 
   redisTest(
     "tripped marker outlives the rate counter window",
@@ -825,7 +863,7 @@ describe("MollifierBuffer.evaluateTrip", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -846,7 +884,7 @@ describe("MollifierBuffer.evaluateTrip", () => {
         // so trip semantics don't interfere with the count assertion.
         const opts = { windowMs: 5000, threshold: 1_000_000, holdMs: 100 };
         const results = await Promise.all(
-          Array.from({ length: 100 }, () => buffer.evaluateTrip("env_atomic", opts)),
+          Array.from({ length: 100 }, () => buffer.evaluateTrip("env_atomic", opts))
         );
 
         // Every return value is unique (no two callers saw the same INCR result).
@@ -858,7 +896,7 @@ describe("MollifierBuffer.evaluateTrip", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });
 
@@ -891,7 +929,7 @@ describe("MollifierBuffer entry lifecycle invariants", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -944,7 +982,7 @@ describe("MollifierBuffer entry lifecycle invariants", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });
 
@@ -994,7 +1032,7 @@ describe("MollifierBuffer.accept idempotency", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1016,7 +1054,12 @@ describe("MollifierBuffer.accept idempotency", () => {
         const stored = await buffer.getEntry("run_dr");
         expect(stored!.status).toBe("DRAINING");
 
-        const dup = await buffer.accept({ runId: "run_dr", envId: "env_a", orgId: "org_1", payload: "{}" });
+        const dup = await buffer.accept({
+          runId: "run_dr",
+          envId: "env_a",
+          orgId: "org_1",
+          payload: "{}",
+        });
         expect(dup).toEqual({ kind: "duplicate_run_id" });
 
         const afterDup = await buffer.getEntry("run_dr");
@@ -1024,7 +1067,7 @@ describe("MollifierBuffer.accept idempotency", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1067,7 +1110,7 @@ describe("MollifierBuffer.accept idempotency", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1114,7 +1157,7 @@ describe("MollifierBuffer.accept idempotency", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });
 
@@ -1141,7 +1184,7 @@ describe("MollifierBuffer envs set lifecycle", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1170,7 +1213,7 @@ describe("MollifierBuffer envs set lifecycle", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1198,7 +1241,7 @@ describe("MollifierBuffer envs set lifecycle", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });
 
@@ -1247,7 +1290,7 @@ describe("MollifierBuffer idempotency lookup", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1292,7 +1335,7 @@ describe("MollifierBuffer idempotency lookup", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1325,7 +1368,7 @@ describe("MollifierBuffer idempotency lookup", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1350,7 +1393,7 @@ describe("MollifierBuffer idempotency lookup", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1386,7 +1429,7 @@ describe("MollifierBuffer idempotency lookup", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1424,7 +1467,7 @@ describe("MollifierBuffer idempotency lookup", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1482,7 +1525,7 @@ describe("MollifierBuffer idempotency lookup", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1507,7 +1550,7 @@ describe("MollifierBuffer idempotency lookup", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1550,7 +1593,7 @@ describe("MollifierBuffer idempotency lookup", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1571,7 +1614,13 @@ describe("MollifierBuffer idempotency lookup", () => {
       });
       const idem = { idempotencyKey: "kheal", taskIdentifier: "t" };
       try {
-        await buffer.accept({ runId: "heal_old", envId: "env_h", orgId: "org_1", payload: "{}", ...idem });
+        await buffer.accept({
+          runId: "heal_old",
+          envId: "env_h",
+          orgId: "org_1",
+          payload: "{}",
+          ...idem,
+        });
         // Simulate eviction of the entry hash while the lookup survives.
         await buffer["redis"].del("mollifier:entries:heal_old");
         const lookupKey = idempotencyLookupKeyFor({ envId: "env_h", ...idem });
@@ -1591,7 +1640,7 @@ describe("MollifierBuffer idempotency lookup", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1610,7 +1659,13 @@ describe("MollifierBuffer idempotency lookup", () => {
       });
       const idem = { idempotencyKey: "klive", taskIdentifier: "t" };
       try {
-        await buffer.accept({ runId: "live_win", envId: "env_h", orgId: "org_1", payload: "{}", ...idem });
+        await buffer.accept({
+          runId: "live_win",
+          envId: "env_h",
+          orgId: "org_1",
+          payload: "{}",
+          ...idem,
+        });
         const result = await buffer.accept({
           runId: "live_lose",
           envId: "env_h",
@@ -1622,7 +1677,7 @@ describe("MollifierBuffer idempotency lookup", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });
 
@@ -1661,7 +1716,7 @@ describe("MollifierBuffer.casSetMetadata", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1701,7 +1756,7 @@ describe("MollifierBuffer.casSetMetadata", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1742,7 +1797,7 @@ describe("MollifierBuffer.casSetMetadata", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1780,7 +1835,7 @@ describe("MollifierBuffer.casSetMetadata", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1832,7 +1887,7 @@ describe("MollifierBuffer.casSetMetadata", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });
 
@@ -1858,7 +1913,7 @@ describe("MollifierBuffer.mutateSnapshot", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1902,7 +1957,7 @@ describe("MollifierBuffer.mutateSnapshot", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1935,7 +1990,7 @@ describe("MollifierBuffer.mutateSnapshot", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -1990,7 +2045,7 @@ describe("MollifierBuffer.mutateSnapshot", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -2028,7 +2083,7 @@ describe("MollifierBuffer.mutateSnapshot", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -2061,7 +2116,7 @@ describe("MollifierBuffer.mutateSnapshot", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -2099,7 +2154,7 @@ describe("MollifierBuffer.mutateSnapshot", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -2130,7 +2185,7 @@ describe("MollifierBuffer.mutateSnapshot", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -2168,7 +2223,7 @@ describe("MollifierBuffer.mutateSnapshot", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -2200,7 +2255,7 @@ describe("MollifierBuffer.mutateSnapshot", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -2225,7 +2280,7 @@ describe("MollifierBuffer.mutateSnapshot", () => {
 
         const tagsToAdd = Array.from({ length: 50 }, (_, i) => `t${i}`);
         await Promise.all(
-          tagsToAdd.map((t) => buffer.mutateSnapshot("rcc", { type: "append_tags", tags: [t] })),
+          tagsToAdd.map((t) => buffer.mutateSnapshot("rcc", { type: "append_tags", tags: [t] }))
         );
 
         const entry = await buffer.getEntry("rcc");
@@ -2234,7 +2289,7 @@ describe("MollifierBuffer.mutateSnapshot", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });
 
@@ -2266,14 +2321,16 @@ describe("MollifierBuffer LIST storage", () => {
 
         // createdAtMicros lives on the entry hash (for dwell metrics) and
         // is plausibly recent (within the last minute, as microseconds).
-        const micros = Number(await buffer["redis"].hget("mollifier:entries:z1", "createdAtMicros"));
+        const micros = Number(
+          await buffer["redis"].hget("mollifier:entries:z1", "createdAtMicros")
+        );
         const nowMicros = Date.now() * 1000;
         expect(micros).toBeGreaterThan(nowMicros - 60_000_000);
         expect(micros).toBeLessThanOrEqual(nowMicros + 1_000_000);
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -2305,7 +2362,7 @@ describe("MollifierBuffer LIST storage", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -2323,7 +2380,10 @@ describe("MollifierBuffer LIST storage", () => {
 
       try {
         await buffer.accept({ runId: "rq", envId: "env_rq", orgId: "org_1", payload: "{}" });
-        const originalMicros = await buffer["redis"].hget("mollifier:entries:rq", "createdAtMicros");
+        const originalMicros = await buffer["redis"].hget(
+          "mollifier:entries:rq",
+          "createdAtMicros"
+        );
 
         await buffer.pop("env_rq");
         // Queue is empty after the pop.
@@ -2338,7 +2398,7 @@ describe("MollifierBuffer LIST storage", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });
 
@@ -2377,25 +2437,29 @@ describe("MollifierBuffer.listEntriesForEnv", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
-  redisTest("returns empty array when env queue is empty", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      logger: new Logger("test", "log"),
-    });
+  redisTest(
+    "returns empty array when env queue is empty",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
 
-    try {
-      expect(await buffer.listEntriesForEnv("env_empty", 10)).toEqual([]);
-    } finally {
-      await buffer.close();
+      try {
+        expect(await buffer.listEntriesForEnv("env_empty", 10)).toEqual([]);
+      } finally {
+        await buffer.close();
+      }
     }
-  });
+  );
 
   redisTest(
     "skips entries whose hash was torn down between LRANGE and HGETALL (concurrent drainer ack/fail race)",
@@ -2429,26 +2493,30 @@ describe("MollifierBuffer.listEntriesForEnv", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
-  redisTest("maxCount <= 0 returns empty without hitting redis", { timeout: 20_000 }, async ({ redisContainer }) => {
-    const buffer = new MollifierBuffer({
-      redisOptions: {
-        host: redisContainer.getHost(),
-        port: redisContainer.getPort(),
-        password: redisContainer.getPassword(),
-      },
-      logger: new Logger("test", "log"),
-    });
+  redisTest(
+    "maxCount <= 0 returns empty without hitting redis",
+    { timeout: 20_000 },
+    async ({ redisContainer }) => {
+      const buffer = new MollifierBuffer({
+        redisOptions: {
+          host: redisContainer.getHost(),
+          port: redisContainer.getPort(),
+          password: redisContainer.getPassword(),
+        },
+        logger: new Logger("test", "log"),
+      });
 
-    try {
-      expect(await buffer.listEntriesForEnv("env_a", 0)).toEqual([]);
-      expect(await buffer.listEntriesForEnv("env_a", -5)).toEqual([]);
-    } finally {
-      await buffer.close();
+      try {
+        expect(await buffer.listEntriesForEnv("env_a", 0)).toEqual([]);
+        expect(await buffer.listEntriesForEnv("env_a", -5)).toEqual([]);
+      } finally {
+        await buffer.close();
+      }
     }
-  });
+  );
 });
 
 // Composite-key safety. The Redis-key builders concatenate
@@ -2510,7 +2578,7 @@ describe("MollifierBuffer composite-key encoding (collision resistance)", () => 
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -2533,7 +2601,7 @@ describe("MollifierBuffer composite-key encoding (collision resistance)", () => 
       // base64url alphabet has no `:`, `+`, `/`, or `=`.
       const afterNamespace = key.slice("mollifier:idempotency:".length);
       expect(afterNamespace).toMatch(/^[A-Za-z0-9_\-]+:[A-Za-z0-9_\-]+:[A-Za-z0-9_\-]+$/);
-    },
+    }
   );
 });
 
@@ -2583,7 +2651,7 @@ describe("MollifierBuffer pre-gate claim — ownership token safety", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -2614,7 +2682,7 @@ describe("MollifierBuffer pre-gate claim — ownership token safety", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -2657,7 +2725,7 @@ describe("MollifierBuffer pre-gate claim — ownership token safety", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -2722,7 +2790,7 @@ describe("MollifierBuffer pre-gate claim — ownership token safety", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });
 
@@ -2767,35 +2835,31 @@ describe("MollifierBuffer.draining tracker (observability)", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
-  redisTest(
-    "ack ZREMs from the draining set",
-    { timeout: 20_000 },
-    async ({ redisContainer }) => {
-      const buffer = new MollifierBuffer({
-        redisOptions: {
-          host: redisContainer.getHost(),
-          port: redisContainer.getPort(),
-          password: redisContainer.getPassword(),
-        },
-        logger: new Logger("test", "log"),
-      });
+  redisTest("ack ZREMs from the draining set", { timeout: 20_000 }, async ({ redisContainer }) => {
+    const buffer = new MollifierBuffer({
+      redisOptions: {
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+      },
+      logger: new Logger("test", "log"),
+    });
 
-      try {
-        await buffer.accept({ runId: "drn_ack", envId: "env_a", orgId: "org_1", payload: "{}" });
-        await buffer.pop("env_a");
-        expect(await buffer.getDrainingCount()).toBe(1);
+    try {
+      await buffer.accept({ runId: "drn_ack", envId: "env_a", orgId: "org_1", payload: "{}" });
+      await buffer.pop("env_a");
+      expect(await buffer.getDrainingCount()).toBe(1);
 
-        await buffer.ack("drn_ack");
-        expect(await buffer.getDrainingCount()).toBe(0);
-        expect(await buffer["redis"].zscore(DRAINING_SET_KEY, "drn_ack")).toBeNull();
-      } finally {
-        await buffer.close();
-      }
-    },
-  );
+      await buffer.ack("drn_ack");
+      expect(await buffer.getDrainingCount()).toBe(0);
+      expect(await buffer["redis"].zscore(DRAINING_SET_KEY, "drn_ack")).toBeNull();
+    } finally {
+      await buffer.close();
+    }
+  });
 
   redisTest(
     "fail ZREMs from the draining set even though the entry hash is torn down",
@@ -2820,7 +2884,7 @@ describe("MollifierBuffer.draining tracker (observability)", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -2850,7 +2914,7 @@ describe("MollifierBuffer.draining tracker (observability)", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -2888,7 +2952,7 @@ describe("MollifierBuffer.draining tracker (observability)", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -2928,7 +2992,7 @@ describe("MollifierBuffer.draining tracker (observability)", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 
   redisTest(
@@ -2969,6 +3033,6 @@ describe("MollifierBuffer.draining tracker (observability)", () => {
       } finally {
         await buffer.close();
       }
-    },
+    }
   );
 });

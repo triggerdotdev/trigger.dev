@@ -473,8 +473,8 @@ function SubAgentContent({ parts }: { parts: any[] }) {
                   part.state === "input-streaming" || part.state === "input-available"
                     ? "calling..."
                     : part.state === "output-error"
-                    ? `error: ${part.errorText ?? "unknown"}`
-                    : undefined,
+                      ? `error: ${part.errorText ?? "unknown"}`
+                      : undefined,
               }}
             />
           );

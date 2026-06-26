@@ -362,88 +362,88 @@ function SetDefaultDialog({
         </DialogHeader>
         <DialogDescription asChild>
           <div>
-          <Paragraph>
-            Are you sure you want to set {newDefaultRegion.name} as your new default region?
-          </Paragraph>
+            <Paragraph>
+              Are you sure you want to set {newDefaultRegion.name} as your new default region?
+            </Paragraph>
 
-          <div className="my-4 flex">
-            <div className="flex flex-1 flex-col rounded-md border border-grid-dimmed">
-              <div className="border-b border-grid-dimmed bg-charcoal-800 p-3 font-medium">
-                <Paragraph variant="small/bright">Current default</Paragraph>
+            <div className="my-4 flex">
+              <div className="flex flex-1 flex-col rounded-md border border-grid-dimmed">
+                <div className="border-b border-grid-dimmed bg-charcoal-800 p-3 font-medium">
+                  <Paragraph variant="small/bright">Current default</Paragraph>
+                </div>
+                <div className="border-b border-grid-dimmed p-3">
+                  <Paragraph variant="small">{currentDefaultRegion?.name ?? "–"}</Paragraph>
+                </div>
+                <div className="border-b border-grid-dimmed p-3">
+                  <Paragraph variant="small" className="flex items-center gap-2">
+                    {currentDefaultRegion?.cloudProvider ? (
+                      <>
+                        <CloudProviderIcon
+                          provider={currentDefaultRegion.cloudProvider}
+                          className="size-6"
+                        />
+                        {cloudProviderTitle(currentDefaultRegion.cloudProvider)}
+                      </>
+                    ) : (
+                      "–"
+                    )}
+                  </Paragraph>
+                </div>
+                <div className="p-3">
+                  <Paragraph variant="small" className="flex items-center gap-2">
+                    {currentDefaultRegion?.location ? (
+                      <FlagIcon region={currentDefaultRegion.location} className="size-5" />
+                    ) : null}
+                    {currentDefaultRegion?.description ?? "–"}
+                  </Paragraph>
+                </div>
               </div>
-              <div className="border-b border-grid-dimmed p-3">
-                <Paragraph variant="small">{currentDefaultRegion?.name ?? "–"}</Paragraph>
+
+              {/* Middle column with arrow */}
+              <div className="flex items-center justify-center px-3">
+                <div className="flex size-10 items-center justify-center rounded-full border border-grid-dimmed bg-charcoal-800 p-2">
+                  <ArrowRightIcon className="size-4 text-text-dimmed" />
+                </div>
               </div>
-              <div className="border-b border-grid-dimmed p-3">
-                <Paragraph variant="small" className="flex items-center gap-2">
-                  {currentDefaultRegion?.cloudProvider ? (
-                    <>
-                      <CloudProviderIcon
-                        provider={currentDefaultRegion.cloudProvider}
-                        className="size-6"
-                      />
-                      {cloudProviderTitle(currentDefaultRegion.cloudProvider)}
-                    </>
-                  ) : (
-                    "–"
-                  )}
-                </Paragraph>
-              </div>
-              <div className="p-3">
-                <Paragraph variant="small" className="flex items-center gap-2">
-                  {currentDefaultRegion?.location ? (
-                    <FlagIcon region={currentDefaultRegion.location} className="size-5" />
-                  ) : null}
-                  {currentDefaultRegion?.description ?? "–"}
-                </Paragraph>
+
+              {/* Right column */}
+              <div className="flex flex-1 flex-col rounded-md border border-grid-dimmed">
+                <div className="border-b border-grid-dimmed bg-charcoal-800 p-3 font-medium">
+                  <Paragraph variant="small/bright">New default</Paragraph>
+                </div>
+                <div className="border-b border-grid-dimmed p-3">
+                  <Paragraph variant="small">{newDefaultRegion.name}</Paragraph>
+                </div>
+                <div className="border-b border-grid-dimmed p-3">
+                  <Paragraph variant="small" className="flex items-center gap-2">
+                    {newDefaultRegion.cloudProvider ? (
+                      <>
+                        <CloudProviderIcon
+                          provider={newDefaultRegion.cloudProvider}
+                          className="size-6"
+                        />
+                        {cloudProviderTitle(newDefaultRegion.cloudProvider)}
+                      </>
+                    ) : (
+                      "–"
+                    )}
+                  </Paragraph>
+                </div>
+                <div className="p-3">
+                  <Paragraph variant="small" className="flex items-center gap-2">
+                    {newDefaultRegion.location ? (
+                      <FlagIcon region={newDefaultRegion.location} className="size-5" />
+                    ) : null}
+                    {newDefaultRegion.description ?? "–"}
+                  </Paragraph>
+                </div>
               </div>
             </div>
 
-            {/* Middle column with arrow */}
-            <div className="flex items-center justify-center px-3">
-              <div className="flex size-10 items-center justify-center rounded-full border border-grid-dimmed bg-charcoal-800 p-2">
-                <ArrowRightIcon className="size-4 text-text-dimmed" />
-              </div>
-            </div>
-
-            {/* Right column */}
-            <div className="flex flex-1 flex-col rounded-md border border-grid-dimmed">
-              <div className="border-b border-grid-dimmed bg-charcoal-800 p-3 font-medium">
-                <Paragraph variant="small/bright">New default</Paragraph>
-              </div>
-              <div className="border-b border-grid-dimmed p-3">
-                <Paragraph variant="small">{newDefaultRegion.name}</Paragraph>
-              </div>
-              <div className="border-b border-grid-dimmed p-3">
-                <Paragraph variant="small" className="flex items-center gap-2">
-                  {newDefaultRegion.cloudProvider ? (
-                    <>
-                      <CloudProviderIcon
-                        provider={newDefaultRegion.cloudProvider}
-                        className="size-6"
-                      />
-                      {cloudProviderTitle(newDefaultRegion.cloudProvider)}
-                    </>
-                  ) : (
-                    "–"
-                  )}
-                </Paragraph>
-              </div>
-              <div className="p-3">
-                <Paragraph variant="small" className="flex items-center gap-2">
-                  {newDefaultRegion.location ? (
-                    <FlagIcon region={newDefaultRegion.location} className="size-5" />
-                  ) : null}
-                  {newDefaultRegion.description ?? "–"}
-                </Paragraph>
-              </div>
-            </div>
-          </div>
-
-          <Paragraph>
-            Runs triggered from now on will execute in "{newDefaultRegion.name}", unless you{" "}
-            <TextLink to={docsPath("triggering#region")}>override when triggering</TextLink>.
-          </Paragraph>
+            <Paragraph>
+              Runs triggered from now on will execute in "{newDefaultRegion.name}", unless you{" "}
+              <TextLink to={docsPath("triggering#region")}>override when triggering</TextLink>.
+            </Paragraph>
           </div>
         </DialogDescription>
         <DialogFooter>

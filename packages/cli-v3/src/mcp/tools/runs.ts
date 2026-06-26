@@ -3,8 +3,20 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { toolsMetadata } from "../config.js";
-import { formatRun, formatRunList, formatRunShape, formatRunTrace, formatSpanDetail } from "../formatters.js";
-import { CommonRunsInput, GetRunDetailsInput, GetSpanDetailsInput, ListRunsInput, WaitForRunInput } from "../schemas.js";
+import {
+  formatRun,
+  formatRunList,
+  formatRunShape,
+  formatRunTrace,
+  formatSpanDetail,
+} from "../formatters.js";
+import {
+  CommonRunsInput,
+  GetRunDetailsInput,
+  GetSpanDetailsInput,
+  ListRunsInput,
+  WaitForRunInput,
+} from "../schemas.js";
 import { respondWithError, toolHandler } from "../utils.js";
 
 // Cache formatted traces in temp files keyed by runId.
@@ -199,9 +211,7 @@ export const getSpanDetailsTool = {
     const spanDetail = await apiClient.retrieveSpan(input.runId, input.spanId);
     const formatted = formatSpanDetail(spanDetail);
 
-    const runUrl = await ctx.getDashboardUrl(
-      `/projects/v3/${projectRef}/runs/${input.runId}`
-    );
+    const runUrl = await ctx.getDashboardUrl(`/projects/v3/${projectRef}/runs/${input.runId}`);
 
     const content = [formatted];
     if (runUrl) {
@@ -243,9 +253,7 @@ export const waitForRunToCompleteTool = {
 
     const timeoutMs = input.timeoutInSeconds * 1000;
     const timeoutSignal = AbortSignal.timeout(timeoutMs);
-    const combinedSignal = signal
-      ? AbortSignal.any([signal, timeoutSignal])
-      : timeoutSignal;
+    const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
 
     const runSubscription = apiClient.subscribeToRun(input.runId, { signal: combinedSignal });
     const readableStream = runSubscription.getReader();

@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { permissiveAbility, superAbility, denyAbility, buildFallbackAbility, buildJwtAbility } from "./ability.js";
+import {
+  permissiveAbility,
+  superAbility,
+  denyAbility,
+  buildFallbackAbility,
+  buildJwtAbility,
+} from "./ability.js";
 
 describe("permissiveAbility", () => {
   it("allows any action on any resource type", () => {

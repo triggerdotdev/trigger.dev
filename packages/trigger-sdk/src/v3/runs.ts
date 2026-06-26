@@ -160,10 +160,10 @@ function listRunsRequestOptions(
 type RunId<TRunId> = TRunId extends AnyRunHandle | AnyBatchedRunHandle
   ? TRunId
   : TRunId extends AnyTask
-  ? string
-  : TRunId extends string
-  ? TRunId
-  : never;
+    ? string
+    : TRunId extends string
+      ? TRunId
+      : never;
 
 function retrieveRun<TRunId extends AnyRunHandle | AnyBatchedRunHandle | AnyTask | string>(
   runId: RunId<TRunId>,

@@ -14,8 +14,7 @@ import { runsReplicationInstance } from "~/services/runsReplicationInstance.serv
 // initializer never fires. Assignment to globalThis is an observable side
 // effect the bundler must preserve. See TRI-9864.
 import { sessionsReplicationInstance } from "~/services/sessionsReplicationInstance.server";
-(globalThis as Record<string, unknown>).__sessionsReplicationInstance =
-  sessionsReplicationInstance;
+(globalThis as Record<string, unknown>).__sessionsReplicationInstance = sessionsReplicationInstance;
 import { singleton } from "~/utils/singleton";
 import { tracer } from "../tracer.server";
 import { $replica } from "~/db.server";

@@ -896,7 +896,7 @@ export function setupBatchQueueCallbacks() {
                 batchIndex: itemIndex,
                 realtimeStreamsVersion: meta.realtimeStreamsVersion,
                 planType: meta.planType,
-                triggerSource: meta.parentRunId ? "sdk" : meta.triggerSource ?? "api",
+                triggerSource: meta.parentRunId ? "sdk" : (meta.triggerSource ?? "api"),
                 triggerAction: "trigger",
               },
               "V2"

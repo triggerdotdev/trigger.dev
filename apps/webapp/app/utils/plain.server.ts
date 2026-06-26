@@ -10,14 +10,7 @@ type Input = {
   labelTypeIds?: string[];
 };
 
-export async function sendToPlain({
-  userId,
-  email,
-  name,
-  title,
-  components,
-  labelTypeIds,
-}: Input) {
+export async function sendToPlain({ userId, email, name, title, components, labelTypeIds }: Input) {
   if (!env.PLAIN_API_KEY) {
     return;
   }

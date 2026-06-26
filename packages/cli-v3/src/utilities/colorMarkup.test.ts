@@ -75,9 +75,21 @@ describe("applyColorMarkup", () => {
 
   it("handles all valid color tags", () => {
     const tags = [
-      "red", "green", "yellow", "blue", "magenta", "cyan", "white", "gray",
-      "redBright", "greenBright", "yellowBright", "blueBright",
-      "magentaBright", "cyanBright", "whiteBright",
+      "red",
+      "green",
+      "yellow",
+      "blue",
+      "magenta",
+      "cyan",
+      "white",
+      "gray",
+      "redBright",
+      "greenBright",
+      "yellowBright",
+      "blueBright",
+      "magentaBright",
+      "cyanBright",
+      "whiteBright",
     ];
     for (const tag of tags) {
       const result = applyColorMarkup(`{${tag}}test{/${tag}}`);

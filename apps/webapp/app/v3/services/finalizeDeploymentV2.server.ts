@@ -16,6 +16,7 @@ import { getEcrAuthToken, isEcrRegistry } from "../getDeploymentImageRef.server"
 import { tryCatch } from "@trigger.dev/core";
 import { getRegistryConfig, type RegistryConfig } from "../registryConfig.server";
 import { ComputeTemplateCreationService } from "./computeTemplateCreation.server";
+import { ecrImageExists } from "./verifyDeploymentImage.server";
 
 export class FinalizeDeploymentV2Service extends BaseService {
   public async call(
@@ -74,6 +75,11 @@ export class FinalizeDeploymentV2Service extends BaseService {
           deployment,
         });
       }
+
+      // The CLI claims the image is already in the registry (local build, or a
+      // self-hosted setup). Verify before promoting so we never mark a
+      // deployment DEPLOYED when nothing was actually pushed.
+      await this.#assertImagePullable(deployment, body);
 
       await this.#createTemplateIfNeeded(deployment, id, authenticatedEnv, writer);
       return finalizeService.call(authenticatedEnv, id, body);
@@ -142,8 +148,51 @@ export class FinalizeDeploymentV2Service extends BaseService {
       pushedImage: pushResult.image,
     });
 
+    // Belt and suspenders: confirm the push actually landed before promoting.
+    await this.#assertImagePullable(deployment, body);
+
     await this.#createTemplateIfNeeded(deployment, id, authenticatedEnv, writer);
     return finalizeService.call(authenticatedEnv, id, body);
+  }
+
+  async #assertImagePullable(
+    deployment: { imageReference: string | null; type: string | null },
+    body: FinalizeDeploymentRequestBody
+  ): Promise<void> {
+    if (!env.DEPLOY_IMAGE_VERIFICATION_ENABLED) {
+      return;
+    }
+
+    if (!deployment.imageReference) {
+      return;
+    }
+
+    const registryConfig = getRegistryConfig(deployment.type === "MANAGED");
+
+    // ECR-only: non-ECR (self-hosted) registries can't be checked this way, so skip.
+    if (!isEcrRegistry(registryConfig.host)) {
+      return;
+    }
+
+    const result = await ecrImageExists({
+      imageReference: deployment.imageReference,
+      imageDigest: body.imageDigest,
+      registryConfig,
+    });
+
+    if (result === "missing") {
+      throw new ServiceValidationError(
+        "Deployment image was not found in the registry. It may not have been pushed (for example a local build without a push, or a push to a different registry). Aborting the deploy to avoid promoting a version that cannot start."
+      );
+    }
+
+    // Fail closed: if we can't confirm the image is present, don't promote a version
+    // that might not start. Set DEPLOY_IMAGE_VERIFICATION_ENABLED=0 for out-of-band pushes.
+    if (result === "unknown") {
+      throw new ServiceValidationError(
+        "Could not verify the deployment image exists in the registry. Aborting the deploy."
+      );
+    }
   }
 
   async #createTemplateIfNeeded(

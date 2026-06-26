@@ -91,7 +91,11 @@ import { requireUserId } from "~/services/session.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { EnvironmentParamSchema, v3BuiltInDashboardPath, v3ModelComparePath } from "~/utils/pathBuilder";
+import {
+  EnvironmentParamSchema,
+  v3BuiltInDashboardPath,
+  v3ModelComparePath,
+} from "~/utils/pathBuilder";
 import {
   formatModelPrice,
   formatTokenCount,
@@ -126,7 +130,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Environment not found", { status: 404 });
   }
 
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(project.organizationId, "standard");
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    project.organizationId,
+    "standard"
+  );
   const presenter = new ModelRegistryPresenter(clickhouse);
   const catalog = await presenter.getModelCatalog();
 
@@ -191,10 +198,7 @@ export function shouldRevalidate({
     params.sort();
     return params.toString();
   };
-  if (
-    currentUrl.pathname === nextUrl.pathname &&
-    normalize(currentUrl) === normalize(nextUrl)
-  ) {
+  if (currentUrl.pathname === nextUrl.pathname && normalize(currentUrl) === normalize(nextUrl)) {
     return false;
   }
   return defaultShouldRevalidate;
@@ -1047,7 +1051,7 @@ function DetailYourUsageTab({
     projectId,
     environmentId,
     scope: "environment" as const,
-    period: range.from && range.to ? null : range.period ?? "7d",
+    period: range.from && range.to ? null : (range.period ?? "7d"),
     from: range.from ?? null,
     to: range.to ?? null,
   };
@@ -1241,7 +1245,7 @@ function YourModelsTab({
     projectId,
     environmentId,
     scope: "environment" as const,
-    period: from && to ? null : period ?? "7d",
+    period: from && to ? null : (period ?? "7d"),
     from,
     to,
   };
@@ -1254,7 +1258,11 @@ function YourModelsTab({
             widgetKey="your-models-cost-time"
             title="Cost over time"
             query={`SELECT timeBucket(), sum(total_cost) AS cost FROM llm_metrics GROUP BY timeBucket ORDER BY timeBucket`}
-            config={chartConfig({ chartType: "bar", xAxisColumn: "timebucket", yAxisColumns: ["cost"] })}
+            config={chartConfig({
+              chartType: "bar",
+              xAxisColumn: "timebucket",
+              yAxisColumns: ["cost"],
+            })}
             {...widgetProps}
           />
         </div>
@@ -1277,7 +1285,11 @@ function YourModelsTab({
             widgetKey="your-models-calls-over-time"
             title="Calls over time"
             query={`SELECT timeBucket(), count() AS calls FROM llm_metrics GROUP BY timeBucket ORDER BY timeBucket`}
-            config={chartConfig({ chartType: "bar", xAxisColumn: "timebucket", yAxisColumns: ["calls"] })}
+            config={chartConfig({
+              chartType: "bar",
+              xAxisColumn: "timebucket",
+              yAxisColumns: ["calls"],
+            })}
             {...widgetProps}
           />
         </div>
@@ -1287,8 +1299,8 @@ function YourModelsTab({
         {usage.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-12">
             <p className="max-w-md text-center text-sm text-text-dimmed">
-              No model usage in this environment yet. Models you call from your tasks will appear here
-              with usage metrics.
+              No model usage in this environment yet. Models you call from your tasks will appear
+              here with usage metrics.
             </p>
             <Button variant="secondary/small" onClick={onGoToLibrary}>
               Browse the model library
@@ -1427,10 +1439,10 @@ export default function ModelsPage() {
     tabParam === "library"
       ? "library"
       : tabParam === "yours"
-      ? "yours"
-      : projectUsage.length > 0
-      ? "yours"
-      : "library";
+        ? "yours"
+        : projectUsage.length > 0
+          ? "yours"
+          : "library";
   const setView = (next: ModelsTab) => replace({ tab: next });
   const [compareSet, setCompareSet] = useState<Set<string>>(new Set());
   const [showAllDetails, setShowAllDetails] = useState(false);

@@ -120,7 +120,8 @@ LIMIT 100`,
   },
   {
     title: "LLM cost by model (past 7d)",
-    description: "Total cost, input tokens, and output tokens grouped by model over the last 7 days.",
+    description:
+      "Total cost, input tokens, and output tokens grouped by model over the last 7 days.",
     query: `SELECT
   response_model,
   SUM(total_cost) AS total_cost,

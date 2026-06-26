@@ -124,7 +124,10 @@ async function getTaskUsageByOrganization(
   endOfMonth: Date,
   replica: PrismaClientOrTransaction
 ) {
-  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
+  const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+    organizationId,
+    "standard"
+  );
   const [queryError, tasks] = await clickhouse.taskRuns.getTaskUsageByOrganization({
     startTime: startOfMonth.getTime(),
     endTime: endOfMonth.getTime(),

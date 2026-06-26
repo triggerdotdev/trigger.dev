@@ -306,8 +306,8 @@ export class TestTaskPresenter {
                   metadata: r.seedMetadata
                     ? await prettyPrintPacket(r.seedMetadata, r.seedMetadataType)
                     : undefined,
-                  ttlSeconds: r.ttl ? parse(r.ttl, "s") ?? undefined : undefined,
-                } satisfies StandardRun)
+                  ttlSeconds: r.ttl ? (parse(r.ttl, "s") ?? undefined) : undefined,
+                }) satisfies StandardRun
             )
           ),
           latestVersions,
@@ -351,7 +351,7 @@ export class TestTaskPresenter {
                     maxDurationInSeconds: r.maxDurationInSeconds ?? undefined,
                     machinePreset: r.machinePreset ?? undefined,
                     payload: payload.data,
-                    ttlSeconds: r.ttl ? parse(r.ttl, "s") ?? undefined : undefined,
+                    ttlSeconds: r.ttl ? (parse(r.ttl, "s") ?? undefined) : undefined,
                   } satisfies ScheduledRun;
                 }
               })
