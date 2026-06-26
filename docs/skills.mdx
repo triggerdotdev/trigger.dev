@@ -43,6 +43,8 @@ Pass `--target` to choose tools and `-y` to install every skill without promptin
 npx trigger.dev@latest skills --target claude-code --target cursor -y
 ```
 
+While the command is still release-candidate only, swap `@latest` for `@rc`.
+
 ## Available skills
 
 | Skill                  | Use for                                                        | Covers                                                                       |
@@ -70,7 +72,7 @@ Using a tool that does not support skills yet? Select "Unsupported target" in th
 
 ## Keeping skills updated
 
-The API guidance updates on its own: it lives in `@trigger.dev/sdk` and is read from `node_modules`, so upgrading the SDK in your project upgrades the guidance with it. Re-run `npx trigger.dev@latest skills` (or accept the prompt that `trigger dev` shows when a newer version is available) only to add skills or refresh the installed pointer files. Re-running overwrites them in place without creating duplicates.
+The API guidance updates on its own: it lives in `@trigger.dev/sdk` and is read from `node_modules`, so upgrading the SDK in your project upgrades the guidance with it. Re-run `npx trigger.dev@latest skills` (use `@rc` until the command ships to the stable release, or accept the prompt that `trigger dev` shows when a newer version is available) only to add skills or refresh the installed pointer files. Re-running overwrites them in place without creating duplicates.
 
 ## Next steps
 
