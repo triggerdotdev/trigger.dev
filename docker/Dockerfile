@@ -8,7 +8,7 @@ FROM ${NODE_IMAGE} AS pruner
 WORKDIR /triggerdotdev
 
 COPY --chown=node:node . .
-RUN npx -q turbo@2.5.4 prune --scope=webapp --docker
+RUN npx -q turbo@2.10.0 prune --scope=webapp --docker
 RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
 
 # Base strategy to have layer caching
