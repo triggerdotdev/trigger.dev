@@ -10,6 +10,7 @@ import { TriggerTaskService } from "./services/triggerTask.server";
 import { meter, tracer } from "./tracer.server";
 import { workerQueue } from "~/services/worker.server";
 import { ServiceValidationError } from "./services/common.server";
+import { isV3Disabled } from "./engineDeprecation.server";
 
 export const scheduleEngine = singleton("ScheduleEngine", createScheduleEngine);
 
@@ -84,6 +85,18 @@ function createScheduleEngine() {
       exactScheduleTime,
     }) => {
       try {
+        // v3 (engine V1) shutdown: skip firing schedules for V1 projects so the
+        // cron doesn't keep doing trigger work just to be rejected. Return success
+        // so the schedule engine treats it as handled and doesn't retry. v4 is
+        // unaffected.
+        if (isV3Disabled() && environment.project.engine === "V1") {
+          logger.debug("[ScheduleEngine] Skipping scheduled fire for shut-down v3 project", {
+            taskIdentifier,
+            scheduleId,
+          });
+          return { success: true };
+        }
+
         // This will trigger either v1 or v2 depending on the engine of the project
         const triggerService = new TriggerTaskService();
 
