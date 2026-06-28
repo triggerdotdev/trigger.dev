@@ -5,6 +5,7 @@ import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { BatchTaskRun } from "@trigger.dev/database";
 import { workerQueue } from "~/services/worker.server";
+import { isV3Disabled } from "../engineDeprecation.server";
 
 const finishedBatchRunStatuses = ["COMPLETED", "FAILED", "CANCELED"];
 
@@ -40,6 +41,14 @@ export class ResumeBatchRunService extends BaseService {
         }
       );
 
+      return "ERROR";
+    }
+
+    // v3 (engine V1) shutdown: don't resume batches for abandoned V1 projects. v4 is unaffected.
+    if (isV3Disabled() && batchRun.runtimeEnvironment.project.engine === "V1") {
+      logger.debug("[ResumeBatchRunService] Skipping resume for shut-down v3 batch", {
+        batchRunId,
+      });
       return "ERROR";
     }
 
