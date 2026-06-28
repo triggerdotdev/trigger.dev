@@ -111,6 +111,7 @@ export function EnvironmentSelector({
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
+        <PopoverSectionHeader title="Environments" />
         <div className="flex flex-col gap-1 p-1">
           {project.environments
             .filter((env) => env.parentEnvironmentId === null)
