@@ -1,4 +1,12 @@
 import { useMemo } from "react";
+import { formatNumberCompact } from "~/utils/numberFormatter";
+
+/**
+ * Default y-axis tick formatter: compact notation (8000 → "8K", 1_200_000 → "1.2M").
+ * Chart.Bar / Chart.Line use it unless the caller supplies its own tickFormatter.
+ */
+export const defaultYAxisTickFormatter = (value: any): string =>
+  typeof value === "number" ? formatNumberCompact(value) : String(value);
 
 // 1ch at 11px tabular-nums system-ui ≈ 6.5px. Recharts' YAxis.width prop is a
 // raw number (pixels), so we can't use the CSS `ch` unit directly — but tabular-nums
