@@ -22,7 +22,7 @@ import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { MachineDefaultIcon } from "~/assets/icons/MachineIcon";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { TasksIcon } from "~/assets/icons/TasksIcon";
 import {
   formatMachinePresetName,
   MachineLabelCombo,
@@ -259,7 +259,7 @@ export function filterIcon(filterKey: string): ReactNode | undefined {
     case "statuses":
       return <StatusIcon className="size-4 border-text-bright" />;
     case "tasks":
-      return <TaskIcon className="size-4" />;
+      return <TasksIcon className="size-4" />;
     case "tags":
       return <TagIcon className="size-4" />;
     case "bulkId":
@@ -429,7 +429,7 @@ const filterTypes = [
   { name: "schedule", title: "Schedule ID", icon: <ClockIcon className="size-4" /> },
   { name: "bulk", title: "Bulk action", icon: <ListCheckedIcon className="size-4" /> },
   { name: "error", title: "Error ID", icon: <BugIcon className="size-4" /> },
-  { name: "source", title: "Task type", icon: <TaskIcon className="size-4" /> },
+  { name: "source", title: "Task type", icon: <TasksIcon className="size-4" /> },
 ] as const;
 
 type FilterType = (typeof filterTypes)[number]["name"];
@@ -1239,7 +1239,7 @@ function QueuesDropdown({
                   value={queue.value}
                   icon={
                     queue.type === "task" ? (
-                      <TaskIcon className="size-4 shrink-0 text-blue-500" />
+                      <TasksIcon className="size-4 shrink-0 text-blue-500" />
                     ) : (
                       <RectangleStackIcon className="size-4 shrink-0 text-purple-500" />
                     )
