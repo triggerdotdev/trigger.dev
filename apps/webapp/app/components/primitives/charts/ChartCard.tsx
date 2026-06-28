@@ -55,10 +55,11 @@ export function ChartCard({
             <Card.Accessory>
               <SimpleTooltip
                 button={
-                  <span className="opacity-0 transition-opacity group-hover:opacity-100">
+                  <span className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
                     <Button
                       variant="minimal/small"
                       LeadingIcon={Maximize2}
+                      aria-label="Maximize chart"
                       leadingIconClassName="text-text-dimmed group-hover/button:text-text-bright"
                       onClick={() => setIsFullscreen(true)}
                       className="!px-1"

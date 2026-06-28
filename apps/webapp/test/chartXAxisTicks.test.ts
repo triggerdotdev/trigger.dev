@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  dedupeTicksByLabel,
   estimateMaxLabels,
   selectEvenlySpacedIndices,
   selectEvenlySpacedTicks,
@@ -91,5 +92,33 @@ describe("estimateMaxLabels", () => {
 
   it("always allows at least one label for a positive width", () => {
     expect(estimateMaxLabels(10, 100)).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("dedupeTicksByLabel", () => {
+  it("drops adjacent duplicate labels", () => {
+    const labels = ["A", "A", "B", "B", "C"];
+    const values = [0, 1, 2, 3, 4];
+    expect(dedupeTicksByLabel([0, 1, 2, 3, 4], labels, values)).toEqual([0, 2, 4]);
+  });
+
+  it("keeps the last index when its label repeats the previous tick (first+last contract)", () => {
+    // indices 6 and 9 render the same label; the naive loop would drop index 9
+    // and leave the right edge unlabeled. The last index must win.
+    const labels = ["a", "b", "c", "d", "e", "f", "X", "g", "h", "X"];
+    const values = labels.map((_, i) => i);
+    const ticks = dedupeTicksByLabel([0, 3, 6, 9], labels, values);
+    expect(ticks[ticks.length - 1]).toBe(9);
+    expect(ticks).toEqual([0, 3, 9]);
+  });
+
+  it("leaves already-unique labels untouched", () => {
+    const labels = ["Jan", "Feb", "Mar"];
+    const values = ["Jan", "Feb", "Mar"];
+    expect(dedupeTicksByLabel([0, 1, 2], labels, values)).toEqual(["Jan", "Feb", "Mar"]);
+  });
+
+  it("handles an empty selection", () => {
+    expect(dedupeTicksByLabel([], [], [])).toEqual([]);
   });
 });

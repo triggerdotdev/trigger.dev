@@ -42,6 +42,27 @@ export function estimateMaxLabels(width: number, maxLabelChars: number): number 
 }
 
 /**
+ * From `indices` (into `labels`/`values`), return the tick values with adjacent
+ * duplicate labels dropped. The final index is always kept: if it repeats the
+ * previous label it replaces that tick instead of being skipped, so the
+ * end-of-range label never disappears (honoring the "first + last" contract).
+ */
+export function dedupeTicksByLabel<T>(indices: number[], labels: string[], values: T[]): T[] {
+  const lastIndex = values.length - 1;
+  const ticks: T[] = [];
+  let lastLabel: string | null = null;
+  for (const idx of indices) {
+    if (labels[idx] === lastLabel) {
+      if (idx === lastIndex && ticks.length > 0) ticks[ticks.length - 1] = values[idx];
+      continue;
+    }
+    lastLabel = labels[idx];
+    ticks.push(values[idx]);
+  }
+  return ticks;
+}
+
+/**
  * Explicit x-axis tick values: evenly spaced across the plot, including first +
  * last, bounded by how many fit in `plotWidth` and by the count of distinct
  * labels (so nothing overlaps or repeats). `plotWidth` excludes the y-axis and
@@ -72,13 +93,7 @@ export function useXAxisTicks(
     const target = Math.min(fit, distinct, n);
 
     // Evenly spaced on screen, then drop any that repeat the previous label.
-    const ticks: any[] = [];
-    let lastLabel: string | null = null;
-    for (const idx of selectEvenlySpacedIndices(n, target)) {
-      if (labels[idx] === lastLabel) continue;
-      lastLabel = labels[idx];
-      ticks.push(data[idx][dataKey]);
-    }
-    return ticks;
+    const values = data.map((d) => d[dataKey]);
+    return dedupeTicksByLabel(selectEvenlySpacedIndices(n, target), labels, values);
   }, [data, dataKey, plotWidth, tickFormatter]);
 }
