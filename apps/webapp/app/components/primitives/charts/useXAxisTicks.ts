@@ -1,18 +1,13 @@
 import { useMemo } from "react";
 
-// Mirrors useYAxisWidth: at 11px tabular-nums, 1 char ≈ 6.5px. Labels use
-// tabular-nums so character count is a faithful width proxy.
+// At 11px tabular-nums, 1 char ≈ 6.5px, so character count is a width proxy (see useYAxisWidth).
 const PX_PER_CH = 6.5;
-// Minimum horizontal breathing room between two adjacent labels.
+// Minimum gap between adjacent labels.
 const LABEL_GAP_PX = 16;
 // Floor so very short labels still get some space.
 const MIN_LABEL_PX = 24;
 
-/**
- * Pick `count` indices evenly spaced across [0, n), always including the first
- * and last. "Evenly spaced" here means even *screen* spacing on a band axis
- * (each bucket occupies an equal slice of the plot width).
- */
+/** Pick `count` indices evenly spaced across [0, n), always including the first and last. */
 export function selectEvenlySpacedIndices(n: number, count: number): number[] {
   if (n <= 0) return [];
   if (count <= 1) return [0];
@@ -29,22 +24,17 @@ export function selectEvenlySpacedIndices(n: number, count: number): number[] {
       out.push(idx);
     }
   }
-  // Rounding can drop the final index — guarantee the last is present.
+  // Rounding can drop the final index; force it in.
   if (!seen.has(n - 1)) out.push(n - 1);
   return out;
 }
 
-/**
- * Pick `maxLabels` values evenly spaced across `values`, always including the
- * first and last.
- */
+/** Pick `maxLabels` values evenly spaced across `values`, always including the first and last. */
 export function selectEvenlySpacedTicks<T>(values: T[], maxLabels: number): T[] {
   return selectEvenlySpacedIndices(values.length, maxLabels).map((i) => values[i]);
 }
 
-/**
- * How many labels of `maxLabelChars` width fit in `width` pixels.
- */
+/** How many labels of `maxLabelChars` width fit in `width` pixels. */
 export function estimateMaxLabels(width: number, maxLabelChars: number): number {
   if (!width || width <= 0) return 0;
   const labelPx = Math.max(MIN_LABEL_PX, maxLabelChars * PX_PER_CH) + LABEL_GAP_PX;
@@ -52,17 +42,10 @@ export function estimateMaxLabels(width: number, maxLabelChars: number): number 
 }
 
 /**
- * Compute the explicit x-axis tick values to render labels at, so they:
- *  - are evenly spaced across the plot (no crowding, even when the first/last
- *    bucket is a partial period),
- *  - never overlap (count is bounded by how many fit in `plotWidth`),
- *  - never repeat the same text (count is also bounded by the number of
- *    distinct labels),
- *  - stay horizontal and include the first + last bucket.
- *
- * `plotWidth` is the width of the plotting area (full width minus the y-axis and
- * horizontal margins), so the "how many fit" estimate matches the area labels
- * are actually drawn in. Returns `undefined` until a width is known (first paint).
+ * Explicit x-axis tick values: evenly spaced across the plot, including first +
+ * last, bounded by how many fit in `plotWidth` and by the count of distinct
+ * labels (so nothing overlaps or repeats). `plotWidth` excludes the y-axis and
+ * margins. Returns `undefined` until a width is known (first paint).
  */
 export function useXAxisTicks(
   data: Array<Record<string, any>>,
@@ -82,10 +65,8 @@ export function useXAxisTicks(
       if (label.length > maxChars) maxChars = label.length;
     }
 
-    // How many labels fit, capped at the number of distinct labels — there's no
-    // point reserving slots for more labels than there are unique values. The
-    // distinct cap is what keeps spacing even: we lay out N evenly-spaced labels
-    // rather than one-per-period (which crowds when the first period is partial).
+    // Cap at distinct labels: laying out N evenly-spaced labels (vs one-per-period)
+    // keeps spacing even when the first/last period is partial.
     const fit = estimateMaxLabels(plotWidth, maxChars);
     const distinct = new Set(labels).size;
     const target = Math.min(fit, distinct, n);

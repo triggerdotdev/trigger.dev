@@ -1,22 +1,13 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 
 /**
- * Cross-chart synchronization for a group of charts that share an x-axis domain.
+ * Cross-chart sync for a group of charts sharing an x-axis domain. Wrap them in one
+ * <ChartSyncProvider>; both behaviours mirror across every chart: a hover indicator
+ * (vertical line at the hovered x), and drag-to-zoom (a selection rectangle that
+ * commits the range via `onZoom`, e.g. to set the Time/Date filter).
  *
- * Wrap them in a single <ChartSyncProvider>. It provides two synced behaviours,
- * both mirrored across every chart in the group:
- *
- *  1. Hover indicator — hovering one chart draws a vertical line at the same x
- *     value on all of them.
- *  2. Drag-to-zoom — click-dragging on any chart draws a selection rectangle on
- *     all of them; releasing commits the selected range via `onZoom` (used to set
- *     the Time/Date filter).
- *
- * Chart.Bar reads this context automatically (via useChartSync) — it is a no-op
- * when no provider is present, so other pages are unaffected. Drag-to-zoom is
- * only active when an `onZoom` callback is provided.
- *
- * Modeled on DateRangeContext (the existing cross-chart sync mechanism).
+ * Chart.Bar reads this via useChartSync, a no-op when no provider is present.
+ * Drag-to-zoom is active only when `onZoom` is provided.
  */
 
 type ChartSyncXValue = number | string | null;

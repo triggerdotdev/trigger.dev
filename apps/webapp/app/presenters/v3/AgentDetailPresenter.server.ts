@@ -1,8 +1,5 @@
 import { type ClickHouse } from "@internal/clickhouse";
-import {
-  type PrismaClientOrTransaction,
-  type RuntimeEnvironmentType,
-} from "@trigger.dev/database";
+import { type PrismaClientOrTransaction, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import {

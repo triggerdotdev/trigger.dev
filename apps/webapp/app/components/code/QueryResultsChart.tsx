@@ -20,33 +20,29 @@ const MAX_SVG_ELEMENT_BUDGET = 6_000;
 const MIN_DATA_POINTS = 100;
 const MAX_DATA_POINTS = 500;
 
-// Width-aware x-axis label density for date-based line charts. We reserve room
-// for the y-axis + margins, then fit one label per TIME_AXIS_LABEL_SPACING_PX of
-// the remaining width. *** Lower TIME_AXIS_LABEL_SPACING_PX = denser labels. ***
-// Rotated (-45°) date labels stay readable down to ~32px. Tunable.
+// Width-aware x-axis label density for date-based line charts: reserve room for
+// the y-axis + margins, then fit one label per TIME_AXIS_LABEL_SPACING_PX (smaller = denser).
 const TIME_AXIS_Y_ALLOWANCE_PX = 56;
 const TIME_AXIS_LABEL_SPACING_PX = 40;
 const MIN_TIME_AXIS_TICKS = 3;
 
-// Categorical (non-date) x-axis label behavior. Labels are thinned to fit the
-// width; long values (run IDs, task names, etc.) are middle-truncated and the
-// axis auto-rotates so the chart stays neat without any customer configuration.
+// Categorical (non-date) x-axis: thin labels to fit, middle-truncate long values
+// (run IDs, task names), and auto-rotate when labels are long.
 const X_LABEL_PX_PER_CHAR = 6.5;
 const X_LABEL_GAP_PX = 16;
 const MIN_CATEGORICAL_LABEL_PX = 36;
-// Labels longer than this rotate to -45° (auto-rotate "only when needed").
+// Labels longer than this rotate to -45°.
 const CATEGORICAL_HORIZONTAL_MAX_CHARS = 10;
-// Middle-ellipsis cap applied to rotated labels (keeps the axis height bounded).
+// Middle-ellipsis cap for rotated labels (bounds axis height).
 const CATEGORICAL_ROTATED_MAX_CHARS = 14;
-// Rotated labels can sit closer together without overlapping than horizontal ones.
+// Rotated labels pack tighter than horizontal ones.
 const CATEGORICAL_ROTATED_LABEL_PX = 32;
 const CATEGORICAL_ROTATED_HEIGHT_PX = 80;
 const MIN_CATEGORICAL_TICKS = 2;
 
 /**
- * Shorten a string to `maxChars`, keeping the start and end with an ellipsis in
- * the middle (e.g. "run_abc…f9c2"). Middle truncation is important for IDs that
- * share a common prefix — the distinguishing tail is preserved.
+ * Shorten to `maxChars` with a middle ellipsis (e.g. "run_abc…f9c2"), preserving
+ * the distinguishing tail for IDs that share a prefix.
  */
 export function truncateMiddle(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value;
@@ -832,14 +828,12 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     timeTicks,
   } = useMemo(() => transformDataForChart(rows, config, timeRange), [rows, config, timeRange]);
 
-  // Measure the rendered chart width so the x-axis label density adapts to it —
-  // same principle as the bar charts, applied to the line chart's nice-interval
-  // time ticks. (Continuous time scale is kept, so data gaps still show.)
+  // Measure the chart width so x-axis label density adapts to it (continuous time
+  // scale is kept, so data gaps still show).
   const [chartMeasureRef, { width: chartWidth }] = useMeasure<HTMLDivElement>();
 
-  // Width-aware time-axis ticks: reuse the bar charts' "how many labels fit"
-  // estimate to choose how many clean intervals to render. Falls back to the
-  // default ticks until the width is known (first paint / SSR).
+  // Width-aware time-axis ticks: choose how many clean intervals to render based
+  // on width. Falls back to the default ticks until width is known (first paint).
   const widthAwareTimeTicks = useMemo(() => {
     if (!isDateBased || !timeDomain || !chartWidth) return timeTicks;
     const plotWidth = Math.max(0, chartWidth - TIME_AXIS_Y_ALLOWANCE_PX);
@@ -1079,9 +1073,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     };
   }, [isDateBased, xAxisTickFormatter, xAxisAngle]);
 
-  // Categorical (non-date) x-axis presentation: thin labels to fit the width,
-  // middle-truncate long values (run IDs, etc.), and auto-rotate only when the
-  // labels are long. Applies to both bar and line charts; zero customer config.
+  // Categorical x-axis: thin to fit width, middle-truncate long values, rotate when long.
   const categoricalXAxisProps = useMemo(() => {
     if (isDateBased) return null;
 
@@ -1093,8 +1085,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
       ? (value: unknown) => truncateMiddle(String(value ?? ""), CATEGORICAL_ROTATED_MAX_CHARS)
       : (value: unknown) => String(value ?? "");
 
-    // Thin to as many labels as fit. Rotated labels pack tighter; horizontal
-    // labels need roughly their own width.
+    // Rotated labels pack tighter; horizontal ones need roughly their own width.
     const perLabelPx = angled
       ? CATEGORICAL_ROTATED_LABEL_PX
       : Math.max(MIN_CATEGORICAL_LABEL_PX, maxLabelChars * X_LABEL_PX_PER_CHAR + X_LABEL_GAP_PX);
@@ -1168,12 +1159,12 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         ticks: widthAwareTimeTicks ?? undefined,
         ...baseXAxisProps,
       }
-    : categoricalXAxisProps ?? baseXAxisProps;
+    : (categoricalXAxisProps ?? baseXAxisProps);
 
   // Bar charts always use categorical axis positioning
   // This ensures bars are evenly distributed regardless of data point count
   // (prevents massive bars when there are only a few data points)
-  const xAxisPropsForBar = isDateBased ? baseXAxisProps : categoricalXAxisProps ?? baseXAxisProps;
+  const xAxisPropsForBar = isDateBased ? baseXAxisProps : (categoricalXAxisProps ?? baseXAxisProps);
 
   const yAxisProps = {
     tickFormatter: yAxisFormatter,

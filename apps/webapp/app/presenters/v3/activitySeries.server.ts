@@ -1,36 +1,22 @@
-/**
- * Shared helpers for the task/agent "activity" bar charts.
- *
- * These were previously duplicated across AgentDetailPresenter and
- * TaskDetailPresenter (bucket-size ladder, run-status grouping, and the
- * zero-fill loop). Centralising them fixes the "sub-hour range renders one
- * 1h bar" problem in one place and keeps the three task landing pages
- * consistent.
- */
+/** Shared bucketing + zero-fill helpers for the task/agent activity bar charts. */
 
-// Nice, human-friendly bucket intervals (seconds). toStartOfInterval accepts
-// any integer, but snapping to these keeps tick boundaries readable.
+// Snap bucket intervals to human-friendly values (1s…7d) so tick boundaries stay readable.
 const NICE_BUCKET_SECONDS = [
-  1, 5, 10, 15, 30, // sub-minute
-  60, 120, 300, 600, 900, 1800, // 1m, 2m, 5m, 10m, 15m, 30m
-  3600, 7200, 10800, 21600, 43200, // 1h, 2h, 3h, 6h, 12h
-  86400, 172800, 604800, // 1d, 2d, 7d
+  1, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400, 172800,
+  604800,
 ] as const;
 
 export type ChooseBucketOptions = {
-  /** Bucket count we aim for — produces a chart that looks "full". */
+  /** Bucket count to aim for (a "full"-looking chart). */
   targetBuckets?: number;
-  /** Hard ceiling so we never emit sub-pixel bars / huge result sets. */
+  /** Hard ceiling so we never emit sub-pixel bars or huge result sets. */
   maxBuckets?: number;
 };
 
 /**
- * Choose a bucket interval (in seconds) for a time range so the chart renders
- * a sensible number of bars regardless of how short or long the range is.
- *
- * Picks the nice interval whose resulting bucket count is closest to
- * `targetBuckets` without exceeding `maxBuckets`. A 5-minute range becomes
- * ~5s buckets (≈60 bars) instead of a single 1-hour bar.
+ * Pick a bucket interval (seconds): the nice value whose bucket count is closest
+ * to `targetBuckets` without exceeding `maxBuckets`. Keeps a 5-minute range from
+ * collapsing to a single 1-hour bar.
  */
 export function chooseBucketSeconds(
   rangeMs: number,
@@ -42,7 +28,7 @@ export function chooseBucketSeconds(
   let bestScore = Infinity;
   for (const secs of NICE_BUCKET_SECONDS) {
     const count = rangeSeconds / secs;
-    if (count > maxBuckets) continue; // too many bars
+    if (count > maxBuckets) continue;
     const score = Math.abs(count - targetBuckets);
     if (score < bestScore) {
       bestScore = score;
@@ -50,8 +36,7 @@ export function chooseBucketSeconds(
     }
   }
 
-  // No nice interval keeps us under maxBuckets (range larger than the ladder) —
-  // compute one that respects the ceiling.
+  // Range larger than the ladder: derive an interval that respects the ceiling.
   if (best === null) {
     return Math.ceil(rangeSeconds / maxBuckets);
   }
@@ -99,9 +84,9 @@ function bucketBounds(from: Date, to: Date, bucketSeconds: number) {
 }
 
 /**
- * Build a zero-filled, grouped time series. Every bucket across [from, to) is
- * emitted (even empty ones) and every key in `orderedKeys` is present on every
- * point, so the chart renders contiguous bars and a stable legend.
+ * Zero-filled grouped series: every bucket in [from, to) is emitted and every
+ * `orderedKeys` entry is present on each point, for contiguous bars and a stable
+ * legend.
  */
 export function zeroFillGroupedSeries<K extends string>({
   rows,
@@ -117,9 +102,9 @@ export function zeroFillGroupedSeries<K extends string>({
   to: Date;
   bucketSeconds: number;
   orderedKeys: readonly K[];
-  /** Maps a raw status to a key. Defaults to identity (status === key). */
+  /** Maps a raw status to a key; defaults to identity. */
   groupFn?: (status: string) => K | undefined;
-  /** Key to use when groupFn returns undefined (e.g. unknown statuses). */
+  /** Key for statuses groupFn doesn't map (e.g. unknown statuses). */
   fallbackKey?: K;
 }): ActivitySeriesPoint[] {
   const bucketMap = new Map<number, Record<string, number>>();
@@ -143,7 +128,7 @@ export function zeroFillGroupedSeries<K extends string>({
   return points;
 }
 
-/** Build a zero-filled single-series (scalar) time series. */
+/** Zero-filled single-series (scalar) time series. */
 export function zeroFillScalarSeries({
   rows,
   from,

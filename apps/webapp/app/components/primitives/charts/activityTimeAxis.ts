@@ -1,14 +1,7 @@
 /**
- * Builds the x-axis tick + tooltip label formatters for the task/agent
- * activity charts. Previously duplicated ~verbatim across the three task
- * landing pages.
- *
- * ClickHouse buckets are aligned to UTC, so labels are formatted in UTC —
- * using local time causes off-by-one day labels.
- *
- * Note: this only produces the label *formatters*. Which ticks are rendered
- * (and how many, based on available width) is handled centrally by
- * `useXAxisTicks` inside Chart.Bar.
+ * X-axis tick + tooltip label formatters for the task/agent activity charts.
+ * ClickHouse buckets are UTC-aligned, so labels are formatted in UTC (local time
+ * causes off-by-one day labels). Tick selection itself lives in useXAxisTicks.
  */
 
 const ONE_MINUTE = 60 * 1000;
@@ -20,10 +13,9 @@ export function buildActivityTimeAxis(data: ActivityPoint[]) {
   const range = data.length >= 2 ? data[data.length - 1].bucket - data[0].bucket : 0;
   const bucketMs = data.length >= 2 ? data[1].bucket - data[0].bucket : 0;
 
-  // ≤ 1 day range → show clock time, otherwise show the date.
+  // ≤ 1 day range → clock time, otherwise date.
   const showTime = range <= ONE_DAY;
-  // Sub-minute buckets need seconds in the label or many ticks collapse to the
-  // same "HH:MM".
+  // Sub-minute buckets need seconds, or adjacent ticks collapse to the same "HH:MM".
   const showSeconds = bucketMs > 0 && bucketMs < ONE_MINUTE;
   const isSubDayBucket = bucketMs > 0 && bucketMs < ONE_DAY;
 
@@ -45,10 +37,7 @@ export function buildActivityTimeAxis(data: ActivityPoint[]) {
     });
   };
 
-  const tooltipLabelFormatter = (
-    _label: string,
-    payload: { payload?: { bucket?: number } }[]
-  ) => {
+  const tooltipLabelFormatter = (_label: string, payload: { payload?: { bucket?: number } }[]) => {
     const ts = payload?.[0]?.payload?.bucket;
     if (typeof ts !== "number" || !Number.isFinite(ts)) return _label;
     const date = new Date(ts);

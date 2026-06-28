@@ -22,9 +22,8 @@ type ChartCardProps = {
 };
 
 /**
- * A chart card with a title and an optional "Maximize" button that opens the
- * chart in a fullscreen dialog. The maximize affordance mirrors the dashboard
- * QueryWidget (hover-revealed button + "v" shortcut on the hovered card).
+ * Chart card with a title and an optional "Maximize" button that opens the chart
+ * fullscreen. Mirrors the dashboard QueryWidget (hover-revealed button + "v" shortcut).
  */
 export function ChartCard({
   title,

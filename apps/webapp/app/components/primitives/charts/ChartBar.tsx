@@ -20,29 +20,15 @@ import { useXAxisTicks } from "./useXAxisTicks";
 import { useChartSync } from "./ChartSyncContext";
 import { ZoomTooltip, useZoomHandlers } from "./ChartZoom";
 
-// charcoal-500 — a subtle, dashed vertical line used to mirror the hovered x
-// position across charts in the same ChartSyncProvider group.
+// charcoal-500: dashed line mirroring the hovered x across synced charts.
 const SYNC_LINE_COLOR = "#5F6570";
 
-// Chart margins, shared with ChartLine so bar/line align when toggling between
-// them. The right margin keeps the centered last x-axis label (e.g. "Jun 22")
-// from being clipped; the bottom margin gives angled x-axis labels room.
+// Shared with ChartLine so bar/line align when toggling. Right margin keeps the
+// centered last x-axis label from clipping; bottom gives angled labels room.
 export const CHART_MARGIN = { top: 5, right: 20, bottom: 5, left: 5 } as const;
 
-/**
- * Tooltip shown while drag-to-zooming: the selected From/To range instead of the
- * normal hovered-value tooltip. Uses the same cursor-following portal as the
- * standard tooltip.
- */
-function ZoomRangeTooltip({
-  active,
-  from,
-  to,
-}: {
-  active?: boolean;
-  from: string;
-  to: string;
-}) {
+/** While drag-to-zooming, show the selected From/To range instead of hovered values. */
+function ZoomRangeTooltip({ active, from, to }: { active?: boolean; from: string; to: string }) {
   if (!active) return null;
   return (
     <TooltipPortal active={active}>
@@ -130,15 +116,13 @@ export function ChartBarRenderer({
   const yAxisTickFormatter = yAxisPropsProp?.tickFormatter ?? defaultYAxisTickFormatter;
   const computedYAxisWidth = useYAxisWidth(data, visibleSeries, yAxisTickFormatter);
 
-  // Width-aware horizontal x-axis labels. Engaged only when the caller isn't
-  // controlling tick placement (no ticks/interval/angle), so callers like the
-  // query widget keep their custom (e.g. angled) axes.
+  // Width-aware horizontal labels, but only when the caller isn't already
+  // controlling ticks/interval/angle (e.g. the query widget's angled axes).
   const callerControlsXTicks =
     xAxisPropsProp?.ticks !== undefined ||
     xAxisPropsProp?.interval !== undefined ||
     xAxisPropsProp?.angle !== undefined;
-  // Plot width = full width minus the y-axis and horizontal margins, so the
-  // "how many labels fit" estimate matches the area labels are drawn in.
+  // Plot width = full width minus the y-axis and horizontal margins.
   const xAxisPlotWidth =
     width != null
       ? Math.max(0, width - computedYAxisWidth - CHART_MARGIN.left - CHART_MARGIN.right)
@@ -162,7 +146,7 @@ export function ChartBarRenderer({
     [enableZoom, zoom, dataKey]
   );
 
-  // Handle mouse leave to also reset highlight + cancel any in-progress zoom drag
+  // Reset highlight and cancel any in-progress zoom drag on leave.
   const handleMouseLeave = useCallback(() => {
     zoomHandlers.onMouseLeave?.();
     highlight.reset();
@@ -179,8 +163,8 @@ export function ChartBarRenderer({
     return <ChartBarInvalid />;
   }
 
-  // Get the x-axis ticks based on tooltip state.
-  // Only hide middle ticks when zoom is enabled (to make room for zoom instructions).
+  // When zoom is enabled, collapse to first/last ticks during hover to make room
+  // for the zoom instructions.
   const zoomXAxisTicks =
     enableZoom && highlight.tooltipActive && data.length > 2
       ? [data[0]?.[dataKey], data[data.length - 1]?.[dataKey]]
@@ -192,16 +176,12 @@ export function ChartBarRenderer({
   const baseXTicks = zoomXAxisTicks ?? (useAutoXTicks ? autoXTicks : undefined);
   const baseXInterval = useAutoXTicks ? 0 : ("preserveStartEnd" as const);
 
-  // Synced hover indicator (mirrored across charts in the same ChartSyncProvider).
   const syncActiveX = sync?.activeX ?? null;
-  // Synced drag-to-zoom selection (mirrored across charts).
   const syncZoomSelection = sync?.zoomSelection ?? null;
   // Bucket width so the committed zoom range includes the last selected bucket.
-  const bucketWidthMs =
-    data.length >= 2 ? Number(data[1][dataKey]) - Number(data[0][dataKey]) : 0;
+  const bucketWidthMs = data.length >= 2 ? Number(data[1][dataKey]) - Number(data[0][dataKey]) : 0;
 
-  // While dragging, show a From/To range tooltip instead of the hovered values.
-  // Reuse the chart's tooltip label formatter (it reads `bucket` off the payload).
+  // Reuse the tooltip label formatter for the From/To edges (it reads `bucket` off the payload).
   const formatZoomEdge = (v: number): string =>
     tooltipLabelFormatter ? tooltipLabelFormatter("", [{ payload: { bucket: v } }]) : String(v);
   let zoomFrom: string | null = null;
@@ -360,9 +340,8 @@ export function ChartBarRenderer({
         />
       )}
 
-      {/* Synced hover indicator: mirrored onto the *other* charts in the group, but
-          not the chart being hovered (it already shows its own tooltip cursor).
-          pointer-events-none so it never steals hover from the bar underneath it. */}
+      {/* Synced hover indicator: drawn on the *other* charts only (the hovered one
+          shows its own cursor); pointer-events-none so it never steals hover. */}
       {syncActiveX != null && !highlight.tooltipActive && (
         <ReferenceLine
           x={syncActiveX}

@@ -2,9 +2,8 @@ import { useMemo } from "react";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 
 /**
- * Default y-axis tick formatter for compound charts: compact notation so large
- * values are abbreviated (8000 → "8K", 1_200_000 → "1.2M"). Applied by
- * Chart.Bar / Chart.Line unless the caller supplies its own tickFormatter.
+ * Default y-axis tick formatter: compact notation (8000 → "8K", 1_200_000 → "1.2M").
+ * Chart.Bar / Chart.Line use it unless the caller supplies its own tickFormatter.
  */
 export const defaultYAxisTickFormatter = (value: any): string =>
   typeof value === "number" ? formatNumberCompact(value) : String(value);

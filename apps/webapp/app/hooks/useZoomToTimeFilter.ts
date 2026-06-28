@@ -3,10 +3,9 @@ import { type ChartZoomRange } from "~/components/primitives/charts/ChartSyncCon
 import { useSearchParams } from "~/hooks/useSearchParam";
 
 /**
- * Returns an `onZoom` handler for chart drag-to-zoom that sets the Time/Date
- * filter to the selected range. Mirrors how `TimeFilter` applies a custom range:
- * epoch-ms `from`/`to`, clearing `period` (and pagination) so the page reloads
- * scoped to the dragged window.
+ * `onZoom` handler that sets the Time/Date filter to the dragged range, the same
+ * way TimeFilter applies a custom range: epoch-ms `from`/`to`, clearing `period`
+ * and pagination so the page reloads scoped to that window.
  */
 export function useZoomToTimeFilter() {
   const { replace } = useSearchParams();

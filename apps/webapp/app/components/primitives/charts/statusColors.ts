@@ -1,12 +1,4 @@
-/**
- * Shared colors for the task/agent activity charts. Previously each task
- * landing page (agent / standard / scheduled) defined its own identical
- * `STATUS_COLOR` table.
- *
- * Keys are the grouped chart series — run-status groups (see
- * `RUN_STATUS_GROUPS` in activitySeries.server.ts) plus the agent session
- * statuses.
- */
+/** Shared status → color map for the task/agent activity charts. */
 export const STATUS_COLOR: Record<string, string> = {
   // Run-status groups
   COMPLETED: "#28BF5C",
@@ -19,7 +11,6 @@ export const STATUS_COLOR: Record<string, string> = {
   EXPIRED: "#878C99",
 };
 
-/** Fallback for any status not in the table. */
 export const STATUS_COLOR_FALLBACK = "#9CA3AF";
 
 export function statusColor(status: string): string {

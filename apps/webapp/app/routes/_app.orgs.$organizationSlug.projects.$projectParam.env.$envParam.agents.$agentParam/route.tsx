@@ -277,65 +277,65 @@ export default function Page() {
                   <div className="flex h-full flex-col overflow-hidden bg-background p-2">
                     <ChartSyncProvider onZoom={zoomToTimeFilter}>
                       <div className="grid min-h-0 flex-1 grid-cols-3 gap-2">
-                      <ChartCard title={tabLabel}>
-                        {tab === "sessions" ? (
+                        <ChartCard title={tabLabel}>
+                          {tab === "sessions" ? (
+                            <Suspense fallback={<ActivityChartSkeleton />}>
+                              <TypedAwait
+                                resolve={sessionActivity}
+                                errorElement={<ActivityChartSkeleton />}
+                              >
+                                {(result) => <ActivityChart activity={result} />}
+                              </TypedAwait>
+                            </Suspense>
+                          ) : (
+                            <Suspense fallback={<ActivityChartSkeleton />}>
+                              <TypedAwait
+                                resolve={runActivity}
+                                errorElement={<ActivityChartSkeleton />}
+                              >
+                                {(result) => <ActivityChart activity={result} />}
+                              </TypedAwait>
+                            </Suspense>
+                          )}
+                        </ChartCard>
+
+                        <ChartCard title="LLM spend ($)">
                           <Suspense fallback={<ActivityChartSkeleton />}>
                             <TypedAwait
-                              resolve={sessionActivity}
+                              resolve={llmCostActivity}
                               errorElement={<ActivityChartSkeleton />}
                             >
-                              {(result) => <ActivityChart activity={result} />}
+                              {(result) => (
+                                <ScalarActivityChart
+                                  activity={result}
+                                  seriesKey="cost"
+                                  label="Spend"
+                                  color="#A855F7"
+                                  valueFormatter={formatCurrency}
+                                />
+                              )}
                             </TypedAwait>
                           </Suspense>
-                        ) : (
+                        </ChartCard>
+
+                        <ChartCard title="Tokens">
                           <Suspense fallback={<ActivityChartSkeleton />}>
                             <TypedAwait
-                              resolve={runActivity}
+                              resolve={llmTokenActivity}
                               errorElement={<ActivityChartSkeleton />}
                             >
-                              {(result) => <ActivityChart activity={result} />}
+                              {(result) => (
+                                <ScalarActivityChart
+                                  activity={result}
+                                  seriesKey="tokens"
+                                  label="Tokens"
+                                  color="#14B8A6"
+                                  valueFormatter={formatTokens}
+                                />
+                              )}
                             </TypedAwait>
                           </Suspense>
-                        )}
-                      </ChartCard>
-
-                      <ChartCard title="LLM spend ($)">
-                        <Suspense fallback={<ActivityChartSkeleton />}>
-                          <TypedAwait
-                            resolve={llmCostActivity}
-                            errorElement={<ActivityChartSkeleton />}
-                          >
-                            {(result) => (
-                              <ScalarActivityChart
-                                activity={result}
-                                seriesKey="cost"
-                                label="Spend"
-                                color="#A855F7"
-                                valueFormatter={formatCurrency}
-                              />
-                            )}
-                          </TypedAwait>
-                        </Suspense>
-                      </ChartCard>
-
-                      <ChartCard title="Tokens">
-                        <Suspense fallback={<ActivityChartSkeleton />}>
-                          <TypedAwait
-                            resolve={llmTokenActivity}
-                            errorElement={<ActivityChartSkeleton />}
-                          >
-                            {(result) => (
-                              <ScalarActivityChart
-                                activity={result}
-                                seriesKey="tokens"
-                                label="Tokens"
-                                color="#14B8A6"
-                                valueFormatter={formatTokens}
-                              />
-                            )}
-                          </TypedAwait>
-                        </Suspense>
-                      </ChartCard>
+                        </ChartCard>
                       </div>
                     </ChartSyncProvider>
                   </div>
