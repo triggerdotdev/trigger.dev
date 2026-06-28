@@ -96,10 +96,10 @@ export function EnvironmentSelector({
             </span>
           </PopoverTrigger>
         }
-        content={environmentFullTitle(environment)}
+        content={`${environmentFullTitle(environment)} environment`}
         side="right"
         sideOffset={8}
-        hidden={!isCollapsed}
+        delayDuration={isCollapsed ? 0 : 500}
         buttonClassName="!h-8"
         asChild
         disableHoverableContent

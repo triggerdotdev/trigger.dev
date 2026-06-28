@@ -1030,14 +1030,14 @@ function ProjectSelector({
             )}
           >
             <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-              <FolderOpenIcon className="size-5 shrink-0 text-indigo-500" />
+              <FolderOpenIcon className="size-5 shrink-0 text-text-dimmed transition group-hover:text-text-bright" />
               <span
                 className={cn(
                   "flex min-w-0 items-center overflow-hidden transition-all duration-200",
                   isCollapsed ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100"
                 )}
               >
-                <span className="truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-bright">
+                <span className="truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-dimmed transition group-hover:text-text-bright">
                   {project.name ?? "Select a project"}
                 </span>
               </span>
