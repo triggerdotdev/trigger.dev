@@ -297,6 +297,7 @@ export class SpanPresenter extends BasePresenter {
 
     const taskKind = RunAnnotations.safeParse(run.annotations).data?.taskKind;
     const isAgentRun = taskKind === "AGENT";
+    const isScheduled = taskKind === "SCHEDULED";
 
     let region: { name: string; location: string | null } | null = null;
 
@@ -404,6 +405,7 @@ export class SpanPresenter extends BasePresenter {
       isRunning: RUNNING_STATUSES.includes(run.status),
       isError: isFailedRunStatus(run.status),
       isAgentRun,
+      isScheduled,
       payload,
       payloadType: run.payloadType,
       output,

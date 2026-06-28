@@ -392,12 +392,23 @@ function RunBody({
       <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3 pr-2">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
-            name={run.isAgentRun ? "agent" : run.isCached ? "task-cached" : "task"}
+            name={
+              run.isAgentRun
+                ? "agent"
+                : run.isScheduled
+                  ? "scheduled"
+                  : run.isCached
+                    ? "task-cached"
+                    : "task"
+            }
             spanName={run.taskIdentifier}
             className="size-5 min-h-5 min-w-5"
           />
           <Header2
-            className={cn("overflow-x-hidden", run.isAgentRun ? "text-agents" : "text-blue-500")}
+            className={cn(
+              "overflow-x-hidden",
+              run.isAgentRun ? "text-agents" : run.isScheduled ? "text-schedules" : "text-blue-500"
+            )}
           >
             <span className="truncate">
               {run.taskIdentifier}
