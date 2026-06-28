@@ -11,8 +11,12 @@ import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Card } from "~/components/primitives/charts/Card";
+import { ChartCard } from "~/components/primitives/charts/ChartCard";
+import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
+import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
+import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
+import { statusColor } from "~/components/primitives/charts/statusColors";
 import {
   Dialog,
   DialogContent,
@@ -191,6 +195,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
 export default function Page() {
   const { task, activity, scheduleList, runList } = useTypedLoaderData<typeof loader>();
+  const zoomToTimeFilter = useZoomToTimeFilter();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();
@@ -296,16 +301,15 @@ export default function Page() {
                 {/* Activity chart */}
                 <ResizablePanel id="scheduled-task-activity" min="220px" default="320px">
                   <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background p-2">
-                    <Card className="h-full overflow-hidden px-0 pb-2 pt-3">
-                      <Card.Header>Runs by status</Card.Header>
-                      <div className="min-h-0 flex-1 px-2">
+                    <ChartSyncProvider onZoom={zoomToTimeFilter}>
+                      <ChartCard title="Runs by status">
                         <Suspense fallback={<ActivityChartSkeleton />}>
                           <TypedAwait resolve={activity} errorElement={<ActivityChartSkeleton />}>
                             {(result) => <ActivityChart activity={result} />}
                           </TypedAwait>
                         </Suspense>
-                      </div>
-                    </Card>
+                      </ChartCard>
+                    </ChartSyncProvider>
                   </div>
                 </ResizablePanel>
 
@@ -979,81 +983,22 @@ function SchedulesMiniTable({
   );
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  COMPLETED: "#28BF5C",
-  RUNNING: "#3B82F6",
-  FAILED: "#E11D48",
-  CANCELED: "#878C99",
-};
-
 function ActivityChart({ activity }: { activity: TaskActivity }) {
   const chartConfig: ChartConfig = useMemo(() => {
     const cfg: ChartConfig = {};
     for (const status of activity.statuses) {
       cfg[status] = {
         label: status.charAt(0) + status.slice(1).toLowerCase(),
-        color: STATUS_COLOR[status] ?? "#9CA3AF",
+        color: statusColor(status),
       };
     }
     return cfg;
   }, [activity.statuses]);
 
-  const { xAxisFormatter, xAxisTicks } = useMemo(() => {
-    const data = activity.data;
-    const range = data.length >= 2 ? data[data.length - 1].bucket - data[0].bucket : 0;
-    const oneDay = 24 * 60 * 60 * 1000;
-    const showTime = range <= oneDay;
-
-    const formatter = (value: number) => {
-      const date = new Date(value);
-      return showTime
-        ? date.toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-            timeZone: "UTC",
-          })
-        : date.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            timeZone: "UTC",
-          });
-    };
-
-    const ticks = showTime
-      ? undefined
-      : data.filter((d) => new Date(d.bucket).getUTCHours() === 0).map((d) => d.bucket);
-
-    return { xAxisFormatter: formatter, xAxisTicks: ticks };
-  }, [activity.data]);
-
-  const tooltipLabelFormatter = useMemo(() => {
-    const data = activity.data;
-    const bucketMs = data.length >= 2 ? data[1].bucket - data[0].bucket : 0;
-    const oneDay = 24 * 60 * 60 * 1000;
-    const isSubDayBucket = bucketMs > 0 && bucketMs < oneDay;
-
-    return (_label: string, payload: { payload?: { bucket?: number } }[]) => {
-      const ts = payload?.[0]?.payload?.bucket;
-      if (typeof ts !== "number" || !Number.isFinite(ts)) return _label;
-      const date = new Date(ts);
-      return isSubDayBucket
-        ? date.toLocaleString("en-US", {
-            month: "short",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-            timeZone: "UTC",
-          })
-        : date.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-            timeZone: "UTC",
-          });
-    };
-  }, [activity.data]);
+  const { tickFormatter, tooltipLabelFormatter } = useMemo(
+    () => buildActivityTimeAxis(activity.data),
+    [activity.data]
+  );
 
   return (
     <Chart.Root
@@ -1066,10 +1011,7 @@ function ActivityChart({ activity }: { activity: TaskActivity }) {
       <Chart.Bar
         stackId="status"
         barRadius={0}
-        xAxisProps={{
-          tickFormatter: xAxisFormatter,
-          ...(xAxisTicks ? { ticks: xAxisTicks, interval: 0 } : {}),
-        }}
+        xAxisProps={{ tickFormatter }}
         tooltipLabelFormatter={tooltipLabelFormatter}
       />
     </Chart.Root>
