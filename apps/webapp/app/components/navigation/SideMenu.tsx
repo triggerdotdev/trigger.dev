@@ -356,49 +356,52 @@ export function SideMenu({
           <div className="mb-6 flex w-full flex-col gap-4 overflow-hidden px-1">
             <div className="w-full space-y-1">
               <SideMenuHeader title={"Project"} isCollapsed={isCollapsed} collapsedTitle="Proj" />
-              <ProjectSelector
-                organization={organization}
-                project={project}
-                isCollapsed={isCollapsed}
-                className="w-full"
-              />
-              <div className="flex items-center">
-                <EnvironmentSelector
+              <div>
+                <ProjectSelector
                   organization={organization}
                   project={project}
-                  environment={environment}
-                  className="w-full"
                   isCollapsed={isCollapsed}
+                  className="w-full"
                 />
-                {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
-                  <CollapsibleElement isCollapsed={isCollapsed}>
-                    <Dialog>
-                      <TooltipProvider disableHoverableContent={true}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="inline-flex">
-                              <DialogTrigger asChild>
-                                <Button
-                                  variant="minimal/small"
-                                  className="aspect-square h-7 p-1"
-                                  LeadingIcon={<ConnectionIcon isConnected={isConnected} />}
-                                />
-                              </DialogTrigger>
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent side="right" className={"text-xs"}>
-                            {isConnected === undefined
-                              ? "Checking connection…"
-                              : isConnected
-                                ? "Your dev server is connected"
-                                : "Your dev server is not connected"}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      <DevPresencePanel isConnected={isConnected} />
-                    </Dialog>
-                  </CollapsibleElement>
-                )}
+                <div className="flex items-center">
+                  <EnvironmentSelector
+                    organization={organization}
+                    project={project}
+                    environment={environment}
+                    className="w-full"
+                    isCollapsed={isCollapsed}
+                    showConnector
+                  />
+                  {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
+                    <CollapsibleElement isCollapsed={isCollapsed}>
+                      <Dialog>
+                        <TooltipProvider disableHoverableContent={true}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="inline-flex">
+                                <DialogTrigger asChild>
+                                  <Button
+                                    variant="minimal/small"
+                                    className="aspect-square h-7 p-1"
+                                    LeadingIcon={<ConnectionIcon isConnected={isConnected} />}
+                                  />
+                                </DialogTrigger>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className={"text-xs"}>
+                              {isConnected === undefined
+                                ? "Checking connection…"
+                                : isConnected
+                                  ? "Your dev server is connected"
+                                  : "Your dev server is not connected"}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <DevPresencePanel isConnected={isConnected} />
+                      </Dialog>
+                    </CollapsibleElement>
+                  )}
+                </div>
               </div>
             </div>
 

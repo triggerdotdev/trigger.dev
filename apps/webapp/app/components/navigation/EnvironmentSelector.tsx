@@ -41,12 +41,16 @@ export function EnvironmentSelector({
   environment,
   className,
   isCollapsed = false,
+  showConnector = false,
 }: {
   organization: MatchedOrganization;
   project: SideMenuProject;
   environment: SideMenuEnvironment;
   className?: string;
   isCollapsed?: boolean;
+  /** Show an end tree-connector to the left of the icon so the selector reads
+   * as connected to the Project menu above it. Only used in the side menu. */
+  showConnector?: boolean;
 }) {
   const { isManagedCloud } = useFeatures();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -71,6 +75,21 @@ export function EnvironmentSelector({
               className
             )}
           >
+            {showConnector &&
+              !isCollapsed && (
+                // End tree-connector sized to the full button height (viewBox matches the
+                // 20x32 box) so the vertical line reaches the button's top edge and meets the
+                // Project button above, with the corner aligned to the environment icon's center.
+                <svg
+                  aria-hidden
+                  viewBox="0 0 20 32"
+                  fill="none"
+                  className="mr-1.5 h-8 w-5 shrink-0 text-charcoal-600"
+                >
+                  <line x1="10" y1="0" x2="10" y2="16" stroke="currentColor" strokeWidth="1" />
+                  <line x1="10" y1="16" x2="20" y2="16" stroke="currentColor" strokeWidth="1" />
+                </svg>
+              )}
             <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
               <EnvironmentIcon environment={environment} className="size-5 shrink-0" />
               <span
