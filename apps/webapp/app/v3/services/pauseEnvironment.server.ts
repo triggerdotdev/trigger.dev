@@ -60,7 +60,12 @@ export class PauseEnvironmentService extends WithRunEngine {
             state: manualPauseGuard.state,
           };
         }
-        throw new Error(manualPauseGuard.error);
+        // Expected, user-actionable guard result, not an error: return it as a failure
+        // result so it doesn't reach Sentry via the catch below.
+        return {
+          success: false,
+          error: manualPauseGuard.error,
+        };
       }
 
       if (!org.runsEnabled && action === "resumed") {
@@ -82,9 +87,13 @@ export class PauseEnvironmentService extends WithRunEngine {
         });
 
         if (resumed.count === 0) {
-          throw new Error(
-            "This environment is paused because your organization reached its billing limit. Resolve the limit on the billing limits settings page to resume."
-          );
+          // Raced into the paused state after the guard read above: expected,
+          // return as a failure result rather than throwing to Sentry.
+          return {
+            success: false,
+            error:
+              "This environment is paused because your organization reached its billing limit. Resolve the limit on the billing limits settings page to resume.",
+          };
         }
       } else {
         await this._prisma.runtimeEnvironment.update({
