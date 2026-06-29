@@ -179,10 +179,15 @@ find_tool_bin() {
   done
 
   if [[ -d /opt/hostedtoolcache ]]; then
-    find /opt/hostedtoolcache -maxdepth 6 -type f -name "${name}" -perm -u+x 2>/dev/null |
-      head -n 1 |
-      xargs -r dirname
+    local found
+    found="$(find /opt/hostedtoolcache -maxdepth 6 -type f -name "${name}" -perm -u+x 2>/dev/null | head -n 1)"
+    if [[ -n "${found}" ]]; then
+      dirname "${found}"
+      return 0
+    fi
   fi
+
+  return 0
 }
 
 ensure_bun() {
@@ -193,20 +198,13 @@ ensure_bun() {
   fi
 
   local bin_dir
-  bin_dir="$(find_tool_bin bun "${HOME}/.bun/bin")"
-  if [[ -n "${bin_dir}" ]]; then
+  if bin_dir="$(find_tool_bin bun "${HOME}/.bun/bin")" && [[ -n "${bin_dir}" ]]; then
     export PATH="${bin_dir}:${PATH}"
     return 0
   fi
 
-  if ! command -v curl >/dev/null 2>&1; then
-    echo "Unable to find bun on PATH, and curl is unavailable to install it." >&2
-    return 1
-  fi
-
-  curl -fsSL https://bun.sh/install | bash
-  export PATH="${HOME}/.bun/bin:${PATH}"
-  command -v bun >/dev/null 2>&1
+  echo "Unable to find bun on PATH. The pr-testbox.yml warmup should install Bun; check the setup-bun step or the Testbox PATH." >&2
+  return 1
 }
 
 ensure_deno() {
@@ -217,20 +215,13 @@ ensure_deno() {
   fi
 
   local bin_dir
-  bin_dir="$(find_tool_bin deno "${HOME}/.deno/bin")"
-  if [[ -n "${bin_dir}" ]]; then
+  if bin_dir="$(find_tool_bin deno "${HOME}/.deno/bin")" && [[ -n "${bin_dir}" ]]; then
     export PATH="${bin_dir}:${PATH}"
     return 0
   fi
 
-  if ! command -v curl >/dev/null 2>&1; then
-    echo "Unable to find deno on PATH, and curl is unavailable to install it." >&2
-    return 1
-  fi
-
-  curl -fsSL https://deno.land/install.sh | sh
-  export PATH="${HOME}/.deno/bin:${PATH}"
-  command -v deno >/dev/null 2>&1
+  echo "Unable to find deno on PATH. The pr-testbox.yml warmup should install Deno; check the setup-deno step or the Testbox PATH." >&2
+  return 1
 }
 
 with_node() {
