@@ -17,10 +17,14 @@ run_section() {
   local title="$1"
   shift
   section "$title"
-  set +e
-  "$@"
-  local status=$?
-  set -e
+
+  local status=0
+  if bash -euo pipefail -c '"$@"' bash "$@"; then
+    status=0
+  else
+    status=$?
+  fi
+
   end_section
   return "${status}"
 }
@@ -119,6 +123,16 @@ run_sdk_runtime_compat_tests() {
     npx wrangler deploy --dry-run --outdir dist
   )
 }
+
+export -f find_node_bin
+export -f with_node
+export -f run_webapp_unit_tests
+export -f run_package_unit_tests
+export -f run_internal_unit_tests
+export -f run_webapp_e2e_tests
+export -f run_cli_e2e_tests
+export -f run_sdk_node_compat_tests
+export -f run_sdk_runtime_compat_tests
 
 export DATABASE_URL="${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/postgres}"
 export DIRECT_URL="${DIRECT_URL:-postgresql://postgres:postgres@localhost:5432/postgres}"

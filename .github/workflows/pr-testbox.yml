@@ -44,7 +44,7 @@ jobs:
               }
             ]
           }'
-          mkdir -p /etc/docker
+          sudo mkdir -p /etc/docker
           echo "$CONFIG" | sudo tee /etc/docker/daemon.json
 
       - name: 🔧 Restart docker daemon
