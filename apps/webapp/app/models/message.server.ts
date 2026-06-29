@@ -34,6 +34,16 @@ export type ToastMessageOptions = {
 
 const ONE_YEAR = 1000 * 60 * 60 * 24 * 365;
 
+// Clamp so a flashed toast can never overflow the ~4KB `__message` cookie and 500 in commitSession.
+const MAX_TOAST_MESSAGE_LENGTH = 1000;
+
+function clampToastMessage(message: string) {
+  if (message.length <= MAX_TOAST_MESSAGE_LENGTH) {
+    return message;
+  }
+  return `${message.slice(0, MAX_TOAST_MESSAGE_LENGTH)}...`;
+}
+
 export const { commitSession, getSession } = createCookieSessionStorage({
   cookie: {
     name: "__message",
@@ -51,7 +61,7 @@ export function setSuccessMessage(
   options?: ToastMessageOptions
 ) {
   session.flash("toastMessage", {
-    message,
+    message: clampToastMessage(message),
     type: "success",
     options: {
       ...options,
@@ -62,7 +72,7 @@ export function setSuccessMessage(
 
 export function setErrorMessage(session: Session, message: string, options?: ToastMessageOptions) {
   session.flash("toastMessage", {
-    message,
+    message: clampToastMessage(message),
     type: "error",
     options: {
       ...options,
