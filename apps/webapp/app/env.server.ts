@@ -151,6 +151,7 @@ const EnvironmentSchema = z
     APP_ENV: z.string().default(process.env.NODE_ENV),
     SERVICE_NAME: z.string().default("trigger.dev webapp"),
     SENTRY_DSN: z.string().optional(),
+    SENTRY_ENVIRONMENT: z.string().optional(),
     POSTHOG_PROJECT_KEY: z.string().default("phc_LFH7kJiGhdIlnO22hTAKgHpaKhpM8gkzWAFvHmf5vfS"),
     TRIGGER_TELEMETRY_DISABLED: z.string().optional(),
     AUTH_GITHUB_CLIENT_ID: z.string().optional(),
