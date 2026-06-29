@@ -522,13 +522,20 @@ export class ScheduleEngine {
 
               span.setAttribute("trigger_success", true);
             } else {
-              const isQueueLimit = result.errorType === "QUEUE_LIMIT";
+              // QUEUE_LIMIT and OUT_OF_ENTITLEMENTS are expected,
+              // non-actionable outcomes (the environment is at its queue limit,
+              // or the org is out of entitlements). Log them as warnings so they
+              // aren't reported as errors, while still recording the metric.
+              const isExpectedFailure =
+                result.errorType === "QUEUE_LIMIT" ||
+                result.errorType === "OUT_OF_ENTITLEMENTS";
 
-              if (isQueueLimit) {
-                this.logger.warn("Scheduled task trigger skipped due to queue limit", {
+              if (isExpectedFailure) {
+                this.logger.warn("Scheduled task trigger skipped", {
                   instanceId: params.instanceId,
                   taskIdentifier: instance.taskSchedule.taskIdentifier,
                   durationMs: triggerDuration,
+                  errorType: result.errorType,
                   error: result.error,
                 });
               } else {
@@ -540,10 +547,17 @@ export class ScheduleEngine {
                 });
               }
 
+              const failureErrorType =
+                result.errorType === "QUEUE_LIMIT"
+                  ? "queue_limit"
+                  : result.errorType === "OUT_OF_ENTITLEMENTS"
+                    ? "out_of_entitlements"
+                    : "task_failure";
+
               this.scheduleExecutionFailureCounter.add(1, {
                 environment_type: environmentType,
                 schedule_type: scheduleType,
-                error_type: isQueueLimit ? "queue_limit" : "task_failure",
+                error_type: failureErrorType,
               });
 
               span.setAttribute("trigger_success", false);
