@@ -96,10 +96,10 @@ export function useBillingLimit(matches?: UIMatch[]) {
   return data?.billingLimit;
 }
 
-export function useCanManageBilling(matches?: UIMatch[]) {
+export function useCanManageBillingLimits(matches?: UIMatch[]) {
   const data = useTypedMatchesData<typeof orgLoader>({
     id: "routes/_app.orgs.$organizationSlug",
     matches,
   });
-  return data?.canManageBilling === true;
+  return data?.canManageBillingLimits === true;
 }
