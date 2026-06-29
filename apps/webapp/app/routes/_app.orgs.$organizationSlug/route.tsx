@@ -11,7 +11,7 @@ import { RegionsPresenter, type Region } from "~/presenters/v3/RegionsPresenter.
 import { getImpersonationId } from "~/services/impersonation.server";
 import { getCachedUsage, getBillingLimit, getCurrentPlan } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
-import { canManageBilling } from "~/services/routeBuilders/permissions.server";
+import { canManageBillingLimits } from "~/services/routeBuilders/permissions.server";
 import { requireUser } from "~/services/session.server";
 import { telemetry } from "~/services/telemetry.server";
 import { organizationPath } from "~/utils/pathBuilder";
@@ -124,7 +124,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
           .catch(() => [] as Region[])
       : Promise.resolve([] as Region[]),
   ]);
-  const userCanManageBilling = sessionAuth.ok ? canManageBilling(sessionAuth.ability) : false;
+  const userCanManageBillingLimits = sessionAuth.ok
+    ? canManageBillingLimits(sessionAuth.ability)
+    : false;
 
   let hasExceededFreeTier = false;
   let usagePercentage = 0;
@@ -181,7 +183,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       limit: dashboardLimit,
     },
     widgetLimitPerDashboard,
-    canManageBilling: userCanManageBilling,
+    canManageBillingLimits: userCanManageBillingLimits,
   });
 };
 

@@ -77,7 +77,7 @@ import {
 
 const billingLimitsAuthorization = {
   action: "manage" as const,
-  resource: { type: "billing" as const },
+  resource: { type: "billing-limits" as const },
 };
 
 export const meta: MetaFunction = () => {
