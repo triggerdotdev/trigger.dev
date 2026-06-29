@@ -6,6 +6,7 @@ export const FEATURE_FLAG = {
   hasQueryAccess: "hasQueryAccess",
   hasLogsPageAccess: "hasLogsPageAccess",
   hasAiAccess: "hasAiAccess",
+  hasDashboardAgentAccess: "hasDashboardAgentAccess",
   hasComputeAccess: "hasComputeAccess",
   hasPrivateConnections: "hasPrivateConnections",
   hasSso: "hasSso",
@@ -16,6 +17,7 @@ export const FEATURE_FLAG = {
   computeMigrationFreePercentage: "computeMigrationFreePercentage",
   computeMigrationPaidPercentage: "computeMigrationPaidPercentage",
   computeMigrationRequireTemplate: "computeMigrationRequireTemplate",
+  devBranchesEnabled: "devBranchesEnabled",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -24,6 +26,9 @@ export const FeatureFlagCatalog = {
   [FEATURE_FLAG.hasQueryAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasLogsPageAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasAiAccess]: z.coerce.boolean(),
+  // Gates the in-dashboard AI agent panel. Controllable globally and per-org
+  // (org wins). Defaults off via DASHBOARD_AGENT_ENABLED.
+  [FEATURE_FLAG.hasDashboardAgentAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasComputeAccess]: z.coerce.boolean(),
   [FEATURE_FLAG.hasPrivateConnections]: z.coerce.boolean(),
   [FEATURE_FLAG.hasSso]: z.coerce.boolean(),
@@ -43,6 +48,8 @@ export const FeatureFlagCatalog = {
   // When on, migrated orgs build their compute template in required mode at deploy
   // (fails the deploy on error) instead of shadow. Strict boolean (see above).
   [FEATURE_FLAG.computeMigrationRequireTemplate]: z.boolean(),
+  // Per-org access to development branches. Off unless enabled for the org.
+  [FEATURE_FLAG.devBranchesEnabled]: z.coerce.boolean(),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;

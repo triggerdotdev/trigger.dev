@@ -10,6 +10,7 @@ import { PassThrough } from "stream";
 import * as Worker from "~/services/worker.server";
 import { initMollifierDrainerWorker } from "~/v3/mollifierDrainerWorker.server";
 import { initMollifierStaleSweepWorker } from "~/v3/mollifierStaleSweepWorker.server";
+import { initBillingLimitWorker } from "~/v3/billingLimitWorker.server";
 import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 import {
@@ -41,8 +42,7 @@ import { registerRunChangeNotifierHandlers } from "./services/realtime/runChange
 // to globalThis is an unambiguous side effect the bundler must preserve. See
 // TRI-9864 for the incident write-up.
 import { sessionsReplicationInstance } from "./services/sessionsReplicationInstance.server";
-(globalThis as Record<string, unknown>).__sessionsReplicationInstance =
-  sessionsReplicationInstance;
+(globalThis as Record<string, unknown>).__sessionsReplicationInstance = sessionsReplicationInstance;
 import { globalFlagsRegistry } from "./v3/globalFlagsRegistry.server";
 (globalThis as Record<string, unknown>).__globalFlagsRegistry = globalFlagsRegistry;
 import { workerRegionRegistry } from "./v3/workerRegions.server";
@@ -235,6 +235,7 @@ Worker.init().catch((error) => {
 
 initMollifierDrainerWorker();
 initMollifierStaleSweepWorker();
+initBillingLimitWorker();
 
 bootstrap().catch((error) => {
   logError(error);

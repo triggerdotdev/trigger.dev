@@ -30,10 +30,7 @@ import type {
   TriggerTaskServiceResult,
 } from "../../v3/services/triggerTask.server";
 import { clampMaxDuration } from "../../v3/utils/maxDuration";
-import {
-  IdempotencyKeyConcern,
-  type ClaimedIdempotency,
-} from "../concerns/idempotencyKeys.server";
+import { IdempotencyKeyConcern, type ClaimedIdempotency } from "../concerns/idempotencyKeys.server";
 import {
   resolveScheduledQueueSplitEnabled,
   workerQueueForRun,
@@ -235,7 +232,7 @@ export class RunEngineTriggerTaskService {
             if (debounceDelayError || !debounceDelayUntil) {
               throw new ServiceValidationError(
                 `Invalid debounce delay: ${body.options.debounce.delay}. ` +
-                `Supported formats: {number}s, {number}m, {number}h, {number}d, {number}w`
+                  `Supported formats: {number}s, {number}m, {number}h, {number}d, {number}w`
               );
             }
           }
@@ -243,12 +240,12 @@ export class RunEngineTriggerTaskService {
           // Get parent run if specified
           const parentRun = body.options?.parentRunId
             ? await runStore.findRun(
-              {
-                id: RunId.fromFriendlyId(body.options.parentRunId),
-                runtimeEnvironmentId: environment.id,
-              },
-              this.prisma
-            )
+                {
+                  id: RunId.fromFriendlyId(body.options.parentRunId),
+                  runtimeEnvironmentId: environment.id,
+                },
+                this.prisma
+              )
             : undefined;
 
           // Validate parent run
@@ -271,8 +268,11 @@ export class RunEngineTriggerTaskService {
             return idempotencyKeyConcernResult;
           }
 
-          const { idempotencyKey, idempotencyKeyExpiresAt, claim: claimResult } =
-            idempotencyKeyConcernResult;
+          const {
+            idempotencyKey,
+            idempotencyKeyExpiresAt,
+            claim: claimResult,
+          } = idempotencyKeyConcernResult;
 
           // If we own an idempotency claim, the trigger pipeline below MUST
           // resolve it — publish on success so waiters see our runId,
@@ -290,18 +290,18 @@ export class RunEngineTriggerTaskService {
 
           const lockedToBackgroundWorker = body.options?.lockToVersion
             ? await this.prisma.backgroundWorker.findFirst({
-              where: {
-                projectId: environment.projectId,
-                runtimeEnvironmentId: environment.id,
-                version: body.options?.lockToVersion,
-              },
-              select: {
-                id: true,
-                version: true,
-                sdkVersion: true,
-                cliVersion: true,
-              },
-            })
+                where: {
+                  projectId: environment.projectId,
+                  runtimeEnvironmentId: environment.id,
+                  version: body.options?.lockToVersion,
+                },
+                select: {
+                  id: true,
+                  version: true,
+                  sdkVersion: true,
+                  cliVersion: true,
+                },
+              })
             : undefined;
 
           const { queueName, lockedQueueId, taskTtl, taskKind } =
@@ -340,10 +340,10 @@ export class RunEngineTriggerTaskService {
 
           const metadataPacket = body.options?.metadata
             ? handleMetadataPacket(
-              body.options?.metadata,
-              body.options?.metadataType ?? "application/json",
-              this.metadataMaximumSize
-            )
+                body.options?.metadata,
+                body.options?.metadataType ?? "application/json",
+                this.metadataMaximumSize
+              )
             : undefined;
 
           const tags = (
@@ -367,8 +367,12 @@ export class RunEngineTriggerTaskService {
           // from the in-memory snapshots (no DB query). A cold read (registry not yet
           // loaded) returns undefined/[] and the resolver falls back to not-migrated.
           const workerGroups = workerRegionRegistry.current() ?? [];
-          const region = baseWorkerQueue ? regionForQueue(baseWorkerQueue, workerGroups) : undefined;
-          const backing = baseWorkerQueue ? backingForQueue(baseWorkerQueue, workerGroups) : undefined;
+          const region = baseWorkerQueue
+            ? regionForQueue(baseWorkerQueue, workerGroups)
+            : undefined;
+          const backing = baseWorkerQueue
+            ? backingForQueue(baseWorkerQueue, workerGroups)
+            : undefined;
           const migrated = resolveComputeMigration({
             baseWorkerQueue,
             baseEnableFastPath: enableFastPath,
@@ -376,7 +380,10 @@ export class RunEngineTriggerTaskService {
             backing,
             planType,
             orgId: environment.organization.id,
-            orgFeatureFlags: environment.organization.featureFlags as Record<string, unknown> | null,
+            orgFeatureFlags: environment.organization.featureFlags as Record<
+              string,
+              unknown
+            > | null,
             flags: globalFlagsRegistry.current(),
             envType: environment.type,
           });
@@ -470,8 +477,10 @@ export class RunEngineTriggerTaskService {
                         orgId: environment.organizationId,
                         taskId,
                         orgFeatureFlags:
-                          (environment.organization.featureFlags as Record<string, unknown> | null) ??
-                          null,
+                          (environment.organization.featureFlags as Record<
+                            string,
+                            unknown
+                          > | null) ?? null,
                         options: {
                           debounce: body.options?.debounce,
                           oneTimeUseToken: options.oneTimeUseToken,
@@ -629,26 +638,26 @@ export class RunEngineTriggerTaskService {
                     onDebounced:
                       body.options?.debounce && body.options?.resumeParentOnCompletion
                         ? async ({ existingRun, waitpoint, debounceKey }) => {
-                          return await this.traceEventConcern.traceDebouncedRun(
-                            triggerRequest,
-                            parentRun?.taskEventStore,
-                            {
-                              existingRun,
-                              debounceKey,
-                              incomplete: waitpoint.status === "PENDING",
-                              isError: waitpoint.outputIsError,
-                            },
-                            async (spanEvent) => {
-                              const spanId =
-                                options?.parentAsLinkType === "replay"
-                                  ? spanEvent.spanId
-                                  : spanEvent.traceparent?.spanId
-                                    ? `${spanEvent.traceparent.spanId}:${spanEvent.spanId}`
-                                    : spanEvent.spanId;
-                              return spanId;
-                            }
-                          );
-                        }
+                            return await this.traceEventConcern.traceDebouncedRun(
+                              triggerRequest,
+                              parentRun?.taskEventStore,
+                              {
+                                existingRun,
+                                debounceKey,
+                                incomplete: waitpoint.status === "PENDING",
+                                isError: waitpoint.outputIsError,
+                              },
+                              async (spanEvent) => {
+                                const spanId =
+                                  options?.parentAsLinkType === "replay"
+                                    ? spanEvent.spanId
+                                    : spanEvent.traceparent?.spanId
+                                      ? `${spanEvent.traceparent.spanId}:${spanEvent.spanId}`
+                                      : spanEvent.spanId;
+                                return spanId;
+                              }
+                            );
+                          }
                         : undefined,
                   },
                   this.prisma
@@ -703,7 +712,7 @@ export class RunEngineTriggerTaskService {
 
             throw error;
           }
-        },
+        }
       );
       // Pipeline returned successfully — publish the claim if we held
       // one. Waiters polling for our key resolve to this runId.
@@ -745,13 +754,23 @@ export class RunEngineTriggerTaskService {
     workerQueue?: string;
     region?: string;
     enableFastPath: boolean;
-    lockedToBackgroundWorker?: { id: string; version: string; sdkVersion: string; cliVersion: string };
+    lockedToBackgroundWorker?: {
+      id: string;
+      version: string;
+      sdkVersion: string;
+      cliVersion: string;
+    };
     delayUntil?: Date;
     ttl?: string;
     metadataPacket?: { data?: string; dataType: string };
     tags: string[];
     depth: number;
-    parentRun?: { id: string; rootTaskRunId?: string | null; queueTimestamp?: Date | null; taskEventStore?: string };
+    parentRun?: {
+      id: string;
+      rootTaskRunId?: string | null;
+      queueTimestamp?: Date | null;
+      taskEventStore?: string;
+    };
     annotations: {
       triggerSource: string;
       triggerAction: string;
@@ -826,7 +845,7 @@ export class RunEngineTriggerTaskService {
       queueTimestamp:
         args.options.queueTimestamp ??
         (args.parentRun && args.body.options?.resumeParentOnCompletion
-          ? args.parentRun.queueTimestamp ?? undefined
+          ? (args.parentRun.queueTimestamp ?? undefined)
           : undefined),
       scheduleId: args.options.scheduleId,
       scheduleInstanceId: args.options.scheduleInstanceId,

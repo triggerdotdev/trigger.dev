@@ -4,10 +4,7 @@ import {
   SideMenuSectionIdSchema,
   type SideMenuSectionId,
 } from "~/components/navigation/sideMenuTypes";
-import {
-  updateItemOrder,
-  updateSideMenuPreferences,
-} from "~/services/dashboardPreferences.server";
+import { updateItemOrder, updateSideMenuPreferences } from "~/services/dashboardPreferences.server";
 import { requireUser } from "~/services/session.server";
 
 // Transforms form data string "true"/"false" to boolean, or undefined if not present

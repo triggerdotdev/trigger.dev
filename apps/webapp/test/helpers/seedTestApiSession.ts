@@ -10,7 +10,9 @@ import type { PrismaClient, Session } from "@trigger.dev/database";
 import { randomBytes } from "node:crypto";
 
 function randomHex(len = 12): string {
-  return randomBytes(Math.ceil(len / 2)).toString("hex").slice(0, len);
+  return randomBytes(Math.ceil(len / 2))
+    .toString("hex")
+    .slice(0, len);
 }
 
 export async function seedTestApiSession(
@@ -32,9 +34,7 @@ export async function seedTestApiSession(
       // (single-id auth resource); omit the override to get a unique
       // externalId for the multi-key path.
       externalId:
-        overrides?.externalId === null
-          ? null
-          : overrides?.externalId ?? `ext_${suffix}`,
+        overrides?.externalId === null ? null : (overrides?.externalId ?? `ext_${suffix}`),
       type: "chat.agent",
       projectId: env.projectId,
       runtimeEnvironmentId: env.id,

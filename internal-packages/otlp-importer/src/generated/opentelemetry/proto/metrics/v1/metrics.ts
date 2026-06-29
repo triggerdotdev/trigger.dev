@@ -193,9 +193,7 @@ export interface ResourceMetrics {
    * The resource for the metrics in this message.
    * If this field is not set then no resource info is known.
    */
-  resource:
-    | Resource
-    | undefined;
+  resource: Resource | undefined;
   /** A list of metrics that originate from a resource. */
   scopeMetrics: ScopeMetrics[];
   /**
@@ -215,9 +213,7 @@ export interface ScopeMetrics {
    * Semantically when InstrumentationScope isn't set, it is equivalent with
    * an empty instrumentation scope name (unknown).
    */
-  scope:
-    | InstrumentationScope
-    | undefined;
+  scope: InstrumentationScope | undefined;
   /** A list of metrics that originate from an instrumentation library. */
   metrics: Metric[];
   /**
@@ -329,9 +325,7 @@ export interface Metric {
   sum?: Sum | undefined;
   histogram?: Histogram | undefined;
   exponentialHistogram?: ExponentialHistogram | undefined;
-  summary?:
-    | Summary
-    | undefined;
+  summary?: Summary | undefined;
   /**
    * Additional metadata attributes that describe the metric. [Optional].
    * Attributes are non-identifying.
@@ -440,9 +434,7 @@ export interface NumberDataPoint {
    */
   timeUnixNano: bigint;
   asDouble?: number | undefined;
-  asInt?:
-    | bigint
-    | undefined;
+  asInt?: bigint | undefined;
   /**
    * (Optional) List of exemplars collected from
    * measurements that were used to form the data point
@@ -506,9 +498,7 @@ export interface HistogramDataPoint {
    * doing so.  This is specifically to enforce compatibility w/ OpenMetrics,
    * see: https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md#histogram
    */
-  sum?:
-    | number
-    | undefined;
+  sum?: number | undefined;
   /**
    * bucket_counts is an optional field contains the count values of histogram
    * for each bucket.
@@ -546,9 +536,7 @@ export interface HistogramDataPoint {
    */
   flags: number;
   /** min is the minimum value over (start_time, end_time]. */
-  min?:
-    | number
-    | undefined;
+  min?: number | undefined;
   /** max is the maximum value over (start_time, end_time]. */
   max?: number | undefined;
 }
@@ -598,9 +586,7 @@ export interface ExponentialHistogramDataPoint {
    * doing so.  This is specifically to enforce compatibility w/ OpenMetrics,
    * see: https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md#histogram
    */
-  sum?:
-    | number
-    | undefined;
+  sum?: number | undefined;
   /**
    * scale describes the resolution of the histogram.  Boundaries are
    * located at powers of the base, where:
@@ -631,13 +617,9 @@ export interface ExponentialHistogramDataPoint {
    */
   zeroCount: bigint;
   /** positive carries the positive range of exponential bucket counts. */
-  positive:
-    | ExponentialHistogramDataPoint_Buckets
-    | undefined;
+  positive: ExponentialHistogramDataPoint_Buckets | undefined;
   /** negative carries the negative range of exponential bucket counts. */
-  negative:
-    | ExponentialHistogramDataPoint_Buckets
-    | undefined;
+  negative: ExponentialHistogramDataPoint_Buckets | undefined;
   /**
    * Flags that apply to this specific data point.  See DataPointFlags
    * for the available flags and their meaning.
@@ -649,13 +631,9 @@ export interface ExponentialHistogramDataPoint {
    */
   exemplars: Exemplar[];
   /** min is the minimum value over (start_time, end_time]. */
-  min?:
-    | number
-    | undefined;
+  min?: number | undefined;
   /** max is the maximum value over (start_time, end_time]. */
-  max?:
-    | number
-    | undefined;
+  max?: number | undefined;
   /**
    * ZeroThreshold may be optionally set to convey the width of the zero
    * region. Where the zero region is defined as the closed interval
@@ -789,9 +767,7 @@ export interface Exemplar {
    */
   timeUnixNano: bigint;
   asDouble?: number | undefined;
-  asInt?:
-    | bigint
-    | undefined;
+  asInt?: bigint | undefined;
   /**
    * (Optional) Span ID of the exemplar trace.
    * span_id may be missing if the measurement is not recorded inside a trace
@@ -862,7 +838,8 @@ export const MetricsData = {
   },
   fromPartial<I extends Exact<DeepPartial<MetricsData>, I>>(object: I): MetricsData {
     const message = createBaseMetricsData();
-    message.resourceMetrics = object.resourceMetrics?.map((e) => ResourceMetrics.fromPartial(e)) || [];
+    message.resourceMetrics =
+      object.resourceMetrics?.map((e) => ResourceMetrics.fromPartial(e)) || [];
     return message;
   },
 };
@@ -951,9 +928,10 @@ export const ResourceMetrics = {
   },
   fromPartial<I extends Exact<DeepPartial<ResourceMetrics>, I>>(object: I): ResourceMetrics {
     const message = createBaseResourceMetrics();
-    message.resource = (object.resource !== undefined && object.resource !== null)
-      ? Resource.fromPartial(object.resource)
-      : undefined;
+    message.resource =
+      object.resource !== undefined && object.resource !== null
+        ? Resource.fromPartial(object.resource)
+        : undefined;
     message.scopeMetrics = object.scopeMetrics?.map((e) => ScopeMetrics.fromPartial(e)) || [];
     message.schemaUrl = object.schemaUrl ?? "";
     return message;
@@ -1018,7 +996,9 @@ export const ScopeMetrics = {
   fromJSON(object: any): ScopeMetrics {
     return {
       scope: isSet(object.scope) ? InstrumentationScope.fromJSON(object.scope) : undefined,
-      metrics: globalThis.Array.isArray(object?.metrics) ? object.metrics.map((e: any) => Metric.fromJSON(e)) : [],
+      metrics: globalThis.Array.isArray(object?.metrics)
+        ? object.metrics.map((e: any) => Metric.fromJSON(e))
+        : [],
       schemaUrl: isSet(object.schemaUrl) ? globalThis.String(object.schemaUrl) : "",
     };
   },
@@ -1042,9 +1022,10 @@ export const ScopeMetrics = {
   },
   fromPartial<I extends Exact<DeepPartial<ScopeMetrics>, I>>(object: I): ScopeMetrics {
     const message = createBaseScopeMetrics();
-    message.scope = (object.scope !== undefined && object.scope !== null)
-      ? InstrumentationScope.fromPartial(object.scope)
-      : undefined;
+    message.scope =
+      object.scope !== undefined && object.scope !== null
+        ? InstrumentationScope.fromPartial(object.scope)
+        : undefined;
     message.metrics = object.metrics?.map((e) => Metric.fromPartial(e)) || [];
     message.schemaUrl = object.schemaUrl ?? "";
     return message;
@@ -1188,7 +1169,9 @@ export const Metric = {
         ? ExponentialHistogram.fromJSON(object.exponentialHistogram)
         : undefined,
       summary: isSet(object.summary) ? Summary.fromJSON(object.summary) : undefined,
-      metadata: globalThis.Array.isArray(object?.metadata) ? object.metadata.map((e: any) => KeyValue.fromJSON(e)) : [],
+      metadata: globalThis.Array.isArray(object?.metadata)
+        ? object.metadata.map((e: any) => KeyValue.fromJSON(e))
+        : [],
     };
   },
 
@@ -1232,17 +1215,24 @@ export const Metric = {
     message.name = object.name ?? "";
     message.description = object.description ?? "";
     message.unit = object.unit ?? "";
-    message.gauge = (object.gauge !== undefined && object.gauge !== null) ? Gauge.fromPartial(object.gauge) : undefined;
-    message.sum = (object.sum !== undefined && object.sum !== null) ? Sum.fromPartial(object.sum) : undefined;
-    message.histogram = (object.histogram !== undefined && object.histogram !== null)
-      ? Histogram.fromPartial(object.histogram)
-      : undefined;
-    message.exponentialHistogram = (object.exponentialHistogram !== undefined && object.exponentialHistogram !== null)
-      ? ExponentialHistogram.fromPartial(object.exponentialHistogram)
-      : undefined;
-    message.summary = (object.summary !== undefined && object.summary !== null)
-      ? Summary.fromPartial(object.summary)
-      : undefined;
+    message.gauge =
+      object.gauge !== undefined && object.gauge !== null
+        ? Gauge.fromPartial(object.gauge)
+        : undefined;
+    message.sum =
+      object.sum !== undefined && object.sum !== null ? Sum.fromPartial(object.sum) : undefined;
+    message.histogram =
+      object.histogram !== undefined && object.histogram !== null
+        ? Histogram.fromPartial(object.histogram)
+        : undefined;
+    message.exponentialHistogram =
+      object.exponentialHistogram !== undefined && object.exponentialHistogram !== null
+        ? ExponentialHistogram.fromPartial(object.exponentialHistogram)
+        : undefined;
+    message.summary =
+      object.summary !== undefined && object.summary !== null
+        ? Summary.fromPartial(object.summary)
+        : undefined;
     message.metadata = object.metadata?.map((e) => KeyValue.fromPartial(e)) || [];
     return message;
   },
@@ -1550,9 +1540,12 @@ export const ExponentialHistogram = {
   create<I extends Exact<DeepPartial<ExponentialHistogram>, I>>(base?: I): ExponentialHistogram {
     return ExponentialHistogram.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<ExponentialHistogram>, I>>(object: I): ExponentialHistogram {
+  fromPartial<I extends Exact<DeepPartial<ExponentialHistogram>, I>>(
+    object: I
+  ): ExponentialHistogram {
     const message = createBaseExponentialHistogram();
-    message.dataPoints = object.dataPoints?.map((e) => ExponentialHistogramDataPoint.fromPartial(e)) || [];
+    message.dataPoints =
+      object.dataPoints?.map((e) => ExponentialHistogramDataPoint.fromPartial(e)) || [];
     message.aggregationTemporality = object.aggregationTemporality ?? 0;
     return message;
   },
@@ -1638,13 +1631,17 @@ export const NumberDataPoint = {
     }
     if (message.startTimeUnixNano !== BigInt("0")) {
       if (BigInt.asUintN(64, message.startTimeUnixNano) !== message.startTimeUnixNano) {
-        throw new globalThis.Error("value provided for field message.startTimeUnixNano of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.startTimeUnixNano of type fixed64 too large"
+        );
       }
       writer.uint32(17).fixed64(message.startTimeUnixNano.toString());
     }
     if (message.timeUnixNano !== BigInt("0")) {
       if (BigInt.asUintN(64, message.timeUnixNano) !== message.timeUnixNano) {
-        throw new globalThis.Error("value provided for field message.timeUnixNano of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.timeUnixNano of type fixed64 too large"
+        );
       }
       writer.uint32(25).fixed64(message.timeUnixNano.toString());
     }
@@ -1653,7 +1650,9 @@ export const NumberDataPoint = {
     }
     if (message.asInt !== undefined) {
       if (BigInt.asIntN(64, message.asInt) !== message.asInt) {
-        throw new globalThis.Error("value provided for field message.asInt of type sfixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.asInt of type sfixed64 too large"
+        );
       }
       writer.uint32(49).sfixed64(message.asInt.toString());
     }
@@ -1736,7 +1735,9 @@ export const NumberDataPoint = {
       attributes: globalThis.Array.isArray(object?.attributes)
         ? object.attributes.map((e: any) => KeyValue.fromJSON(e))
         : [],
-      startTimeUnixNano: isSet(object.startTimeUnixNano) ? BigInt(object.startTimeUnixNano) : BigInt("0"),
+      startTimeUnixNano: isSet(object.startTimeUnixNano)
+        ? BigInt(object.startTimeUnixNano)
+        : BigInt("0"),
       timeUnixNano: isSet(object.timeUnixNano) ? BigInt(object.timeUnixNano) : BigInt("0"),
       asDouble: isSet(object.asDouble) ? globalThis.Number(object.asDouble) : undefined,
       asInt: isSet(object.asInt) ? BigInt(object.asInt) : undefined,
@@ -1812,19 +1813,25 @@ export const HistogramDataPoint = {
     }
     if (message.startTimeUnixNano !== BigInt("0")) {
       if (BigInt.asUintN(64, message.startTimeUnixNano) !== message.startTimeUnixNano) {
-        throw new globalThis.Error("value provided for field message.startTimeUnixNano of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.startTimeUnixNano of type fixed64 too large"
+        );
       }
       writer.uint32(17).fixed64(message.startTimeUnixNano.toString());
     }
     if (message.timeUnixNano !== BigInt("0")) {
       if (BigInt.asUintN(64, message.timeUnixNano) !== message.timeUnixNano) {
-        throw new globalThis.Error("value provided for field message.timeUnixNano of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.timeUnixNano of type fixed64 too large"
+        );
       }
       writer.uint32(25).fixed64(message.timeUnixNano.toString());
     }
     if (message.count !== BigInt("0")) {
       if (BigInt.asUintN(64, message.count) !== message.count) {
-        throw new globalThis.Error("value provided for field message.count of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.count of type fixed64 too large"
+        );
       }
       writer.uint32(33).fixed64(message.count.toString());
     }
@@ -1834,7 +1841,9 @@ export const HistogramDataPoint = {
     writer.uint32(50).fork();
     for (const v of message.bucketCounts) {
       if (BigInt.asUintN(64, v) !== v) {
-        throw new globalThis.Error("a value provided in array field bucketCounts of type fixed64 is too large");
+        throw new globalThis.Error(
+          "a value provided in array field bucketCounts of type fixed64 is too large"
+        );
       }
       writer.fixed64(v.toString());
     }
@@ -1977,7 +1986,9 @@ export const HistogramDataPoint = {
       attributes: globalThis.Array.isArray(object?.attributes)
         ? object.attributes.map((e: any) => KeyValue.fromJSON(e))
         : [],
-      startTimeUnixNano: isSet(object.startTimeUnixNano) ? BigInt(object.startTimeUnixNano) : BigInt("0"),
+      startTimeUnixNano: isSet(object.startTimeUnixNano)
+        ? BigInt(object.startTimeUnixNano)
+        : BigInt("0"),
       timeUnixNano: isSet(object.timeUnixNano) ? BigInt(object.timeUnixNano) : BigInt("0"),
       count: isSet(object.count) ? BigInt(object.count) : BigInt("0"),
       sum: isSet(object.sum) ? globalThis.Number(object.sum) : undefined,
@@ -2074,25 +2085,34 @@ function createBaseExponentialHistogramDataPoint(): ExponentialHistogramDataPoin
 }
 
 export const ExponentialHistogramDataPoint = {
-  encode(message: ExponentialHistogramDataPoint, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+  encode(
+    message: ExponentialHistogramDataPoint,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
     for (const v of message.attributes) {
       KeyValue.encode(v!, writer.uint32(10).fork()).ldelim();
     }
     if (message.startTimeUnixNano !== BigInt("0")) {
       if (BigInt.asUintN(64, message.startTimeUnixNano) !== message.startTimeUnixNano) {
-        throw new globalThis.Error("value provided for field message.startTimeUnixNano of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.startTimeUnixNano of type fixed64 too large"
+        );
       }
       writer.uint32(17).fixed64(message.startTimeUnixNano.toString());
     }
     if (message.timeUnixNano !== BigInt("0")) {
       if (BigInt.asUintN(64, message.timeUnixNano) !== message.timeUnixNano) {
-        throw new globalThis.Error("value provided for field message.timeUnixNano of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.timeUnixNano of type fixed64 too large"
+        );
       }
       writer.uint32(25).fixed64(message.timeUnixNano.toString());
     }
     if (message.count !== BigInt("0")) {
       if (BigInt.asUintN(64, message.count) !== message.count) {
-        throw new globalThis.Error("value provided for field message.count of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.count of type fixed64 too large"
+        );
       }
       writer.uint32(33).fixed64(message.count.toString());
     }
@@ -2104,15 +2124,23 @@ export const ExponentialHistogramDataPoint = {
     }
     if (message.zeroCount !== BigInt("0")) {
       if (BigInt.asUintN(64, message.zeroCount) !== message.zeroCount) {
-        throw new globalThis.Error("value provided for field message.zeroCount of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.zeroCount of type fixed64 too large"
+        );
       }
       writer.uint32(57).fixed64(message.zeroCount.toString());
     }
     if (message.positive !== undefined) {
-      ExponentialHistogramDataPoint_Buckets.encode(message.positive, writer.uint32(66).fork()).ldelim();
+      ExponentialHistogramDataPoint_Buckets.encode(
+        message.positive,
+        writer.uint32(66).fork()
+      ).ldelim();
     }
     if (message.negative !== undefined) {
-      ExponentialHistogramDataPoint_Buckets.encode(message.negative, writer.uint32(74).fork()).ldelim();
+      ExponentialHistogramDataPoint_Buckets.encode(
+        message.negative,
+        writer.uint32(74).fork()
+      ).ldelim();
     }
     if (message.flags !== 0) {
       writer.uint32(80).uint32(message.flags);
@@ -2251,14 +2279,20 @@ export const ExponentialHistogramDataPoint = {
       attributes: globalThis.Array.isArray(object?.attributes)
         ? object.attributes.map((e: any) => KeyValue.fromJSON(e))
         : [],
-      startTimeUnixNano: isSet(object.startTimeUnixNano) ? BigInt(object.startTimeUnixNano) : BigInt("0"),
+      startTimeUnixNano: isSet(object.startTimeUnixNano)
+        ? BigInt(object.startTimeUnixNano)
+        : BigInt("0"),
       timeUnixNano: isSet(object.timeUnixNano) ? BigInt(object.timeUnixNano) : BigInt("0"),
       count: isSet(object.count) ? BigInt(object.count) : BigInt("0"),
       sum: isSet(object.sum) ? globalThis.Number(object.sum) : undefined,
       scale: isSet(object.scale) ? globalThis.Number(object.scale) : 0,
       zeroCount: isSet(object.zeroCount) ? BigInt(object.zeroCount) : BigInt("0"),
-      positive: isSet(object.positive) ? ExponentialHistogramDataPoint_Buckets.fromJSON(object.positive) : undefined,
-      negative: isSet(object.negative) ? ExponentialHistogramDataPoint_Buckets.fromJSON(object.negative) : undefined,
+      positive: isSet(object.positive)
+        ? ExponentialHistogramDataPoint_Buckets.fromJSON(object.positive)
+        : undefined,
+      negative: isSet(object.negative)
+        ? ExponentialHistogramDataPoint_Buckets.fromJSON(object.negative)
+        : undefined,
       flags: isSet(object.flags) ? globalThis.Number(object.flags) : 0,
       exemplars: globalThis.Array.isArray(object?.exemplars)
         ? object.exemplars.map((e: any) => Exemplar.fromJSON(e))
@@ -2316,11 +2350,13 @@ export const ExponentialHistogramDataPoint = {
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<ExponentialHistogramDataPoint>, I>>(base?: I): ExponentialHistogramDataPoint {
+  create<I extends Exact<DeepPartial<ExponentialHistogramDataPoint>, I>>(
+    base?: I
+  ): ExponentialHistogramDataPoint {
     return ExponentialHistogramDataPoint.fromPartial(base ?? ({} as any));
   },
   fromPartial<I extends Exact<DeepPartial<ExponentialHistogramDataPoint>, I>>(
-    object: I,
+    object: I
   ): ExponentialHistogramDataPoint {
     const message = createBaseExponentialHistogramDataPoint();
     message.attributes = object.attributes?.map((e) => KeyValue.fromPartial(e)) || [];
@@ -2330,12 +2366,14 @@ export const ExponentialHistogramDataPoint = {
     message.sum = object.sum ?? undefined;
     message.scale = object.scale ?? 0;
     message.zeroCount = object.zeroCount ?? BigInt("0");
-    message.positive = (object.positive !== undefined && object.positive !== null)
-      ? ExponentialHistogramDataPoint_Buckets.fromPartial(object.positive)
-      : undefined;
-    message.negative = (object.negative !== undefined && object.negative !== null)
-      ? ExponentialHistogramDataPoint_Buckets.fromPartial(object.negative)
-      : undefined;
+    message.positive =
+      object.positive !== undefined && object.positive !== null
+        ? ExponentialHistogramDataPoint_Buckets.fromPartial(object.positive)
+        : undefined;
+    message.negative =
+      object.negative !== undefined && object.negative !== null
+        ? ExponentialHistogramDataPoint_Buckets.fromPartial(object.negative)
+        : undefined;
     message.flags = object.flags ?? 0;
     message.exemplars = object.exemplars?.map((e) => Exemplar.fromPartial(e)) || [];
     message.min = object.min ?? undefined;
@@ -2350,14 +2388,19 @@ function createBaseExponentialHistogramDataPoint_Buckets(): ExponentialHistogram
 }
 
 export const ExponentialHistogramDataPoint_Buckets = {
-  encode(message: ExponentialHistogramDataPoint_Buckets, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+  encode(
+    message: ExponentialHistogramDataPoint_Buckets,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
     if (message.offset !== 0) {
       writer.uint32(8).sint32(message.offset);
     }
     writer.uint32(18).fork();
     for (const v of message.bucketCounts) {
       if (BigInt.asUintN(64, v) !== v) {
-        throw new globalThis.Error("a value provided in array field bucketCounts of type uint64 is too large");
+        throw new globalThis.Error(
+          "a value provided in array field bucketCounts of type uint64 is too large"
+        );
       }
       writer.uint64(v.toString());
     }
@@ -2426,12 +2469,12 @@ export const ExponentialHistogramDataPoint_Buckets = {
   },
 
   create<I extends Exact<DeepPartial<ExponentialHistogramDataPoint_Buckets>, I>>(
-    base?: I,
+    base?: I
   ): ExponentialHistogramDataPoint_Buckets {
     return ExponentialHistogramDataPoint_Buckets.fromPartial(base ?? ({} as any));
   },
   fromPartial<I extends Exact<DeepPartial<ExponentialHistogramDataPoint_Buckets>, I>>(
-    object: I,
+    object: I
   ): ExponentialHistogramDataPoint_Buckets {
     const message = createBaseExponentialHistogramDataPoint_Buckets();
     message.offset = object.offset ?? 0;
@@ -2459,19 +2502,25 @@ export const SummaryDataPoint = {
     }
     if (message.startTimeUnixNano !== BigInt("0")) {
       if (BigInt.asUintN(64, message.startTimeUnixNano) !== message.startTimeUnixNano) {
-        throw new globalThis.Error("value provided for field message.startTimeUnixNano of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.startTimeUnixNano of type fixed64 too large"
+        );
       }
       writer.uint32(17).fixed64(message.startTimeUnixNano.toString());
     }
     if (message.timeUnixNano !== BigInt("0")) {
       if (BigInt.asUintN(64, message.timeUnixNano) !== message.timeUnixNano) {
-        throw new globalThis.Error("value provided for field message.timeUnixNano of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.timeUnixNano of type fixed64 too large"
+        );
       }
       writer.uint32(25).fixed64(message.timeUnixNano.toString());
     }
     if (message.count !== BigInt("0")) {
       if (BigInt.asUintN(64, message.count) !== message.count) {
-        throw new globalThis.Error("value provided for field message.count of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.count of type fixed64 too large"
+        );
       }
       writer.uint32(33).fixed64(message.count.toString());
     }
@@ -2534,7 +2583,9 @@ export const SummaryDataPoint = {
             break;
           }
 
-          message.quantileValues.push(SummaryDataPoint_ValueAtQuantile.decode(reader, reader.uint32()));
+          message.quantileValues.push(
+            SummaryDataPoint_ValueAtQuantile.decode(reader, reader.uint32())
+          );
           continue;
         case 8:
           if (tag !== 64) {
@@ -2557,7 +2608,9 @@ export const SummaryDataPoint = {
       attributes: globalThis.Array.isArray(object?.attributes)
         ? object.attributes.map((e: any) => KeyValue.fromJSON(e))
         : [],
-      startTimeUnixNano: isSet(object.startTimeUnixNano) ? BigInt(object.startTimeUnixNano) : BigInt("0"),
+      startTimeUnixNano: isSet(object.startTimeUnixNano)
+        ? BigInt(object.startTimeUnixNano)
+        : BigInt("0"),
       timeUnixNano: isSet(object.timeUnixNano) ? BigInt(object.timeUnixNano) : BigInt("0"),
       count: isSet(object.count) ? BigInt(object.count) : BigInt("0"),
       sum: isSet(object.sum) ? globalThis.Number(object.sum) : 0,
@@ -2586,7 +2639,9 @@ export const SummaryDataPoint = {
       obj.sum = message.sum;
     }
     if (message.quantileValues?.length) {
-      obj.quantileValues = message.quantileValues.map((e) => SummaryDataPoint_ValueAtQuantile.toJSON(e));
+      obj.quantileValues = message.quantileValues.map((e) =>
+        SummaryDataPoint_ValueAtQuantile.toJSON(e)
+      );
     }
     if (message.flags !== 0) {
       obj.flags = Math.round(message.flags);
@@ -2604,7 +2659,8 @@ export const SummaryDataPoint = {
     message.timeUnixNano = object.timeUnixNano ?? BigInt("0");
     message.count = object.count ?? BigInt("0");
     message.sum = object.sum ?? 0;
-    message.quantileValues = object.quantileValues?.map((e) => SummaryDataPoint_ValueAtQuantile.fromPartial(e)) || [];
+    message.quantileValues =
+      object.quantileValues?.map((e) => SummaryDataPoint_ValueAtQuantile.fromPartial(e)) || [];
     message.flags = object.flags ?? 0;
     return message;
   },
@@ -2615,7 +2671,10 @@ function createBaseSummaryDataPoint_ValueAtQuantile(): SummaryDataPoint_ValueAtQ
 }
 
 export const SummaryDataPoint_ValueAtQuantile = {
-  encode(message: SummaryDataPoint_ValueAtQuantile, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+  encode(
+    message: SummaryDataPoint_ValueAtQuantile,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
     if (message.quantile !== 0) {
       writer.uint32(9).double(message.quantile);
     }
@@ -2674,12 +2733,12 @@ export const SummaryDataPoint_ValueAtQuantile = {
   },
 
   create<I extends Exact<DeepPartial<SummaryDataPoint_ValueAtQuantile>, I>>(
-    base?: I,
+    base?: I
   ): SummaryDataPoint_ValueAtQuantile {
     return SummaryDataPoint_ValueAtQuantile.fromPartial(base ?? ({} as any));
   },
   fromPartial<I extends Exact<DeepPartial<SummaryDataPoint_ValueAtQuantile>, I>>(
-    object: I,
+    object: I
   ): SummaryDataPoint_ValueAtQuantile {
     const message = createBaseSummaryDataPoint_ValueAtQuantile();
     message.quantile = object.quantile ?? 0;
@@ -2706,7 +2765,9 @@ export const Exemplar = {
     }
     if (message.timeUnixNano !== BigInt("0")) {
       if (BigInt.asUintN(64, message.timeUnixNano) !== message.timeUnixNano) {
-        throw new globalThis.Error("value provided for field message.timeUnixNano of type fixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.timeUnixNano of type fixed64 too large"
+        );
       }
       writer.uint32(17).fixed64(message.timeUnixNano.toString());
     }
@@ -2715,7 +2776,9 @@ export const Exemplar = {
     }
     if (message.asInt !== undefined) {
       if (BigInt.asIntN(64, message.asInt) !== message.asInt) {
-        throw new globalThis.Error("value provided for field message.asInt of type sfixed64 too large");
+        throw new globalThis.Error(
+          "value provided for field message.asInt of type sfixed64 too large"
+        );
       }
       writer.uint32(49).sfixed64(message.asInt.toString());
     }
@@ -2795,7 +2858,9 @@ export const Exemplar = {
       asDouble: isSet(object.asDouble) ? globalThis.Number(object.asDouble) : undefined,
       asInt: isSet(object.asInt) ? BigInt(object.asInt) : undefined,
       spanId: isSet(object.spanId) ? Buffer.from(bytesFromBase64(object.spanId)) : Buffer.alloc(0),
-      traceId: isSet(object.traceId) ? Buffer.from(bytesFromBase64(object.traceId)) : Buffer.alloc(0),
+      traceId: isSet(object.traceId)
+        ? Buffer.from(bytesFromBase64(object.traceId))
+        : Buffer.alloc(0),
     };
   },
 
@@ -2827,7 +2892,8 @@ export const Exemplar = {
   },
   fromPartial<I extends Exact<DeepPartial<Exemplar>, I>>(object: I): Exemplar {
     const message = createBaseExemplar();
-    message.filteredAttributes = object.filteredAttributes?.map((e) => KeyValue.fromPartial(e)) || [];
+    message.filteredAttributes =
+      object.filteredAttributes?.map((e) => KeyValue.fromPartial(e)) || [];
     message.timeUnixNano = object.timeUnixNano ?? BigInt("0");
     message.asDouble = object.asDouble ?? undefined;
     message.asInt = object.asInt ?? undefined;
@@ -2864,14 +2930,19 @@ function base64FromBytes(arr: Uint8Array): string {
 
 type Builtin = Date | Function | Uint8Array | string | number | boolean | bigint | undefined;
 
-export type DeepPartial<T> = T extends Builtin ? T
-  : T extends globalThis.Array<infer U> ? globalThis.Array<DeepPartial<U>>
-  : T extends ReadonlyArray<infer U> ? ReadonlyArray<DeepPartial<U>>
-  : T extends {} ? { [K in keyof T]?: DeepPartial<T[K]> }
-  : Partial<T>;
+export type DeepPartial<T> = T extends Builtin
+  ? T
+  : T extends globalThis.Array<infer U>
+    ? globalThis.Array<DeepPartial<U>>
+    : T extends ReadonlyArray<infer U>
+      ? ReadonlyArray<DeepPartial<U>>
+      : T extends {}
+        ? { [K in keyof T]?: DeepPartial<T[K]> }
+        : Partial<T>;
 
 type KeysOfUnion<T> = T extends T ? keyof T : never;
-export type Exact<P, I extends P> = P extends Builtin ? P
+export type Exact<P, I extends P> = P extends Builtin
+  ? P
   : P & { [K in keyof P]: Exact<P[K], I[K]> } & { [K in Exclude<keyof I, KeysOfUnion<P>>]: never };
 
 function longToBigint(long: Long) {

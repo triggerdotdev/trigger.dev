@@ -2,10 +2,12 @@ import type { ColumnFormatType, OutputColumnMetadata } from "@internal/clickhous
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { BarChart3, LineChart } from "lucide-react";
 import { memo, useMemo } from "react";
+import { useMeasure } from "react-use";
 import { createValueFormatter } from "~/utils/columnFormat";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import type { ChartConfig } from "~/components/primitives/charts/Chart";
 import { Chart } from "~/components/primitives/charts/ChartCompound";
+import { selectEvenlySpacedIndices } from "~/components/primitives/charts/useXAxisTicks";
 import { ChartBlankState } from "../primitives/charts/ChartBlankState";
 import { Callout } from "../primitives/Callout";
 import type { AggregationType, ChartConfiguration } from "../metrics/QueryWidget";
@@ -17,6 +19,39 @@ const MAX_SERIES = 50;
 const MAX_SVG_ELEMENT_BUDGET = 6_000;
 const MIN_DATA_POINTS = 100;
 const MAX_DATA_POINTS = 500;
+
+// Width-aware x-axis label density for date-based line charts: reserve room for
+// the y-axis + margins, then fit one label per TIME_AXIS_LABEL_SPACING_PX (smaller = denser).
+const TIME_AXIS_Y_ALLOWANCE_PX = 56;
+const TIME_AXIS_LABEL_SPACING_PX = 40;
+const MIN_TIME_AXIS_TICKS = 3;
+
+// Categorical (non-date) x-axis: thin labels to fit, middle-truncate long values
+// (run IDs, task names), and auto-rotate when labels are long.
+const X_LABEL_PX_PER_CHAR = 6.5;
+const X_LABEL_GAP_PX = 16;
+const MIN_CATEGORICAL_LABEL_PX = 36;
+// Labels longer than this rotate to -45°.
+const CATEGORICAL_HORIZONTAL_MAX_CHARS = 10;
+// Middle-ellipsis cap for rotated labels (bounds axis height).
+const CATEGORICAL_ROTATED_MAX_CHARS = 14;
+// Rotated labels pack tighter than horizontal ones.
+const CATEGORICAL_ROTATED_LABEL_PX = 32;
+const CATEGORICAL_ROTATED_HEIGHT_PX = 80;
+const MIN_CATEGORICAL_TICKS = 2;
+
+/**
+ * Shorten to `maxChars` with a middle ellipsis (e.g. "run_abc…f9c2"), preserving
+ * the distinguishing tail for IDs that share a prefix.
+ */
+export function truncateMiddle(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  if (maxChars <= 1) return value.slice(0, Math.max(0, maxChars));
+  const keep = maxChars - 1; // room for the ellipsis
+  const head = Math.ceil(keep / 2);
+  const tail = Math.floor(keep / 2);
+  return `${value.slice(0, head)}…${value.slice(value.length - tail)}`;
+}
 
 interface QueryResultsChartProps {
   rows: Record<string, unknown>[];
@@ -307,7 +342,7 @@ const NICE_TIME_INTERVALS = [
  * Generate evenly-spaced tick values for a time axis using "nice" intervals
  * that align to natural time boundaries (midnight, noon, hour marks, etc.)
  */
-function generateTimeTicks(minTime: number, maxTime: number, maxTicks = 8): number[] {
+export function generateTimeTicks(minTime: number, maxTime: number, maxTicks = 8): number[] {
   const range = maxTime - minTime;
 
   if (range <= 0) {
@@ -793,6 +828,22 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     timeTicks,
   } = useMemo(() => transformDataForChart(rows, config, timeRange), [rows, config, timeRange]);
 
+  // Measure the chart width so x-axis label density adapts to it (continuous time
+  // scale is kept, so data gaps still show).
+  const [chartMeasureRef, { width: chartWidth }] = useMeasure<HTMLDivElement>();
+
+  // Width-aware time-axis ticks: choose how many clean intervals to render based
+  // on width. Falls back to the default ticks until width is known (first paint).
+  const widthAwareTimeTicks = useMemo(() => {
+    if (!isDateBased || !timeDomain || !chartWidth) return timeTicks;
+    const plotWidth = Math.max(0, chartWidth - TIME_AXIS_Y_ALLOWANCE_PX);
+    const maxTicks = Math.max(
+      MIN_TIME_AXIS_TICKS,
+      Math.floor(plotWidth / TIME_AXIS_LABEL_SPACING_PX)
+    );
+    return generateTimeTicks(timeDomain[0], timeDomain[1], maxTicks);
+  }, [isDateBased, timeDomain, timeTicks, chartWidth]);
+
   // Apply sorting (for date-based, sort by timestamp to ensure correct order)
   const data = useMemo(() => {
     if (isDateBased) {
@@ -872,10 +923,7 @@ export const QueryResultsChart = memo(function QueryResultsChart({
   );
 
   // Create value formatter for tooltips and legend based on column format
-  const tooltipValueFormatter = useMemo(
-    () => createValueFormatter(yAxisFormat),
-    [yAxisFormat]
-  );
+  const tooltipValueFormatter = useMemo(() => createValueFormatter(yAxisFormat), [yAxisFormat]);
 
   // Check if the group-by column has a runStatus customRenderType
   const groupByIsRunStatus = useMemo(() => {
@@ -1025,6 +1073,41 @@ export const QueryResultsChart = memo(function QueryResultsChart({
     };
   }, [isDateBased, xAxisTickFormatter, xAxisAngle]);
 
+  // Categorical x-axis: thin to fit width, middle-truncate long values, rotate when long.
+  const categoricalXAxisProps = useMemo(() => {
+    if (isDateBased) return null;
+
+    const labels = data.map((d) => String(d[xDataKey] ?? ""));
+    const maxLabelChars = labels.reduce((max, l) => Math.max(max, l.length), 0);
+    const angled = maxLabelChars > CATEGORICAL_HORIZONTAL_MAX_CHARS;
+
+    const tickFormatter = angled
+      ? (value: unknown) => truncateMiddle(String(value ?? ""), CATEGORICAL_ROTATED_MAX_CHARS)
+      : (value: unknown) => String(value ?? "");
+
+    // Rotated labels pack tighter; horizontal ones need roughly their own width.
+    const perLabelPx = angled
+      ? CATEGORICAL_ROTATED_LABEL_PX
+      : Math.max(MIN_CATEGORICAL_LABEL_PX, maxLabelChars * X_LABEL_PX_PER_CHAR + X_LABEL_GAP_PX);
+    const plotWidth = chartWidth > 0 ? Math.max(0, chartWidth - TIME_AXIS_Y_ALLOWANCE_PX) : 0;
+    const fitCount =
+      plotWidth > 0
+        ? Math.max(MIN_CATEGORICAL_TICKS, Math.floor(plotWidth / perLabelPx))
+        : data.length;
+    const ticks =
+      fitCount < data.length
+        ? selectEvenlySpacedIndices(data.length, fitCount).map((i) => data[i][xDataKey] as string)
+        : undefined;
+
+    return {
+      tickFormatter,
+      angle: angled ? -45 : 0,
+      textAnchor: angled ? ("end" as const) : ("middle" as const),
+      height: angled ? CATEGORICAL_ROTATED_HEIGHT_PX : undefined,
+      ...(ticks ? { ticks, interval: 0 as const } : {}),
+    };
+  }, [isDateBased, data, xDataKey, chartWidth]);
+
   // Validation — all hooks must be above this point
   const chartIcon = chartType === "bar" ? BarChart3 : LineChart;
 
@@ -1073,15 +1156,15 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         domain: timeDomain ?? (["auto", "auto"] as [string, string]),
         scale: "time" as const,
         // Explicitly specify tick positions so labels appear across the entire range
-        ticks: timeTicks ?? undefined,
+        ticks: widthAwareTimeTicks ?? undefined,
         ...baseXAxisProps,
       }
-    : baseXAxisProps;
+    : (categoricalXAxisProps ?? baseXAxisProps);
 
   // Bar charts always use categorical axis positioning
   // This ensures bars are evenly distributed regardless of data point count
   // (prevents massive bars when there are only a few data points)
-  const xAxisPropsForBar = baseXAxisProps;
+  const xAxisPropsForBar = isDateBased ? baseXAxisProps : (categoricalXAxisProps ?? baseXAxisProps);
 
   const yAxisProps = {
     tickFormatter: yAxisFormatter,
@@ -1092,6 +1175,40 @@ export const QueryResultsChart = memo(function QueryResultsChart({
 
   if (chartType === "bar") {
     return (
+      <div ref={chartMeasureRef} className="h-full w-full">
+        <Chart.Root
+          config={chartConfig}
+          data={data}
+          dataKey={xDataKey}
+          series={sortedSeries}
+          visibleSeries={visibleSeries}
+          labelFormatter={legendLabelFormatter}
+          showLegend={showLegend}
+          maxLegendItems={fullLegend ? Infinity : 5}
+          legendAggregation={config.aggregation}
+          legendValueFormatter={tooltipValueFormatter}
+          minHeight="300px"
+          fillContainer
+          onViewAllLegendItems={onViewAllLegendItems}
+          legendScrollable={legendScrollable}
+          state={isLoading ? "loading" : "loaded"}
+          beforeLegend={seriesLimitCallout}
+        >
+          <Chart.Bar
+            xAxisProps={xAxisPropsForBar}
+            yAxisProps={yAxisProps}
+            stackId={stacked ? "stack" : undefined}
+            tooltipLabelFormatter={tooltipLabelFormatter}
+            tooltipValueFormatter={tooltipValueFormatter}
+          />
+        </Chart.Root>
+      </div>
+    );
+  }
+
+  // Line or stacked area chart
+  return (
+    <div ref={chartMeasureRef} className="h-full w-full">
       <Chart.Root
         config={chartConfig}
         data={data}
@@ -1110,46 +1227,16 @@ export const QueryResultsChart = memo(function QueryResultsChart({
         state={isLoading ? "loading" : "loaded"}
         beforeLegend={seriesLimitCallout}
       >
-        <Chart.Bar
-          xAxisProps={xAxisPropsForBar}
+        <Chart.Line
+          xAxisProps={xAxisPropsForLine}
           yAxisProps={yAxisProps}
-          stackId={stacked ? "stack" : undefined}
+          stacked={stacked && visibleSeries.length > 1}
           tooltipLabelFormatter={tooltipLabelFormatter}
           tooltipValueFormatter={tooltipValueFormatter}
+          lineType="linear"
         />
       </Chart.Root>
-    );
-  }
-
-  // Line or stacked area chart
-  return (
-    <Chart.Root
-      config={chartConfig}
-      data={data}
-      dataKey={xDataKey}
-      series={sortedSeries}
-      visibleSeries={visibleSeries}
-      labelFormatter={legendLabelFormatter}
-      showLegend={showLegend}
-      maxLegendItems={fullLegend ? Infinity : 5}
-      legendAggregation={config.aggregation}
-      legendValueFormatter={tooltipValueFormatter}
-      minHeight="300px"
-      fillContainer
-      onViewAllLegendItems={onViewAllLegendItems}
-      legendScrollable={legendScrollable}
-      state={isLoading ? "loading" : "loaded"}
-      beforeLegend={seriesLimitCallout}
-    >
-      <Chart.Line
-        xAxisProps={xAxisPropsForLine}
-        yAxisProps={yAxisProps}
-        stacked={stacked && visibleSeries.length > 1}
-        tooltipLabelFormatter={tooltipLabelFormatter}
-        tooltipValueFormatter={tooltipValueFormatter}
-        lineType="linear"
-      />
-    </Chart.Root>
+    </div>
   );
 });
 
@@ -1181,9 +1268,7 @@ function createYAxisFormatter(
   if (format === "bytes" || format === "decimalBytes") {
     const divisor = format === "bytes" ? 1024 : 1000;
     const units =
-      format === "bytes"
-        ? ["B", "KiB", "MiB", "GiB", "TiB"]
-        : ["B", "KB", "MB", "GB", "TB"];
+      format === "bytes" ? ["B", "KiB", "MiB", "GiB", "TiB"] : ["B", "KB", "MB", "GB", "TB"];
     return (value: number): string => {
       if (value === 0) return "0 B";
       // Use consistent unit for all ticks based on max value
@@ -1205,8 +1290,7 @@ function createYAxisFormatter(
   }
 
   if (format === "durationSeconds") {
-    return (value: number): string =>
-      formatDurationMilliseconds(value * 1000, { style: "short" });
+    return (value: number): string => formatDurationMilliseconds(value * 1000, { style: "short" });
   }
 
   if (format === "durationNs") {

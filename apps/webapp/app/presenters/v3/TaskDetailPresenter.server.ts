@@ -8,6 +8,12 @@ import {
 import { z } from "zod";
 import { machinePresetFromConfig } from "~/v3/machinePresets.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
+import {
+  chooseBucketSeconds,
+  groupRunStatus,
+  RUN_STATUS_GROUPS,
+  zeroFillGroupedSeries,
+} from "./activitySeries.server";
 
 export type TaskDetailQueue = {
   friendlyId: string;
@@ -49,39 +55,6 @@ export type TaskActivity = {
   data: TaskActivityPoint[];
   statuses: string[];
 };
-
-const TERMINAL_GROUPS = {
-  COMPLETED: ["COMPLETED_SUCCESSFULLY"],
-  FAILED: [
-    "COMPLETED_WITH_ERRORS",
-    "SYSTEM_FAILURE",
-    "CRASHED",
-    "INTERRUPTED",
-    "TIMED_OUT",
-  ],
-  CANCELED: ["CANCELED", "EXPIRED"],
-  RUNNING: [
-    "EXECUTING",
-    "DEQUEUED",
-    "PENDING_EXECUTING",
-    "WAITING_TO_RESUME",
-    "QUEUED_EXECUTING",
-    "PENDING",
-    "PENDING_VERSION",
-    "DELAYED",
-    "WAITING_FOR_DEPLOY",
-  ],
-} as const;
-
-const GROUP_LABEL = ["COMPLETED", "FAILED", "CANCELED", "RUNNING"] as const;
-type GroupLabel = (typeof GROUP_LABEL)[number];
-
-function groupForStatus(status: string): GroupLabel | undefined {
-  for (const label of GROUP_LABEL) {
-    if ((TERMINAL_GROUPS[label] as readonly string[]).includes(status)) return label;
-  }
-  return undefined;
-}
 
 export class TaskDetailPresenter {
   constructor(
@@ -184,15 +157,7 @@ export class TaskDetailPresenter {
     to: Date;
   }): Promise<TaskActivity> {
     const rangeMs = Math.max(1, to.getTime() - from.getTime());
-    const oneHour = 60 * 60 * 1000;
-    const oneDay = 24 * oneHour;
-
-    const bucketSeconds =
-      rangeMs <= oneDay
-        ? 60 * 60
-        : rangeMs <= 7 * oneDay
-        ? 6 * 60 * 60
-        : 24 * 60 * 60;
+    const bucketSeconds = chooseBucketSeconds(rangeMs);
 
     // FINAL + _is_deleted = 0 because task_runs_v2 is a ReplacingMergeTree;
     // org/project filters engage the sort-key prefix for partition pruning.
@@ -245,31 +210,18 @@ export class TaskDetailPresenter {
       return { data: [], statuses: [] };
     }
 
-    const bucketMap = new Map<number, Record<string, number>>();
-    for (const row of rows) {
-      const group = groupForStatus(row.status) ?? "RUNNING";
-      const ts = row.bucket * 1000;
-      const existing = bucketMap.get(ts) ?? {};
-      existing[group] = (existing[group] ?? 0) + row.val;
-      bucketMap.set(ts, existing);
-    }
+    // Always emit every status group so the chart legend is stable across time
+    // ranges (even when a group has no runs in the current window).
+    const points = zeroFillGroupedSeries({
+      rows,
+      from,
+      to,
+      bucketSeconds,
+      orderedKeys: RUN_STATUS_GROUPS,
+      groupFn: groupRunStatus,
+      fallbackKey: "RUNNING",
+    });
 
-    // Always emit every status group so the chart legend is stable across
-    // time ranges (even when a group has no runs in the current window).
-    const bucketMs = bucketSeconds * 1000;
-    const start = Math.floor(from.getTime() / bucketMs) * bucketMs;
-    const end = Math.ceil(to.getTime() / bucketMs) * bucketMs;
-    const points: TaskActivityPoint[] = [];
-    const orderedStatuses = [...GROUP_LABEL];
-    for (let ts = start; ts < end; ts += bucketMs) {
-      const existing = bucketMap.get(ts) ?? {};
-      const point: TaskActivityPoint = { bucket: ts };
-      for (const g of orderedStatuses) {
-        point[g] = existing[g] ?? 0;
-      }
-      points.push(point);
-    }
-
-    return { data: points, statuses: orderedStatuses };
+    return { data: points, statuses: [...RUN_STATUS_GROUPS] };
   }
 }

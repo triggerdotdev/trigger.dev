@@ -18,10 +18,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { useProject } from "~/hooks/useProject";
-import {
-  redirectWithErrorMessage,
-  redirectWithSuccessMessage,
-} from "~/models/message.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
@@ -66,7 +63,10 @@ export const action: ActionFunction = async ({ request, params }) => {
   const userId = await requireUserId(request);
   const { organizationSlug, projectParam } = params;
   if (!organizationSlug || !projectParam) {
-    return json({ errors: { body: "organizationSlug and projectParam are required" } }, { status: 400 });
+    return json(
+      { errors: { body: "organizationSlug and projectParam are required" } },
+      { status: 400 }
+    );
   }
 
   const formData = await request.formData();

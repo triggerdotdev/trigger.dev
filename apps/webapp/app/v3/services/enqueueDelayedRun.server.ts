@@ -5,6 +5,7 @@ import { commonWorker } from "../commonWorker.server";
 import { BaseService } from "./baseService.server";
 import { enqueueRun } from "./enqueueRun.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
+import { isV3Disabled } from "../engineDeprecation.server";
 
 export class EnqueueDelayedRunService extends BaseService {
   public static async enqueue(runId: string, runAt?: Date) {
@@ -72,6 +73,12 @@ export class EnqueueDelayedRunService extends BaseService {
         runId,
       });
 
+      return;
+    }
+
+    // v3 (engine V1) shutdown: don't enqueue delayed V1 runs into MarQS. v4 is unaffected.
+    if (isV3Disabled() && run.engine === "V1") {
+      logger.debug("[EnqueueDelayedRunService] Skipping enqueue for shut-down v3 run", { runId });
       return;
     }
 

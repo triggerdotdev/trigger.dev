@@ -7,15 +7,11 @@ export class WaitpointTimeoutError extends Error {
   }
 }
 
-export class ManualWaitpointPromise<TOutput> extends Promise<
-  WaitpointTokenTypedResult<TOutput>
-> {
+export class ManualWaitpointPromise<TOutput> extends Promise<WaitpointTokenTypedResult<TOutput>> {
   constructor(
     executor: (
       resolve: (
-        value:
-          | WaitpointTokenTypedResult<TOutput>
-          | PromiseLike<WaitpointTokenTypedResult<TOutput>>
+        value: WaitpointTokenTypedResult<TOutput> | PromiseLike<WaitpointTokenTypedResult<TOutput>>
       ) => void,
       reject: (reason?: any) => void
     ) => void

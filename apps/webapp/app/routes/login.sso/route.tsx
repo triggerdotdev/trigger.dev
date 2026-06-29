@@ -34,13 +34,11 @@ const CONTENT: Record<Reason, { heading: string; body: string }> = {
   },
   domain_policy: {
     heading: "SSO required",
-    body:
-      "Trigger.dev couldn't send a magic link because your organization requires single sign-on. Continue to your identity provider.",
+    body: "Trigger.dev couldn't send a magic link because your organization requires single sign-on. Continue to your identity provider.",
   },
   oauth_blocked: {
     heading: "SSO required",
-    body:
-      "You can't use that provider to sign in — your organization requires SSO. Continue with your identity provider.",
+    body: "You can't use that provider to sign in — your organization requires SSO. Continue with your identity provider.",
   },
   expired: {
     heading: "Login attempt timed out",
@@ -84,7 +82,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
     reason,
     email,
     redirectTo,
-    errorMessage: errorCode ? (ERROR_MESSAGES[errorCode] ?? "We couldn't complete sign-in. Try again.") : null,
+    errorMessage: errorCode
+      ? (ERROR_MESSAGES[errorCode] ?? "We couldn't complete sign-in. Try again.")
+      : null,
   });
 }
 

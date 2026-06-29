@@ -1,10 +1,7 @@
 import { z } from "zod";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { resolveRealtimeStreamClient } from "~/services/realtime/resolveRealtimeStreamClient.server";
-import {
-  anyResource,
-  createLoaderApiRoute,
-} from "~/services/routeBuilders/apiBuilder.server";
+import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const SearchParamsSchema = z.object({
   tags: z

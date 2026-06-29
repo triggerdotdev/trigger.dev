@@ -10,7 +10,7 @@ import { BookOpenIcon, CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation } from "@remix-run/react";
 import { formatDuration, formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { useCallback, useRef } from "react";
-import { TaskIconSmall } from "~/assets/icons/TaskIcon";
+import { TasksIcon } from "~/assets/icons/TasksIcon";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
 import { Badge } from "~/components/primitives/Badge";
@@ -470,7 +470,7 @@ export function TaskRunsTable({
                       buttonClassName="w-fit"
                       button={
                         <span className="flex items-center gap-1">
-                          <TaskIconSmall className="size-[1.125rem] text-blue-500" />
+                          <TasksIcon className="size-[1.125rem] text-blue-500" />
                           <span>{run.queue.name}</span>
                         </span>
                       }

@@ -49,8 +49,7 @@ export async function action({ request }: ActionFunctionArgs) {
     if (tokenRole) {
       return json(
         {
-          error:
-            "Cannot mint a user-actor token from a role-restricted personal access token",
+          error: "Cannot mint a user-actor token from a role-restricted personal access token",
         },
         { status: 403 }
       );

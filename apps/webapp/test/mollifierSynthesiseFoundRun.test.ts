@@ -120,9 +120,7 @@ describe("synthesiseFoundRunFromBuffer", () => {
   });
 
   it("passes through an explicit workerQueue from the snapshot unchanged", () => {
-    const found = synthesiseFoundRunFromBuffer(
-      makeSyntheticRun({ workerQueue: "us-east-1" })
-    );
+    const found = synthesiseFoundRunFromBuffer(makeSyntheticRun({ workerQueue: "us-east-1" }));
     expect(found.workerQueue).toBe("us-east-1");
   });
 

@@ -18,6 +18,7 @@ import {
   type PipeStreamResult,
   type RealtimeDefinedInputStream,
   type RealtimeDefinedStream,
+  type ApiClientConfiguration,
   type ReadStreamOptions,
   SemanticInternalAttributes,
   type SendInputStreamOptions,
@@ -203,9 +204,7 @@ const lastTurnCompleteSeqNumKey = locals.create<{ value: number | undefined }>(
  * merge handles any dedup against snapshot-restored messages.
  * @internal
  */
-async function findLatestSessionInCursor(
-  chatId: string
-): Promise<number | undefined> {
+async function findLatestSessionInCursor(chatId: string): Promise<number | undefined> {
   const apiClient = apiClientManager.clientOrThrow();
   const response = await apiClient.readSessionStreamRecords(chatId, "out");
   let latestCursor: number | undefined;
@@ -260,10 +259,9 @@ async function seedSessionInResumeCursorForCustomLoop(
       sessionStreams.setLastDispatchedSeqNum(payload.chatId, "in", cursor);
     }
   } catch (error) {
-    logger.warn(
-      "chat session: session.in resume cursor lookup failed; old messages may replay",
-      { error: error instanceof Error ? error.message : String(error) }
-    );
+    logger.warn("chat session: session.in resume cursor lookup failed; old messages may replay", {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -726,9 +724,7 @@ async function replaySessionOutTail<TUIMessage extends UIMessage>(
  * Not part of the public API.
  * @internal
  */
-export async function __replaySessionOutTailProductionPathForTests<
-  TUIMessage extends UIMessage,
->(
+export async function __replaySessionOutTailProductionPathForTests<TUIMessage extends UIMessage>(
   sessionId: string,
   options?: { lastEventId?: string }
 ): Promise<TUIMessage[]> {
@@ -839,9 +835,7 @@ async function replaySessionInTail<TUIMessage extends UIMessage>(
  * `__replaySessionOutTailProductionPathForTests`.
  * @internal
  */
-export async function __replaySessionInTailProductionPathForTests<
-  TUIMessage extends UIMessage,
->(
+export async function __replaySessionInTailProductionPathForTests<TUIMessage extends UIMessage>(
   sessionId: string,
   options?: { lastEventId?: string }
 ): Promise<{ message: TUIMessage; metadata: unknown; seqNum: number }[]> {
@@ -902,14 +896,14 @@ function stampConversationIdOnActiveSpan(
 
 type ToolResultContent = Array<
   | {
-    type: "text";
-    text: string;
-  }
+      type: "text";
+      text: string;
+    }
   | {
-    type: "image";
-    data: string;
-    mimeType?: string;
-  }
+      type: "image";
+      data: string;
+      mimeType?: string;
+    }
 >;
 
 export type ToolOptions<TResult> = {
@@ -1093,7 +1087,9 @@ function toolFromTask<
         : {}),
     } as any);
     return staticTool as unknown as ToolSetCompatible<
-      TTaskSchema extends TaskSchema ? Tool<inferSchemaIn<TTaskSchema>, TOutput> : Tool<TInput, TOutput>
+      TTaskSchema extends TaskSchema
+        ? Tool<inferSchemaIn<TTaskSchema>, TOutput>
+        : Tool<TInput, TOutput>
     >;
   }
 
@@ -1108,7 +1104,9 @@ function toolFromTask<
   });
 
   return toolDefinition as unknown as ToolSetCompatible<
-    TTaskSchema extends TaskSchema ? Tool<inferSchemaIn<TTaskSchema>, TOutput> : Tool<TInput, TOutput>
+    TTaskSchema extends TaskSchema
+      ? Tool<inferSchemaIn<TTaskSchema>, TOutput>
+      : Tool<TInput, TOutput>
   >;
 }
 
@@ -1169,7 +1167,7 @@ function getToolChatContextOrThrow<TChatTask extends AnyTask = AnyTask>(): ChatT
   if (!ctx) {
     throw new Error(
       "ai.chatContextOrThrow() called outside of a chat.agent context. " +
-      "This helper can only be used inside a subtask invoked via ai.toolExecute() (or legacy ai.tool()) from a chat.agent."
+        "This helper can only be used inside a subtask invoked via ai.toolExecute() (or legacy ai.tool()) from a chat.agent."
     );
   }
   return ctx;
@@ -1796,10 +1794,7 @@ const handoverInput = {
     while (true) {
       const result = await getChatSession().in.waitWithIdleTimeout<ChatInputChunk>(options);
       if (!result.ok) return result;
-      if (
-        result.output.kind === "handover" ||
-        result.output.kind === "handover-skip"
-      ) {
+      if (result.output.kind === "handover" || result.output.kind === "handover-skip") {
         return { ok: true as const, output: result.output as HandoverSignal };
       }
       // Other kinds (message, stop) are not expected during handover-prepare.
@@ -2016,11 +2011,11 @@ const chatUIStreamPerTurnKey = locals.create<ChatUIMessageStreamOptions<UIMessag
  * have to. See TRI-9137.
  * @internal
  */
-const chatToolCallToMessageIdKey = locals.create<Map<string, string>>(
-  "chat.toolCallToMessageId"
-);
+const chatToolCallToMessageIdKey = locals.create<Map<string, string>>("chat.toolCallToMessageId");
 
-function recordToolCallIdsFromMessage(message: { id?: string; role?: string; parts?: unknown[] } | undefined) {
+function recordToolCallIdsFromMessage(
+  message: { id?: string; role?: string; parts?: unknown[] } | undefined
+) {
   if (!message || message.role !== "assistant" || !message.id) return;
   let map = locals.get(chatToolCallToMessageIdKey);
   if (!map) {
@@ -2290,9 +2285,7 @@ function extractNewToolResultsFromHistory(
   message: UIMessage,
   messages: UIMessage[]
 ): ChatNewToolResult[] {
-  const resolved = new Set(
-    getResolvedToolCallsFromHistory(messages).map((r) => r.toolCallId)
-  );
+  const resolved = new Set(getResolvedToolCallsFromHistory(messages).map((r) => r.toolCallId));
   const seen = new Set<string>();
   const out: ChatNewToolResult[] = [];
   for (const { part, toolCallId, toolName, state } of iterateToolParts(message)) {
@@ -2810,9 +2803,9 @@ export type PrepareMessagesEvent<TClientData = unknown> = {
   messages: ModelMessage[];
   /** Why messages are being prepared. */
   reason:
-  | "run" // Messages being passed to run() for streamText
-  | "compaction-rebuild" // Rebuilding from a previous compaction summary
-  | "compaction-result"; // Fresh compaction just produced these messages
+    | "run" // Messages being passed to run() for streamText
+    | "compaction-rebuild" // Rebuilding from a previous compaction summary
+    | "compaction-result"; // Fresh compaction just produced these messages
   /** The chat session ID. */
   chatId: string;
   /** The current turn number (0-indexed). */
@@ -2980,6 +2973,63 @@ function isStepBoundarySafe(step: {
 }
 
 /**
+ * True when a model message is a `tool` message carrying a
+ * `tool-approval-response` part — the trailing row a head-start handover
+ * reshapes a pending first-turn tool call into. AI SDK's `collectToolApprovals`
+ * only inspects the conversation's last message, so this row must survive to
+ * `streamText` intact for the agent to execute the handed-over call.
+ * @internal
+ */
+function hasToolApprovalResponse(message: ModelMessage | undefined): message is ModelMessage {
+  return (
+    message?.role === "tool" &&
+    Array.isArray(message.content) &&
+    message.content.some(
+      (part) =>
+        part != null &&
+        typeof part === "object" &&
+        (part as { type?: string }).type === "tool-approval-response"
+    )
+  );
+}
+
+/**
+ * Keep a head-start handover's tool-approval tail intact across `prepareMessages`.
+ *
+ * The handover reshapes the warm step-1's pending tool call into AI SDK's
+ * tool-approval round: a `tool-approval-request` on the assistant plus a
+ * trailing `tool` message with `tool-approval-response { approved: true }`. The
+ * agent's next `streamText` runs `collectToolApprovals`, which ONLY looks at the
+ * last message — so that tool row must stay last and unmodified for the pending
+ * call to execute. A user `prepareMessages` hook that rewrites or drops the last
+ * message (e.g. rolling a provider cache breakpoint onto it) silently breaks the
+ * resume: the agent sends a bare `tool_use` and the turn dies with
+ * "tool_use ids were found without tool_result". If the hook's input ended with
+ * that approval tail, re-assert the original tail as the last message.
+ *
+ * No-op for every normal turn — only fires when the input genuinely ended with a
+ * pending tool-approval response (i.e. a head-start resume).
+ * @internal
+ */
+function preserveToolApprovalTail(
+  original: ModelMessage[],
+  prepared: ModelMessage[]
+): ModelMessage[] {
+  const originalTail = original[original.length - 1];
+  if (!hasToolApprovalResponse(originalTail)) return prepared;
+  // Hook left the exact tail object in place — nothing to do.
+  if (prepared[prepared.length - 1] === originalTail) return prepared;
+  // Otherwise drop only the trailing approval tail the hook produced (the
+  // original moved, or a rewritten copy) and re-append the original so it is
+  // last and intact. Older approval rounds deeper in history must survive.
+  const withoutMovedOriginal = prepared.filter((m) => m !== originalTail);
+  while (hasToolApprovalResponse(withoutMovedOriginal[withoutMovedOriginal.length - 1])) {
+    withoutMovedOriginal.pop();
+  }
+  return [...withoutMovedOriginal, originalTail];
+}
+
+/**
  * Apply the prepareMessages hook if one is set in locals.
  * @internal
  */
@@ -2992,7 +3042,7 @@ async function applyPrepareMessages(
 
   const turnCtx = locals.get(chatTurnContextKey);
 
-  return tracer.startActiveSpan(
+  const prepared = await tracer.startActiveSpan(
     "prepareMessages()",
     async () => {
       return hook({
@@ -3012,6 +3062,10 @@ async function applyPrepareMessages(
       },
     }
   );
+
+  // A user hook must never be able to break the head-start handover resume by
+  // disturbing the trailing tool-approval row (see preserveToolApprovalTail).
+  return preserveToolApprovalTail(messages, prepared);
 }
 
 /**
@@ -3028,9 +3082,12 @@ async function applyPrepareMessages(
  * declared.
  * @internal
  */
-async function resolveTurnTools(
-  override?: { chatId: string; turn: number; continuation: boolean; clientData: unknown }
-): Promise<void> {
+async function resolveTurnTools(override?: {
+  chatId: string;
+  turn: number;
+  continuation: boolean;
+  clientData: unknown;
+}): Promise<void> {
   const option = locals.get(chatToolsOptionKey);
   if (!option) return;
 
@@ -3131,18 +3188,18 @@ async function chatCompact(
 
   const shouldTrigger = options.shouldCompact
     ? await options.shouldCompact({
-      messages,
-      totalTokens,
-      inputTokens,
-      outputTokens,
-      usage: currentStep.usage,
-      source: "inner",
-      stepNumber,
-      steps,
-      chatId: turnCtx?.chatId,
-      turn: turnCtx?.turn,
-      clientData: turnCtx?.clientData,
-    })
+        messages,
+        totalTokens,
+        inputTokens,
+        outputTokens,
+        usage: currentStep.usage,
+        source: "inner",
+        stepNumber,
+        steps,
+        chatId: turnCtx?.chatId,
+        turn: turnCtx?.turn,
+        clientData: turnCtx?.clientData,
+      })
     : totalTokens != null && options.threshold != null && totalTokens > options.threshold;
 
   if (!shouldTrigger) {
@@ -3458,16 +3515,16 @@ function isCompactionSafe(messages: UIMessage[]): boolean {
 export type ChatPromptValue =
   | ResolvedPrompt
   | {
-    text: string;
-    model: undefined;
-    config: undefined;
-    promptId: string;
-    version: number;
-    labels: string[];
-    toAISDKTelemetry: (additionalMetadata?: Record<string, string>) => {
-      experimental_telemetry: { isEnabled: true; metadata: Record<string, string> };
+      text: string;
+      model: undefined;
+      config: undefined;
+      promptId: string;
+      version: number;
+      labels: string[];
+      toAISDKTelemetry: (additionalMetadata?: Record<string, string>) => {
+        experimental_telemetry: { isEnabled: true; metadata: Record<string, string> };
+      };
     };
-  };
 
 /** @internal */
 const chatPromptKey = locals.create<ChatPromptValue>("chat.prompt");
@@ -3567,9 +3624,7 @@ function getChatSkills(): ResolvedSkill[] | undefined {
  */
 function buildSkillsSystemPrompt(skills: ResolvedSkill[]): string {
   if (skills.length === 0) return "";
-  const lines = skills.map(
-    (s) => `- ${s.frontmatter.name}: ${s.frontmatter.description}`
-  );
+  const lines = skills.map((s) => `- ${s.frontmatter.name}: ${s.frontmatter.description}`);
   return [
     "Available skills (call `loadSkill` to read the full instructions before using one):",
     ...lines,
@@ -3630,7 +3685,8 @@ export function buildSkillTools(skills: ResolvedSkill[]): Record<string, Tool> {
         skill: { type: "string", description: "The skill's name (from frontmatter)." },
         path: {
           type: "string",
-          description: "Relative path inside the skill folder (e.g. `references/citation-style.md`).",
+          description:
+            "Relative path inside the skill folder (e.g. `references/citation-style.md`).",
         },
       },
       required: ["skill", "path"],
@@ -3661,7 +3717,8 @@ export function buildSkillTools(skills: ResolvedSkill[]): Record<string, Tool> {
         skill: { type: "string", description: "The skill's name (from frontmatter)." },
         command: {
           type: "string",
-          description: "Bash command to run. Relative script paths resolve against the skill's root.",
+          description:
+            "Bash command to run. Relative script paths resolve against the skill's root.",
         },
       },
       required: ["skill", "command"],
@@ -4017,7 +4074,7 @@ async function pipeChat(
   } else {
     throw new Error(
       "pipeChat: source must be a StreamTextResult (with .toUIMessageStream()), " +
-      "an AsyncIterable, or a ReadableStream"
+        "an AsyncIterable, or a ReadableStream"
     );
   }
 
@@ -4482,53 +4539,53 @@ export type BeforeTurnCompleteEvent<
  */
 export type ChatSuspendEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> =
   | {
-    /** Suspend is happening after onPreload, before the first message. */
-    phase: "preload";
-    /** Task run context. */
-    ctx: TaskRunContext;
-    /** The chat session ID. */
-    chatId: string;
-    /** The Trigger.dev run ID. */
-    runId: string;
-    /** Custom data from the frontend. */
-    clientData?: TClientData;
-  }
+      /** Suspend is happening after onPreload, before the first message. */
+      phase: "preload";
+      /** Task run context. */
+      ctx: TaskRunContext;
+      /** The chat session ID. */
+      chatId: string;
+      /** The Trigger.dev run ID. */
+      runId: string;
+      /** Custom data from the frontend. */
+      clientData?: TClientData;
+    }
   | {
-    /**
-     * Suspend is happening on a continuation run that booted with no incoming
-     * message (post-`endRun`, post-waitpoint-timeout, etc.) and is waiting
-     * for the next session.in record before running any turn. Distinct from
-     * `phase: "preload"` — the chat already started; `onPreload` has not
-     * fired and will not fire on this run.
-     */
-    phase: "continuation";
-    /** Task run context. */
-    ctx: TaskRunContext;
-    /** The chat session ID. */
-    chatId: string;
-    /** The Trigger.dev run ID. */
-    runId: string;
-    /** Custom data from the frontend. */
-    clientData?: TClientData;
-  }
+      /**
+       * Suspend is happening on a continuation run that booted with no incoming
+       * message (post-`endRun`, post-waitpoint-timeout, etc.) and is waiting
+       * for the next session.in record before running any turn. Distinct from
+       * `phase: "preload"` — the chat already started; `onPreload` has not
+       * fired and will not fire on this run.
+       */
+      phase: "continuation";
+      /** Task run context. */
+      ctx: TaskRunContext;
+      /** The chat session ID. */
+      chatId: string;
+      /** The Trigger.dev run ID. */
+      runId: string;
+      /** Custom data from the frontend. */
+      clientData?: TClientData;
+    }
   | {
-    /** Suspend is happening after a completed turn, waiting for the next message. */
-    phase: "turn";
-    /** Task run context. */
-    ctx: TaskRunContext;
-    /** The chat session ID. */
-    chatId: string;
-    /** The Trigger.dev run ID. */
-    runId: string;
-    /** The turn number (0-indexed) that just completed. */
-    turn: number;
-    /** The accumulated model messages after the completed turn. */
-    messages: ModelMessage[];
-    /** The accumulated UI messages after the completed turn. */
-    uiMessages: TUIM[];
-    /** Custom data from the frontend. */
-    clientData?: TClientData;
-  };
+      /** Suspend is happening after a completed turn, waiting for the next message. */
+      phase: "turn";
+      /** Task run context. */
+      ctx: TaskRunContext;
+      /** The chat session ID. */
+      chatId: string;
+      /** The Trigger.dev run ID. */
+      runId: string;
+      /** The turn number (0-indexed) that just completed. */
+      turn: number;
+      /** The accumulated model messages after the completed turn. */
+      messages: ModelMessage[];
+      /** The accumulated UI messages after the completed turn. */
+      uiMessages: TUIM[];
+      /** Custom data from the frontend. */
+      clientData?: TClientData;
+    };
 
 /**
  * Discriminated event passed to the `onChatResume` callback.
@@ -4536,52 +4593,52 @@ export type ChatSuspendEvent<TClientData = unknown, TUIM extends UIMessage = UIM
  */
 export type ChatResumeEvent<TClientData = unknown, TUIM extends UIMessage = UIMessage> =
   | {
-    /** First message arrived after preload suspension. */
-    phase: "preload";
-    /** Task run context. */
-    ctx: TaskRunContext;
-    /** The chat session ID. */
-    chatId: string;
-    /** The Trigger.dev run ID. */
-    runId: string;
-    /** Custom data from the frontend. */
-    clientData?: TClientData;
-  }
+      /** First message arrived after preload suspension. */
+      phase: "preload";
+      /** Task run context. */
+      ctx: TaskRunContext;
+      /** The chat session ID. */
+      chatId: string;
+      /** The Trigger.dev run ID. */
+      runId: string;
+      /** Custom data from the frontend. */
+      clientData?: TClientData;
+    }
   | {
-    /**
-     * First message arrived after continuation-wait suspension. Distinct
-     * from `phase: "preload"` — the chat already started; this is a new
-     * run picking up after a prior run ended (`endRun`, waitpoint timeout,
-     * etc.).
-     */
-    phase: "continuation";
-    /** Task run context. */
-    ctx: TaskRunContext;
-    /** The chat session ID. */
-    chatId: string;
-    /** The Trigger.dev run ID. */
-    runId: string;
-    /** Custom data from the frontend. */
-    clientData?: TClientData;
-  }
+      /**
+       * First message arrived after continuation-wait suspension. Distinct
+       * from `phase: "preload"` — the chat already started; this is a new
+       * run picking up after a prior run ended (`endRun`, waitpoint timeout,
+       * etc.).
+       */
+      phase: "continuation";
+      /** Task run context. */
+      ctx: TaskRunContext;
+      /** The chat session ID. */
+      chatId: string;
+      /** The Trigger.dev run ID. */
+      runId: string;
+      /** Custom data from the frontend. */
+      clientData?: TClientData;
+    }
   | {
-    /** Next message arrived after turn suspension. */
-    phase: "turn";
-    /** Task run context. */
-    ctx: TaskRunContext;
-    /** The chat session ID. */
-    chatId: string;
-    /** The Trigger.dev run ID. */
-    runId: string;
-    /** The turn number that was completed before suspension. */
-    turn: number;
-    /** The accumulated model messages (from before suspension). */
-    messages: ModelMessage[];
-    /** The accumulated UI messages (from before suspension). */
-    uiMessages: TUIM[];
-    /** Custom data from the frontend. */
-    clientData?: TClientData;
-  };
+      /** Next message arrived after turn suspension. */
+      phase: "turn";
+      /** Task run context. */
+      ctx: TaskRunContext;
+      /** The chat session ID. */
+      chatId: string;
+      /** The Trigger.dev run ID. */
+      runId: string;
+      /** The turn number that was completed before suspension. */
+      turn: number;
+      /** The accumulated model messages (from before suspension). */
+      messages: ModelMessage[];
+      /** The accumulated UI messages (from before suspension). */
+      uiMessages: TUIM[];
+      /** Custom data from the frontend. */
+      clientData?: TClientData;
+    };
 
 export type ChatAgentOptions<
   TIdentifier extends string,
@@ -4744,9 +4801,7 @@ export type ChatAgentOptions<
    * **Auto-piping:** If this function returns a value with `.toUIMessageStream()`,
    * the stream is automatically piped to the frontend.
    */
-  run: (
-    payload: ChatTaskRunPayload<inferSchemaOut<TClientDataSchema>, TTools>
-  ) => Promise<unknown>;
+  run: (payload: ChatTaskRunPayload<inferSchemaOut<TClientDataSchema>, TTools>) => Promise<unknown>;
 
   /**
    * Called once at the start of every run boot — for the initial run, for
@@ -5511,12 +5566,9 @@ function chatAgent<
       // pump kicks in. Populated by `onRecoveryBoot.recoveredTurns` (or its
       // default, `inFlightUsers`). The turn-loop checks this queue ahead of
       // `messagesInput.waitWithIdleTimeout` so recovered turns fire first.
-      const bootInjectedQueue: ChatTaskWirePayload<
-        TUIMessage,
-        inferSchemaIn<TClientDataSchema>
-      >[] = [];
-      const couldHavePriorState =
-        payload.continuation === true || ctx.attempt.number > 1;
+      const bootInjectedQueue: ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>[] =
+        [];
+      const couldHavePriorState = payload.continuation === true || ctx.attempt.number > 1;
 
       // `.in` resume cursor, computed at most once per boot. The boot
       // block below resolves it (snapshot field or records scan) and the
@@ -5538,13 +5590,10 @@ function chatAgent<
             } catch (error) {
               // `readChatSnapshot` already swallows + warns internally; this catch
               // is just belt-and-suspenders against tracer/span errors.
-              logger.warn(
-                "chat.agent: snapshot read failed; continuing without snapshot",
-                {
-                  error: error instanceof Error ? error.message : String(error),
-                  sessionId: sessionIdForSnapshot,
-                }
-              );
+              logger.warn("chat.agent: snapshot read failed; continuing without snapshot", {
+                error: error instanceof Error ? error.message : String(error),
+                sessionId: sessionIdForSnapshot,
+              });
             }
             bootSpan.setAttribute("chat.boot.snapshot.durationMs", Date.now() - snapStart);
             bootSpan.setAttribute("chat.boot.snapshot.present", !!bootSnapshot);
@@ -5574,26 +5623,19 @@ function chatAgent<
             const replayOutPhase = async () => {
               const replayOutStart = Date.now();
               try {
-                const replayResult = await replaySessionOutTail<TUIMessage>(
-                  sessionIdForSnapshot,
-                  { lastEventId: bootSnapshot?.lastOutEventId }
-                );
+                const replayResult = await replaySessionOutTail<TUIMessage>(sessionIdForSnapshot, {
+                  lastEventId: bootSnapshot?.lastOutEventId,
+                });
                 replayedSettled = replayResult.settled;
                 replayedPartial = replayResult.partial;
                 replayedPartialRaw = replayResult.partialRaw;
               } catch (error) {
-                logger.warn(
-                  "chat.agent: session.out replay failed; using snapshot only",
-                  {
-                    error: error instanceof Error ? error.message : String(error),
-                    sessionId: sessionIdForSnapshot,
-                  }
-                );
+                logger.warn("chat.agent: session.out replay failed; using snapshot only", {
+                  error: error instanceof Error ? error.message : String(error),
+                  sessionId: sessionIdForSnapshot,
+                });
               }
-              bootSpan.setAttribute(
-                "chat.boot.replay.out.durationMs",
-                Date.now() - replayOutStart
-              );
+              bootSpan.setAttribute("chat.boot.replay.out.durationMs", Date.now() - replayOutStart);
               bootSpan.setAttribute("chat.boot.replay.out.settledCount", replayedSettled.length);
               bootSpan.setAttribute(
                 "chat.boot.replay.out.partialPresent",
@@ -5648,14 +5690,8 @@ function chatAgent<
                   { error: error instanceof Error ? error.message : String(error) }
                 );
               }
-              bootSpan.setAttribute(
-                "chat.boot.replay.in.durationMs",
-                Date.now() - replayInStart
-              );
-              bootSpan.setAttribute(
-                "chat.boot.replay.in.userCount",
-                replayedInTail.length
-              );
+              bootSpan.setAttribute("chat.boot.replay.in.durationMs", Date.now() - replayInStart);
+              bootSpan.setAttribute("chat.boot.replay.in.userCount", replayedInTail.length);
             };
 
             await Promise.all([replayOutPhase(), replayInPhase()]);
@@ -5698,9 +5734,7 @@ function chatAgent<
       //  - Snapshot exists at all (catches edge cases where the wire
       //    didn't set `continuation` but a snapshot indicates prior turns)
       const needsResumeCursor =
-        ctx.attempt.number > 1 ||
-        payload.continuation === true ||
-        bootSnapshot !== undefined;
+        ctx.attempt.number > 1 || payload.continuation === true || bootSnapshot !== undefined;
 
       if (needsResumeCursor) {
         try {
@@ -5792,8 +5826,7 @@ function chatAgent<
             if (Array.isArray(hookResult.chain)) hookChain = hookResult.chain;
             if (Array.isArray(hookResult.recoveredTurns))
               hookRecoveredTurns = hookResult.recoveredTurns;
-            if (typeof hookResult.beforeBoot === "function")
-              hookBeforeBoot = hookResult.beforeBoot;
+            if (typeof hookResult.beforeBoot === "function") hookBeforeBoot = hookResult.beforeBoot;
           }
         }
 
@@ -5850,8 +5883,7 @@ function chatAgent<
         // across attempts, but session.in records it once), the wire
         // payload already runs turn 0 — drop the duplicate from the queue
         // so we don't fire the same turn twice.
-        const wireMessageId =
-          (payload.message as { id?: string } | undefined)?.id;
+        const wireMessageId = (payload.message as { id?: string } | undefined)?.id;
         const metadataById = new Map<string, unknown>();
         for (const entry of replayedInTail) {
           metadataById.set(entry.message.id, entry.metadata);
@@ -5931,7 +5963,6 @@ function chatAgent<
         // Make the seeded UI accumulator visible to `chat.history.*`
         // before any hook (`onChatStart`, `onTurnStart`, etc.) fires.
         locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
-
       }
 
       // Token usage tracking across turns
@@ -6086,9 +6117,7 @@ function chatAgent<
           // `transport.preload(..., { idleTimeoutInSeconds })` / wire payload so
           // `chat.agent({ idleTimeoutInSeconds, preloadIdleTimeoutInSeconds })` is authoritative.
           const effectivePreloadIdleTimeout =
-            preloadIdleTimeoutInSeconds ??
-            idleTimeoutInSeconds ??
-            payload.idleTimeoutInSeconds;
+            preloadIdleTimeoutInSeconds ?? idleTimeoutInSeconds ?? payload.idleTimeoutInSeconds;
 
           const effectivePreloadTimeout =
             (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ??
@@ -6102,51 +6131,51 @@ function chatAgent<
             skipSuspend: exitAfterPreloadIdle,
             onSuspend: onChatSuspend
               ? async () => {
-                await tracer.startActiveSpan(
-                  "onChatSuspend()",
-                  async () => {
-                    await onChatSuspend({
-                      phase: "preload",
-                      ctx,
-                      chatId: payload.chatId,
-                      runId: currentRunId,
-                      clientData: preloadClientData,
-                    });
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
-                      [SemanticInternalAttributes.COLLAPSED]: true,
-                      "chat.id": payload.chatId,
-                      "chat.suspend.phase": "preload",
+                  await tracer.startActiveSpan(
+                    "onChatSuspend()",
+                    async () => {
+                      await onChatSuspend({
+                        phase: "preload",
+                        ctx,
+                        chatId: payload.chatId,
+                        runId: currentRunId,
+                        clientData: preloadClientData,
+                      });
                     },
-                  }
-                );
-              }
+                    {
+                      attributes: {
+                        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                        [SemanticInternalAttributes.COLLAPSED]: true,
+                        "chat.id": payload.chatId,
+                        "chat.suspend.phase": "preload",
+                      },
+                    }
+                  );
+                }
               : undefined,
             onResume: onChatResume
               ? async () => {
-                await tracer.startActiveSpan(
-                  "onChatResume()",
-                  async () => {
-                    await onChatResume({
-                      phase: "preload",
-                      ctx,
-                      chatId: payload.chatId,
-                      runId: currentRunId,
-                      clientData: preloadClientData,
-                    });
-                  },
-                  {
-                    attributes: {
-                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
-                      [SemanticInternalAttributes.COLLAPSED]: true,
-                      "chat.id": payload.chatId,
-                      "chat.resume.phase": "preload",
+                  await tracer.startActiveSpan(
+                    "onChatResume()",
+                    async () => {
+                      await onChatResume({
+                        phase: "preload",
+                        ctx,
+                        chatId: payload.chatId,
+                        runId: currentRunId,
+                        clientData: preloadClientData,
+                      });
                     },
-                  }
-                );
-              }
+                    {
+                      attributes: {
+                        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                        [SemanticInternalAttributes.COLLAPSED]: true,
+                        "chat.id": payload.chatId,
+                        "chat.resume.phase": "preload",
+                      },
+                    }
+                  );
+                }
               : undefined,
           });
 
@@ -6217,10 +6246,7 @@ function chatAgent<
           //     call entirely (the response is already complete).
           //     `onTurnComplete` fires with the partial as
           //     `responseMessage` so persistence works normally.
-          locals.set(
-            chatHandoverPartialKey,
-            handoverResult.output.partialAssistantMessage
-          );
+          locals.set(chatHandoverPartialKey, handoverResult.output.partialAssistantMessage);
           // Stash the customer-side step-1 messageId. Turn-0 setup
           // uses it to seed the synthesized partial UIMessage with the
           // SAME id, so the agent's post-handover chunks merge into
@@ -6276,341 +6302,340 @@ function chatAgent<
           if (bootInjectedQueue.length > 0) {
             currentWirePayload = bootInjectedQueue.shift()!;
           } else {
+            const effectiveIdleTimeout = idleTimeoutInSeconds ?? payload.idleTimeoutInSeconds;
+            const effectiveTurnTimeout =
+              (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
 
-          const effectiveIdleTimeout =
-            idleTimeoutInSeconds ?? payload.idleTimeoutInSeconds;
-          const effectiveTurnTimeout =
-            (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
-
-          const continuationResult = await messagesInput.waitWithIdleTimeout({
-            idleTimeoutInSeconds: effectiveIdleTimeout,
-            timeout: effectiveTurnTimeout,
-            spanName: "waiting for first message (continuation)",
-            onSuspend: onChatSuspend
-              ? async () => {
-                  await tracer.startActiveSpan(
-                    "onChatSuspend()",
-                    async () => {
-                      await onChatSuspend({
-                        phase: "continuation",
-                        ctx,
-                        chatId: payload.chatId,
-                        runId: ctx.run.id,
-                        clientData: continuationClientData,
-                      });
-                    },
-                    {
-                      attributes: {
-                        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
-                        [SemanticInternalAttributes.COLLAPSED]: true,
-                        "chat.id": payload.chatId,
-                        "chat.suspend.phase": "continuation",
+            const continuationResult = await messagesInput.waitWithIdleTimeout({
+              idleTimeoutInSeconds: effectiveIdleTimeout,
+              timeout: effectiveTurnTimeout,
+              spanName: "waiting for first message (continuation)",
+              onSuspend: onChatSuspend
+                ? async () => {
+                    await tracer.startActiveSpan(
+                      "onChatSuspend()",
+                      async () => {
+                        await onChatSuspend({
+                          phase: "continuation",
+                          ctx,
+                          chatId: payload.chatId,
+                          runId: ctx.run.id,
+                          clientData: continuationClientData,
+                        });
                       },
-                    }
-                  );
-                }
-              : undefined,
-            onResume: onChatResume
-              ? async () => {
-                  await tracer.startActiveSpan(
-                    "onChatResume()",
-                    async () => {
-                      await onChatResume({
-                        phase: "continuation",
-                        ctx,
-                        chatId: payload.chatId,
-                        runId: ctx.run.id,
-                        clientData: continuationClientData,
-                      });
-                    },
-                    {
-                      attributes: {
-                        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
-                        [SemanticInternalAttributes.COLLAPSED]: true,
-                        "chat.id": payload.chatId,
-                        "chat.resume.phase": "continuation",
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": payload.chatId,
+                          "chat.suspend.phase": "continuation",
+                        },
+                      }
+                    );
+                  }
+                : undefined,
+              onResume: onChatResume
+                ? async () => {
+                    await tracer.startActiveSpan(
+                      "onChatResume()",
+                      async () => {
+                        await onChatResume({
+                          phase: "continuation",
+                          ctx,
+                          chatId: payload.chatId,
+                          runId: ctx.run.id,
+                          clientData: continuationClientData,
+                        });
                       },
-                    }
-                  );
-                }
-              : undefined,
-          });
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": payload.chatId,
+                          "chat.resume.phase": "continuation",
+                        },
+                      }
+                    );
+                  }
+                : undefined,
+            });
 
-          if (!continuationResult.ok) {
-            // Timed out waiting for the customer's next message — exit.
-            return;
-          }
+            if (!continuationResult.ok) {
+              // Timed out waiting for the customer's next message — exit.
+              return;
+            }
 
-          currentWirePayload = continuationResult.output as ChatTaskWirePayload<
-            TUIMessage,
-            inferSchemaIn<TClientDataSchema>
-          >;
+            currentWirePayload = continuationResult.output as ChatTaskWirePayload<
+              TUIMessage,
+              inferSchemaIn<TClientDataSchema>
+            >;
 
-          if (currentWirePayload.trigger === "close") {
-            return;
-          }
+            if (currentWirePayload.trigger === "close") {
+              return;
+            }
           } // end else (no boot-injected first turn)
         }
 
         for (let turn = 0; turn < maxTurns; turn++) {
           try {
-              // Extract turn-level context before entering the span. Slim
-              // wire: at most one delta message per record. `headStartMessages`
-              // is consumed at boot only (via `payload.headStartMessages`)
-              // and intentionally discarded here.
-              const {
-                metadata: wireMetadata,
-                message: incomingMessage,
-                headStartMessages: _hsm,
-                ...restWire
-              } = currentWirePayload;
-              void _hsm;
-              const incomingMessages: TUIMessage[] = incomingMessage
-                ? [incomingMessage as TUIMessage]
-                : [];
-              // Cleaning happens once here so `extractLastUserMessageText` and
-              // every downstream consumer see the same message shape — and
-              // `cleanupAbortedParts` no longer has to be re-applied below.
-              const cleanedIncomingMessages: TUIMessage[] = incomingMessages.map((msg) =>
-                msg.role === "assistant" ? cleanupAbortedParts(msg) : msg
+            // Extract turn-level context before entering the span. Slim
+            // wire: at most one delta message per record. `headStartMessages`
+            // is consumed at boot only (via `payload.headStartMessages`)
+            // and intentionally discarded here.
+            const {
+              metadata: wireMetadata,
+              message: incomingMessage,
+              headStartMessages: _hsm,
+              ...restWire
+            } = currentWirePayload;
+            void _hsm;
+            const incomingMessages: TUIMessage[] = incomingMessage
+              ? [incomingMessage as TUIMessage]
+              : [];
+            // Cleaning happens once here so `extractLastUserMessageText` and
+            // every downstream consumer see the same message shape — and
+            // `cleanupAbortedParts` no longer has to be re-applied below.
+            const cleanedIncomingMessages: TUIMessage[] = incomingMessages.map((msg) =>
+              msg.role === "assistant" ? cleanupAbortedParts(msg) : msg
+            );
+            const clientData = (
+              parseClientData ? await parseClientData(wireMetadata) : wireMetadata
+            ) as inferSchemaOut<TClientDataSchema>;
+            const lastUserMessage = extractLastUserMessageText(cleanedIncomingMessages);
+
+            // Actions are not turns. They use a different span name
+            // and don't carry a turn.number. Branched on at `isAction`.
+            const isAction = currentWirePayload.trigger === "action";
+            const spanName = isAction ? "chat action" : `chat turn ${turn + 1}`;
+
+            const turnAttributes: Attributes = {
+              ...(isAction ? {} : { "turn.number": turn + 1 }),
+              "gen_ai.conversation.id": currentWirePayload.chatId,
+              "gen_ai.operation.name": "chat",
+              "chat.trigger": currentWirePayload.trigger,
+              [SemanticInternalAttributes.STYLE_ICON]: isAction
+                ? "tabler-bolt"
+                : "tabler-message-chatbot",
+              [SemanticInternalAttributes.ENTITY_TYPE]: isAction ? "chat-action" : "chat-turn",
+            };
+
+            if (lastUserMessage) {
+              turnAttributes["chat.user_message"] = lastUserMessage;
+
+              // Show a truncated preview of the user message as an accessory
+              const preview =
+                lastUserMessage.length > 80
+                  ? lastUserMessage.slice(0, 80) + "..."
+                  : lastUserMessage;
+              Object.assign(
+                turnAttributes,
+                accessoryAttributes({
+                  items: [{ text: preview, variant: "normal" }],
+                  style: "codepath",
+                })
               );
-              const clientData = (
-                parseClientData ? await parseClientData(wireMetadata) : wireMetadata
-              ) as inferSchemaOut<TClientDataSchema>;
-              const lastUserMessage = extractLastUserMessageText(cleanedIncomingMessages);
+            }
 
-              // Actions are not turns. They use a different span name
-              // and don't carry a turn.number. Branched on at `isAction`.
-              const isAction = currentWirePayload.trigger === "action";
-              const spanName = isAction ? "chat action" : `chat turn ${turn + 1}`;
+            if (wireMetadata !== undefined) {
+              turnAttributes["chat.client_data"] =
+                typeof wireMetadata === "string" ? wireMetadata : JSON.stringify(wireMetadata);
+            }
 
-              const turnAttributes: Attributes = {
-                ...(isAction ? {} : { "turn.number": turn + 1 }),
-                "gen_ai.conversation.id": currentWirePayload.chatId,
-                "gen_ai.operation.name": "chat",
-                "chat.trigger": currentWirePayload.trigger,
-                [SemanticInternalAttributes.STYLE_ICON]: isAction
-                  ? "tabler-bolt"
-                  : "tabler-message-chatbot",
-                [SemanticInternalAttributes.ENTITY_TYPE]: isAction ? "chat-action" : "chat-turn",
-              };
+            const turnResult = await tracer.startActiveSpan(
+              spanName,
+              async (turnSpan) => {
+                // (errors are caught by the outer try/catch which writes an error chunk)
+                locals.set(chatPipeCountKey, 0);
+                locals.set(chatDeferKey, new Set());
+                locals.set(chatCompactionStateKey, undefined);
+                locals.set(chatSteeringQueueKey, []);
+                locals.set(chatResponsePartsKey, []);
+                // NOTE: chatBackgroundQueueKey is NOT reset here — messages injected
+                // by deferred work from the previous turn's onTurnComplete need to
+                // survive into the next turn. The queue is drained before run().
+                locals.set(chatInjectedMessageIdsKey, new Set());
 
-              if (lastUserMessage) {
-                turnAttributes["chat.user_message"] = lastUserMessage;
+                // Store chat context for auto-detection by task-tool subtasks (ai.toolExecute / legacy ai.tool)
+                locals.set(chatTurnContextKey, {
+                  chatId: currentWirePayload.chatId,
+                  turn,
+                  continuation,
+                  clientData,
+                });
 
-                // Show a truncated preview of the user message as an accessory
-                const preview =
-                  lastUserMessage.length > 80 ? lastUserMessage.slice(0, 80) + "..." : lastUserMessage;
-                Object.assign(
-                  turnAttributes,
-                  accessoryAttributes({
-                    items: [{ text: preview, variant: "normal" }],
-                    style: "codepath",
-                  })
-                );
-              }
+                // Resolve the per-turn `tools` set now that turn context
+                // (incl. parsed clientData) exists, so every toModelMessages
+                // call this turn can re-apply tool `toModelOutput`.
+                await resolveTurnTools();
 
-              if (wireMetadata !== undefined) {
-                turnAttributes["chat.client_data"] =
-                  typeof wireMetadata === "string" ? wireMetadata : JSON.stringify(wireMetadata);
-              }
+                // Per-turn stop controller (reset each turn)
+                const stopController = new AbortController();
+                currentStopController = stopController;
+                locals.set(chatStopControllerKey, stopController);
 
-              const turnResult = await tracer.startActiveSpan(
-                spanName,
-                async (turnSpan) => {
-                  // (errors are caught by the outer try/catch which writes an error chunk)
-                  locals.set(chatPipeCountKey, 0);
-                  locals.set(chatDeferKey, new Set());
-                  locals.set(chatCompactionStateKey, undefined);
-                  locals.set(chatSteeringQueueKey, []);
-                  locals.set(chatResponsePartsKey, []);
-                  // NOTE: chatBackgroundQueueKey is NOT reset here — messages injected
-                  // by deferred work from the previous turn's onTurnComplete need to
-                  // survive into the next turn. The queue is drained before run().
-                  locals.set(chatInjectedMessageIdsKey, new Set());
+                // Three signals for the user's run function
+                const stopSignal = stopController.signal;
+                const cancelSignal = runSignal;
+                const combinedSignal = AbortSignal.any([runSignal, stopController.signal]);
 
-                  // Store chat context for auto-detection by task-tool subtasks (ai.toolExecute / legacy ai.tool)
-                  locals.set(chatTurnContextKey, {
-                    chatId: currentWirePayload.chatId,
-                    turn,
-                    continuation,
-                    clientData,
-                  });
-
-                  // Resolve the per-turn `tools` set now that turn context
-                  // (incl. parsed clientData) exists, so every toModelMessages
-                  // call this turn can re-apply tool `toModelOutput`.
-                  await resolveTurnTools();
-
-                  // Per-turn stop controller (reset each turn)
-                  const stopController = new AbortController();
-                  currentStopController = stopController;
-                  locals.set(chatStopControllerKey, stopController);
-
-                  // Three signals for the user's run function
-                  const stopSignal = stopController.signal;
-                  const cancelSignal = runSignal;
-                  const combinedSignal = AbortSignal.any([runSignal, stopController.signal]);
-
-                  // Buffer messages that arrive during streaming
-                  const pendingMessages: ChatTaskWirePayload<
-                    TUIMessage,
-                    inferSchemaIn<TClientDataSchema>
-                  >[] = [];
-                  const pmConfig = locals.get(chatPendingMessagesKey);
-                  const msgSub = messagesInput.on(async (msg) => {
-                    // If pendingMessages is configured, route to the steering queue
-                    // instead of the wire buffer. The frontend handles re-sending
-                    // non-injected messages via sendMessage on turn complete.
-                    if (pmConfig) {
-                      // Slim wire: at most one delta message per record. The
-                      // pendingMessages handler reads `msg.message` directly
-                      // instead of slicing an array — a wire record arrives
-                      // with the new user message in `.message`, or no message
-                      // at all (regenerate / preload / close / handover-prepare).
-                      const lastUIMessage = msg.message as TUIMessage | undefined;
-                      if (lastUIMessage) {
-                        if (pmConfig.onReceived) {
-                          try {
-                            await pmConfig.onReceived({
-                              message: lastUIMessage as TUIMessage,
-                              chatId: currentWirePayload.chatId,
-                              turn,
-                            });
-                          } catch {
-                            /* non-fatal */
-                          }
-                        }
-
+                // Buffer messages that arrive during streaming
+                const pendingMessages: ChatTaskWirePayload<
+                  TUIMessage,
+                  inferSchemaIn<TClientDataSchema>
+                >[] = [];
+                const pmConfig = locals.get(chatPendingMessagesKey);
+                const msgSub = messagesInput.on(async (msg) => {
+                  // If pendingMessages is configured, route to the steering queue
+                  // instead of the wire buffer. The frontend handles re-sending
+                  // non-injected messages via sendMessage on turn complete.
+                  if (pmConfig) {
+                    // Slim wire: at most one delta message per record. The
+                    // pendingMessages handler reads `msg.message` directly
+                    // instead of slicing an array — a wire record arrives
+                    // with the new user message in `.message`, or no message
+                    // at all (regenerate / preload / close / handover-prepare).
+                    const lastUIMessage = msg.message as TUIMessage | undefined;
+                    if (lastUIMessage) {
+                      if (pmConfig.onReceived) {
                         try {
-                          const queue = locals.get(chatSteeringQueueKey) ?? [];
-                          // Deduplicate by message ID — guards against double-sends
-                          if (
-                            lastUIMessage.id &&
-                            queue.some((e) => e.uiMessage.id === lastUIMessage.id)
-                          ) {
-                            return;
-                          }
-                          const modelMsgs = await toModelMessages([lastUIMessage]);
-                          queue.push({
-                            uiMessage: lastUIMessage as UIMessage,
-                            modelMessages: modelMsgs,
+                          await pmConfig.onReceived({
+                            message: lastUIMessage as TUIMessage,
+                            chatId: currentWirePayload.chatId,
+                            turn,
                           });
-                          locals.set(chatSteeringQueueKey, queue);
                         } catch {
-                          /* conversion failed — skip steering queue */
+                          /* non-fatal */
                         }
                       }
-                      return; // Don't add to wire buffer — frontend handles non-injected case
-                    }
 
-                    // No pendingMessages config — standard wire buffer for next turn
-                    pendingMessages.push(
-                      msg as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>
-                    );
-                  });
-
-                  // Track new messages for this turn (user input + assistant response).
-                  const turnNewModelMessages: ModelMessage[] = [];
-                  const turnNewUIMessages: TUIMessage[] = [];
-
-                  // ── Action handling ──────────────────────────────────────
-                  // Actions arrive on the same input stream but with
-                  // trigger === "action". They are NOT turns — only
-                  // `hydrateMessages` and `onAction` fire. No turn lifecycle
-                  // hooks (`onTurnStart` / `prepareMessages` /
-                  // `onBeforeTurnComplete` / `onTurnComplete`) and no
-                  // `run()` invocation. To produce a model response from
-                  // an action, return a `StreamTextResult` (auto-piped),
-                  // string, or UIMessage from `onAction`. Turn counter
-                  // does not advance.
-                  let actionStreamResult: unknown = undefined;
-                  if (isAction) {
-                    // Parse and validate the action payload
-                    const parsedAction = parseAction
-                      ? await parseAction(currentWirePayload.action)
-                      : currentWirePayload.action;
-
-                    // Hydrate messages from backend if configured
-                    if (hydrateMessages) {
-                      const hydrated = await tracer.startActiveSpan(
-                        "hydrateMessages()",
-                        async () => {
-                          return hydrateMessages({
-                            chatId: currentWirePayload.chatId,
-                            turn,
-                            trigger: "action",
-                            incomingMessages: [] as TUIMessage[],
-                            previousMessages: [...accumulatedUIMessages],
-                            clientData,
-                            continuation,
-                            previousRunId,
-                          });
-                        },
-                        {
-                          attributes: {
-                            [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
-                            [SemanticInternalAttributes.COLLAPSED]: true,
-                            "chat.id": currentWirePayload.chatId,
-                            "chat.trigger": "action",
-                          },
+                      try {
+                        const queue = locals.get(chatSteeringQueueKey) ?? [];
+                        // Deduplicate by message ID — guards against double-sends
+                        if (
+                          lastUIMessage.id &&
+                          queue.some((e) => e.uiMessage.id === lastUIMessage.id)
+                        ) {
+                          return;
                         }
-                      );
-                      accumulatedUIMessages = [...hydrated] as TUIMessage[];
-                      accumulatedMessages = await toModelMessages(hydrated);
-                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
-                    }
-
-                    // Fire onAction — handler may mutate state via
-                    // `chat.history.*` and / or return a model response.
-                    if (onAction) {
-                      actionStreamResult = await tracer.startActiveSpan(
-                        "onAction()",
-                        async () => {
-                          return await onAction({
-                            action: parsedAction as any,
-                            chatId: currentWirePayload.chatId,
-                            turn,
-                            clientData,
-                            uiMessages: accumulatedUIMessages,
-                            messages: accumulatedMessages,
-                          });
-                        },
-                        {
-                          attributes: {
-                            [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
-                            [SemanticInternalAttributes.COLLAPSED]: true,
-                            "chat.id": currentWirePayload.chatId,
-                            "chat.action":
-                              typeof parsedAction === "object" && parsedAction !== null
-                                ? JSON.stringify(parsedAction)
-                                : String(parsedAction),
-                          },
-                        }
-                      );
-
-                      // Apply chat.history mutations from onAction
-                      const actionOverride = locals.get(chatOverrideMessagesKey);
-                      if (actionOverride) {
-                        locals.set(chatOverrideMessagesKey, undefined);
-                        accumulatedUIMessages = [...actionOverride] as TUIMessage[];
-                        accumulatedMessages = await toModelMessages(actionOverride);
-                        locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                        const modelMsgs = await toModelMessages([lastUIMessage]);
+                        queue.push({
+                          uiMessage: lastUIMessage as UIMessage,
+                          modelMessages: modelMsgs,
+                        });
+                        locals.set(chatSteeringQueueKey, queue);
+                      } catch {
+                        /* conversion failed — skip steering queue */
                       }
-                    } else {
-                      warnMissingOnActionOnce();
                     }
+                    return; // Don't add to wire buffer — frontend handles non-injected case
                   }
 
-                  // ── Message handling (non-action turns) ───────────────────
-                  //
-                  // Slim wire: at most one delta message arrives per record.
-                  // The accumulator was already seeded at boot from a durable
-                  // snapshot + `session.out` replay (or `hydrateMessages`,
-                  // which also fires per-turn below). Per-turn handling is
-                  // therefore a delta merge, not a full-history reset.
-                  if (currentWirePayload.trigger !== "action") {
+                  // No pendingMessages config — standard wire buffer for next turn
+                  pendingMessages.push(
+                    msg as ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>
+                  );
+                });
 
+                // Track new messages for this turn (user input + assistant response).
+                const turnNewModelMessages: ModelMessage[] = [];
+                const turnNewUIMessages: TUIMessage[] = [];
+
+                // ── Action handling ──────────────────────────────────────
+                // Actions arrive on the same input stream but with
+                // trigger === "action". They are NOT turns — only
+                // `hydrateMessages` and `onAction` fire. No turn lifecycle
+                // hooks (`onTurnStart` / `prepareMessages` /
+                // `onBeforeTurnComplete` / `onTurnComplete`) and no
+                // `run()` invocation. To produce a model response from
+                // an action, return a `StreamTextResult` (auto-piped),
+                // string, or UIMessage from `onAction`. Turn counter
+                // does not advance.
+                let actionStreamResult: unknown = undefined;
+                if (isAction) {
+                  // Parse and validate the action payload
+                  const parsedAction = parseAction
+                    ? await parseAction(currentWirePayload.action)
+                    : currentWirePayload.action;
+
+                  // Hydrate messages from backend if configured
+                  if (hydrateMessages) {
+                    const hydrated = await tracer.startActiveSpan(
+                      "hydrateMessages()",
+                      async () => {
+                        return hydrateMessages({
+                          chatId: currentWirePayload.chatId,
+                          turn,
+                          trigger: "action",
+                          incomingMessages: [] as TUIMessage[],
+                          previousMessages: [...accumulatedUIMessages],
+                          clientData,
+                          continuation,
+                          previousRunId,
+                        });
+                      },
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": currentWirePayload.chatId,
+                          "chat.trigger": "action",
+                        },
+                      }
+                    );
+                    accumulatedUIMessages = [...hydrated] as TUIMessage[];
+                    accumulatedMessages = await toModelMessages(hydrated);
+                    locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                  }
+
+                  // Fire onAction — handler may mutate state via
+                  // `chat.history.*` and / or return a model response.
+                  if (onAction) {
+                    actionStreamResult = await tracer.startActiveSpan(
+                      "onAction()",
+                      async () => {
+                        return await onAction({
+                          action: parsedAction as any,
+                          chatId: currentWirePayload.chatId,
+                          turn,
+                          clientData,
+                          uiMessages: accumulatedUIMessages,
+                          messages: accumulatedMessages,
+                        });
+                      },
+                      {
+                        attributes: {
+                          [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onStart",
+                          [SemanticInternalAttributes.COLLAPSED]: true,
+                          "chat.id": currentWirePayload.chatId,
+                          "chat.action":
+                            typeof parsedAction === "object" && parsedAction !== null
+                              ? JSON.stringify(parsedAction)
+                              : String(parsedAction),
+                        },
+                      }
+                    );
+
+                    // Apply chat.history mutations from onAction
+                    const actionOverride = locals.get(chatOverrideMessagesKey);
+                    if (actionOverride) {
+                      locals.set(chatOverrideMessagesKey, undefined);
+                      accumulatedUIMessages = [...actionOverride] as TUIMessage[];
+                      accumulatedMessages = await toModelMessages(actionOverride);
+                      locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                    }
+                  } else {
+                    warnMissingOnActionOnce();
+                  }
+                }
+
+                // ── Message handling (non-action turns) ───────────────────
+                //
+                // Slim wire: at most one delta message arrives per record.
+                // The accumulator was already seeded at boot from a durable
+                // snapshot + `session.out` replay (or `hydrateMessages`,
+                // which also fires per-turn below). Per-turn handling is
+                // therefore a delta merge, not a full-history reset.
+                if (currentWirePayload.trigger !== "action") {
                   let cleanedUIMessages: TUIMessage[] = cleanedIncomingMessages;
 
                   // Turn-0 head-start with hydrateMessages: the boot seeding from
@@ -6747,8 +6772,7 @@ function chatAgent<
                     ) {
                       const lastUI = cleanedUIMessages[cleanedUIMessages.length - 1]!;
                       const matchedExisting =
-                        lastUI.id !== undefined &&
-                        previouslyKnownMessageIds.has(lastUI.id);
+                        lastUI.id !== undefined && previouslyKnownMessageIds.has(lastUI.id);
                       if (!matchedExisting) {
                         turnNewUIMessages.push(lastUI);
                         const lastModel = (await toModelMessages([lastUI]))[0];
@@ -6793,16 +6817,12 @@ function chatAgent<
                       let replaced = false;
                       for (const raw of cleanedUIMessages) {
                         let incoming = raw;
-                        let idx = accumulatedUIMessages.findIndex(
-                          (m) => m.id === incoming.id
-                        );
+                        let idx = accumulatedUIMessages.findIndex((m) => m.id === incoming.id);
                         if (idx === -1) {
                           const rewritten = rewriteIncomingIdViaToolCallMap(incoming);
                           if (rewritten.id !== incoming.id) {
                             incoming = rewritten as typeof raw;
-                            idx = accumulatedUIMessages.findIndex(
-                              (m) => m.id === incoming.id
-                            );
+                            idx = accumulatedUIMessages.findIndex((m) => m.id === incoming.id);
                           }
                         }
                         if (idx !== -1) {
@@ -6826,9 +6846,7 @@ function chatAgent<
                         accumulatedMessages.push(...incomingModelMessages);
                       }
                       if (turnNewUIMessages.length > 0) {
-                        turnNewModelMessages.push(
-                          ...(await toModelMessages(turnNewUIMessages))
-                        );
+                        turnNewModelMessages.push(...(await toModelMessages(turnNewUIMessages)));
                       }
                     }
                     // `preload` / `close` / `handover-prepare` and submits
@@ -6869,57 +6887,54 @@ function chatAgent<
                   }
 
                   locals.set(chatCurrentUIMessagesKey, accumulatedUIMessages);
+                } // end if (trigger !== "action")
 
-                  } // end if (trigger !== "action")
+                // ── Action result handling ──────────────────────────────
+                // For action turns, skip the turn machinery entirely.
+                // If `onAction` returned a stream / string / UIMessage,
+                // pipe it as the response. Either way, emit
+                // `trigger:turn-complete` and then fall through to the
+                // wait-for-next-message logic (shared with message turns).
+                // The turn counter is decremented so the next iteration
+                // sees the same `turn` value — actions don't count.
+                if (isAction) {
+                  msgSub.off();
 
-                  // ── Action result handling ──────────────────────────────
-                  // For action turns, skip the turn machinery entirely.
-                  // If `onAction` returned a stream / string / UIMessage,
-                  // pipe it as the response. Either way, emit
-                  // `trigger:turn-complete` and then fall through to the
-                  // wait-for-next-message logic (shared with message turns).
-                  // The turn counter is decremented so the next iteration
-                  // sees the same `turn` value — actions don't count.
-                  if (isAction) {
-                    msgSub.off();
-
-                    if (
-                      (locals.get(chatPipeCountKey) ?? 0) === 0 &&
-                      isUIMessageStreamable(actionStreamResult)
-                    ) {
-                      try {
-                        const resolvedOptions = resolveUIMessageStreamOptions();
-                        const uiStream = (
-                          actionStreamResult as UIMessageStreamable
-                        ).toUIMessageStream({
-                          ...resolvedOptions,
-                          generateMessageId:
-                            resolvedOptions.generateMessageId ?? generateMessageId,
-                        });
-                        await pipeChat(uiStream, {
-                          signal: combinedSignal,
-                          spanName: "stream response",
-                        });
-                      } catch (error) {
-                        if (
-                          error instanceof Error &&
-                          error.name === "AbortError" &&
-                          runSignal.aborted
-                        ) {
-                          return "exit";
-                        }
-                        throw error;
+                  if (
+                    (locals.get(chatPipeCountKey) ?? 0) === 0 &&
+                    isUIMessageStreamable(actionStreamResult)
+                  ) {
+                    try {
+                      const resolvedOptions = resolveUIMessageStreamOptions();
+                      const uiStream = (
+                        actionStreamResult as UIMessageStreamable
+                      ).toUIMessageStream({
+                        ...resolvedOptions,
+                        generateMessageId: resolvedOptions.generateMessageId ?? generateMessageId,
+                      });
+                      await pipeChat(uiStream, {
+                        signal: combinedSignal,
+                        spanName: "stream response",
+                      });
+                    } catch (error) {
+                      if (
+                        error instanceof Error &&
+                        error.name === "AbortError" &&
+                        runSignal.aborted
+                      ) {
+                        return "exit";
                       }
+                      throw error;
                     }
-
-                    await writeTurnCompleteChunk(currentWirePayload.chatId);
-
-                    // Don't consume a turn iteration — actions aren't turns.
-                    turn--;
                   }
 
-                  if (!isAction) {
+                  await writeTurnCompleteChunk(currentWirePayload.chatId);
 
+                  // Don't consume a turn iteration — actions aren't turns.
+                  turn--;
+                }
+
+                if (!isAction) {
                   // Mint a scoped public access token once per turn, reused for
                   // onChatStart, onTurnStart, onTurnComplete, and the turn-complete chunk.
                   const currentRunId = ctx.run.id;
@@ -7097,7 +7112,10 @@ function chatAgent<
                       // Don't call userRun. Don't pipe. Skip directly
                       // to the post-turn flow below.
                     } else {
-                      const preparedMessages = await applyPrepareMessages(accumulatedMessages, "run");
+                      const preparedMessages = await applyPrepareMessages(
+                        accumulatedMessages,
+                        "run"
+                      );
                       runResult = await userRun({
                         ...restWire,
                         messages: preparedMessages,
@@ -7120,7 +7138,10 @@ function chatAgent<
                     // We call toUIMessageStream ourselves to attach onFinish for response capture.
                     // Pass originalMessages so the AI SDK reuses message IDs across turns
                     // (e.g. for tool approval continuations / HITL flows).
-                    if ((locals.get(chatPipeCountKey) ?? 0) === 0 && isUIMessageStreamable(runResult)) {
+                    if (
+                      (locals.get(chatPipeCountKey) ?? 0) === 0 &&
+                      isUIMessageStreamable(runResult)
+                    ) {
                       onFinishAttached = true;
                       const resolvedOptions = resolveUIMessageStreamOptions();
                       // For action turns, don't pass originalMessages: the response
@@ -7133,9 +7154,7 @@ function chatAgent<
                         // Pass originalMessages so the AI SDK reuses message IDs across
                         // turns (e.g. for tool approval continuations / HITL flows).
                         // Omit for action turns to force a fresh response ID.
-                        ...(isActionTurn
-                          ? {}
-                          : { originalMessages: accumulatedUIMessages }),
+                        ...(isActionTurn ? {} : { originalMessages: accumulatedUIMessages }),
                         // Always provide generateMessageId so the start chunk carries a
                         // messageId. Without this, the frontend and backend generate IDs
                         // independently and they won't match for ID-based dedup.
@@ -7152,7 +7171,10 @@ function chatAgent<
                           resolveOnFinish!();
                         },
                       });
-                      await pipeChat(uiStream, { signal: combinedSignal, spanName: "stream response" });
+                      await pipeChat(uiStream, {
+                        signal: combinedSignal,
+                        spanName: "stream response",
+                      });
                     }
                   } catch (error) {
                     // Handle AbortError from streamText gracefully
@@ -7186,7 +7208,10 @@ function chatAgent<
                   // never reports final usage), which would block the turn loop
                   // from ever firing onTurnComplete / writeTurnComplete.
                   let turnUsage: LanguageModelUsage | undefined;
-                  if (runResult != null && typeof (runResult as any).totalUsage?.then === "function") {
+                  if (
+                    runResult != null &&
+                    typeof (runResult as any).totalUsage?.then === "function"
+                  ) {
                     try {
                       turnUsage = (await Promise.race([
                         (runResult as any).totalUsage,
@@ -7290,7 +7315,10 @@ function chatAgent<
                     // may produce a message with an empty ID since IDs are normally
                     // assigned by the frontend's useChat).
                     if (!capturedResponseMessage.id) {
-                      capturedResponseMessage = { ...capturedResponseMessage, id: generateMessageId() };
+                      capturedResponseMessage = {
+                        ...capturedResponseMessage,
+                        id: generateMessageId(),
+                      };
                     }
                     // Append any non-transient data parts queued via chat.response or writer.write()
                     const queuedParts = locals.get(chatResponsePartsKey);
@@ -7307,9 +7335,7 @@ function chatAgent<
                     // instead of pushing a duplicate. For action turns this never
                     // matches because originalMessages is omitted (fresh ID).
                     const existingIdx = capturedResponseMessage.id
-                      ? accumulatedUIMessages.findIndex(
-                          (m) => m.id === capturedResponseMessage!.id
-                        )
+                      ? accumulatedUIMessages.findIndex((m) => m.id === capturedResponseMessage!.id)
                       : -1;
                     if (existingIdx !== -1) {
                       accumulatedUIMessages[existingIdx] = capturedResponseMessage;
@@ -7432,16 +7458,16 @@ function chatAgent<
                               accumulatedMessages = outerCompaction.compactModelMessages
                                 ? await outerCompaction.compactModelMessages(outerCompactEvent)
                                 : [
-                                  {
-                                    role: "assistant" as const,
-                                    content: [
-                                      {
-                                        type: "text" as const,
-                                        text: `[Conversation summary]\n\n${summary}`,
-                                      },
-                                    ],
-                                  },
-                                ];
+                                    {
+                                      role: "assistant" as const,
+                                      content: [
+                                        {
+                                          type: "text" as const,
+                                          text: `[Conversation summary]\n\n${summary}`,
+                                        },
+                                      ],
+                                    },
+                                  ];
 
                               // UI messages: callback or default (preserve all)
                               if (outerCompaction.compactUIMessages) {
@@ -7469,7 +7495,10 @@ function chatAgent<
                                 });
                               }
 
-                              compactionSpan.setAttribute("compaction.summary_length", summary.length);
+                              compactionSpan.setAttribute(
+                                "compaction.summary_length",
+                                summary.length
+                              );
 
                               write({
                                 type: "data-compaction",
@@ -7564,7 +7593,9 @@ function chatAgent<
                   // Drain any late response parts added during onBeforeTurnComplete
                   const lateParts = locals.get(chatResponsePartsKey);
                   if (lateParts && lateParts.length > 0 && capturedResponseMessage) {
-                    const idx = accumulatedUIMessages.findIndex((m) => m.id === capturedResponseMessage!.id);
+                    const idx = accumulatedUIMessages.findIndex(
+                      (m) => m.id === capturedResponseMessage!.id
+                    );
                     if (idx !== -1) {
                       const msg = accumulatedUIMessages[idx]!;
                       accumulatedUIMessages[idx] = {
@@ -7626,7 +7657,9 @@ function chatAgent<
                             ? { "gen_ai.usage.total_tokens": turnUsage.totalTokens }
                             : {}),
                           ...(cumulativeUsage.totalTokens != null
-                            ? { "gen_ai.usage.cumulative_total_tokens": cumulativeUsage.totalTokens }
+                            ? {
+                                "gen_ai.usage.cumulative_total_tokens": cumulativeUsage.totalTokens,
+                              }
                             : {}),
                         },
                       }
@@ -7656,17 +7689,14 @@ function chatAgent<
                       await tracer.startActiveSpan(
                         "snapshot.write",
                         async () => {
-                          const snapshotInCursor =
-                            getChatSession().in.lastDispatchedSeqNum();
+                          const snapshotInCursor = getChatSession().in.lastDispatchedSeqNum();
                           await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
                             version: 1,
                             savedAt: Date.now(),
                             messages: accumulatedUIMessages,
                             lastOutEventId: turnCompleteResult?.lastEventId,
                             lastInEventId:
-                              snapshotInCursor !== undefined
-                                ? String(snapshotInCursor)
-                                : undefined,
+                              snapshotInCursor !== undefined ? String(snapshotInCursor) : undefined,
                           });
                         },
                         {
@@ -7689,54 +7719,50 @@ function chatAgent<
                       );
                     }
                   }
+                } // end if (!isAction)
 
-                  } // end if (!isAction)
+                // NOTE: We intentionally do NOT await deferred work from onTurnComplete here.
+                // Promises deferred in onTurnComplete (e.g. background self-review via
+                // chat.defer + chat.inject) run during the idle wait. If they complete
+                // before the next message, their injected context is picked up in prepareStep.
+                // The pre-onBeforeTurnComplete drain handles promises from onTurnStart/run().
 
-                  // NOTE: We intentionally do NOT await deferred work from onTurnComplete here.
-                  // Promises deferred in onTurnComplete (e.g. background self-review via
-                  // chat.defer + chat.inject) run during the idle wait. If they complete
-                  // before the next message, their injected context is picked up in prepareStep.
-                  // The pre-onBeforeTurnComplete drain handles promises from onTurnStart/run().
+                // Recovery-boot injection: drain remaining recovered turns
+                // before any other source. `onRecoveryBoot` (or its default)
+                // produced these from in-flight user messages on session.in
+                // that the dead predecessor never acknowledged.
+                if (bootInjectedQueue.length > 0) {
+                  currentWirePayload = bootInjectedQueue.shift()!;
+                  return "continue";
+                }
 
-                  // Recovery-boot injection: drain remaining recovered turns
-                  // before any other source. `onRecoveryBoot` (or its default)
-                  // produced these from in-flight user messages on session.in
-                  // that the dead predecessor never acknowledged.
-                  if (bootInjectedQueue.length > 0) {
-                    currentWirePayload = bootInjectedQueue.shift()!;
-                    return "continue";
-                  }
+                // If messages arrived during streaming (without pendingMessages config),
+                // use the first one immediately as the next turn.
+                if (pendingMessages.length > 0) {
+                  currentWirePayload = pendingMessages[0]!;
+                  return "continue";
+                }
 
-                  // If messages arrived during streaming (without pendingMessages config),
-                  // use the first one immediately as the next turn.
-                  if (pendingMessages.length > 0) {
-                    currentWirePayload = pendingMessages[0]!;
-                    return "continue";
-                  }
+                // chat.requestUpgrade() was called — exit the loop so the
+                // transport triggers a new run on the latest version.
+                // chat.endRun() — same exit, no upgrade semantics.
+                if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
+                  return "exit";
+                }
 
-                  // chat.requestUpgrade() was called — exit the loop so the
-                  // transport triggers a new run on the latest version.
-                  // chat.endRun() — same exit, no upgrade semantics.
-                  if (
-                    locals.get(chatUpgradeRequestedKey) ||
-                    locals.get(chatEndRunRequestedKey)
-                  ) {
-                    return "exit";
-                  }
+                // Wait for the next message — stay idle briefly, then suspend
+                const effectiveIdleTimeout =
+                  (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ??
+                  idleTimeoutInSeconds;
+                const effectiveTurnTimeout =
+                  (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
 
-                  // Wait for the next message — stay idle briefly, then suspend
-                  const effectiveIdleTimeout =
-                    (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ??
-                    idleTimeoutInSeconds;
-                  const effectiveTurnTimeout =
-                    (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
-
-                  const next = await messagesInput.waitWithIdleTimeout({
-                    idleTimeoutInSeconds: effectiveIdleTimeout,
-                    timeout: effectiveTurnTimeout,
-                    spanName: "waiting for next message",
-                    onSuspend: onChatSuspend
-                      ? async () => {
+                const next = await messagesInput.waitWithIdleTimeout({
+                  idleTimeoutInSeconds: effectiveIdleTimeout,
+                  timeout: effectiveTurnTimeout,
+                  spanName: "waiting for next message",
+                  onSuspend: onChatSuspend
+                    ? async () => {
                         await tracer.startActiveSpan(
                           "onChatSuspend()",
                           async () => {
@@ -7762,9 +7788,9 @@ function chatAgent<
                           }
                         );
                       }
-                      : undefined,
-                    onResume: onChatResume
-                      ? async () => {
+                    : undefined,
+                  onResume: onChatResume
+                    ? async () => {
                         await tracer.startActiveSpan(
                           "onChatResume()",
                           async () => {
@@ -7790,204 +7816,202 @@ function chatAgent<
                           }
                         );
                       }
-                      : undefined,
-                  });
-
-                  if (!next.ok) {
-                    return "exit";
-                  }
-
-                  currentWirePayload = next.output as ChatTaskWirePayload<
-                    TUIMessage,
-                    inferSchemaIn<TClientDataSchema>
-                  >;
-
-                  // Close signal — exit the loop gracefully
-                  if (currentWirePayload.trigger === "close") {
-                    return "exit";
-                  }
-
-                  return "continue";
-                },
-                {
-                  attributes: turnAttributes,
-                }
-              );
-
-              if (turnResult === "exit") return;
-              // "continue" means proceed to next iteration
-            } catch (turnError) {
-              // Turn error handler: write an error chunk + turn-complete to the stream
-              // so the client sees the error, then wait for the next message instead
-              // of killing the entire run. This keeps the conversation alive.
-              if (turnError instanceof Error && turnError.name === "AbortError" && runSignal.aborted) {
-                // Full run cancellation — exit immediately
-                throw turnError;
-              }
-
-              // OOM errors must escape the turn loop so the task runtime can
-              // honor `retry.outOfMemory.machine` (set on chat.agent via
-              // `oomMachine`). Catching them here would keep the dead worker
-              // alive and defeat the machine swap. Re-throw and let the
-              // runtime dispatch the retry on a larger machine; recovery on
-              // attempt 2 picks up via the standard continuation path
-              // (same chatId / Session, accumulator rehydrates).
-              if (turnError instanceof OutOfMemoryError) {
-                throw turnError;
-              }
-
-              let errorTurnCompleteResult: Awaited<
-                ReturnType<typeof writeTurnCompleteChunk>
-              > | undefined;
-              try {
-                await withChatWriter(async (writer) => {
-                  const errorText =
-                    turnError instanceof Error ? turnError.message : "An unexpected error occurred";
-                  writer.write({ type: "error", errorText } as any);
+                    : undefined,
                 });
-                // Signal turn complete so the client knows this turn is done
-                errorTurnCompleteResult = await writeTurnCompleteChunk(currentWirePayload.chatId);
-              } catch {
-                // Best-effort — if stream write fails, let the run continue anyway
-              }
 
-              // The submit-message merge into the accumulator may not have run
-              // yet (a pre-run hook threw), so fold the wire message in for the
-              // error event + snapshot — the cursor has already advanced past it,
-              // so otherwise it survives in neither the snapshot nor the `.in` tail.
-              const erroredWireMessage = (currentWirePayload as { message?: TUIMessage }).message;
-              const erroredUIMessages =
-                erroredWireMessage &&
-                !accumulatedUIMessages.some((m) => m.id === erroredWireMessage.id)
-                  ? [...accumulatedUIMessages, erroredWireMessage]
-                  : accumulatedUIMessages;
-
-              // Fire onTurnComplete on the error path too — the docs promise it
-              // runs "after every turn, successful or errored" so customers can
-              // mark the turn failed. `responseMessage` is undefined/partial and
-              // `error` carries the thrown value.
-              if (onTurnComplete) {
-                try {
-                  await tracer.startActiveSpan(
-                    "onTurnComplete()",
-                    async () => {
-                      await onTurnComplete({
-                        ctx,
-                        chatId: currentWirePayload.chatId,
-                        messages: accumulatedMessages,
-                        uiMessages: erroredUIMessages,
-                        newMessages: [],
-                        newUIMessages: erroredWireMessage ? [erroredWireMessage] : [],
-                        responseMessage: undefined,
-                        rawResponseMessage: undefined,
-                        turn,
-                        runId: ctx.run.id,
-                        chatAccessToken: "",
-                        // Parsed `clientData` isn't reliably in scope here (parsing
-                        // may itself be the failure), and the raw metadata is the
-                        // wrong shape — leave it undefined on the error path.
-                        clientData: undefined,
-                        stopped: false,
-                        continuation,
-                        previousRunId,
-                        preloaded,
-                        totalUsage: cumulativeUsage,
-                        finishReason: "error",
-                        error: turnError,
-                        lastEventId: errorTurnCompleteResult?.lastEventId,
-                      });
-                    },
-                    {
-                      attributes: {
-                        [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
-                        [SemanticInternalAttributes.COLLAPSED]: true,
-                        "chat.id": currentWirePayload.chatId,
-                        "chat.turn": turn + 1,
-                        "chat.errored": true,
-                      },
-                    }
-                  );
-                } catch {
-                  // A throwing onTurnComplete on the error path must not crash
-                  // the run — keep the conversation alive for the next message.
+                if (!next.ok) {
+                  return "exit";
                 }
-              }
 
-              // Persist a snapshot so the failed turn's user message isn't
-              // stranded. `writeTurnCompleteChunk` already advanced the `.in`
-              // cursor past it (via the session-in-event-id header), and the
-              // success-path snapshot write is skipped on error — without this
-              // the next boot would resume past a message that exists in
-              // neither the snapshot nor the replayable `.in` tail.
-              if (!hydrateMessages) {
-                try {
-                  const errorSnapshotInCursor =
-                    getChatSession().in.lastDispatchedSeqNum();
-                  await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
-                    version: 1,
-                    savedAt: Date.now(),
-                    messages: erroredUIMessages,
-                    lastOutEventId: errorTurnCompleteResult?.lastEventId,
-                    lastInEventId:
-                      errorSnapshotInCursor !== undefined
-                        ? String(errorSnapshotInCursor)
-                        : undefined,
-                  });
-                } catch (error) {
-                  logger.warn("chat.agent: error-path snapshot write failed", {
-                    error: error instanceof Error ? error.message : String(error),
-                    sessionId: sessionIdForSnapshot,
-                  });
+                currentWirePayload = next.output as ChatTaskWirePayload<
+                  TUIMessage,
+                  inferSchemaIn<TClientDataSchema>
+                >;
+
+                // Close signal — exit the loop gracefully
+                if (currentWirePayload.trigger === "close") {
+                  return "exit";
                 }
+
+                return "continue";
+              },
+              {
+                attributes: turnAttributes,
               }
+            );
 
-              // chat.requestUpgrade() / chat.endRun() — exit after error turn too
-              if (
-                locals.get(chatUpgradeRequestedKey) ||
-                locals.get(chatEndRunRequestedKey)
-              ) {
-                return;
-              }
-
-              // Drain remaining recovered turns before idling — a thrown
-              // recovered turn shouldn't strand the rest of the boot queue
-              // until an unrelated live message arrives.
-              if (bootInjectedQueue.length > 0) {
-                currentWirePayload = bootInjectedQueue.shift()!;
-                continue;
-              }
-
-              // Wait for the next message — same as after a successful turn
-              const effectiveIdleTimeout =
-                (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ??
-                idleTimeoutInSeconds;
-              const effectiveTurnTimeout =
-                (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
-
-              const next = await messagesInput.waitWithIdleTimeout({
-                idleTimeoutInSeconds: effectiveIdleTimeout,
-                timeout: effectiveTurnTimeout,
-                spanName: "waiting for next message (after error)",
-              });
-
-              if (!next.ok) {
-                return; // Timed out — end run gracefully
-              }
-
-              currentWirePayload = next.output as ChatTaskWirePayload<
-                TUIMessage,
-                inferSchemaIn<TClientDataSchema>
-              >;
-              // Continue to next iteration of the for loop
+            if (turnResult === "exit") return;
+            // "continue" means proceed to next iteration
+          } catch (turnError) {
+            // Turn error handler: write an error chunk + turn-complete to the stream
+            // so the client sees the error, then wait for the next message instead
+            // of killing the entire run. This keeps the conversation alive.
+            if (
+              turnError instanceof Error &&
+              turnError.name === "AbortError" &&
+              runSignal.aborted
+            ) {
+              // Full run cancellation — exit immediately
+              throw turnError;
             }
+
+            // OOM errors must escape the turn loop so the task runtime can
+            // honor `retry.outOfMemory.machine` (set on chat.agent via
+            // `oomMachine`). Catching them here would keep the dead worker
+            // alive and defeat the machine swap. Re-throw and let the
+            // runtime dispatch the retry on a larger machine; recovery on
+            // attempt 2 picks up via the standard continuation path
+            // (same chatId / Session, accumulator rehydrates).
+            if (turnError instanceof OutOfMemoryError) {
+              throw turnError;
+            }
+
+            let errorTurnCompleteResult:
+              | Awaited<ReturnType<typeof writeTurnCompleteChunk>>
+              | undefined;
+            try {
+              await withChatWriter(async (writer) => {
+                const errorText =
+                  turnError instanceof Error ? turnError.message : "An unexpected error occurred";
+                writer.write({ type: "error", errorText } as any);
+              });
+              // Signal turn complete so the client knows this turn is done
+              errorTurnCompleteResult = await writeTurnCompleteChunk(currentWirePayload.chatId);
+            } catch {
+              // Best-effort — if stream write fails, let the run continue anyway
+            }
+
+            // The submit-message merge into the accumulator may not have run
+            // yet (a pre-run hook threw), so fold the wire message in for the
+            // error event + snapshot — the cursor has already advanced past it,
+            // so otherwise it survives in neither the snapshot nor the `.in` tail.
+            const erroredWireMessage = (currentWirePayload as { message?: TUIMessage }).message;
+            const erroredUIMessages =
+              erroredWireMessage &&
+              !accumulatedUIMessages.some((m) => m.id === erroredWireMessage.id)
+                ? [...accumulatedUIMessages, erroredWireMessage]
+                : accumulatedUIMessages;
+
+            // Fire onTurnComplete on the error path too — the docs promise it
+            // runs "after every turn, successful or errored" so customers can
+            // mark the turn failed. `responseMessage` is undefined/partial and
+            // `error` carries the thrown value.
+            if (onTurnComplete) {
+              try {
+                await tracer.startActiveSpan(
+                  "onTurnComplete()",
+                  async () => {
+                    await onTurnComplete({
+                      ctx,
+                      chatId: currentWirePayload.chatId,
+                      messages: accumulatedMessages,
+                      uiMessages: erroredUIMessages,
+                      newMessages: [],
+                      newUIMessages: erroredWireMessage ? [erroredWireMessage] : [],
+                      responseMessage: undefined,
+                      rawResponseMessage: undefined,
+                      turn,
+                      runId: ctx.run.id,
+                      chatAccessToken: "",
+                      // Parsed `clientData` isn't reliably in scope here (parsing
+                      // may itself be the failure), and the raw metadata is the
+                      // wrong shape — leave it undefined on the error path.
+                      clientData: undefined,
+                      stopped: false,
+                      continuation,
+                      previousRunId,
+                      preloaded,
+                      totalUsage: cumulativeUsage,
+                      finishReason: "error",
+                      error: turnError,
+                      lastEventId: errorTurnCompleteResult?.lastEventId,
+                    });
+                  },
+                  {
+                    attributes: {
+                      [SemanticInternalAttributes.STYLE_ICON]: "task-hook-onComplete",
+                      [SemanticInternalAttributes.COLLAPSED]: true,
+                      "chat.id": currentWirePayload.chatId,
+                      "chat.turn": turn + 1,
+                      "chat.errored": true,
+                    },
+                  }
+                );
+              } catch {
+                // A throwing onTurnComplete on the error path must not crash
+                // the run — keep the conversation alive for the next message.
+              }
+            }
+
+            // Persist a snapshot so the failed turn's user message isn't
+            // stranded. `writeTurnCompleteChunk` already advanced the `.in`
+            // cursor past it (via the session-in-event-id header), and the
+            // success-path snapshot write is skipped on error — without this
+            // the next boot would resume past a message that exists in
+            // neither the snapshot nor the replayable `.in` tail.
+            if (!hydrateMessages) {
+              try {
+                const errorSnapshotInCursor = getChatSession().in.lastDispatchedSeqNum();
+                await writeChatSnapshot<TUIMessage>(sessionIdForSnapshot, {
+                  version: 1,
+                  savedAt: Date.now(),
+                  messages: erroredUIMessages,
+                  lastOutEventId: errorTurnCompleteResult?.lastEventId,
+                  lastInEventId:
+                    errorSnapshotInCursor !== undefined ? String(errorSnapshotInCursor) : undefined,
+                });
+              } catch (error) {
+                logger.warn("chat.agent: error-path snapshot write failed", {
+                  error: error instanceof Error ? error.message : String(error),
+                  sessionId: sessionIdForSnapshot,
+                });
+              }
+            }
+
+            // chat.requestUpgrade() / chat.endRun() — exit after error turn too
+            if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
+              return;
+            }
+
+            // Drain remaining recovered turns before idling — a thrown
+            // recovered turn shouldn't strand the rest of the boot queue
+            // until an unrelated live message arrives.
+            if (bootInjectedQueue.length > 0) {
+              currentWirePayload = bootInjectedQueue.shift()!;
+              continue;
+            }
+
+            // Wait for the next message — same as after a successful turn
+            const effectiveIdleTimeout =
+              (metadata.get(IDLE_TIMEOUT_METADATA_KEY) as number | undefined) ??
+              idleTimeoutInSeconds;
+            const effectiveTurnTimeout =
+              (metadata.get(TURN_TIMEOUT_METADATA_KEY) as string | undefined) ?? turnTimeout;
+
+            const next = await messagesInput.waitWithIdleTimeout({
+              idleTimeoutInSeconds: effectiveIdleTimeout,
+              timeout: effectiveTurnTimeout,
+              spanName: "waiting for next message (after error)",
+            });
+
+            if (!next.ok) {
+              return; // Timed out — end run gracefully
+            }
+
+            currentWirePayload = next.output as ChatTaskWirePayload<
+              TUIMessage,
+              inferSchemaIn<TClientDataSchema>
+            >;
+            // Continue to next iteration of the for loop
           }
-        } finally {
-          // `stopSub` is registered post-preload so the close-during-preload
-          // early-return path may exit before it ever attached. Guard the
-          // cleanup so a missing subscription doesn't throw.
-          stopSub?.off();
         }
-    }
+      } finally {
+        // `stopSub` is registered post-preload so the close-during-preload
+        // early-return path may exit before it ever attached. Guard the
+        // cleanup so a missing subscription doesn't throw.
+        stopSub?.off();
+      }
+    },
   });
 
   // Register clientDataSchema so the CLI converts it to JSONSchema
@@ -8083,7 +8107,9 @@ export interface ChatBuilder<
   ): ChatBuilder<TUIMessage, TClientDataSchema>;
 
   /** Register a builder-level `onCompacted` hook. Runs before the task-level hook if both are set. */
-  onCompacted(fn: (event: CompactedEvent) => Promise<void> | void): ChatBuilder<TUIMessage, TClientDataSchema>;
+  onCompacted(
+    fn: (event: CompactedEvent) => Promise<void> | void
+  ): ChatBuilder<TUIMessage, TClientDataSchema>;
 
   /** Register a builder-level `onChatSuspend` hook. Runs before the task-level hook if both are set. */
   onChatSuspend(
@@ -8107,12 +8133,24 @@ export interface ChatBuilder<
    * (backwards compatible).
    */
   agent: [TClientDataSchema] extends [undefined]
-  ? <TId extends string, TInfer extends TaskSchema | undefined = undefined, TAction extends TaskSchema | undefined = undefined, TTools extends ToolSet = ToolSet>(
-    options: ChatAgentOptions<TId, TInfer, TUIMessage, TAction, TTools>
-  ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TInfer>>, unknown>
-  : <TId extends string, TAction extends TaskSchema | undefined = undefined, TTools extends ToolSet = ToolSet>(
-    options: Omit<ChatAgentOptions<TId, TClientDataSchema, TUIMessage, TAction, TTools>, "clientDataSchema">
-  ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown>;
+    ? <
+        TId extends string,
+        TInfer extends TaskSchema | undefined = undefined,
+        TAction extends TaskSchema | undefined = undefined,
+        TTools extends ToolSet = ToolSet,
+      >(
+        options: ChatAgentOptions<TId, TInfer, TUIMessage, TAction, TTools>
+      ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TInfer>>, unknown>
+    : <
+        TId extends string,
+        TAction extends TaskSchema | undefined = undefined,
+        TTools extends ToolSet = ToolSet,
+      >(
+        options: Omit<
+          ChatAgentOptions<TId, TClientDataSchema, TUIMessage, TAction, TTools>,
+          "clientDataSchema"
+        >
+      ) => Task<TId, ChatTaskWirePayload<TUIMessage, inferSchemaIn<TClientDataSchema>>, unknown>;
 
   /**
    * Create a custom agent with manual lifecycle control.
@@ -8184,9 +8222,7 @@ function createChatBuilder<
       });
     },
 
-    onBoot(
-      fn: (event: BootEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void
-    ) {
+    onBoot(fn: (event: BootEvent<inferSchemaOut<TClientDataSchema>>) => Promise<void> | void) {
       return createChatBuilder<TUIMessage, TClientDataSchema>({
         ...config,
         hooks: { ...config.hooks, onBoot: fn },
@@ -8269,7 +8305,7 @@ function createChatBuilder<
       const mergedUiStream =
         config.uiStreamOptions && options.uiMessageStreamOptions
           ? { ...config.uiStreamOptions, ...options.uiMessageStreamOptions }
-          : options.uiMessageStreamOptions ?? config.uiStreamOptions;
+          : (options.uiMessageStreamOptions ?? config.uiStreamOptions);
 
       return chatAgent({
         ...options,
@@ -9013,9 +9049,9 @@ class ChatMessageAccumulator {
    */
   prepareStep():
     | ((args: {
-      messages: ModelMessage[];
-      steps: CompactionStep[];
-    }) => Promise<{ messages: ModelMessage[] } | undefined>)
+        messages: ModelMessage[];
+        steps: CompactionStep[];
+      }) => Promise<{ messages: ModelMessage[] } | undefined>)
     | undefined {
     if (!this._compaction && !this._pendingMessages) return undefined;
     const comp = this._compaction;
@@ -9104,11 +9140,11 @@ class ChatMessageAccumulator {
     this.modelMessages = this._compaction.compactModelMessages
       ? await this._compaction.compactModelMessages(compactEvent)
       : [
-        {
-          role: "assistant" as const,
-          content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }],
-        },
-      ];
+          {
+            role: "assistant" as const,
+            content: [{ type: "text" as const, text: `[Conversation summary]\n\n${summary}` }],
+          },
+        ];
 
     if (this._compaction.compactUIMessages) {
       this.uiMessages = await this._compaction.compactUIMessages(compactEvent);
@@ -9203,9 +9239,9 @@ export type ChatTurn = {
    */
   prepareStep():
     | ((args: {
-      messages: ModelMessage[];
-      steps: CompactionStep[];
-    }) => Promise<{ messages: ModelMessage[] } | undefined>)
+        messages: ModelMessage[];
+        steps: CompactionStep[];
+      }) => Promise<{ messages: ModelMessage[] } | undefined>)
     | undefined;
 };
 
@@ -9293,7 +9329,9 @@ function createChatSession(
             const signal = await waitForHandover({
               payload: currentPayload,
               idleTimeoutInSeconds:
-                sessionIdleTimeoutOpt ?? currentPayload.idleTimeoutInSeconds ?? idleTimeoutInSeconds,
+                sessionIdleTimeoutOpt ??
+                currentPayload.idleTimeoutInSeconds ??
+                idleTimeoutInSeconds,
               timeout,
             });
             if (!signal || signal.kind === "handover-skip" || runSignal.aborted) {
@@ -9314,7 +9352,10 @@ function createChatSession(
           // a turn immediately would invoke the model with no user input.
           const isMessagelessContinuationBoot =
             currentPayload.continuation === true && !currentPayload.message;
-          if (turn === 0 && (currentPayload.trigger === "preload" || isMessagelessContinuationBoot)) {
+          if (
+            turn === 0 &&
+            (currentPayload.trigger === "preload" || isMessagelessContinuationBoot)
+          ) {
             const result = await messagesInput.waitWithIdleTimeout({
               idleTimeoutInSeconds:
                 sessionIdleTimeoutOpt ?? currentPayload.idleTimeoutInSeconds ?? 30,
@@ -9341,10 +9382,7 @@ function createChatSession(
           // Subsequent turns: wait for the next message
           if (turn > 0) {
             // chat.requestUpgrade() / chat.endRun() — exit before waiting
-            if (
-              locals.get(chatUpgradeRequestedKey) ||
-              locals.get(chatEndRunRequestedKey)
-            ) {
+            if (locals.get(chatUpgradeRequestedKey) || locals.get(chatEndRunRequestedKey)) {
               stop.cleanup();
               return { done: true, value: undefined };
             }
@@ -9487,9 +9525,7 @@ function createChatSession(
                 }
                 const response = accumulator.uiMessages.at(-1);
                 if (!response || response.role !== "assistant") {
-                  throw new Error(
-                    "turn.complete() could not find the spliced handover response"
-                  );
+                  throw new Error("turn.complete() could not find the spliced handover response");
                 }
                 sessionMsgSub.off();
                 await chatWriteTurnComplete();
@@ -9605,18 +9641,17 @@ function createChatSession(
                   accumulator.modelMessages = sessionCompaction.compactModelMessages
                     ? await sessionCompaction.compactModelMessages(compactEvent)
                     : [
-                      {
-                        role: "assistant" as const,
-                        content: [
-                          { type: "text" as const, text: `[Conversation summary]\n\n${summary}` },
-                        ],
-                      },
-                    ];
+                        {
+                          role: "assistant" as const,
+                          content: [
+                            { type: "text" as const, text: `[Conversation summary]\n\n${summary}` },
+                          ],
+                        },
+                      ];
 
                   if (sessionCompaction.compactUIMessages) {
-                    accumulator.uiMessages = await sessionCompaction.compactUIMessages(
-                      compactEvent
-                    );
+                    accumulator.uiMessages =
+                      await sessionCompaction.compactUIMessages(compactEvent);
                   }
                 }
               }
@@ -9630,7 +9665,10 @@ function createChatSession(
               // Append any non-transient data parts queued via chat.response or writer.write()
               const queuedParts = locals.get(chatResponsePartsKey);
               if (queuedParts && queuedParts.length > 0) {
-                response = { ...response, parts: [...(response.parts ?? []), ...(queuedParts as UIMessage["parts"])] };
+                response = {
+                  ...response,
+                  parts: [...(response.parts ?? []), ...(queuedParts as UIMessage["parts"])],
+                };
                 locals.set(chatResponsePartsKey, []);
               }
               await accumulator.addResponse(response);
@@ -9867,8 +9905,8 @@ function chatLocal<T extends Record<string, unknown>>(options: { id: string }): 
       if (current === undefined) {
         throw new Error(
           "chat.local can only be modified after initialization. " +
-          "Call local.init() in onBoot (recommended — fires on every fresh worker including continuation runs) or run() first. " +
-          "If you previously initialized in onChatStart, move it to onBoot — onChatStart only fires on the chat's very first message and will not run on a continuation."
+            "Call local.init() in onBoot (recommended — fires on every fresh worker including continuation runs) or run() first. " +
+            "If you previously initialized in onChatStart, move it to onBoot — onChatStart only fires on the chat's very first message and will not run on a continuation."
         );
       }
       locals.set(localKey, { ...current, [prop]: value });
@@ -9956,9 +9994,7 @@ export type ChatStartSessionEndpointContext = {
   chatId: string;
 };
 
-export type ChatStartSessionBaseURLResolver = (
-  ctx: ChatStartSessionEndpointContext
-) => string;
+export type ChatStartSessionBaseURLResolver = (ctx: ChatStartSessionEndpointContext) => string;
 
 export type ChatStartSessionFetchOverride = (
   url: string,
@@ -9989,6 +10025,12 @@ export type CreateChatStartSessionActionOptions = {
    * custom retry. Applies to both session-create and JWT-claims POSTs.
    */
   fetch?: ChatStartSessionFetchOverride;
+  /**
+   * API client config (baseURL / accessToken) to scope this action to a specific
+   * environment, for callers that can't set a global `TRIGGER_SECRET_KEY`. The
+   * returned action runs under this config.
+   */
+  apiClient?: ApiClientConfiguration;
 };
 
 /**
@@ -10081,6 +10123,15 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
       );
     }
 
+    // Scope the action to `apiClient`'s env: re-enter without it so the body
+    // runs once, under that config (read via apiClientManager.accessToken/.baseURL).
+    if (options?.apiClient) {
+      const { apiClient, ...rest } = options;
+      return apiClientManager.runWithConfig(apiClient, () =>
+        createChatStartSessionAction<TChat>(taskId, rest)(params)
+      );
+    }
+
     // The first run boots before the user's first message lands on
     // `.in/append`, so it sees an empty `messages` array and `trigger:
     // "preload"`. This matches the pre-Sessions preload semantics:
@@ -10119,15 +10170,13 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
       ...(options?.triggerConfig?.maxAttempts !== undefined ||
       params.triggerConfig?.maxAttempts !== undefined
         ? {
-            maxAttempts:
-              params.triggerConfig?.maxAttempts ?? options?.triggerConfig?.maxAttempts!,
+            maxAttempts: params.triggerConfig?.maxAttempts ?? options?.triggerConfig?.maxAttempts!,
           }
         : {}),
       ...(options?.triggerConfig?.maxDuration !== undefined ||
       params.triggerConfig?.maxDuration !== undefined
         ? {
-            maxDuration:
-              params.triggerConfig?.maxDuration ?? options?.triggerConfig?.maxDuration!,
+            maxDuration: params.triggerConfig?.maxDuration ?? options?.triggerConfig?.maxDuration!,
           }
         : {}),
       ...(options?.triggerConfig?.region || params.triggerConfig?.region
@@ -10206,10 +10255,7 @@ function resolveChatStartBaseURL(
   option: string | ChatStartSessionBaseURLResolver | undefined
 ): string {
   const fallback = apiClientManager.baseURL ?? "https://api.trigger.dev";
-  const raw =
-    typeof option === "function"
-      ? option({ endpoint, chatId })
-      : option ?? fallback;
+  const raw = typeof option === "function" ? option({ endpoint, chatId }) : (option ?? fallback);
   return raw.replace(/\/$/, "");
 }
 
@@ -10231,7 +10277,13 @@ function overrideRequestHeaders(accessToken: string): Record<string, string> {
 
 async function callSessionsCreateWithOverride(args: {
   chatId: string;
-  body: { type: "chat.agent"; externalId: string; taskIdentifier: string; triggerConfig: SessionTriggerConfig; metadata?: Record<string, unknown> };
+  body: {
+    type: "chat.agent";
+    externalId: string;
+    taskIdentifier: string;
+    triggerConfig: SessionTriggerConfig;
+    metadata?: Record<string, unknown>;
+  };
   baseURLOption: string | ChatStartSessionBaseURLResolver | undefined;
   fetchOverride: ChatStartSessionFetchOverride | undefined;
 }): Promise<{ id: string; runId: string; publicAccessToken: string }> {
@@ -10267,9 +10319,7 @@ async function mintPublicTokenWithOverride(args: {
 }): Promise<string> {
   const accessToken = apiClientManager.accessToken;
   if (!accessToken) {
-    throw new Error(
-      "chat.createStartSessionAction: no API access token configured for JWT mint."
-    );
+    throw new Error("chat.createStartSessionAction: no API access token configured for JWT mint.");
   }
   const ctx: ChatStartSessionEndpointContext = { endpoint: "auth", chatId: args.chatId };
   const url = `${resolveChatStartBaseURL("auth", args.chatId, args.baseURLOption)}/api/v1/auth/jwt/claims`;

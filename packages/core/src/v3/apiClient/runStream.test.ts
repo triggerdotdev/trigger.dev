@@ -451,7 +451,11 @@ describe("SSEStreamSubscription v2 batch parsing — record kinds", () => {
     vi.restoreAllMocks();
   });
 
-  type ParsedPart = { id: string; chunk: unknown; headers?: ReadonlyArray<readonly [string, string]> };
+  type ParsedPart = {
+    id: string;
+    chunk: unknown;
+    headers?: ReadonlyArray<readonly [string, string]>;
+  };
 
   // Build a v2 batch SSE response with the given records and close.
   function makeBatchResponse(

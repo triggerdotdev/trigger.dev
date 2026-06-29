@@ -87,7 +87,10 @@ export class SupervisorSession extends EventEmitter<WorkerEvents> {
     });
   }
 
-  private async onDequeue(messages: WorkerApiDequeueResponseBody, timing?: { dequeueResponseMs: number; pollingIntervalMs: number }): Promise<void> {
+  private async onDequeue(
+    messages: WorkerApiDequeueResponseBody,
+    timing?: { dequeueResponseMs: number; pollingIntervalMs: number }
+  ): Promise<void> {
     this.logger.verbose("Dequeued messages with contents", { count: messages.length, messages });
 
     for (const message of messages) {

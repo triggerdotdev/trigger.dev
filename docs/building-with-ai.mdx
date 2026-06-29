@@ -28,6 +28,11 @@ We provide multiple tools to help AI coding assistants write correct Trigger.dev
   npx trigger.dev@latest skills
   ```
 
+  <Warning>
+    The `skills` command is currently only available in the release candidate. Until it ships to
+    the stable release, run it with the `@rc` tag: `npx trigger.dev@rc skills`.
+  </Warning>
+
   [Learn more →](/skills)
 </Step>
 
@@ -41,7 +46,7 @@ Skills and the MCP server do different jobs and work best together. Here's how t
 |:--|:-----------|:---------------|
 | **What it does** | Drops skill files into your project that teach Trigger.dev patterns | Runs a live server your AI connects to |
 | **Installs to** | `.claude/skills/`, `.cursor/skills/`, `.github/skills/`, `.agents/skills/` | `mcp.json`, `~/.claude.json`, etc. |
-| **Updates** | Re-run `npx trigger.dev@latest skills`, or auto-prompted on `trigger dev` | Always latest (uses `@latest`) |
+| **Updates** | Re-run `npx trigger.dev@latest skills` (`@rc` until it ships to stable), or auto-prompted on `trigger dev` | Always latest (uses `@latest`) |
 | **Best for** | Teaching patterns and best practices | Live project interaction (deploy, trigger, monitor) |
 | **Works offline** | Yes | No (calls Trigger.dev API) |
 

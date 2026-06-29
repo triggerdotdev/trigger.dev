@@ -5,6 +5,7 @@ import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/ser
 import type { TaskRunStatus } from "@trigger.dev/database";
 import type { PanelHandle } from "@window-splitter/react";
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ClientOnly } from "remix-utils/client-only";
 import { Bar, BarChart, ReferenceLine, Tooltip, type TooltipProps, YAxis } from "recharts";
 import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
@@ -194,10 +195,9 @@ export default function Page() {
 
   // Live-reload on WORKER_CREATED.
   const revalidator = useRevalidator();
-  const streamedEvents = useEventSource(
-    v3TasksStreamingPath(organization, project, environment),
-    { event: "message" }
-  );
+  const streamedEvents = useEventSource(v3TasksStreamingPath(organization, project, environment), {
+    event: "message",
+  });
   useEffect(() => {
     if (streamedEvents !== null) {
       revalidator.revalidate();
@@ -407,8 +407,8 @@ function TaskRow({
     item.kind === "AGENT"
       ? v3AgentTaskPath(organization, project, environment, item.slug)
       : item.kind === "SCHEDULED"
-      ? v3ScheduledTaskPath(organization, project, environment, item.slug)
-      : v3StandardTaskPath(organization, project, environment, item.slug);
+        ? v3ScheduledTaskPath(organization, project, environment, item.slug)
+        : v3StandardTaskPath(organization, project, environment, item.slug);
 
   const testPath =
     item.kind === "AGENT"
@@ -443,27 +443,37 @@ function TaskRow({
         <TaskFileName fileName={item.filePath} variant="extra-extra-small" />
       </TableCell>
       <TableCell to={rowPath}>
-        <Suspense fallback={<Spinner color="blue" className="size-3" />}>
-          <TypedAwait resolve={runningStates} errorElement={<FailedToLoadStats />}>
-            {(data) => <RunningCell state={data[item.slug]} />}
-          </TypedAwait>
-        </Suspense>
+        {/* Render the deferred stats client-side. A streamed Suspense boundary still pending at
+            hydration otherwise bails to client rendering and throws React #421. */}
+        <ClientOnly fallback={<Spinner color="blue" className="size-3" />}>
+          {() => (
+            <Suspense fallback={<Spinner color="blue" className="size-3" />}>
+              <TypedAwait resolve={runningStates} errorElement={<FailedToLoadStats />}>
+                {(data) => <RunningCell state={data[item.slug]} />}
+              </TypedAwait>
+            </Suspense>
+          )}
+        </ClientOnly>
       </TableCell>
       <TableCell to={rowPath} actionClassName="py-1.5">
         <div style={{ width: ACTIVITY_CELL_WIDTH, height: ACTIVITY_CHART_HEIGHT }}>
           <div hidden={isPanelAnimating}>
-            <Suspense fallback={<TaskActivityBlankState />}>
-              <TypedAwait resolve={hourlyActivity} errorElement={<FailedToLoadStats />}>
-                {(data) => {
-                  const taskData = data[item.slug];
-                  return taskData && taskData.length > 0 ? (
-                    <TaskActivityGraph activity={taskData} />
-                  ) : (
-                    <TaskActivityBlankState />
-                  );
-                }}
-              </TypedAwait>
-            </Suspense>
+            <ClientOnly fallback={<TaskActivityBlankState />}>
+              {() => (
+                <Suspense fallback={<TaskActivityBlankState />}>
+                  <TypedAwait resolve={hourlyActivity} errorElement={<FailedToLoadStats />}>
+                    {(data) => {
+                      const taskData = data[item.slug];
+                      return taskData && taskData.length > 0 ? (
+                        <TaskActivityGraph activity={taskData} />
+                      ) : (
+                        <TaskActivityBlankState />
+                      );
+                    }}
+                  </TypedAwait>
+                </Suspense>
+              )}
+            </ClientOnly>
           </div>
         </div>
       </TableCell>

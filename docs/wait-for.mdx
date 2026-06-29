@@ -38,5 +38,5 @@ You can pass an idempotency key to any wait function, allowing you to skip waits
 
 ```ts
 // Specify the idempotency key and TTL when waiting for a duration:
-await wait.for({ seconds: 10 }, { idempotencyKey: "my-idempotency-key", idempotencyKeyTTL: "1h" });
+await wait.for({ seconds: 10, idempotencyKey: "my-idempotency-key", idempotencyKeyTTL: "1h" });
 ```

@@ -284,11 +284,7 @@ const QueryEditorForm = forwardRef<
               Explain
             </Button>
           )}
-          <ScopeFilter
-            value={scope}
-            onValueChange={setScope}
-            shortcut={{ key: "e" }}
-          />
+          <ScopeFilter value={scope} onValueChange={setScope} shortcut={{ key: "e" }} />
           {queryHasTriggeredAt ? (
             <SimpleTooltip
               asChild
@@ -425,7 +421,7 @@ export function QueryEditor({
   const isTitleLoading = titleFetcher.state !== "idle";
   const generatedTitle = titleFetcher.data?.title;
   const [historyTitle, setHistoryTitle] = useState<string | null>(
-    history.length > 0 ? history[0].title ?? null : null
+    history.length > 0 ? (history[0].title ?? null) : null
   );
 
   // For edit mode, use the widget name as initial title
@@ -439,8 +435,8 @@ export function QueryEditor({
   const queryTitle =
     userTitle ??
     (mode.type === "dashboard-edit"
-      ? editModeTitle ?? historyTitle ?? generatedTitle ?? null
-      : historyTitle ?? generatedTitle ?? null);
+      ? (editModeTitle ?? historyTitle ?? generatedTitle ?? null)
+      : (historyTitle ?? generatedTitle ?? null));
 
   // Track if user has manually set a title (disables AI regeneration)
   const hasUserTitle = userTitle !== null;
@@ -572,8 +568,8 @@ export function QueryEditor({
       resultsView === "table"
         ? { type: "table", prettyFormatting, sorting: [] }
         : resultsView === "bignumber"
-        ? { type: "bignumber", ...bigNumberConfig }
-        : { type: "chart", ...chartConfig },
+          ? { type: "bignumber", ...bigNumberConfig }
+          : { type: "chart", ...chartConfig },
   };
 
   // Render NavBar based on mode
@@ -959,8 +955,8 @@ export function QueryEditor({
             resultsView === "table"
               ? { type: "table", prettyFormatting, sorting: [] }
               : resultsView === "bignumber"
-              ? { type: "bignumber", ...bigNumberConfig }
-              : { type: "chart", ...chartConfig }
+                ? { type: "bignumber", ...bigNumberConfig }
+                : { type: "chart", ...chartConfig }
           }
           isOpen={isSaveDialogOpen}
           onOpenChange={setIsSaveDialogOpen}

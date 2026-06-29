@@ -7,6 +7,7 @@ import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import {
   type SessionStatus,
   SessionsRepository,
+  LEGACY_PLAYGROUND_TAG,
 } from "~/services/sessionsRepository/sessionsRepository.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
@@ -43,11 +44,7 @@ export class SessionListPresenter {
     private readonly clickhouse: ClickHouse
   ) {}
 
-  public async call(
-    organizationId: string,
-    environmentId: string,
-    options: SessionListOptions
-  ) {
+  public async call(organizationId: string, environmentId: string, options: SessionListOptions) {
     return startActiveSpan(
       "SessionListPresenter.call",
       (span) => this.#call(organizationId, environmentId, options, span),
@@ -158,13 +155,11 @@ export class SessionListPresenter {
 
     let hasAnySessions = sessions.length > 0;
     if (!hasAnySessions) {
-      const firstSession = await startActiveSpan(
-        "SessionListPresenter.hasAnySessions",
-        () =>
-          this.replica.session.findFirst({
-            where: { runtimeEnvironmentId: environmentId },
-            select: { id: true },
-          })
+      const firstSession = await startActiveSpan("SessionListPresenter.hasAnySessions", () =>
+        this.replica.session.findFirst({
+          where: { runtimeEnvironmentId: environmentId },
+          select: { id: true },
+        })
       );
       if (firstSession) {
         hasAnySessions = true;
@@ -225,7 +220,13 @@ export class SessionListPresenter {
           externalId: session.externalId,
           type: session.type,
           taskIdentifier: session.taskIdentifier,
-          tags: session.tags ? [...session.tags].sort((a, b) => a.localeCompare(b)) : [],
+          isTest: session.isTest,
+          // Hide the legacy "playground" tag (pre-isTest sessions) from display.
+          tags: session.tags
+            ? [...session.tags]
+                .filter((t) => t !== LEGACY_PLAYGROUND_TAG)
+                .sort((a, b) => a.localeCompare(b))
+            : [],
           status,
           closedAt: session.closedAt ? session.closedAt.toISOString() : undefined,
           closedReason: session.closedReason ?? undefined,

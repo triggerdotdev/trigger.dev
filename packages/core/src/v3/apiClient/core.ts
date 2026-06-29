@@ -603,14 +603,14 @@ async function waitForRetry(
 }
 
 // https://stackoverflow.com/a/34491287
-export function isEmptyObj(obj: Object | null | undefined): boolean {
+export function isEmptyObj(obj: object | null | undefined): boolean {
   if (!obj) return true;
   for (const _k in obj) return false;
   return true;
 }
 
 // https://eslint.org/docs/latest/rules/no-prototype-builtins
-export function hasOwn(obj: Object, key: string): boolean {
+export function hasOwn(obj: object, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
 

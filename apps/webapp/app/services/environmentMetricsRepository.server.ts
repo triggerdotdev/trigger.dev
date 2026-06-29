@@ -152,7 +152,7 @@ type TaskActivityResults = Array<{
   taskIdentifier: string;
   status: TaskRunStatus;
   day: Date;
-  count: BigInt;
+  count: bigint;
 }>;
 
 function fillInDailyTaskActivity(activity: TaskActivityResults, days: number): DailyTaskActivity {
@@ -196,7 +196,7 @@ function fillInDailyTaskActivity(activity: TaskActivityResults, days: number): D
 type CurrentRunningStatsResults = Array<{
   taskIdentifier: string;
   status: TaskRunStatus;
-  count: BigInt;
+  count: bigint;
 }>;
 
 function fillInCurrentRunningStats(

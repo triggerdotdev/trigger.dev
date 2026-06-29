@@ -8,8 +8,8 @@ export type inferToolParameters<PARAMETERS extends ToolTaskParameters> =
   PARAMETERS extends AISchema<any>
     ? PARAMETERS["_type"]
     : PARAMETERS extends z.ZodTypeAny
-    ? z.infer<PARAMETERS>
-    : never;
+      ? z.infer<PARAMETERS>
+      : never;
 
 export function convertToolParametersToSchema<TToolParameters extends ToolTaskParameters>(
   toolParameters: TToolParameters

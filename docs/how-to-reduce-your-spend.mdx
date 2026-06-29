@@ -16,21 +16,28 @@ Monitor your usage dashboard to understand your spending patterns. You can see:
 
 You can view your usage page by clicking the "Organization" menu in the top left of the dashboard and then clicking "Usage".
 
-## Create billing alerts
+## Set billing limits and alerts
 
-Configure billing alerts in your dashboard to get notified when you approach spending thresholds. This helps you:
+Configure billing limits and alerts in your dashboard to protect against unexpected usage and get notified when you approach spending thresholds. This helps you:
 
+- Set a monthly compute spend limit for your organization
 - Catch unexpected cost increases early
 - Identify runaway tasks before they become expensive
 
-The billing alerts page includes two types of alerts:
+The **Billing limits** settings page has two sections:
 
-- **Standard alerts**: Get notified at 75%, 90%, 100%, 200%, and 500% of your monthly budget
-- **Spike alerts**: Catch runaway usage from bugs or errors with alerts at 10x (1000%), 20x (2000%), 50x (5000%), and 100x (10000%) of your monthly budget. We recommend keeping these enabled as a safety net.
+- **Billing limit**: Choose your plan limit, a custom amount, or no limit. When a limit is reached, billable environments (`production`, `staging`, and `preview`) enter a **grace period** — queues pause and new runs queue without starting. After grace expires, new triggers are rejected until you increase or remove the limit.
+- **Billing alerts**: Add email alerts at specific spend thresholds (% of your limit when a limit is set, or dollar amounts when no limit is configured). Alerts notify you only; they do **not** pause environments or reject triggers.
 
-![Billing alerts](./images/billing-alerts-ui.png)
+**Limits vs alerts:** A billing limit enforces spend (grace → reject). Billing alerts are optional notifications at thresholds you choose.
 
-You can view your billing alerts page by clicking the "Organization" menu in the top left of the dashboard and then clicking "Settings".
+**Soft limits:** Billing limits are not instantaneous hard caps. Usage is evaluated on a short delay, so spend can briefly exceed your limit before enforcement applies. Queued runs during grace incur no compute cost until they start. See our [terms](https://trigger.dev/terms) for refund policy details.
+
+On the **Usage** page, when you have a custom billing limit (or a plan limit that differs from included usage), a **Billing limit** marker appears on the usage bar alongside your current spend and plan included usage.
+
+![Billing limits and alerts settings](./images/billing-alerts-ui.png)
+
+You can open the page from the **Organization** menu in the top left of the dashboard, then **Settings** → **Billing limits**.
 
 ## Reduce your machine sizes
 

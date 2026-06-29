@@ -105,19 +105,12 @@ import { FlagEurope, FlagUSA } from "~/assets/icons/RegionIcons";
 import { RightSideMenuIcon } from "~/assets/icons/RightSideMenuIcon";
 import { RolesIcon } from "~/assets/icons/RolesIcon";
 import { RunFunctionIcon } from "~/assets/icons/RunFunctionIcon";
-import {
-  RunsIcon,
-  RunsIconExtraSmall,
-  RunsIconSmall,
-} from "~/assets/icons/RunsIcon";
+import { RunsIcon, RunsIconExtraSmall, RunsIconSmall } from "~/assets/icons/RunsIcon";
 import { SaplingIcon } from "~/assets/icons/SaplingIcon";
 import { ScheduleIcon } from "~/assets/icons/ScheduleIcon";
 import { ShieldIcon } from "~/assets/icons/ShieldIcon";
 import { ShieldLockIcon } from "~/assets/icons/ShieldLockIcon";
-import {
-  ShowParentIcon,
-  ShowParentIconSelected,
-} from "~/assets/icons/ShowParentIcon";
+import { ShowParentIcon, ShowParentIconSelected } from "~/assets/icons/ShowParentIcon";
 import { SideMenuRightClosedIcon } from "~/assets/icons/SideMenuRightClosed";
 import { SlackIcon } from "~/assets/icons/SlackIcon";
 import { SlackMonoIcon } from "~/assets/icons/SlackMonoIcon";
@@ -128,8 +121,7 @@ import { StarIcon } from "~/assets/icons/StarIcon";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
 import { StreamsIcon } from "~/assets/icons/StreamsIcon";
 import { TableIcon } from "~/assets/icons/TableIcon";
-import { TaskCachedIcon } from "~/assets/icons/TaskCachedIcon";
-import { TaskIcon, TaskIconSmall } from "~/assets/icons/TaskIcon";
+import { TaskCachedIcon, TaskIcon, TaskIconSmall } from "~/assets/icons/TaskIcon";
 import { TestTubeIcon } from "~/assets/icons/TestTubeIcon";
 import { TextInlineIcon } from "~/assets/icons/TextInlineIcon";
 import { TextWrapIcon } from "~/assets/icons/TextWrapIcon";
@@ -311,13 +303,8 @@ export default function Story() {
             key={icon.name}
             className="flex flex-col items-center gap-3 rounded-md border border-grid-bright bg-background-bright p-4 text-text-bright"
           >
-            <div className="flex h-6 w-6 items-center justify-center">
-              {icon.render("size-6")}
-            </div>
-            <div
-              className="w-full truncate text-center text-xs text-text-dimmed"
-              title={icon.name}
-            >
+            <div className="flex h-6 w-6 items-center justify-center">{icon.render("size-6")}</div>
+            <div className="w-full truncate text-center text-xs text-text-dimmed" title={icon.name}>
               {icon.name}
             </div>
           </div>

@@ -232,7 +232,10 @@ export function useTree<TData, TFilterValue>({
       if (selectedId === undefined) {
         dispatch({ type: "DESELECT_ALL_NODES" });
       } else {
-        dispatch({ type: "SELECT_NODE", payload: { id: selectedId, scrollToNode: false, scrollToNodeFn } });
+        dispatch({
+          type: "SELECT_NODE",
+          payload: { id: selectedId, scrollToNode: false, scrollToNodeFn },
+        });
       }
     }
   }, [selectedId]);
@@ -623,10 +626,13 @@ export function createTreeFromFlatItems<TData>(
   rootId: string
 ): Tree<TData> | undefined {
   // Index items by id
-  const indexedItems: { [id: string]: Tree<TData> } = withoutChildren.reduce((acc, item) => {
-    acc[item.id] = { id: item.id, runId: item.runId, data: item.data, children: [] };
-    return acc;
-  }, {} as { [id: string]: Tree<TData> });
+  const indexedItems: { [id: string]: Tree<TData> } = withoutChildren.reduce(
+    (acc, item) => {
+      acc[item.id] = { id: item.id, runId: item.runId, data: item.data, children: [] };
+      return acc;
+    },
+    {} as { [id: string]: Tree<TData> }
+  );
 
   // Add items to parent's children array
   withoutChildren.forEach((item) => {

@@ -66,7 +66,9 @@ describe("RunQueueConsumer dequeue latency metric", () => {
 
     const text = await register.metrics();
     // One observation for the whole batch, not one per message.
-    expect(text).toContain('queue_consumer_pool_dequeue_duration_seconds_count{outcome="success"} 1');
+    expect(text).toContain(
+      'queue_consumer_pool_dequeue_duration_seconds_count{outcome="success"} 1'
+    );
   });
 
   it('records outcome="error" when the response is unsuccessful', async () => {
@@ -99,6 +101,8 @@ describe("RunQueueConsumer dequeue latency metric", () => {
     ).resolves.not.toThrow();
 
     // Histogram has no observations - the labelled count line should be absent.
-    expect(await register.metrics()).not.toContain("queue_consumer_pool_dequeue_duration_seconds_count");
+    expect(await register.metrics()).not.toContain(
+      "queue_consumer_pool_dequeue_duration_seconds_count"
+    );
   });
 });

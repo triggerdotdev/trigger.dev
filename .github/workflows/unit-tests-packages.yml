@@ -14,7 +14,7 @@ on:
 jobs:
   unitTests:
     name: "🧪 Unit Tests: Packages"
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     strategy:
       # one flaky shard shouldn't cancel its siblings - lets us re-run only the failed shard
       fail-fast: false
@@ -95,7 +95,7 @@ jobs:
           }
           echo "Pre-pulling Docker images with authenticated session..."
           pull postgres:14
-          pull clickhouse/clickhouse-server:25.4-alpine
+          pull clickhouse/clickhouse-server:26.2.19.43-alpine@sha256:c6ad6a7eb2fb5999df3adfb8b69a0c7222c68fa9b8f6b04a088564ebbc959251
           pull redis:7.2
           pull testcontainers/ryuk:0.14.0
           pull electricsql/electric:1.2.4
@@ -130,7 +130,7 @@ jobs:
     name: "📊 Merge Reports"
     if: ${{ !cancelled() }}
     needs: [unitTests]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3

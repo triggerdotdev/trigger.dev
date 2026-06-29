@@ -71,8 +71,7 @@ export class PromptPresenter extends BasePresenter {
       const hasOverride = !!overrideVersion;
 
       // Effective model: override > current version > prompt default
-      const effectiveModel =
-        overrideVersion?.model ?? currentVersion?.model ?? p.defaultModel;
+      const effectiveModel = overrideVersion?.model ?? currentVersion?.model ?? p.defaultModel;
 
       return {
         id: p.id,
@@ -126,21 +125,23 @@ export class PromptPresenter extends BasePresenter {
 
     // Build a map of slug -> 24 hourly buckets (use UTC to match ClickHouse)
     const now = new Date();
-    const startHour = new Date(Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate(),
-      now.getUTCHours() - 23,
-      0, 0, 0
-    ));
+    const startHour = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        now.getUTCHours() - 23,
+        0,
+        0,
+        0
+      )
+    );
 
     const bucketKeys: string[] = [];
     for (let i = 0; i < 24; i++) {
       const h = new Date(startHour.getTime() + i * 3600_000);
       // Format to match ClickHouse's toStartOfHour output: "YYYY-MM-DD HH:MM:SS"
-      bucketKeys.push(
-        h.toISOString().slice(0, 13).replace("T", " ") + ":00:00"
-      );
+      bucketKeys.push(h.toISOString().slice(0, 13).replace("T", " ") + ":00:00");
     }
 
     // Index rows by slug+bucket for fast lookup
@@ -157,10 +158,7 @@ export class PromptPresenter extends BasePresenter {
     return result;
   }
 
-  async resolveVersion(
-    promptId: string,
-    options?: { version?: number; label?: string }
-  ) {
+  async resolveVersion(promptId: string, options?: { version?: number; label?: string }) {
     if (options?.version != null) {
       return this._replica.promptVersion.findUnique({
         where: {
@@ -422,7 +420,10 @@ function encodeCursor(startTime: string, spanId: string): string {
 
 function decodeCursor(cursor: string): { startTime: string; spanId: string } | null {
   try {
-    const parsed = JSON.parse(Buffer.from(cursor, "base64").toString("utf-8")) as Record<string, unknown>;
+    const parsed = JSON.parse(Buffer.from(cursor, "base64").toString("utf-8")) as Record<
+      string,
+      unknown
+    >;
     if (typeof parsed.s === "string" && typeof parsed.i === "string") {
       return { startTime: parsed.s, spanId: parsed.i };
     }

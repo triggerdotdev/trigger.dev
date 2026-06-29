@@ -179,7 +179,11 @@ describe("replaySessionOutTail", () => {
       // Trailing turn: starts a tool call but never resolves it.
       { type: "start", messageId: "a-2", messageMetadata: { role: "assistant" } } as UIMessageChunk,
       { type: "tool-input-start", toolCallId: "tc-cut", toolName: "search" } as UIMessageChunk,
-      { type: "tool-input-delta", toolCallId: "tc-cut", inputTextDelta: '{"q":"x"}' } as UIMessageChunk,
+      {
+        type: "tool-input-delta",
+        toolCallId: "tc-cut",
+        inputTextDelta: '{"q":"x"}',
+      } as UIMessageChunk,
       // No tool-input-end, no tool-call, no finish → orphaned.
     ]);
 
@@ -192,9 +196,9 @@ describe("replaySessionOutTail", () => {
     // would represent a tool the next turn would re-process.
     const trailing = result.find((m) => m.id === "a-2");
     if (trailing) {
-      const orphanedToolPart = (trailing.parts as Array<{ type: string; toolCallId?: string; state?: string }>).find(
-        (p) => p.toolCallId === "tc-cut" && p.state === "input-streaming"
-      );
+      const orphanedToolPart = (
+        trailing.parts as Array<{ type: string; toolCallId?: string; state?: string }>
+      ).find((p) => p.toolCallId === "tc-cut" && p.state === "input-streaming");
       expect(orphanedToolPart).toBeUndefined();
     }
   });
@@ -205,7 +209,11 @@ describe("replaySessionOutTail", () => {
     // entirely (it never reached the next turn's accumulator).
     stubReadRecordsWithChunks([
       ...textTurn("a-1", "complete"),
-      { type: "start", messageId: "a-orphan", messageMetadata: { role: "assistant" } } as UIMessageChunk,
+      {
+        type: "start",
+        messageId: "a-orphan",
+        messageMetadata: { role: "assistant" },
+      } as UIMessageChunk,
       { type: "tool-input-start", toolCallId: "tc-orph", toolName: "search" } as UIMessageChunk,
       // No tool-input-end, no tool-call, no finish.
     ]);
@@ -233,10 +241,7 @@ describe("replaySessionOutTail", () => {
     // The writer puts chunk objects directly into the record envelope;
     // the route forwards them as-is. A string body is malformed — the
     // consumer drops it defensively rather than JSON.parsing.
-    stubReadRecordsWithChunks([
-      "not-an-object",
-      ...textTurn("a-1", "survived"),
-    ]);
+    stubReadRecordsWithChunks(["not-an-object", ...textTurn("a-1", "survived")]);
 
     const result = await replaySessionOutTail("garbage-session");
     expect(result).toHaveLength(1);
@@ -247,12 +252,7 @@ describe("replaySessionOutTail", () => {
     // The consumer requires `chunk` to be a non-null object with a
     // string `type` field. Records that arrive as primitives
     // (number, null, string) are dropped silently.
-    stubReadRecordsWithChunks([
-      42,
-      null,
-      "just-a-string",
-      ...textTurn("a-1", "survived"),
-    ]);
+    stubReadRecordsWithChunks([42, null, "just-a-string", ...textTurn("a-1", "survived")]);
 
     const result = await replaySessionOutTail("primitive-data-session");
     expect(result).toHaveLength(1);
@@ -260,11 +260,7 @@ describe("replaySessionOutTail", () => {
   });
 
   it("ignores chunks missing a `type` field", async () => {
-    stubReadRecordsWithChunks([
-      { foo: "bar" },
-      { type: 42 },
-      ...textTurn("a-1", "valid"),
-    ]);
+    stubReadRecordsWithChunks([{ foo: "bar" }, { type: 42 }, ...textTurn("a-1", "valid")]);
 
     const result = await replaySessionOutTail("typeless-session");
     expect(result).toHaveLength(1);
@@ -277,7 +273,11 @@ describe("replaySessionOutTail", () => {
     // a single corrupt segment shouldn't sink the entire replay.
     stubReadRecordsWithChunks([
       // Malformed: text-end with no preceding text-start.
-      { type: "start", messageId: "bad-1", messageMetadata: { role: "assistant" } } as UIMessageChunk,
+      {
+        type: "start",
+        messageId: "bad-1",
+        messageMetadata: { role: "assistant" },
+      } as UIMessageChunk,
       { type: "text-end", id: "no-such-text" } as UIMessageChunk,
       { type: "finish" } as UIMessageChunk,
       ...textTurn("a-1", "after-bad"),

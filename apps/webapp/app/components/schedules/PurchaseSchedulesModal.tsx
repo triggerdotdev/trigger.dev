@@ -6,12 +6,7 @@ import { useFetcher } from "@remix-run/react";
 import { type ReactNode, useEffect, useState } from "react";
 import { Feedback } from "~/components/Feedback";
 import { Button } from "~/components/primitives/Buttons";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTrigger,
-} from "~/components/primitives/Dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";

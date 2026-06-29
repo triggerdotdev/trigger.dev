@@ -112,14 +112,14 @@ export async function startWebapp(
       REDIS_TLS_DISABLED: "true", // all *_REDIS_TLS_DISABLED vars default to this; test Redis has no TLS
       // Disable all background workers. Each worker has its own env var and its own
       // check idiom ("0" vs "false" vs boolean), so we set all of them explicitly.
-      WORKER_ENABLED: "false",          // disables workerQueue.initialize() (checked === "true")
-      RUN_ENGINE_WORKER_ENABLED: "0",   // disables run engine workers (checked === "0", default "1")
-      SCHEDULE_WORKER_ENABLED: "0",     // disables schedule engine worker (checked === "0")
+      WORKER_ENABLED: "false", // disables workerQueue.initialize() (checked === "true")
+      RUN_ENGINE_WORKER_ENABLED: "0", // disables run engine workers (checked === "0", default "1")
+      SCHEDULE_WORKER_ENABLED: "0", // disables schedule engine worker (checked === "0")
       BATCH_QUEUE_WORKER_ENABLED: "false", // disables batch queue consumers (BoolEnv)
       LEGACY_RUN_ENGINE_WORKER_ENABLED: "0", // disables legacy run engine worker
-      COMMON_WORKER_ENABLED: "0",       // disables common worker
-      RUN_ENGINE_TTL_SYSTEM_DISABLED: "true",     // disables TTL expiry system (BoolEnv)
-      RUN_ENGINE_TTL_CONSUMERS_DISABLED: "true",  // disables TTL consumers (BoolEnv)
+      COMMON_WORKER_ENABLED: "0", // disables common worker
+      RUN_ENGINE_TTL_SYSTEM_DISABLED: "true", // disables TTL expiry system (BoolEnv)
+      RUN_ENGINE_TTL_CONSUMERS_DISABLED: "true", // disables TTL consumers (BoolEnv)
       RUN_REPLICATION_ENABLED: "0",
       // Force the RBAC loader to use the default fallback in e2e tests
       // so auth behaviour is deterministic regardless of whether a
@@ -208,9 +208,7 @@ export interface TestServer {
 }
 
 /** Convenience helper: starts a postgres + redis container + webapp and returns both for testing. */
-export async function startTestServer(
-  options: StartWebappOptions = {}
-): Promise<TestServer> {
+export async function startTestServer(options: StartWebappOptions = {}): Promise<TestServer> {
   const network = await new Network().start();
 
   // Track each resource as we acquire it so we can tear it down if a later step fails.
@@ -231,11 +229,7 @@ export async function startTestServer(
 
     prisma = new PrismaClient({ datasources: { db: { url: pg.url } } });
     await prisma.$connect(); // pre-warm pool; surface connection failures before tests start
-    const started = await startWebapp(
-      pg.url,
-      { host: rc.getHost(), port: rc.getPort() },
-      options
-    );
+    const started = await startWebapp(pg.url, { host: rc.getHost(), port: rc.getPort() }, options);
     webapp = started.instance;
     stopWebapp = started.stop;
   } catch (err) {

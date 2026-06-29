@@ -23,10 +23,7 @@ import { TaskRun } from "@trigger.dev/database";
 import { Redis } from "ioredis";
 import { IdempotencyKeyConcern } from "~/runEngine/concerns/idempotencyKeys.server";
 import { DefaultQueueManager } from "~/runEngine/concerns/queues.server";
-import {
-  NoopTaskMetadataCache,
-  RedisTaskMetadataCache,
-} from "~/services/taskMetadataCache.server";
+import { NoopTaskMetadataCache, RedisTaskMetadataCache } from "~/services/taskMetadataCache.server";
 import {
   EntitlementValidationParams,
   MaxAttemptsValidationParams,
@@ -97,9 +94,9 @@ class MockTraceEventConcern implements TraceEventConcern {
         spanId: MOCK_SPAN_ID,
         traceContext: { traceparent: MOCK_TRACEPARENT },
         traceparent: undefined,
-        setAttribute: () => { },
-        failWithError: () => { },
-        stop: () => { },
+        setAttribute: () => {},
+        failWithError: () => {},
+        stop: () => {},
       },
       "test"
     );
@@ -122,9 +119,9 @@ class MockTraceEventConcern implements TraceEventConcern {
         spanId: "test",
         traceContext: {},
         traceparent: undefined,
-        setAttribute: () => { },
-        failWithError: () => { },
-        stop: () => { },
+        setAttribute: () => {},
+        failWithError: () => {},
+        stop: () => {},
       },
       "test"
     );
@@ -147,9 +144,9 @@ class MockTraceEventConcern implements TraceEventConcern {
         spanId: "test",
         traceContext: {},
         traceparent: undefined,
-        setAttribute: () => { },
-        failWithError: () => { },
-        stop: () => { },
+        setAttribute: () => {},
+        failWithError: () => {},
+        stop: () => {},
       },
       "test"
     );
@@ -1425,83 +1422,80 @@ describe("RunEngineTriggerTaskService", () => {
     }
   );
 
-  containerTest(
-    "should accept valid debounce.delay formats",
-    async ({ prisma, redisOptions }) => {
-      const engine = new RunEngine({
-        prisma,
-        worker: {
-          redis: redisOptions,
-          workers: 1,
-          tasksPerWorker: 10,
-          pollIntervalMs: 100,
-        },
-        queue: {
-          redis: redisOptions,
-        },
-        runLock: {
-          redis: redisOptions,
-        },
+  containerTest("should accept valid debounce.delay formats", async ({ prisma, redisOptions }) => {
+    const engine = new RunEngine({
+      prisma,
+      worker: {
+        redis: redisOptions,
+        workers: 1,
+        tasksPerWorker: 10,
+        pollIntervalMs: 100,
+      },
+      queue: {
+        redis: redisOptions,
+      },
+      runLock: {
+        redis: redisOptions,
+      },
+      machines: {
+        defaultMachine: "small-1x",
         machines: {
-          defaultMachine: "small-1x",
-          machines: {
-            "small-1x": {
-              name: "small-1x" as const,
-              cpu: 0.5,
-              memory: 0.5,
-              centsPerMs: 0.0001,
-            },
-          },
-          baseCostInCents: 0.0005,
-        },
-        tracer: trace.getTracer("test", "0.0.0"),
-      });
-
-      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const taskIdentifier = "test-task";
-
-      await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
-
-      const queuesManager = new DefaultQueueManager(prisma, engine);
-      const idempotencyKeyConcern = new IdempotencyKeyConcern(
-        prisma,
-        engine,
-        new MockTraceEventConcern()
-      );
-
-      const triggerTaskService = new RunEngineTriggerTaskService({
-        engine,
-        prisma,
-        payloadProcessor: new MockPayloadProcessor(),
-        queueConcern: queuesManager,
-        idempotencyKeyConcern,
-        validator: new MockTriggerTaskValidator(),
-        traceEventConcern: new MockTraceEventConcern(),
-        tracer: trace.getTracer("test", "0.0.0"),
-        metadataMaximumSize: 1024 * 1024 * 1,
-      });
-
-      // Valid debounce.delay format
-      const result = await triggerTaskService.call({
-        taskId: taskIdentifier,
-        environment: authenticatedEnvironment,
-        body: {
-          payload: { test: "test" },
-          options: {
-            debounce: {
-              key: "test-key",
-              delay: "5s", // Valid format
-            },
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
           },
         },
-      });
+        baseCostInCents: 0.0005,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
 
-      expect(result).toBeDefined();
-      expect(result?.run.friendlyId).toBeDefined();
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const taskIdentifier = "test-task";
 
-      await engine.quit();
-    }
-  );
+    await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+    const queuesManager = new DefaultQueueManager(prisma, engine);
+    const idempotencyKeyConcern = new IdempotencyKeyConcern(
+      prisma,
+      engine,
+      new MockTraceEventConcern()
+    );
+
+    const triggerTaskService = new RunEngineTriggerTaskService({
+      engine,
+      prisma,
+      payloadProcessor: new MockPayloadProcessor(),
+      queueConcern: queuesManager,
+      idempotencyKeyConcern,
+      validator: new MockTriggerTaskValidator(),
+      traceEventConcern: new MockTraceEventConcern(),
+      tracer: trace.getTracer("test", "0.0.0"),
+      metadataMaximumSize: 1024 * 1024 * 1,
+    });
+
+    // Valid debounce.delay format
+    const result = await triggerTaskService.call({
+      taskId: taskIdentifier,
+      environment: authenticatedEnvironment,
+      body: {
+        payload: { test: "test" },
+        options: {
+          debounce: {
+            key: "test-key",
+            delay: "5s", // Valid format
+          },
+        },
+      },
+    });
+
+    expect(result).toBeDefined();
+    expect(result?.run.friendlyId).toBeDefined();
+
+    await engine.quit();
+  });
 
   // ─── Mollifier integration ──────────────────────────────────────────────────
   //
@@ -1517,14 +1511,26 @@ describe("RunEngineTriggerTaskService", () => {
       this.accepted.push(input);
       return true;
     }
-    async pop() { return null; }
+    async pop() {
+      return null;
+    }
     async ack() {}
     async requeue() {}
-    async fail() { return false; }
-    async getEntry() { return null; }
-    async listEnvs(): Promise<string[]> { return []; }
-    async getEntryTtlSeconds(): Promise<number> { return -1; }
-    async evaluateTrip() { return { tripped: false, count: 0 }; }
+    async fail() {
+      return false;
+    }
+    async getEntry() {
+      return null;
+    }
+    async listEnvs(): Promise<string[]> {
+      return [];
+    }
+    async getEntryTtlSeconds(): Promise<number> {
+      return -1;
+    }
+    async evaluateTrip() {
+      return { tripped: false, count: 0 };
+    }
     async close() {}
   }
 
@@ -1538,7 +1544,9 @@ describe("RunEngineTriggerTaskService", () => {
         runLock: { redis: redisOptions },
         machines: {
           defaultMachine: "small-1x",
-          machines: { "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 } },
+          machines: {
+            "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 },
+          },
           baseCostInCents: 0.0005,
         },
         tracer: trace.getTracer("test", "0.0.0"),
@@ -1558,16 +1566,28 @@ describe("RunEngineTriggerTaskService", () => {
       }
 
       const buffer = new CapturingMollifierBuffer();
-      const evaluateGateSpy = vi.fn(async () => ({ action: "mollify" as const, decision: {
-        divert: true as const, reason: "per_env_rate" as const, count: 99, threshold: 1, windowMs: 200, holdMs: 500,
-      } }));
+      const evaluateGateSpy = vi.fn(async () => ({
+        action: "mollify" as const,
+        decision: {
+          divert: true as const,
+          reason: "per_env_rate" as const,
+          count: 99,
+          threshold: 1,
+          windowMs: 200,
+          holdMs: 500,
+        },
+      }));
 
       const triggerTaskService = new RunEngineTriggerTaskService({
         engine,
         prisma,
         payloadProcessor: new MockPayloadProcessor(),
         queueConcern: new DefaultQueueManager(prisma, engine),
-        idempotencyKeyConcern: new IdempotencyKeyConcern(prisma, engine, new MockTraceEventConcern()),
+        idempotencyKeyConcern: new IdempotencyKeyConcern(
+          prisma,
+          engine,
+          new MockTraceEventConcern()
+        ),
         validator: new FailingMaxAttemptsValidator(),
         traceEventConcern: new MockTraceEventConcern(),
         tracer: trace.getTracer("test", "0.0.0"),
@@ -1582,7 +1602,7 @@ describe("RunEngineTriggerTaskService", () => {
           taskId: taskIdentifier,
           environment: authenticatedEnvironment,
           body: { payload: { test: "x" } },
-        }),
+        })
       ).rejects.toThrow(/synthetic max-attempts failure/);
 
       // Critical: the gate must NEVER be consulted when validation fails.
@@ -1593,7 +1613,7 @@ describe("RunEngineTriggerTaskService", () => {
       expect(buffer.accepted).toHaveLength(0);
 
       await engine.quit();
-    },
+    }
   );
 
   containerTest(
@@ -1615,7 +1635,9 @@ describe("RunEngineTriggerTaskService", () => {
         runLock: { redis: redisOptions },
         machines: {
           defaultMachine: "small-1x",
-          machines: { "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 } },
+          machines: {
+            "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 },
+          },
           baseCostInCents: 0.0005,
         },
         tracer: trace.getTracer("test", "0.0.0"),
@@ -1658,7 +1680,11 @@ describe("RunEngineTriggerTaskService", () => {
         prisma,
         payloadProcessor: new MockPayloadProcessor(),
         queueConcern: new DefaultQueueManager(prisma, engine),
-        idempotencyKeyConcern: new IdempotencyKeyConcern(prisma, engine, new MockTraceEventConcern()),
+        idempotencyKeyConcern: new IdempotencyKeyConcern(
+          prisma,
+          engine,
+          new MockTraceEventConcern()
+        ),
         validator: new MockTriggerTaskValidator(),
         traceEventConcern: traceConcern,
         tracer: trace.getTracer("test", "0.0.0"),
@@ -1763,7 +1789,7 @@ describe("RunEngineTriggerTaskService", () => {
       expect(pgRun).toBeNull();
 
       await engine.quit();
-    },
+    }
   );
 
   containerTest(
@@ -1776,7 +1802,9 @@ describe("RunEngineTriggerTaskService", () => {
         runLock: { redis: redisOptions },
         machines: {
           defaultMachine: "small-1x",
-          machines: { "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 } },
+          machines: {
+            "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 },
+          },
           baseCostInCents: 0.0005,
         },
         tracer: trace.getTracer("test", "0.0.0"),
@@ -1794,7 +1822,11 @@ describe("RunEngineTriggerTaskService", () => {
         prisma,
         payloadProcessor: new MockPayloadProcessor(),
         queueConcern: new DefaultQueueManager(prisma, engine),
-        idempotencyKeyConcern: new IdempotencyKeyConcern(prisma, engine, new MockTraceEventConcern()),
+        idempotencyKeyConcern: new IdempotencyKeyConcern(
+          prisma,
+          engine,
+          new MockTraceEventConcern()
+        ),
         validator: new MockTriggerTaskValidator(),
         traceEventConcern: new MockTraceEventConcern(),
         tracer: trace.getTracer("test", "0.0.0"),
@@ -1824,7 +1856,7 @@ describe("RunEngineTriggerTaskService", () => {
       expect(result?.isMollified).toBeFalsy();
 
       await engine.quit();
-    },
+    }
   );
 
   containerTest(
@@ -1850,7 +1882,9 @@ describe("RunEngineTriggerTaskService", () => {
         runLock: { redis: redisOptions },
         machines: {
           defaultMachine: "small-1x",
-          machines: { "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 } },
+          machines: {
+            "small-1x": { name: "small-1x" as const, cpu: 0.5, memory: 0.5, centsPerMs: 0.0001 },
+          },
           baseCostInCents: 0.0005,
         },
         tracer: trace.getTracer("test", "0.0.0"),
@@ -1863,7 +1897,7 @@ describe("RunEngineTriggerTaskService", () => {
       const idempotencyKeyConcern = new IdempotencyKeyConcern(
         prisma,
         engine,
-        new MockTraceEventConcern(),
+        new MockTraceEventConcern()
       );
 
       // Setup: normal trigger to create the cached run (no mollifier).
@@ -1931,9 +1965,8 @@ describe("RunEngineTriggerTaskService", () => {
       expect(buffer.accepted).toHaveLength(0);
 
       await engine.quit();
-    },
+    }
   );
-
 });
 
 describe("DefaultQueueManager task metadata cache", () => {
@@ -1981,7 +2014,11 @@ describe("DefaultQueueManager task metadata cache", () => {
         prisma,
         payloadProcessor: new MockPayloadProcessor(),
         queueConcern: queuesManager,
-        idempotencyKeyConcern: new IdempotencyKeyConcern(prisma, engine, new MockTraceEventConcern()),
+        idempotencyKeyConcern: new IdempotencyKeyConcern(
+          prisma,
+          engine,
+          new MockTraceEventConcern()
+        ),
         validator: new MockTriggerTaskValidator(),
         traceEventConcern: new MockTraceEventConcern(),
         tracer: trace.getTracer("test", "0.0.0"),
@@ -2037,7 +2074,11 @@ describe("DefaultQueueManager task metadata cache", () => {
         prisma,
         payloadProcessor: new MockPayloadProcessor(),
         queueConcern: queuesManager,
-        idempotencyKeyConcern: new IdempotencyKeyConcern(prisma, engine, new MockTraceEventConcern()),
+        idempotencyKeyConcern: new IdempotencyKeyConcern(
+          prisma,
+          engine,
+          new MockTraceEventConcern()
+        ),
         validator: new MockTriggerTaskValidator(),
         traceEventConcern: new MockTraceEventConcern(),
         tracer: trace.getTracer("test", "0.0.0"),
@@ -2111,7 +2152,11 @@ describe("DefaultQueueManager task metadata cache", () => {
         prisma,
         payloadProcessor: new MockPayloadProcessor(),
         queueConcern: queuesManager,
-        idempotencyKeyConcern: new IdempotencyKeyConcern(prisma, engine, new MockTraceEventConcern()),
+        idempotencyKeyConcern: new IdempotencyKeyConcern(
+          prisma,
+          engine,
+          new MockTraceEventConcern()
+        ),
         validator: new MockTriggerTaskValidator(),
         traceEventConcern: new MockTraceEventConcern(),
         tracer: trace.getTracer("test", "0.0.0"),
@@ -2194,7 +2239,11 @@ describe("DefaultQueueManager task metadata cache", () => {
         prisma,
         payloadProcessor: new MockPayloadProcessor(),
         queueConcern: queuesManager,
-        idempotencyKeyConcern: new IdempotencyKeyConcern(prisma, engine, new MockTraceEventConcern()),
+        idempotencyKeyConcern: new IdempotencyKeyConcern(
+          prisma,
+          engine,
+          new MockTraceEventConcern()
+        ),
         validator: new MockTriggerTaskValidator(),
         traceEventConcern: new MockTraceEventConcern(),
         tracer: trace.getTracer("test", "0.0.0"),

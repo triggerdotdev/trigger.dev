@@ -26,6 +26,15 @@ import { v3BulkActionPath } from "~/utils/pathBuilder";
 import { formatDateTime } from "~/components/primitives/DateTime";
 import pMap from "p-map";
 
+export type ProcessToCompletionOptions = {
+  /** Absolute timestamp (ms) after which processing stops and returns incomplete. */
+  deadline?: number;
+};
+
+export type ProcessToCompletionResult = {
+  completed: boolean;
+};
+
 export class BulkActionService extends BaseService {
   public async create(
     organizationId: string,
@@ -37,8 +46,17 @@ export class BulkActionService extends BaseService {
   ) {
     const filters = await getFilters(payload, request);
 
+    // Region is a replay-only override that re-routes the replayed runs. It's
+    // stored alongside the run-list filters under a dedicated key so it isn't
+    // mistaken for a `regions` selection filter when the params are parsed.
+    const replayRegion = payload.action === "replay" ? payload.region : undefined;
+    const params = replayRegion ? { ...filters, replayRegion } : filters;
+
     // Count the runs that will be affected by the bulk action
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      organizationId,
+      "standard"
+    );
     const runsRepository = new RunsRepository({
       clickhouse,
       prisma: this._replica as PrismaClient,
@@ -61,7 +79,7 @@ export class BulkActionService extends BaseService {
         userId,
         name: payload.title,
         type: payload.action === "cancel" ? BulkActionType.CANCEL : BulkActionType.REPLAY,
-        params: filters,
+        params,
         queryName: "bulk_action_v1",
         totalCount: count,
         completionNotification:
@@ -85,7 +103,42 @@ export class BulkActionService extends BaseService {
     };
   }
 
-  public async process(bulkActionId: string) {
+  public async processToCompletion(
+    bulkActionId: string,
+    options?: ProcessToCompletionOptions
+  ): Promise<ProcessToCompletionResult> {
+    while (true) {
+      const group = await this._prisma.bulkActionGroup.findFirst({
+        where: { id: bulkActionId },
+        select: { status: true },
+      });
+
+      if (!group) {
+        throw new Error(`Bulk action group not found: ${bulkActionId}`);
+      }
+
+      if (group.status === BulkActionStatus.COMPLETED) {
+        return { completed: true };
+      }
+
+      if (group.status === BulkActionStatus.ABORTED) {
+        return { completed: false };
+      }
+
+      if (options?.deadline !== undefined && Date.now() >= options.deadline) {
+        return { completed: false };
+      }
+
+      await this.process(bulkActionId, { continueInline: true });
+    }
+  }
+
+  public async process(
+    bulkActionId: string,
+    options?: {
+      continueInline?: boolean;
+    }
+  ) {
     // 1. Get the bulk action group
     const group = await this._prisma.bulkActionGroup.findFirst({
       where: { id: bulkActionId },
@@ -138,9 +191,17 @@ export class BulkActionService extends BaseService {
       return;
     }
 
+    if (group.status === BulkActionStatus.COMPLETED) {
+      return;
+    }
+
     // 2. Parse the params
     const rawParams = group.params && typeof group.params === "object" ? group.params : {};
     const finalizeRun = "finalizeRun" in rawParams && (rawParams as any).finalizeRun === true;
+    const replayRegion =
+      "replayRegion" in rawParams && typeof (rawParams as any).replayRegion === "string"
+        ? (rawParams as any).replayRegion
+        : undefined;
     const filters = parseRunListInputOptions({
       organizationId: group.project.organizationId,
       projectId: group.projectId,
@@ -148,7 +209,10 @@ export class BulkActionService extends BaseService {
       ...rawParams,
     });
 
-    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(group.project.organizationId, "standard");
+    const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
+      group.project.organizationId,
+      "standard"
+    );
     const runsRepository = new RunsRepository({
       clickhouse,
       prisma: this._replica as PrismaClient,
@@ -254,6 +318,7 @@ export class BulkActionService extends BaseService {
               replayService.call(run, {
                 bulkActionId: bulkActionId,
                 triggerSource: "dashboard",
+                region: replayRegion,
               })
             );
             if (error) {
@@ -367,6 +432,10 @@ export class BulkActionService extends BaseService {
     }
 
     // 6. If there are more runs to process, queue the next batch
+    if (options?.continueInline) {
+      return;
+    }
+
     await commonWorker.enqueue({
       id: `processBulkAction-${bulkActionId}`,
       job: "processBulkAction",

@@ -3,17 +3,17 @@ name: 🧭 Helm Chart Release
 on:
   push:
     tags:
-      - 'helm-v*'
+      - "helm-v*"
   workflow_call:
     inputs:
       chart_version:
-        description: 'Chart version to release'
+        description: "Chart version to release"
         required: true
         type: string
   workflow_dispatch:
     inputs:
       chart_version:
-        description: 'Chart version to release'
+        description: "Chart version to release"
         required: true
         type: string
 
@@ -58,7 +58,7 @@ jobs:
       - name: Validate manifests
         uses: docker://ghcr.io/yannh/kubeconform:v0.7.0@sha256:85dbef6b4b312b99133decc9c6fc9495e9fc5f92293d4ff3b7e1b30f5611823c
         with:
-          entrypoint: '/kubeconform'
+          entrypoint: "/kubeconform"
           args: "-summary -output json ./helm-output"
 
   release:
@@ -134,7 +134,7 @@ jobs:
         run: |
           VERSION="${STEPS_VERSION_OUTPUTS_VERSION}"
           CHART_PACKAGE="/tmp/${{ env.CHART_NAME }}-${VERSION}.tgz"
-          
+
           # Push to GHCR OCI registry
           helm push "$CHART_PACKAGE" "oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts"
         env:
@@ -153,7 +153,7 @@ jobs:
               oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/charts/${{ env.CHART_NAME }} \
               --version "${{ steps.version.outputs.version }}"
             ```
-            
+
             ### Changes
             See commit history for detailed changes in this release.
           files: |

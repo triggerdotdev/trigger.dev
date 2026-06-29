@@ -204,7 +204,11 @@ export default function LoginPage() {
               <div className="relative w-full">
                 {data.lastAuthMethod === "email" && <LastUsedBadge />}
                 <LinkButton
-                  to={data.redirectTo ? `/login/magic?redirectTo=${encodeURIComponent(data.redirectTo)}` : "/login/magic"}
+                  to={
+                    data.redirectTo
+                      ? `/login/magic?redirectTo=${encodeURIComponent(data.redirectTo)}`
+                      : "/login/magic"
+                  }
                   variant="secondary/extra-large"
                   fullWidth
                   data-action="continue with email"

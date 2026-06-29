@@ -180,13 +180,17 @@ describe("upsertIncomingMessage", () => {
     const head = {
       id: "asst-1",
       role: "assistant" as const,
-      parts: [{ type: "tool-search", toolCallId: "tc-1", state: "input-available", input: {} } as never],
+      parts: [
+        { type: "tool-search", toolCallId: "tc-1", state: "input-available", input: {} } as never,
+      ],
     };
     const stored: UIMessage[] = [userMsg("u-1", "hi"), head];
     const slim = {
       id: "asst-1",
       role: "assistant" as const,
-      parts: [{ type: "tool-search", toolCallId: "tc-1", state: "output-available", output: {} } as never],
+      parts: [
+        { type: "tool-search", toolCallId: "tc-1", state: "output-available", output: {} } as never,
+      ],
     };
     const mutated = upsertIncomingMessage(stored, {
       trigger: "submit-message",
@@ -243,7 +247,10 @@ describe("upsertIncomingMessage", () => {
 
   it("pushes when newMsg has no id (no dedup possible)", () => {
     const stored: UIMessage[] = [userMsg("u-1", "hi")];
-    const incoming = { role: "user", parts: [{ type: "text", text: "no id" }] } as unknown as UIMessage;
+    const incoming = {
+      role: "user",
+      parts: [{ type: "text", text: "no id" }],
+    } as unknown as UIMessage;
     const mutated = upsertIncomingMessage(stored, {
       trigger: "submit-message",
       incomingMessages: [incoming],
@@ -455,7 +462,9 @@ describe("ChatTaskWirePayload (compile-time shape)", () => {
     // forces a compile error rather than letting the wire silently grow
     // back.
     type WirePayloadKeys = keyof ChatTaskWirePayload;
-    expectTypeOf<WirePayloadKeys>().not.toEqualTypeOf<"messages" | Exclude<WirePayloadKeys, "messages">>();
+    expectTypeOf<WirePayloadKeys>().not.toEqualTypeOf<
+      "messages" | Exclude<WirePayloadKeys, "messages">
+    >();
     // Also confirm the absence at the value level — a payload literal
     // with `messages` would be a TS error if uncommented:
     //
@@ -478,18 +487,13 @@ describe("ChatTaskWirePayload (compile-time shape)", () => {
   it("requires `chatId: string` and `trigger: <one of>`", () => {
     expectTypeOf<ChatTaskWirePayload["chatId"]>().toEqualTypeOf<string>();
     expectTypeOf<ChatTaskWirePayload["trigger"]>().toEqualTypeOf<
-      | "submit-message"
-      | "regenerate-message"
-      | "preload"
-      | "close"
-      | "action"
-      | "handover-prepare"
+      "submit-message" | "regenerate-message" | "preload" | "close" | "action" | "handover-prepare"
     >();
   });
 });
 
 describe("ChatInputChunk envelope", () => {
-  it("wraps a wire payload in `kind: \"message\"` shape", () => {
+  it('wraps a wire payload in `kind: "message"` shape', () => {
     const userMsg: UIMessage = {
       id: "u-1",
       role: "user",
@@ -511,7 +515,7 @@ describe("ChatInputChunk envelope", () => {
     }
   });
 
-  it("supports `kind: \"stop\"` records (no payload)", () => {
+  it('supports `kind: "stop"` records (no payload)', () => {
     const chunk: ChatInputChunk = { kind: "stop", message: "user-canceled" };
     const decoded = JSON.parse(JSON.stringify(chunk)) as ChatInputChunk;
     expect(decoded.kind).toBe("stop");
@@ -520,7 +524,7 @@ describe("ChatInputChunk envelope", () => {
     }
   });
 
-  it("supports `kind: \"handover\"` records (with partialAssistantMessage)", () => {
+  it('supports `kind: "handover"` records (with partialAssistantMessage)', () => {
     const chunk: ChatInputChunk = {
       kind: "handover",
       partialAssistantMessage: [
@@ -533,7 +537,7 @@ describe("ChatInputChunk envelope", () => {
     expect(decoded.kind).toBe("handover");
   });
 
-  it("supports `kind: \"handover-skip\"` records", () => {
+  it('supports `kind: "handover-skip"` records', () => {
     const chunk: ChatInputChunk = { kind: "handover-skip" };
     const decoded = JSON.parse(JSON.stringify(chunk)) as ChatInputChunk;
     expect(decoded.kind).toBe("handover-skip");

@@ -31,9 +31,7 @@ describe("buildPayload", () => {
     expect(triggerAttr).toEqual({ key: "$trigger", value: { boolValue: true } });
 
     // Resource attributes
-    const envAttr = resourceSpan.resource.attributes.find(
-      (a) => a.key === "ctx.environment.id"
-    );
+    const envAttr = resourceSpan.resource.attributes.find((a) => a.key === "ctx.environment.id");
     expect(envAttr).toEqual({
       key: "ctx.environment.id",
       value: { stringValue: "env_123" },

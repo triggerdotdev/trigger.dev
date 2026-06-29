@@ -160,8 +160,14 @@ export class HttpServer {
           return reply.empty(405);
         }
 
-        const { handler, paramsSchema, querySchema, bodySchema, keepConnectionAlive, skipBodyParsing } =
-          routeDefinition;
+        const {
+          handler,
+          paramsSchema,
+          querySchema,
+          bodySchema,
+          keepConnectionAlive,
+          skipBodyParsing,
+        } = routeDefinition;
 
         const params = this.parseRouteParams(route, url);
         const parsedParams = this.optionalSchema(paramsSchema, params);

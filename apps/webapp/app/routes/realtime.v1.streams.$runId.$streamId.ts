@@ -3,10 +3,7 @@ import { z } from "zod";
 import { $replica } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
-import {
-  anyResource,
-  createLoaderApiRoute,
-} from "~/services/routeBuilders/apiBuilder.server";
+import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { runStore } from "~/v3/runStore.server";
 
@@ -155,9 +152,15 @@ export const loader = createLoaderApiRoute(
       { run }
     );
 
-    return realtimeStream.streamResponse(request, run.friendlyId, params.streamId, getRequestAbortSignal(), {
-      lastEventId,
-      timeoutInSeconds,
-    });
+    return realtimeStream.streamResponse(
+      request,
+      run.friendlyId,
+      params.streamId,
+      getRequestAbortSignal(),
+      {
+        lastEventId,
+        timeoutInSeconds,
+      }
+    );
   }
 );

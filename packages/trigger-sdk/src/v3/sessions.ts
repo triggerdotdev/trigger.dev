@@ -409,16 +409,13 @@ export class SessionOutputChannel {
    * shared {@link SSEStreamSubscription} plumbing used by run-scoped
    * realtime streams.
    */
-  async read<T = unknown>(
-    options?: SessionSubscribeOptions<T>
-  ): Promise<AsyncIterableStream<T>> {
+  async read<T = unknown>(options?: SessionSubscribeOptions<T>): Promise<AsyncIterableStream<T>> {
     const apiClient = apiClientManager.clientOrThrow();
 
     return apiClient.subscribeToSessionStream<T>(this.sessionId, "out", {
       signal: options?.signal,
       timeoutInSeconds: options?.timeoutInSeconds,
-      lastEventId:
-        options?.lastEventId != null ? String(options.lastEventId) : undefined,
+      lastEventId: options?.lastEventId != null ? String(options.lastEventId) : undefined,
       onPart: options?.onPart,
       onControl: options?.onControl,
       onComplete: options?.onComplete,
@@ -827,9 +824,7 @@ export class SessionInputChannel {
           span.setAttribute("wait.resolved", "skipped");
           return {
             ok: false as const,
-            error: new WaitpointTimeoutError(
-              "Idle timeout elapsed and skipSuspend is set"
-            ),
+            error: new WaitpointTimeoutError("Idle timeout elapsed and skipSuspend is set"),
           };
         }
 

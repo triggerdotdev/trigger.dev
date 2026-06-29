@@ -433,7 +433,7 @@ export class StreamsWriterV1<T> implements StreamsWriter {
         const lastChunkHeader = res.headers["x-last-chunk-index"];
         if (lastChunkHeader) {
           const lastChunkIndex = parseInt(
-            Array.isArray(lastChunkHeader) ? lastChunkHeader[0] ?? "0" : lastChunkHeader ?? "0",
+            Array.isArray(lastChunkHeader) ? (lastChunkHeader[0] ?? "0") : (lastChunkHeader ?? "0"),
             10
           );
           resolve(lastChunkIndex);

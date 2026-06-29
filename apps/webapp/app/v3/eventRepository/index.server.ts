@@ -29,10 +29,7 @@ export type EventStoreType = (typeof EVENT_STORE_TYPES)[keyof typeof EVENT_STORE
  * directly and gate startup on `clickhouseFactory.isReady()`. Everything else
  * should use {@link getEventRepositoryForStore}, the async variant below.
  */
-function resolveEventRepositoryForStore(
-  store: string,
-  organizationId: string
-): IEventRepository {
+function resolveEventRepositoryForStore(store: string, organizationId: string): IEventRepository {
   if (store === EVENT_STORE_TYPES.CLICKHOUSE || store === EVENT_STORE_TYPES.CLICKHOUSE_V2) {
     return clickhouseFactory.getEventRepositoryForOrganizationSync(store, organizationId)
       .repository;

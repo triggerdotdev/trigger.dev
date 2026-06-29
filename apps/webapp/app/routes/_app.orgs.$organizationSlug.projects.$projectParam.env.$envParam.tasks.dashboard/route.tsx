@@ -115,66 +115,66 @@ export default function TasksDashboardPage() {
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 p-6">
           <Header1 className="text-text-bright">Tasks overview</Header1>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Suspense fallback={<PanelSkeleton title="Agent tasks" />}>
-            <TypedAwait resolve={series}>
-              {(s) => (
-                <TaskTypePanel
-                  title="Agent tasks"
-                  count={counts.agents}
-                  description="AI agents are tasks that can call LLMs, use tools, and run multi-step conversations. Use them to power chat experiences, intelligent automations, or autonomous workflows."
-                  example="A support agent that drafts replies using your docs as context."
-                  data={s.agents}
-                  seriesColor="hsl(280 80% 65%)"
-                  listingPath={v3EnvironmentPath(organization, project, environment)}
-                  docsHref={docsPath("v3/agents")}
-                  emptyTitle="You don't have any agents yet"
-                  emptyDescription="Create an AI agent to call LLMs, use tools, and run multi-step conversations from a Trigger.dev task."
-                  emptyCta="Create your first agent"
-                  exampleCode={AGENT_EXAMPLE}
-                />
-              )}
-            </TypedAwait>
-          </Suspense>
-          <Suspense fallback={<PanelSkeleton title="Standard tasks" />}>
-            <TypedAwait resolve={series}>
-              {(s) => (
-                <TaskTypePanel
-                  title="Standard tasks"
-                  count={counts.standard}
-                  description="Standard tasks are durable background functions you trigger from your code. Use them for any async work that needs retries, observability, and reliable execution."
-                  example="Process an uploaded video, send a transactional email, or sync data from a third-party API."
-                  data={s.standard}
-                  seriesColor="hsl(200 80% 60%)"
-                  listingPath={v3RunsPath(organization, project, environment)}
-                  docsHref={docsPath("v3/tasks-overview")}
-                  emptyTitle="You don't have any standard tasks yet"
-                  emptyDescription="Standard tasks are the building block of Trigger.dev. Define one in your codebase and trigger it from anywhere."
-                  emptyCta="Create your first task"
-                  exampleCode={STANDARD_EXAMPLE}
-                />
-              )}
-            </TypedAwait>
-          </Suspense>
-          <Suspense fallback={<PanelSkeleton title="Scheduled tasks" />}>
-            <TypedAwait resolve={series}>
-              {(s) => (
-                <TaskTypePanel
-                  title="Scheduled tasks"
-                  count={counts.scheduled}
-                  description="Scheduled tasks run automatically on a cron schedule. Attach as many schedules to a task as you need (e.g. one per customer)."
-                  example="Generate a nightly report, refresh a cache every 5 minutes, or send a weekly digest email."
-                  data={s.scheduled}
-                  seriesColor="hsl(30 90% 60%)"
-                  listingPath={v3EnvironmentPath(organization, project, environment)}
-                  docsHref={docsPath("v3/tasks-scheduled")}
-                  emptyTitle="You don't have any scheduled tasks yet"
-                  emptyDescription="Schedule a task to run on a cron expression. Once you've defined a `schedules.task` you can attach one or many schedules to it."
-                  emptyCta="Create your first scheduled task"
-                  exampleCode={SCHEDULED_EXAMPLE}
-                />
-              )}
-            </TypedAwait>
-          </Suspense>
+            <Suspense fallback={<PanelSkeleton title="Agent tasks" />}>
+              <TypedAwait resolve={series}>
+                {(s) => (
+                  <TaskTypePanel
+                    title="Agent tasks"
+                    count={counts.agents}
+                    description="AI agents are tasks that can call LLMs, use tools, and run multi-step conversations. Use them to power chat experiences, intelligent automations, or autonomous workflows."
+                    example="A support agent that drafts replies using your docs as context."
+                    data={s.agents}
+                    seriesColor="hsl(280 80% 65%)"
+                    listingPath={v3EnvironmentPath(organization, project, environment)}
+                    docsHref={docsPath("v3/agents")}
+                    emptyTitle="You don't have any agents yet"
+                    emptyDescription="Create an AI agent to call LLMs, use tools, and run multi-step conversations from a Trigger.dev task."
+                    emptyCta="Create your first agent"
+                    exampleCode={AGENT_EXAMPLE}
+                  />
+                )}
+              </TypedAwait>
+            </Suspense>
+            <Suspense fallback={<PanelSkeleton title="Standard tasks" />}>
+              <TypedAwait resolve={series}>
+                {(s) => (
+                  <TaskTypePanel
+                    title="Standard tasks"
+                    count={counts.standard}
+                    description="Standard tasks are durable background functions you trigger from your code. Use them for any async work that needs retries, observability, and reliable execution."
+                    example="Process an uploaded video, send a transactional email, or sync data from a third-party API."
+                    data={s.standard}
+                    seriesColor="hsl(200 80% 60%)"
+                    listingPath={v3RunsPath(organization, project, environment)}
+                    docsHref={docsPath("v3/tasks-overview")}
+                    emptyTitle="You don't have any standard tasks yet"
+                    emptyDescription="Standard tasks are the building block of Trigger.dev. Define one in your codebase and trigger it from anywhere."
+                    emptyCta="Create your first task"
+                    exampleCode={STANDARD_EXAMPLE}
+                  />
+                )}
+              </TypedAwait>
+            </Suspense>
+            <Suspense fallback={<PanelSkeleton title="Scheduled tasks" />}>
+              <TypedAwait resolve={series}>
+                {(s) => (
+                  <TaskTypePanel
+                    title="Scheduled tasks"
+                    count={counts.scheduled}
+                    description="Scheduled tasks run automatically on a cron schedule. Attach as many schedules to a task as you need (e.g. one per customer)."
+                    example="Generate a nightly report, refresh a cache every 5 minutes, or send a weekly digest email."
+                    data={s.scheduled}
+                    seriesColor="hsl(30 90% 60%)"
+                    listingPath={v3EnvironmentPath(organization, project, environment)}
+                    docsHref={docsPath("v3/tasks-scheduled")}
+                    emptyTitle="You don't have any scheduled tasks yet"
+                    emptyDescription="Schedule a task to run on a cron expression. Once you've defined a `schedules.task` you can attach one or many schedules to it."
+                    emptyCta="Create your first scheduled task"
+                    exampleCode={SCHEDULED_EXAMPLE}
+                  />
+                )}
+              </TypedAwait>
+            </Suspense>
           </div>
         </div>
       </PageBody>

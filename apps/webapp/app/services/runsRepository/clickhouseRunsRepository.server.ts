@@ -260,7 +260,7 @@ export class ClickHouseRunsRepository implements IRunsRepository {
         environmentId: options.environmentId,
       });
 
-    const periodMs = options.period ? parseDuration(options.period) ?? undefined : undefined;
+    const periodMs = options.period ? (parseDuration(options.period) ?? undefined) : undefined;
     if (periodMs) {
       queryBuilder.where("created_at >= fromUnixTimestamp64Milli({period: Int64})", {
         period: new Date(Date.now() - periodMs).getTime(),
@@ -405,9 +405,7 @@ function applyRunFiltersToQueryBuilder<T>(
   if (options.taskKinds && options.taskKinds.length > 0) {
     const includesStandard = options.taskKinds.includes("STANDARD");
     // Include empty string when filtering for STANDARD (default value for pre-existing runs)
-    const effectiveKinds = includesStandard
-      ? [...options.taskKinds, ""]
-      : options.taskKinds;
+    const effectiveKinds = includesStandard ? [...options.taskKinds, ""] : options.taskKinds;
 
     if (effectiveKinds.length === 1) {
       queryBuilder.where("task_kind = {taskKind: String}", {

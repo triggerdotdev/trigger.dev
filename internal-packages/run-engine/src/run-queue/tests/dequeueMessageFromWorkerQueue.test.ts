@@ -272,9 +272,8 @@ describe("RunQueue.dequeueMessageFromWorkerQueue", () => {
         const dequeued3 = await queue.dequeueMessageFromWorkerQueue("test_12345", "main");
         expect(dequeued3).toBeUndefined();
 
-        const envConcurrencyAfter = await queue.currentConcurrencyOfEnvironment(
-          authenticatedEnvDev
-        );
+        const envConcurrencyAfter =
+          await queue.currentConcurrencyOfEnvironment(authenticatedEnvDev);
         expect(envConcurrencyAfter).toBe(2);
       } finally {
         await queue.quit();

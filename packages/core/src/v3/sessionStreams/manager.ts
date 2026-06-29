@@ -98,11 +98,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     private debug: boolean = false
   ) {}
 
-  on(
-    sessionId: string,
-    io: SessionChannelIO,
-    handler: SessionStreamHandler
-  ): { off: () => void } {
+  on(sessionId: string, io: SessionChannelIO, handler: SessionStreamHandler): { off: () => void } {
     const key = keyFor(sessionId, io);
 
     let handlerSet = this.handlers.get(key);
@@ -250,11 +246,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     return this.lastDispatchedSeqNums.get(keyFor(sessionId, io));
   }
 
-  setLastDispatchedSeqNum(
-    sessionId: string,
-    io: SessionChannelIO,
-    seqNum: number
-  ): void {
+  setLastDispatchedSeqNum(sessionId: string, io: SessionChannelIO, seqNum: number): void {
     this.#advanceLastDispatched(keyFor(sessionId, io), seqNum);
   }
 
@@ -265,11 +257,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     }
   }
 
-  setMinTimestamp(
-    sessionId: string,
-    io: SessionChannelIO,
-    minTimestamp: number | undefined
-  ): void {
+  setMinTimestamp(sessionId: string, io: SessionChannelIO, minTimestamp: number | undefined): void {
     const key = keyFor(sessionId, io);
     if (minTimestamp === undefined) {
       this.minTimestamps.delete(key);
@@ -397,8 +385,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
         }
 
         const hasHandlers = this.handlers.has(key) && this.handlers.get(key)!.size > 0;
-        const hasWaiters =
-          this.onceWaiters.has(key) && this.onceWaiters.get(key)!.length > 0;
+        const hasWaiters = this.onceWaiters.has(key) && this.onceWaiters.get(key)!.length > 0;
         if (hasHandlers || hasWaiters) {
           // Exponential backoff with jitter. 1s base, doubling each
           // attempt, capped at 30s. Without this, a persistent backend
@@ -415,8 +402,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
             // handlers/waiters means we should stay quiet.
             if (this.tails.has(key)) return;
             if (this.explicitlyDisconnected.has(key)) return;
-            const stillHasHandlers =
-              this.handlers.has(key) && this.handlers.get(key)!.size > 0;
+            const stillHasHandlers = this.handlers.has(key) && this.handlers.get(key)!.size > 0;
             const stillHasWaiters =
               this.onceWaiters.has(key) && this.onceWaiters.get(key)!.length > 0;
             if (!stillHasHandlers && !stillHasWaiters) return;
@@ -427,11 +413,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
     this.tails.set(key, { abortController, promise });
   }
 
-  async #runTail(
-    sessionId: string,
-    io: SessionChannelIO,
-    signal: AbortSignal
-  ): Promise<void> {
+  async #runTail(sessionId: string, io: SessionChannelIO, signal: AbortSignal): Promise<void> {
     const key = keyFor(sessionId, io);
     try {
       const lastSeq = this.seqNums.get(key);

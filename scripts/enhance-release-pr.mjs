@@ -35,9 +35,12 @@ function parsePrBody(body) {
   const entries = [];
   if (!body) return entries;
 
-  // Deduplicate by PR number
+  // Deduplicate by entry content. A single changeset that targets multiple
+  // packages is rendered once per package section, so the same text repeats and
+  // we collapse it. But several distinct changesets from one PR have distinct
+  // text (and each still carries that PR's link), so keying on content keeps
+  // them all instead of dropping every entry after the first for that PR.
   const seen = new Set();
-  const prPattern = /\[#(\d+)\]\(([^)]+)\)/;
 
   // A standalone dependency-bump list item, e.g. "`@trigger.dev/core@4.5.0-rc.7`"
   // or "trigger.dev@4.5.0-rc.7". These normally appear nested under
@@ -87,19 +90,18 @@ function parsePrBody(body) {
     if (headLine.startsWith("Updated dependencies")) continue;
     if (depBumpPattern.test(headLine)) continue;
 
-    // Deduplicate by PR number (the changeset link lives on the head line)
-    const prMatch = itemLines[0].match(prPattern);
-    if (prMatch) {
-      const prNumber = prMatch[1];
-      if (seen.has(prNumber)) continue;
-      seen.add(prNumber);
-    }
-
     // Reconstruct the full item: head line + dedented continuation lines, so
     // code blocks and sub-bullets survive. Continuation under a "-   " item is
     // indented 4 spaces; strip up to 4 to bring it back to the base level.
     const continuation = itemLines.slice(1).map((l) => l.replace(/^ {1,4}/, ""));
     const text = [headLine, ...continuation].join("\n").replace(/\s+$/, "");
+
+    // Deduplicate on the full entry text (which embeds the PR link). The same
+    // changeset echoed across package sections collapses to one, while multiple
+    // distinct changesets from a single PR are each preserved.
+    const dedupeKey = text.replace(/\s+/g, " ").trim();
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
 
     // Categorize off the head line
     const lower = headLine.toLowerCase();

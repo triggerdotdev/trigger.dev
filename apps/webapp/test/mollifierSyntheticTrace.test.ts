@@ -78,9 +78,7 @@ describe("buildSyntheticTraceForBufferedRun", () => {
   });
 
   it("falls back to an empty-string span id when the snapshot has no spanId", () => {
-    const trace = buildSyntheticTraceForBufferedRun(
-      makeSyntheticRun({ spanId: undefined })
-    );
+    const trace = buildSyntheticTraceForBufferedRun(makeSyntheticRun({ spanId: undefined }));
     expect(trace.events[0].id).toBe("");
     // Empty id still marks as root (it matches the rootId fallback).
     expect(trace.events[0].data.isRoot).toBe(true);

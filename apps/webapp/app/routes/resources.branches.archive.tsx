@@ -13,7 +13,7 @@ import { Paragraph } from "~/components/primitives/Paragraph";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { ArchiveBranchService } from "~/services/archiveBranch.server";
 import { requireUserId } from "~/services/session.server";
-import { branchesPath, v3EnvironmentPath } from "~/utils/pathBuilder";
+import { branchesDevPath, branchesPath } from "~/utils/pathBuilder";
 
 const ArchiveBranchOptions = z.object({
   environmentId: z.string(),
@@ -46,7 +46,9 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (result.success) {
     return redirectWithSuccessMessage(
-      branchesPath(result.organization, result.project, result.branch),
+      result.branch.type === "DEVELOPMENT"
+        ? branchesDevPath(result.organization, result.project, result.branch)
+        : branchesPath(result.organization, result.project, result.branch),
       request,
       `Branch "${result.branch.branchName}" archived`
     );
@@ -57,8 +59,10 @@ export async function action({ request }: ActionFunctionArgs) {
 
 export function ArchiveButton({
   environment,
+  disabled,
 }: {
   environment: { id: string; branchName: string };
+  disabled?: boolean;
 }) {
   const lastSubmission = useActionData<typeof action>();
   const location = useLocation();
@@ -82,6 +86,7 @@ export function ArchiveButton({
           fullWidth
           textAlignLeft
           className="w-full px-1.5 py-[0.9rem]"
+          disabled={disabled}
         >
           Archive branch
         </Button>

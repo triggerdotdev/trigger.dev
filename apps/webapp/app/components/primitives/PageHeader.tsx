@@ -1,13 +1,12 @@
 import { Link, useNavigation } from "@remix-run/react";
 import { type ReactNode } from "react";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
-import { useOptionalOrganization } from "~/hooks/useOrganizations";
-import { UpgradePrompt, useShowUpgradePrompt } from "../billing/UpgradePrompt";
+import { OrgBanner } from "../billing/OrgBanner";
 import { BreadcrumbIcon } from "./BreadcrumbIcon";
 import { Header2 } from "./Headers";
 import { LoadingBarDivider } from "./LoadingBarDivider";
 import { SimpleTooltip } from "./Tooltip";
-import { EnvironmentBanner } from "../navigation/EnvironmentBanner";
+import { DashboardAgentLauncher } from "../dashboard-agent/dashboardAgentLauncher";
 
 type WithChildren = {
   children: React.ReactNode;
@@ -15,19 +14,19 @@ type WithChildren = {
 };
 
 export function NavBar({ children }: WithChildren) {
-  const organization = useOptionalOrganization();
-  const showUpgradePrompt = useShowUpgradePrompt(organization);
-
   const navigation = useNavigation();
   const isLoading = navigation.state === "loading" || navigation.state === "submitting";
 
   return (
     <div>
       <div className="grid h-10 w-full grid-rows-[auto_1px] bg-background-bright">
-        <div className="flex w-full items-center justify-between pl-3 pr-2">{children}</div>
+        <div className="flex w-full items-center gap-2 pl-3 pr-2">
+          <div className="flex flex-1 items-center justify-between">{children}</div>
+          <DashboardAgentLauncher />
+        </div>
         <LoadingBarDivider isLoading={isLoading} />
       </div>
-      {showUpgradePrompt.shouldShow && organization ? <UpgradePrompt /> : <EnvironmentBanner />}
+      <OrgBanner />
     </div>
   );
 }

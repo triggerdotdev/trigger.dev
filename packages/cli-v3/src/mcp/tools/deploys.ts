@@ -146,11 +146,15 @@ export const listDeploysTool = {
 
     for (const deploy of deploys) {
       const deployedAt = deploy.deployedAt
-        ? new Date(deploy.deployedAt).toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC")
+        ? new Date(deploy.deployedAt)
+            .toISOString()
+            .replace("T", " ")
+            .replace(/\.\d+Z$/, " UTC")
         : "not deployed";
-      const git = deploy.git && typeof deploy.git === "object" && "commitMessage" in deploy.git
-        ? ` | ${deploy.git.commitMessage}`
-        : "";
+      const git =
+        deploy.git && typeof deploy.git === "object" && "commitMessage" in deploy.git
+          ? ` | ${deploy.git.commitMessage}`
+          : "";
       lines.push(
         `- ${deploy.shortCode} | v${deploy.version} | ${deploy.status} | ${deployedAt}${git}`
       );

@@ -8,16 +8,159 @@ export function TaskIcon({ className }: { className?: string }) {
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />
+      <rect x="11" y="16" width="2" height="7" rx="1" fill="currentColor" />
+      <rect x="11" y="1" width="2" height="7" rx="1" fill="currentColor" />
       <rect
-        width="8.993"
-        height="2"
+        x="13"
+        y="11"
+        width="2"
+        height="12"
         rx="1"
-        transform="matrix(1 0 0 -1 7.5035 9)"
+        transform="rotate(90 13 11)"
         fill="currentColor"
       />
-      <path
-        d="M11 8.49536L11 16.4954C11 17.0476 11.4477 17.4954 12 17.4954C12.5523 17.4954 13 17.0476 13 16.4954L13 8.49536L11 8.49536Z"
+      <rect
+        x="23"
+        y="11"
+        width="2"
+        height="7"
+        rx="1"
+        transform="rotate(90 23 11)"
+        fill="currentColor"
+      />
+      <rect
+        x="4.92758"
+        y="20.4867"
+        width="2"
+        height="12.0018"
+        rx="1"
+        transform="rotate(-135 4.92758 20.4867)"
+        fill="currentColor"
+      />
+      <rect
+        x="15.3185"
+        y="10.0958"
+        width="2"
+        height="6.99687"
+        rx="1"
+        transform="rotate(-135 15.3185 10.0958)"
+        fill="currentColor"
+      />
+      <rect
+        x="20.3488"
+        y="18.9346"
+        width="2"
+        height="6.99653"
+        rx="1"
+        transform="rotate(135 20.3488 18.9346)"
+        fill="currentColor"
+      />
+      <rect
+        x="13.4161"
+        y="12.002"
+        width="2"
+        height="11.9956"
+        rx="1"
+        transform="rotate(135 13.4161 12.002)"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+export function TaskCachedIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <rect x="11" y="16" width="2" height="3" rx="1" fill="currentColor" />
+      <rect x="11" y="20" width="2" height="3" rx="1" fill="currentColor" />
+      <rect x="11" y="5" width="2" height="3" rx="1" fill="currentColor" />
+      <rect x="11" y="1" width="2" height="3" rx="1" fill="currentColor" />
+      <rect
+        x="13"
+        y="11"
+        width="2"
+        height="12"
+        rx="1"
+        transform="rotate(90 13 11)"
+        fill="currentColor"
+      />
+      <rect
+        x="19"
+        y="11"
+        width="2"
+        height="3"
+        rx="1"
+        transform="rotate(90 19 11)"
+        fill="currentColor"
+      />
+      <rect
+        x="23"
+        y="11"
+        width="2"
+        height="3"
+        rx="1"
+        transform="rotate(90 23 11)"
+        fill="currentColor"
+      />
+      <rect
+        x="4.92758"
+        y="20.4867"
+        width="2"
+        height="12.0018"
+        rx="1"
+        transform="rotate(-135 4.92758 20.4867)"
+        fill="currentColor"
+      />
+      <rect
+        x="15.3185"
+        y="10.0958"
+        width="2"
+        height="2.99815"
+        rx="1"
+        transform="rotate(-135 15.3185 10.0958)"
+        fill="currentColor"
+      />
+      <rect
+        x="18.1445"
+        y="7.26978"
+        width="2"
+        height="3.00029"
+        rx="1"
+        transform="rotate(-135 18.1445 7.26978)"
+        fill="currentColor"
+      />
+      <rect
+        x="17.5259"
+        y="16.1117"
+        width="2"
+        height="3.00436"
+        rx="1"
+        transform="rotate(135 17.5259 16.1117)"
+        fill="currentColor"
+      />
+      <rect
+        x="20.3488"
+        y="18.9346"
+        width="2"
+        height="3.00154"
+        rx="1"
+        transform="rotate(135 20.3488 18.9346)"
+        fill="currentColor"
+      />
+      <rect
+        x="13.4161"
+        y="12.002"
+        width="2"
+        height="11.9956"
+        rx="1"
+        transform="rotate(135 13.4161 12.002)"
         fill="currentColor"
       />
     </svg>
@@ -27,14 +170,60 @@ export function TaskIcon({ className }: { className?: string }) {
 export function TaskIconSmall({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path
-        d="M4 3H16C16.5523 3 17 3.44772 17 4V16C17 16.5523 16.5523 17 16 17H4C3.44772 17 3 16.5523 3 16V4L3.00488 3.89746C3.05621 3.39333 3.48232 3 4 3Z"
-        stroke="currentColor"
-        strokeWidth="2"
+      <rect x="9" y="14" width="2" height="4" rx="1" fill="currentColor" />
+      <rect x="9" y="2" width="2" height="4" rx="1" fill="currentColor" />
+      <rect
+        x="11"
+        y="9"
+        width="2"
+        height="9"
+        rx="1"
+        transform="rotate(90 11 9)"
+        fill="currentColor"
       />
-      <rect width="8" height="2" rx="1" transform="matrix(1 0 0 -1 6 8)" fill="currentColor" />
-      <path
-        d="M10 6C9.44772 6 9 6.44772 9 7L9 14C9 14.5523 9.44772 15 10 15C10.5523 15 11 14.5523 11 14L11 7C11 6.44772 10.5523 6 10 6Z"
+      <rect
+        x="18"
+        y="9"
+        width="2"
+        height="4"
+        rx="1"
+        transform="rotate(90 18 9)"
+        fill="currentColor"
+      />
+      <rect
+        x="5.0531"
+        y="16.3611"
+        width="2"
+        height="8.99589"
+        rx="1"
+        transform="rotate(-135 5.0531 16.3611)"
+        fill="currentColor"
+      />
+      <rect
+        x="13.3185"
+        y="8.09583"
+        width="2"
+        height="4"
+        rx="1"
+        transform="rotate(-135 13.3185 8.09583)"
+        fill="currentColor"
+      />
+      <rect
+        x="16.2304"
+        y="14.8163"
+        width="2"
+        height="4.00064"
+        rx="1"
+        transform="rotate(135 16.2304 14.8163)"
+        fill="currentColor"
+      />
+      <rect
+        x="11.4161"
+        y="10.002"
+        width="2"
+        height="8.99796"
+        rx="1"
+        transform="rotate(135 11.4161 10.002)"
         fill="currentColor"
       />
     </svg>

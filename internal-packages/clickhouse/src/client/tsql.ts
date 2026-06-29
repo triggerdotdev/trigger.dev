@@ -15,7 +15,7 @@ import {
   type QuerySettings,
   type FieldMappings,
   type TimeRange,
-  type WhereClauseCondition
+  type WhereClauseCondition,
 } from "@internal/tsql";
 import type { ClickhouseReader, QueryStats } from "./types.js";
 import { QueryError } from "./errors.js";
@@ -180,9 +180,10 @@ export async function executeTSQL<TOut extends z.ZodSchema>(
   try {
     // 1. Compile the TSQL query to ClickHouse SQL
     // Pass maxRows + 1 to fetch one extra row for overflow detection
-    const compiledSettings = maxRows !== undefined
-      ? { ...options.querySettings, maxRows: maxRows + 1 }
-      : options.querySettings;
+    const compiledSettings =
+      maxRows !== undefined
+        ? { ...options.querySettings, maxRows: maxRows + 1 }
+        : options.querySettings;
 
     const { sql, params, columns, hiddenColumns } = compileTSQL(options.query, {
       tableSchema: options.tableSchema,

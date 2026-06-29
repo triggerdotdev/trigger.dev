@@ -198,4 +198,3 @@ export function createResultTransformer(
     return rows.map((row) => transformRow(row, columnTransformMaps, options.fieldMappings));
   };
 }
-

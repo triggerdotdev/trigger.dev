@@ -33,10 +33,7 @@ import {
   ProjectAlertWebhookProperties,
 } from "~/models/projectAlert.server";
 import { ApiRetrieveRunPresenter } from "~/presenters/v3/ApiRetrieveRunPresenter.server";
-import {
-  processGitMetadata,
-  type GitMetaLinks,
-} from "~/presenters/v3/BranchesPresenter.server";
+import { processGitMetadata, type GitMetaLinks } from "~/presenters/v3/BranchesPresenter.server";
 import { DeploymentPresenter } from "~/presenters/v3/DeploymentPresenter.server";
 import { sendAlertEmail } from "~/services/email.server";
 import { VercelProjectIntegrationDataSchema } from "~/v3/vercel/vercelProjectIntegrationSchema";
@@ -164,9 +161,7 @@ export class DeliverAlertService extends BaseService {
 
     const deploymentMeta =
       alert.type === "DEPLOYMENT_SUCCESS" || alert.type === "DEPLOYMENT_FAILURE"
-        ? (
-            await fromPromise(this.#resolveDeploymentMetadata(alert), (e) => e)
-          ).unwrapOr(emptyMeta)
+        ? (await fromPromise(this.#resolveDeploymentMetadata(alert), (e) => e)).unwrapOr(emptyMeta)
         : emptyMeta;
 
     try {
@@ -774,7 +769,14 @@ export class DeliverAlertService extends BaseService {
                   text: this.#wrapInCodeBlock(error.stackTrace ?? error.message),
                 },
               },
-              this.#buildRunQuoteBlock(taskIdentifier, version, environment, runId, alert.project.name, timestamp),
+              this.#buildRunQuoteBlock(
+                taskIdentifier,
+                version,
+                environment,
+                runId,
+                alert.project.name,
+                timestamp
+              ),
               {
                 type: "actions",
                 elements: [
@@ -862,7 +864,13 @@ export class DeliverAlertService extends BaseService {
                   text: this.#wrapInCodeBlock(preparedError.stack ?? preparedError.message),
                 },
               },
-              this.#buildDeploymentQuoteBlock(alert, deploymentMeta, version, environment, timestamp),
+              this.#buildDeploymentQuoteBlock(
+                alert,
+                deploymentMeta,
+                version,
+                environment,
+                timestamp
+              ),
               {
                 type: "actions",
                 elements: [
@@ -903,7 +911,13 @@ export class DeliverAlertService extends BaseService {
                   text: `:rocket: Deployed *${version}.${environment}* successfully`,
                 },
               },
-              this.#buildDeploymentQuoteBlock(alert, deploymentMeta, version, environment, timestamp),
+              this.#buildDeploymentQuoteBlock(
+                alert,
+                deploymentMeta,
+                version,
+                environment,
+                timestamp
+              ),
               {
                 type: "actions",
                 elements: [
@@ -1057,9 +1071,7 @@ export class DeliverAlertService extends BaseService {
     }
   }
 
-  async #resolveDeploymentMetadata(
-    alert: FoundAlert
-  ): Promise<DeploymentIntegrationMetadata> {
+  async #resolveDeploymentMetadata(alert: FoundAlert): Promise<DeploymentIntegrationMetadata> {
     const deployment = alert.workerDeployment;
     if (!deployment) {
       return { git: null, vercelDeploymentUrl: undefined };
@@ -1078,20 +1090,19 @@ export class DeliverAlertService extends BaseService {
     projectId: string,
     deploymentId: string
   ): Promise<string | undefined> {
-    const vercelProjectIntegration =
-      await this._prisma.organizationProjectIntegration.findFirst({
-        where: {
-          projectId,
+    const vercelProjectIntegration = await this._prisma.organizationProjectIntegration.findFirst({
+      where: {
+        projectId,
+        deletedAt: null,
+        organizationIntegration: {
+          service: "VERCEL",
           deletedAt: null,
-          organizationIntegration: {
-            service: "VERCEL",
-            deletedAt: null,
-          },
         },
-        select: {
-          integrationData: true,
-        },
-      });
+      },
+      select: {
+        integrationData: true,
+      },
+    });
 
     if (!vercelProjectIntegration) {
       return undefined;
@@ -1105,19 +1116,18 @@ export class DeliverAlertService extends BaseService {
       return undefined;
     }
 
-    const integrationDeployment =
-      await this._prisma.integrationDeployment.findFirst({
-        where: {
-          deploymentId,
-          integrationName: "vercel",
-        },
-        select: {
-          integrationDeploymentId: true,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      });
+    const integrationDeployment = await this._prisma.integrationDeployment.findFirst({
+      where: {
+        deploymentId,
+        integrationName: "vercel",
+      },
+      select: {
+        integrationDeploymentId: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
 
     if (!integrationDeployment) {
       return undefined;

@@ -27,11 +27,7 @@ export const loader = createLoaderApiRoute(
       action: "read",
       // See sibling note in api.v1.batches.$batchId.ts — `{type: "runs"}`
       // preserves pre-RBAC `read:runs` superScope access for batch reads.
-      resource: (batch) =>
-        anyResource([
-          { type: "batch", id: batch.friendlyId },
-          { type: "runs" },
-        ]),
+      resource: (batch) => anyResource([{ type: "batch", id: batch.friendlyId }, { type: "runs" }]),
     },
   },
   async ({ resource: batch }) => {

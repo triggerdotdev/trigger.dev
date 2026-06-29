@@ -223,9 +223,15 @@ pnpm exec trigger dev --log-level debug
 ### PR workflow
 
 1. **Always open your PR in draft status first.** Do not mark it as "Ready for Review" until the steps below are complete.
-2. **Address all CodeRabbit code review comments.** Our CI runs an automated code review via CodeRabbit. Go through each comment and either fix the issue or resolve it with a comment explaining why no change is needed.
-3. **Wait for all CI checks to pass.** Do not mark the PR as "Ready for Review" until every check is green.
-4. **Then mark the PR as "Ready for Review"** so a maintainer can take a look.
+2. **Run format and lint locally before pushing:**
+   ```bash
+   pnpm run format      # auto-fixes formatting (oxfmt)
+   pnpm run lint:fix    # auto-fixes lint violations (oxlint)
+   ```
+   Both are enforced by CI — the `code-quality` check will fail if either produces a diff or errors.
+3. **Address all CodeRabbit code review comments.** Our CI runs an automated code review via CodeRabbit. Go through each comment and either fix the issue or resolve it with a comment explaining why no change is needed.
+4. **Wait for all CI checks to pass.** Do not mark the PR as "Ready for Review" until every check is green.
+5. **Then mark the PR as "Ready for Review"** so a maintainer can take a look.
 
 ### Cost/benefit analysis for risky changes
 

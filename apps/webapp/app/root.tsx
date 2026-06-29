@@ -71,6 +71,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       features,
       appEnv: env.APP_ENV,
       appOrigin: env.APP_ORIGIN,
+      apiOrigin: env.API_ORIGIN ?? env.APP_ORIGIN,
       triggerCliTag: env.TRIGGER_CLI_TAG,
       kapa,
       timezone,

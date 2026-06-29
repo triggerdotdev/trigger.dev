@@ -61,21 +61,21 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     }
 
     return json({
-    id: backgroundWorker.friendlyId,
-    version: backgroundWorker.version,
-    cliVersion: backgroundWorker.cliVersion,
-    sdkVersion: backgroundWorker.sdkVersion,
-    contentHash: backgroundWorker.contentHash,
-    createdAt: backgroundWorker.createdAt,
-    updatedAt: backgroundWorker.updatedAt,
-    tasks: backgroundWorker.tasks.map((task) => ({
-      id: task.slug,
-      exportName: task.exportName ?? "@deprecated",
-      filePath: task.filePath,
-      source: task.triggerSource,
-      retryConfig: task.retryConfig,
-      queueConfig: task.queueConfig,
-    })),
+      id: backgroundWorker.friendlyId,
+      version: backgroundWorker.version,
+      cliVersion: backgroundWorker.cliVersion,
+      sdkVersion: backgroundWorker.sdkVersion,
+      contentHash: backgroundWorker.contentHash,
+      createdAt: backgroundWorker.createdAt,
+      updatedAt: backgroundWorker.updatedAt,
+      tasks: backgroundWorker.tasks.map((task) => ({
+        id: task.slug,
+        exportName: task.exportName ?? "@deprecated",
+        filePath: task.filePath,
+        source: task.triggerSource,
+        retryConfig: task.retryConfig,
+        queueConfig: task.queueConfig,
+      })),
       files: backgroundWorker.files.map((file) => ({
         id: file.friendlyId,
         filePath: file.filePath,

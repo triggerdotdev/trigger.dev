@@ -3,10 +3,7 @@ import { tryCatch } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
 import { createRedisClient } from "~/redis.server";
 import { singleton } from "~/utils/singleton";
-import {
-  SSO_SESSION_INVALIDATED_HEADER,
-  ssoSessionExpiredLogoutPath,
-} from "~/utils/ssoSession";
+import { ssoSessionExpiredLogoutPath } from "~/utils/ssoSession";
 import type { AuthUser } from "./authUser";
 import { logger } from "./logger.server";
 import { ssoController } from "./sso.server";
@@ -80,7 +77,9 @@ export async function revalidateSsoSession(
   // `sso.revalidation.timeout` warn for alerting.
   const timeoutMs = env.SSO_SESSION_REVALIDATION_TIMEOUT_MS;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let result: Awaited<ReturnType<typeof ssoController.validateSession>> | typeof REVALIDATION_TIMEOUT;
+  let result:
+    | Awaited<ReturnType<typeof ssoController.validateSession>>
+    | typeof REVALIDATION_TIMEOUT;
   try {
     result = await Promise.race([
       // ResultAsync is a PromiseLike; Promise.resolve unwraps it to a Result.
@@ -142,9 +141,10 @@ export async function revalidateSsoSession(
     userId: authUser.userId,
   });
 
-  // Navigations get the logout redirect; programmatic/API fetches can't
-  // follow a 302-to-HTML, so they get a 401 carrying the marker header that
-  // the client fetch guard turns into the same redirect.
+  // Navigations (and Remix data requests, which the client follows) get the
+  // logout redirect. Programmatic/API fetches can't follow a 302-to-HTML, so
+  // they get a plain 401; the session is re-checked and the user is redirected
+  // on their next navigation/refresh.
   const url = new URL(request.url);
   const isRemixDataRequest = url.searchParams.has("_data");
   const dest = request.headers.get("sec-fetch-dest");
@@ -154,8 +154,5 @@ export async function revalidateSsoSession(
   if (isRemixDataRequest || isDocumentRequest) {
     throw redirect(ssoSessionExpiredLogoutPath());
   }
-  throw json(
-    { error: "sso_session_invalidated" },
-    { status: 401, headers: { [SSO_SESSION_INVALIDATED_HEADER]: "1" } }
-  );
+  throw json({ error: "sso_session_invalidated" }, { status: 401 });
 }

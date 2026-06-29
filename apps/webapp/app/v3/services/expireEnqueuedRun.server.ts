@@ -5,6 +5,7 @@ import { BaseService } from "./baseService.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { getEventRepositoryForStore } from "../eventRepository/index.server";
+import { isV3Disabled } from "../engineDeprecation.server";
 
 export class ExpireEnqueuedRunService extends BaseService {
   public static async ack(runId: string, tx?: PrismaClientOrTransaction) {
@@ -45,6 +46,12 @@ export class ExpireEnqueuedRunService extends BaseService {
         runId,
       });
 
+      return;
+    }
+
+    // v3 (engine V1) shutdown: skip expiring abandoned V1 runs. v4 is unaffected.
+    if (isV3Disabled() && run.engine === "V1") {
+      logger.debug("[ExpireEnqueuedRunService] Skipping expiry for shut-down v3 run", { runId });
       return;
     }
 

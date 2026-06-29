@@ -51,6 +51,7 @@ export class EditSchedulePresenter {
               },
             },
             branchName: true,
+            parentEnvironmentId: true,
           },
         },
       },
@@ -87,15 +88,17 @@ export class EditSchedulePresenter {
       : [];
 
     const possibleEnvironments = filterOrphanedEnvironments(project.environments)
+      // Exclude the branchable PREVIEW parent (it has no parent of its own);
+      // only actual preview branches are schedulable.
+      .filter(
+        (environment) =>
+          !(environment.type === "PREVIEW" && environment.parentEnvironmentId === null)
+      )
       .map((environment) => {
         return {
           ...displayableEnvironment(environment, userId),
           branchName: environment.branchName ?? undefined,
         };
-      })
-      .filter((env) => {
-        if (env.type === "PREVIEW" && !env.branchName) return false;
-        return true;
       });
 
     return {

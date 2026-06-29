@@ -275,10 +275,10 @@ const DateTimeAccurateInner = ({
     return hideDate
       ? formatTimeOnly(realDate, displayTimeZone, locales, hour12)
       : realPrevDate
-      ? isSameDay(realDate, realPrevDate)
-        ? formatTimeOnly(realDate, displayTimeZone, locales, hour12)
-        : formatDateTimeAccurate(realDate, displayTimeZone, locales, hour12)
-      : formatDateTimeAccurate(realDate, displayTimeZone, locales, hour12);
+        ? isSameDay(realDate, realPrevDate)
+          ? formatTimeOnly(realDate, displayTimeZone, locales, hour12)
+          : formatDateTimeAccurate(realDate, displayTimeZone, locales, hour12)
+        : formatDateTimeAccurate(realDate, displayTimeZone, locales, hour12);
   }, [realDate, displayTimeZone, locales, hour12, hideDate, previousDate]);
 
   if (!showTooltip)

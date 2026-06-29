@@ -77,9 +77,7 @@ describe("buildSyntheticSpanDetailBody", () => {
   });
 
   it("defaults message to '' when the buffered run has no taskIdentifier", () => {
-    const body = buildSyntheticSpanDetailBody(
-      makeSyntheticRun({ taskIdentifier: undefined })
-    );
+    const body = buildSyntheticSpanDetailBody(makeSyntheticRun({ taskIdentifier: undefined }));
     expect(body.message).toBe("");
   });
 

@@ -1,4 +1,5 @@
 import { ArrowRightIcon } from "@heroicons/react/20/solid";
+import { CheckIcon } from "@heroicons/react/24/solid";
 import { useLocation, useNavigation } from "@remix-run/react";
 import { formatDuration } from "@trigger.dev/core/v3/utils/durations";
 import { RunsIconExtraSmall } from "~/assets/icons/RunsIcon";
@@ -87,6 +88,7 @@ export function SessionsTable({
           </TableHeaderCell>
           <TableHeaderCell>Type</TableHeaderCell>
           <TableHeaderCell>Agent ID</TableHeaderCell>
+          <TableHeaderCell>Test</TableHeaderCell>
           <TableHeaderCell>Tags</TableHeaderCell>
           <TableHeaderCell>Created</TableHeaderCell>
           <TableHeaderCell>Duration</TableHeaderCell>
@@ -97,7 +99,7 @@ export function SessionsTable({
       </TableHeader>
       <TableBody>
         {sessions.length === 0 ? (
-          <TableBlankRow colSpan={8}>
+          <TableBlankRow colSpan={9}>
             <div className="flex items-center justify-center">
               <Paragraph className="w-auto">
                 {hasFilters
@@ -145,6 +147,19 @@ export function SessionsTable({
                   </div>
                 </TableCell>
                 <TableCell to={sessionPath}>
+                  <span className="sr-only">{session.isTest ? "Yes" : "No"}</span>
+                  {session.isTest ? (
+                    <CheckIcon
+                      aria-hidden
+                      className="size-4 text-charcoal-400 group-hover/table-row:text-text-bright"
+                    />
+                  ) : (
+                    <span aria-hidden className="text-text-dimmed">
+                      –
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell to={sessionPath}>
                   {session.tags.length > 0 ? (
                     <div className="flex flex-wrap gap-1">
                       {session.tags.map((tag) => (
@@ -168,7 +183,7 @@ export function SessionsTable({
         )}
         {isLoading && (
           <TableBlankRow
-            colSpan={8}
+            colSpan={9}
             className="absolute left-0 top-0 flex h-full w-full items-center justify-center gap-2 bg-charcoal-900/90"
           >
             <Spinner /> <span className="text-text-dimmed">Loading…</span>
@@ -187,8 +202,8 @@ function SessionDuration({ session }: { session: SessionListItem }) {
     session.status === "CLOSED"
       ? session.closedAt
       : session.status === "EXPIRED"
-      ? session.expiresAt
-      : undefined;
+        ? session.expiresAt
+        : undefined;
 
   if (endedAt) {
     return (

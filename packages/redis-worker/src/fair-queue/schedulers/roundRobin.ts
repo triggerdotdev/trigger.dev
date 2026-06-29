@@ -154,4 +154,3 @@ export class RoundRobinScheduler extends BaseScheduler {
     return [...array.slice(normalizedIndex), ...array.slice(0, normalizedIndex)];
   }
 }
-

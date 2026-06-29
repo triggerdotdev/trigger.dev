@@ -392,14 +392,22 @@ function RunBody({
       <div className="flex items-center justify-between gap-2 overflow-x-hidden px-3 pr-2">
         <div className="flex items-center gap-1 overflow-x-hidden">
           <RunIcon
-            name={run.isAgentRun ? "agent" : run.isCached ? "task-cached" : "task"}
+            name={
+              run.isAgentRun
+                ? "agent"
+                : run.isScheduled
+                  ? "scheduled"
+                  : run.isCached
+                    ? "task-cached"
+                    : "task"
+            }
             spanName={run.taskIdentifier}
             className="size-5 min-h-5 min-w-5"
           />
           <Header2
             className={cn(
               "overflow-x-hidden",
-              run.isAgentRun ? "text-agents" : "text-blue-500"
+              run.isAgentRun ? "text-agents" : run.isScheduled ? "text-schedules" : "text-blue-500"
             )}
           >
             <span className="truncate">
@@ -1315,10 +1323,10 @@ function SpanEntity({ span }: { span: Span }) {
                   span.isCancelled
                     ? "CANCELED"
                     : span.isError
-                    ? "FAILED"
-                    : span.isPartial
-                    ? "EXECUTING"
-                    : "COMPLETED"
+                      ? "FAILED"
+                      : span.isPartial
+                        ? "EXECUTING"
+                        : "COMPLETED"
                 }
                 className="text-sm"
               />
@@ -1430,10 +1438,10 @@ function SpanEntity({ span }: { span: Span }) {
                 span.isCancelled
                   ? "CANCELED"
                   : span.isError
-                  ? "FAILED"
-                  : span.isPartial
-                  ? "EXECUTING"
-                  : "COMPLETED"
+                    ? "FAILED"
+                    : span.isPartial
+                      ? "EXECUTING"
+                      : "COMPLETED"
               }
               className="text-sm"
             />
@@ -1508,8 +1516,8 @@ function SpanEntity({ span }: { span: Span }) {
             typeof span.properties === "string"
               ? span.properties
               : span.properties != null
-              ? JSON.stringify(span.properties, null, 2)
-              : undefined
+                ? JSON.stringify(span.properties, null, 2)
+                : undefined
           }
           startTime={span.startTime}
           duration={span.duration}

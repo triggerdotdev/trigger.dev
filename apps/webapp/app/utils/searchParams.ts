@@ -54,7 +54,10 @@ export function objectToSearchParams(
 }
 
 class SearchParams<TParams extends ParamType> {
-  constructor(private params: TParams, readonly schema: ZodType<TParams>) {}
+  constructor(
+    private params: TParams,
+    readonly schema: ZodType<TParams>
+  ) {}
 
   get(key: keyof TParams) {
     return this.params[key];

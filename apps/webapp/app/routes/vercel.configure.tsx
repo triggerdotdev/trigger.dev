@@ -16,7 +16,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   await requireUserId(request);
   const url = new URL(request.url);
   const searchParams = Object.fromEntries(url.searchParams);
-  
+
   const { configurationId } = SearchParamsSchema.parse(searchParams);
 
   // Find the organization integration by configurationId (installationId in integrationData)

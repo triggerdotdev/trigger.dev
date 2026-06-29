@@ -134,11 +134,7 @@ function AskAIProvider({ websiteId, isCollapsed = false }: AskAIProviderProps) {
                 </Button>
               </span>
             </TooltipTrigger>
-            <TooltipContent
-              side="right"
-              sideOffset={8}
-              className="flex items-center gap-2 text-xs"
-            >
+            <TooltipContent side="right" sideOffset={8} className="flex items-center gap-2 text-xs">
               Ask AI
               <span className="flex items-center">
                 <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />

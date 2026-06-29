@@ -67,10 +67,9 @@ export function darkTheme(): Extension {
       },
 
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: cursor },
-      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
-        {
-          backgroundColor: selection,
-        },
+      "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": {
+        backgroundColor: selection,
+      },
 
       ".cm-panels": { backgroundColor: darkBackground, color: ivory },
       ".cm-panels.cm-panels-top": { borderBottom: "2px solid black" },
@@ -167,20 +166,14 @@ export function darkTheme(): Extension {
         backgroundColor: scrollbarBg,
       },
     },
-    { dark: true },
+    { dark: true }
   );
 
   /// The highlighting style for code in the JSON Hero theme.
   const jsonHeroHighlightStyle = HighlightStyle.define([
     { tag: tags.keyword, color: violet },
     {
-      tag: [
-        tags.name,
-        tags.deleted,
-        tags.character,
-        tags.propertyName,
-        tags.macroName,
-      ],
+      tag: [tags.name, tags.deleted, tags.character, tags.propertyName, tags.macroName],
       color: lilac,
     },
     { tag: [tags.function(tags.variableName), tags.labelName], color: malibu },

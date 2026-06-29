@@ -76,7 +76,7 @@ export class OrgIntegrationRepository {
         return new WebClient(
           options?.forceBotToken
             ? secret.botAccessToken
-            : secret.userAccessToken ?? secret.botAccessToken,
+            : (secret.userAccessToken ?? secret.botAccessToken),
           {
             retryConfig: {
               retries: 2,
@@ -97,7 +97,9 @@ export class OrgIntegrationRepository {
     !!env.ORG_SLACK_INTEGRATION_CLIENT_ID && !!env.ORG_SLACK_INTEGRATION_CLIENT_SECRET;
 
   static isVercelSupported =
-    !!env.VERCEL_INTEGRATION_CLIENT_ID && !!env.VERCEL_INTEGRATION_CLIENT_SECRET && !!env.VERCEL_INTEGRATION_APP_SLUG;
+    !!env.VERCEL_INTEGRATION_CLIENT_ID &&
+    !!env.VERCEL_INTEGRATION_CLIENT_SECRET &&
+    !!env.VERCEL_INTEGRATION_APP_SLUG;
 
   /**
    * Generate the URL to install the Vercel integration.

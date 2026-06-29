@@ -1,0 +1,9 @@
+# Configuration for actionlint.
+#
+# Blacksmith runners are self-hosted runners from GitHub Actions' perspective, so
+# actionlint needs to be told that these custom runner labels are valid.
+self-hosted-runner:
+  labels:
+    - blacksmith-*-ubuntu-*
+    - blacksmith-*-windows-*
+    - blacksmith-*-macos-*

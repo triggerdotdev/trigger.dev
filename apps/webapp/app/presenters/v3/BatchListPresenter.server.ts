@@ -93,7 +93,7 @@ export class BatchListPresenter extends BasePresenter {
         createdAt: Date;
         updatedAt: Date;
         completedAt: Date | null;
-        runCount: BigInt;
+        runCount: bigint;
         batchVersion: string;
       }[]
     >`
@@ -206,8 +206,8 @@ WHERE
           finishedAt: batch.completedAt
             ? batch.completedAt.toISOString()
             : hasFinished
-            ? batch.updatedAt.toISOString()
-            : undefined,
+              ? batch.updatedAt.toISOString()
+              : undefined,
           status: batch.status,
           environment: displayableEnvironment(environment, userId),
           runCount: Number(batch.runCount),

@@ -148,7 +148,12 @@ function ModelsDropdown({
         <ComboBox placeholder="Filter by model..." value={searchValue} />
         <SelectList>
           {filtered.map((m) => (
-            <SelectItem key={m.model} value={m.model} className="text-text-bright" icon={modelIcon(m.system, m.model)}>
+            <SelectItem
+              key={m.model}
+              value={m.model}
+              className="text-text-bright"
+              icon={modelIcon(m.system, m.model)}
+            >
               {m.model}
             </SelectItem>
           ))}

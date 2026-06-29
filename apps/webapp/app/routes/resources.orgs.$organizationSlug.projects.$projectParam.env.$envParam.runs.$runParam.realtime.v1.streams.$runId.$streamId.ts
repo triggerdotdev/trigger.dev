@@ -82,14 +82,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   // `request.signal` is severed by Remix's Request.clone() + Node undici GC bug
   // (see apps/webapp/CLAUDE.md). Use the Express res.on('close')-backed signal so
   // the upstream stream fetch actually aborts when the user closes the tab.
-  return realtimeStream.streamResponse(
-    request,
-    run.friendlyId,
-    streamId,
-    getRequestAbortSignal(),
-    {
-      lastEventId,
-      timeoutInSeconds,
-    }
-  );
+  return realtimeStream.streamResponse(request, run.friendlyId, streamId, getRequestAbortSignal(), {
+    lastEventId,
+    timeoutInSeconds,
+  });
 }

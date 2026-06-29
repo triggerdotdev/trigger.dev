@@ -87,3 +87,19 @@ export function useWidgetLimitPerDashboard(matches?: UIMatch[]) {
   });
   return data?.widgetLimitPerDashboard ?? 16;
 }
+
+export function useBillingLimit(matches?: UIMatch[]) {
+  const data = useTypedMatchesData<typeof orgLoader>({
+    id: "routes/_app.orgs.$organizationSlug",
+    matches,
+  });
+  return data?.billingLimit;
+}
+
+export function useCanManageBillingLimits(matches?: UIMatch[]) {
+  const data = useTypedMatchesData<typeof orgLoader>({
+    id: "routes/_app.orgs.$organizationSlug",
+    matches,
+  });
+  return data?.canManageBillingLimits === true;
+}

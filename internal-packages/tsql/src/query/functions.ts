@@ -136,7 +136,11 @@ export const TSQL_CLICKHOUSE_FUNCTIONS: Record<string, TSQLFunctionMeta> = {
   substr: { clickhouseName: "substring", minArgs: 2, maxArgs: 3 },
   mid: { clickhouseName: "substring", minArgs: 2, maxArgs: 3 },
   substringUTF8: { clickhouseName: "substringUTF8", minArgs: 2, maxArgs: 3 },
-  appendTrailingCharIfAbsent: { clickhouseName: "appendTrailingCharIfAbsent", minArgs: 2, maxArgs: 2 },
+  appendTrailingCharIfAbsent: {
+    clickhouseName: "appendTrailingCharIfAbsent",
+    minArgs: 2,
+    maxArgs: 2,
+  },
   convertCharset: { clickhouseName: "convertCharset", minArgs: 3, maxArgs: 3 },
   base58Encode: { clickhouseName: "base58Encode", minArgs: 1, maxArgs: 1 },
   base58Decode: { clickhouseName: "base58Decode", minArgs: 1, maxArgs: 1 },
@@ -166,7 +170,11 @@ export const TSQL_CLICKHOUSE_FUNCTIONS: Record<string, TSQLFunctionMeta> = {
   position: { clickhouseName: "position", minArgs: 2, maxArgs: 2 },
   positionCaseInsensitive: { clickhouseName: "positionCaseInsensitive", minArgs: 2, maxArgs: 2 },
   positionUTF8: { clickhouseName: "positionUTF8", minArgs: 2, maxArgs: 2 },
-  positionCaseInsensitiveUTF8: { clickhouseName: "positionCaseInsensitiveUTF8", minArgs: 2, maxArgs: 2 },
+  positionCaseInsensitiveUTF8: {
+    clickhouseName: "positionCaseInsensitiveUTF8",
+    minArgs: 2,
+    maxArgs: 2,
+  },
   locate: { clickhouseName: "locate", minArgs: 2, maxArgs: 2 },
   match: { clickhouseName: "match", minArgs: 2, maxArgs: 2 },
   multiMatchAny: { clickhouseName: "multiMatchAny", minArgs: 2, maxArgs: 2 },
@@ -177,7 +185,11 @@ export const TSQL_CLICKHOUSE_FUNCTIONS: Record<string, TSQLFunctionMeta> = {
   multiSearchAny: { clickhouseName: "multiSearchAny", minArgs: 2, maxArgs: 2 },
   extract: { clickhouseName: "extract", minArgs: 2, maxArgs: 2 },
   extractAll: { clickhouseName: "extractAll", minArgs: 2, maxArgs: 2 },
-  extractAllGroupsHorizontal: { clickhouseName: "extractAllGroupsHorizontal", minArgs: 2, maxArgs: 2 },
+  extractAllGroupsHorizontal: {
+    clickhouseName: "extractAllGroupsHorizontal",
+    minArgs: 2,
+    maxArgs: 2,
+  },
   extractAllGroupsVertical: { clickhouseName: "extractAllGroupsVertical", minArgs: 2, maxArgs: 2 },
   like: { clickhouseName: "like", minArgs: 2, maxArgs: 2 },
   ilike: { clickhouseName: "ilike", minArgs: 2, maxArgs: 2 },
@@ -294,12 +306,42 @@ export const TSQL_CLICKHOUSE_FUNCTIONS: Record<string, TSQLFunctionMeta> = {
   toTimeZone: { clickhouseName: "toTimeZone", minArgs: 2, maxArgs: 2 },
   formatDateTime: { clickhouseName: "formatDateTime", minArgs: 2, maxArgs: 3 },
   parseDateTime: { clickhouseName: "parseDateTime", minArgs: 2, maxArgs: 3 },
-  parseDateTimeBestEffort: { clickhouseName: "parseDateTimeBestEffort", minArgs: 1, maxArgs: 2, tzAware: true },
-  parseDateTimeBestEffortOrNull: { clickhouseName: "parseDateTimeBestEffortOrNull", minArgs: 1, maxArgs: 2, tzAware: true },
-  parseDateTimeBestEffortOrZero: { clickhouseName: "parseDateTimeBestEffortOrZero", minArgs: 1, maxArgs: 2, tzAware: true },
-  parseDateTime64BestEffort: { clickhouseName: "parseDateTime64BestEffort", minArgs: 1, maxArgs: 3, tzAware: true },
-  parseDateTime64BestEffortOrNull: { clickhouseName: "parseDateTime64BestEffortOrNull", minArgs: 1, maxArgs: 3, tzAware: true },
-  parseDateTime64BestEffortOrZero: { clickhouseName: "parseDateTime64BestEffortOrZero", minArgs: 1, maxArgs: 3, tzAware: true },
+  parseDateTimeBestEffort: {
+    clickhouseName: "parseDateTimeBestEffort",
+    minArgs: 1,
+    maxArgs: 2,
+    tzAware: true,
+  },
+  parseDateTimeBestEffortOrNull: {
+    clickhouseName: "parseDateTimeBestEffortOrNull",
+    minArgs: 1,
+    maxArgs: 2,
+    tzAware: true,
+  },
+  parseDateTimeBestEffortOrZero: {
+    clickhouseName: "parseDateTimeBestEffortOrZero",
+    minArgs: 1,
+    maxArgs: 2,
+    tzAware: true,
+  },
+  parseDateTime64BestEffort: {
+    clickhouseName: "parseDateTime64BestEffort",
+    minArgs: 1,
+    maxArgs: 3,
+    tzAware: true,
+  },
+  parseDateTime64BestEffortOrNull: {
+    clickhouseName: "parseDateTime64BestEffortOrNull",
+    minArgs: 1,
+    maxArgs: 3,
+    tzAware: true,
+  },
+  parseDateTime64BestEffortOrZero: {
+    clickhouseName: "parseDateTime64BestEffortOrZero",
+    minArgs: 1,
+    maxArgs: 3,
+    tzAware: true,
+  },
 
   // Interval functions
   toIntervalSecond: { clickhouseName: "toIntervalSecond", minArgs: 1, maxArgs: 1 },
@@ -413,9 +455,21 @@ export const TSQL_CLICKHOUSE_FUNCTIONS: Record<string, TSQLFunctionMeta> = {
   domain: { clickhouseName: "domain", minArgs: 1, maxArgs: 1 },
   domainWithoutWWW: { clickhouseName: "domainWithoutWWW", minArgs: 1, maxArgs: 1 },
   topLevelDomain: { clickhouseName: "topLevelDomain", minArgs: 1, maxArgs: 1 },
-  firstSignificantSubdomain: { clickhouseName: "firstSignificantSubdomain", minArgs: 1, maxArgs: 1 },
-  cutToFirstSignificantSubdomain: { clickhouseName: "cutToFirstSignificantSubdomain", minArgs: 1, maxArgs: 1 },
-  cutToFirstSignificantSubdomainWithWWW: { clickhouseName: "cutToFirstSignificantSubdomainWithWWW", minArgs: 1, maxArgs: 1 },
+  firstSignificantSubdomain: {
+    clickhouseName: "firstSignificantSubdomain",
+    minArgs: 1,
+    maxArgs: 1,
+  },
+  cutToFirstSignificantSubdomain: {
+    clickhouseName: "cutToFirstSignificantSubdomain",
+    minArgs: 1,
+    maxArgs: 1,
+  },
+  cutToFirstSignificantSubdomainWithWWW: {
+    clickhouseName: "cutToFirstSignificantSubdomainWithWWW",
+    minArgs: 1,
+    maxArgs: 1,
+  },
   port: { clickhouseName: "port", minArgs: 1, maxArgs: 2 },
   path: { clickhouseName: "path", minArgs: 1, maxArgs: 1 },
   pathFull: { clickhouseName: "pathFull", minArgs: 1, maxArgs: 1 },
@@ -438,7 +492,11 @@ export const TSQL_CLICKHOUSE_FUNCTIONS: Record<string, TSQLFunctionMeta> = {
   isNaN: { clickhouseName: "isNaN", minArgs: 1, maxArgs: 1 },
   bar: { clickhouseName: "bar", minArgs: 4, maxArgs: 4 },
   transform: { clickhouseName: "transform", minArgs: 3, maxArgs: 4 },
-  formatReadableDecimalSize: { clickhouseName: "formatReadableDecimalSize", minArgs: 1, maxArgs: 1 },
+  formatReadableDecimalSize: {
+    clickhouseName: "formatReadableDecimalSize",
+    minArgs: 1,
+    maxArgs: 1,
+  },
   formatReadableSize: { clickhouseName: "formatReadableSize", minArgs: 1, maxArgs: 1 },
   formatReadableQuantity: { clickhouseName: "formatReadableQuantity", minArgs: 1, maxArgs: 1 },
   formatReadableTimeDelta: { clickhouseName: "formatReadableTimeDelta", minArgs: 1, maxArgs: 2 },
@@ -447,7 +505,11 @@ export const TSQL_CLICKHOUSE_FUNCTIONS: Record<string, TSQLFunctionMeta> = {
   min2: { clickhouseName: "min2", minArgs: 2, maxArgs: 2 },
   max2: { clickhouseName: "max2", minArgs: 2, maxArgs: 2 },
   runningDifference: { clickhouseName: "runningDifference", minArgs: 1, maxArgs: 1 },
-  runningDifferenceStartingWithFirstValue: { clickhouseName: "runningDifferenceStartingWithFirstValue", minArgs: 1, maxArgs: 1 },
+  runningDifferenceStartingWithFirstValue: {
+    clickhouseName: "runningDifferenceStartingWithFirstValue",
+    minArgs: 1,
+    maxArgs: 1,
+  },
   neighbor: { clickhouseName: "neighbor", minArgs: 2, maxArgs: 3 },
 
   // Window functions
@@ -504,10 +566,32 @@ export const TSQL_AGGREGATIONS: Record<string, TSQLFunctionMeta> = {
   groupArrayIf: { clickhouseName: "groupArrayIf", minArgs: 2, maxArgs: 2, aggregate: true },
   groupUniqArray: { clickhouseName: "groupUniqArray", minArgs: 1, maxArgs: 1, aggregate: true },
   groupUniqArrayIf: { clickhouseName: "groupUniqArrayIf", minArgs: 2, maxArgs: 2, aggregate: true },
-  groupArrayInsertAt: { clickhouseName: "groupArrayInsertAt", minArgs: 2, maxArgs: 2, aggregate: true },
-  groupArrayMovingAvg: { clickhouseName: "groupArrayMovingAvg", minArgs: 1, maxArgs: 1, aggregate: true },
-  groupArrayMovingSum: { clickhouseName: "groupArrayMovingSum", minArgs: 1, maxArgs: 1, aggregate: true },
-  groupArraySample: { clickhouseName: "groupArraySample", minArgs: 1, maxArgs: 1, minParams: 1, maxParams: 2, aggregate: true },
+  groupArrayInsertAt: {
+    clickhouseName: "groupArrayInsertAt",
+    minArgs: 2,
+    maxArgs: 2,
+    aggregate: true,
+  },
+  groupArrayMovingAvg: {
+    clickhouseName: "groupArrayMovingAvg",
+    minArgs: 1,
+    maxArgs: 1,
+    aggregate: true,
+  },
+  groupArrayMovingSum: {
+    clickhouseName: "groupArrayMovingSum",
+    minArgs: 1,
+    maxArgs: 1,
+    aggregate: true,
+  },
+  groupArraySample: {
+    clickhouseName: "groupArraySample",
+    minArgs: 1,
+    maxArgs: 1,
+    minParams: 1,
+    maxParams: 2,
+    aggregate: true,
+  },
   array_agg: { clickhouseName: "groupArray", minArgs: 1, maxArgs: 1, aggregate: true },
 
   // Bitmap aggregations
@@ -528,12 +612,39 @@ export const TSQL_AGGREGATIONS: Record<string, TSQLFunctionMeta> = {
   median: { clickhouseName: "median", minArgs: 1, maxArgs: 1, aggregate: true },
   medianIf: { clickhouseName: "medianIf", minArgs: 2, maxArgs: 2, aggregate: true },
   medianExact: { clickhouseName: "medianExact", minArgs: 1, maxArgs: 1, aggregate: true },
-  quantile: { clickhouseName: "quantile", minArgs: 1, maxArgs: 1, minParams: 1, maxParams: 1, aggregate: true },
-  quantileIf: { clickhouseName: "quantileIf", minArgs: 2, maxArgs: 2, minParams: 1, maxParams: 1, aggregate: true },
+  quantile: {
+    clickhouseName: "quantile",
+    minArgs: 1,
+    maxArgs: 1,
+    minParams: 1,
+    maxParams: 1,
+    aggregate: true,
+  },
+  quantileIf: {
+    clickhouseName: "quantileIf",
+    minArgs: 2,
+    maxArgs: 2,
+    minParams: 1,
+    maxParams: 1,
+    aggregate: true,
+  },
   quantiles: { clickhouseName: "quantiles", minArgs: 1, aggregate: true },
   // -Merge combinators for AggregatingMergeTree tables
-  quantilesMerge: { clickhouseName: "quantilesMerge", minArgs: 1, maxArgs: 1, minParams: 1, aggregate: true },
-  quantileMerge: { clickhouseName: "quantileMerge", minArgs: 1, maxArgs: 1, minParams: 1, maxParams: 1, aggregate: true },
+  quantilesMerge: {
+    clickhouseName: "quantilesMerge",
+    minArgs: 1,
+    maxArgs: 1,
+    minParams: 1,
+    aggregate: true,
+  },
+  quantileMerge: {
+    clickhouseName: "quantileMerge",
+    minArgs: 1,
+    maxArgs: 1,
+    minParams: 1,
+    maxParams: 1,
+    aggregate: true,
+  },
   sumMerge: { clickhouseName: "sumMerge", minArgs: 1, maxArgs: 1, aggregate: true },
   avgMerge: { clickhouseName: "avgMerge", minArgs: 1, maxArgs: 1, aggregate: true },
   countMerge: { clickhouseName: "countMerge", minArgs: 1, maxArgs: 1, aggregate: true },
@@ -541,7 +652,12 @@ export const TSQL_AGGREGATIONS: Record<string, TSQLFunctionMeta> = {
   maxMerge: { clickhouseName: "maxMerge", minArgs: 1, maxArgs: 1, aggregate: true },
 
   // Statistical functions
-  simpleLinearRegression: { clickhouseName: "simpleLinearRegression", minArgs: 2, maxArgs: 2, aggregate: true },
+  simpleLinearRegression: {
+    clickhouseName: "simpleLinearRegression",
+    minArgs: 2,
+    maxArgs: 2,
+    aggregate: true,
+  },
   contingency: { clickhouseName: "contingency", minArgs: 2, maxArgs: 2, aggregate: true },
   cramersV: { clickhouseName: "cramersV", minArgs: 2, maxArgs: 2, aggregate: true },
   theilsU: { clickhouseName: "theilsU", minArgs: 2, maxArgs: 2, aggregate: true },
@@ -552,7 +668,14 @@ export const TSQL_AGGREGATIONS: Record<string, TSQLFunctionMeta> = {
   maxMap: { clickhouseName: "maxMap", minArgs: 1, maxArgs: 2, aggregate: true },
 
   // TopK
-  topK: { clickhouseName: "topK", minArgs: 1, maxArgs: 1, minParams: 1, maxParams: 1, aggregate: true },
+  topK: {
+    clickhouseName: "topK",
+    minArgs: 1,
+    maxArgs: 1,
+    minParams: 1,
+    maxParams: 1,
+    aggregate: true,
+  },
 
   // Funnel
   windowFunnel: { clickhouseName: "windowFunnel", minArgs: 1, maxArgs: 99, aggregate: true },
@@ -623,7 +746,9 @@ export function findTSQLFunction(name: string): TSQLFunctionMeta | undefined {
  * Get all exposed function names (for autocomplete, suggestions, etc.)
  */
 export function getAllExposedFunctionNames(): string[] {
-  const functionNames = Object.keys(TSQL_CLICKHOUSE_FUNCTIONS).filter((name) => !name.startsWith("_"));
+  const functionNames = Object.keys(TSQL_CLICKHOUSE_FUNCTIONS).filter(
+    (name) => !name.startsWith("_")
+  );
   const aggregationNames = Object.keys(TSQL_AGGREGATIONS).filter((name) => !name.startsWith("_"));
   return [...functionNames, ...aggregationNames];
 }
@@ -662,4 +787,3 @@ export function validateFunctionArgs(
     );
   }
 }
-

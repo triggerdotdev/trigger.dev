@@ -147,7 +147,12 @@ export function CerebrasIcon({ className }: IconProps) {
 
 export function MistralIcon({ className }: IconProps) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+    >
       <path d="M7.28516 3.74658H4.1416V6.8809H7.28516V3.74658Z" />
       <path d="M19.8579 3.74658H16.7144V6.8809H19.8579V3.74658Z" />
       <path d="M10.4277 6.88086H4.1416V10.0152H10.4277V6.88086Z" />
@@ -174,4 +179,3 @@ export function AzureIcon({ className }: IconProps) {
     </svg>
   );
 }
-

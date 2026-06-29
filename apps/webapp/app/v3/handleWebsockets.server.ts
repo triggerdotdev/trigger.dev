@@ -6,6 +6,7 @@ import { singleton } from "../utils/singleton";
 import { AuthenticatedSocketConnection } from "./authenticatedSocketConnection.server";
 import { Gauge } from "prom-client";
 import { metricsRegister } from "~/metrics.server";
+import { isV3Disabled, V3_DEV_DEPRECATION_MESSAGE } from "./engineDeprecation.server";
 
 export const wss = singleton("wss", initalizeWebSocketServer);
 
@@ -57,6 +58,19 @@ async function handleWebSocketConnection(ws: WebSocket, req: IncomingMessage) {
   }
 
   const authenticatedEnv = authenticationResult.environment;
+
+  // This legacy websocket is only used by the v3 `trigger dev` CLI (v4 uses a
+  // different dev transport). When the v3 shutdown is on, close it with a
+  // graceful reason instead of letting the CLI sit connected with no work.
+  if (isV3Disabled()) {
+    logger.warn("Rejected deprecated v3 dev CLI websocket connection", {
+      environmentId: authenticatedEnv.id,
+      projectId: authenticatedEnv.projectId,
+      organizationId: authenticatedEnv.organizationId,
+    });
+    ws.close(1008, V3_DEV_DEPRECATION_MESSAGE);
+    return;
+  }
 
   const authenticatedConnection = new AuthenticatedSocketConnection(
     ws,

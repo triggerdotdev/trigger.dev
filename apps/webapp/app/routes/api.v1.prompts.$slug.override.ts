@@ -22,7 +22,10 @@ const UpdateBody = z.object({
   commitMessage: z.string().optional(),
 });
 
-async function findPrompt(slug: string, authentication: { environment: { projectId: string; id: string } }) {
+async function findPrompt(
+  slug: string,
+  authentication: { environment: { projectId: string; id: string } }
+) {
   return prisma.prompt.findUnique({
     where: {
       projectId_runtimeEnvironmentId_slug: {

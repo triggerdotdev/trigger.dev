@@ -33,7 +33,7 @@ import {
 import { Worker } from "@trigger.dev/redis-worker";
 import { assertNever } from "assert-never";
 import { EventEmitter } from "node:events";
-import { setTimeout } from "node:timers/promises";
+import { setInterval, setTimeout } from "node:timers/promises";
 import { BatchQueue } from "../batch-queue/index.js";
 import type {
   BatchItem,
@@ -100,6 +100,7 @@ export class RunEngine {
   private heartbeatTimeouts: HeartbeatTimeouts;
   private repairSnapshotTimeoutMs: number;
   private batchQueue: BatchQueue;
+  private workerQueueObserverAbortController?: AbortController;
 
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
@@ -125,7 +126,10 @@ export class RunEngine {
     this.logger = options.logger ?? new Logger("RunEngine", this.options.logLevel ?? "info");
     this.prisma = options.prisma;
     this.readOnlyPrisma = options.readOnlyPrisma ?? this.prisma;
-    this.runStore = new PostgresRunStore({ prisma: this.prisma, readOnlyPrisma: this.readOnlyPrisma });
+    this.runStore = new PostgresRunStore({
+      prisma: this.prisma,
+      readOnlyPrisma: this.readOnlyPrisma,
+    });
     this.runLockRedis = createRedisClient(
       {
         ...options.runLock.redis,
@@ -204,14 +208,14 @@ export class RunEngine {
       ttlSystem: options.queue?.ttlSystem?.disabled
         ? undefined
         : {
-          shardCount: options.queue?.ttlSystem?.shardCount,
-          pollIntervalMs: options.queue?.ttlSystem?.pollIntervalMs,
-          batchSize: options.queue?.ttlSystem?.batchSize,
-          consumersDisabled: options.queue?.ttlSystem?.consumersDisabled,
-          workerQueueSuffix: "ttl-worker:{queue:ttl-expiration:}queue",
-          workerItemsSuffix: "ttl-worker:{queue:ttl-expiration:}items",
-          visibilityTimeoutMs: options.queue?.ttlSystem?.visibilityTimeoutMs ?? 30_000,
-        },
+            shardCount: options.queue?.ttlSystem?.shardCount,
+            pollIntervalMs: options.queue?.ttlSystem?.pollIntervalMs,
+            batchSize: options.queue?.ttlSystem?.batchSize,
+            consumersDisabled: options.queue?.ttlSystem?.consumersDisabled,
+            workerQueueSuffix: "ttl-worker:{queue:ttl-expiration:}queue",
+            workerItemsSuffix: "ttl-worker:{queue:ttl-expiration:}items",
+            visibilityTimeoutMs: options.queue?.ttlSystem?.visibilityTimeoutMs ?? 30_000,
+          },
     });
 
     this.worker = new Worker({
@@ -232,9 +236,9 @@ export class RunEngine {
             id: payload.waitpointId,
             output: payload.error
               ? {
-                value: payload.error,
-                isError: true,
-              }
+                  value: payload.error,
+                  isError: true,
+                }
               : undefined,
           });
         },
@@ -407,7 +411,11 @@ export class RunEngine {
 
     // Start TTL worker whenever TTL system is enabled, so expired runs enqueued by the
     // Lua script get processed even when the main engine worker is disabled (e.g. in tests).
-    if (options.queue?.ttlSystem && !options.queue.ttlSystem.disabled && !options.queue.ttlSystem.consumersDisabled) {
+    if (
+      options.queue?.ttlSystem &&
+      !options.queue.ttlSystem.disabled &&
+      !options.queue.ttlSystem.consumersDisabled
+    ) {
       this.ttlWorker.start();
     }
 
@@ -474,6 +482,95 @@ export class RunEngine {
       machines: this.options.machines,
       billingCache: this.billingCache,
     });
+
+    this.#startWorkerQueueObserver();
+  }
+
+  /**
+   * Refreshes the set of worker queues observed by the `runqueue.workerQueue.length`
+   * gauge from the WorkerInstanceGroup records, so the gauge reports each worker queue's
+   * length even when nothing is dequeuing from it. Includes hidden groups; excludes
+   * groups whose cloud provider is configured to be excluded (groups with no cloud
+   * provider are always included).
+   *
+   * Only MANAGED groups are observed. UNMANAGED groups are created per project
+   * (masterQueue `<projectId>-<name>`), so observing them would grow the set, and the
+   * per-tick Redis fanout, with the number of self-hosted-worker projects rather than
+   * with the managed regions this gauge is meant to track.
+   */
+  async refreshWorkerQueueObservation() {
+    const suffixes = this.options.workerQueueObserver?.additionalQueueSuffixes ?? [];
+    const excludedCloudProviders = new Set(
+      (this.options.workerQueueObserver?.excludedCloudProviders ?? []).map((p) => p.toLowerCase())
+    );
+
+    // Read from the replica: this is a periodic metrics-only read and worker groups change
+    // rarely, so a little replication lag is fine and keeps it off the primary.
+    const workerGroups = await this.readOnlyPrisma.workerInstanceGroup.findMany({
+      where: { type: "MANAGED" },
+      select: { masterQueue: true, cloudProvider: true },
+    });
+
+    const workerQueues: string[] = [];
+
+    for (const { masterQueue, cloudProvider } of workerGroups) {
+      if (cloudProvider && excludedCloudProviders.has(cloudProvider.toLowerCase())) {
+        continue;
+      }
+
+      workerQueues.push(masterQueue);
+
+      for (const suffix of suffixes) {
+        workerQueues.push(`${masterQueue}${suffix}`);
+      }
+    }
+
+    this.runQueue.setObservableWorkerQueues(workerQueues);
+  }
+
+  #startWorkerQueueObserver() {
+    if (!this.options.workerQueueObserver?.enabled) {
+      return;
+    }
+
+    const intervalMs = this.options.workerQueueObserver.intervalMs ?? 30_000;
+    this.workerQueueObserverAbortController = new AbortController();
+
+    this.#runWorkerQueueObserver(intervalMs, this.workerQueueObserverAbortController.signal).catch(
+      (error) => {
+        this.logger.error("Worker queue observer loop crashed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    );
+  }
+
+  async #runWorkerQueueObserver(intervalMs: number, signal: AbortSignal) {
+    const refresh = async () => {
+      try {
+        await this.refreshWorkerQueueObservation();
+      } catch (error) {
+        this.logger.error("Failed to refresh worker queue observation", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    };
+
+    // Refresh once immediately so a freshly started instance reports queue lengths
+    // without waiting for the first interval, then keep it fresh on an interval.
+    await refresh();
+
+    try {
+      for await (const _ of setInterval(intervalMs, null, { signal })) {
+        await refresh();
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name !== "AbortError") {
+        throw error;
+      }
+
+      this.logger.debug("Worker queue observer stopped");
+    }
   }
 
   //MARK: - Run functions
@@ -526,7 +623,7 @@ export class RunEngine {
        */
       emitRunCancelledEvent?: boolean;
     },
-    tx?: PrismaClientOrTransaction,
+    tx?: PrismaClientOrTransaction
   ): Promise<TaskRun> {
     const prisma = tx ?? this.prisma;
     return startSpan(this.tracer, "createCancelledRun", async (span) => {
@@ -574,9 +671,10 @@ export class RunEngine {
               // will be an empty object, which Prisma misreads as a relation
               // update op. Normalise to a real array (or undefined for the
               // empty case).
-              runTags: Array.isArray(snapshot.tags) && snapshot.tags.length > 0
-                ? snapshot.tags
-                : undefined,
+              runTags:
+                Array.isArray(snapshot.tags) && snapshot.tags.length > 0
+                  ? snapshot.tags
+                  : undefined,
               oneTimeUseToken: snapshot.oneTimeUseToken,
               parentTaskRunId: snapshot.parentTaskRunId,
               rootTaskRunId: snapshot.rootTaskRunId,
@@ -642,13 +740,10 @@ export class RunEngine {
         // P2002 = unique constraint violation. Double-pop after a drainer
         // requeue can reach this. Idempotent: return the existing row
         // without re-emitting.
-        if (
-          err instanceof Prisma.PrismaClientKnownRequestError &&
-          err.code === "P2002"
-        ) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
           this.logger.info(
             "createCancelledRun: row already exists, returning existing (idempotent)",
-            { friendlyId: snapshot.friendlyId },
+            { friendlyId: snapshot.friendlyId }
           );
           const existing = await this.runStore.findRun({ id }, prisma);
           if (existing) {
@@ -663,7 +758,7 @@ export class RunEngine {
               return existing;
             }
             throw new Error(
-              `createCancelledRun conflict: existing run ${snapshot.friendlyId} has status ${existing.status}`,
+              `createCancelledRun conflict: existing run ${snapshot.friendlyId} has status ${existing.status}`
             );
           }
         }
@@ -752,18 +847,18 @@ export class RunEngine {
             debounce:
               debounce.mode === "trailing"
                 ? {
-                  ...debounce,
-                  updateData: {
-                    payload,
-                    payloadType,
-                    metadata,
-                    metadataType,
-                    tags,
-                    maxAttempts,
-                    maxDurationInSeconds,
-                    machine,
-                  },
-                }
+                    ...debounce,
+                    updateData: {
+                      payload,
+                      payloadType,
+                      metadata,
+                      metadataType,
+                      tags,
+                      maxAttempts,
+                      maxDurationInSeconds,
+                      machine,
+                    },
+                  }
                 : debounce,
             tx: prisma,
           });
@@ -902,10 +997,10 @@ export class RunEngine {
                 streamBasinName,
                 debounce: debounce
                   ? {
-                    key: debounce.key,
-                    delay: debounce.delay,
-                    createdAt: new Date(),
-                  }
+                      key: debounce.key,
+                      delay: debounce.delay,
+                      createdAt: new Date(),
+                    }
                   : undefined,
                 annotations,
               },
@@ -926,9 +1021,9 @@ export class RunEngine {
               associatedWaitpoint:
                 resumeParentOnCompletion && parentTaskRunId
                   ? this.waitpointSystem.buildRunAssociatedWaitpoint({
-                    projectId: environment.project.id,
-                    environmentId: environment.id,
-                  })
+                      projectId: environment.project.id,
+                      environmentId: environment.id,
+                    })
                   : undefined,
             },
             prisma
@@ -957,9 +1052,7 @@ export class RunEngine {
               });
 
               if (targetFields.includes("oneTimeUseToken")) {
-                throw new RunOneTimeUseTokenError(
-                  `One-time use token has already been used`
-                );
+                throw new RunOneTimeUseTokenError(`One-time use token has already been used`);
               }
 
               // Only idempotency key collisions should be retried
@@ -1169,9 +1262,9 @@ export class RunEngine {
         const waitpointData =
           resumeParentOnCompletion && parentTaskRunId
             ? this.waitpointSystem.buildRunAssociatedWaitpoint({
-              projectId: environment.project.id,
-              environmentId: environment.id,
-            })
+                projectId: environment.project.id,
+                environmentId: environment.id,
+              })
             : undefined;
 
         // Create the run in terminal SYSTEM_FAILURE status.
@@ -1216,11 +1309,7 @@ export class RunEngine {
 
         // If parent is waiting, block it with the waitpoint then immediately
         // complete it with the error output so the parent can resume.
-        if (
-          resumeParentOnCompletion &&
-          parentTaskRunId &&
-          taskRun.associatedWaitpoint
-        ) {
+        if (resumeParentOnCompletion && parentTaskRunId && taskRun.associatedWaitpoint) {
           await this.waitpointSystem.blockRunAndCompleteWaitpoint({
             runId: parentTaskRunId,
             waitpointId: taskRun.associatedWaitpoint.id,
@@ -1322,8 +1411,11 @@ export class RunEngine {
     blockingPop?: boolean;
     blockingPopTimeoutSeconds?: number;
   }): Promise<DequeuedMessage[]> {
-    if (!skipObserving) {
-      // We only do this with "prod" worker queues because we don't want to observe dev (e.g. environment) worker queues
+    // We only do this with "prod" worker queues because we don't want to observe dev (e.g.
+    // environment) worker queues. When the worker queue observer is enabled it is the source
+    // of truth for the observed set (and applies the cloud-provider exclusions), so the
+    // per-dequeue registration is skipped.
+    if (!skipObserving && !this.options.workerQueueObserver?.enabled) {
       this.runQueue.registerObservableWorkerQueue(workerQueue);
     }
 
@@ -1485,7 +1577,10 @@ export class RunEngine {
     return this.runQueue.lengthOfEnvQueue(environment);
   }
 
-  async lengthOfQueue(environment: MinimalAuthenticatedEnvironment, queue: string): Promise<number> {
+  async lengthOfQueue(
+    environment: MinimalAuthenticatedEnvironment,
+    queue: string
+  ): Promise<number> {
     return this.runQueue.lengthOfQueue(environment, queue);
   }
 
@@ -2061,6 +2156,9 @@ export class RunEngine {
 
   async quit() {
     try {
+      // stop the worker queue observer loop
+      this.workerQueueObserverAbortController?.abort();
+
       //stop the run queue
       await this.runQueue.quit();
       await this.worker.stop();
@@ -2402,21 +2500,21 @@ export class RunEngine {
           const error =
             latestSnapshot.environmentType === "DEVELOPMENT"
               ? ({
-                type: "INTERNAL_ERROR",
-                code: taskStalledErrorCode,
-                message: errorMessage,
-              } satisfies TaskRunInternalError)
-              : this.options.treatProductionExecutionStallsAsOOM
-                ? ({
-                  type: "INTERNAL_ERROR",
-                  code: "TASK_PROCESS_OOM_KILLED",
-                  message: "Run was terminated due to running out of memory",
-                } satisfies TaskRunInternalError)
-                : ({
                   type: "INTERNAL_ERROR",
                   code: taskStalledErrorCode,
                   message: errorMessage,
-                } satisfies TaskRunInternalError);
+                } satisfies TaskRunInternalError)
+              : this.options.treatProductionExecutionStallsAsOOM
+                ? ({
+                    type: "INTERNAL_ERROR",
+                    code: "TASK_PROCESS_OOM_KILLED",
+                    message: "Run was terminated due to running out of memory",
+                  } satisfies TaskRunInternalError)
+                : ({
+                    type: "INTERNAL_ERROR",
+                    code: taskStalledErrorCode,
+                    message: errorMessage,
+                  } satisfies TaskRunInternalError);
 
           await this.runAttemptSystem.attemptFailed({
             runId,
@@ -2427,10 +2525,10 @@ export class RunEngine {
               error,
               retry: shouldRetry
                 ? {
-                  //250ms in the future
-                  timestamp: Date.now() + retryDelay,
-                  delay: retryDelay,
-                }
+                    //250ms in the future
+                    timestamp: Date.now() + retryDelay,
+                    delay: retryDelay,
+                  }
                 : undefined,
             },
             forceRequeue: true,

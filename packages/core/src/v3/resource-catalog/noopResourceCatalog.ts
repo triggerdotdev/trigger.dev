@@ -6,7 +6,11 @@ import {
   TaskManifest,
   WorkerManifest,
 } from "../schemas/index.js";
-import { type PromptMetadataWithFunctions, type TaskMetadataWithFunctions, type TaskSchema } from "../types/index.js";
+import {
+  type PromptMetadataWithFunctions,
+  type TaskMetadataWithFunctions,
+  type TaskSchema,
+} from "../types/index.js";
 import { ResourceCatalog } from "./catalog.js";
 
 export class NoopResourceCatalog implements ResourceCatalog {

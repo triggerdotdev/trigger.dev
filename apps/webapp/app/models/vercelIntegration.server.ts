@@ -4,15 +4,9 @@ import type {
   ResponseBodyEnvs,
   FilterProjectEnvsResponseBody,
 } from "@vercel/sdk/models/filterprojectenvsop";
-import type {
-  GetV9ProjectsIdOrNameCustomEnvironmentsEnvironments,
-} from "@vercel/sdk/models/getv9projectsidornamecustomenvironmentsop";
+import type { GetV9ProjectsIdOrNameCustomEnvironmentsEnvironments } from "@vercel/sdk/models/getv9projectsidornamecustomenvironmentsop";
 import type { ResponseBodyProjects } from "@vercel/sdk/models/getprojectsop";
-import {
-  Organization,
-  OrganizationIntegration,
-  SecretReference,
-} from "@trigger.dev/database";
+import { Organization, OrganizationIntegration, SecretReference } from "@trigger.dev/database";
 import { z } from "zod";
 import { ResultAsync, errAsync, okAsync } from "neverthrow";
 import { $transaction, prisma } from "~/db.server";
@@ -40,13 +34,11 @@ import {
 
 function normalizeTarget(target: string[] | string | undefined): string[] {
   if (Array.isArray(target)) return target.filter(Boolean);
-  if (typeof target === 'string') return [target];
+  if (typeof target === "string") return [target];
   return [];
 }
 
-function extractVercelEnvs(
-  response: FilterProjectEnvsResponseBody
-): ResponseBodyEnvs[] {
+function extractVercelEnvs(response: FilterProjectEnvsResponseBody): ResponseBodyEnvs[] {
   if ("envs" in response && Array.isArray(response.envs)) {
     return response.envs;
   }
@@ -73,30 +65,30 @@ const VercelErrorSchema = z.union([
 ]);
 
 function extractVercelErrorStatus(error: unknown): number | null {
-  if (error && typeof error === 'object' && 'status' in error) {
+  if (error && typeof error === "object" && "status" in error) {
     const parsed = VercelErrorSchema.safeParse(error);
-    if (parsed.success && 'status' in parsed.data) {
+    if (parsed.success && "status" in parsed.data) {
       return parsed.data.status;
     }
   }
 
-  if (error && typeof error === 'object' && 'response' in error) {
+  if (error && typeof error === "object" && "response" in error) {
     const parsed = VercelErrorSchema.safeParse(error);
-    if (parsed.success && 'response' in parsed.data) {
+    if (parsed.success && "response" in parsed.data) {
       return parsed.data.response.status;
     }
   }
 
-  if (error && typeof error === 'object' && 'statusCode' in error) {
+  if (error && typeof error === "object" && "statusCode" in error) {
     const parsed = VercelErrorSchema.safeParse(error);
-    if (parsed.success && 'statusCode' in parsed.data) {
+    if (parsed.success && "statusCode" in parsed.data) {
       return parsed.data.statusCode;
     }
   }
 
-  if (typeof error === 'string') {
-    if (error.includes('401')) return 401;
-    if (error.includes('403')) return 403;
+  if (typeof error === "string") {
+    if (error.includes("401")) return 401;
+    if (error.includes("403")) return 403;
   }
 
   return null;
@@ -225,9 +217,7 @@ export type VercelProject = Pick<ResponseBodyProjects, "id" | "name">;
 // Mapper functions – narrow wide SDK responses into our domain types.
 // ---------------------------------------------------------------------------
 
-function toVercelEnvironmentVariable(
-  env: ResponseBodyEnvs
-): VercelEnvironmentVariable {
+function toVercelEnvironmentVariable(env: ResponseBodyEnvs): VercelEnvironmentVariable {
   return {
     id: env.id ?? "",
     key: env.key,
@@ -307,13 +297,15 @@ export class VercelIntegrationRepository {
         logger.error("Error exchanging Vercel OAuth code", { error });
         return toVercelApiError(error);
       }
-    ).map((data): TokenResponse => ({
-      accessToken: data.access_token,
-      tokenType: data.token_type,
-      teamId: data.team_id,
-      userId: data.user_id,
-      raw: data as Record<string, unknown>,
-    }));
+    ).map(
+      (data): TokenResponse => ({
+        accessToken: data.access_token,
+        tokenType: data.token_type,
+        teamId: data.team_id,
+        userId: data.user_id,
+        raw: data as Record<string, unknown>,
+      })
+    );
   }
 
   static getVercelClient(
@@ -340,16 +332,16 @@ export class VercelIntegrationRepository {
         if (!secret) {
           throw new Error("Failed to get Vercel access token");
         }
-        return { client: new Vercel({ bearerToken: secret.accessToken }), accessToken: secret.accessToken };
+        return {
+          client: new Vercel({ bearerToken: secret.accessToken }),
+          accessToken: secret.accessToken,
+        };
       })(),
       (error) => toVercelApiError(error)
     );
   }
 
-  static getTeamSlug(
-    client: Vercel,
-    teamId: string | null
-  ): ResultAsync<string, VercelApiError> {
+  static getTeamSlug(client: Vercel, teamId: string | null): ResultAsync<string, VercelApiError> {
     if (teamId) {
       return wrapVercelCallWithRecovery(
         client.teams.getTeam({ teamId }),
@@ -374,18 +366,12 @@ export class VercelIntegrationRepository {
   ): ResultAsync<{ isValid: boolean }, VercelApiError> {
     return this.getVercelClient(integration)
       .andThen((client) =>
-        callVercelWithRecovery(
-          client.user.getAuthUser(),
-          VercelSchemas.getAuthUser,
-          { context: "validateVercelToken" }
-        ).mapErr(toVercelApiError)
+        callVercelWithRecovery(client.user.getAuthUser(), VercelSchemas.getAuthUser, {
+          context: "validateVercelToken",
+        }).mapErr(toVercelApiError)
       )
       .map(() => ({ isValid: true }))
-      .orElse((error) =>
-        error.authInvalid
-          ? okAsync({ isValid: false })
-          : errAsync(error)
-      );
+      .orElse((error) => (error.authInvalid ? okAsync({ isValid: false }) : errAsync(error)));
   }
 
   static async getTeamIdFromIntegration(
@@ -393,10 +379,7 @@ export class VercelIntegrationRepository {
   ): Promise<string | null> {
     const secretStore = getSecretStore(integration.tokenReference.provider);
 
-    const secret = await secretStore.getSecret(
-      VercelSecretSchema,
-      integration.tokenReference.key
-    );
+    const secret = await secretStore.getSecret(VercelSecretSchema, integration.tokenReference.key);
 
     if (!secret) {
       return null;
@@ -409,11 +392,14 @@ export class VercelIntegrationRepository {
     accessToken: string,
     configurationId: string,
     teamId?: string | null
-  ): ResultAsync<{
-    id: string;
-    teamId: string | null;
-    projects: string[];
-  }, VercelApiError> {
+  ): ResultAsync<
+    {
+      id: string;
+      teamId: string | null;
+      projects: string[];
+    },
+    VercelApiError
+  > {
     return ResultAsync.fromPromise(
       fetch(
         `https://api.vercel.com/v1/integrations/configuration/${configurationId}${teamId ? `?teamId=${teamId}` : ""}`,
@@ -477,7 +463,7 @@ export class VercelIntegrationRepository {
   static getVercelEnvironmentVariables(
     client: Vercel,
     projectId: string,
-    teamId?: string | null,
+    teamId?: string | null
   ): ResultAsync<VercelEnvironmentVariable[], VercelApiError> {
     return wrapVercelCallWithRecovery(
       client.projects.filterProjectEnvs({
@@ -654,17 +640,21 @@ export class VercelIntegrationRepository {
     accessToken: string,
     teamId: string,
     projectId?: string // Optional: filter by project
-  ): ResultAsync<Array<{
+  ): ResultAsync<
+    Array<{
       id: string;
       key: string;
       type: string;
       isSecret: boolean;
       target: string[];
-    }>, VercelApiError> {
+    }>,
+    VercelApiError
+  > {
     return this.#fetchAllSharedEnvsRaw({ accessToken, teamId, projectId }).map((envVars) => {
       return envVars
-        .filter((env): env is RawSharedEnvVar & { id: string; key: string } =>
-          typeof env.id === "string" && typeof env.key === "string"
+        .filter(
+          (env): env is RawSharedEnvVar & { id: string; key: string } =>
+            typeof env.id === "string" && typeof env.key === "string"
         )
         .map((env) => {
           const type = env.type || "plain";
@@ -755,7 +745,10 @@ export class VercelIntegrationRepository {
                 projectId,
                 envId,
                 envKey,
-                error: getResult.error instanceof Error ? getResult.error.message : String(getResult.error),
+                error:
+                  getResult.error instanceof Error
+                    ? getResult.error.message
+                    : String(getResult.error),
               });
               return null;
             })
@@ -793,7 +786,9 @@ export class VercelIntegrationRepository {
             { context: "getVercelProjects" }
           ).match(
             (val) => val,
-            (err) => { throw err; }
+            (err) => {
+              throw err;
+            }
           );
 
           const projects = Array.isArray(response)
@@ -805,9 +800,7 @@ export class VercelIntegrationRepository {
 
           // Get pagination token for next page
           const pagination =
-            !Array.isArray(response) && "pagination" in response
-              ? response.pagination
-              : undefined;
+            !Array.isArray(response) && "pagination" in response ? response.pagination : undefined;
           from =
             pagination && "next" in pagination && pagination.next !== null
               ? String(pagination.next)
@@ -878,7 +871,7 @@ export class VercelIntegrationRepository {
     installationId?: string;
     organization: Pick<Organization, "id">;
     raw?: Record<string, any>;
-    origin: 'marketplace' | 'dashboard';
+    origin: "marketplace" | "dashboard";
   }): Promise<OrganizationIntegration> {
     const result = await $transaction(prisma, async (tx) => {
       const secretStore = getSecretStore("DATABASE", {
@@ -1178,7 +1171,9 @@ export class VercelIntegrationRepository {
             { context: "upsertEnvVarForCustomEnvironment" }
           ).match(
             (val) => val,
-            (err) => { throw err; }
+            (err) => {
+              throw err;
+            }
           );
 
           const envs = extractVercelEnvs(existingEnvs);
@@ -1235,7 +1230,9 @@ export class VercelIntegrationRepository {
             { context: "removeEnvVarForCustomEnvironment" }
           ).match(
             (val) => val,
-            (err) => { throw err; }
+            (err) => {
+              throw err;
+            }
           );
 
           const envs = extractVercelEnvs(existingEnvs);
@@ -1311,7 +1308,11 @@ export class VercelIntegrationRepository {
             }
 
             envMapping.push({
-              triggerEnvType: runtimeEnv.type as "PRODUCTION" | "STAGING" | "PREVIEW" | "DEVELOPMENT",
+              triggerEnvType: runtimeEnv.type as
+                | "PRODUCTION"
+                | "STAGING"
+                | "PREVIEW"
+                | "DEVELOPMENT",
               vercelTarget: vercelTarget[0],
               runtimeEnvironmentId: runtimeEnv.id,
             });
@@ -1354,7 +1355,11 @@ export class VercelIntegrationRepository {
                 // Exclude reserved keys before decrypting (a reserved-only batch gets rejected).
                 const shouldIncludeKey = (key: string) =>
                   !isReservedForExternalSync(key) &&
-                  shouldSyncEnvVar(params.syncEnvVarsMapping, key, mapping.triggerEnvType as TriggerEnvironmentType);
+                  shouldSyncEnvVar(
+                    params.syncEnvVarsMapping,
+                    key,
+                    mapping.triggerEnvType as TriggerEnvironmentType
+                  );
 
                 const envVarsResult = await this.getVercelEnvironmentVariableValues(
                   client,
@@ -1370,7 +1375,9 @@ export class VercelIntegrationRepository {
                     vercelTarget: mapping.vercelTarget,
                     error: envVarsResult.error.message,
                   });
-                  errors.push(`Failed to get env vars for ${mapping.triggerEnvType}: ${envVarsResult.error.message}`);
+                  errors.push(
+                    `Failed to get env vars for ${mapping.triggerEnvType}: ${envVarsResult.error.message}`
+                  );
                   return;
                 }
 
@@ -1380,16 +1387,16 @@ export class VercelIntegrationRepository {
 
                 const filteredSharedEnvVars = sharedEnvVars.filter((envVar) => {
                   const matchesTarget = envVar.target.includes(mapping.vercelTarget);
-                  const matchesCustomEnv = isCustomEnvironment && envVar.applyToAllCustomEnvironments === true;
+                  const matchesCustomEnv =
+                    isCustomEnvironment && envVar.applyToAllCustomEnvironments === true;
                   return matchesTarget || matchesCustomEnv;
                 });
 
                 const projectEnvVarKeys = new Set(projectEnvVars.map((v) => v.key));
-                const sharedEnvVarsToAdd = filteredSharedEnvVars.filter((v) => !projectEnvVarKeys.has(v.key));
-                const mergedEnvVars = [
-                  ...projectEnvVars,
-                  ...sharedEnvVarsToAdd,
-                ];
+                const sharedEnvVarsToAdd = filteredSharedEnvVars.filter(
+                  (v) => !projectEnvVarKeys.has(v.key)
+                );
+                const mergedEnvVars = [...projectEnvVars, ...sharedEnvVarsToAdd];
 
                 if (mergedEnvVars.length === 0) {
                   return;
@@ -1595,7 +1602,9 @@ export class VercelIntegrationRepository {
       { context: "batchUpsertVercelEnvVars" }
     ).match(
       (val) => val,
-      (err) => { throw err; }
+      (err) => {
+        throw err;
+      }
     );
 
     const existingEnvsList = extractVercelEnvs(existingEnvs);
@@ -1727,13 +1736,13 @@ export class VercelIntegrationRepository {
       { context: "removeAllVercelEnvVarsByKey" }
     ).match(
       (val) => val,
-      (err) => { throw err; }
+      (err) => {
+        throw err;
+      }
     );
 
     const envs = extractVercelEnvs(existingEnvs);
-    const idsToRemove = envs
-      .filter((env) => env.key === key && env.id)
-      .map((env) => env.id!);
+    const idsToRemove = envs.filter((env) => env.key === key && env.id).map((env) => env.id!);
 
     if (idsToRemove.length === 0) {
       return;
@@ -1766,7 +1775,9 @@ export class VercelIntegrationRepository {
       { context: "upsertVercelEnvVar" }
     ).match(
       (val) => val,
-      (err) => { throw err; }
+      (err) => {
+        throw err;
+      }
     );
 
     const envs = extractVercelEnvs(existingEnvs);

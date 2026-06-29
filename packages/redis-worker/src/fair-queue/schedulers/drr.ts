@@ -103,9 +103,7 @@ export class DRRScheduler extends BaseScheduler {
     );
 
     // Filter out tenants at capacity or with no deficit
-    const eligibleTenants = tenantData.filter(
-      (t) => !t.isAtCapacity && t.deficit >= 1
-    );
+    const eligibleTenants = tenantData.filter((t) => !t.isAtCapacity && t.deficit >= 1);
 
     // Log tenants blocked by capacity
     const blockedTenants = tenantData.filter((t) => t.isAtCapacity);
@@ -451,11 +449,6 @@ declare module "@internal/redis" {
 
     drrDecrementDeficit(deficitKey: string, tenantId: string): Promise<string>;
 
-    drrDecrementDeficitBatch(
-      deficitKey: string,
-      tenantId: string,
-      count: string
-    ): Promise<string>;
+    drrDecrementDeficitBatch(deficitKey: string, tenantId: string, count: string): Promise<string>;
   }
 }
-

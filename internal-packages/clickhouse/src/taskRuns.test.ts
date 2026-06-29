@@ -556,9 +556,7 @@ describe("Task Runs V2", () => {
         null,
       ];
 
-      const childA_v2: TaskRunInsertArray = [
-        ...childA_v1,
-      ];
+      const childA_v2: TaskRunInsertArray = [...childA_v1];
       childA_v2[TASK_RUN_INDEX.status] = "COMPLETED_SUCCESSFULLY";
       childA_v2[TASK_RUN_INDEX._version] = "2";
 
@@ -676,24 +674,18 @@ describe("Task Runs V2", () => {
         null,
       ];
 
-      const childDeleted_v2: TaskRunInsertArray = [
-        ...childDeleted_v1,
-      ];
+      const childDeleted_v2: TaskRunInsertArray = [...childDeleted_v1];
       childDeleted_v2[TASK_RUN_INDEX._version] = "2";
       childDeleted_v2[TASK_RUN_INDEX._is_deleted] = 1;
 
-      const childWrongRoot: TaskRunInsertArray = [
-        ...childB,
-      ];
+      const childWrongRoot: TaskRunInsertArray = [...childB];
       childWrongRoot[TASK_RUN_INDEX.run_id] = "child_wrong_root";
       childWrongRoot[TASK_RUN_INDEX.friendly_id] = "run_child_wrong_root";
       childWrongRoot[TASK_RUN_INDEX.root_run_id] = "other_root";
       childWrongRoot[TASK_RUN_INDEX.parent_run_id] = "other_root";
       childWrongRoot[TASK_RUN_INDEX.span_id] = "span_child_wrong_root";
 
-      const childOld: TaskRunInsertArray = [
-        ...childB,
-      ];
+      const childOld: TaskRunInsertArray = [...childB];
       childOld[TASK_RUN_INDEX.run_id] = "child_old";
       childOld[TASK_RUN_INDEX.created_at] = oldCreatedAt;
       childOld[TASK_RUN_INDEX.updated_at] = oldCreatedAt;

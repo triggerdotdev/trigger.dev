@@ -303,9 +303,7 @@ describe("ModelPricingRegistry", () => {
           name: "Large Context",
           isDefault: false,
           priority: 0,
-          conditions: [
-            { usageDetailPattern: "input", operator: "gt" as const, value: 200000 },
-          ],
+          conditions: [{ usageDetailPattern: "input", operator: "gt" as const, value: 200000 }],
           prices: [
             { usageType: "input", price: 0.0000025 },
             { usageType: "output", price: 0.00001 },
@@ -371,9 +369,7 @@ describe("ModelPricingRegistry", () => {
             name: "Conditional",
             isDefault: false,
             priority: 1,
-            conditions: [
-              { usageDetailPattern: "input", operator: "gt" as const, value: 100 },
-            ],
+            conditions: [{ usageDetailPattern: "input", operator: "gt" as const, value: 100 }],
             prices: [{ usageType: "input", price: 0.0001 }],
           },
           {
@@ -405,9 +401,7 @@ describe("ModelPricingRegistry", () => {
             name: "Conditional",
             isDefault: false,
             priority: 0,
-            conditions: [
-              { usageDetailPattern: "input", operator: "gt" as const, value: 999999 },
-            ],
+            conditions: [{ usageDetailPattern: "input", operator: "gt" as const, value: 999999 }],
             prices: [{ usageType: "input", price: 0.001 }],
           },
           {

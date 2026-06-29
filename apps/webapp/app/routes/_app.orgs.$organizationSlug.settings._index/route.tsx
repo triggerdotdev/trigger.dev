@@ -51,11 +51,7 @@ import { logger } from "~/services/logger.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { extractDomain, faviconUrl as buildFaviconUrl } from "~/utils/favicon";
-import {
-  OrganizationParamsSchema,
-  organizationSettingsPath,
-  rootPath,
-} from "~/utils/pathBuilder";
+import { OrganizationParamsSchema, organizationSettingsPath, rootPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [
@@ -426,7 +422,7 @@ function LogoForm({
   const navigation = useNavigation();
 
   const avatar = navigation.formData
-    ? avatarFromFormData(navigation.formData) ?? organization.avatar
+    ? (avatarFromFormData(navigation.formData) ?? organization.avatar)
     : organization.avatar;
 
   const hex =
@@ -559,8 +555,7 @@ function LogoForm({
                         "border-charcoal-775 hover:border-charcoal-600"
                     )}
                     style={{
-                      borderColor:
-                        avatar.type === "icon" && avatar.name === name ? hex : undefined,
+                      borderColor: avatar.type === "icon" && avatar.name === name ? hex : undefined,
                     }}
                   >
                     <Avatar
@@ -585,7 +580,9 @@ function LogoForm({
 function HexPopover({ avatar, hex }: { avatar: Avatar; hex: string }) {
   return (
     <Popover>
-      <PopoverTrigger className={cn(iconTileClass, "border-charcoal-775 hover:border-charcoal-600")}>
+      <PopoverTrigger
+        className={cn(iconTileClass, "border-charcoal-775 hover:border-charcoal-600")}
+      >
         <img src={colorWheelIcon} className="m-0 block size-[30px] p-0" />
       </PopoverTrigger>
       <PopoverContent
@@ -595,7 +592,11 @@ function HexPopover({ avatar, hex }: { avatar: Avatar; hex: string }) {
       >
         <Form method="post" className="flex w-fit min-w-40 flex-col gap-1">
           <input type="hidden" name="action" value="avatar" />
-          <input type="hidden" name="type" value={avatar.type === "image" ? "letters" : avatar.type} />
+          <input
+            type="hidden"
+            name="type"
+            value={avatar.type === "image" ? "letters" : avatar.type}
+          />
           {avatar.type === "icon" && <input type="hidden" name="name" value={avatar.name} />}
           {defaultAvatarColors.map((color) => (
             <Button
@@ -646,7 +647,8 @@ function RadioDot({ active }: { active: boolean }) {
   );
 }
 
-const iconTileClass = "box-content grid size-10 shrink-0 place-items-center rounded-sm border-2 bg-charcoal-775";
+const iconTileClass =
+  "box-content grid size-10 shrink-0 place-items-center rounded-sm border-2 bg-charcoal-775";
 
 function toRecord(json: unknown): Record<string, unknown> {
   return json && typeof json === "object" ? (json as Record<string, unknown>) : {};

@@ -126,7 +126,9 @@ describe("chat prompt caching — system providerOptions", () => {
           messages,
           abortSignal: signal,
           ...chat.toStreamTextOptions({
-            systemProviderOptions: { anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } } },
+            systemProviderOptions: {
+              anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } },
+            },
           }),
         }),
     });
@@ -186,7 +188,9 @@ describe("chat prompt caching — system providerOptions", () => {
           messages,
           abortSignal: signal,
           ...chat.toStreamTextOptions({
-            systemProviderOptions: { anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } } },
+            systemProviderOptions: {
+              anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } },
+            },
           }),
         }),
     });

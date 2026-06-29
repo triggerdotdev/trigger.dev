@@ -186,13 +186,16 @@ async function retryOOMOnMachine(
   prisma: PrismaClientOrTransaction,
   runStore: RunStore,
   runId: string
-): Promise<{
-  machine: string;
-  retrySettings: RetryOptions;
-  usageDurationMs: number;
-  costInCents: number;
-  machinePreset: string | null;
-} | undefined> {
+): Promise<
+  | {
+      machine: string;
+      retrySettings: RetryOptions;
+      usageDurationMs: number;
+      costInCents: number;
+      machinePreset: string | null;
+    }
+  | undefined
+> {
   try {
     const run = await runStore.findRun(
       {

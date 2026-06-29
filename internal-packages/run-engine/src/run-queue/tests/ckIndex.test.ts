@@ -97,12 +97,7 @@ describe("CK Index", () => {
         const masterQueueKey = testOptions.keys.masterQueueKeyForShard(
           testOptions.keys.masterQueueShardForEnvironment(msg.environmentId, 2)
         );
-        const masterMembers = await queue.redis.zrange(
-          masterQueueKey,
-          0,
-          -1,
-          "WITHSCORES"
-        );
+        const masterMembers = await queue.redis.zrange(masterQueueKey, 0, -1, "WITHSCORES");
         // Should have exactly one member ending with :ck:*
         const ckWildcardMembers = masterMembers.filter(
           (m, i) => i % 2 === 0 && m.endsWith(":ck:*")
@@ -127,264 +122,232 @@ describe("CK Index", () => {
     }
   );
 
-  redisTest(
-    "multiple CKs result in single master queue entry",
-    async ({ redisContainer }) => {
-      const queue = createQueue(redisContainer);
-      try {
-        const now = Date.now();
-        const msg1 = makeMessage({
-          runId: "r1",
-          concurrencyKey: "ck-a",
-          timestamp: now,
-        });
-        const msg2 = makeMessage({
-          runId: "r2",
-          concurrencyKey: "ck-b",
-          timestamp: now + 100,
-        });
-        const msg3 = makeMessage({
-          runId: "r3",
-          concurrencyKey: "ck-c",
-          timestamp: now + 200,
-        });
+  redisTest("multiple CKs result in single master queue entry", async ({ redisContainer }) => {
+    const queue = createQueue(redisContainer);
+    try {
+      const now = Date.now();
+      const msg1 = makeMessage({
+        runId: "r1",
+        concurrencyKey: "ck-a",
+        timestamp: now,
+      });
+      const msg2 = makeMessage({
+        runId: "r2",
+        concurrencyKey: "ck-b",
+        timestamp: now + 100,
+      });
+      const msg3 = makeMessage({
+        runId: "r3",
+        concurrencyKey: "ck-c",
+        timestamp: now + 200,
+      });
 
-        for (const msg of [msg1, msg2, msg3]) {
-          await queue.enqueueMessage({
-            env: authenticatedEnvDev,
-            message: msg,
-            workerQueue: authenticatedEnvDev.id,
-            skipDequeueProcessing: true,
-          });
-        }
-
-        // Master queue should have exactly ONE entry (the :ck:* wildcard)
-        const masterQueueKey = testOptions.keys.masterQueueKeyForShard(
-          testOptions.keys.masterQueueShardForEnvironment(msg1.environmentId, 2)
-        );
-        const masterMembers = await queue.redis.zrange(
-          masterQueueKey,
-          0,
-          -1
-        );
-        // Filter to only members for our queue
-        const ourMembers = masterMembers.filter((m) =>
-          m.includes("queue:task/my-task")
-        );
-        expect(ourMembers.length).toBe(1);
-        expect(ourMembers[0]).toContain(":ck:*");
-
-        // CK index should have 3 entries
-        const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(
-          testOptions.keys.queueKey(authenticatedEnvDev, msg1.queue, msg1.concurrencyKey)
-        );
-        const ckIndexMembers = await queue.redis.zrange(ckIndexKey, 0, -1);
-        expect(ckIndexMembers.length).toBe(3);
-      } finally {
-        await queue.quit();
-      }
-    }
-  );
-
-  redisTest(
-    "dequeue from CK queue distributes across sub-queues",
-    async ({ redisContainer }) => {
-      const queue = createQueue(redisContainer);
-      try {
-        const now = Date.now() - 1000; // In the past so they're ready
-        const msg1 = makeMessage({
-          runId: "r1",
-          concurrencyKey: "ck-a",
-          timestamp: now,
-        });
-        const msg2 = makeMessage({
-          runId: "r2",
-          concurrencyKey: "ck-b",
-          timestamp: now + 1,
-        });
-        const msg3 = makeMessage({
-          runId: "r3",
-          concurrencyKey: "ck-a",
-          timestamp: now + 2,
-        });
-
-        for (const msg of [msg1, msg2, msg3]) {
-          await queue.enqueueMessage({
-            env: authenticatedEnvDev,
-            message: msg,
-            workerQueue: authenticatedEnvDev.id,
-            skipDequeueProcessing: true,
-          });
-        }
-
-        // Dequeue via the master queue consumer
-        const shard = testOptions.keys.masterQueueShardForEnvironment(
-          msg1.environmentId,
-          2
-        );
-        const messages = await queue.testDequeueFromMasterQueue(shard, msg1.environmentId, 10);
-
-        // Should dequeue messages from both CK sub-queues
-        expect(messages).toBeDefined();
-        // We should get at least 2 messages (one from each CK)
-        // The exact order depends on CK index scoring
-        expect(messages!.length).toBeGreaterThanOrEqual(2);
-
-        const dequeuedRunIds = messages!.map((m: any) => m.messageId);
-        // r1 (ck-a, oldest) and r2 (ck-b) should be dequeued
-        expect(dequeuedRunIds).toContain("r1");
-        expect(dequeuedRunIds).toContain("r2");
-      } finally {
-        await queue.quit();
-      }
-    }
-  );
-
-  redisTest(
-    "empty CK sub-queue is removed from CK index",
-    async ({ redisContainer }) => {
-      const queue = createQueue(redisContainer);
-      try {
-        const now = Date.now() - 1000;
-        const msg1 = makeMessage({
-          runId: "r1",
-          concurrencyKey: "ck-a",
-          timestamp: now,
-        });
-        const msg2 = makeMessage({
-          runId: "r2",
-          concurrencyKey: "ck-b",
-          timestamp: now + 1,
-        });
-
-        for (const msg of [msg1, msg2]) {
-          await queue.enqueueMessage({
-            env: authenticatedEnvDev,
-            message: msg,
-            workerQueue: authenticatedEnvDev.id,
-            skipDequeueProcessing: true,
-          });
-        }
-
-        // CK index should have 2 entries initially
-        const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(
-          testOptions.keys.queueKey(authenticatedEnvDev, msg1.queue, msg1.concurrencyKey)
-        );
-        let ckIndexMembers = await queue.redis.zrange(ckIndexKey, 0, -1);
-        expect(ckIndexMembers.length).toBe(2);
-
-        // Dequeue both messages
-        const shard = testOptions.keys.masterQueueShardForEnvironment(
-          msg1.environmentId,
-          2
-        );
-        await queue.testDequeueFromMasterQueue(shard, msg1.environmentId, 10);
-
-        // CK index should be empty (both sub-queues drained)
-        ckIndexMembers = await queue.redis.zrange(ckIndexKey, 0, -1);
-        expect(ckIndexMembers.length).toBe(0);
-      } finally {
-        await queue.quit();
-      }
-    }
-  );
-
-  redisTest(
-    "empty CK index removes :ck:* from master queue",
-    async ({ redisContainer }) => {
-      const queue = createQueue(redisContainer);
-      try {
-        const now = Date.now() - 1000;
-        const msg = makeMessage({
-          runId: "r1",
-          concurrencyKey: "ck-a",
-          timestamp: now,
-        });
-
+      for (const msg of [msg1, msg2, msg3]) {
         await queue.enqueueMessage({
           env: authenticatedEnvDev,
           message: msg,
           workerQueue: authenticatedEnvDev.id,
           skipDequeueProcessing: true,
         });
-
-        const masterQueueKey = testOptions.keys.masterQueueKeyForShard(
-          testOptions.keys.masterQueueShardForEnvironment(msg.environmentId, 2)
-        );
-
-        // Master queue should have :ck:* entry
-        let masterMembers = await queue.redis.zrange(masterQueueKey, 0, -1);
-        expect(masterMembers.length).toBe(1);
-
-        // Dequeue the message
-        const shard = testOptions.keys.masterQueueShardForEnvironment(
-          msg.environmentId,
-          2
-        );
-        await queue.testDequeueFromMasterQueue(shard, msg.environmentId, 10);
-
-        // Master queue should be empty
-        masterMembers = await queue.redis.zrange(masterQueueKey, 0, -1);
-        expect(masterMembers.length).toBe(0);
-      } finally {
-        await queue.quit();
       }
+
+      // Master queue should have exactly ONE entry (the :ck:* wildcard)
+      const masterQueueKey = testOptions.keys.masterQueueKeyForShard(
+        testOptions.keys.masterQueueShardForEnvironment(msg1.environmentId, 2)
+      );
+      const masterMembers = await queue.redis.zrange(masterQueueKey, 0, -1);
+      // Filter to only members for our queue
+      const ourMembers = masterMembers.filter((m) => m.includes("queue:task/my-task"));
+      expect(ourMembers.length).toBe(1);
+      expect(ourMembers[0]).toContain(":ck:*");
+
+      // CK index should have 3 entries
+      const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(
+        testOptions.keys.queueKey(authenticatedEnvDev, msg1.queue, msg1.concurrencyKey)
+      );
+      const ckIndexMembers = await queue.redis.zrange(ckIndexKey, 0, -1);
+      expect(ckIndexMembers.length).toBe(3);
+    } finally {
+      await queue.quit();
     }
-  );
+  });
 
-  redisTest(
-    "mixed CK and non-CK queues in same shard",
-    async ({ redisContainer }) => {
-      const queue = createQueue(redisContainer);
-      try {
-        const now = Date.now() - 1000;
+  redisTest("dequeue from CK queue distributes across sub-queues", async ({ redisContainer }) => {
+    const queue = createQueue(redisContainer);
+    try {
+      const now = Date.now() - 1000; // In the past so they're ready
+      const msg1 = makeMessage({
+        runId: "r1",
+        concurrencyKey: "ck-a",
+        timestamp: now,
+      });
+      const msg2 = makeMessage({
+        runId: "r2",
+        concurrencyKey: "ck-b",
+        timestamp: now + 1,
+      });
+      const msg3 = makeMessage({
+        runId: "r3",
+        concurrencyKey: "ck-a",
+        timestamp: now + 2,
+      });
 
-        // Non-CK message
-        const msgNoCk = makeMessage({
-          runId: "r-no-ck",
-          timestamp: now,
+      for (const msg of [msg1, msg2, msg3]) {
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: msg,
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
         });
-
-        // CK messages
-        const msgCk1 = makeMessage({
-          runId: "r-ck-1",
-          concurrencyKey: "ck-a",
-          timestamp: now + 1,
-        });
-        const msgCk2 = makeMessage({
-          runId: "r-ck-2",
-          concurrencyKey: "ck-b",
-          timestamp: now + 2,
-        });
-
-        for (const msg of [msgNoCk, msgCk1, msgCk2]) {
-          await queue.enqueueMessage({
-            env: authenticatedEnvDev,
-            message: msg,
-            workerQueue: authenticatedEnvDev.id,
-            skipDequeueProcessing: true,
-          });
-        }
-
-        // Master queue should have 2 entries: one non-CK queue and one :ck:*
-        const masterQueueKey = testOptions.keys.masterQueueKeyForShard(
-          testOptions.keys.masterQueueShardForEnvironment(msgNoCk.environmentId, 2)
-        );
-        const masterMembers = await queue.redis.zrange(masterQueueKey, 0, -1);
-        expect(masterMembers.length).toBe(2);
-
-        // One should be the non-CK queue, one should be :ck:*
-        const ckWildcard = masterMembers.filter((m) => m.endsWith(":ck:*"));
-        const nonCk = masterMembers.filter(
-          (m) => !m.includes(":ck:")
-        );
-        expect(ckWildcard.length).toBe(1);
-        expect(nonCk.length).toBe(1);
-      } finally {
-        await queue.quit();
       }
+
+      // Dequeue via the master queue consumer
+      const shard = testOptions.keys.masterQueueShardForEnvironment(msg1.environmentId, 2);
+      const messages = await queue.testDequeueFromMasterQueue(shard, msg1.environmentId, 10);
+
+      // Should dequeue messages from both CK sub-queues
+      expect(messages).toBeDefined();
+      // We should get at least 2 messages (one from each CK)
+      // The exact order depends on CK index scoring
+      expect(messages!.length).toBeGreaterThanOrEqual(2);
+
+      const dequeuedRunIds = messages!.map((m: any) => m.messageId);
+      // r1 (ck-a, oldest) and r2 (ck-b) should be dequeued
+      expect(dequeuedRunIds).toContain("r1");
+      expect(dequeuedRunIds).toContain("r2");
+    } finally {
+      await queue.quit();
     }
-  );
+  });
+
+  redisTest("empty CK sub-queue is removed from CK index", async ({ redisContainer }) => {
+    const queue = createQueue(redisContainer);
+    try {
+      const now = Date.now() - 1000;
+      const msg1 = makeMessage({
+        runId: "r1",
+        concurrencyKey: "ck-a",
+        timestamp: now,
+      });
+      const msg2 = makeMessage({
+        runId: "r2",
+        concurrencyKey: "ck-b",
+        timestamp: now + 1,
+      });
+
+      for (const msg of [msg1, msg2]) {
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: msg,
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+      }
+
+      // CK index should have 2 entries initially
+      const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(
+        testOptions.keys.queueKey(authenticatedEnvDev, msg1.queue, msg1.concurrencyKey)
+      );
+      let ckIndexMembers = await queue.redis.zrange(ckIndexKey, 0, -1);
+      expect(ckIndexMembers.length).toBe(2);
+
+      // Dequeue both messages
+      const shard = testOptions.keys.masterQueueShardForEnvironment(msg1.environmentId, 2);
+      await queue.testDequeueFromMasterQueue(shard, msg1.environmentId, 10);
+
+      // CK index should be empty (both sub-queues drained)
+      ckIndexMembers = await queue.redis.zrange(ckIndexKey, 0, -1);
+      expect(ckIndexMembers.length).toBe(0);
+    } finally {
+      await queue.quit();
+    }
+  });
+
+  redisTest("empty CK index removes :ck:* from master queue", async ({ redisContainer }) => {
+    const queue = createQueue(redisContainer);
+    try {
+      const now = Date.now() - 1000;
+      const msg = makeMessage({
+        runId: "r1",
+        concurrencyKey: "ck-a",
+        timestamp: now,
+      });
+
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: msg,
+        workerQueue: authenticatedEnvDev.id,
+        skipDequeueProcessing: true,
+      });
+
+      const masterQueueKey = testOptions.keys.masterQueueKeyForShard(
+        testOptions.keys.masterQueueShardForEnvironment(msg.environmentId, 2)
+      );
+
+      // Master queue should have :ck:* entry
+      let masterMembers = await queue.redis.zrange(masterQueueKey, 0, -1);
+      expect(masterMembers.length).toBe(1);
+
+      // Dequeue the message
+      const shard = testOptions.keys.masterQueueShardForEnvironment(msg.environmentId, 2);
+      await queue.testDequeueFromMasterQueue(shard, msg.environmentId, 10);
+
+      // Master queue should be empty
+      masterMembers = await queue.redis.zrange(masterQueueKey, 0, -1);
+      expect(masterMembers.length).toBe(0);
+    } finally {
+      await queue.quit();
+    }
+  });
+
+  redisTest("mixed CK and non-CK queues in same shard", async ({ redisContainer }) => {
+    const queue = createQueue(redisContainer);
+    try {
+      const now = Date.now() - 1000;
+
+      // Non-CK message
+      const msgNoCk = makeMessage({
+        runId: "r-no-ck",
+        timestamp: now,
+      });
+
+      // CK messages
+      const msgCk1 = makeMessage({
+        runId: "r-ck-1",
+        concurrencyKey: "ck-a",
+        timestamp: now + 1,
+      });
+      const msgCk2 = makeMessage({
+        runId: "r-ck-2",
+        concurrencyKey: "ck-b",
+        timestamp: now + 2,
+      });
+
+      for (const msg of [msgNoCk, msgCk1, msgCk2]) {
+        await queue.enqueueMessage({
+          env: authenticatedEnvDev,
+          message: msg,
+          workerQueue: authenticatedEnvDev.id,
+          skipDequeueProcessing: true,
+        });
+      }
+
+      // Master queue should have 2 entries: one non-CK queue and one :ck:*
+      const masterQueueKey = testOptions.keys.masterQueueKeyForShard(
+        testOptions.keys.masterQueueShardForEnvironment(msgNoCk.environmentId, 2)
+      );
+      const masterMembers = await queue.redis.zrange(masterQueueKey, 0, -1);
+      expect(masterMembers.length).toBe(2);
+
+      // One should be the non-CK queue, one should be :ck:*
+      const ckWildcard = masterMembers.filter((m) => m.endsWith(":ck:*"));
+      const nonCk = masterMembers.filter((m) => !m.includes(":ck:"));
+      expect(ckWildcard.length).toBe(1);
+      expect(nonCk.length).toBe(1);
+    } finally {
+      await queue.quit();
+    }
+  });
 
   redisTest(
     "acknowledge CK message rebalances CK index and master queue",
@@ -413,10 +376,7 @@ describe("CK Index", () => {
         }
 
         // Dequeue one message
-        const shard = testOptions.keys.masterQueueShardForEnvironment(
-          msg1.environmentId,
-          2
-        );
+        const shard = testOptions.keys.masterQueueShardForEnvironment(msg1.environmentId, 2);
         const messages = await queue.testDequeueFromMasterQueue(shard, msg1.environmentId, 1);
         expect(messages!.length).toBe(1);
         expect(messages![0].messageId).toBe("r1");
@@ -459,63 +419,57 @@ describe("CK Index", () => {
     }
   );
 
-  redisTest(
-    "nack CK message rebalances CK index",
-    async ({ redisContainer }) => {
-      const queue = createQueue(redisContainer);
-      try {
-        const now = Date.now() - 1000;
-        const msg = makeMessage({
-          runId: "r1",
-          concurrencyKey: "ck-a",
-          timestamp: now,
-        });
+  redisTest("nack CK message rebalances CK index", async ({ redisContainer }) => {
+    const queue = createQueue(redisContainer);
+    try {
+      const now = Date.now() - 1000;
+      const msg = makeMessage({
+        runId: "r1",
+        concurrencyKey: "ck-a",
+        timestamp: now,
+      });
 
-        await queue.enqueueMessage({
-          env: authenticatedEnvDev,
-          message: msg,
-          workerQueue: authenticatedEnvDev.id,
-          skipDequeueProcessing: true,
-        });
+      await queue.enqueueMessage({
+        env: authenticatedEnvDev,
+        message: msg,
+        workerQueue: authenticatedEnvDev.id,
+        skipDequeueProcessing: true,
+      });
 
-        // Dequeue the message
-        const shard = testOptions.keys.masterQueueShardForEnvironment(
-          msg.environmentId,
-          2
-        );
-        const messages = await queue.testDequeueFromMasterQueue(shard, msg.environmentId, 1);
-        expect(messages!.length).toBe(1);
+      // Dequeue the message
+      const shard = testOptions.keys.masterQueueShardForEnvironment(msg.environmentId, 2);
+      const messages = await queue.testDequeueFromMasterQueue(shard, msg.environmentId, 1);
+      expect(messages!.length).toBe(1);
 
-        // Nack the message (re-enqueue)
-        await queue.nackMessage({
-          orgId: msg.orgId,
-          messageId: "r1",
-          retryAt: Date.now() + 5000,
-          incrementAttemptCount: false,
-          skipDequeueProcessing: true,
-        });
+      // Nack the message (re-enqueue)
+      await queue.nackMessage({
+        orgId: msg.orgId,
+        messageId: "r1",
+        retryAt: Date.now() + 5000,
+        incrementAttemptCount: false,
+        skipDequeueProcessing: true,
+      });
 
-        // CK index should have the ck-a entry (message re-enqueued)
-        const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(
-          testOptions.keys.queueKey(authenticatedEnvDev, msg.queue, msg.concurrencyKey)
-        );
-        const ckIndexMembers = await queue.redis.zrange(ckIndexKey, 0, -1);
-        expect(ckIndexMembers.length).toBe(1);
+      // CK index should have the ck-a entry (message re-enqueued)
+      const ckIndexKey = testOptions.keys.ckIndexKeyFromQueue(
+        testOptions.keys.queueKey(authenticatedEnvDev, msg.queue, msg.concurrencyKey)
+      );
+      const ckIndexMembers = await queue.redis.zrange(ckIndexKey, 0, -1);
+      expect(ckIndexMembers.length).toBe(1);
 
-        // Master queue should have the :ck:* entry
-        const masterQueueKey = testOptions.keys.masterQueueKeyForShard(shard);
-        const masterMembers = await queue.redis.zrange(masterQueueKey, 0, -1);
-        expect(masterMembers.length).toBe(1);
-        expect(masterMembers[0]).toContain(":ck:*");
+      // Master queue should have the :ck:* entry
+      const masterQueueKey = testOptions.keys.masterQueueKeyForShard(shard);
+      const masterMembers = await queue.redis.zrange(masterQueueKey, 0, -1);
+      expect(masterMembers.length).toBe(1);
+      expect(masterMembers[0]).toContain(":ck:*");
 
-        // No old-format entries
-        const oldFormatMembers = masterMembers.filter(
-          (m) => m.includes(":ck:") && !m.endsWith(":ck:*")
-        );
-        expect(oldFormatMembers.length).toBe(0);
-      } finally {
-        await queue.quit();
-      }
+      // No old-format entries
+      const oldFormatMembers = masterMembers.filter(
+        (m) => m.includes(":ck:") && !m.endsWith(":ck:*")
+      );
+      expect(oldFormatMembers.length).toBe(0);
+    } finally {
+      await queue.quit();
     }
-  );
+  });
 });

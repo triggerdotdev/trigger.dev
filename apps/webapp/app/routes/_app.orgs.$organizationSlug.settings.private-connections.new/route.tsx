@@ -26,15 +26,9 @@ import { Select, SelectItem } from "~/components/primitives/Select";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { canAccessPrivateConnections } from "~/v3/canAccessPrivateConnections.server";
-import {
-  redirectWithErrorMessage,
-  redirectWithSuccessMessage,
-} from "~/models/message.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import type { CreatePrivateLinkConnectionBody } from "@trigger.dev/platform";
-import {
-  createPrivateLink,
-  getPrivateLinkRegions,
-} from "~/services/platform.v3.server";
+import { createPrivateLink, getPrivateLinkRegions } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import {
   docsPath,
@@ -156,7 +150,6 @@ export const action: ActionFunction = async ({ request, params }) => {
     message
   );
 };
-
 
 type SetupMethod = "manual" | "ai" | "terraform" | "docs";
 
@@ -402,9 +395,10 @@ function AIPromptWizard({ awsAccountIds }: { awsAccountIds: string[] }) {
   const validPorts = ports.filter((p) => p.port !== "");
   const regionLabel = AWS_REGIONS.find((r) => r.value === region)?.label ?? region;
 
-  const portsDescription = validPorts.length > 0
-    ? validPorts.map((p) => `${p.port} (${p.protocol})`).join(", ")
-    : "5432 (TCP)";
+  const portsDescription =
+    validPorts.length > 0
+      ? validPorts.map((p) => `${p.port} (${p.protocol})`).join(", ")
+      : "5432 (TCP)";
 
   const prompt = `I need to set up AWS PrivateLink so that Trigger.dev can connect to my resource. Please create the following in my AWS account in the ${region} (${regionLabel}) region:
 
@@ -553,7 +547,13 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Add Private Connection" backButton={{ to: v3PrivateConnectionsPath({ slug: organizationSlug! }), text: "Private Connections" }} />
+        <PageTitle
+          title="Add Private Connection"
+          backButton={{
+            to: v3PrivateConnectionsPath({ slug: organizationSlug! }),
+            text: "Private Connections",
+          }}
+        />
         <PageAccessories>
           <LinkButton
             variant="docs/small"

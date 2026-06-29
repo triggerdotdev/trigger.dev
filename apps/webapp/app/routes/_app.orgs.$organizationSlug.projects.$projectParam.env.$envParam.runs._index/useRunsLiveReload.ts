@@ -91,7 +91,9 @@ function useNewRunsDetection({
   isLoading: boolean;
 }) {
   const pollTickRef = useRef(0);
-  const [knownNewestRunMs, setKnownNewestRunMs] = useState(() => maxCreatedAtMs(runs) ?? Date.now());
+  const [knownNewestRunMs, setKnownNewestRunMs] = useState(
+    () => maxCreatedAtMs(runs) ?? Date.now()
+  );
   const [newRunsCount, setNewRunsCount] = useState(0);
 
   const shouldPollForNewRuns = hasAnyRuns && !isLoading && newRunsCount < 100;
@@ -209,8 +211,7 @@ export function useRunsLiveReload({
   const hasActiveRuns = activeRunIdsParam.length > 0;
 
   const runsResourcesBasePath = useMemo(
-    () =>
-      `/resources/orgs/${organizationSlug}/projects/${projectSlug}/env/${environmentSlug}/runs`,
+    () => `/resources/orgs/${organizationSlug}/projects/${projectSlug}/env/${environmentSlug}/runs`,
     [organizationSlug, projectSlug, environmentSlug]
   );
 

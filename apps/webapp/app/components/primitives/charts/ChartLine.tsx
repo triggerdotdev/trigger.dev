@@ -19,7 +19,8 @@ import {
 import { ChartLineLoading, ChartLineNoData, ChartLineInvalid } from "./ChartLoading";
 import { useChartContext } from "./ChartContext";
 import { ChartRoot, useHasNoData } from "./ChartRoot";
-import { useYAxisWidth } from "./useYAxisWidth";
+import { defaultYAxisTickFormatter, useYAxisWidth } from "./useYAxisWidth";
+import { CHART_MARGIN } from "./ChartBar";
 // Legend is now rendered by ChartRoot outside the chart container
 import type { ZoomRange } from "./hooks/useZoomSelection";
 
@@ -82,9 +83,20 @@ export function ChartLineRenderer({
   width,
   height,
 }: ChartLineRendererProps) {
-  const { config, data, dataKey, dataKeys, visibleSeries, state, highlight, setActivePayload, showLegend } = useChartContext();
+  const {
+    config,
+    data,
+    dataKey,
+    dataKeys,
+    visibleSeries,
+    state,
+    highlight,
+    setActivePayload,
+    showLegend,
+  } = useChartContext();
   const hasNoData = useHasNoData();
-  const computedYAxisWidth = useYAxisWidth(data, visibleSeries, yAxisPropsProp?.tickFormatter);
+  const yAxisTickFormatter = yAxisPropsProp?.tickFormatter ?? defaultYAxisTickFormatter;
+  const computedYAxisWidth = useYAxisWidth(data, visibleSeries, yAxisTickFormatter);
 
   // Render loading/error states
   if (state === "loading") {
@@ -126,6 +138,7 @@ export function ChartLineRenderer({
       fontSize: 11,
       style: { fontVariantNumeric: "tabular-nums" },
     },
+    tickFormatter: yAxisTickFormatter,
     ...yAxisPropsProp,
   };
 
@@ -143,10 +156,7 @@ export function ChartLineRenderer({
         width={width}
         height={height}
         stackOffset="none"
-        margin={{
-          left: 12,
-          right: 12,
-        }}
+        margin={CHART_MARGIN}
         onMouseMove={(e: any) => {
           if (e?.activePayload?.length) {
             setActivePayload(e.activePayload, e.activeTooltipIndex);
@@ -196,11 +206,7 @@ export function ChartLineRenderer({
       data={data}
       width={width}
       height={height}
-      margin={{
-        top: 5,
-        left: 12,
-        right: 12,
-      }}
+      margin={CHART_MARGIN}
       onMouseMove={(e: any) => {
         if (e?.activePayload?.length) {
           setActivePayload(e.activePayload, e.activeTooltipIndex);
@@ -218,11 +224,7 @@ export function ChartLineRenderer({
       <ChartTooltip
         cursor={{ stroke: "rgba(255, 255, 255, 0.1)", strokeWidth: 1 }}
         content={
-          showLegend ? (
-            () => null
-          ) : (
-            <ChartTooltipContent valueFormatter={tooltipValueFormatter} />
-          )
+          showLegend ? () => null : <ChartTooltipContent valueFormatter={tooltipValueFormatter} />
         }
         labelFormatter={tooltipLabelFormatter}
       />

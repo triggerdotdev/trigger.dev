@@ -1,10 +1,7 @@
 import { cn } from "~/utils/cn";
 import { type ParagraphVariant } from "./Paragraph";
 
-const listVariants: Record<
-  ParagraphVariant,
-  { text: string; spacing: string; items: string }
-> = {
+const listVariants: Record<ParagraphVariant, { text: string; spacing: string; items: string }> = {
   base: {
     text: "font-sans text-base font-normal text-text-dimmed",
     spacing: "mb-3",

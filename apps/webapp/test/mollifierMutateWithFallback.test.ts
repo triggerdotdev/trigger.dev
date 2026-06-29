@@ -6,11 +6,7 @@ vi.mock("~/db.server", () => ({
 }));
 
 import { mutateWithFallback } from "~/v3/mollifier/mutateWithFallback.server";
-import type {
-  BufferEntry,
-  MollifierBuffer,
-  MutateSnapshotResult,
-} from "@trigger.dev/redis-worker";
+import type { BufferEntry, MollifierBuffer, MutateSnapshotResult } from "@trigger.dev/redis-worker";
 import type { TaskRun } from "@trigger.dev/database";
 
 type FindFirst = ReturnType<typeof vi.fn>;

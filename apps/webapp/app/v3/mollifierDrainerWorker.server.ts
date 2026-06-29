@@ -52,7 +52,7 @@ export function initMollifierDrainerWorker(
     // without manipulating module-level env state.
     isEnabled?: () => boolean;
     getDrainer?: typeof getMollifierDrainer;
-  } = {},
+  } = {}
 ): void {
   const isEnabled = opts.isEnabled ?? (() => env.TRIGGER_MOLLIFIER_DRAINER_ENABLED === "1");
   const getDrainer = opts.getDrainer ?? getMollifierDrainer;

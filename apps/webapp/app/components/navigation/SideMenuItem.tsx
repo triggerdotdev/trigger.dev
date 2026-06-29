@@ -67,7 +67,7 @@ export function SideMenuItem({
         icon={icon}
         className={cn(
           "size-5 shrink-0",
-          isActive ? activeIconColor : inactiveIconColor ?? "text-text-dimmed",
+          isActive ? activeIconColor : (inactiveIconColor ?? "text-text-dimmed"),
           !isActive &&
             !disableIconHover &&
             "group-hover/menuitem:text-text-bright group-hover/menulink:text-text-bright",

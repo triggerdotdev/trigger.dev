@@ -317,9 +317,7 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
                   return;
                 }
 
-                reply.json(
-                  completeResponse.data satisfies WorkloadRunAttemptCompleteResponseBody
-                );
+                reply.json(completeResponse.data satisfies WorkloadRunAttemptCompleteResponseBody);
                 return;
               }
             ),
@@ -566,7 +564,9 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
               }
 
               reply.json(
-                dequeueResponse.data.map(legacifyCheckpointType) satisfies WorkloadDequeueFromVersionResponseBody
+                dequeueResponse.data.map(
+                  legacifyCheckpointType
+                ) satisfies WorkloadDequeueFromVersionResponseBody
               );
             }
           ),
@@ -613,16 +613,22 @@ export class WorkloadServer extends EventEmitter<WorkloadServerEvents> {
     httpServer.route("/api/v1/compute/snapshot-complete", "POST", {
       bodySchema: SnapshotCallbackPayloadSchema,
       handler: async (ctx) =>
-        this.wideRoute(ctx, "snapshot.callback", "/api/v1/compute/snapshot-complete", "POST", async () => {
-          const { reply, body } = ctx;
-          if (!this.snapshotService) {
-            reply.empty(404);
-            return;
-          }
+        this.wideRoute(
+          ctx,
+          "snapshot.callback",
+          "/api/v1/compute/snapshot-complete",
+          "POST",
+          async () => {
+            const { reply, body } = ctx;
+            if (!this.snapshotService) {
+              reply.empty(404);
+              return;
+            }
 
-          const result = await this.snapshotService.handleCallback(body);
-          reply.empty(result.status);
-        }),
+            const result = await this.snapshotService.handleCallback(body);
+            reply.empty(result.status);
+          }
+        ),
     });
 
     return httpServer;

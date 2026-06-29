@@ -37,7 +37,10 @@ export function extractIdempotencyKeyScope(run: {
 export function unsafeExtractIdempotencyKeyScope(run: {
   idempotencyKeyOptions: unknown;
 }): "run" | "attempt" | "global" | undefined {
-  const unsafe = run.idempotencyKeyOptions as { scope?: "run" | "attempt" | "global" } | undefined | null;
+  const unsafe = run.idempotencyKeyOptions as
+    | { scope?: "run" | "attempt" | "global" }
+    | undefined
+    | null;
   return unsafe?.scope ?? undefined;
 }
 
@@ -65,5 +68,3 @@ export function unsafeExtractIdempotencyKeyUser(run: {
 
   return unsafe?.key ?? undefined;
 }
-
-
