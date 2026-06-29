@@ -1,5 +1,7 @@
 $ErrorActionPreference = "Stop"
 
+# Used inside Blacksmith Testbox runners to run full CI test suite
+
 Set-Location (git rev-parse --show-toplevel)
 
 function Find-NodeBin {
@@ -107,6 +109,10 @@ function Invoke-Section {
   } finally {
     Stop-Section
   }
+}
+
+if (-not $env:CI) {
+  $env:CI = "true"
 }
 
 $node20Bin = Find-NodeBin "20.20"
