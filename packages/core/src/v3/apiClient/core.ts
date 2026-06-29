@@ -19,6 +19,7 @@ import {
 } from "./pagination.js";
 import { EventSource, type ErrorEvent } from "eventsource";
 import { randomUUID } from "../utils/crypto.js";
+import { getNumberEnvVar } from "../utils/getEnv.js";
 
 export const defaultRetryOptions = {
   maxAttempts: 3,
@@ -28,8 +29,11 @@ export const defaultRetryOptions = {
   randomize: false,
 } satisfies RetryOptions;
 
+export const defaultRequestTimeoutInMs = 30_000;
+
 export type ZodFetchOptions<TData = any> = {
   retry?: RetryOptions;
+  timeoutInMs?: number;
   tracer?: TriggerTracer;
   name?: string;
   attributes?: Attributes;
@@ -40,7 +44,7 @@ export type ZodFetchOptions<TData = any> = {
 
 export type AnyZodFetchOptions = ZodFetchOptions<any>;
 
-export type ApiRequestOptions = Pick<ZodFetchOptions, "retry"> & {
+export type ApiRequestOptions = Pick<ZodFetchOptions, "retry" | "timeoutInMs"> & {
   additionalHeaders?: Record<string, string>;
 };
 
@@ -51,6 +55,7 @@ type KeysEnum<T> = { [P in keyof Required<T>]: true };
 // compiler such that any missing / extraneous keys will cause an error.
 const requestOptionsKeys: KeysEnum<ApiRequestOptions> = {
   retry: true,
+  timeoutInMs: true,
   additionalHeaders: true,
 };
 
@@ -230,9 +235,31 @@ async function _doZodFetchWithRetries<TResponseBodySchema extends z.ZodTypeAny>(
   options?: ZodFetchOptions,
   attempt = 1
 ): Promise<ZodFetchResult<z.output<TResponseBodySchema>>> {
+  // Precedence: per-request option > per-client requestOptions > env var > built-in default.
+  const timeoutInMs =
+    options?.timeoutInMs ??
+    getNumberEnvVar("TRIGGER_API_REQUEST_TIMEOUT_MS") ??
+    defaultRequestTimeoutInMs;
+  const controller = new AbortController();
+  const callerSignal = requestInit?.signal ?? undefined;
+  const onCallerAbort = () => controller.abort(callerSignal?.reason);
+  if (callerSignal) {
+    if (callerSignal.aborted) controller.abort(callerSignal.reason);
+    else callerSignal.addEventListener("abort", onCallerAbort, { once: true });
+  }
+  // Only schedule a timeout for an in-range positive delay. setTimeout coerces NaN, negative,
+  // and >2^31 values to ~1ms (an instant abort), so those cases disable the timeout instead.
+  const timeout =
+    timeoutInMs > 0 && timeoutInMs <= 2_147_483_647
+      ? setTimeout(
+          () => controller.abort(new Error(`Request to ${url} timed out after ${timeoutInMs}ms`)),
+          timeoutInMs
+        )
+      : undefined;
+
   try {
     const response = await context.with(suppressTracing(context.active()), () =>
-      fetch(url, requestInitWithCache(requestInit))
+      fetch(url, { ...requestInitWithCache(requestInit), signal: controller.signal })
     );
 
     const responseHeaders = createResponseHeaders(response.headers);
@@ -277,6 +304,11 @@ async function _doZodFetchWithRetries<TResponseBodySchema extends z.ZodTypeAny>(
     if (error instanceof ValidationError) {
     }
 
+    // A caller-supplied signal aborting is a cancellation, not a transient failure.
+    if (callerSignal?.aborted) {
+      throw error;
+    }
+
     if (options?.retry) {
       const retry = { ...defaultRetryOptions, ...options.retry };
 
@@ -290,6 +322,9 @@ async function _doZodFetchWithRetries<TResponseBodySchema extends z.ZodTypeAny>(
     }
 
     throw new ApiConnectionError({ cause: castToError(error) });
+  } finally {
+    clearTimeout(timeout);
+    callerSignal?.removeEventListener("abort", onCallerAbort);
   }
 }
 
