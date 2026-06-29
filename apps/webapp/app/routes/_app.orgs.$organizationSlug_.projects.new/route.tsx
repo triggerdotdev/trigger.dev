@@ -391,9 +391,15 @@ export default function Page() {
                   <FormError id={projectName.errorId}>{projectName.errors}</FormError>
                 </InputGroup>
                 {canCreateV3Projects ? (
-                  <input {...getInputProps(projectVersion, { type: "hidden" })} defaultValue={"v3"} />
+                  <input
+                    {...getInputProps(projectVersion, { type: "hidden" })}
+                    defaultValue={"v3"}
+                  />
                 ) : (
-                  <input {...getInputProps(projectVersion, { type: "hidden" })} defaultValue={"v2"} />
+                  <input
+                    {...getInputProps(projectVersion, { type: "hidden" })}
+                    defaultValue={"v2"}
+                  />
                 )}
 
                 <div className="border-t border-charcoal-700" />

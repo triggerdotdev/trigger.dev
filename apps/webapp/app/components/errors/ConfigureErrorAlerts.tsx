@@ -136,12 +136,7 @@ export function ConfigureErrorAlerts({
         />
       </div>
 
-      <fetcher.Form
-        method="post"
-        action={formAction}
-        {...getFormProps(form)}
-        className="contents"
-      >
+      <fetcher.Form method="post" action={formAction} {...getFormProps(form)} className="contents">
         <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <Fieldset className="flex flex-col gap-4 p-4">
             <div className="flex flex-col">

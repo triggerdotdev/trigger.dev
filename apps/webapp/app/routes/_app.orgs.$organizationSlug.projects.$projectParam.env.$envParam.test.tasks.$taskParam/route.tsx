@@ -1012,19 +1012,14 @@ function ScheduledTaskForm({
   });
 
   return (
-    <Form className="grid h-full max-h-full grid-rows-[1fr_auto]" method="post" {...getFormProps(form)}>
-      <input
-        {...getInputProps(triggerSource, { type: "hidden" })}
-        value={"SCHEDULED"}
-      />
-      <input
-        {...getInputProps(taskIdentifier, { type: "hidden" })}
-        value={task.taskIdentifier}
-      />
-      <input
-        {...getInputProps(environmentId, { type: "hidden" })}
-        value={environment.id}
-      />
+    <Form
+      className="grid h-full max-h-full grid-rows-[1fr_auto]"
+      method="post"
+      {...getFormProps(form)}
+    >
+      <input {...getInputProps(triggerSource, { type: "hidden" })} value={"SCHEDULED"} />
+      <input {...getInputProps(taskIdentifier, { type: "hidden" })} value={task.taskIdentifier} />
+      <input {...getInputProps(environmentId, { type: "hidden" })} value={environment.id} />
       {/* Main area: scrolling form with the toolbar floating on top-right in the same grid cell */}
       <div className="grid min-h-0 grid-cols-1 grid-rows-1 overflow-hidden">
         <div className="col-start-1 row-start-1 overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">

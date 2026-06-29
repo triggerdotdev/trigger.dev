@@ -963,7 +963,11 @@ export function PurchaseSeatsModal({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent>
         <DialogHeader>{title}</DialogHeader>
-        <fetcher.Form method="post" action={organizationTeamPath(organization)} {...getFormProps(form)}>
+        <fetcher.Form
+          method="post"
+          action={organizationTeamPath(organization)}
+          {...getFormProps(form)}
+        >
           <input type="hidden" name="_formType" value="purchase-seats" />
           <div className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-1">

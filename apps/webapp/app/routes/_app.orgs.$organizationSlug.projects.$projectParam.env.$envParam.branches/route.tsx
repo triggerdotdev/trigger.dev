@@ -711,9 +711,7 @@ function PurchaseBranchesModal({
                   onChange={(e) => setAmountValue(Number(e.target.value))}
                   disabled={isLoading}
                 />
-                <FormError id={amount.errorId}>
-                  {amount.errors}
-                </FormError>
+                <FormError id={amount.errorId}>{amount.errors}</FormError>
                 <FormError>{form.errors}</FormError>
               </InputGroup>
             </Fieldset>

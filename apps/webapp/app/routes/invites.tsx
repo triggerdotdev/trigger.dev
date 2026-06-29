@@ -125,12 +125,7 @@ export default function Page() {
                       <input name="inviteId" type="hidden" value={invite.id} />
                     </div>
                     <div className="flex flex-col gap-y-1">
-                      <Button
-                        type="submit"
-                        name="intent"
-                        value="accept"
-                        variant={"primary/small"}
-                      >
+                      <Button type="submit" name="intent" value="accept" variant={"primary/small"}>
                         Accept
                       </Button>
                       <Button
