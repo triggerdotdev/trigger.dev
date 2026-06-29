@@ -60,6 +60,7 @@ export function BillingLimitRecoveryPanel({
   const [newAmount, setNewAmount] = useState(String(suggestedNewLimitDollars));
   const [resumeMode, setResumeMode] = useState<"queue" | "new_only">("queue");
   const newAmountInputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     setNewAmount(String(suggestedNewLimitDollars));
@@ -92,8 +93,8 @@ export function BillingLimitRecoveryPanel({
   });
 
   useEffect(() => {
-    form.ref.current?.dispatchEvent(new Event("input", { bubbles: true }));
-  }, [action, form.ref, newAmount, resumeMode]);
+    formRef.current?.dispatchEvent(new Event("input", { bubbles: true }));
+  }, [action, newAmount, resumeMode]);
 
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -142,7 +143,7 @@ export function BillingLimitRecoveryPanel({
         )}
       </div>
 
-      <Form method="post" {...getFormProps(form)}>
+      <Form method="post" {...getFormProps(form)} ref={formRef}>
         <input type="hidden" name="intent" value="billing-limit-resolve" />
         <input type="hidden" name="action" value={action} />
         <input type="hidden" name="resumeMode" value={resumeMode} />

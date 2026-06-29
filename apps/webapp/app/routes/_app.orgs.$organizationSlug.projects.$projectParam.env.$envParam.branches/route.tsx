@@ -712,7 +712,7 @@ function PurchaseBranchesModal({
                   disabled={isLoading}
                 />
                 <FormError id={amount.errorId}>
-                  {amount.error ?? amount.initialError?.[""]?.[0]}
+                  {amount.errors}
                 </FormError>
                 <FormError>{form.errors}</FormError>
               </InputGroup>

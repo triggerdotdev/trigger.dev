@@ -118,6 +118,7 @@ export function BillingLimitConfigSection({
   const [customAmount, setCustomAmount] = useState(savedCustomAmount);
   const [cancelInProgressRuns, setCancelInProgressRuns] = useState(savedCancelInProgressRuns);
   const customAmountInputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     setMode(savedMode);
@@ -167,8 +168,8 @@ export function BillingLimitConfigSection({
   });
 
   useEffect(() => {
-    form.ref.current?.dispatchEvent(new Event("input", { bubbles: true }));
-  }, [customAmount, form.ref, mode]);
+    formRef.current?.dispatchEvent(new Event("input", { bubbles: true }));
+  }, [customAmount, mode]);
 
   const planLimitLabel = formatCurrency(planLimitCents / 100, false);
   const showPlanInfoCallout = mode === "plan";
@@ -185,7 +186,7 @@ export function BillingLimitConfigSection({
         </Paragraph>
       </div>
 
-      <Form method="post" {...getFormProps(form)}>
+      <Form method="post" {...getFormProps(form)} ref={formRef}>
         <input type="hidden" name="intent" value="billing-limit" />
         <Fieldset>
           <input type="hidden" name="mode" value={mode} />

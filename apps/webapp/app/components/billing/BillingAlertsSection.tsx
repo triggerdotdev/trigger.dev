@@ -168,7 +168,7 @@ export function BillingAlertsSection({
     !emailsMatchSaved(emailValues, savedEmails);
   const lastSubmission = isDirty ? alertsSubmission : undefined;
 
-  const [form, { emails, alertLevels }] = useForm({
+  const [form, { emails, alertLevels }] = useForm<z.infer<typeof billingAlertsSchema>>({
     id: "billing-alerts",
     lastResult: lastSubmission as any,
     shouldRevalidate: "onInput",

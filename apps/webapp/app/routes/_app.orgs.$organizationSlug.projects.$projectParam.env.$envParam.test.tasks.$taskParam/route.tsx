@@ -636,8 +636,8 @@ function StandardTaskForm({
                         switching environments. The key forces a remount so it reinitializes
                         with the correct defaultValue. */}
                     <Select
-                      key={`region-${environment.id}`}
                       {...getSelectProps(region)}
+                      key={`region-${environment.id}`}
                       variant="tertiary/small"
                       placeholder={isDev ? "–" : undefined}
                       dropdownIcon
@@ -1014,17 +1014,14 @@ function ScheduledTaskForm({
   return (
     <Form className="grid h-full max-h-full grid-rows-[1fr_auto]" method="post" {...getFormProps(form)}>
       <input
-        type="hidden"
         {...getInputProps(triggerSource, { type: "hidden" })}
         value={"SCHEDULED"}
       />
       <input
-        type="hidden"
         {...getInputProps(taskIdentifier, { type: "hidden" })}
         value={task.taskIdentifier}
       />
       <input
-        type="hidden"
         {...getInputProps(environmentId, { type: "hidden" })}
         value={environment.id}
       />
@@ -1042,7 +1039,6 @@ function ScheduledTaskForm({
                   Timestamp UTC
                 </Label>
                 <input
-                  type="hidden"
                   {...getInputProps(timestamp, { type: "hidden" })}
                   value={timestampValue?.toISOString() ?? ""}
                 />
@@ -1066,7 +1062,6 @@ function ScheduledTaskForm({
                   Last timestamp UTC
                 </Label>
                 <input
-                  type="hidden"
                   {...getInputProps(lastTimestamp, { type: "hidden" })}
                   value={lastTimestampValue?.toISOString() ?? ""}
                 />
@@ -1196,8 +1191,8 @@ function ScheduledTaskForm({
                   switching environments. The key forces a remount so it reinitializes
                   with the correct defaultValue. */}
                   <Select
-                    key={`region-${environment.id}`}
                     {...getSelectProps(region)}
+                    key={`region-${environment.id}`}
                     variant="tertiary/small"
                     placeholder={isDev ? "–" : undefined}
                     dropdownIcon
@@ -1692,7 +1687,7 @@ function RunTemplatesPopover({
             >
               Cancel
             </Button>
-            <Form method="post" {...deleteForm.props}>
+            <Form method="post" {...getFormProps(deleteForm)}>
               <input
                 {...getInputProps(templateId, { type: "hidden" })}
                 value={templateIdToDelete || ""}
@@ -1881,7 +1876,7 @@ function CreateTemplateModal({
               <InputGroup className="max-w-full">
                 <Label htmlFor={label.id}>Template label</Label>
                 <Input
-                  {...getInputProps(label)}
+                  {...getInputProps(label, { type: "text" })}
                   placeholder="Enter a name for this template"
                   maxLength={42}
                 />
