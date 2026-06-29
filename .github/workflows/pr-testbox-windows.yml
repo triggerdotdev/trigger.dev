@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: Begin Testbox
         if: ${{ github.event_name == 'workflow_dispatch' }}
-        uses: useblacksmith/begin-testbox@v2
+        uses: useblacksmith/begin-testbox@233448af4bfdc6fca509a7f0974411ac6d8a8043 # v2
         with:
           testbox_id: ${{ inputs.testbox_id }}
 
@@ -58,5 +58,5 @@ jobs:
         run: corepack enable
 
       - name: Run Testbox
-        uses: useblacksmith/run-testbox@v2
+        uses: useblacksmith/run-testbox@5ca05834db1d3813554d1dd109e5f2087a8d7cbc # v2
         if: ${{ always() && github.event_name == 'workflow_dispatch' }}
