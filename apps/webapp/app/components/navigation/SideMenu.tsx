@@ -2,13 +2,12 @@ import {
   ArrowTopRightOnSquareIcon,
   ChevronRightIcon,
   ExclamationTriangleIcon,
-  PencilSquareIcon,
 } from "@heroicons/react/24/outline";
-import { Link, useFetcher, useNavigation } from "@remix-run/react";
+import { LinkIcon } from "@heroicons/react/24/solid";
+import { useFetcher, useNavigation } from "@remix-run/react";
 import { BugIcon } from "~/assets/icons/BugIcon";
 import { LayoutGroup, motion } from "framer-motion";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import simplur from "simplur";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { AIPenIcon } from "~/assets/icons/AIPenIcon";
 import { ArrowLeftRightIcon } from "~/assets/icons/ArrowLeftRightIcon";
@@ -41,6 +40,12 @@ import { TasksIcon } from "~/assets/icons/TasksIcon";
 import { BellIcon } from "~/assets/icons/BellIcon";
 import { UsageIcon } from "~/assets/icons/UsageIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
+import { CreditCardIcon } from "~/assets/icons/CreditCardIcon";
+import { UserGroupIcon } from "~/assets/icons/UserGroupIcon";
+import { RolesIcon } from "~/assets/icons/RolesIcon";
+import { PadlockIcon } from "~/assets/icons/PadlockIcon";
+import { SlackIcon } from "~/assets/icons/SlackIcon";
+import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { Avatar } from "~/components/primitives/Avatar";
 import { type MatchedEnvironment } from "~/hooks/useEnvironment";
 import { useFeatureFlags } from "~/hooks/useFeatureFlags";
@@ -48,9 +53,14 @@ import { useFeatures } from "~/hooks/useFeatures";
 import { type MatchedOrganization } from "~/hooks/useOrganizations";
 import { type MatchedProject } from "~/hooks/useProject";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { type UserWithDashboardPreferences } from "~/models/user.server";
-import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
+import {
+  useCurrentPlan,
+  useIsUsingRbacPlugin,
+  useIsUsingSsoPlugin,
+} from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
 import { IncidentStatusPanel, useIncidentStatus } from "~/routes/resources.incidents";
 import { NotificationPanel } from "./NotificationPanel";
@@ -65,13 +75,19 @@ import {
   newOrganizationPath,
   newProjectPath,
   organizationPath,
+  organizationRolesPath,
   organizationSettingsPath,
+  organizationSlackIntegrationPath,
+  organizationSsoPath,
   organizationTeamPath,
+  organizationVercelIntegrationPath,
   queryPath,
   regionsPath,
   v3ApiKeysPath,
   v3BatchesPath,
+  v3BillingLimitsPath,
   v3BillingPath,
+  v3PrivateConnectionsPath,
   v3DashboardsLandingPath,
   v3BulkActionsPath,
   v3DeploymentsPath,
@@ -99,9 +115,9 @@ import { ImpersonationBanner } from "../ImpersonationBanner";
 import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
 import { Dialog, DialogTrigger } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
+import { Badge } from "../primitives/Badge";
 import { Popover, PopoverContent, PopoverMenuItem, PopoverTrigger } from "../primitives/Popover";
 import { ShortcutKey } from "../primitives/ShortcutKey";
-import { TextLink } from "../primitives/TextLink";
 import {
   SimpleTooltip,
   Tooltip,
@@ -297,11 +313,9 @@ export function SideMenu({
           )}
         >
           <div className={cn("min-w-0", !isCollapsed && "flex-1")}>
-            <ProjectSelector
+            <OrgSelector
               organizations={organizations}
               organization={organization}
-              project={project}
-              user={user}
               isCollapsed={isCollapsed}
             />
           </div>
@@ -341,48 +355,53 @@ export function SideMenu({
         >
           <div className="mb-6 flex w-full flex-col gap-4 overflow-hidden px-1">
             <div className="w-full space-y-1">
-              <SideMenuHeader
-                title={"Environment"}
-                isCollapsed={isCollapsed}
-                collapsedTitle="Env"
-              />
-              <div className="flex items-center">
-                <EnvironmentSelector
+              <SideMenuHeader title={"Project"} isCollapsed={isCollapsed} collapsedTitle="Proj" />
+              <div>
+                <ProjectSelector
                   organization={organization}
                   project={project}
-                  environment={environment}
-                  className="w-full"
                   isCollapsed={isCollapsed}
+                  className="w-full"
                 />
-                {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
-                  <CollapsibleElement isCollapsed={isCollapsed}>
-                    <Dialog>
-                      <TooltipProvider disableHoverableContent={true}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="inline-flex">
-                              <DialogTrigger asChild>
-                                <Button
-                                  variant="minimal/small"
-                                  className="aspect-square h-7 p-1"
-                                  LeadingIcon={<ConnectionIcon isConnected={isConnected} />}
-                                />
-                              </DialogTrigger>
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent side="right" className={"text-xs"}>
-                            {isConnected === undefined
-                              ? "Checking connection…"
-                              : isConnected
-                                ? "Your dev server is connected"
-                                : "Your dev server is not connected"}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      <DevPresencePanel isConnected={isConnected} />
-                    </Dialog>
-                  </CollapsibleElement>
-                )}
+                <div className="flex items-center">
+                  <EnvironmentSelector
+                    organization={organization}
+                    project={project}
+                    environment={environment}
+                    className="w-full"
+                    isCollapsed={isCollapsed}
+                    showConnector
+                  />
+                  {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
+                    <CollapsibleElement isCollapsed={isCollapsed}>
+                      <Dialog>
+                        <TooltipProvider disableHoverableContent={true}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="inline-flex">
+                                <DialogTrigger asChild>
+                                  <Button
+                                    variant="minimal/small"
+                                    className="aspect-square h-7 p-1"
+                                    LeadingIcon={<ConnectionIcon isConnected={isConnected} />}
+                                  />
+                                </DialogTrigger>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className={"text-xs"}>
+                              {isConnected === undefined
+                                ? "Checking connection…"
+                                : isConnected
+                                  ? "Your dev server is connected"
+                                  : "Your dev server is not connected"}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <DevPresencePanel isConnected={isConnected} />
+                      </Dialog>
+                    </CollapsibleElement>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -811,30 +830,26 @@ function V3DeprecationContent() {
   );
 }
 
-function ProjectSelector({
-  project,
+function OrgSelector({
   organization,
   organizations,
-  user,
   isCollapsed = false,
 }: {
-  project: SideMenuProject;
   organization: MatchedOrganization;
   organizations: MatchedOrganization[];
-  user: SideMenuUser;
   isCollapsed?: boolean;
 }) {
   const currentPlan = useCurrentPlan();
   const [isOrgMenuOpen, setOrgMenuOpen] = useState(false);
   const navigation = useNavigation();
   const { isManagedCloud } = useFeatures();
+  const featureFlags = useFeatureFlags();
+  const showSelfServe = useShowSelfServe();
+  const isUsingRbacPlugin = useIsUsingRbacPlugin();
+  const isUsingSsoPlugin = useIsUsingSsoPlugin();
 
-  let plan: string | undefined = undefined;
-  if (currentPlan?.v3Subscription?.isPaying === false) {
-    plan = "Free";
-  } else if (currentPlan?.v3Subscription?.isPaying === true) {
-    plan = currentPlan.v3Subscription.plan?.title;
-  }
+  const isPaying = currentPlan?.v3Subscription?.isPaying === true;
+  const planTitle = currentPlan?.v3Subscription?.plan?.title;
 
   useEffect(() => {
     setOrgMenuOpen(false);
@@ -858,9 +873,8 @@ function ProjectSelector({
                   isCollapsed ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100"
                 )}
               >
-                <SelectorDivider />
                 <span className="truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-bright">
-                  {project.name ?? "Select a project"}
+                  {organization.title}
                 </span>
               </span>
             </span>
@@ -874,7 +888,7 @@ function ProjectSelector({
             </span>
           </PopoverTrigger>
         }
-        content={`${organization.title} / ${project.name ?? "Select a project"}`}
+        content={organization.title}
         side="right"
         sideOffset={8}
         hidden={!isCollapsed}
@@ -889,83 +903,73 @@ function ProjectSelector({
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
-        <div className="flex flex-col gap-2 bg-charcoal-750 p-2">
-          <div className="flex items-center gap-2.5">
-            <Link
-              to={organizationSettingsPath(organization)}
-              className="group relative box-content size-10 overflow-clip rounded-sm bg-charcoal-800"
-            >
-              <Avatar avatar={organization.avatar} size={2.5} orgName={organization.title} />
-              <div className="absolute inset-0 z-10 grid h-full w-full place-items-center bg-black/50 opacity-0 transition group-hover:opacity-100">
-                <PencilSquareIcon className="size-5 text-text-bright" />
-              </div>
-            </Link>
-            <div className="space-y-0.5">
-              <Paragraph variant="small/bright">{organization.title}</Paragraph>
-              <div className="flex items-baseline gap-2">
-                {plan && (
-                  <TextLink
-                    variant="secondary"
-                    className="text-xs"
-                    to={v3BillingPath(organization)}
-                  >
-                    {plan} plan
-                  </TextLink>
-                )}
-                <TextLink
-                  variant="secondary"
-                  className="text-xs"
-                  to={organizationTeamPath(organization)}
-                >{simplur`${organization.membersCount} member[|s]`}</TextLink>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <LinkButton
-              variant="secondary/small"
-              to={organizationSettingsPath(organization)}
-              fullWidth
-              iconSpacing="gap-1.5"
-              className="group-hover/button:border-charcoal-500"
-            >
-              <SlidersIcon className="size-4 text-text-dimmed" />
-              <span className="text-text-bright">Settings</span>
-            </LinkButton>
-            {isManagedCloud && (
-              <LinkButton
-                variant="secondary/small"
-                to={v3UsagePath(organization)}
-                fullWidth
-                iconSpacing="gap-1.5"
-                className="group-hover/button:border-charcoal-500"
-              >
-                <UsageIcon className="size-4 text-text-dimmed" />
-                <span className="text-text-bright">Usage</span>
-              </LinkButton>
-            )}
-          </div>
-        </div>
         <div className="flex flex-col gap-1 p-1">
-          {organization.projects.map((p) => {
-            const isSelected = p.id === project.id;
-            return (
-              <PopoverMenuItem
-                key={p.id}
-                to={v3ProjectPath(organization, p)}
-                title={
-                  <div className="flex w-full items-center justify-between text-text-bright">
-                    <span className="grow truncate text-left">{p.name}</span>
-                  </div>
-                }
-                isSelected={isSelected}
-                icon={isSelected ? FolderOpenIcon : FolderClosedIcon}
-                leadingIconClassName="text-indigo-500"
-              />
-            );
-          })}
-          <PopoverMenuItem to={newProjectPath(organization)} title="New project" icon={PlusIcon} />
-        </div>
-        <div className="border-t border-charcoal-700 p-1">
+          <PopoverMenuItem
+            to={organizationSettingsPath(organization)}
+            title="Settings"
+            icon={SlidersIcon}
+            leadingIconClassName="text-text-dimmed"
+          />
+          {isManagedCloud && (
+            <PopoverMenuItem
+              to={v3UsagePath(organization)}
+              title="Usage"
+              icon={UsageIcon}
+              leadingIconClassName="text-text-dimmed"
+            />
+          )}
+          {isManagedCloud && (
+            <PopoverMenuItem
+              to={v3BillingPath(organization)}
+              title={
+                <div className="flex w-full items-center justify-between text-text-bright">
+                  <span className="grow truncate text-left">Billing</span>
+                  {isPaying && planTitle ? <Badge variant="extra-small">{planTitle}</Badge> : null}
+                </div>
+              }
+              icon={CreditCardIcon}
+              leadingIconClassName="text-text-dimmed"
+            />
+          )}
+          {isManagedCloud && showSelfServe && (
+            <PopoverMenuItem
+              to={v3BillingLimitsPath(organization)}
+              title="Billing alerts"
+              icon={BellIcon}
+              leadingIconClassName="text-text-dimmed"
+            />
+          )}
+          <PopoverMenuItem
+            to={organizationTeamPath(organization)}
+            title="Team"
+            icon={UserGroupIcon}
+            leadingIconClassName="text-text-dimmed"
+          />
+          {featureFlags.hasPrivateConnections && (
+            <PopoverMenuItem
+              to={v3PrivateConnectionsPath(organization)}
+              title="Private connections"
+              icon={LinkIcon}
+              leadingIconClassName="text-text-dimmed"
+            />
+          )}
+          {isUsingRbacPlugin && (
+            <PopoverMenuItem
+              to={organizationRolesPath(organization)}
+              title="Roles"
+              icon={RolesIcon}
+              leadingIconClassName="text-text-dimmed"
+            />
+          )}
+          {isUsingSsoPlugin && (
+            <PopoverMenuItem
+              to={organizationSsoPath(organization)}
+              title="SSO"
+              icon={PadlockIcon}
+              leadingIconClassName="text-text-dimmed"
+            />
+          )}
+          <Integrations organization={organization} />
           {organizations.length > 1 ? (
             <SwitchOrganizations organizations={organizations} organization={organization} />
           ) : (
@@ -993,6 +997,98 @@ function ProjectSelector({
             leadingIconClassName="text-text-dimmed"
             danger
           />
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function ProjectSelector({
+  project,
+  organization,
+  isCollapsed = false,
+  className,
+}: {
+  project: SideMenuProject;
+  organization: MatchedOrganization;
+  isCollapsed?: boolean;
+  className?: string;
+}) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const navigation = useNavigation();
+
+  useEffect(() => {
+    setIsMenuOpen(false);
+  }, [navigation.location?.pathname]);
+
+  return (
+    <Popover onOpenChange={(open) => setIsMenuOpen(open)} open={isMenuOpen}>
+      <SimpleTooltip
+        button={
+          <PopoverTrigger
+            className={cn(
+              "group flex h-8 items-center rounded pl-[0.4375rem] transition-colors hover:bg-charcoal-750",
+              isCollapsed ? "justify-center pr-0.5" : "justify-between pr-1",
+              className
+            )}
+          >
+            <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+              <FolderOpenIcon className="size-5 shrink-0 text-text-dimmed transition group-hover:text-text-bright" />
+              <span
+                className={cn(
+                  "flex min-w-0 items-center overflow-hidden transition-all duration-200",
+                  isCollapsed ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100"
+                )}
+              >
+                <span className="truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-dimmed transition group-hover:text-text-bright">
+                  {project.name ?? "Select a project"}
+                </span>
+              </span>
+            </span>
+            <span
+              className={cn(
+                "overflow-hidden transition-all duration-200",
+                isCollapsed ? "max-w-0 opacity-0" : "max-w-[16px] opacity-100"
+              )}
+            >
+              <DropdownIcon className="size-4 min-w-4 text-text-dimmed transition group-hover:text-text-bright" />
+            </span>
+          </PopoverTrigger>
+        }
+        content={project.name ?? "Select a project"}
+        side="right"
+        sideOffset={8}
+        hidden={!isCollapsed}
+        buttonClassName="!h-8"
+        asChild
+        disableHoverableContent
+      />
+      <PopoverContent
+        className="min-w-[14rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        side={isCollapsed ? "right" : "bottom"}
+        sideOffset={isCollapsed ? 8 : 4}
+        align="start"
+        style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
+      >
+        <div className="flex flex-col gap-1 p-1">
+          {organization.projects.map((p) => {
+            const isSelected = p.id === project.id;
+            return (
+              <PopoverMenuItem
+                key={p.id}
+                to={v3ProjectPath(organization, p)}
+                title={
+                  <div className="flex w-full items-center justify-between text-text-bright">
+                    <span className="grow truncate text-left">{p.name}</span>
+                  </div>
+                }
+                isSelected={isSelected}
+                icon={isSelected ? FolderOpenIcon : FolderClosedIcon}
+                leadingIconClassName="text-indigo-500"
+              />
+            );
+          })}
+          <PopoverMenuItem to={newProjectPath(organization)} title="New project" icon={PlusIcon} />
         </div>
       </PopoverContent>
     </Popover>
@@ -1090,18 +1186,82 @@ function SwitchOrganizations({
   );
 }
 
-function SelectorDivider() {
+function Integrations({ organization }: { organization: MatchedOrganization }) {
+  const navigation = useNavigation();
+  const [isMenuOpen, setMenuOpen] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Clear timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [navigation.location?.pathname]);
+
+  const handleMouseEnter = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    setMenuOpen(true);
+  };
+
+  const handleMouseLeave = () => {
+    // Small delay before closing to allow moving to the content
+    timeoutRef.current = setTimeout(() => {
+      setMenuOpen(false);
+    }, 150);
+  };
+
   return (
-    <svg width="6" height="21" viewBox="0 0 6 21" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <line
-        x1="5.3638"
-        y1="0.606339"
-        x2="0.606339"
-        y2="19.6362"
-        stroke="#3B3E45"
-        strokeLinecap="round"
-      />
-    </svg>
+    <Popover onOpenChange={(open) => setMenuOpen(open)} open={isMenuOpen}>
+      <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} className="flex">
+        <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
+          <ButtonContent
+            variant="small-menu-item"
+            className="hover:bg-charcoal-750"
+            LeadingIcon={IntegrationsIcon}
+            leadingIconClassName="text-text-dimmed"
+            TrailingIcon={ChevronRightIcon}
+            trailingIconClassName="text-text-dimmed"
+            textAlignLeft
+            fullWidth
+          >
+            Integrations
+          </ButtonContent>
+        </PopoverTrigger>
+        <PopoverContent
+          className="min-w-[16rem] overflow-y-auto p-0 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+          align="start"
+          style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
+          side="right"
+          alignOffset={0}
+          sideOffset={-4}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+        >
+          <div className="flex flex-col gap-1 p-1">
+            <PopoverMenuItem
+              to={organizationVercelIntegrationPath(organization)}
+              title="Vercel"
+              icon={VercelLogo}
+              leadingIconClassName="size-4 text-text-dimmed"
+            />
+            <PopoverMenuItem
+              to={organizationSlackIntegrationPath(organization)}
+              title="Slack"
+              icon={SlackIcon}
+              leadingIconClassName="size-4 text-text-dimmed"
+            />
+          </div>
+        </PopoverContent>
+      </div>
+    </Popover>
   );
 }
 
