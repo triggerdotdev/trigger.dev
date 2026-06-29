@@ -1,0 +1,131 @@
+name: Blacksmith PR Testbox
+
+on:
+  workflow_dispatch:
+    inputs:
+      testbox_id:
+        type: string
+        description: "Testbox session ID"
+        required: true
+  pull_request:
+    paths:
+      - ".github/workflows/pr-testbox.yml"
+      - "scripts/test-pr-check.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  pr-testbox:
+    runs-on: blacksmith-8vcpu-ubuntu-2404
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
+    steps:
+      - name: Begin Testbox
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: useblacksmith/begin-testbox@v2
+        with:
+          testbox_id: ${{ inputs.testbox_id }}
+
+      - name: 🔧 Disable IPv6
+        run: |
+          sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1
+
+      - name: 🔧 Configure docker address pool
+        run: |
+          CONFIG='{
+            "default-address-pools" : [
+              {
+                "base" : "172.17.0.0/12",
+                "size" : 20
+              },
+              {
+                "base" : "192.168.0.0/16",
+                "size" : 24
+              }
+            ]
+          }'
+          mkdir -p /etc/docker
+          echo "$CONFIG" | sudo tee /etc/docker/daemon.json
+
+      - name: 🔧 Restart docker daemon
+        run: sudo systemctl restart docker
+
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: ⎔ Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+        with:
+          version: 10.33.2
+
+      - name: ⎔ Setup Node 22 for SDK compatibility checks
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22.12
+
+      - name: ⎔ Setup active Node 20
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 20.20.2
+          cache: "pnpm"
+
+      - name: 🥟 Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
+      - name: 🦕 Setup Deno
+        uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282 # v2.0.4
+        with:
+          deno-version: v2.x
+
+      - name: 🐳 Login to DockerHub
+        if: ${{ env.DOCKERHUB_USERNAME }}
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 🐳 Skipping DockerHub login (no secrets available)
+        if: ${{ !env.DOCKERHUB_USERNAME }}
+        run: echo "DockerHub login skipped because secrets are not available."
+
+      - name: 🐳 Pre-pull testcontainer images
+        if: ${{ env.DOCKERHUB_USERNAME }}
+        run: |
+          pull() {
+            for attempt in 1 2 3; do
+              docker pull "$1" && return 0
+              echo "::warning::docker pull $1 failed (attempt ${attempt}/3); retrying in 10s"
+              sleep 10
+            done
+            echo "::error::docker pull $1 failed after 3 attempts"
+            return 1
+          }
+
+          echo "Pre-pulling Docker images with authenticated session..."
+          pull postgres:14
+          pull clickhouse/clickhouse-server:26.2.19.43-alpine@sha256:c6ad6a7eb2fb5999df3adfb8b69a0c7222c68fa9b8f6b04a088564ebbc959251
+          pull redis:7.2
+          pull testcontainers/ryuk:0.11.0
+          pull testcontainers/ryuk:0.14.0
+          pull electricsql/electric:1.2.4
+          pull minio/minio:latest
+          echo "Image pre-pull complete"
+
+      - name: 📥 Download deps
+        run: pnpm install --frozen-lockfile
+
+      - name: 📀 Generate Prisma Client
+        run: pnpm run generate
+
+      - name: Run Testbox
+        uses: useblacksmith/run-testbox@v2
+        if: ${{ always() && github.event_name == 'workflow_dispatch' }}
