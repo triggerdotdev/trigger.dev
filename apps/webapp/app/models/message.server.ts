@@ -34,14 +34,27 @@ export type ToastMessageOptions = {
 
 const ONE_YEAR = 1000 * 60 * 60 * 24 * 365;
 
-// Clamp so a flashed toast can never overflow the ~4KB `__message` cookie and 500 in commitSession.
-const MAX_TOAST_MESSAGE_LENGTH = 1000;
+// Clamp in UTF-8 bytes (not code units) so a flashed toast can never overflow the ~4KB
+// `__message` cookie and 500 in commitSession, even for multibyte messages.
+const MAX_TOAST_MESSAGE_BYTES = 1024;
+const toastMessageEncoder = new TextEncoder();
 
 function clampToastMessage(message: string) {
-  if (message.length <= MAX_TOAST_MESSAGE_LENGTH) {
+  if (toastMessageEncoder.encode(message).length <= MAX_TOAST_MESSAGE_BYTES) {
     return message;
   }
-  return `${message.slice(0, MAX_TOAST_MESSAGE_LENGTH)}...`;
+  const budget = MAX_TOAST_MESSAGE_BYTES - 3; // leave room for the "..." suffix
+  let bytes = 0;
+  let truncated = "";
+  for (const char of message) {
+    const charBytes = toastMessageEncoder.encode(char).length;
+    if (bytes + charBytes > budget) {
+      break;
+    }
+    bytes += charBytes;
+    truncated += char;
+  }
+  return `${truncated}...`;
 }
 
 export const { commitSession, getSession } = createCookieSessionStorage({
