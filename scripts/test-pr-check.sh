@@ -39,6 +39,36 @@ find_node_bin() {
   find /opt/hostedtoolcache/node -maxdepth 3 -type d -path "*/${version_prefix}*/x64/bin" 2>/dev/null | sort -V | tail -n 1
 }
 
+ensure_pnpm() {
+  local pnpm_version="${PNPM_VERSION:-10.33.2}"
+  local npm_prefix="${HOME}/.npm-global"
+  export PATH="${npm_prefix}/bin:${PATH}"
+
+  if command -v pnpm >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if command -v corepack >/dev/null 2>&1; then
+    corepack prepare "pnpm@${pnpm_version}" --activate || true
+  fi
+
+  if command -v pnpm >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "Unable to find pnpm or npm on PATH." >&2
+    return 1
+  fi
+
+  mkdir -p "${npm_prefix}"
+  npm config set prefix "${npm_prefix}"
+  npm install -g "pnpm@${pnpm_version}"
+  export PATH="${npm_prefix}/bin:${PATH}"
+
+  command -v pnpm >/dev/null 2>&1
+}
+
 with_node() {
   local node_bin="$1"
   shift
@@ -125,6 +155,7 @@ run_sdk_runtime_compat_tests() {
 }
 
 export -f find_node_bin
+export -f ensure_pnpm
 export -f with_node
 export -f run_webapp_unit_tests
 export -f run_package_unit_tests
@@ -145,6 +176,13 @@ export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=8192}"
 
 NODE20_BIN="${NODE20_BIN:-$(find_node_bin 20.20)}"
 NODE22_BIN="${NODE22_BIN:-$(find_node_bin 22.12)}"
+
+if [[ -n "${NODE20_BIN}" ]]; then
+  export PATH="${NODE20_BIN}:${PATH}"
+fi
+
+ensure_pnpm
+pnpm --version
 
 run_section "Install dependencies" pnpm install --frozen-lockfile
 run_section "Generate Prisma client" pnpm run generate
