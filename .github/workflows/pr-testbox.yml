@@ -7,10 +7,6 @@ on:
         type: string
         description: "Testbox session ID"
         required: true
-  pull_request:
-    paths:
-      - ".github/workflows/pr-testbox.yml"
-      - "scripts/test-pr-check.sh"
 
 permissions:
   contents: read
