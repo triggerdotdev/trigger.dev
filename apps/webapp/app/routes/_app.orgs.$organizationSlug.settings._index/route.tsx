@@ -586,7 +586,7 @@ function HexPopover({ avatar, hex }: { avatar: Avatar; hex: string }) {
         <img src={colorWheelIcon} className="m-0 block size-[30px] p-0" />
       </PopoverTrigger>
       <PopoverContent
-        className="overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+        className="overflow-y-auto p-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-300"
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
