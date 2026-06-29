@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   check-broken-links:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     defaults:
       run:
         working-directory: ./docs
