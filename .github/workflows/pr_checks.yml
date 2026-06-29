@@ -104,8 +104,6 @@ jobs:
               - 'turbo.json'
 
   code-quality:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
     uses: ./.github/workflows/code-quality.yml
 
   typecheck:
