@@ -1,4 +1,4 @@
-import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import { Form, useActionData, useParams, type MetaFunction } from "@remix-run/react";
 import { json, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -755,7 +755,7 @@ export default function Page() {
                       Target region
                     </Label>
                     <select
-                      {...getInputProps(targetRegion, { type: "text" })}
+                      {...getSelectProps(targetRegion)}
                       defaultValue={defaultRegion}
                       className="w-full rounded-md border border-charcoal-700 bg-charcoal-800 px-3 py-2 text-sm text-text-bright"
                     >

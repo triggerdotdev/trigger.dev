@@ -5,7 +5,7 @@ import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/reac
 import { type LoaderFunctionArgs } from "@remix-run/router";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { SlackIcon } from "@trigger.dev/companyicons";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -217,6 +217,7 @@ export default function Page() {
   const project = useProject();
   const environment = useEnvironment();
   const [currentAlertChannel, setCurrentAlertChannel] = useState<string | null>(option ?? "EMAIL");
+  const formRef = useRef<HTMLFormElement>(null);
 
   const [selectedSlackChannelValue, setSelectedSlackChannelValue] = useState<string | undefined>();
 
@@ -247,7 +248,7 @@ export default function Page() {
     if (navigation.state !== "idle") return;
     if (lastSubmission !== undefined) return;
 
-    form.reset();
+    formRef.current?.reset();
   }, [navigation.state, lastSubmission]);
 
   return (
@@ -261,7 +262,7 @@ export default function Page() {
     >
       <DialogContent>
         <DialogHeader>New alert</DialogHeader>
-        <Form method="post" {...getFormProps(form)}>
+        <Form ref={formRef} method="post" {...getFormProps(form)}>
           <Fieldset className="mt-2">
             <InputGroup fullWidth>
               <SegmentedControl
