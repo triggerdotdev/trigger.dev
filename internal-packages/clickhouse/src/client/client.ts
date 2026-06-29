@@ -72,6 +72,10 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
         output_format_json_quote_64bit_integers: 0,
         output_format_json_quote_64bit_floats: 0,
         cancel_http_readonly_queries_on_client_close: 1,
+        // Deeply nested JSON-typed columns (e.g. run output/error) can exceed
+        // the default binary type complexity of 1000 when read back, which
+        // fails the whole query. Raise the ceiling so those rows stay readable.
+        input_format_binary_max_type_complexity: 100000,
       },
       log: {
         level: convertLogLevelToClickhouseLogLevel(config.logLevel),
