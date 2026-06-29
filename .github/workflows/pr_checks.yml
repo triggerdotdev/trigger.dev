@@ -48,6 +48,7 @@ jobs:
             typecheck_self:
               - '.github/workflows/pr_checks.yml'
               - '.github/workflows/typecheck.yml'
+              - '.github/workflows/code-quality.yml'
             webapp:
               - 'apps/webapp/**'
               - 'packages/**'
@@ -103,8 +104,6 @@ jobs:
               - 'turbo.json'
 
   code-quality:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
     uses: ./.github/workflows/code-quality.yml
 
   typecheck:
