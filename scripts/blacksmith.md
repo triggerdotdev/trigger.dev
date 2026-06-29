@@ -24,6 +24,12 @@ Run the PR checks against your current working tree:
 blacksmith testbox run --id <linux-testbox-id> "scripts/test-pr-check.sh"
 ```
 
+The script prints a ✅/❌ line after each section and a final summary with durations. It fails fast by default. To keep going and collect all failures before exiting non-zero, run:
+
+```bash
+blacksmith testbox run --id <linux-testbox-id> "TEST_PR_CHECK_CONTINUE_ON_ERROR=1 scripts/test-pr-check.sh"
+```
+
 ## Windows PR checks Testbox
 
 The Windows PR Testbox covers the Windows CLI v3 e2e matrix row.
