@@ -16,8 +16,8 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:migrate:deploy": "node migrate.mjs",
-    "db:migrate:status": "node migrate-status.mjs",
+    "db:migrate:deploy": "node --env-file-if-exists=../../.env migrate.mjs",
+    "db:migrate:status": "node --env-file-if-exists=../../.env migrate-status.mjs",
     "db:studio": "drizzle-kit studio"
   }
 }

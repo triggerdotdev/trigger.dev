@@ -8,12 +8,13 @@ import postgres from "postgres";
 const MIGRATIONS_SCHEMA = "drizzle";
 const MIGRATIONS_TABLE = "__dashboard_agent_migrations";
 
-// Match migrate.mjs: a direct (non-pooler) connection, same precedence.
-const connectionString =
+// Match migrate.mjs: same precedence, and expand `${VAR}` refs (see migrate.mjs).
+const connectionString = (
   process.env.DASHBOARD_AGENT_DIRECT_URL ??
   process.env.DASHBOARD_AGENT_DATABASE_URL ??
   process.env.DIRECT_URL ??
-  process.env.DATABASE_URL;
+  process.env.DATABASE_URL
+)?.replace(/\$\{(\w+)\}/g, (_, k) => process.env[k] ?? "");
 
 if (!connectionString) {
   console.error(
