@@ -24,10 +24,7 @@ export type TriggerScheduledTaskParams = {
   exactScheduleTime?: Date;
 };
 
-export type TriggerScheduledTaskErrorType =
-  | "QUEUE_LIMIT"
-  | "OUT_OF_ENTITLEMENTS"
-  | "SYSTEM_ERROR";
+export type TriggerScheduledTaskErrorType = "QUEUE_LIMIT" | "OUT_OF_ENTITLEMENTS" | "SYSTEM_ERROR";
 
 export interface TriggerScheduledTaskCallback {
   (params: TriggerScheduledTaskParams): Promise<{

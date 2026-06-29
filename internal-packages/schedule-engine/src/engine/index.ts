@@ -527,8 +527,7 @@ export class ScheduleEngine {
               // or the org is out of entitlements). Log them as warnings so they
               // aren't reported as errors, while still recording the metric.
               const isExpectedFailure =
-                result.errorType === "QUEUE_LIMIT" ||
-                result.errorType === "OUT_OF_ENTITLEMENTS";
+                result.errorType === "QUEUE_LIMIT" || result.errorType === "OUT_OF_ENTITLEMENTS";
 
               if (isExpectedFailure) {
                 this.logger.warn("Scheduled task trigger skipped", {
