@@ -7,11 +7,13 @@ on:
       - ".github/workflows/**"
       - ".github/actions/**"
       - ".github/zizmor.yml"
+      - ".github/actionlint.yaml"
   pull_request:
     paths:
       - ".github/workflows/**"
       - ".github/actions/**"
       - ".github/zizmor.yml"
+      - ".github/actionlint.yaml"
 
 permissions: {}
 
