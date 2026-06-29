@@ -144,6 +144,15 @@ function getSectionCollapsed(
   return sideMenu?.collapsedSections?.[sectionId] ?? false;
 }
 
+// Size the side menu popover items (org menu + project picker) to match the side
+// menu items: a 20px leading icon and a 0.90625rem label (vs the smaller
+// small-menu-item defaults). The icon class overrides the variant icon size; the
+// label class lands on the button element and overrides its text-2sm via
+// tailwind-merge. The icon constant also carries the default dimmed color; items
+// that need a different icon color (e.g. the indigo project folders) set their own.
+const SIDE_MENU_POPOVER_ITEM_ICON = "h-5 w-5 text-text-dimmed";
+const SIDE_MENU_POPOVER_ITEM_LABEL = "text-[0.90625rem] font-medium tracking-[-0.01em]";
+
 type SideMenuUser = Pick<
   UserWithDashboardPreferences,
   "email" | "admin" | "dashboardPreferences"
@@ -908,14 +917,16 @@ function OrgSelector({
             to={organizationSettingsPath(organization)}
             title="Settings"
             icon={SlidersIcon}
-            leadingIconClassName="text-text-dimmed"
+            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+            className={SIDE_MENU_POPOVER_ITEM_LABEL}
           />
           {isManagedCloud && (
             <PopoverMenuItem
               to={v3UsagePath(organization)}
               title="Usage"
               icon={UsageIcon}
-              leadingIconClassName="text-text-dimmed"
+              leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+              className={SIDE_MENU_POPOVER_ITEM_LABEL}
             />
           )}
           {isManagedCloud && (
@@ -928,7 +939,8 @@ function OrgSelector({
                 </div>
               }
               icon={CreditCardIcon}
-              leadingIconClassName="text-text-dimmed"
+              leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+              className={SIDE_MENU_POPOVER_ITEM_LABEL}
             />
           )}
           {isManagedCloud && showSelfServe && (
@@ -936,21 +948,24 @@ function OrgSelector({
               to={v3BillingLimitsPath(organization)}
               title="Billing alerts"
               icon={BellIcon}
-              leadingIconClassName="text-text-dimmed"
+              leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+              className={SIDE_MENU_POPOVER_ITEM_LABEL}
             />
           )}
           <PopoverMenuItem
             to={organizationTeamPath(organization)}
             title="Team"
             icon={UserGroupIcon}
-            leadingIconClassName="text-text-dimmed"
+            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+            className={SIDE_MENU_POPOVER_ITEM_LABEL}
           />
           {featureFlags.hasPrivateConnections && (
             <PopoverMenuItem
               to={v3PrivateConnectionsPath(organization)}
               title="Private connections"
               icon={LinkIcon}
-              leadingIconClassName="text-text-dimmed"
+              leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+              className={SIDE_MENU_POPOVER_ITEM_LABEL}
             />
           )}
           {isUsingRbacPlugin && (
@@ -958,7 +973,8 @@ function OrgSelector({
               to={organizationRolesPath(organization)}
               title="Roles"
               icon={RolesIcon}
-              leadingIconClassName="text-text-dimmed"
+              leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+              className={SIDE_MENU_POPOVER_ITEM_LABEL}
             />
           )}
           {isUsingSsoPlugin && (
@@ -966,7 +982,8 @@ function OrgSelector({
               to={organizationSsoPath(organization)}
               title="SSO"
               icon={PadlockIcon}
-              leadingIconClassName="text-text-dimmed"
+              leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+              className={SIDE_MENU_POPOVER_ITEM_LABEL}
             />
           )}
           <Integrations organization={organization} />
@@ -977,7 +994,8 @@ function OrgSelector({
               to={newOrganizationPath()}
               title="New organization"
               icon={PlusIcon}
-              leadingIconClassName="text-text-dimmed"
+              leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+              className={SIDE_MENU_POPOVER_ITEM_LABEL}
             />
           )}
         </div>
@@ -986,7 +1004,8 @@ function OrgSelector({
             to={accountPath()}
             title="Account"
             icon={AvatarCircleIcon}
-            leadingIconClassName="text-text-dimmed"
+            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+            className={SIDE_MENU_POPOVER_ITEM_LABEL}
           />
         </div>
         <div className="border-t border-charcoal-700 p-1">
@@ -994,7 +1013,8 @@ function OrgSelector({
             to={logoutPath()}
             title="Logout"
             icon={ArrowRightSquareIcon}
-            leadingIconClassName="text-text-dimmed"
+            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+            className={SIDE_MENU_POPOVER_ITEM_LABEL}
             danger
           />
         </div>
@@ -1084,11 +1104,18 @@ function ProjectSelector({
                 }
                 isSelected={isSelected}
                 icon={isSelected ? FolderOpenIcon : FolderClosedIcon}
-                leadingIconClassName="text-indigo-500"
+                leadingIconClassName="h-5 w-5 text-indigo-500"
+                className={SIDE_MENU_POPOVER_ITEM_LABEL}
               />
             );
           })}
-          <PopoverMenuItem to={newProjectPath(organization)} title="New project" icon={PlusIcon} />
+          <PopoverMenuItem
+            to={newProjectPath(organization)}
+            title="New project"
+            icon={PlusIcon}
+            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+            className={SIDE_MENU_POPOVER_ITEM_LABEL}
+          />
         </div>
       </PopoverContent>
     </Popover>
@@ -1139,9 +1166,9 @@ function SwitchOrganizations({
         <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
           <ButtonContent
             variant="small-menu-item"
-            className="hover:bg-charcoal-750"
+            className={cn("hover:bg-charcoal-750", SIDE_MENU_POPOVER_ITEM_LABEL)}
             LeadingIcon={ArrowLeftRightIcon}
-            leadingIconClassName="text-text-dimmed"
+            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
             TrailingIcon={ChevronRightIcon}
             trailingIconClassName="text-text-dimmed"
             textAlignLeft
@@ -1166,8 +1193,9 @@ function SwitchOrganizations({
                 key={org.id}
                 to={organizationPath(org)}
                 title={org.title}
-                icon={<Avatar size={1} avatar={org.avatar} orgName={org.title} />}
+                icon={<Avatar size={1.25} avatar={org.avatar} orgName={org.title} />}
                 leadingIconClassName="text-text-dimmed"
+                className={SIDE_MENU_POPOVER_ITEM_LABEL}
                 isSelected={org.id === organization.id}
               />
             ))}
@@ -1177,7 +1205,8 @@ function SwitchOrganizations({
               to={newOrganizationPath()}
               title="New organization"
               icon={PlusIcon}
-              leadingIconClassName="text-text-dimmed"
+              leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+              className={SIDE_MENU_POPOVER_ITEM_LABEL}
             />
           </div>
         </PopoverContent>
@@ -1224,9 +1253,9 @@ function Integrations({ organization }: { organization: MatchedOrganization }) {
         <PopoverTrigger className="w-full justify-between overflow-hidden focus-custom">
           <ButtonContent
             variant="small-menu-item"
-            className="hover:bg-charcoal-750"
+            className={cn("hover:bg-charcoal-750", SIDE_MENU_POPOVER_ITEM_LABEL)}
             LeadingIcon={IntegrationsIcon}
-            leadingIconClassName="text-text-dimmed"
+            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
             TrailingIcon={ChevronRightIcon}
             trailingIconClassName="text-text-dimmed"
             textAlignLeft
@@ -1251,12 +1280,14 @@ function Integrations({ organization }: { organization: MatchedOrganization }) {
               title="Vercel"
               icon={VercelLogo}
               leadingIconClassName="size-4 text-text-dimmed"
+              className={SIDE_MENU_POPOVER_ITEM_LABEL}
             />
             <PopoverMenuItem
               to={organizationSlackIntegrationPath(organization)}
               title="Slack"
               icon={SlackIcon}
               leadingIconClassName="size-4 text-text-dimmed"
+              className={SIDE_MENU_POPOVER_ITEM_LABEL}
             />
           </div>
         </PopoverContent>
