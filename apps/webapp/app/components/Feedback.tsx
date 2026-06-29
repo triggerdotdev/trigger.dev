@@ -53,11 +53,11 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
     if (
       navigation.formAction === "/resources/feedback" &&
       navigation.state === "loading" &&
-      (form.errors === undefined || form.errors.length === 0)
+      Object.keys(form.allErrors).length === 0
     ) {
       setOpen(false);
     }
-  }, [navigation, form]);
+  }, [navigation.formAction, navigation.state, form.allErrors]);
 
   // Handle URL param functionality
   useEffect(() => {
