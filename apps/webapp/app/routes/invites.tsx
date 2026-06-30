@@ -11,9 +11,16 @@ import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormTitle } from "~/components/primitives/FormTitle";
 import { Header2, Header3 } from "~/components/primitives/Headers";
 import { InputGroup } from "~/components/primitives/InputGroup";
+import { FormError } from "~/components/primitives/FormError";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { acceptInvite, declineInvite, getUsersInvites } from "~/models/member.server";
-import { redirectWithSuccessMessage } from "~/models/message.server";
+import {
+  acceptInvite,
+  declineInvite,
+  ENV_SETUP_INCOMPLETE,
+  getUsersInvites,
+  isAcceptInviteFormError,
+} from "~/models/member.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser, requireUserId } from "~/services/session.server";
 import { invitesPath, rootPath } from "~/utils/pathBuilder";
 import { EnvelopeIcon } from "@heroicons/react/20/solid";
@@ -33,6 +40,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 const schema = z.object({
   inviteId: z.string(),
+  organizationId: z.string().optional(),
 });
 
 export const action: ActionFunction = async ({ request }) => {
@@ -49,6 +57,7 @@ export const action: ActionFunction = async ({ request }) => {
     if (submission.intent === "accept") {
       const { remainingInvites, organization } = await acceptInvite({
         inviteId: submission.value.inviteId,
+        organizationId: submission.value.organizationId,
         user: { id: user.id, email: user.email },
       });
 
@@ -80,8 +89,30 @@ export const action: ActionFunction = async ({ request }) => {
         );
       }
     }
-  } catch (error: any) {
-    return json({ errors: { body: error.message } }, { status: 400 });
+  } catch (error) {
+    if (isAcceptInviteFormError(error)) {
+      // Membership may already exist while the invite is still present if env
+      // provisioning failed. With no invites left, the loader would redirect
+      // and discard a 400 FormError — send the user to orgs with a toast instead.
+      if (error.message === ENV_SETUP_INCOMPLETE) {
+        const remainingInvites = await getUsersInvites({ email: user.email });
+        if (remainingInvites.length === 0) {
+          return redirectWithErrorMessage(rootPath(), request, error.message, {
+            ephemeral: false,
+          });
+        }
+      }
+
+      return json(
+        {
+          intent: submission.intent,
+          payload: submission.payload,
+          error: { "": [error.message] },
+        },
+        { status: 400 }
+      );
+    }
+    throw error;
   }
 };
 
@@ -111,6 +142,7 @@ export default function Page() {
               className="mb-0 text-sky-500"
               title={simplur`You have ${invites.length} new invitation[|s]`}
             />
+            <FormError>{form.error}</FormError>
             {invites.map((invite) => (
               <Form key={invite.id} method="post" {...form.props}>
                 <Fieldset>
@@ -121,6 +153,7 @@ export default function Page() {
                         Invited by {invite.inviter.displayName ?? invite.inviter.email}
                       </Paragraph>
                       <input name="inviteId" type="hidden" value={invite.id} />
+                      <input name="organizationId" type="hidden" value={invite.organizationId} />
                     </div>
                     <div className="flex flex-col gap-y-1">
                       <Button
