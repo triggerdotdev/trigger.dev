@@ -1069,11 +1069,13 @@ class Worker<TCatalog extends WorkerCatalog> {
     const enqueued = await this.enqueueOnce({
       id: identifier,
       job,
+      // job is a runtime string here, so K widens and the payload can't match a
+      // single catalog entry statically; the shape is correct for the cron job.
       payload: {
         timestamp: scheduledAt.getTime(),
         lastTimestamp: lastTimestamp?.getTime(),
         cron,
-      },
+      } as z.infer<TCatalog[string]["schema"]>,
       availableAt,
     });
 

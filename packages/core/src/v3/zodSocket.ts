@@ -127,7 +127,8 @@ export class ZodSocketMessageHandler<TRPCCatalog extends ZodSocketMessageCatalog
       return;
     }
 
-    const ack = await handler(payload);
+    // payload is the parsed output at runtime; zod v4 distinguishes input/output so cast to the handler's expected arg
+    const ack = await handler(payload as Parameters<typeof handler>[0]);
 
     return ack;
   }
@@ -313,7 +314,7 @@ export class ZodSocketMessageSender<TMessageCatalog extends ZodSocketMessageCata
     // @ts-expect-error
     const callbackResult = await socket.emitWithAck(type, { payload, version: "v1" });
 
-    return callbackResult;
+    return callbackResult as z.infer<GetSocketCallbackSchema<TMessageCatalog, K>>;
   }
 }
 

@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData, useTypedFetcher } from "remix-typedjson";

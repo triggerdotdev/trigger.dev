@@ -76,8 +76,10 @@ export type FeatureFlagCatalog = z.infer<typeof FeatureFlagCatalogSchema>;
 export function validateFeatureFlagValue<T extends FeatureFlagKey>(
   key: T,
   value: unknown
-): z.SafeParseReturnType<unknown, z.infer<(typeof FeatureFlagCatalog)[T]>> {
-  return FeatureFlagCatalog[key].safeParse(value);
+): ReturnType<(typeof FeatureFlagCatalog)[T]["safeParse"]> {
+  return FeatureFlagCatalog[key].safeParse(value) as ReturnType<
+    (typeof FeatureFlagCatalog)[T]["safeParse"]
+  >;
 }
 
 // Utility function to validate all feature flags at once
@@ -97,23 +99,28 @@ export type FlagControlType =
   | { type: "number"; min?: number; max?: number }
   | { type: "string" };
 
-export function getFlagControlType(schema: z.ZodTypeAny): FlagControlType {
-  const typeName = schema._def.typeName;
+export function getFlagControlType(schema: z.ZodType): FlagControlType {
+  // zod v4: schema.def.type is a lowercase tag ("boolean"/"enum"/"number"/...).
+  const def = schema.def as {
+    type: string;
+    checks?: Array<{ _zod?: { def?: { check?: string; value?: number } } }>;
+  };
 
-  if (typeName === "ZodBoolean") {
+  if (def.type === "boolean") {
     return { type: "boolean" };
   }
 
-  if (typeName === "ZodEnum") {
-    return { type: "enum", options: schema._def.values as string[] };
+  if (def.type === "enum") {
+    return { type: "enum", options: (schema as z.ZodEnum).options as string[] };
   }
 
-  // z.coerce.number() reports as ZodNumber; pull min/max out of its checks
-  // so the UI can render a constrained number input instead of free text.
-  if (typeName === "ZodNumber") {
-    const checks = (schema._def.checks ?? []) as Array<{ kind: string; value?: number }>;
-    const min = checks.find((c) => c.kind === "min")?.value;
-    const max = checks.find((c) => c.kind === "max")?.value;
+  // z.coerce.number() reports as "number"; pull min/max out of its v4 checks
+  // (each check carries `_zod.def.{check,value}`) so the UI can render a
+  // constrained number input instead of free text.
+  if (def.type === "number") {
+    const checks = def.checks ?? [];
+    const min = checks.find((c) => c._zod?.def?.check === "greater_than")?._zod?.def?.value;
+    const max = checks.find((c) => c._zod?.def?.check === "less_than")?._zod?.def?.value;
     return { type: "number", min, max };
   }
 

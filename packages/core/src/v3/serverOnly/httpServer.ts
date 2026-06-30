@@ -301,13 +301,14 @@ export class HttpServer {
       return { success: true, data };
     }
 
-    const parsed = schema.safeParse(data);
+    // zod v4 narrows the generic schema to $ZodTypes here; cast to the public ZodType (has safeParse in v3 & v4)
+    const parsed = (schema as unknown as z.ZodType).safeParse(data);
 
     if (!parsed.success) {
       return { success: false, error: parsed.error.message };
     }
 
-    return { success: true, data: parsed.data };
+    return { success: true, data: parsed.data as TSchema extends z.ZodFirstPartySchemaTypes ? z.infer<TSchema> : TData };
   }
 
   private parseQueryParams(url: string): Record<string, string> {

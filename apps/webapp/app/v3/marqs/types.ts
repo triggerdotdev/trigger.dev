@@ -77,7 +77,7 @@ export interface MarQSFairDequeueStrategy {
 
 export const MessagePayload = z.object({
   version: z.literal("1"),
-  data: z.record(z.unknown()),
+  data: z.record(z.string(), z.unknown()),
   queue: z.string(),
   messageId: z.string(),
   timestamp: z.number(),

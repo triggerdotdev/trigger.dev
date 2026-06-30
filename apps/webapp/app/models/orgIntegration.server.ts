@@ -20,7 +20,7 @@ const SlackSecretSchema = z.object({
   refreshToken: z.string().optional(),
   botScopes: z.array(z.string()).optional(),
   userScopes: z.array(z.string()).optional(),
-  raw: z.record(z.any()).optional(),
+  raw: z.record(z.string(), z.any()).optional(),
 });
 
 type SlackSecret = z.infer<typeof SlackSecretSchema>;

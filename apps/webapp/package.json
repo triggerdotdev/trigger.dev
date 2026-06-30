@@ -234,9 +234,9 @@
     "ulidx": "^2.2.1",
     "uuid": "^14.0.0",
     "ws": "^8.11.0",
-    "zod": "3.25.76",
+    "zod": "4.4.3",
     "zod-error": "1.5.0",
-    "zod-validation-error": "^1.5.0"
+    "zod-validation-error": "^5.0.0"
   },
   "devDependencies": {
     "@internal/clickhouse": "workspace:*",

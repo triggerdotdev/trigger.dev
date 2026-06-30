@@ -1,11 +1,5 @@
-import {
-  getFormProps,
-  getSelectProps,
-  getInputProps,
-  getTextareaProps,
-  useForm,
-} from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { getFormProps, getSelectProps, getInputProps, getTextareaProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { InformationCircleIcon, ArrowUpCircleIcon } from "@heroicons/react/20/solid";
 import { EnvelopeIcon, ShieldCheckIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useLocation, useNavigation, useSearchParams } from "@remix-run/react";
@@ -53,11 +47,11 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
     if (
       navigation.formAction === "/resources/feedback" &&
       navigation.state === "loading" &&
-      Object.keys(form.allErrors).length === 0
+      (form.errors === undefined || form.errors.length === 0)
     ) {
       setOpen(false);
     }
-  }, [navigation.formAction, navigation.state, form.allErrors]);
+  }, [navigation, form]);
 
   // Handle URL param functionality
   useEffect(() => {
@@ -95,17 +89,9 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
             type === "concurrency" ||
             type === "hipaa"
           ) && <hr className="border-grid-dimmed" />}
-          <Form
-            method="post"
-            action="/resources/feedback"
-            {...getFormProps(form)}
-            className="w-full"
-          >
+          <Form method="post" action="/resources/feedback" {...getFormProps(form)} className="w-full">
             <Fieldset className="max-w-full gap-y-3">
-              <input
-                value={location.pathname}
-                {...getInputProps(fields.path, { type: "hidden" })}
-              />
+              <input value={location.pathname} {...getInputProps(fields.path, { type: "hidden", value: false })} />
               <InputGroup className="max-w-full">
                 {type === "feature" && (
                   <InfoPanel

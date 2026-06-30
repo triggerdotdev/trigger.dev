@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { json, type LoaderFunctionArgs } from "@remix-run/node";
 import { type EnvironmentType, prettyPrintPacket } from "@trigger.dev/core/v3";
 import { typedjson } from "remix-typedjson";

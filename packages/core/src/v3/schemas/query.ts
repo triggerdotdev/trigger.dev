@@ -22,7 +22,7 @@ export type QueryExecuteRequestBody = z.infer<typeof QueryExecuteRequestBody>;
  */
 export const QueryExecuteJSONResponseBody = z.object({
   format: z.literal("json"),
-  results: z.array(z.record(z.any())),
+  results: z.array(z.record(z.string(), z.any())),
 });
 
 export type QueryExecuteJSONResponseBody = z.infer<typeof QueryExecuteJSONResponseBody>;

@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import {
   ArrowDownIcon,
   EnvelopeIcon,
@@ -476,7 +476,7 @@ function Upgradable({
               </TableRow>
             </TableBody>
           </Table>
-          <FormError id={formEnvironments.id}>{formEnvironments.errors}</FormError>
+          <FormError id={formEnvironments.errorId}>{formEnvironments.errors}</FormError>
         </div>
         <Form className="flex flex-col gap-2" method="post" {...getFormProps(form)} id="allocate">
           <input type="hidden" name="action" value="allocate" />

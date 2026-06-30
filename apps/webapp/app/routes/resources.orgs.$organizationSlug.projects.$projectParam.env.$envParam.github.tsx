@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { CheckCircleIcon, LockClosedIcon, PlusIcon } from "@heroicons/react/20/solid";
 import {
   Form,

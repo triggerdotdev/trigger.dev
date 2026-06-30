@@ -143,7 +143,7 @@ export const VercelSecretSchema = z.object({
   teamId: z.string().nullable().optional(),
   userId: z.string().optional(),
   installationId: z.string().optional(),
-  raw: z.record(z.any()).optional(),
+  raw: z.record(z.string(), z.any()).optional(),
 });
 
 export type VercelSecret = z.infer<typeof VercelSecretSchema>;

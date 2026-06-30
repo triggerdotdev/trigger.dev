@@ -12,7 +12,7 @@ import type { AuthorizationOption, DashboardLoaderOptions, SessionUser } from ".
 import { fromZodError } from "zod-validation-error";
 import type { z } from "zod";
 
-type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
+type AnyZodSchema = z.ZodType;
 
 function loginRedirectFor(request: Request, override?: string): Response {
   if (override) return redirect(override);

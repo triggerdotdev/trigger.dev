@@ -6,7 +6,7 @@ export type Enum<T extends string> = { [K in T]: K };
 
 export const RunMetadataUpdateOperation = z.object({
   type: z.literal("update"),
-  value: z.record(z.unknown()),
+  value: z.record(z.string(), z.unknown()),
 });
 
 export type RunMetadataUpdateOperation = z.infer<typeof RunMetadataUpdateOperation>;
@@ -62,7 +62,7 @@ export const RunMetadataChangeOperation = z.discriminatedUnion("type", [
 export type RunMetadataChangeOperation = z.infer<typeof RunMetadataChangeOperation>;
 
 export const FlushedRunMetadata = z.object({
-  metadata: z.record(DeserializedJsonSchema).optional(),
+  metadata: z.record(z.string(), DeserializedJsonSchema).optional(),
   operations: z.array(RunMetadataChangeOperation).optional(),
   parentOperations: z.array(RunMetadataChangeOperation).optional(),
   rootOperations: z.array(RunMetadataChangeOperation).optional(),
@@ -225,7 +225,7 @@ export const TaskRun = z.object({
   idempotencyKeyScope: z.enum(["run", "attempt", "global"]).optional(),
   maxAttempts: z.number().optional(),
   version: z.string().optional(),
-  metadata: z.record(DeserializedJsonSchema).optional(),
+  metadata: z.record(z.string(), DeserializedJsonSchema).optional(),
   maxDuration: z.number().optional(),
   /** The priority of the run. Wih a value of 10 it will be dequeued before runs that were triggered 9 seconds before it (assuming they had no priority set).  */
   priority: z.number().optional(),
@@ -346,7 +346,7 @@ export const TaskRunExecution = z.object({
   attempt: TaskRunExecutionAttempt.passthrough(),
   run: TaskRun.and(
     z.object({
-      traceContext: z.record(z.unknown()).optional(),
+      traceContext: z.record(z.string(), z.unknown()).optional(),
       realtimeStreamsVersion: z.string().optional(),
     })
   ),
@@ -389,7 +389,7 @@ export const V3TaskRun = z.object({
   idempotencyKeyScope: z.enum(["run", "attempt", "global"]).optional(),
   maxAttempts: z.number().optional(),
   version: z.string().optional(),
-  metadata: z.record(DeserializedJsonSchema).optional(),
+  metadata: z.record(z.string(), DeserializedJsonSchema).optional(),
   maxDuration: z.number().optional(),
   context: z.unknown(),
   durationMs: z.number(),
@@ -404,7 +404,7 @@ export const V3TaskRunExecution = z.object({
   attempt: V3TaskRunExecutionAttempt,
   run: V3TaskRun.and(
     z.object({
-      traceContext: z.record(z.unknown()).optional(),
+      traceContext: z.record(z.string(), z.unknown()).optional(),
     })
   ),
   queue: TaskRunExecutionQueue,

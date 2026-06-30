@@ -27,7 +27,7 @@ export const BuildManifest = z.object({
   branch: z.string().optional(),
   config: ConfigManifest,
   files: z.array(TaskFile),
-  sources: z.record(
+  sources: z.record(z.string(), 
     z.object({
       contents: z.string(),
       contentHash: z.string(),
@@ -43,16 +43,16 @@ export const BuildManifest = z.object({
   configPath: z.string(),
   externals: BuildExternal.array().optional(),
   build: z.object({
-    env: z.record(z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
     commands: z.array(z.string()).optional(),
   }),
   customConditions: z.array(z.string()).optional(),
   deploy: z.object({
-    env: z.record(z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
     sync: z
       .object({
-        env: z.record(z.string()).optional(),
-        parentEnv: z.record(z.string()).optional(),
+        env: z.record(z.string(), z.string()).optional(),
+        parentEnv: z.record(z.string(), z.string()).optional(),
       })
       .optional(),
   }),
@@ -69,7 +69,7 @@ export const BuildManifest = z.object({
     })
     .optional(),
   /** Maps output file paths to their content hashes for deduplication during dev */
-  outputHashes: z.record(z.string()).optional(),
+  outputHashes: z.record(z.string(), z.string()).optional(),
   /** Skills discovered and bundled into `.trigger/skills/{id}/` under `outputPath`. */
   skills: SkillManifest.array().optional(),
 });
@@ -98,7 +98,7 @@ export const WorkerManifest = z.object({
   runtime: BuildRuntime,
   runtimeVersion: z.string().optional(),
   customConditions: z.array(z.string()).optional(),
-  timings: z.record(z.number()).optional(),
+  timings: z.record(z.string(), z.number()).optional(),
   processKeepAlive: z
     .object({
       enabled: z.boolean(),

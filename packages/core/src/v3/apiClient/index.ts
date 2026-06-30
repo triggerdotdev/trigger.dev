@@ -1799,7 +1799,7 @@ export class ApiClient {
 
   async generateJWTClaims(requestOptions?: ZodFetchOptions): Promise<Record<string, any>> {
     return zodfetch(
-      z.record(z.any()),
+      z.record(z.string(), z.any()),
       `${this.baseUrl}/api/v1/auth/jwt/claims`,
       {
         method: "POST",

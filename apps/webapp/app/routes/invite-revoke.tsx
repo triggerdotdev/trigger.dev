@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";

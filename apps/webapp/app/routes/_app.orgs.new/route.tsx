@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { BuildingOffice2Icon, GlobeAltIcon } from "@heroicons/react/20/solid";
 import { RadioGroup } from "@radix-ui/react-radio-group";
 import { json, redirect, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/node";

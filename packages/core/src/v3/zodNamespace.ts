@@ -19,7 +19,7 @@ export type ZodNamespaceSocket<
   TClientMessages extends ZodSocketMessageCatalogSchema,
   TServerMessages extends ZodSocketMessageCatalogSchema,
   TServerSideEvents extends EventsMap = DefaultEventsMap,
-  TSocketData extends z.ZodObject<any, any, any> = any,
+  TSocketData extends z.ZodObject<any, any> = any,
 > = Socket<
   ZodMessageCatalogToSocketIoEvents<TClientMessages>,
   ZodMessageCatalogToSocketIoEvents<TServerMessages>,
@@ -31,7 +31,7 @@ interface ZodNamespaceOptions<
   TClientMessages extends ZodSocketMessageCatalogSchema,
   TServerMessages extends ZodSocketMessageCatalogSchema,
   TServerSideEvents extends EventsMap = DefaultEventsMap,
-  TSocketData extends z.ZodObject<any, any, any> = any,
+  TSocketData extends z.ZodObject<any, any> = any,
 > {
   io: Server;
   name: string;
@@ -74,7 +74,7 @@ interface ZodNamespaceOptions<
 export class ZodNamespace<
   TClientMessages extends ZodSocketMessageCatalogSchema,
   TServerMessages extends ZodSocketMessageCatalogSchema,
-  TSocketData extends z.ZodObject<any, any, any> = any,
+  TSocketData extends z.ZodObject<any, any> = any,
   TServerSideEvents extends EventsMap = DefaultEventsMap,
 > {
   #logger: StructuredLogger;

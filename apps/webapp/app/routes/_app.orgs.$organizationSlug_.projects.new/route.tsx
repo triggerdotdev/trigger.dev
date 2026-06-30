@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { CommandLineIcon, FolderIcon } from "@heroicons/react/20/solid";
 import { json, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
@@ -361,10 +361,7 @@ export default function Page() {
   return (
     <AppContainer className="bg-charcoal-900">
       <BackgroundWrapper>
-        <MainCenteredContainer
-          variant="onboarding"
-          className="max-w-[29rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
-        >
+        <MainCenteredContainer variant="onboarding" className="max-w-[29rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
           <div>
             <FormTitle
               LeadingIcon={<FolderIcon className="size-7 text-indigo-500" />}
@@ -391,15 +388,9 @@ export default function Page() {
                   <FormError id={projectName.errorId}>{projectName.errors}</FormError>
                 </InputGroup>
                 {canCreateV3Projects ? (
-                  <input
-                    {...getInputProps(projectVersion, { type: "hidden" })}
-                    defaultValue={"v3"}
-                  />
+                  <input {...getInputProps(projectVersion, { type: "hidden", value: false })} defaultValue={"v3"} />
                 ) : (
-                  <input
-                    {...getInputProps(projectVersion, { type: "hidden" })}
-                    defaultValue={"v2"}
-                  />
+                  <input {...getInputProps(projectVersion, { type: "hidden", value: false })} defaultValue={"v2"} />
                 )}
 
                 <div className="border-t border-charcoal-700" />
@@ -461,7 +452,9 @@ export default function Page() {
                   <input
                     type="hidden"
                     name="goalsPositions"
-                    value={JSON.stringify(selectedGoals.map((v) => shuffledGoals.indexOf(v) + 1))}
+                    value={JSON.stringify(
+                      selectedGoals.map((v) => shuffledGoals.indexOf(v) + 1)
+                    )}
                   />
                   <MultiSelectField
                     value={selectedGoals}

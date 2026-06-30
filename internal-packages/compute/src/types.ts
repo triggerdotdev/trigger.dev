@@ -15,7 +15,7 @@ export const TemplateCreateRequestSchema = z.object({
   callback: z
     .object({
       url: z.string(),
-      metadata: z.record(z.string()).optional(),
+      metadata: z.record(z.string(), z.string()).optional(),
     })
     .optional(),
 });
@@ -38,14 +38,14 @@ export type TemplateCreateResponse = z.infer<typeof TemplateCreateResponseSchema
 export const InstanceCreateRequestSchema = z.object({
   name: z.string(),
   image: z.string(),
-  env: z.record(z.string()),
+  env: z.record(z.string(), z.string()),
   cpu: z.number(),
   memory_gb: z.number(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
   // Per-instance identity labels; the provider promotes a configured subset
   // to network-policy selection. Distinct from metadata, which is
   // observability-only and never selected on.
-  labels: z.record(z.string()).optional(),
+  labels: z.record(z.string(), z.string()).optional(),
 });
 export type InstanceCreateRequest = z.infer<typeof InstanceCreateRequestSchema>;
 
@@ -58,7 +58,7 @@ export type InstanceCreateResponse = z.infer<typeof InstanceCreateResponseSchema
 export const InstanceSnapshotRequestSchema = z.object({
   callback: z.object({
     url: z.string(),
-    metadata: z.record(z.string()),
+    metadata: z.record(z.string(), z.string()),
   }),
 });
 export type InstanceSnapshotRequest = z.infer<typeof InstanceSnapshotRequestSchema>;
@@ -67,13 +67,13 @@ export type InstanceSnapshotRequest = z.infer<typeof InstanceSnapshotRequestSche
 
 export const SnapshotRestoreRequestSchema = z.object({
   name: z.string(),
-  metadata: z.record(z.string()),
+  metadata: z.record(z.string(), z.string()),
   cpu: z.number(),
   memory_gb: z.number(),
   // Per-instance identity labels; the caller must resupply the same set as on
   // create. The provider doesn't persist them across a snapshot, so omitting
   // them drops the restored run's policy-based network selection.
-  labels: z.record(z.string()).optional(),
+  labels: z.record(z.string(), z.string()).optional(),
 });
 export type SnapshotRestoreRequest = z.infer<typeof SnapshotRestoreRequestSchema>;
 
@@ -82,14 +82,14 @@ export const SnapshotCallbackPayloadSchema = z.discriminatedUnion("status", [
     status: z.literal("completed"),
     snapshot_id: z.string(),
     instance_id: z.string(),
-    metadata: z.record(z.string()).optional(),
+    metadata: z.record(z.string(), z.string()).optional(),
     duration_ms: z.number().optional(),
   }),
   z.object({
     status: z.literal("failed"),
     instance_id: z.string(),
     error: z.string().optional(),
-    metadata: z.record(z.string()).optional(),
+    metadata: z.record(z.string(), z.string()).optional(),
     duration_ms: z.number().optional(),
   }),
 ]);

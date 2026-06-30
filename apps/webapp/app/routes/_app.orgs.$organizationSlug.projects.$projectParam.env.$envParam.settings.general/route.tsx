@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { conformZodMessage, parseWithZod } from "@conform-to/zod";
+import { conformZodMessage, parseWithZod } from "@conform-to/zod/v4";
 import { ExclamationTriangleIcon, FolderIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { type ActionFunction, json } from "@remix-run/server-runtime";

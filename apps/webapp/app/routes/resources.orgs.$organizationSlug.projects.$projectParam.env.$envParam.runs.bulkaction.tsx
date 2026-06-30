@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { ArrowPathIcon, InformationCircleIcon } from "@heroicons/react/20/solid";
 import { XCircleIcon } from "@heroicons/react/24/outline";
 import { Form } from "@remix-run/react";

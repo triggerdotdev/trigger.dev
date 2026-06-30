@@ -20,28 +20,25 @@ export const CronPattern = z.string().refine(
       return false;
     }
   },
-  (val) => {
-    const parts = val.split(" ");
-    if (parts.length > 5) {
-      return {
-        message: "CRON expressions with seconds are not allowed",
-      };
-    }
+  {
+    error: (issue) => {
+      const val = String(issue.input);
+      const parts = val.split(" ");
+      if (parts.length > 5) {
+        return "CRON expressions with seconds are not allowed";
+      }
 
-    if (val === "") {
-      return {
-        message: "CRON expression is required",
-      };
-    }
+      if (val === "") {
+        return "CRON expression is required";
+      }
 
-    try {
-      parseExpression(val);
-      return {
-        message: "Unknown problem",
-      };
-    } catch (e) {
-      return { message: e instanceof Error ? e.message : JSON.stringify(e) };
-    }
+      try {
+        parseExpression(val);
+        return "Unknown problem";
+      } catch (e) {
+        return e instanceof Error ? e.message : JSON.stringify(e);
+      }
+    },
   }
 );
 
