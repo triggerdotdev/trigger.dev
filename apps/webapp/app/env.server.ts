@@ -1716,6 +1716,20 @@ const EnvironmentSchema = z
       .enum(["log", "error", "warn", "info", "debug"])
       .default("info"),
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
+    // Dedicated ClickHouse pool for the runs list (dashboard + API). Lets us point
+    // the highest-traffic read path at a read replica without moving ingest/replication
+    // writes off CLICKHOUSE_URL. Falls back to CLICKHOUSE_URL when unset.
+    RUNS_LIST_CLICKHOUSE_URL: z
+      .string()
+      .optional()
+      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+    RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
+    RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
+    RUNS_LIST_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
+    RUNS_LIST_CLICKHOUSE_LOG_LEVEL: z
+      .enum(["log", "error", "warn", "info", "debug"])
+      .default("info"),
+    RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST: z.string().default("1"),
     EVENTS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(1000),
     EVENTS_CLICKHOUSE_FLUSH_INTERVAL_MS: z.coerce.number().int().default(1000),
     METRICS_CLICKHOUSE_BATCH_SIZE: z.coerce.number().int().default(10000),

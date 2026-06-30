@@ -242,6 +242,36 @@ function initializeRealtimeClickhouseClient(): ClickHouse {
   });
 }
 
+/** Runs list reads — dashboard + API (`RUNS_LIST_CLICKHOUSE_URL`);
+ *  falls back to the default client if unset. */
+const defaultRunsListClickhouseClient = singleton(
+  "runsListClickhouseClient",
+  initializeRunsListClickhouseClient
+);
+
+function initializeRunsListClickhouseClient(): ClickHouse {
+  if (!env.RUNS_LIST_CLICKHOUSE_URL) {
+    return defaultClickhouseClient;
+  }
+
+  const url = new URL(env.RUNS_LIST_CLICKHOUSE_URL);
+  url.searchParams.delete("secure");
+
+  return new ClickHouse({
+    url: url.toString(),
+    name: "runs-list-clickhouse",
+    keepAlive: {
+      enabled: env.RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
+      idleSocketTtl: env.RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
+    },
+    logLevel: env.RUNS_LIST_CLICKHOUSE_LOG_LEVEL,
+    compression: {
+      request: env.RUNS_LIST_CLICKHOUSE_COMPRESSION_REQUEST === "1",
+    },
+    maxOpenConnections: env.RUNS_LIST_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+  });
+}
+
 /** Task events (`EVENTS_CLICKHOUSE_URL`); not exported — accessed via factory. */
 const defaultEventsClickhouseClient = singleton(
   "eventsClickhouseClient",
@@ -289,7 +319,8 @@ export type ClientType =
   | "query"
   | "admin"
   | "engine"
-  | "realtime";
+  | "realtime"
+  | "runsList";
 
 function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHouse {
   const parsed = new URL(url);
@@ -379,6 +410,7 @@ function buildOrgClickhouseClient(url: string, clientType: ClientType): ClickHou
     case "standard":
     case "query":
     case "admin":
+    case "runsList":
       return new ClickHouse({
         url: parsed.toString(),
         name,
@@ -446,6 +478,8 @@ export class ClickhouseFactory {
           return defaultRunEngineClickhouseClient;
         case "realtime":
           return defaultRealtimeClickhouseClient;
+        case "runsList":
+          return defaultRunsListClickhouseClient;
       }
     }
 

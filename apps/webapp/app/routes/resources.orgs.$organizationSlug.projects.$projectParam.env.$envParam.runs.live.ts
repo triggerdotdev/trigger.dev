@@ -34,7 +34,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
     project.organizationId,
-    "standard"
+    "runsList"
   );
   const runsRepository = new RunsRepository({ clickhouse, prisma: $replica });
 
