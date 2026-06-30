@@ -1039,6 +1039,11 @@ describe("TaskExecutor", () => {
       fn: async ({ payload, ctx, next }) => {
         executionOrder.push("middleware-before");
         throw expectedError;
+        // Should never get here
+        /* eslint-disable no-unreachable */
+        await next();
+        executionOrder.push("middleware-after");
+        /* eslint-enable no-unreachable */
       },
     });
 
