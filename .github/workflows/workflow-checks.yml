@@ -24,7 +24,7 @@ concurrency:
 jobs:
   actionlint:
     name: Actionlint
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
@@ -43,7 +43,7 @@ jobs:
     # variable to 'false' to skip this job where code scanning isn't available;
     # leave it unset (the default) to run the scan.
     if: ${{ vars.ENABLE_WORKFLOW_SECURITY_SCAN != 'false' }}
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     permissions:
       security-events: write # Upload SARIF to GitHub Security tab
       contents: read # Read workflow files for analysis
