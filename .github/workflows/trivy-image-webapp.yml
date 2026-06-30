@@ -33,7 +33,7 @@ concurrency:
 jobs:
   scan:
     name: Scan
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
       contents: read
       packages: read # pull the image from GHCR
