@@ -230,6 +230,7 @@ export class PrinterContext {
     // Share the same values map so parameters are unified
     child.values = this.values;
     // Share the same counter reference via closure
+    // eslint-disable-next-line no-this-alias
     const parentThis = this;
     Object.defineProperty(child, "paramCounter", {
       get() {

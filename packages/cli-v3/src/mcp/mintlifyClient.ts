@@ -57,8 +57,6 @@ async function parseSSEResponse(response: Response) {
       }
     }
   }
-
-  throw new Error("No data: event found");
 }
 
 function callToolBody(tool: string, args: Record<string, unknown>) {

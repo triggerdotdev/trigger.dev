@@ -198,43 +198,41 @@ export class DynamicFlushScheduler<T> {
       this.limiter(async () => {
         const itemCount = batch.length;
 
-        const self = this;
-
-        async function tryFlush(flushId: string, batchToFlush: T[], attempt: number = 1) {
+        const tryFlush = async (flushId: string, batchToFlush: T[], attempt: number = 1) => {
           try {
             const startTime = Date.now();
-            await self.callback(flushId, batchToFlush);
+            await this.callback(flushId, batchToFlush);
 
             const duration = Date.now() - startTime;
-            self.totalQueuedItems -= itemCount;
-            self.consecutiveFlushFailures = 0;
-            self.lastFlushTime = Date.now();
-            self.metrics.flushedBatches++;
-            self.metrics.totalItemsFlushed += itemCount;
+            this.totalQueuedItems -= itemCount;
+            this.consecutiveFlushFailures = 0;
+            this.lastFlushTime = Date.now();
+            this.metrics.flushedBatches++;
+            this.metrics.totalItemsFlushed += itemCount;
 
-            self.logger.debug("Batch flushed successfully", {
+            this.logger.debug("Batch flushed successfully", {
               flushId,
               itemCount,
               duration,
-              remainingQueueDepth: self.totalQueuedItems,
-              activeConcurrency: self.limiter.activeCount,
-              pendingConcurrency: self.limiter.pendingCount,
+              remainingQueueDepth: this.totalQueuedItems,
+              activeConcurrency: this.limiter.activeCount,
+              pendingConcurrency: this.limiter.pendingCount,
             });
           } catch (error) {
-            self.consecutiveFlushFailures++;
-            self.metrics.failedBatches++;
+            this.consecutiveFlushFailures++;
+            this.metrics.failedBatches++;
 
-            self.logger.error("Error attempting to flush batch", {
+            this.logger.error("Error attempting to flush batch", {
               flushId,
               itemCount,
               error,
-              consecutiveFailures: self.consecutiveFlushFailures,
+              consecutiveFailures: this.consecutiveFlushFailures,
               attempt,
             });
 
             // Back off on failures
-            if (self.consecutiveFlushFailures > 5) {
-              self.adjustConcurrency(true);
+            if (this.consecutiveFlushFailures > 5) {
+              this.adjustConcurrency(true);
             }
 
             if (attempt <= 3) {

@@ -10170,13 +10170,13 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
       ...(options?.triggerConfig?.maxAttempts !== undefined ||
       params.triggerConfig?.maxAttempts !== undefined
         ? {
-            maxAttempts: params.triggerConfig?.maxAttempts ?? options?.triggerConfig?.maxAttempts!,
+            maxAttempts: params.triggerConfig?.maxAttempts ?? options!.triggerConfig!.maxAttempts,
           }
         : {}),
       ...(options?.triggerConfig?.maxDuration !== undefined ||
       params.triggerConfig?.maxDuration !== undefined
         ? {
-            maxDuration: params.triggerConfig?.maxDuration ?? options?.triggerConfig?.maxDuration!,
+            maxDuration: params.triggerConfig?.maxDuration ?? options!.triggerConfig!.maxDuration,
           }
         : {}),
       ...(options?.triggerConfig?.region || params.triggerConfig?.region
@@ -10193,7 +10193,7 @@ function createChatStartSessionAction<TChat extends AnyTask = AnyTask>(
         ? {
             idleTimeoutInSeconds:
               params.triggerConfig?.idleTimeoutInSeconds ??
-              options?.triggerConfig?.idleTimeoutInSeconds!,
+              options!.triggerConfig!.idleTimeoutInSeconds,
           }
         : {}),
     };

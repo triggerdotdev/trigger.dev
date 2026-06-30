@@ -11,9 +11,11 @@ export function escapeImportPath(path: string) {
 function getVisibleLength(str: string): number {
   return (
     str
-      // Remove terminal hyperlinks: \u001b]8;;URL\u0007TEXT\u001b]8;;\u0007
+      // Remove terminal hyperlinks: ESC]8;;URL BEL TEXT ESC]8;; BEL
+      // eslint-disable-next-line no-control-regex -- intentional ANSI/control char stripping
       .replace(/\u001b]8;;[^\u0007]*\u0007/g, "")
       // Remove standard ANSI escape sequences (colors, cursor movement, etc.)
+      // eslint-disable-next-line no-control-regex -- intentional ANSI escape stripping
       .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").length
   );
 }

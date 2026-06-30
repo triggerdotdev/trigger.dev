@@ -64,23 +64,19 @@ export class StreamsWriterV1<T> implements StreamsWriter {
     this.streamReader = this.serverStream.getReader();
 
     this.bufferReaderTask = (async () => {
-      try {
-        let chunkIndex = 0;
-        while (true) {
-          const { done, value } = await this.streamReader!.read();
+      let chunkIndex = 0;
+      while (true) {
+        const { done, value } = await this.streamReader!.read();
 
-          if (done) {
-            this.streamComplete = true;
-            break;
-          }
-
-          // Add to ring buffer
-          this.addToRingBuffer(chunkIndex, value);
-          this.highestBufferedIndex = chunkIndex;
-          chunkIndex++;
+        if (done) {
+          this.streamComplete = true;
+          break;
         }
-      } catch (error) {
-        throw error;
+
+        // Add to ring buffer
+        this.addToRingBuffer(chunkIndex, value);
+        this.highestBufferedIndex = chunkIndex;
+        chunkIndex++;
       }
     })();
   }

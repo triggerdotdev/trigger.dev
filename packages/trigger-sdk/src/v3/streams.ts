@@ -884,7 +884,6 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
       });
     },
     async waitWithIdleTimeout(options) {
-      const self = this;
       const spanName = options.spanName ?? `inputStream.waitWithIdleTimeout()`;
 
       return tracer.startActiveSpan(
@@ -902,7 +901,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
           }
 
           // Skip suspend if requested — return a real WaitpointTimeoutError
-          // so the result shape matches the cold-phase `self.wait()` path
+          // so the result shape matches the cold-phase `this.wait()` path
           // below. Callers that check `if (!result.ok)` work the same as
           // before; callers that do `throw result.error` get a useful error
           // instead of `undefined`.
@@ -921,7 +920,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
 
           // Cold phase: suspend via .wait() — creates a child span
           span.setAttribute("wait.resolved", "suspended");
-          const waitResult = await self.wait({
+          const waitResult = await this.wait({
             timeout: options.timeout,
             spanName: "suspended",
           });

@@ -91,16 +91,14 @@ export class SessionStreamInstance<T> implements StreamsWriter {
   }
 
   public get stream(): AsyncIterableStream<T> {
-    const self = this;
-
     return new ReadableStream<T>({
-      async start(controller) {
-        const streamWriter = await self.streamPromise;
+      start: async (controller) => {
+        const streamWriter = await this.streamPromise;
 
         const iterator = streamWriter[Symbol.asyncIterator]();
 
         while (true) {
-          if (self.options.signal?.aborted) {
+          if (this.options.signal?.aborted) {
             controller.close();
             break;
           }

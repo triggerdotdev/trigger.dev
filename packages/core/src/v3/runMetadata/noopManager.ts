@@ -46,10 +46,6 @@ export class NoopRunMetadataManager implements RunMetadataManager {
   }
 
   get parent(): RunMetadataUpdater {
-    // Store a reference to this object
-    const self = this;
-
-    // Create a local reference to ensure proper context
     const parentUpdater: RunMetadataUpdater = {
       append: () => parentUpdater,
       set: () => parentUpdater,
@@ -70,10 +66,6 @@ export class NoopRunMetadataManager implements RunMetadataManager {
   }
 
   get root(): RunMetadataUpdater {
-    // Store a reference to this object
-    const self = this;
-
-    // Create a local reference to ensure proper context
     const rootUpdater: RunMetadataUpdater = {
       append: () => rootUpdater,
       set: () => rootUpdater,

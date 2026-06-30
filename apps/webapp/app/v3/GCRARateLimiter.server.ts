@@ -142,30 +142,23 @@ end
     const key = `${this.keyPrefix}${identifier}`;
     const now = Date.now();
 
-    try {
-      // Call the custom 'gcra' command.
-      // The script returns an array: [allowedFlag, value]
-      //   - allowedFlag: 1 if allowed; 0 if rejected.
-      //   - value: 0 when allowed; if rejected, the number of ms to wait before retrying.
-      // @ts-expect-error: The custom command is defined via defineCommand.
-      const result: [number, number] = await this.redis.gcra(
-        key,
-        now,
-        this.emissionInterval,
-        this.burstTolerance,
-        this.keyExpiration
-      );
-      const allowed = result[0] === 1;
-      if (allowed) {
-        return { allowed: true };
-      } else {
-        return { allowed: false, retryAfter: result[1] };
-      }
-    } catch (error) {
-      // In a production system you might log the error and either
-      // allow the request (fail open) or deny it (fail closed).
-      // Here we choose to propagate the error.
-      throw error;
+    // Call the custom 'gcra' command.
+    // The script returns an array: [allowedFlag, value]
+    //   - allowedFlag: 1 if allowed; 0 if rejected.
+    //   - value: 0 when allowed; if rejected, the number of ms to wait before retrying.
+    // @ts-expect-error: The custom command is defined via defineCommand.
+    const result: [number, number] = await this.redis.gcra(
+      key,
+      now,
+      this.emissionInterval,
+      this.burstTolerance,
+      this.keyExpiration
+    );
+    const allowed = result[0] === 1;
+    if (allowed) {
+      return { allowed: true };
+    } else {
+      return { allowed: false, retryAfter: result[1] };
     }
   }
 }

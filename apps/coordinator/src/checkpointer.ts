@@ -597,7 +597,8 @@ export class Checkpointer {
       if (signal.aborted) {
         this.#logger.error("Checkpoint canceled: Cleanup", { options });
 
-        // Overrides any prior return value
+        // Overrides any prior return value (intentional use of return-in-finally)
+        // eslint-disable-next-line no-unsafe-finally
         return { success: false, reason: "CANCELED" };
       }
     }

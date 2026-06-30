@@ -660,7 +660,7 @@ export class AgentChat<TAgent = unknown> {
       this.triggerConfigDefault?.idleTimeoutInSeconds !== undefined
         ? {
             idleTimeoutInSeconds:
-              options?.idleTimeoutInSeconds ?? this.triggerConfigDefault?.idleTimeoutInSeconds!,
+              options?.idleTimeoutInSeconds ?? this.triggerConfigDefault!.idleTimeoutInSeconds,
           }
         : {}),
     };

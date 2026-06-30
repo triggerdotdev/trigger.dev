@@ -52,16 +52,16 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     "/api/v1/token",
     "/api/v1/usage/ingest",
     "/api/v1/plain/customer-cards",
-    /^\/api\/v1\/tasks\/[^\/]+\/callback\/[^\/]+$/, // /api/v1/tasks/$id/callback/$secret
-    /^\/api\/v1\/runs\/[^\/]+\/tasks\/[^\/]+\/callback\/[^\/]+$/, // /api/v1/runs/$runId/tasks/$id/callback/$secret
-    /^\/api\/v1\/http-endpoints\/[^\/]+\/env\/[^\/]+\/[^\/]+$/, // /api/v1/http-endpoints/$httpEndpointId/env/$envType/$shortcode
-    /^\/api\/v1\/sources\/http\/[^\/]+$/, // /api/v1/sources/http/$id
-    /^\/api\/v1\/endpoints\/[^\/]+\/[^\/]+\/index\/[^\/]+$/, // /api/v1/endpoints/$environmentId/$endpointSlug/index/$indexHookIdentifier
+    /^\/api\/v1\/tasks\/[^/]+\/callback\/[^/]+$/, // /api/v1/tasks/$id/callback/$secret
+    /^\/api\/v1\/runs\/[^/]+\/tasks\/[^/]+\/callback\/[^/]+$/, // /api/v1/runs/$runId/tasks/$id/callback/$secret
+    /^\/api\/v1\/http-endpoints\/[^/]+\/env\/[^/]+\/[^/]+$/, // /api/v1/http-endpoints/$httpEndpointId/env/$envType/$shortcode
+    /^\/api\/v1\/sources\/http\/[^/]+$/, // /api/v1/sources/http/$id
+    /^\/api\/v1\/endpoints\/[^/]+\/[^/]+\/index\/[^/]+$/, // /api/v1/endpoints/$environmentId/$endpointSlug/index/$indexHookIdentifier
     "/api/v1/timezones",
     "/api/v1/usage/ingest",
     "/api/v1/auth/jwt/claims",
-    /^\/api\/v1\/runs\/[^\/]+\/attempts$/, // /api/v1/runs/$runFriendlyId/attempts
-    /^\/api\/v1\/waitpoints\/tokens\/[^\/]+\/callback\/[^\/]+$/, // /api/v1/waitpoints/tokens/$waitpointFriendlyId/callback/$hash
+    /^\/api\/v1\/runs\/[^/]+\/attempts$/, // /api/v1/runs/$runFriendlyId/attempts
+    /^\/api\/v1\/waitpoints\/tokens\/[^/]+\/callback\/[^/]+$/, // /api/v1/waitpoints/tokens/$waitpointFriendlyId/callback/$hash
     /^\/api\/v\d+\/deployments/, // /api/v{1,2,3,n}/deployments/*
     // Internal SDK plumbing — packets are presigned-URL handshakes for
     // payload uploads (v2 PUT) and downloads (v1 GET), authenticated via
@@ -70,7 +70,7 @@ export const apiRateLimiter = authorizationRateLimitMiddleware({
     // customer-facing surface so customer rate limits shouldn't apply.
     /^\/api\/v1\/packets\//,
     /^\/api\/v2\/packets\//,
-    /^\/api\/v1\/sessions\/[^\/]+\/snapshot-url$/,
+    /^\/api\/v1\/sessions\/[^/]+\/snapshot-url$/,
   ],
   log: {
     rejections: env.API_RATE_LIMIT_REJECTION_LOGS_ENABLED === "1",

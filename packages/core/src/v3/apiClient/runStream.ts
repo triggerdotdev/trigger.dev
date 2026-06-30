@@ -282,14 +282,12 @@ export class SSEStreamSubscription implements StreamSubscription {
   }
 
   async subscribe(): Promise<ReadableStream<SSEStreamPart>> {
-    const self = this;
-
     return new ReadableStream({
-      async start(controller) {
-        await self.connectStream(controller);
+      start: async (controller) => {
+        await this.connectStream(controller);
       },
-      cancel() {
-        self.options.onComplete?.();
+      cancel: () => {
+        this.options.onComplete?.();
       },
     });
   }

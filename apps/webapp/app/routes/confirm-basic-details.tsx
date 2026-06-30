@@ -196,7 +196,7 @@ export const action: ActionFunction = async ({ request }) => {
   }
 };
 
-const HandIcon = forwardRef<HTMLDivElement, {}>(({}, ref) => {
+const HandIcon = forwardRef<HTMLDivElement, object>((_props, ref) => {
   return (
     <div ref={ref}>
       <HandRaisedIcon className="h-7 w-7 text-amber-400" />

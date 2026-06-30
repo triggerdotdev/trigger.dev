@@ -388,7 +388,7 @@ function DebugRunDataEngineV2({
         </Property.Value>
       </Property.Item>
       {keys.map((key) => (
-        <Property.Item>
+        <Property.Item key={key.key}>
           <Property.Label>{key.label}</Property.Label>
           <Property.Value className="flex items-center gap-2">
             <ClipboardField value={key.key} variant="tertiary/small" iconButton />

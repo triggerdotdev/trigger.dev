@@ -589,32 +589,28 @@ class DevSupervisor implements WorkerRuntime {
   }
 
   async #startPresenceConnection() {
-    try {
-      const eventSource = this.options.client.dev.presenceConnection();
+    const eventSource = this.options.client.dev.presenceConnection();
 
-      // Regular "ping" messages
-      eventSource.addEventListener("presence", (event: any) => {
-        // logger.debug(`Presence ping received`, { event });
-      });
+    // Regular "ping" messages
+    eventSource.addEventListener("presence", (event: any) => {
+      // logger.debug(`Presence ping received`, { event });
+    });
 
-      // Connection was lost and successfully reconnected
-      eventSource.addEventListener("reconnect", (event: any) => {
-        logger.debug("[DevSupervisor] Presence connection restored");
-      });
+    // Connection was lost and successfully reconnected
+    eventSource.addEventListener("reconnect", (event: any) => {
+      logger.debug("[DevSupervisor] Presence connection restored");
+    });
 
-      // Handle messages that might have been missed during disconnection
-      eventSource.addEventListener("missed_events", (event: any) => {
-        logger.debug("[DevSupervisor] Missed some presence events during disconnection");
-      });
+    // Handle messages that might have been missed during disconnection
+    eventSource.addEventListener("missed_events", (event: any) => {
+      logger.debug("[DevSupervisor] Missed some presence events during disconnection");
+    });
 
-      // If you need to close it manually
-      return () => {
-        logger.info("[DevSupervisor] Closing presence connection");
-        eventSource.close();
-      };
-    } catch (error) {
-      throw error;
-    }
+    // If you need to close it manually
+    return () => {
+      logger.info("[DevSupervisor] Closing presence connection");
+      eventSource.close();
+    };
   }
 
   async #getEnvVars(): Promise<Record<string, string>> {

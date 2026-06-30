@@ -1039,9 +1039,6 @@ describe("TaskExecutor", () => {
       fn: async ({ payload, ctx, next }) => {
         executionOrder.push("middleware-before");
         throw expectedError;
-        // Should never get here
-        await next();
-        executionOrder.push("middleware-after");
       },
     });
 

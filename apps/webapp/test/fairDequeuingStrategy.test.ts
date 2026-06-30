@@ -1451,7 +1451,7 @@ describe("FairDequeuingStrategy", () => {
       for (const [queueId, count] of Object.entries(queueSelectionCounts)) {
         const percentage = (count / (iterations * 2)) * 100;
         const isPriority =
-          queues.find((q) => q.id === queueId)?.age! > MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET;
+          queues.find((q) => q.id === queueId)!.age > MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET;
         console.log(
           `${queueId}${isPriority ? " (priority)" : ""}: ${percentage.toFixed(2)}% (${count} times)`
         );

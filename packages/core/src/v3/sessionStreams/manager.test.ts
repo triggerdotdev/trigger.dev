@@ -27,6 +27,7 @@ function singleShotApiClient(
         }
       }
       const signal = options?.signal;
+      // eslint-disable-next-line require-yield
       return (async function* () {
         if (signal?.aborted) return;
         await new Promise<void>((resolve) => {

@@ -270,7 +270,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
         console.log(`Socket.io client connected, upgrading their connection...`);
 
         // https://github.com/socketio/socket.io/issues/4693
-        (socketIo?.io.engine as EngineServer).handleUpgrade(req, socket, head);
+        (socketIo!.io.engine as EngineServer).handleUpgrade(req, socket, head);
         return;
       }
 

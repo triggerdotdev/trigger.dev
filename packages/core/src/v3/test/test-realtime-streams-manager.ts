@@ -28,7 +28,6 @@ export class TestRealtimeStreamsManager implements RealtimeStreamsManager {
     _options?: RealtimeStreamOperationOptions
   ): RealtimeStreamInstance<T> {
     const buffer = this.getBuffer(key);
-    const self = this;
 
     // Eagerly drain the source in the background so chunks land in the
     // buffer + notify listeners even when the caller never consumes the
@@ -64,7 +63,7 @@ export class TestRealtimeStreamsManager implements RealtimeStreamsManager {
         for await (const chunk of iter) {
           readChunks.push(chunk);
           buffer.push(chunk);
-          self.notify(key, chunk);
+          this.notify(key, chunk);
         }
       } catch {
         // Swallow — tests can inspect what made it into the buffer

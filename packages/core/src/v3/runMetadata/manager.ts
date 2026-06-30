@@ -40,81 +40,78 @@ export class StandardMetadataManager implements RunMetadataManager {
   }
 
   get parent(): RunMetadataUpdater {
-    // Store a reference to 'this' to ensure proper context
-    const self = this;
-
     // Create the updater object and store it in a local variable
     const parentUpdater: RunMetadataUpdater = {
       set: (key, value) => {
         // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
-        if (self.runIdIsRoot) {
-          return self.set(key, value);
+        if (this.runIdIsRoot) {
+          return this.set(key, value);
         }
 
-        self.queuedParentOperations.add({ type: "set", key, value });
+        this.queuedParentOperations.add({ type: "set", key, value });
         return parentUpdater;
       },
       del: (key) => {
         // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
-        if (self.runIdIsRoot) {
-          return self.del(key);
+        if (this.runIdIsRoot) {
+          return this.del(key);
         }
 
-        self.queuedParentOperations.add({ type: "delete", key });
+        this.queuedParentOperations.add({ type: "delete", key });
         return parentUpdater;
       },
       append: (key, value) => {
         // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
-        if (self.runIdIsRoot) {
-          return self.append(key, value);
+        if (this.runIdIsRoot) {
+          return this.append(key, value);
         }
 
-        self.queuedParentOperations.add({ type: "append", key, value });
+        this.queuedParentOperations.add({ type: "append", key, value });
         return parentUpdater;
       },
       remove: (key, value) => {
         // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
-        if (self.runIdIsRoot) {
-          return self.remove(key, value);
+        if (this.runIdIsRoot) {
+          return this.remove(key, value);
         }
 
-        self.queuedParentOperations.add({ type: "remove", key, value });
+        this.queuedParentOperations.add({ type: "remove", key, value });
         return parentUpdater;
       },
       increment: (key, value) => {
         // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
-        if (self.runIdIsRoot) {
-          return self.increment(key, value);
+        if (this.runIdIsRoot) {
+          return this.increment(key, value);
         }
 
-        self.queuedParentOperations.add({ type: "increment", key, value });
+        this.queuedParentOperations.add({ type: "increment", key, value });
         return parentUpdater;
       },
       decrement: (key, value) => {
         // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
-        if (self.runIdIsRoot) {
-          return self.decrement(key, value);
+        if (this.runIdIsRoot) {
+          return this.decrement(key, value);
         }
 
-        self.queuedParentOperations.add({ type: "increment", key, value: -Math.abs(value) });
+        this.queuedParentOperations.add({ type: "increment", key, value: -Math.abs(value) });
         return parentUpdater;
       },
       update: (value) => {
         // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
-        if (self.runIdIsRoot) {
-          return self.update(value);
+        if (this.runIdIsRoot) {
+          return this.update(value);
         }
 
-        self.queuedParentOperations.add({ type: "update", value });
+        this.queuedParentOperations.add({ type: "update", value });
         return parentUpdater;
       },
       stream: (key, value, signal) => {
         // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
-        if (self.runIdIsRoot) {
-          return self.doStream(key, value, "self", parentUpdater, signal);
+        if (this.runIdIsRoot) {
+          return this.doStream(key, value, "this", parentUpdater, signal);
         }
 
-        return self.doStream(key, value, "parent", parentUpdater, signal);
+        return this.doStream(key, value, "parent", parentUpdater, signal);
       },
     };
 
@@ -122,81 +119,78 @@ export class StandardMetadataManager implements RunMetadataManager {
   }
 
   get root(): RunMetadataUpdater {
-    // Store a reference to 'this' to ensure proper context
-    const self = this;
-
     // Create the updater object and store it in a local variable
     const rootUpdater: RunMetadataUpdater = {
       set: (key, value) => {
         // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
-        if (self.runIdIsRoot) {
-          return self.set(key, value);
+        if (this.runIdIsRoot) {
+          return this.set(key, value);
         }
 
-        self.queuedRootOperations.add({ type: "set", key, value });
+        this.queuedRootOperations.add({ type: "set", key, value });
         return rootUpdater;
       },
       del: (key) => {
         // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
-        if (self.runIdIsRoot) {
-          return self.del(key);
+        if (this.runIdIsRoot) {
+          return this.del(key);
         }
 
-        self.queuedRootOperations.add({ type: "delete", key });
+        this.queuedRootOperations.add({ type: "delete", key });
         return rootUpdater;
       },
       append: (key, value) => {
         // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
-        if (self.runIdIsRoot) {
-          return self.append(key, value);
+        if (this.runIdIsRoot) {
+          return this.append(key, value);
         }
 
-        self.queuedRootOperations.add({ type: "append", key, value });
+        this.queuedRootOperations.add({ type: "append", key, value });
         return rootUpdater;
       },
       remove: (key, value) => {
         // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
-        if (self.runIdIsRoot) {
-          return self.remove(key, value);
+        if (this.runIdIsRoot) {
+          return this.remove(key, value);
         }
 
-        self.queuedRootOperations.add({ type: "remove", key, value });
+        this.queuedRootOperations.add({ type: "remove", key, value });
         return rootUpdater;
       },
       increment: (key, value) => {
         // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
-        if (self.runIdIsRoot) {
-          return self.increment(key, value);
+        if (this.runIdIsRoot) {
+          return this.increment(key, value);
         }
 
-        self.queuedRootOperations.add({ type: "increment", key, value });
+        this.queuedRootOperations.add({ type: "increment", key, value });
         return rootUpdater;
       },
       decrement: (key, value) => {
         // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
-        if (self.runIdIsRoot) {
-          return self.decrement(key, value);
+        if (this.runIdIsRoot) {
+          return this.decrement(key, value);
         }
 
-        self.queuedRootOperations.add({ type: "increment", key, value: -Math.abs(value) });
+        this.queuedRootOperations.add({ type: "increment", key, value: -Math.abs(value) });
         return rootUpdater;
       },
       update: (value) => {
         // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
-        if (self.runIdIsRoot) {
-          return self.update(value);
+        if (this.runIdIsRoot) {
+          return this.update(value);
         }
 
-        self.queuedRootOperations.add({ type: "update", value });
+        this.queuedRootOperations.add({ type: "update", value });
         return rootUpdater;
       },
       stream: (key, value, signal) => {
         // We have to check runIdIsRoot here because parent/root are executed before runIdIsRoot is set
-        if (self.runIdIsRoot) {
-          return self.doStream(key, value, "self", rootUpdater, signal);
+        if (this.runIdIsRoot) {
+          return this.doStream(key, value, "this", rootUpdater, signal);
         }
 
-        return self.doStream(key, value, "root", rootUpdater, signal);
+        return this.doStream(key, value, "root", rootUpdater, signal);
       },
     };
 
@@ -299,7 +293,7 @@ export class StandardMetadataManager implements RunMetadataManager {
     value: AsyncIterable<T> | ReadableStream<T>,
     signal?: AbortSignal
   ): Promise<AsyncIterable<T>> {
-    return this.doStream(key, value, "self", this, signal);
+    return this.doStream(key, value, "this", this, signal);
   }
 
   public async fetchStream<T>(key: string, signal?: AbortSignal): Promise<AsyncIterableStream<T>> {
@@ -317,7 +311,7 @@ export class StandardMetadataManager implements RunMetadataManager {
   private async doStream<T>(
     key: string,
     value: AsyncIterable<T> | ReadableStream<T>,
-    target: "self" | "parent" | "root",
+    target: "this" | "parent" | "root",
     updater: RunMetadataUpdater = this,
     signal?: AbortSignal
   ): Promise<AsyncIterable<T>> {

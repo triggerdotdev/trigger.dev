@@ -656,7 +656,7 @@ function buildComparisonRows(
         const slug = c?.provider ?? dataMap.get(m)?.genAiSystem;
         if (!slug) return "—";
         return (
-          <span className="flex items-center gap-1.5">
+          <span key={m} className="flex items-center gap-1.5">
             {providerIcon(slug)}
             {formatProviderName(slug)}
           </span>
@@ -700,7 +700,7 @@ function buildComparisonRows(
       label: formatFeature(feature),
       values: models.map((m) =>
         getCatalog(m)?.features.includes(feature) ? (
-          <CheckIcon className="size-4 text-success/70 group-hover/table-row:text-success" />
+          <CheckIcon key={m} className="size-4 text-success/70 group-hover/table-row:text-success" />
         ) : (
           "—"
         )

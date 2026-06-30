@@ -306,7 +306,7 @@ export class ZodIpcConnection<
   ): Promise<z.infer<GetSocketCallbackSchema<TEmitCatalog, K>>> {
     const currentId = this.#messageCounter++;
 
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const defaultTimeoutInMs = 2000;
 
       // Timeout if the ACK takes too long to get back to us
@@ -327,17 +327,19 @@ export class ZodIpcConnection<
 
       if (!schema) {
         clearTimeout(timeout);
-        return reject(`Unknown message type: ${type as string}`);
+        reject(`Unknown message type: ${type as string}`);
+        return;
       }
 
       const parsedPayload = schema.safeParse(payload);
 
       if (!parsedPayload.success) {
         clearTimeout(timeout);
-        return reject(`Failed to parse message payload: ${JSON.stringify(parsedPayload.error)}`);
+        reject(`Failed to parse message payload: ${JSON.stringify(parsedPayload.error)}`);
+        return;
       }
 
-      await this.#sendPacket({
+      this.#sendPacket({
         type: "EVENT",
         message: {
           type,
@@ -345,7 +347,7 @@ export class ZodIpcConnection<
           version: "v1",
         },
         id: currentId,
-      });
+      }).catch(reject);
     });
   }
 }

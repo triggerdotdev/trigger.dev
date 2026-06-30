@@ -275,6 +275,7 @@ export class ResourceMonitor {
             mem: memoryPercent,
             vsz,
             rss,
+            // eslint-disable-next-line no-control-regex -- intentional: null bytes in /proc/cmdline
             command: cmdline.replace(/\0/g, " ").trim(),
           };
         } catch (error) {
