@@ -248,5 +248,4 @@ export class PodCleaner {
     this.enabled = false;
     this.logger.log("Shutting down..");
   }
-
 }

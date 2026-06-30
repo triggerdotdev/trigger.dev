@@ -242,7 +242,7 @@ export class DynamicFlushScheduler<T> {
               throw error;
             }
           }
-        }
+        };
 
         const [flushError] = await tryCatch(tryFlush(nanoid(), batch));
 

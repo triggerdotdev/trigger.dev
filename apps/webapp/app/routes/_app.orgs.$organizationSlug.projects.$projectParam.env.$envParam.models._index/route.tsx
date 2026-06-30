@@ -700,7 +700,10 @@ function buildComparisonRows(
       label: formatFeature(feature),
       values: models.map((m) =>
         getCatalog(m)?.features.includes(feature) ? (
-          <CheckIcon key={m} className="size-4 text-success/70 group-hover/table-row:text-success" />
+          <CheckIcon
+            key={m}
+            className="size-4 text-success/70 group-hover/table-row:text-success"
+          />
         ) : (
           "—"
         )
