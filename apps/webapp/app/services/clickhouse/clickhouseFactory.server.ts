@@ -283,12 +283,10 @@ function initializeEventsClickhouseClient(): ClickHouse {
     throw new Error("EVENTS_CLICKHOUSE_URL is not set");
   }
 
-  const url = new URL(env.EVENTS_CLICKHOUSE_URL);
-  url.searchParams.delete("secure");
+  const writerUrl = new URL(env.EVENTS_CLICKHOUSE_URL);
+  writerUrl.searchParams.delete("secure");
 
-  return new ClickHouse({
-    url: url.toString(),
-    name: "task-events",
+  const commonConfig = {
     keepAlive: {
       enabled: env.EVENTS_CLICKHOUSE_KEEP_ALIVE_ENABLED === "1",
       idleSocketTtl: env.EVENTS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS,
@@ -298,6 +296,29 @@ function initializeEventsClickhouseClient(): ClickHouse {
       request: env.EVENTS_CLICKHOUSE_COMPRESSION_REQUEST === "1",
     },
     maxOpenConnections: env.EVENTS_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
+  };
+
+  // This client both inserts events and reads traces/spans/logs. When a reader replica
+  // is configured, split it so queries hit the replica while inserts stay on the writer.
+  if (env.CLICKHOUSE_READER_URL) {
+    const readerUrl = new URL(env.CLICKHOUSE_READER_URL);
+    readerUrl.searchParams.delete("secure");
+
+    if (readerUrl.toString() !== writerUrl.toString()) {
+      return new ClickHouse({
+        ...commonConfig,
+        writerName: "task-events-writer",
+        writerUrl: writerUrl.toString(),
+        readerName: "task-events-reader",
+        readerUrl: readerUrl.toString(),
+      });
+    }
+  }
+
+  return new ClickHouse({
+    ...commonConfig,
+    name: "task-events",
+    url: writerUrl.toString(),
   });
 }
 
