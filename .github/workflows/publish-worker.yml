@@ -33,7 +33,7 @@ jobs:
     strategy:
       matrix:
         package: [coordinator, docker-provider, kubernetes-provider]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     env:
       DOCKER_BUILDKIT: "1"
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}

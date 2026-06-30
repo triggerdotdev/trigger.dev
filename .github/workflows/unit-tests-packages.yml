@@ -14,7 +14,7 @@ on:
 jobs:
   unitTests:
     name: "🧪 Unit Tests: Packages"
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     strategy:
       # one flaky shard shouldn't cancel its siblings - lets us re-run only the failed shard
       fail-fast: false
@@ -130,7 +130,7 @@ jobs:
     name: "📊 Merge Reports"
     if: ${{ !cancelled() }}
     needs: [unitTests]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
