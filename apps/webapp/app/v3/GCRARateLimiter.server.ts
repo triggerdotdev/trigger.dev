@@ -161,7 +161,7 @@ end
       } else {
         return { allowed: false, retryAfter: result[1] };
       }
-    // eslint-disable-next-line no-useless-catch -- catch documents the fail-open/fail-closed policy
+      // eslint-disable-next-line no-useless-catch -- catch documents the fail-open/fail-closed policy
     } catch (error) {
       // In a production system you might log the error and either
       // allow the request (fail open) or deny it (fail closed).

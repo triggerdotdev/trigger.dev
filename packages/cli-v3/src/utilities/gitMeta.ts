@@ -70,7 +70,7 @@ async function isDirty(directory: string): Promise<boolean> {
     // Example output (when dirty):
     //    M ../fs-detectors/src/index.ts
     return result.stdout.trim().length > 0;
-  // eslint-disable-next-line no-useless-catch
+    // eslint-disable-next-line no-useless-catch
   } catch (error) {
     throw error;
   }
