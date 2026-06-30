@@ -792,7 +792,7 @@ describe("StreamsWriterV1", () => {
   it("should handle empty stream (no chunks)", async () => {
     // eslint-disable-next-line require-yield
     async function* generateChunks() {
-      // Yields nothing — intentionally empty async generator
+      // Yields nothing
       return;
     }
 
