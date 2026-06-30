@@ -2,8 +2,6 @@ import { type Span, SpanStatusCode, context, propagation } from "@opentelemetry/
 import { truncateStack, truncateMessage } from "../errors.js";
 
 const MAX_GENERIC_LENGTH = 5_000;
-// eslint-disable-next-line no-control-regex -- intentional: strips null bytes from span error strings
-const NULL_BYTE_RE = /\0/g;
 
 function truncateGeneric(value: string): string {
   return value.length > MAX_GENERIC_LENGTH
@@ -32,18 +30,18 @@ export function recordSpanException(span: Span, error: unknown) {
   if (error instanceof Error) {
     span.recordException(sanitizeSpanError(error));
   } else if (typeof error === "string") {
-    span.recordException(truncateGeneric(error.replace(NULL_BYTE_RE, "")));
+    span.recordException(truncateGeneric(error.replace(/\0/g, "")));
   } else {
-    span.recordException(truncateGeneric(serializeFallback(error).replace(NULL_BYTE_RE, "")));
+    span.recordException(truncateGeneric(serializeFallback(error).replace(/\0/g, "")));
   }
 
   span.setStatus({ code: SpanStatusCode.ERROR });
 }
 
 function sanitizeSpanError(error: Error) {
-  const sanitizedError = new Error(truncateMessage(error.message.replace(NULL_BYTE_RE, "")));
-  sanitizedError.name = error.name.replace(NULL_BYTE_RE, "");
-  sanitizedError.stack = truncateStack(error.stack?.replace(NULL_BYTE_RE, "")) || undefined;
+  const sanitizedError = new Error(truncateMessage(error.message.replace(/\0/g, "")));
+  sanitizedError.name = error.name.replace(/\0/g, "");
+  sanitizedError.stack = truncateStack(error.stack?.replace(/\0/g, "")) || undefined;
 
   return sanitizedError;
 }

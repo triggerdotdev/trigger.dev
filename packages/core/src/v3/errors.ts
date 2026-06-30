@@ -300,32 +300,28 @@ export function createJsonErrorObject(error: TaskRunError): SerializedError {
   }
 }
 
-// eslint-disable-next-line no-control-regex -- intentional: strips null bytes from error strings
-// eslint-disable-next-line no-control-regex -- intentional: strips null bytes from error strings
-const NULL_BYTE_RE = /\0/g;
-
 // Removes null characters and truncates oversized fields to prevent OOM
 export function sanitizeError(error: TaskRunError): TaskRunError {
   switch (error.type) {
     case "BUILT_IN_ERROR": {
       return {
         type: "BUILT_IN_ERROR",
-        message: truncateMessage(error.message?.replace(NULL_BYTE_RE, "")),
-        name: error.name?.replace(NULL_BYTE_RE, ""),
-        stackTrace: truncateStack(error.stackTrace?.replace(NULL_BYTE_RE, "")),
+        message: truncateMessage(error.message?.replace(/\0/g, "")),
+        name: error.name?.replace(/\0/g, ""),
+        stackTrace: truncateStack(error.stackTrace?.replace(/\0/g, "")),
       };
     }
     case "STRING_ERROR": {
       return {
         type: "STRING_ERROR",
-        raw: truncateMessage(error.raw.replace(NULL_BYTE_RE, "")),
+        raw: truncateMessage(error.raw.replace(/\0/g, "")),
       };
     }
     case "CUSTOM_ERROR": {
       // CUSTOM_ERROR.raw holds JSON.stringify(error) which is later parsed by
       // JSON.parse in createErrorTaskError. Naive truncation would cut mid-token
       // and produce invalid JSON — wrap the preview in a valid JSON envelope.
-      const clean = error.raw.replace(NULL_BYTE_RE, "");
+      const clean = error.raw.replace(/\0/g, "");
       const safeRaw =
         clean.length > MAX_MESSAGE_LENGTH
           ? JSON.stringify({ truncated: true, preview: clean.slice(0, MAX_MESSAGE_LENGTH) })
@@ -343,13 +339,9 @@ export function sanitizeError(error: TaskRunError): TaskRunError {
         type: "INTERNAL_ERROR",
         code: error.code,
         message:
-          error.message != null
-            ? truncateMessage(error.message.replace(NULL_BYTE_RE, ""))
-            : undefined,
+          error.message != null ? truncateMessage(error.message.replace(/\0/g, "")) : undefined,
         stackTrace:
-          error.stackTrace != null
-            ? truncateStack(error.stackTrace.replace(NULL_BYTE_RE, ""))
-            : undefined,
+          error.stackTrace != null ? truncateStack(error.stackTrace.replace(/\0/g, "")) : undefined,
       };
     }
   }

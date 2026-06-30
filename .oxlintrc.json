@@ -13,6 +13,7 @@
   "rules": {
     "no-unused-vars": "off",
     "no-empty-pattern": "off",
+    "no-control-regex": "off",
     "no-unused-expressions": ["warn", { "allowShortCircuit": true, "allowTernary": true }],
     "typescript/consistent-type-imports": "off",
     "import/no-duplicates": "off",
