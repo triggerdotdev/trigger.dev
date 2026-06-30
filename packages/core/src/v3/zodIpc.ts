@@ -327,16 +327,14 @@ export class ZodIpcConnection<
 
       if (!schema) {
         clearTimeout(timeout);
-        reject(`Unknown message type: ${type as string}`);
-        return;
+        return reject(`Unknown message type: ${type as string}`);
       }
 
       const parsedPayload = schema.safeParse(payload);
 
       if (!parsedPayload.success) {
         clearTimeout(timeout);
-        reject(`Failed to parse message payload: ${JSON.stringify(parsedPayload.error)}`);
-        return;
+        return reject(`Failed to parse message payload: ${JSON.stringify(parsedPayload.error)}`);
       }
 
       this.#sendPacket({
