@@ -314,13 +314,8 @@ export function SideMenu({
       )}
     >
       <CollapseToggle isCollapsed={isCollapsed} onToggle={handleToggleCollapsed} />
-      <div className="absolute inset-0 grid grid-cols-[100%] grid-rows-[2.5rem_1fr_auto] overflow-hidden">
-        <div
-          className={cn(
-            "flex min-w-0 items-center overflow-hidden border-b px-1 py-1 transition duration-300",
-            showHeaderDivider || isCollapsed ? "border-grid-bright" : "border-transparent"
-          )}
-        >
+      <div className="absolute inset-0 grid grid-cols-[100%] grid-rows-[2.5rem_auto_1fr_auto] overflow-hidden">
+        <div className="flex min-w-0 items-center overflow-hidden border-b border-transparent px-1 py-1">
           <div className={cn("min-w-0", !isCollapsed && "flex-1")}>
             <OrgSelector
               organizations={organizations}
@@ -355,6 +350,63 @@ export function SideMenu({
         </div>
         <div
           className={cn(
+            "border-b px-1 pb-2 pt-2 transition duration-300",
+            showHeaderDivider || isCollapsed ? "border-grid-bright" : "border-transparent"
+          )}
+        >
+          <div className="w-full space-y-1">
+            <SideMenuHeader title={"Project"} isCollapsed={isCollapsed} collapsedTitle="Proj" />
+            <div>
+              <ProjectSelector
+                organization={organization}
+                project={project}
+                isCollapsed={isCollapsed}
+                className="w-full"
+              />
+              <div className="flex items-center">
+                <EnvironmentSelector
+                  organization={organization}
+                  project={project}
+                  environment={environment}
+                  className="w-full"
+                  isCollapsed={isCollapsed}
+                  showConnector
+                />
+                {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
+                  <CollapsibleElement isCollapsed={isCollapsed}>
+                    <Dialog>
+                      <TooltipProvider disableHoverableContent={true}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="inline-flex">
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="minimal/small"
+                                  className="aspect-square h-7 p-1"
+                                  LeadingIcon={<ConnectionIcon isConnected={isConnected} />}
+                                />
+                              </DialogTrigger>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className={"text-xs"}>
+                            {isConnected === undefined
+                              ? "Checking connection…"
+                              : isConnected
+                                ? "Your dev server is connected"
+                                : "Your dev server is not connected"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <DevPresencePanel isConnected={isConnected} />
+                    </Dialog>
+                  </CollapsibleElement>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
+          className={cn(
             "min-h-0 overflow-y-auto pt-2",
             isCollapsed
               ? "scrollbar-none"
@@ -363,57 +415,6 @@ export function SideMenu({
           ref={borderRef}
         >
           <div className="mb-6 flex w-full flex-col gap-4 overflow-hidden px-1">
-            <div className="w-full space-y-1">
-              <SideMenuHeader title={"Project"} isCollapsed={isCollapsed} collapsedTitle="Proj" />
-              <div>
-                <ProjectSelector
-                  organization={organization}
-                  project={project}
-                  isCollapsed={isCollapsed}
-                  className="w-full"
-                />
-                <div className="flex items-center">
-                  <EnvironmentSelector
-                    organization={organization}
-                    project={project}
-                    environment={environment}
-                    className="w-full"
-                    isCollapsed={isCollapsed}
-                    showConnector
-                  />
-                  {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
-                    <CollapsibleElement isCollapsed={isCollapsed}>
-                      <Dialog>
-                        <TooltipProvider disableHoverableContent={true}>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="inline-flex">
-                                <DialogTrigger asChild>
-                                  <Button
-                                    variant="minimal/small"
-                                    className="aspect-square h-7 p-1"
-                                    LeadingIcon={<ConnectionIcon isConnected={isConnected} />}
-                                  />
-                                </DialogTrigger>
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="right" className={"text-xs"}>
-                              {isConnected === undefined
-                                ? "Checking connection…"
-                                : isConnected
-                                  ? "Your dev server is connected"
-                                  : "Your dev server is not connected"}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                        <DevPresencePanel isConnected={isConnected} />
-                      </Dialog>
-                    </CollapsibleElement>
-                  )}
-                </div>
-              </div>
-            </div>
-
             <div className="w-full space-y-0">
               <SideMenuItem
                 name="Tasks"
