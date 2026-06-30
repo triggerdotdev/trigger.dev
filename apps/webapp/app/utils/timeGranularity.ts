@@ -1,13 +1,15 @@
 import { z } from "zod";
 import parseDuration from "parse-duration";
 
-const DurationString = z.string().refine(
-  (val) => {
-    const ms = parseDuration(val);
-    return ms !== null && ms > 0;
-  },
-  (val) => ({ message: `Invalid or non-positive duration string: "${val}"` })
-);
+const DurationString = z
+  .string()
+  .refine(
+    (val) => {
+      const ms = parseDuration(val);
+      return ms !== null && ms > 0;
+    },
+    { error: (issue) => `Invalid or non-positive duration string: "${issue.input}"` }
+  );
 
 const BracketSchema = z.object({
   max: z.union([z.literal("Infinity"), DurationString]),

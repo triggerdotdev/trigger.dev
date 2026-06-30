@@ -87,7 +87,7 @@ export const action = dashboardAction(
       return json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const payloadSchema = z.object({ flags: z.record(z.unknown()) });
+    const payloadSchema = z.object({ flags: z.record(z.string(), z.unknown()) });
     const parsed = payloadSchema.safeParse(body);
     if (!parsed.success) {
       return json({ error: "Invalid payload" }, { status: 400 });

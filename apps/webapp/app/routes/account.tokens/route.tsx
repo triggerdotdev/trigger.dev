@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { BookOpenIcon, ShieldCheckIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { ShieldExclamationIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
@@ -168,7 +168,7 @@ const CreateTokenSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("create"),
     tokenName: z
-      .string({ required_error: "You must enter a name" })
+      .string({ error: "You must enter a name" })
       .min(2, "Your name must be at least 2 characters long")
       .max(50),
     // Optional — when no RBAC plugin is installed the UI hides the

@@ -118,7 +118,7 @@ async function resolveLimitConfig(
     if (!parsedOverride.success) {
       logger.error("Error parsing rate limiter override", {
         override,
-        errors: parsedOverride.error.errors,
+        errors: parsedOverride.error.issues,
       });
 
       return defaultLimiter;
