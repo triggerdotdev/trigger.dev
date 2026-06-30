@@ -46,7 +46,7 @@ export const PromptResource = z.object({
   /** Default model identifier */
   model: z.string().optional(),
   /** Default model config (temperature, maxTokens, etc.) */
-  config: z.record(z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
   /** JSONSchema7 for template variables */
   variableSchema: z.unknown().optional(),
 });

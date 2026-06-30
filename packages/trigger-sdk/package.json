@@ -101,13 +101,13 @@
     "tshy": "^3.0.2",
     "tsx": "4.17.0",
     "typed-emitter": "^2.1.0",
-    "zod": "3.25.76"
+    "zod": "4.4.3"
   },
   "peerDependencies": {
     "@ai-sdk/otel": ">=1.0.0-0 <2",
     "ai": "^5.0.0 || ^6.0.0 || >=7.0.0-canary <8",
     "react": "^18.0 || ^19.0",
-    "zod": "^3.0.0 || ^4.0.0"
+    "zod": "^3.25.0 || ^4.0.0"
   },
   "peerDependenciesMeta": {
     "@ai-sdk/otel": {

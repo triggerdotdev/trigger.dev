@@ -1,5 +1,5 @@
 import { getFormProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { type ActionFunction, type LoaderFunctionArgs, json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -21,7 +21,7 @@ import {
   isAcceptInviteFormError,
 } from "~/models/member.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { requireUser, requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { invitesPath, rootPath } from "~/utils/pathBuilder";
 import { EnvelopeIcon } from "@heroicons/react/20/solid";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";

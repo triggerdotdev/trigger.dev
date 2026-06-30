@@ -59,7 +59,7 @@ const GraphileJobSchema = z.object({
   revision: z.number(),
   locked_at: z.coerce.date().nullable(),
   locked_by: z.string().nullable(),
-  flags: z.record(z.boolean()).nullable(),
+  flags: z.record(z.string(), z.boolean()).nullable(),
 });
 
 const AddJobResultsSchema = z.array(GraphileJobSchema);
@@ -531,7 +531,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
   async #rescheduleTask(payload: unknown, helpers: JobHelpers) {
     this.#logDebug("Rescheduling task", { payload, job: helpers.job });
 
-    await this.enqueue(helpers.job.task_identifier, payload, {
+    await this.enqueue(helpers.job.task_identifier, payload as Parameters<typeof this.enqueue>[1], {
       runAt: helpers.job.run_at,
       priority: helpers.job.priority,
       jobKey: helpers.job.key ?? undefined,
@@ -592,7 +592,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       throw new Error(`Unknown message type: ${String(typeName)}`);
     }
 
-    const payload = messageSchema.parse(rawPayload);
+    const payload = (messageSchema as z.ZodType).parse(rawPayload);
     const job = helpers.job;
 
     this.#logger.debug("Received worker task, calling handler", {
@@ -632,7 +632,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       },
       async (span) => {
         try {
-          await task.handler(payload, job, helpers);
+          await task.handler(payload as Parameters<typeof task.handler>[0], job, helpers);
         } catch (error) {
           if (error instanceof Error) {
             span.recordException(error);

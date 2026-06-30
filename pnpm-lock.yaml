@@ -47,6 +47,8 @@ overrides:
   brace-expansion@<1.1.13: 1.1.13
   brace-expansion@>=2 <2.0.3: 2.0.3
   brace-expansion@>=5 <5.0.6: 5.0.6
+  zod: 4.4.3
+  '@trigger.dev/platform>zod': 3.23.8
 
 patchedDependencies:
   '@changesets/assemble-release-plan@5.2.4':
@@ -248,8 +250,8 @@ importers:
         specifier: ^3.8.0
         version: 3.8.1
       zod:
-        specifier: 3.25.76
-        version: 3.25.76
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@internal/testcontainers':
         specifier: workspace:*
@@ -262,13 +264,13 @@ importers:
     dependencies:
       '@ai-sdk/anthropic':
         specifier: ^3.0.0
-        version: 3.0.84(zod@3.25.76)
+        version: 3.0.84(zod@4.4.3)
       '@ai-sdk/openai':
         specifier: ^3.0.0
-        version: 3.0.41(zod@3.25.76)
+        version: 3.0.41(zod@4.4.3)
       '@ai-sdk/react':
         specifier: ^3.0.0
-        version: 3.0.170(react@18.3.1)(zod@3.25.76)
+        version: 3.0.170(react@18.3.1)(zod@4.4.3)
       '@ariakit/react':
         specifier: ^0.4.6
         version: 0.4.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -334,7 +336,7 @@ importers:
         version: 1.19.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@conform-to/zod':
         specifier: ^1.2.2
-        version: 1.19.4(zod@3.25.76)
+        version: 1.19.4(zod@4.4.3)
       '@depot/cli':
         specifier: 0.0.1-cli.2.80.0
         version: 0.0.1-cli.2.80.0
@@ -616,7 +618,7 @@ importers:
         version: 1.1.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       ai:
         specifier: 6.0.116
-        version: 6.0.116(zod@3.25.76)
+        version: 6.0.116(zod@4.4.3)
       assert-never:
         specifier: ^1.2.1
         version: 1.2.1
@@ -829,7 +831,7 @@ importers:
         version: 0.3.1(@remix-run/react@2.17.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/server-runtime@2.17.4(typescript@5.5.4))(react@18.3.1)
       remix-utils:
         specifier: ^7.7.0
-        version: 7.7.0(@remix-run/node@2.17.4(typescript@5.5.4))(@remix-run/react@2.17.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/router@1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9))(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.3.1)(zod@3.25.76)
+        version: 7.7.0(@remix-run/node@2.17.4(typescript@5.5.4))(@remix-run/react@2.17.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/router@1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9))(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.3.1)(zod@4.4.3)
       seedrandom:
         specifier: ^3.0.5
         version: 3.0.5
@@ -897,14 +899,14 @@ importers:
         specifier: ^8.11.0
         version: 8.12.0(bufferutil@4.0.9)
       zod:
-        specifier: 3.25.76
-        version: 3.25.76
+        specifier: 4.4.3
+        version: 4.4.3
       zod-error:
         specifier: 1.5.0
         version: 1.5.0
       zod-validation-error:
-        specifier: ^1.5.0
-        version: 1.5.0(zod@3.25.76)
+        specifier: ^5.0.0
+        version: 5.0.0(zod@4.4.3)
     devDependencies:
       '@internal/clickhouse':
         specifier: workspace:*
@@ -1028,7 +1030,7 @@ importers:
         version: 0.15.18
       evalite:
         specifier: 1.0.0-beta.16
-        version: 1.0.0-beta.16(ai@6.0.116(zod@3.25.76))(better-sqlite3@11.10.0)(bufferutil@4.0.9)
+        version: 1.0.0-beta.16(ai@6.0.116(zod@4.4.3))(better-sqlite3@11.10.0)(bufferutil@4.0.9)
       npm-run-all:
         specifier: ^4.1.5
         version: 4.1.5
@@ -1104,8 +1106,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/core
       zod:
-        specifier: 3.25.76
-        version: 3.25.76
+        specifier: 4.4.3
+        version: 4.4.3
       zod-error:
         specifier: 1.5.0
         version: 1.5.0
@@ -1120,8 +1122,8 @@ importers:
   internal-packages/compute:
     dependencies:
       zod:
-        specifier: 3.25.76
-        version: 3.25.76
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       rimraf:
         specifier: 6.0.1
@@ -1131,7 +1133,7 @@ importers:
     dependencies:
       '@ai-sdk/anthropic':
         specifier: ^3.0.0
-        version: 3.0.84(zod@3.25.76)
+        version: 3.0.84(zod@4.4.3)
       '@internal/dashboard-agent-db':
         specifier: workspace:*
         version: link:../dashboard-agent-db
@@ -1140,10 +1142,10 @@ importers:
         version: link:../../packages/trigger-sdk
       ai:
         specifier: 6.0.116
-        version: 6.0.116(zod@3.25.76)
+        version: 6.0.116(zod@4.4.3)
       zod:
-        specifier: 3.25.76
-        version: 3.25.76
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@ai-sdk/provider':
         specifier: 3.0.8
@@ -1217,8 +1219,8 @@ importers:
         specifier: ^1.2.0
         version: 1.3.1
       zod:
-        specifier: 3.25.76
-        version: 3.25.76
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@types/nodemailer':
         specifier: ^8.0.0
@@ -1363,8 +1365,8 @@ importers:
         specifier: ^3.0.5
         version: 3.0.5
       zod:
-        specifier: 3.25.76
-        version: 3.25.76
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@internal/testcontainers':
         specifier: workspace:*
@@ -1422,8 +1424,8 @@ importers:
         specifier: 3.3.8
         version: 3.3.8
       zod:
-        specifier: 3.25.76
-        version: 3.25.76
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@internal/testcontainers':
         specifier: workspace:*
@@ -1531,8 +1533,8 @@ importers:
         specifier: 0.5.0-alpha.4
         version: 0.5.0-alpha.4(patch_hash=b5d41129ddbf7c4cbb0288244b2c8d041ee0803c5102c1181c180408d3b579f4)
       zod:
-        specifier: 3.25.76
-        version: 3.25.76
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       antlr4ts-cli:
         specifier: 0.5.0-alpha.4
@@ -1556,8 +1558,8 @@ importers:
         specifier: ^4.5.0
         version: 4.5.0
       zod:
-        specifier: 3.25.76
-        version: 3.25.76
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       '@types/lodash.omit':
         specifier: ^4.5.7
@@ -1619,7 +1621,7 @@ importers:
         version: 0.0.1-cli.2.80.0
       '@modelcontextprotocol/sdk':
         specifier: ^1.25.2
-        version: 1.25.2(hono@4.12.15)(supports-color@10.0.0)(zod@3.25.76)
+        version: 1.25.2(hono@4.12.15)(supports-color@10.0.0)(zod@4.4.3)
       '@opentelemetry/api':
         specifier: 1.9.1
         version: 1.9.1
@@ -1800,12 +1802,9 @@ importers:
       xdg-app-paths:
         specifier: ^8.3.0
         version: 8.3.0
-      zod:
-        specifier: 3.25.76
-        version: 3.25.76
       zod-validation-error:
-        specifier: ^1.5.0
-        version: 1.5.0(zod@3.25.76)
+        specifier: ^5.0.0
+        version: 5.0.0(zod@4.4.3)
     devDependencies:
       '@epic-web/test-server':
         specifier: ^0.1.0
@@ -1864,6 +1863,9 @@ importers:
       tsx:
         specifier: 4.17.0
         version: 4.17.0
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
 
   packages/core:
     dependencies:
@@ -1963,19 +1965,16 @@ importers:
       uncrypto:
         specifier: ^0.1.3
         version: 0.1.3
-      zod:
-        specifier: 3.25.76
-        version: 3.25.76
       zod-error:
         specifier: 1.5.0
         version: 1.5.0
       zod-validation-error:
-        specifier: ^1.5.0
-        version: 1.5.0(zod@3.25.76)
+        specifier: ^5.0.0
+        version: 5.0.0(zod@4.4.3)
     devDependencies:
       '@ai-sdk/provider-utils':
         specifier: ^1.0.22
-        version: 1.0.22(zod@3.25.76)
+        version: 1.0.22(zod@4.4.3)
       '@arethetypeswrong/cli':
         specifier: ^0.15.4
         version: 0.15.4
@@ -1996,10 +1995,10 @@ importers:
         version: 4.0.14
       ai:
         specifier: 6.0.116
-        version: 6.0.116(zod@3.25.76)
+        version: 6.0.116(zod@4.4.3)
       ai-v7:
         specifier: npm:ai@7.0.0-canary.159
-        version: ai@7.0.0-canary.159(zod@3.25.76)
+        version: ai@7.0.0-canary.159(zod@4.4.3)
       defu:
         specifier: ^6.1.5
         version: 6.1.7
@@ -2021,6 +2020,9 @@ importers:
       tsx:
         specifier: 4.17.0
         version: 4.17.0
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
 
   packages/plugins:
     dependencies:
@@ -2135,9 +2137,6 @@ importers:
       seedrandom:
         specifier: ^3.0.5
         version: 3.0.5
-      zod:
-        specifier: 3.25.76
-        version: 3.25.76
     devDependencies:
       '@internal/redis':
         specifier: workspace:*
@@ -2163,6 +2162,9 @@ importers:
       tsx:
         specifier: 4.17.0
         version: 4.17.0
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
 
   packages/rsc:
     dependencies:
@@ -2215,12 +2217,9 @@ importers:
       effect:
         specifier: ^3
         version: 3.17.1
-      zod:
-        specifier: 3.25.76
-        version: 3.25.76
       zod-to-json-schema:
-        specifier: ^3.24.0
-        version: 3.24.6(zod@3.25.76)
+        specifier: ^3.25.2
+        version: 3.25.2(zod@4.4.3)
     devDependencies:
       '@arethetypeswrong/cli':
         specifier: ^0.15.4
@@ -2249,12 +2248,15 @@ importers:
       yup:
         specifier: ^1.7.0
         version: 1.7.0
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
 
   packages/trigger-sdk:
     dependencies:
       '@ai-sdk/otel':
         specifier: '>=1.0.0-0 <2'
-        version: 1.0.0-beta.6(zod@3.25.76)
+        version: 1.0.0-beta.6(zod@4.4.3)
       '@opentelemetry/api':
         specifier: 1.9.1
         version: 1.9.1
@@ -2312,10 +2314,10 @@ importers:
         version: 8.5.4
       ai:
         specifier: 6.0.116
-        version: 6.0.116(zod@3.25.76)
+        version: 6.0.116(zod@4.4.3)
       ai-v7:
         specifier: npm:ai@7.0.0-canary.159
-        version: ai@7.0.0-canary.159(zod@3.25.76)
+        version: ai@7.0.0-canary.159(zod@4.4.3)
       encoding:
         specifier: ^0.1.13
         version: 0.1.13
@@ -2332,8 +2334,8 @@ importers:
         specifier: ^2.1.0
         version: 2.1.0
       zod:
-        specifier: 3.25.76
-        version: 3.25.76
+        specifier: 4.4.3
+        version: 4.4.3
 
 packages:
 
@@ -2341,31 +2343,31 @@ packages:
     resolution: {integrity: sha512-BIDaHmCHs6Sr5VUsEkTbbVlAN4GWjg97X9x/IfXyviLtzsXvffui9XIcZugkAi1Ri6FnvI5T5qDGh5YLnSuzRg==}
     engines: {node: '>=18'}
     peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
+      zod: 4.4.3
 
   '@ai-sdk/gateway@3.0.66':
     resolution: {integrity: sha512-SIQ0YY0iMuv+07HLsZ+bB990zUJ6S4ujORAh+Jv1V2KGNn73qQKnGO0JBk+w+Res8YqOFSycwDoWcFlQrVxS4A==}
     engines: {node: '>=18'}
     peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
+      zod: 4.4.3
 
   '@ai-sdk/gateway@4.0.0-beta.30':
     resolution: {integrity: sha512-05tWxCb+3SRj5LBY37nRQ8eUdolO5QvKAfsIAUY3zAxg0jc1cBkQNSpZEVwQUR4uFm/Y5fLJ+MIa+6hkol1//A==}
     engines: {node: '>=18'}
     peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
+      zod: 4.4.3
 
   '@ai-sdk/gateway@4.0.0-canary.93':
     resolution: {integrity: sha512-/d0d/DfJRmdMJJww/ihrYezgKedJhrOCsREuAuSHmd/kVzFB5p2bBuCZH3EBxKFQ8NLtPJpOR+QJxOUmDLD8PA==}
     engines: {node: '>=22'}
     peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
+      zod: 4.4.3
 
   '@ai-sdk/openai@3.0.41':
     resolution: {integrity: sha512-IZ42A+FO+vuEQCVNqlnAPYQnnUpUfdJIwn1BEDOBywiEHa23fw7PahxVtlX9zm3/zMvTW4JKPzWyvAgDu+SQ2A==}
     engines: {node: '>=18'}
     peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
+      zod: 4.4.3
 
   '@ai-sdk/otel@1.0.0-beta.6':
     resolution: {integrity: sha512-K5VikyO3EKQkNk77ew9oMjM8FInKF+WWar599LmP8rQ0x0iB+P/DVS+h6zQvmecxMNPtQOOyt0uDQFx/AA0DGw==}
@@ -2375,7 +2377,7 @@ packages:
     resolution: {integrity: sha512-YHK2rpj++wnLVc9vPGzGFP3Pjeld2MwhKinetA0zKXOoHAT/Jit5O8kZsxcSlJPu9wvcGT1UGZEjZrtO7PfFOQ==}
     engines: {node: '>=18'}
     peerDependencies:
-      zod: ^3.0.0
+      zod: 4.4.3
     peerDependenciesMeta:
       zod:
         optional: true
@@ -2384,19 +2386,19 @@ packages:
     resolution: {integrity: sha512-uhukHaCBvqkwBHkT8C2PrnqKTCoLn3pdHXqtcR9I8ErH+flbzgW4o7VHSNIup9LRu+WBvZIZDQLsx6rwl2tiOA==}
     engines: {node: '>=18'}
     peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
+      zod: 4.4.3
 
   '@ai-sdk/provider-utils@5.0.0-beta.9':
     resolution: {integrity: sha512-Ku/S1TV8ibqlweKQHa22eWT9QvKqR4hkl7KMJ0k7kw64Q7XObh12fJUnK4Mh8q+IR5ZeQGm95SLtx++d7FC6XA==}
     engines: {node: '>=18'}
     peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
+      zod: 4.4.3
 
   '@ai-sdk/provider-utils@5.0.0-canary.44':
     resolution: {integrity: sha512-3h7gp8MEwXACWsW8ZPjzio53ynKq0jTNp4Hwr0BWdychMFzmkRRWyvijhg56JWxye16FU92SqQnfBoe2PN4I2A==}
     engines: {node: '>=22'}
     peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
+      zod: 4.4.3
 
   '@ai-sdk/provider@0.0.26':
     resolution: {integrity: sha512-dQkfBDs2lTYpKM8389oopPdQgIU007GQyCbuPPrV+K6MtSII3HBfE0stUIMXUb44L+LK1t6GXPP7wjSzjO6uKg==}
@@ -3440,7 +3442,7 @@ packages:
   '@conform-to/zod@1.19.4':
     resolution: {integrity: sha512-g80QtotXLcXWCF86Xou/VpI6i+NBOQxYgLS9YCQYrgV27yilZFJYpgWWBsA8YwodmJVBIYm9RawJba7WnUoddA==}
     peerDependencies:
-      zod: ^3.21.0 || ^4.0.0
+      zod: 4.4.3
 
   '@connectrpc/connect-node@1.4.0':
     resolution: {integrity: sha512-0ANnrr6SvsjevsWEgdzHy7BaHkluZyS6s4xNoVt7RBHFR5V/kT9lPokoIbYUOU9JHzdRgTaS3x5595mwUsu15g==}
@@ -5208,7 +5210,7 @@ packages:
     engines: {node: '>=18'}
     peerDependencies:
       '@cfworker/json-schema': ^4.1.1
-      zod: ^3.25 || ^4.0
+      zod: 4.4.3
     peerDependenciesMeta:
       '@cfworker/json-schema':
         optional: true
@@ -5218,7 +5220,7 @@ packages:
     engines: {node: '>=18'}
     peerDependencies:
       '@cfworker/json-schema': ^4.1.1
-      zod: ^3.25 || ^4.0
+      zod: 4.4.3
     peerDependenciesMeta:
       '@cfworker/json-schema':
         optional: true
@@ -9369,19 +9371,19 @@ packages:
     resolution: {integrity: sha512-7yM+cTmyRLeNIXwt4Vj+mrrJgVQ9RMIW5WO0ydoLoYkewIvsMcvUmqS4j2RJTUXaF1HphwmSKUMQ/HypNRGOmA==}
     engines: {node: '>=18'}
     peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
+      zod: 4.4.3
 
   ai@7.0.0-beta.60:
     resolution: {integrity: sha512-grSKE/9kQtElLCnrhwriTLwXlV+5W8Ljco2KzVc5cY9egK1zwSwVyFQo3L3Al+WVxwvVT6fQjLyEdQpqJHLTrA==}
     engines: {node: '>=18'}
     peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
+      zod: 4.4.3
 
   ai@7.0.0-canary.159:
     resolution: {integrity: sha512-9z8OkZdrISDjS3bguQ/mCYsthmr7mNbB1hTa8cRg8aAp31r1HCxVFqmc+ZXTA0FqhGb8aW46UUcjUuJcwxg5Mw==}
     engines: {node: '>=22'}
     peerDependencies:
-      zod: ^3.25.76 || ^4.1.8
+      zod: 4.4.3
 
   ajv-formats@2.1.1:
     resolution: {integrity: sha512-Wx0Kx52hxE7C18hkMEggYlEifqWZtYaRgouJor+WMdPnQyEK13vgEWyVNup7SoeeoLMsr4kf5h6dOW11I15MUA==}
@@ -13876,7 +13878,7 @@ packages:
     hasBin: true
     peerDependencies:
       ws: ^8.18.0
-      zod: ^3.23.8
+      zod: 4.4.3
     peerDependenciesMeta:
       ws:
         optional: true
@@ -15140,7 +15142,7 @@ packages:
       intl-parse-accept-language: ^1.0.0
       is-ip: ^5.0.1
       react: 18.3.1
-      zod: ^3.22.4
+      zod: 4.4.3
     peerDependenciesMeta:
       '@remix-run/cloudflare':
         optional: true
@@ -17118,111 +17120,106 @@ packages:
   zod-to-json-schema@3.24.5:
     resolution: {integrity: sha512-/AuWwMP+YqiPbsJx5D6TfgRTc4kTLjsh5SOcd4bLsfUg2RcEXrFMJl1DGgdHy2aCfsIA/cr/1JM0xcB2GZji8g==}
     peerDependencies:
-      zod: ^3.24.1
-
-  zod-to-json-schema@3.24.6:
-    resolution: {integrity: sha512-h/z3PKvcTcTetyjl1fkj79MHNEjm+HpD6NXheWjzOekY7kV+lwDYnHw+ivHkijnCSMz1yJaWBD9vu/Fcmk+vEg==}
-    peerDependencies:
-      zod: ^3.24.1
+      zod: 4.4.3
 
   zod-to-json-schema@3.25.0:
     resolution: {integrity: sha512-HvWtU2UG41LALjajJrML6uQejQhNJx+JBO9IflpSja4R03iNWfKXrj6W2h7ljuLyc1nKS+9yDyL/9tD1U/yBnQ==}
     peerDependencies:
-      zod: ^3.25 || ^4
+      zod: 4.4.3
 
-  zod-to-json-schema@3.25.1:
-    resolution: {integrity: sha512-pM/SU9d3YAggzi6MtR4h7ruuQlqKtad8e9S0fmxcMi+ueAK5Korys/aWcV9LIIHTVbj01NdzxcnXSN+O74ZIVA==}
+  zod-to-json-schema@3.25.2:
+    resolution: {integrity: sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==}
     peerDependencies:
-      zod: ^3.25 || ^4
+      zod: 4.4.3
 
-  zod-validation-error@1.5.0:
-    resolution: {integrity: sha512-/7eFkAI4qV0tcxMBB/3+d2c1P6jzzZYdYSlBuAklzMuCrJu5bzJfHS0yVAS87dRHVlhftd6RFJDIvv03JgkSbw==}
-    engines: {node: '>=16.0.0'}
+  zod-validation-error@5.0.0:
+    resolution: {integrity: sha512-hmk+pkyKq7Q71PiWVSDUc3VfpzpvcRHZ3QPw9yEMVvmtCekaMeOHnbr3WbxfrgEnQTv6haGP4cmv0Ojmihzsxw==}
+    engines: {node: '>=18.0.0'}
     peerDependencies:
-      zod: ^3.18.0
+      zod: 4.4.3
 
   zod@3.23.8:
     resolution: {integrity: sha512-XBx9AXhXktjUqnepgTiE5flcKIYWi/rme0Eaj+5Y0lftuGBq+jyRu/md4WnuxqgP1ubdpNCsYEYPxrzVHD8d6g==}
 
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+  zod@4.4.3:
+    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
 
-  '@ai-sdk/anthropic@3.0.84(zod@3.25.76)':
+  '@ai-sdk/anthropic@3.0.84(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 3.0.10
-      '@ai-sdk/provider-utils': 4.0.29(zod@3.25.76)
-      zod: 3.25.76
+      '@ai-sdk/provider-utils': 4.0.29(zod@4.4.3)
+      zod: 4.4.3
 
-  '@ai-sdk/gateway@3.0.66(zod@3.25.76)':
+  '@ai-sdk/gateway@3.0.66(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
-      '@ai-sdk/provider-utils': 4.0.29(zod@3.25.76)
+      '@ai-sdk/provider-utils': 4.0.29(zod@4.4.3)
       '@vercel/oidc': 3.1.0
-      zod: 3.25.76
+      zod: 4.4.3
 
-  '@ai-sdk/gateway@4.0.0-beta.30(zod@3.25.76)':
+  '@ai-sdk/gateway@4.0.0-beta.30(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 4.0.0-beta.5
-      '@ai-sdk/provider-utils': 5.0.0-beta.9(zod@3.25.76)
+      '@ai-sdk/provider-utils': 5.0.0-beta.9(zod@4.4.3)
       '@vercel/oidc': 3.2.0
-      zod: 3.25.76
+      zod: 4.4.3
 
-  '@ai-sdk/gateway@4.0.0-canary.93(zod@3.25.76)':
+  '@ai-sdk/gateway@4.0.0-canary.93(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 4.0.0-canary.17
-      '@ai-sdk/provider-utils': 5.0.0-canary.44(zod@3.25.76)
+      '@ai-sdk/provider-utils': 5.0.0-canary.44(zod@4.4.3)
       '@vercel/oidc': 3.2.0
-      zod: 3.25.76
+      zod: 4.4.3
 
-  '@ai-sdk/openai@3.0.41(zod@3.25.76)':
+  '@ai-sdk/openai@3.0.41(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
-      '@ai-sdk/provider-utils': 4.0.29(zod@3.25.76)
-      zod: 3.25.76
+      '@ai-sdk/provider-utils': 4.0.29(zod@4.4.3)
+      zod: 4.4.3
 
-  '@ai-sdk/otel@1.0.0-beta.6(zod@3.25.76)':
+  '@ai-sdk/otel@1.0.0-beta.6(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 4.0.0-beta.5
       '@opentelemetry/api': 1.9.0
-      ai: 7.0.0-beta.60(zod@3.25.76)
+      ai: 7.0.0-beta.60(zod@4.4.3)
     transitivePeerDependencies:
       - zod
 
-  '@ai-sdk/provider-utils@1.0.22(zod@3.25.76)':
+  '@ai-sdk/provider-utils@1.0.22(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 0.0.26
       eventsource-parser: 1.1.2
       nanoid: 3.3.8
       secure-json-parse: 2.7.0
     optionalDependencies:
-      zod: 3.25.76
+      zod: 4.4.3
 
-  '@ai-sdk/provider-utils@4.0.29(zod@3.25.76)':
+  '@ai-sdk/provider-utils@4.0.29(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 3.0.10
       '@standard-schema/spec': 1.1.0
       eventsource-parser: 3.1.0
-      zod: 3.25.76
+      zod: 4.4.3
 
-  '@ai-sdk/provider-utils@5.0.0-beta.9(zod@3.25.76)':
+  '@ai-sdk/provider-utils@5.0.0-beta.9(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 4.0.0-beta.5
       '@standard-schema/spec': 1.1.0
       eventsource-parser: 3.1.0
-      zod: 3.25.76
+      zod: 4.4.3
 
-  '@ai-sdk/provider-utils@5.0.0-canary.44(zod@3.25.76)':
+  '@ai-sdk/provider-utils@5.0.0-canary.44(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 4.0.0-canary.17
       '@standard-schema/spec': 1.1.0
       '@workflow/serde': 4.1.0
       eventsource-parser: 3.1.0
-      zod: 3.25.76
+      zod: 4.4.3
 
   '@ai-sdk/provider@0.0.26':
     dependencies:
@@ -17244,10 +17241,10 @@ snapshots:
     dependencies:
       json-schema: 0.4.0
 
-  '@ai-sdk/react@3.0.170(react@18.3.1)(zod@3.25.76)':
+  '@ai-sdk/react@3.0.170(react@18.3.1)(zod@4.4.3)':
     dependencies:
-      '@ai-sdk/provider-utils': 4.0.29(zod@3.25.76)
-      ai: 6.0.116(zod@3.25.76)
+      '@ai-sdk/provider-utils': 4.0.29(zod@4.4.3)
+      ai: 6.0.116(zod@4.4.3)
       react: 18.3.1
       swr: 2.2.5(react@18.3.1)
       throttleit: 2.1.0
@@ -19780,10 +19777,10 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  '@conform-to/zod@1.19.4(zod@3.25.76)':
+  '@conform-to/zod@1.19.4(zod@4.4.3)':
     dependencies:
       '@conform-to/dom': 1.19.4
-      zod: 3.25.76
+      zod: 4.4.3
 
   '@connectrpc/connect-node@1.4.0(@bufbuild/protobuf@1.10.0)(@connectrpc/connect@1.4.0(@bufbuild/protobuf@1.10.0))':
     dependencies:
@@ -21048,7 +21045,7 @@ snapshots:
 
   '@microsoft/fetch-event-source@2.0.1': {}
 
-  '@modelcontextprotocol/sdk@1.25.2(hono@4.12.15)(supports-color@10.0.0)(zod@3.25.76)':
+  '@modelcontextprotocol/sdk@1.25.2(hono@4.12.15)(supports-color@10.0.0)(zod@4.4.3)':
     dependencies:
       '@hono/node-server': 1.19.9(hono@4.12.15)
       ajv: 8.18.0
@@ -21064,13 +21061,13 @@ snapshots:
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.0
       raw-body: 3.0.0
-      zod: 3.25.76
-      zod-to-json-schema: 3.25.0(zod@3.25.76)
+      zod: 4.4.3
+      zod-to-json-schema: 3.25.0(zod@4.4.3)
     transitivePeerDependencies:
       - hono
       - supports-color
 
-  '@modelcontextprotocol/sdk@1.26.0(zod@3.25.76)':
+  '@modelcontextprotocol/sdk@1.26.0(zod@4.4.3)':
     dependencies:
       '@hono/node-server': 1.19.9(hono@4.11.8)
       ajv: 8.18.0
@@ -21087,8 +21084,8 @@ snapshots:
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.0
       raw-body: 3.0.0
-      zod: 3.25.76
-      zod-to-json-schema: 3.25.1(zod@3.25.76)
+      zod: 4.4.3
+      zod-to-json-schema: 3.25.2(zod@4.4.3)
     transitivePeerDependencies:
       - supports-color
 
@@ -25433,7 +25430,7 @@ snapshots:
     dependencies:
       '@graphql-typed-document-node/core': 3.2.0(graphql@16.6.0)
       graphql: 16.6.0
-      zod: 3.25.76
+      zod: 4.4.3
 
   '@testcontainers/postgresql@11.14.0':
     dependencies:
@@ -26022,7 +26019,7 @@ snapshots:
 
   '@unkey/error@0.2.0':
     dependencies:
-      zod: 3.25.76
+      zod: 4.4.3
 
   '@upsetjs/venn.js@2.0.0':
     optionalDependencies:
@@ -26094,8 +26091,8 @@ snapshots:
 
   '@vercel/sdk@1.19.1':
     dependencies:
-      '@modelcontextprotocol/sdk': 1.26.0(zod@3.25.76)
-      zod: 3.25.76
+      '@modelcontextprotocol/sdk': 1.26.0(zod@4.4.3)
+      zod: 4.4.3
     transitivePeerDependencies:
       - '@cfworker/json-schema'
       - supports-color
@@ -26355,27 +26352,27 @@ snapshots:
 
   ahocorasick@1.0.2: {}
 
-  ai@6.0.116(zod@3.25.76):
+  ai@6.0.116(zod@4.4.3):
     dependencies:
-      '@ai-sdk/gateway': 3.0.66(zod@3.25.76)
+      '@ai-sdk/gateway': 3.0.66(zod@4.4.3)
       '@ai-sdk/provider': 3.0.8
-      '@ai-sdk/provider-utils': 4.0.29(zod@3.25.76)
+      '@ai-sdk/provider-utils': 4.0.29(zod@4.4.3)
       '@opentelemetry/api': 1.9.0
-      zod: 3.25.76
+      zod: 4.4.3
 
-  ai@7.0.0-beta.60(zod@3.25.76):
+  ai@7.0.0-beta.60(zod@4.4.3):
     dependencies:
-      '@ai-sdk/gateway': 4.0.0-beta.30(zod@3.25.76)
+      '@ai-sdk/gateway': 4.0.0-beta.30(zod@4.4.3)
       '@ai-sdk/provider': 4.0.0-beta.5
-      '@ai-sdk/provider-utils': 5.0.0-beta.9(zod@3.25.76)
-      zod: 3.25.76
+      '@ai-sdk/provider-utils': 5.0.0-beta.9(zod@4.4.3)
+      zod: 4.4.3
 
-  ai@7.0.0-canary.159(zod@3.25.76):
+  ai@7.0.0-canary.159(zod@4.4.3):
     dependencies:
-      '@ai-sdk/gateway': 4.0.0-canary.93(zod@3.25.76)
+      '@ai-sdk/gateway': 4.0.0-canary.93(zod@4.4.3)
       '@ai-sdk/provider': 4.0.0-canary.17
-      '@ai-sdk/provider-utils': 5.0.0-canary.44(zod@3.25.76)
-      zod: 3.25.76
+      '@ai-sdk/provider-utils': 5.0.0-canary.44(zod@4.4.3)
+      zod: 4.4.3
 
   ajv-formats@2.1.1(ajv@8.20.0):
     optionalDependencies:
@@ -26563,9 +26560,9 @@ snapshots:
       js-yaml: 4.1.1
       linear-sum-assignment: 1.0.7
       mustache: 4.2.0
-      openai: 4.97.0(encoding@0.1.13)(ws@8.12.0(bufferutil@4.0.9))(zod@3.25.76)
-      zod: 3.25.76
-      zod-to-json-schema: 3.24.5(zod@3.25.76)
+      openai: 4.97.0(encoding@0.1.13)(ws@8.12.0(bufferutil@4.0.9))(zod@4.4.3)
+      zod: 4.4.3
+      zod-to-json-schema: 3.24.5(zod@4.4.3)
     transitivePeerDependencies:
       - encoding
       - ws
@@ -28630,7 +28627,7 @@ snapshots:
     dependencies:
       require-like: 0.1.2
 
-  evalite@1.0.0-beta.16(ai@6.0.116(zod@3.25.76))(better-sqlite3@11.10.0)(bufferutil@4.0.9):
+  evalite@1.0.0-beta.16(ai@6.0.116(zod@4.4.3))(better-sqlite3@11.10.0)(bufferutil@4.0.9):
     dependencies:
       '@fastify/static': 8.2.0
       '@fastify/websocket': 11.2.0(bufferutil@4.0.9)
@@ -28647,7 +28644,7 @@ snapshots:
       table: 6.9.0
       tinyrainbow: 3.1.0
     optionalDependencies:
-      ai: 6.0.116(zod@3.25.76)
+      ai: 6.0.116(zod@4.4.3)
       better-sqlite3: 11.10.0
     transitivePeerDependencies:
       - bufferutil
@@ -31702,7 +31699,7 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  openai@4.97.0(encoding@0.1.13)(ws@8.12.0(bufferutil@4.0.9))(zod@3.25.76):
+  openai@4.97.0(encoding@0.1.13)(ws@8.12.0(bufferutil@4.0.9))(zod@4.4.3):
     dependencies:
       '@types/node': 20.14.14
       '@types/node-fetch': 2.6.12
@@ -31713,7 +31710,7 @@ snapshots:
       node-fetch: 2.6.12(encoding@0.1.13)
     optionalDependencies:
       ws: 8.12.0(bufferutil@4.0.9)
-      zod: 3.25.76
+      zod: 4.4.3
     transitivePeerDependencies:
       - encoding
 
@@ -33179,7 +33176,7 @@ snapshots:
       '@remix-run/server-runtime': 2.17.4(typescript@5.5.4)
       react: 18.3.1
 
-  remix-utils@7.7.0(@remix-run/node@2.17.4(typescript@5.5.4))(@remix-run/react@2.17.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/router@1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9))(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.3.1)(zod@3.25.76):
+  remix-utils@7.7.0(@remix-run/node@2.17.4(typescript@5.5.4))(@remix-run/react@2.17.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.5.4))(@remix-run/router@1.23.2(patch_hash=f14fb2af2690628a0164b66d98e8d7cd6a0e8a4a30a51e53cfb1b6caeca6f7c9))(crypto-js@4.2.0)(intl-parse-accept-language@1.0.0)(react@18.3.1)(zod@4.4.3):
     dependencies:
       type-fest: 4.33.0
     optionalDependencies:
@@ -33189,7 +33186,7 @@ snapshots:
       crypto-js: 4.2.0
       intl-parse-accept-language: 1.0.0
       react: 18.3.1
-      zod: 3.25.76
+      zod: 4.4.3
 
   remove-accents@0.5.0: {}
 
@@ -35493,30 +35490,26 @@ snapshots:
 
   zod-error@1.5.0:
     dependencies:
-      zod: 3.25.76
+      zod: 4.4.3
 
-  zod-to-json-schema@3.24.5(zod@3.25.76):
+  zod-to-json-schema@3.24.5(zod@4.4.3):
     dependencies:
-      zod: 3.25.76
+      zod: 4.4.3
 
-  zod-to-json-schema@3.24.6(zod@3.25.76):
+  zod-to-json-schema@3.25.0(zod@4.4.3):
     dependencies:
-      zod: 3.25.76
+      zod: 4.4.3
 
-  zod-to-json-schema@3.25.0(zod@3.25.76):
+  zod-to-json-schema@3.25.2(zod@4.4.3):
     dependencies:
-      zod: 3.25.76
+      zod: 4.4.3
 
-  zod-to-json-schema@3.25.1(zod@3.25.76):
+  zod-validation-error@5.0.0(zod@4.4.3):
     dependencies:
-      zod: 3.25.76
-
-  zod-validation-error@1.5.0(zod@3.25.76):
-    dependencies:
-      zod: 3.25.76
+      zod: 4.4.3
 
   zod@3.23.8: {}
 
-  zod@3.25.76: {}
+  zod@4.4.3: {}
 
   zwitch@2.0.4: {}

@@ -85,7 +85,8 @@ class ZodIpcMessageHandler<
       return;
     }
 
-    const ack = await handler(parsedMessage.payload, this.#sender);
+    // parsedMessage.payload is parsed output at runtime; zod v4 distinguishes input/output
+    const ack = await handler(parsedMessage.payload as Parameters<typeof handler>[0], this.#sender);
 
     return ack;
   }
@@ -321,7 +322,7 @@ export class ZodIpcConnection<
         );
       }, timeoutInMs ?? defaultTimeoutInMs);
 
-      this.#acks.set(currentId, { resolve, reject, timeout });
+      this.#acks.set(currentId, { resolve: resolve as (value: unknown) => void, reject, timeout });
 
       const schema = this.opts.emitSchema[type]?.["message"];
 

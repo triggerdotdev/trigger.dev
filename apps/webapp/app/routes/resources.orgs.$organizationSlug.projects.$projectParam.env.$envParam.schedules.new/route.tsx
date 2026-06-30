@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import {
   type FetcherWithComponents,
@@ -201,7 +201,7 @@ export function UpsertScheduleForm({
     if (!result.success) {
       cronPatternResult = {
         isValid: false,
-        error: result.error.errors[0].message,
+        error: result.error.issues[0].message,
       };
     } else {
       try {

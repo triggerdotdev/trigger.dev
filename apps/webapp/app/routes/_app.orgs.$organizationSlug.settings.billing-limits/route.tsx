@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import type { MetaFunction } from "@remix-run/react";
 import { json, redirect } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";

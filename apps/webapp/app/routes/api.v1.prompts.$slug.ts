@@ -95,7 +95,7 @@ export const loader = createLoaderApiRoute(
 // POST /api/v1/prompts/:slug — Resolve prompt with variables
 
 const ResolveBody = z.object({
-  variables: z.record(z.unknown()).default({}),
+  variables: z.record(z.string(), z.unknown()).default({}),
   label: z.string().optional(),
   version: z.number().optional(),
 });

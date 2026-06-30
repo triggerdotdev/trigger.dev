@@ -45,7 +45,7 @@ export const DashboardLayout = z.discriminatedUnion("version", [
   z.object({
     version: z.literal("1"),
     layout: z.array(LayoutItem),
-    widgets: z.record(Widget),
+    widgets: z.record(z.string(), Widget),
   }),
 ]);
 

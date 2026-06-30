@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { EnvelopeIcon, NoSymbolIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import {
@@ -983,7 +983,7 @@ export function PurchaseSeatsModal({
                   Total extra seats
                 </Label>
                 <InputNumberStepper
-                  {...getInputProps(amount, { type: "number" })}
+                  {...getInputProps(amount, { type: "number", value: false })}
                   step={seatPricing.stepSize}
                   min={0}
                   max={undefined}

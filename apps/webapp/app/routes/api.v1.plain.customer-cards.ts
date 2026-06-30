@@ -106,7 +106,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (!parsed.success) {
     logger.warn("Invalid Plain customer card request", {
-      errors: parsed.error.errors,
+      errors: parsed.error.issues,
     });
     return json({ error: "Invalid request body" }, { status: 400 });
   }

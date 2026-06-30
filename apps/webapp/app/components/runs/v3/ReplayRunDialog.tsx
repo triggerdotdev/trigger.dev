@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData, useNavigation, useParams, useSubmit } from "@remix-run/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

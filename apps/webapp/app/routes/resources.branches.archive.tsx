@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData, useFetcher, useLocation } from "@remix-run/react";
 import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
@@ -100,10 +100,13 @@ export function ArchiveButton({
             {...getFormProps(form)}
             className="w-full"
           >
-            <input value={environment.id} {...getInputProps(environmentId, { type: "hidden" })} />
+            <input
+              value={environment.id}
+              {...getInputProps(environmentId, { type: "hidden", value: false })}
+            />
             <input
               value={`${location.pathname}${location.search}`}
-              {...getInputProps(redirectPath, { type: "hidden" })}
+              {...getInputProps(redirectPath, { type: "hidden", value: false })}
             />
             <Paragraph spacing>
               This will <span className="text-text-bright">permanently</span> make this branch{" "}
@@ -116,7 +119,7 @@ export function ArchiveButton({
             <Paragraph spacing>
               Once archived you can create a new branch with the same name.
             </Paragraph>
-            <FormError>{form.errors}</FormError>
+            <FormError>{form.errors?.join(", ")}</FormError>
             <FormButtons
               confirmButton={
                 <Button LeadingIcon={ArchiveIcon} type="submit" variant="danger/medium">

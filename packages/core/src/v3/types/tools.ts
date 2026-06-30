@@ -14,7 +14,7 @@ export type inferToolParameters<PARAMETERS extends ToolTaskParameters> =
 export function convertToolParametersToSchema<TToolParameters extends ToolTaskParameters>(
   toolParameters: TToolParameters
 ): Schema {
-  return toolParameters instanceof z.ZodSchema
+  return toolParameters instanceof z.ZodType
     ? toolParameters
     : convertAISchemaToTaskSchema(toolParameters);
 }

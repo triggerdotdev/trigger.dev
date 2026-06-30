@@ -279,7 +279,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
     );
     const result = await executeTSQL(queryClickhouse.reader, {
       ...baseOptions,
-      schema: z.record(z.any()),
+      schema: z.record(z.string(), z.any()),
       tableSchema: querySchemas,
       transformValues: true,
       enforcedWhereClause,
@@ -366,7 +366,7 @@ export async function executeQuery<TOut extends z.ZodSchema>(
 
     return {
       success: true,
-      result: result[1],
+      result: result[1] as Exclude<TSQLQueryResult<z.output<TOut>>[1], null>,
       queryId,
       periodClipped: periodClipped ? maxQueryPeriod : null,
       maxQueryPeriod,

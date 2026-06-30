@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { ActionFunction, json } from "@remix-run/node";
 import { assertExhaustive } from "@trigger.dev/core/utils";
 import { z } from "zod";

@@ -693,7 +693,7 @@ export async function validateJWTTokenAndRenew<T extends z.ZodTypeAny>(
       return;
     }
 
-    const renewedJwt = await renewJWTToken(payload.data);
+    const renewedJwt = await renewJWTToken(payload.data as Record<string, string>);
 
     return {
       payload: payload.data,
@@ -732,7 +732,7 @@ export async function validateJWTTokenAndRenew<T extends z.ZodTypeAny>(
       }
 
       const renewedJwt = await generateJWTTokenForEnvironment(authenticatedEnv.environment, {
-        ...payload.data,
+        ...(payload.data as Record<string, string>),
       });
 
       logger.debug("Renewed JWT token from Authorization header API Key", {

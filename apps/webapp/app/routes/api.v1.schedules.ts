@@ -102,6 +102,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     environmentId: authenticationResult.environment.id,
     page: params.data.page ?? 1,
     pageSize: params.data.perPage,
+    tasks: undefined,
   });
 
   return {

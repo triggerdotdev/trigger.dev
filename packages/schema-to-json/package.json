@@ -42,9 +42,8 @@
   },
   "dependencies": {
     "@trigger.dev/core": "workspace:*",
-    "zod-to-json-schema": "^3.24.0",
+    "zod-to-json-schema": "^3.25.2",
     "@sodaru/yup-to-json-schema": "^2",
-    "zod": "3.25.76",
     "effect": "^3"
   },
   "devDependencies": {
@@ -56,14 +55,16 @@
     "valibot": "^1.1.0",
     "yup": "^1.7.0",
     "rimraf": "6.0.1",
-    "@arethetypeswrong/cli": "^0.15.4"
+    "@arethetypeswrong/cli": "^0.15.4",
+    "zod": "4.4.3"
   },
   "peerDependencies": {
     "arktype": ">=2.0.0",
     "runtypes": ">=5.0.0",
     "superstruct": ">=0.14.2",
     "@sinclair/typebox": ">=0.34.30",
-    "valibot": ">=0.41.0"
+    "valibot": ">=0.41.0",
+    "zod": "^3.25.0 || ^4.0.0"
   },
   "peerDependenciesMeta": {
     "arktype": {

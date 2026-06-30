@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { conformZodMessage, parseWithZod } from "@conform-to/zod";
+import { conformZodMessage, parseWithZod } from "@conform-to/zod/v4";
 import { Form, type MetaFunction, useActionData } from "@remix-run/react";
 import { type ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
@@ -44,7 +44,7 @@ function createSchema(
 ) {
   return z.object({
     name: z
-      .string({ required_error: "You must enter a name" })
+      .string({ error: "You must enter a name" })
       .min(2, "Your name must be at least 2 characters long")
       .max(50),
     email: z

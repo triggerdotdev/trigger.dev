@@ -1,5 +1,5 @@
 import { env } from "~/env.server";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { Form, useLocation, useNavigation, useSubmit } from "@remix-run/react";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { stringifyIO, timeoutError, WaitpointTokenStatus } from "@trigger.dev/core/v3";

@@ -160,7 +160,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   if (!parsed.success) {
     return typedjson(
       {
-        error: parsed.error.errors.map((e) => e.message).join(", "),
+        error: parsed.error.issues.map((e) => e.message).join(", "),
         rows: null,
         columns: null,
         stats: null,

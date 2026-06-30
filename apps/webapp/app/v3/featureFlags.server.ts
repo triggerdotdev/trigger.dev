@@ -34,7 +34,7 @@ export function makeFlag(_prisma: PrismaClientOrTransaction = prisma) {
       const parsed = flagSchema.safeParse(opts.overrides[opts.key]);
 
       if (parsed.success) {
-        return parsed.data;
+        return parsed.data as z.infer<(typeof FeatureFlagCatalog)[T]>;
       }
     }
 
@@ -42,7 +42,7 @@ export function makeFlag(_prisma: PrismaClientOrTransaction = prisma) {
       const parsed = flagSchema.safeParse(value.value);
 
       if (parsed.success) {
-        return parsed.data;
+        return parsed.data as z.infer<(typeof FeatureFlagCatalog)[T]>;
       }
     }
 

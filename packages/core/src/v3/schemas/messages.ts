@@ -207,10 +207,10 @@ export const WorkerToExecutorMessageCatalog = {
     message: z.object({
       version: z.literal("v1").default("v1"),
       execution: TaskRunExecution,
-      traceContext: z.record(z.unknown()),
+      traceContext: z.record(z.string(), z.unknown()),
       metadata: ServerBackgroundWorker,
       metrics: TaskRunExecutionMetrics.optional(),
-      env: z.record(z.string()).optional(),
+      env: z.record(z.string(), z.string()).optional(),
       isWarmStart: z.boolean().optional(),
     }),
   },

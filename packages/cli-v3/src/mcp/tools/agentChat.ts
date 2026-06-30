@@ -70,7 +70,7 @@ const StartAgentChatInput = CommonProjectsInput.extend({
     .describe("A unique conversation ID. Reuse to resume a conversation.")
     .optional(),
   clientData: z
-    .record(z.unknown())
+    .record(z.string(), z.unknown())
     .describe("Client data to include with every message (e.g. userId, model).")
     .optional(),
   preload: z

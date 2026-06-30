@@ -52,7 +52,7 @@ class RedisZodSubscriber<
     eventName: K,
     listener: (payload: z.infer<TMessageCatalog[K]>) => Promise<void>
   ): void {
-    this._listeners.set(eventName as string, listener);
+    this._listeners.set(eventName as string, listener as Parameters<typeof this._listeners.set>[1]);
   }
 
   public async stopListening(): Promise<void> {
