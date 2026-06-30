@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm, type SubmissionResult } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { PlusIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useSearchParams } from "@remix-run/react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";

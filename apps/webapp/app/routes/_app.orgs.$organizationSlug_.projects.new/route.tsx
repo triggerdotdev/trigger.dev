@@ -404,12 +404,12 @@ export default function Page() {
                 </InputGroup>
                 {canCreateV3Projects ? (
                   <input
-                    {...getInputProps(projectVersion, { type: "hidden" })}
+                    {...getInputProps(projectVersion, { type: "hidden", value: false })}
                     defaultValue={"v3"}
                   />
                 ) : (
                   <input
-                    {...getInputProps(projectVersion, { type: "hidden" })}
+                    {...getInputProps(projectVersion, { type: "hidden", value: false })}
                     defaultValue={"v2"}
                   />
                 )}
