@@ -2366,6 +2366,13 @@ export class ClickHousePrinter {
       return `(${virtualExpression})`;
     }
 
+    // JSON-path access on a String-backed JSON column compiles to a JSON_VALUE bridge over the
+    // raw String column instead of native JSON sub-column access.
+    const rawColumnAccess = this.getRawColumnAccessForField(node.chain);
+    if (rawColumnAccess !== null) {
+      return rawColumnAccess;
+    }
+
     // Inject dataPrefix for JSON columns if needed (e.g., output.message -> output.data.message)
     const chainWithPrefix = this.injectDataPrefix(node.chain);
 
@@ -2605,6 +2612,69 @@ export class ClickHousePrinter {
     }
 
     return parts.join("_");
+  }
+
+  /**
+   * If a field chain is JSON-path access on a column backed by a `rawColumn` (a String holding
+   * serialized JSON), build the `JSON_VALUE` bridge expression. Returns null otherwise.
+   *
+   * e.g. `output.foo` -> `JSON_VALUE(output_raw, '$.foo')`
+   *      `r.output.a.b` -> `JSON_VALUE(r.output_raw, '$.a.b')`
+   *
+   * The path is inlined as an escaped string literal (rather than a query parameter) so that
+   * the same access produces byte-identical SQL in SELECT and GROUP BY, which ClickHouse
+   * requires for the expressions to match.
+   */
+  private getRawColumnAccessForField(chain: Array<string | number>): string | null {
+    if (chain.length < 2) return null;
+
+    const firstPart = chain[0];
+    if (typeof firstPart !== "string") return null;
+
+    let columnSchema: ColumnSchema | null;
+    let rawColumnExpr: string;
+    let pathParts: Array<string | number>;
+
+    const tableSchema = this.tableContexts.get(firstPart);
+    if (tableSchema) {
+      // Qualified: table.column.subfield... (needs at least 3 parts to be path access)
+      if (chain.length < 3) return null;
+      const columnName = chain[1];
+      if (typeof columnName !== "string") return null;
+      columnSchema = tableSchema.columns[columnName] ?? null;
+      if (!columnSchema?.rawColumn) return null;
+      rawColumnExpr = `${this.printIdentifier(firstPart)}.${this.printIdentifier(
+        columnSchema.rawColumn
+      )}`;
+      pathParts = chain.slice(2);
+    } else {
+      // Unqualified: column.subfield...
+      columnSchema = this.resolveFieldToColumnSchema([firstPart]);
+      if (!columnSchema?.rawColumn) return null;
+      rawColumnExpr = this.printIdentifier(columnSchema.rawColumn);
+      pathParts = chain.slice(1);
+    }
+
+    if (pathParts.length === 0) return null;
+
+    const jsonPath = this.buildJsonPath(pathParts);
+    return `JSON_VALUE(${rawColumnExpr}, ${escapeClickHouseString(jsonPath)})`;
+  }
+
+  /**
+   * Build a ClickHouse JSON path (e.g. `$.a.b[0]`) from a field chain's path parts.
+   * String parts become `.key`; numeric parts become `[index]`.
+   */
+  private buildJsonPath(parts: Array<string | number>): string {
+    let path = "$";
+    for (const part of parts) {
+      if (typeof part === "number") {
+        path += `[${part}]`;
+      } else {
+        path += `.${part}`;
+      }
+    }
+    return path;
   }
 
   /**

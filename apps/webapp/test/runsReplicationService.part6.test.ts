@@ -473,8 +473,9 @@ describe("RunsReplicationService (part 6/7)", () => {
       expect(parseClickhouseTimestamp(clickhouseRun.queued_at)).toBe(queuedAt.getTime());
       expect(parseClickhouseTimestamp(clickhouseRun.expired_at)).toBeNull();
 
-      // Output (parsed JSON)
-      expect(clickhouseRun.output).toEqual({ data: { result: "test-output" } });
+      // Output is stored as serialized JSON text in output_raw; the native JSON column is empty
+      expect(clickhouseRun.output).toEqual({});
+      expect(clickhouseRun.output_raw).toEqual(JSON.stringify({ result: "test-output" }));
 
       // Error
       expect(clickhouseRun.error).toEqual({

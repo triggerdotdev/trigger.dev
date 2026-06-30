@@ -28,6 +28,7 @@ export const TaskRunV2 = z.object({
   cost_in_cents: z.number().default(0),
   base_cost_in_cents: z.number().default(0),
   output: z.unknown(),
+  output_raw: z.string().default(""),
   error: z.unknown(),
   error_fingerprint: z.string().default(""),
   tags: z.array(z.string()).default([]),
@@ -117,6 +118,7 @@ export const TASK_RUN_COLUMNS = [
   "root_trigger_source",
   "task_kind",
   "is_warm_start",
+  "output_raw",
 ] as const;
 
 export type TaskRunColumnName = (typeof TASK_RUN_COLUMNS)[number];
@@ -186,6 +188,7 @@ export type TaskRunFieldTypes = {
   root_trigger_source: string;
   task_kind: string;
   is_warm_start: boolean | null;
+  output_raw: string;
 };
 
 /**
@@ -326,6 +329,7 @@ export type TaskRunInsertArray = [
   root_trigger_source: string,
   task_kind: string,
   is_warm_start: boolean | null,
+  output_raw: string,
 ];
 
 /**

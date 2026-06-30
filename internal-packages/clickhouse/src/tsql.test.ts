@@ -1608,4 +1608,137 @@ describe("Field Mapping Tests", () => {
     expect(result?.rows).toHaveLength(2);
     expect(result?.rows?.map((r) => r.run_id).sort()).toEqual(["run_fm_in1", "run_fm_in2"]);
   });
+
+  describe("output stored as serialized text (rawColumn bridge)", () => {
+    // `output` is a JSON column physically stored as serialized JSON text in the String
+    // column output_raw. Path access bridges to JSON_VALUE; bare access reads the String.
+    const outputSchema: TableSchema = {
+      ...taskRunsSchema,
+      columns: {
+        ...taskRunsSchema.columns,
+        output: {
+          name: "output",
+          ...column("JSON"),
+          nullValue: "''",
+          textColumn: "output_raw",
+          rawColumn: "output_raw",
+        },
+      },
+    };
+
+    const tenant = {
+      organization_id: { op: "eq", value: "org_tenant1" },
+      project_id: { op: "eq", value: "proj_tenant1" },
+      environment_id: { op: "eq", value: "env_tenant1" },
+    } as const;
+
+    clickhouseTest(
+      "filters and selects JSON paths via JSON_VALUE over output_raw",
+      async ({ clickhouseContainer }) => {
+        const client = new ClickhouseClient({
+          name: "test",
+          url: clickhouseContainer.getConnectionUrl(),
+        });
+
+        const insert = insertTaskRuns(client, { async_insert: 0 });
+        const [insertError] = await insert([
+          createTaskRun({ run_id: "run_o1", output_raw: JSON.stringify({ foo: "bar", n: 42 }) }),
+          createTaskRun({ run_id: "run_o2", output_raw: JSON.stringify({ foo: "baz" }) }),
+          createTaskRun({ run_id: "run_o3", output_raw: "" }),
+        ]);
+        expect(insertError).toBeNull();
+
+        // Path access in SELECT + WHERE both compile to JSON_VALUE(output_raw, '$.foo')
+        const [error, result] = await executeTSQL(client, {
+          name: "test-output-path",
+          query: "SELECT run_id, output.foo AS foo FROM task_runs WHERE output.foo = 'bar'",
+          schema: z.object({ run_id: z.string(), foo: z.string() }),
+          enforcedWhereClause: tenant,
+          tableSchema: [outputSchema],
+        });
+
+        expect(error).toBeNull();
+        expect(result?.rows).toEqual([{ run_id: "run_o1", foo: "bar" }]);
+
+        // A nested scalar path works too, returning the value as a string
+        const [nError, nResult] = await executeTSQL(client, {
+          name: "test-output-path-number",
+          query: "SELECT output.n AS n FROM task_runs WHERE run_id = 'run_o1'",
+          schema: z.object({ n: z.string() }),
+          enforcedWhereClause: tenant,
+          tableSchema: [outputSchema],
+        });
+        expect(nError).toBeNull();
+        expect(nResult?.rows).toEqual([{ n: "42" }]);
+      }
+    );
+
+    clickhouseTest("reads the bare value from output_raw", async ({ clickhouseContainer }) => {
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRuns(client, { async_insert: 0 });
+      const [insertError] = await insert([
+        createTaskRun({ run_id: "run_b1", output_raw: JSON.stringify({ foo: "baz" }) }),
+        createTaskRun({ run_id: "run_b2", output_raw: "" }),
+      ]);
+      expect(insertError).toBeNull();
+
+      // Bare selection reads the raw String column directly
+      const [error, result] = await executeTSQL(client, {
+        name: "test-output-bare",
+        query: "SELECT run_id, output FROM task_runs WHERE run_id = 'run_b1'",
+        schema: z.object({ run_id: z.string(), output: z.string() }),
+        enforcedWhereClause: tenant,
+        tableSchema: [outputSchema],
+      });
+      expect(error).toBeNull();
+      expect(result?.rows).toEqual([{ run_id: "run_b1", output: JSON.stringify({ foo: "baz" }) }]);
+
+      // An empty output_raw is treated as "no output" by IS NULL
+      const [nullError, nullResult] = await executeTSQL(client, {
+        name: "test-output-is-null",
+        query: "SELECT run_id FROM task_runs WHERE output IS NULL",
+        schema: z.object({ run_id: z.string() }),
+        enforcedWhereClause: tenant,
+        tableSchema: [outputSchema],
+      });
+      expect(nullError).toBeNull();
+      expect(nullResult?.rows).toEqual([{ run_id: "run_b2" }]);
+    });
+
+    clickhouseTest(
+      "full-text search matches against output_raw",
+      async ({ clickhouseContainer }) => {
+        const client = new ClickhouseClient({
+          name: "test",
+          url: clickhouseContainer.getConnectionUrl(),
+        });
+
+        const insert = insertTaskRuns(client, { async_insert: 0 });
+        const [insertError] = await insert([
+          createTaskRun({
+            run_id: "run_s1",
+            output_raw: JSON.stringify({ message: "boom happened here" }),
+          }),
+          createTaskRun({ run_id: "run_s2", output_raw: JSON.stringify({ message: "all good" }) }),
+          createTaskRun({ run_id: "run_s3", output_raw: "" }),
+        ]);
+        expect(insertError).toBeNull();
+
+        // Bare LIKE compiles to like(output_raw, ...) and matches the serialized text
+        const [error, result] = await executeTSQL(client, {
+          name: "test-output-like",
+          query: "SELECT run_id FROM task_runs WHERE output LIKE '%boom%'",
+          schema: z.object({ run_id: z.string() }),
+          enforcedWhereClause: tenant,
+          tableSchema: [outputSchema],
+        });
+        expect(error).toBeNull();
+        expect(result?.rows).toEqual([{ run_id: "run_s1" }]);
+      }
+    );
+  });
 });

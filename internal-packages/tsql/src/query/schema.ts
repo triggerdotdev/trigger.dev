@@ -254,6 +254,28 @@ export interface ColumnSchema {
    * ```
    */
   dataPrefix?: string;
+  /**
+   * String column holding the serialized JSON text for this column.
+   *
+   * When set, JSON-path access (e.g. `output.foo`) compiles to a `JSON_VALUE` call over this
+   * String column instead of native JSON sub-column access. This lets a column keep its JSON
+   * query surface while being physically stored as a `String`, which sidesteps the native JSON
+   * type's binary type-complexity ceiling. The path surface (`output.foo`) is unchanged for
+   * callers — only the generated SQL differs.
+   *
+   * `JSON_VALUE` returns scalar leaves as strings (and an empty string for missing keys or
+   * object/array subtrees), matching how scalar path access is used in filters and display.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   name: "output",
+   *   type: "JSON",
+   *   rawColumn: "output_raw",  // output.foo → JSON_VALUE(output_raw, '$.foo')
+   * }
+   * ```
+   */
+  rawColumn?: string;
 }
 
 /**

@@ -90,6 +90,7 @@ describe("Task Runs V2", () => {
       "", // root_trigger_source
       "", // task_kind
       null, // is_warm_start
+      "", // output_raw
     ];
 
     const [insertError, insertResult] = await insert([taskRunData]);
@@ -224,6 +225,7 @@ describe("Task Runs V2", () => {
       "", // root_trigger_source
       "", // task_kind
       null, // is_warm_start
+      "", // output_raw
     ];
 
     const run2: TaskRunInsertArray = [
@@ -281,6 +283,7 @@ describe("Task Runs V2", () => {
       "", // root_trigger_source
       "", // task_kind
       null, // is_warm_start
+      "", // output_raw
     ];
 
     const [insertError, insertResult] = await insert([run1, run2]);
@@ -385,6 +388,7 @@ describe("Task Runs V2", () => {
         "", // root_trigger_source
         "", // task_kind
         null, // is_warm_start
+        "", // output_raw
       ];
 
       const [insertError, insertResult] = await insert([taskRun]);
@@ -497,6 +501,7 @@ describe("Task Runs V2", () => {
         "", // root_trigger_source
         "", // task_kind
         null, // is_warm_start
+        "", // output_raw
       ];
 
       const childA_v1: TaskRunInsertArray = [
@@ -554,6 +559,7 @@ describe("Task Runs V2", () => {
         "",
         "",
         null,
+        "", // output_raw
       ];
 
       const childA_v2: TaskRunInsertArray = [...childA_v1];
@@ -615,6 +621,7 @@ describe("Task Runs V2", () => {
         "",
         "",
         null,
+        "", // output_raw
       ];
 
       const childDeleted_v1: TaskRunInsertArray = [
@@ -672,6 +679,7 @@ describe("Task Runs V2", () => {
         "",
         "",
         null,
+        "", // output_raw
       ];
 
       const childDeleted_v2: TaskRunInsertArray = [...childDeleted_v1];

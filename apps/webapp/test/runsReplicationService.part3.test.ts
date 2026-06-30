@@ -168,13 +168,17 @@ describe("RunsReplicationService (part 3/7)", () => {
             status: "COMPLETED_SUCCESSFULLY",
           })
         );
-        expect(found?.output).toBeDefined();
+        // Output is stored as serialized text in output_raw; the native JSON column stays empty
+        expect(found?.output).toStrictEqual({});
+        expect(found?.output_raw).toBe(`{"foo":"bar"}`);
       }
 
-      // Check the run with the bad JSON
+      // The run with the bad JSON lands with its output blanked (output_raw empty) rather than
+      // being dropped, so its terminal status is still recorded.
       const foundBad = result?.find((r: any) => r.span_id === "bulk-10");
       expect(foundBad).toBeDefined();
       expect(foundBad?.output).toStrictEqual({});
+      expect(foundBad?.output_raw).toBe("");
 
       await runsReplicationService.stop();
     }

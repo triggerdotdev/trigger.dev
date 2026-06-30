@@ -941,6 +941,103 @@ describe("ClickHousePrinter", () => {
     });
   });
 
+  describe("rawColumn bridge for String-backed JSON columns", () => {
+    // A JSON column stored as serialized text in a String column (output_raw). Path access
+    // compiles to JSON_VALUE over the String column; bare access/search use it as a text column.
+    const rawColumnSchema: TableSchema = {
+      name: "runs",
+      clickhouseName: "trigger_dev.task_runs_v2",
+      columns: {
+        id: { name: "id", ...column("String") },
+        output: {
+          name: "output",
+          ...column("JSON"),
+          nullValue: "''",
+          textColumn: "output_raw",
+          rawColumn: "output_raw",
+        },
+        status: { name: "status", ...column("String") },
+        organization_id: { name: "organization_id", ...column("String") },
+        project_id: { name: "project_id", ...column("String") },
+        environment_id: { name: "environment_id", ...column("String") },
+      },
+      tenantColumns: {
+        organizationId: "organization_id",
+        projectId: "project_id",
+        environmentId: "environment_id",
+      },
+    };
+
+    function createRawColumnContext() {
+      const schema = createSchemaRegistry([rawColumnSchema]);
+      return createPrinterContext({
+        schema,
+        enforcedWhereClause: {
+          organization_id: { op: "eq", value: "org_test" },
+          project_id: { op: "eq", value: "proj_test" },
+          environment_id: { op: "eq", value: "env_test" },
+        },
+      });
+    }
+
+    it("uses the raw String column for bare selection", () => {
+      const ctx = createRawColumnContext();
+      const { sql } = printQuery("SELECT output FROM runs", ctx);
+
+      expect(sql).toContain("output_raw AS output");
+      expect(sql).not.toContain("JSON_VALUE");
+    });
+
+    it("compiles single-level path access to JSON_VALUE", () => {
+      const ctx = createRawColumnContext();
+      const { sql } = printQuery("SELECT output.name FROM runs", ctx);
+
+      expect(sql).toContain("JSON_VALUE(output_raw, '$.name') AS output_name");
+      expect(sql).not.toContain(".:String");
+    });
+
+    it("compiles nested path access to JSON_VALUE", () => {
+      const ctx = createRawColumnContext();
+      const { sql } = printQuery("SELECT output.data.name FROM runs", ctx);
+
+      expect(sql).toContain("JSON_VALUE(output_raw, '$.data.name') AS output_data_name");
+    });
+
+    it("compiles path access in WHERE to JSON_VALUE", () => {
+      const ctx = createRawColumnContext();
+      const { sql } = printQuery("SELECT id FROM runs WHERE output.name = 'test'", ctx);
+
+      expect(sql).toContain("equals(JSON_VALUE(output_raw, '$.name'),");
+    });
+
+    it("uses the raw String column for bare LIKE search", () => {
+      const ctx = createRawColumnContext();
+      const { sql } = printQuery("SELECT id FROM runs WHERE output LIKE '%boom%'", ctx);
+
+      expect(sql).toContain("like(output_raw,");
+      expect(sql).not.toContain("JSON_VALUE");
+    });
+
+    it("uses the empty-string nullValue for IS NULL on the raw String column", () => {
+      const ctx = createRawColumnContext();
+      const { sql } = printQuery("SELECT id FROM runs WHERE output IS NULL", ctx);
+
+      expect(sql).toContain("equals(output_raw, '')");
+    });
+
+    it("produces matching JSON_VALUE in SELECT and GROUP BY", () => {
+      const ctx = createRawColumnContext();
+      const { sql } = printQuery(
+        "SELECT output.status, count() AS c FROM runs GROUP BY output.status",
+        ctx
+      );
+
+      expect(sql).toContain("JSON_VALUE(output_raw, '$.status') AS output_status");
+      expect(sql).toContain("GROUP BY JSON_VALUE(output_raw, '$.status')");
+      expect(sql).not.toContain(".:String");
+    });
+  });
+
   describe("dataPrefix for JSON columns", () => {
     // Create a schema with JSON columns that have dataPrefix set
     const dataPrefixSchema: TableSchema = {

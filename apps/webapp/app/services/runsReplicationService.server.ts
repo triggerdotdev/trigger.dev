@@ -1061,6 +1061,11 @@ export class RunsReplicationService {
     _version: bigint
   ): Promise<TaskRunInsertArray> {
     const output = await this.#prepareJson(run.output, run.outputType);
+    // The serialized output is written to the String `output_raw` column rather than the
+    // native JSON `output` column. A String has constant binary type complexity, so deeply
+    // nested payloads can no longer breach the type-complexity ceiling and silently drop the
+    // terminal row on insert. The JSON `output` column is left empty to keep its type trivial.
+    const outputRaw = serializeJsonRaw(output.data);
     const errorData = { data: run.error };
 
     // Calculate error fingerprint for failed runs
@@ -1100,7 +1105,7 @@ export class RunsReplicationService {
       run.usageDurationMs ?? 0, // usage_duration_ms
       run.costInCents ?? 0, // cost_in_cents
       run.baseCostInCents ?? 0, // base_cost_in_cents
-      output, // output
+      { data: undefined }, // output (left empty; serialized value lives in output_raw)
       errorData, // error
       errorFingerprint, // error_fingerprint
       run.runTags ?? [], // tags
@@ -1130,6 +1135,7 @@ export class RunsReplicationService {
       annotations?.rootTriggerSource ?? "", // root_trigger_source
       annotations?.taskKind ?? "", // task_kind
       run.isWarmStart ?? null, // is_warm_start
+      outputRaw, // output_raw
     ];
   }
 
@@ -1368,4 +1374,20 @@ export class ConcurrentFlushScheduler<T> {
 function lsnToUInt64(lsn: string): bigint {
   const [seg, off] = lsn.split("/");
   return (BigInt("0x" + seg) << 32n) | BigInt("0x" + off);
+}
+
+/**
+ * Serialize an already-parsed JSON value to the text stored in a `*_raw` String column.
+ * Returns an empty string when there is no value, which the query layer treats as "no data".
+ */
+function serializeJsonRaw(data: unknown): string {
+  if (data === undefined) {
+    return "";
+  }
+
+  try {
+    return JSON.stringify(data) ?? "";
+  } catch {
+    return "";
+  }
 }

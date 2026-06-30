@@ -353,9 +353,11 @@ export const runsSchema: TableSchema = {
         description: "The data you returned from the task.",
         example: '{"result": "success"}',
       }),
-      nullValue: "'{}'", // Transform NULL checks to compare against empty object
-      textColumn: "output_text", // Use output_text for full JSON value queries
-      dataPrefix: "data", // Internal data is wrapped in {"data": ...}
+      // Stored as serialized JSON text in output_raw (a String) rather than the native JSON
+      // column, so reads/writes can't hit the JSON binary type-complexity ceiling.
+      nullValue: "''", // Empty raw string means "no output"
+      textColumn: "output_raw", // Full-value reads/search use the raw String column
+      rawColumn: "output_raw", // Path access (output.foo) compiles to JSON_VALUE(output_raw, '$.foo')
     },
     error: {
       name: "error",
