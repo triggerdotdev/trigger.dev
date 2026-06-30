@@ -2269,7 +2269,13 @@ export class ClickHousePrinter {
   }
 
   private visitBetweenExpr(node: BetweenExpr): string {
-    const expr = this.visit(node.expr);
+    // Mirror visitCompareOperation's type-directed extraction: a BETWEEN on a rawColumn JSON path
+    // with numeric (or boolean) bounds extracts the path as that type so the range check is
+    // numeric rather than a lexical string comparison.
+    const exprChain = this.rawColumnPathChain(node.expr);
+    const kind = this.rawColumnComparisonKind(node.low) ?? this.rawColumnComparisonKind(node.high);
+    const expr =
+      exprChain && kind ? this.getRawColumnAccessForField(exprChain, kind)! : this.visit(node.expr);
     const low = this.visit(node.low);
     const high = this.visit(node.high);
     const notKw = node.negated ? " NOT" : "";

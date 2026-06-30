@@ -1756,6 +1756,17 @@ describe("Field Mapping Tests", () => {
         expect(numGtError).toBeNull();
         expect(numGtResult?.rows).toEqual([{ run_id: "run_t1" }]);
 
+        // WHERE numeric range on a path: BETWEEN is also numeric, so only 9 falls in [5, 20]
+        const [betweenError, betweenResult] = await executeTSQL(client, {
+          name: "path-where-num-between",
+          query: "SELECT run_id FROM task_runs WHERE output.num BETWEEN 5 AND 20",
+          schema: z.object({ run_id: z.string() }),
+          enforcedWhereClause: tenant,
+          tableSchema: [outputSchema],
+        });
+        expect(betweenError).toBeNull();
+        expect(betweenResult?.rows).toEqual([{ run_id: "run_t2" }]);
+
         // WHERE on a boolean path with a boolean literal
         const [boolError, boolResult] = await executeTSQL(client, {
           name: "path-where-bool",

@@ -1084,6 +1084,13 @@ describe("ClickHousePrinter", () => {
       expect(sql).toContain("like(if(JSONType(output_raw, 'num') = 'String'");
       expect(sql).not.toContain("JSONExtractFloat");
     });
+
+    it("compiles a numeric BETWEEN on a path to a typed Float extractor", () => {
+      const ctx = createRawColumnContext();
+      const { sql } = printQuery("SELECT id FROM runs WHERE output.num BETWEEN 10 AND 20", ctx);
+
+      expect(sql).toContain("JSONExtractFloat(output_raw, 'num') BETWEEN 10 AND 20");
+    });
   });
 
   describe("dataPrefix for JSON columns", () => {
