@@ -1689,6 +1689,86 @@ describe("Field Mapping Tests", () => {
       }
     );
 
+    clickhouseTest(
+      "exercises path access across scalar types in SELECT and WHERE",
+      async ({ clickhouseContainer }) => {
+        const client = new ClickhouseClient({
+          name: "test",
+          url: clickhouseContainer.getConnectionUrl(),
+        });
+
+        const insert = insertTaskRuns(client, { async_insert: 0 });
+        const [insertError] = await insert([
+          createTaskRun({
+            run_id: "run_t1",
+            output_raw: JSON.stringify({ str: "hello", num: 42, flag: true }),
+          }),
+          createTaskRun({
+            run_id: "run_t2",
+            output_raw: JSON.stringify({ str: "world", num: 9, flag: false }),
+          }),
+        ]);
+        expect(insertError).toBeNull();
+
+        // SELECT a string, a number and a boolean path from the same row (all returned as text)
+        const [selError, selResult] = await executeTSQL(client, {
+          name: "path-types-select",
+          query:
+            "SELECT output.str AS s, output.num AS n, output.flag AS f FROM task_runs WHERE run_id = 'run_t1'",
+          schema: z.object({ s: z.string(), n: z.string(), f: z.string() }),
+          enforcedWhereClause: tenant,
+          tableSchema: [outputSchema],
+        });
+        expect(selError).toBeNull();
+        expect(selResult?.rows).toEqual([{ s: "hello", n: "42", f: "true" }]);
+
+        // WHERE on a string path
+        const [strError, strResult] = await executeTSQL(client, {
+          name: "path-where-string",
+          query: "SELECT run_id FROM task_runs WHERE output.str = 'hello'",
+          schema: z.object({ run_id: z.string() }),
+          enforcedWhereClause: tenant,
+          tableSchema: [outputSchema],
+        });
+        expect(strError).toBeNull();
+        expect(strResult?.rows).toEqual([{ run_id: "run_t1" }]);
+
+        // WHERE equality on a numeric path with a numeric literal (numeric comparison)
+        const [numEqError, numEqResult] = await executeTSQL(client, {
+          name: "path-where-num-eq",
+          query: "SELECT run_id FROM task_runs WHERE output.num = 42",
+          schema: z.object({ run_id: z.string() }),
+          enforcedWhereClause: tenant,
+          tableSchema: [outputSchema],
+        });
+        expect(numEqError).toBeNull();
+        expect(numEqResult?.rows).toEqual([{ run_id: "run_t1" }]);
+
+        // WHERE ordering on a numeric path: comparison is numeric, not lexical, so 9 must NOT
+        // match `> 40` even though the text '9' sorts after '40'.
+        const [numGtError, numGtResult] = await executeTSQL(client, {
+          name: "path-where-num-gt",
+          query: "SELECT run_id FROM task_runs WHERE output.num > 40 ORDER BY run_id",
+          schema: z.object({ run_id: z.string() }),
+          enforcedWhereClause: tenant,
+          tableSchema: [outputSchema],
+        });
+        expect(numGtError).toBeNull();
+        expect(numGtResult?.rows).toEqual([{ run_id: "run_t1" }]);
+
+        // WHERE on a boolean path with a boolean literal
+        const [boolError, boolResult] = await executeTSQL(client, {
+          name: "path-where-bool",
+          query: "SELECT run_id FROM task_runs WHERE output.flag = false",
+          schema: z.object({ run_id: z.string() }),
+          enforcedWhereClause: tenant,
+          tableSchema: [outputSchema],
+        });
+        expect(boolError).toBeNull();
+        expect(boolResult?.rows).toEqual([{ run_id: "run_t2" }]);
+      }
+    );
+
     clickhouseTest("reads the bare value from output_raw", async ({ clickhouseContainer }) => {
       const client = new ClickhouseClient({
         name: "test",

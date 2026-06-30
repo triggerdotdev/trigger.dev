@@ -1047,6 +1047,43 @@ describe("ClickHousePrinter", () => {
       expect(sql).toContain(`GROUP BY ${statusBridge}`);
       expect(sql).not.toContain(".:String");
     });
+
+    it("compiles a numeric-literal comparison to a typed Float extractor", () => {
+      const ctx = createRawColumnContext();
+      const { sql } = printQuery("SELECT id FROM runs WHERE output.num = 42", ctx);
+
+      expect(sql).toContain("equals(JSONExtractFloat(output_raw, 'num'), 42)");
+    });
+
+    it("compiles numeric-literal ordering to a typed Float extractor (numeric, not lexical)", () => {
+      const ctx = createRawColumnContext();
+      const { sql } = printQuery("SELECT id FROM runs WHERE output.num > 40", ctx);
+
+      expect(sql).toContain("greater(JSONExtractFloat(output_raw, 'num'), 40)");
+    });
+
+    it("compiles a boolean-literal comparison to a typed Bool extractor", () => {
+      const ctx = createRawColumnContext();
+      const { sql } = printQuery("SELECT id FROM runs WHERE output.flag = true", ctx);
+
+      expect(sql).toContain("equals(JSONExtractBool(output_raw, 'flag'), 1)");
+    });
+
+    it("keeps the string bridge for string-literal comparisons", () => {
+      const ctx = createRawColumnContext();
+      const { sql } = printQuery("SELECT id FROM runs WHERE output.name = 'test'", ctx);
+
+      expect(sql).toContain(`equals(${nameBridge},`);
+      expect(sql).not.toContain("JSONExtractFloat");
+    });
+
+    it("keeps the string bridge for LIKE even against a numeric-looking path", () => {
+      const ctx = createRawColumnContext();
+      const { sql } = printQuery("SELECT id FROM runs WHERE output.num LIKE '%4%'", ctx);
+
+      expect(sql).toContain("like(if(JSONType(output_raw, 'num') = 'String'");
+      expect(sql).not.toContain("JSONExtractFloat");
+    });
   });
 
   describe("dataPrefix for JSON columns", () => {

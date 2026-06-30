@@ -1984,9 +1984,37 @@ export class ClickHousePrinter {
     const useTextColumn = textColumnOps.includes(node.op);
     const leftTextColumn = useTextColumn ? this.getTextColumnForExpression(node.left) : null;
 
+    // Type-directed extraction: when a rawColumn JSON path is compared against a numeric or
+    // boolean literal, extract the path as that type so the comparison is numeric/boolean (correct
+    // equality and ordering) rather than a string comparison. LIKE-family operators are excluded
+    // (string matching only). String literals keep the default string bridge.
+    const likeOps = [
+      CompareOperationOp.Like,
+      CompareOperationOp.ILike,
+      CompareOperationOp.NotLike,
+      CompareOperationOp.NotILike,
+    ];
+    let typedLeft: string | null = null;
+    let typedRight: string | null = null;
+    if (!likeOps.includes(node.op)) {
+      const leftChain = this.rawColumnPathChain(node.left);
+      const rightKind = this.rawColumnComparisonKind(transformedRight);
+      if (leftChain && rightKind) {
+        typedLeft = this.getRawColumnAccessForField(leftChain, rightKind);
+      } else {
+        const rightChain = this.rawColumnPathChain(transformedRight);
+        const leftKind = this.rawColumnComparisonKind(node.left);
+        if (rightChain && leftKind) {
+          typedRight = this.getRawColumnAccessForField(rightChain, leftKind);
+        }
+      }
+    }
+
     // Build the left side, qualifying the text column with table alias if present
     let left: string;
-    if (leftTextColumn) {
+    if (typedLeft) {
+      left = typedLeft;
+    } else if (leftTextColumn) {
       // Check if the field is qualified with a table alias (e.g., r.output)
       // and prepend that alias to the text column to avoid ambiguity in JOINs
       const fieldNode = node.left as Field;
@@ -2004,7 +2032,7 @@ export class ClickHousePrinter {
     } else {
       left = this.visit(node.left);
     }
-    const right = this.visit(transformedRight);
+    const right = typedRight ?? this.visit(transformedRight);
 
     switch (node.op) {
       case CompareOperationOp.Eq:
@@ -2627,7 +2655,22 @@ export class ClickHousePrinter {
    * same access produces byte-identical SQL in SELECT and GROUP BY, which ClickHouse requires
    * for the expressions to match.
    */
-  private getRawColumnAccessForField(chain: Array<string | number>): string | null {
+  private getRawColumnAccessForField(
+    chain: Array<string | number>,
+    kind: "string" | "float" | "bool" = "string"
+  ): string | null {
+    const resolved = this.resolveRawColumnPath(chain);
+    if (resolved === null) return null;
+    return this.buildRawColumnExtract(resolved.rawColumnExpr, resolved.keyArgs, kind);
+  }
+
+  /**
+   * Resolve a field chain to the underlying raw String column and JSONExtract key arguments,
+   * if (and only if) it is JSON-path access on a column with a `rawColumn`. Returns null otherwise.
+   */
+  private resolveRawColumnPath(
+    chain: Array<string | number>
+  ): { rawColumnExpr: string; keyArgs: string } | null {
     if (chain.length < 2) return null;
 
     const firstPart = chain[0];
@@ -2659,13 +2702,31 @@ export class ClickHousePrinter {
 
     if (pathParts.length === 0) return null;
 
-    const keyArgs = this.buildJsonExtractKeyArgs(pathParts);
+    return { rawColumnExpr, keyArgs: this.buildJsonExtractKeyArgs(pathParts) };
+  }
+
+  /**
+   * Build the JSONExtract bridge expression over a raw String column.
+   *
+   * - `float`/`bool`: extract a typed scalar so comparisons against numeric/boolean literals are
+   *   numeric (correct equality and ordering), not string comparisons.
+   * - `string` (default): return string scalars unquoted (keeps `=`, LIKE and display faithful)
+   *   and object/array subtrees as raw JSON text; a missing key yields an empty string.
+   */
+  private buildRawColumnExtract(
+    rawColumnExpr: string,
+    keyArgs: string,
+    kind: "string" | "float" | "bool"
+  ): string {
+    if (kind === "float") {
+      return `JSONExtractFloat(${rawColumnExpr}, ${keyArgs})`;
+    }
+    if (kind === "bool") {
+      return `JSONExtractBool(${rawColumnExpr}, ${keyArgs})`;
+    }
     const type = `JSONType(${rawColumnExpr}, ${keyArgs})`;
     const string = `JSONExtractString(${rawColumnExpr}, ${keyArgs})`;
     const raw = `JSONExtractRaw(${rawColumnExpr}, ${keyArgs})`;
-    // String leaf -> unquoted value (keeps =/LIKE/display faithful). Everything else (number,
-    // bool, object, array, null) -> raw JSON text, which preserves subtrees. A missing key is
-    // not a String either, so it falls to JSONExtractRaw and yields an empty string.
     return `if(${type} = 'String', ${string}, ${raw})`;
   }
 
@@ -2677,6 +2738,29 @@ export class ClickHousePrinter {
     return parts
       .map((part) => (typeof part === "number" ? String(part) : escapeClickHouseString(part)))
       .join(", ");
+  }
+
+  /**
+   * If an expression is JSON-path access on a `rawColumn` column, return its field chain so the
+   * caller can build a typed extractor; otherwise null.
+   */
+  private rawColumnPathChain(node: Expression): Array<string | number> | null {
+    if ((node as Field).expression_type !== "field") return null;
+    const chain = (node as Field).chain;
+    return this.resolveRawColumnPath(chain) ? chain : null;
+  }
+
+  /**
+   * The extractor kind to use when comparing a rawColumn JSON path against this expression, based
+   * on the expression being a numeric or boolean literal. Returns null for strings / non-constants
+   * (which use the default string bridge).
+   */
+  private rawColumnComparisonKind(node: Expression): "float" | "bool" | null {
+    if ((node as Constant).expression_type !== "constant") return null;
+    const value = (node as Constant).value;
+    if (typeof value === "number") return "float";
+    if (typeof value === "boolean") return "bool";
+    return null;
   }
 
   /**
