@@ -23,6 +23,38 @@ export interface ExecOptions {
   neverThrow?: boolean;
 }
 
+// Long-form flags whose value carries a credential - the following arg (or inline
+// `--flag=value`) is replaced before args are logged so it never reaches log sinks.
+const REDACTED_FLAGS = new Set([
+  "--password",
+  "--token",
+  "--secret",
+  "--access-token",
+  "--registry-token",
+  "--registry-password",
+  "--api-key",
+]);
+
+export function redactArgsForLogging(args?: string[]): string[] | undefined {
+  if (!args) {
+    return args;
+  }
+
+  return args.map((arg, index) => {
+    const previous = index > 0 ? args[index - 1]?.trim() : undefined;
+    if (previous && REDACTED_FLAGS.has(previous)) {
+      return "[redacted]";
+    }
+
+    const equalsIndex = arg.indexOf("=");
+    if (equalsIndex > 0 && REDACTED_FLAGS.has(arg.slice(0, equalsIndex).trim())) {
+      return `${arg.slice(0, equalsIndex)}=[redacted]`;
+    }
+
+    return arg;
+  });
+}
+
 export class Exec {
   private logger: SimpleStructuredLogger;
   private abortSignal: AbortSignal | undefined;
@@ -47,8 +79,15 @@ export class Exec {
   ): Promise<Output> {
     const argsTrimmed = this.trimArgs ? args?.map((arg) => arg.trim()) : args;
 
+    const argsForLogging = redactArgsForLogging(args);
+    const argsTrimmedForLogging = redactArgsForLogging(argsTrimmed);
+
     const commandWithFirstArg = `${command}${argsTrimmed?.length ? ` ${argsTrimmed[0]}` : ""}`;
-    this.logger.debug(`exec: ${commandWithFirstArg}`, { command, args, argsTrimmed });
+    this.logger.debug(`exec: ${commandWithFirstArg}`, {
+      command,
+      args: argsForLogging,
+      argsTrimmed: argsTrimmedForLogging,
+    });
 
     const result = x(command, argsTrimmed, {
       signal: opts?.ignoreAbort ? undefined : this.abortSignal,
@@ -60,8 +99,8 @@ export class Exec {
 
     const metadata = {
       command,
-      argsRaw: args,
-      argsTrimmed,
+      argsRaw: argsForLogging,
+      argsTrimmed: argsTrimmedForLogging,
       globalOpts: {
         trimArgs: this.trimArgs,
         neverThrow: this.neverThrow,
