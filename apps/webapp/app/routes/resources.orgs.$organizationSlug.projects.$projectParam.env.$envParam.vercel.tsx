@@ -1,5 +1,5 @@
-import { useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useFetcher, useNavigation, useLocation } from "@remix-run/react";
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
@@ -252,10 +252,10 @@ export const action = dashboardAction(
     }
 
     const formData = await request.formData();
-    const submission = parse(formData, { schema: VercelActionSchema });
+    const submission = parseWithZod(formData, { schema: VercelActionSchema });
 
-    if (!submission.value || submission.intent !== "submit") {
-      return json(submission);
+    if (submission.status !== "success") {
+      return json(submission.reply());
     }
 
     const settingsPath = v3ProjectSettingsIntegrationsPath(
@@ -736,10 +736,10 @@ function ConnectedVercelProjectForm({
 
   const [configForm, fields] = useForm({
     id: "update-vercel-config",
-    lastSubmission: lastSubmission,
+    lastResult: lastSubmission,
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
-      return parse(formData, {
+      return parseWithZod(formData, {
         schema: UpdateVercelConfigFormSchema,
       });
     },
@@ -860,7 +860,7 @@ function ConnectedVercelProjectForm({
       </div>
 
       {/* Configuration form */}
-      <Form method="post" action={actionUrl} {...configForm.props}>
+      <Form method="post" action={actionUrl} {...getFormProps(configForm)}>
         <input
           type="hidden"
           name="atomicBuilds"
@@ -1006,7 +1006,7 @@ function ConnectedVercelProjectForm({
               )}
             </div>
 
-            <FormError>{configForm.error}</FormError>
+            <FormError>{configForm.errors}</FormError>
           </InputGroup>
 
           <FormButtons

@@ -1,5 +1,5 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { BuildingOffice2Icon, GlobeAltIcon } from "@heroicons/react/20/solid";
 import { RadioGroup } from "@radix-ui/react-radio-group";
 import { json, redirect, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/node";
@@ -46,10 +46,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export const action: ActionFunction = async ({ request }) => {
   const user = await requireUser(request);
   const formData = await request.formData();
-  const submission = parse(formData, { schema });
+  const submission = parseWithZod(formData, { schema });
 
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   try {
@@ -115,9 +115,9 @@ export default function NewOrganizationPage() {
 
   const [form, { orgName }] = useForm({
     id: "create-organization",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
     shouldRevalidate: "onSubmit",
     shouldValidate: "onSubmit",
@@ -151,18 +151,18 @@ export default function NewOrganizationPage() {
             LeadingIcon={<BuildingOffice2Icon className="size-6 text-fuchsia-600" />}
             title="Create an Organization"
           />
-          <Form method="post" {...form.props}>
+          <Form method="post" {...getFormProps(form)}>
             <Fieldset>
               <InputGroup>
                 <Label htmlFor={orgName.id}>Organization name *</Label>
                 <Input
-                  {...conform.input(orgName, { type: "text" })}
+                  {...getInputProps(orgName, { type: "text" })}
                   placeholder="Your Organization name"
                   icon={BuildingOffice2Icon}
                   autoFocus
                 />
                 <Hint>Normally your company name.</Hint>
-                <FormError id={orgName.errorId}>{orgName.error}</FormError>
+                <FormError id={orgName.errorId}>{orgName.errors}</FormError>
               </InputGroup>
               {isManagedCloud && (
                 <>

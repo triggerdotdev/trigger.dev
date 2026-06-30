@@ -1,5 +1,5 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { conformZodMessage, parseWithZod } from "@conform-to/zod";
 import { ArrowRightIcon, EnvelopeIcon, UserIcon } from "@heroicons/react/20/solid";
 import { UserGroupIcon } from "~/assets/icons/UserGroupIcon";
 import { HandRaisedIcon } from "@heroicons/react/24/solid";
@@ -80,7 +80,7 @@ function createSchema(
           if (constraints.isEmailUnique === undefined) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: conform.VALIDATION_UNDEFINED,
+              message: conformZodMessage.VALIDATION_UNDEFINED,
             });
           } else {
             return constraints.isEmailUnique(email).then((isUnique) => {
@@ -133,10 +133,10 @@ export const action: ActionFunction = async ({ request }) => {
     },
   });
 
-  const submission = await parse(formData, { schema: formSchema, async: true });
+  const submission = await parseWithZod(formData, { schema: formSchema, async: true });
 
-  if (!submission.value) {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   try {
@@ -230,9 +230,9 @@ export default function Page() {
 
   const [form, { name, email, confirmEmail }] = useForm({
     id: "confirm-basic-details",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema: createSchema() });
+      return parseWithZod(formData, { schema: createSchema() });
     },
     shouldRevalidate: "onSubmit",
   });
@@ -246,7 +246,7 @@ export default function Page() {
           variant="onboarding"
           className="max-w-[29rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
         >
-          <Form method="post" {...form.props}>
+          <Form method="post" {...getFormProps(form)}>
             <FormTitle
               title="Welcome to Trigger.dev"
               LeadingIcon={
@@ -277,20 +277,20 @@ export default function Page() {
                   Full name <span className="text-text-bright">*</span>
                 </Label>
                 <Input
-                  {...conform.input(name, { type: "text" })}
+                  {...getInputProps(name, { type: "text" })}
                   defaultValue={user.name ?? ""}
                   placeholder="Your full name"
                   icon={UserIcon}
                   autoFocus
                 />
-                <FormError id={name.errorId}>{name.error}</FormError>
+                <FormError id={name.errorId}>{name.errors}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={email.id}>
                   Email <span className="text-text-bright">*</span>
                 </Label>
                 <Input
-                  {...conform.input(email, { type: "email" })}
+                  {...getInputProps(email, { type: "email" })}
                   defaultValue={enteredEmail}
                   onChange={(e) => {
                     setEnteredEmail(e.target.value);
@@ -299,23 +299,23 @@ export default function Page() {
                   icon={EnvelopeIcon}
                   spellCheck={false}
                 />
-                <FormError id={email.errorId}>{email.error}</FormError>
+                <FormError id={email.errorId}>{email.errors}</FormError>
               </InputGroup>
 
               {shouldShowConfirm ? (
                 <InputGroup>
                   <Label htmlFor={confirmEmail.id}>Confirm email</Label>
                   <Input
-                    {...conform.input(confirmEmail, { type: "email" })}
+                    {...getInputProps(confirmEmail, { type: "email" })}
                     placeholder="Your email, again"
                     icon={EnvelopeIcon}
                     spellCheck={false}
                   />
-                  <FormError id={confirmEmail.errorId}>{confirmEmail.error}</FormError>
+                  <FormError id={confirmEmail.errorId}>{confirmEmail.errors}</FormError>
                 </InputGroup>
               ) : (
                 <>
-                  <input {...conform.input(confirmEmail, { type: "hidden" })} value={user.email} />
+                  <input {...getInputProps(confirmEmail, { type: "hidden" })} value={user.email} />
                 </>
               )}
 

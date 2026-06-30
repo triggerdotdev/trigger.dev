@@ -1,4 +1,4 @@
-import { parse } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { type PlainClient, uiComponent } from "@team-plain/typescript-sdk";
 import { z } from "zod";
@@ -73,10 +73,10 @@ export async function action({ request }: ActionFunctionArgs) {
   const user = await requireUser(request);
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema });
+  const submission = parseWithZod(formData, { schema });
 
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   const inquiry = feedbackTypes[submission.value.feedbackType as FeedbackType];
@@ -118,7 +118,10 @@ export async function action({ request }: ActionFunctionArgs) {
       "Thanks for your feedback! We'll get back to you soon."
     );
   } catch (e) {
-    submission.error.message = [e instanceof Error ? e.message : "Unknown error"];
-    return json(submission);
+    return json(
+      submission.reply({
+        fieldErrors: { message: [e instanceof Error ? e.message : "Unknown error"] },
+      })
+    );
   }
 }

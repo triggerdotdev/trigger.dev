@@ -1,11 +1,11 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { HashtagIcon, LockClosedIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/router";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { SlackIcon } from "@trigger.dev/companyicons";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
@@ -177,17 +177,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   const formData = await request.formData();
 
-  const submission = parse(formData, { schema: FormSchema });
+  const submission = parseWithZod(formData, { schema: FormSchema });
 
-  if (!submission.value) {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
 
   if (!project) {
-    submission.error.key = ["Project not found"];
-    return json(submission);
+    return json(submission.reply({ formErrors: ["Project not found"] }));
   }
 
   const service = new CreateAlertChannelService();
@@ -198,8 +197,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   );
 
   if (!alertChannel) {
-    submission.error.key = ["Failed to create alert channel"];
-    return json(submission);
+    return json(submission.reply({ formErrors: ["Failed to create alert channel"] }));
   }
 
   return redirectWithSuccessMessage(
@@ -219,6 +217,7 @@ export default function Page() {
   const project = useProject();
   const environment = useEnvironment();
   const [currentAlertChannel, setCurrentAlertChannel] = useState<string | null>(option ?? "EMAIL");
+  const formRef = useRef<HTMLFormElement>(null);
 
   const [selectedSlackChannelValue, setSelectedSlackChannelValue] = useState<string | undefined>();
 
@@ -234,9 +233,9 @@ export default function Page() {
   const [form, { channelValue, alertTypes, environmentTypes, type, integrationId }] = useForm({
     id: "create-alert",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema: FormSchema });
+      return parseWithZod(formData, { schema: FormSchema });
     },
     shouldRevalidate: "onSubmit",
   });
@@ -249,7 +248,7 @@ export default function Page() {
     if (navigation.state !== "idle") return;
     if (lastSubmission !== undefined) return;
 
-    form.ref.current?.reset();
+    formRef.current?.reset();
   }, [navigation.state, lastSubmission]);
 
   return (
@@ -263,11 +262,11 @@ export default function Page() {
     >
       <DialogContent>
         <DialogHeader>New alert</DialogHeader>
-        <Form method="post" {...form.props}>
+        <Form ref={formRef} method="post" {...getFormProps(form)}>
           <Fieldset className="mt-2">
             <InputGroup fullWidth>
               <SegmentedControl
-                {...conform.input(type)}
+                {...getInputProps(type, { type: "text" })}
                 options={[
                   { label: "Email", value: "EMAIL" },
                   { label: "Slack", value: "SLACK" },
@@ -286,12 +285,12 @@ export default function Page() {
                 <InputGroup fullWidth>
                   <Label>Email</Label>
                   <Input
-                    {...conform.input(channelValue)}
+                    {...getInputProps(channelValue, { type: "text" })}
                     placeholder="email@youremail.com"
                     type="email"
                     autoFocus
                   />
-                  <FormError id={channelValue.errorId}>{channelValue.error}</FormError>
+                  <FormError id={channelValue.errorId}>{channelValue.errors}</FormError>
                 </InputGroup>
               ) : (
                 <Callout variant="warning">
@@ -304,7 +303,7 @@ export default function Page() {
                 {slack.status === "READY" ? (
                   <>
                     <Select
-                      {...conform.select(channelValue)}
+                      {...getSelectProps(channelValue)}
                       placeholder="Select a Slack channel"
                       heading="Filter channels…"
                       defaultValue={undefined}
@@ -346,7 +345,7 @@ export default function Page() {
                       </Callout>
                     )}
 
-                    <FormError id={channelValue.errorId}>{channelValue.error}</FormError>
+                    <FormError id={channelValue.errorId}>{channelValue.errors}</FormError>
                     <input type="hidden" name="integrationId" value={slack.integrationId} />
                   </>
                 ) : slack.status === "NOT_CONFIGURED" ? (
@@ -391,12 +390,12 @@ export default function Page() {
               <InputGroup fullWidth>
                 <Label>URL</Label>
                 <Input
-                  {...conform.input(channelValue)}
+                  {...getInputProps(channelValue, { type: "text" })}
                   placeholder="https://foobar.com/webhooks"
                   type="url"
                   autoFocus
                 />
-                <FormError id={channelValue.errorId}>{channelValue.error}</FormError>
+                <FormError id={channelValue.errorId}>{channelValue.errors}</FormError>
                 <Hint>We'll issue POST requests to this URL with a JSON payload.</Hint>
               </InputGroup>
             )}
@@ -435,15 +434,15 @@ export default function Page() {
                 defaultChecked
               />
 
-              <FormError id={alertTypes.errorId}>{alertTypes.error}</FormError>
+              <FormError id={alertTypes.errorId}>{alertTypes.errors}</FormError>
             </InputGroup>
             <InputGroup>
               <Label>Environment</Label>
               <input type="hidden" name={environmentTypes.name} value={environment.type} />
               <EnvironmentCombo environment={{ type: environment.type }} />
-              <FormError id={environmentTypes.errorId}>{environmentTypes.error}</FormError>
+              <FormError id={environmentTypes.errorId}>{environmentTypes.errors}</FormError>
             </InputGroup>
-            <FormError>{form.error}</FormError>
+            <FormError>{form.errors}</FormError>
             <FormButtons
               confirmButton={
                 <Button variant="primary/medium" disabled={isLoading} name="action" value="create">

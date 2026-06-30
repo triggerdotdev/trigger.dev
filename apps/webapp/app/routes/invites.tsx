@@ -1,5 +1,5 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { type ActionFunction, type LoaderFunctionArgs, json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -47,14 +47,16 @@ export const action: ActionFunction = async ({ request }) => {
   const user = await requireUser(request);
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema });
+  const submission = parseWithZod(formData, { schema });
 
-  if (!submission.value) {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
+  const intent = formData.get("intent");
+
   try {
-    if (submission.intent === "accept") {
+    if (intent === "accept") {
       const { remainingInvites, organization } = await acceptInvite({
         inviteId: submission.value.inviteId,
         organizationId: submission.value.organizationId,
@@ -70,7 +72,7 @@ export const action: ActionFunction = async ({ request }) => {
           `You joined ${organization.title}`
         );
       }
-    } else if (submission.intent === "decline") {
+    } else if (intent === "decline") {
       const { remainingInvites, organization } = await declineInvite({
         inviteId: submission.value.inviteId,
         user: { id: user.id, email: user.email },
@@ -120,12 +122,12 @@ export default function Page() {
   const { invites } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
 
-  const [form, { inviteId }] = useForm({
+  const [form, fields] = useForm({
     id: "accept-invite",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
   });
 
@@ -144,7 +146,7 @@ export default function Page() {
             />
             <FormError>{form.error}</FormError>
             {invites.map((invite) => (
-              <Form key={invite.id} method="post" {...form.props}>
+              <Form key={invite.id} method="post" {...getFormProps(form)}>
                 <Fieldset>
                   <InputGroup className="flex items-center justify-between border-b border-charcoal-800 py-4">
                     <div className="flex flex-col gap-y-0.5 overflow-hidden">
@@ -156,17 +158,12 @@ export default function Page() {
                       <input name="organizationId" type="hidden" value={invite.organizationId} />
                     </div>
                     <div className="flex flex-col gap-y-1">
-                      <Button
-                        type="submit"
-                        name={conform.INTENT}
-                        value="accept"
-                        variant={"primary/small"}
-                      >
+                      <Button type="submit" name="intent" value="accept" variant={"primary/small"}>
                         Accept
                       </Button>
                       <Button
                         type="submit"
-                        name={conform.INTENT}
+                        name="intent"
                         value="decline"
                         variant={"secondary/small"}
                       >

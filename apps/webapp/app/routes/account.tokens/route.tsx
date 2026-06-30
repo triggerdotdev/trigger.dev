@@ -1,5 +1,5 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { BookOpenIcon, ShieldCheckIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { ShieldExclamationIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
@@ -185,10 +185,10 @@ const CreateTokenSchema = z.discriminatedUnion("action", [
 export const action: ActionFunction = async ({ request }) => {
   const userId = await requireUserId(request);
   const formData = await request.formData();
-  const submission = parse(formData, { schema: CreateTokenSchema });
+  const submission = parseWithZod(formData, { schema: CreateTokenSchema });
 
-  if (!submission.value) {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   switch (submission.value.action) {
@@ -217,7 +217,7 @@ export const action: ActionFunction = async ({ request }) => {
           roleId: submittedRoleId,
         });
 
-        return json({ ...submission, payload: { token: tokenResult } });
+        return json({ ...submission.reply(), payload: { token: tokenResult } });
       } catch (error: any) {
         return json({ errors: { body: error.message } }, { status: 400 });
       }
@@ -343,9 +343,9 @@ function CreatePersonalAccessToken({
   const [form, { tokenName }] = useForm({
     id: "create-personal-access-token",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema: CreateTokenSchema });
+      return parseWithZod(formData, { schema: CreateTokenSchema });
     },
   });
 
@@ -379,14 +379,14 @@ function CreatePersonalAccessToken({
           />
         </div>
       ) : (
-        <fetcher.Form method="post" {...form.props}>
+        <fetcher.Form method="post" {...getFormProps(form)}>
           <input type="hidden" name="action" value="create" />
           {showRolePicker && <input type="hidden" name="roleId" value={selectedRoleId} />}
           <Fieldset className="mt-3">
             <InputGroup>
               <Label htmlFor={tokenName.id}>Name</Label>
               <Input
-                {...conform.input(tokenName, { type: "text" })}
+                {...getInputProps(tokenName, { type: "text" })}
                 placeholder="Name your Personal Access Token"
                 defaultValue=""
                 icon={ShieldCheckIcon}
@@ -396,7 +396,7 @@ function CreatePersonalAccessToken({
                 This will help you to identify your token. Tokens called "cli" are automatically
                 generated when you login with our CLI.
               </Hint>
-              <FormError id={tokenName.errorId}>{tokenName.error}</FormError>
+              <FormError id={tokenName.errorId}>{tokenName.errors}</FormError>
             </InputGroup>
 
             {showRolePicker && (
@@ -449,12 +449,12 @@ function CreatePersonalAccessToken({
 function RevokePersonalAccessToken({ token }: { token: ObfuscatedPersonalAccessToken }) {
   const lastSubmission = useActionData();
 
-  const [form, { tokenId }] = useForm({
+  const [form, fields] = useForm({
     id: "revoke-personal-access-token",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema: CreateTokenSchema });
+      return parseWithZod(formData, { schema: CreateTokenSchema });
     },
   });
 
@@ -476,7 +476,7 @@ function RevokePersonalAccessToken({ token }: { token: ObfuscatedPersonalAccessT
               </Paragraph>
               <FormButtons
                 confirmButton={
-                  <Form method="post" {...form.props}>
+                  <Form method="post" {...getFormProps(form)}>
                     <input type="hidden" name="action" value="revoke" />
                     <input type="hidden" name="tokenId" value={token.id} />
                     <Button type="submit" variant="danger/medium">

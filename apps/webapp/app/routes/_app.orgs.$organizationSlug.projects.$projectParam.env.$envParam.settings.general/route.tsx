@@ -1,5 +1,5 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { conformZodMessage, parseWithZod } from "@conform-to/zod";
 import { ExclamationTriangleIcon, FolderIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { type ActionFunction, json } from "@remix-run/server-runtime";
@@ -41,7 +41,7 @@ function createSchema(
         if (constraints.getSlugMatch === undefined) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: conform.VALIDATION_UNDEFINED,
+            message: conformZodMessage.VALIDATION_UNDEFINED,
           });
         } else {
           const { isMatch, projectSlug } = constraints.getSlugMatch(slug);
@@ -76,10 +76,10 @@ export const action: ActionFunction = async ({ request, params }) => {
       return { isMatch: slug === projectParam, projectSlug: projectParam };
     },
   });
-  const submission = parse(formData, { schema });
+  const submission = parseWithZod(formData, { schema });
 
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   const projectSettingsService = new ProjectSettingsService();
@@ -162,10 +162,10 @@ export default function GeneralSettingsPage() {
   const [renameForm, { projectName }] = useForm({
     id: "rename-project",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
-      return parse(formData, {
+      return parseWithZod(formData, {
         schema: createSchema(),
       });
     },
@@ -178,11 +178,11 @@ export default function GeneralSettingsPage() {
   const [deleteForm, { projectSlug }] = useForm({
     id: "delete-project",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     shouldValidate: "onInput",
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
-      return parse(formData, {
+      return parseWithZod(formData, {
         schema: createSchema({
           getSlugMatch: (slug) => ({ isMatch: slug === project.slug, projectSlug: project.slug }),
         }),
@@ -212,12 +212,12 @@ export default function GeneralSettingsPage() {
                 </Hint>
               </InputGroup>
             </Fieldset>
-            <Form method="post" {...renameForm.props}>
+            <Form method="post" {...getFormProps(renameForm)}>
               <Fieldset>
                 <InputGroup fullWidth>
                   <Label htmlFor={projectName.id}>Project name</Label>
                   <Input
-                    {...conform.input(projectName, { type: "text" })}
+                    {...getInputProps(projectName, { type: "text" })}
                     defaultValue={project.name}
                     placeholder="Project name"
                     icon={FolderIcon}
@@ -226,7 +226,7 @@ export default function GeneralSettingsPage() {
                       setHasRenameFormChanges(e.target.value !== project.name);
                     }}
                   />
-                  <FormError id={projectName.errorId}>{projectName.error}</FormError>
+                  <FormError id={projectName.errorId}>{projectName.errors}</FormError>
                 </InputGroup>
                 <FormButtons
                   confirmButton={
@@ -250,18 +250,18 @@ export default function GeneralSettingsPage() {
         <div>
           <Header2 spacing>Danger zone</Header2>
           <div className="w-full rounded-sm border border-rose-500/40 p-4">
-            <Form method="post" {...deleteForm.props}>
+            <Form method="post" {...getFormProps(deleteForm)}>
               <Fieldset>
                 <InputGroup fullWidth>
                   <Label htmlFor={projectSlug.id}>Delete project</Label>
                   <Input
-                    {...conform.input(projectSlug, { type: "text" })}
+                    {...getInputProps(projectSlug, { type: "text" })}
                     placeholder="Your project slug"
                     icon={ExclamationTriangleIcon}
                     onChange={(e) => setDeleteInputValue(e.target.value)}
                   />
-                  <FormError id={projectSlug.errorId}>{projectSlug.error}</FormError>
-                  <FormError>{deleteForm.error}</FormError>
+                  <FormError id={projectSlug.errorId}>{projectSlug.errors}</FormError>
+                  <FormError>{deleteForm.errors}</FormError>
                   <Hint>
                     This change is irreversible, so please be certain. Type in the Project slug
                     <InlineCode variant="extra-small">{project.slug}</InlineCode> and then press

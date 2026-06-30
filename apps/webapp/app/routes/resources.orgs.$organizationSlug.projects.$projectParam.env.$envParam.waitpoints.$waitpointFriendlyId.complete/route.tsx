@@ -1,5 +1,5 @@
 import { env } from "~/env.server";
-import { parse } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod";
 import { Form, useLocation, useNavigation, useSubmit } from "@remix-run/react";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { stringifyIO, timeoutError, WaitpointTokenStatus } from "@trigger.dev/core/v3";
@@ -51,10 +51,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const { organizationSlug, projectParam, envParam, waitpointFriendlyId } = Params.parse(params);
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema: CompleteWaitpointFormData });
+  const submission = parseWithZod(formData, { schema: CompleteWaitpointFormData });
 
-  if (!submission.value) {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   try {

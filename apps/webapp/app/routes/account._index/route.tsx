@@ -1,5 +1,5 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { conformZodMessage, parseWithZod } from "@conform-to/zod";
 import { Form, type MetaFunction, useActionData } from "@remix-run/react";
 import { type ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
@@ -55,7 +55,7 @@ function createSchema(
           //client-side validation skips this
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: conform.VALIDATION_UNDEFINED,
+            message: conformZodMessage.VALIDATION_UNDEFINED,
           });
         } else {
           // Tell zod this is an async validation by returning the promise
@@ -100,10 +100,10 @@ export const action: ActionFunction = async ({ request }) => {
     },
   });
 
-  const submission = await parse(formData, { schema: formSchema, async: true });
+  const submission = await parseWithZod(formData, { schema: formSchema, async: true });
 
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   try {
@@ -131,9 +131,9 @@ export default function Page() {
   const [form, { name, email, marketingEmails }] = useForm({
     id: "account",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema: createSchema() });
+      return parseWithZod(formData, { schema: createSchema() });
     },
   });
 
@@ -148,7 +148,7 @@ export default function Page() {
           <div className="mb-3 w-full border-b border-grid-dimmed pb-3">
             <Header2>Profile</Header2>
           </div>
-          <Form method="post" {...form.props} className="w-full">
+          <Form method="post" {...getFormProps(form)} className="w-full">
             <InputGroup className="mb-4">
               <Label htmlFor={name.id}>Profile picture</Label>
               <UserProfilePhoto className="size-24" />
@@ -157,34 +157,33 @@ export default function Page() {
               <InputGroup fullWidth>
                 <Label htmlFor={name.id}>Full name</Label>
                 <Input
-                  {...conform.input(name, { type: "text" })}
+                  {...getInputProps(name, { type: "text" })}
                   placeholder="Your full name"
                   defaultValue={user?.name ?? ""}
                   icon={AvatarCircleIcon}
                 />
                 <Hint>Your teammates will see this</Hint>
-                <FormError id={name.errorId}>{name.error}</FormError>
+                <FormError id={name.errorId}>{name.errors}</FormError>
               </InputGroup>
               <InputGroup fullWidth>
                 <Label htmlFor={email.id}>Email address</Label>
                 <Input
-                  {...conform.input(email, { type: "text" })}
+                  {...getInputProps(email, { type: "text" })}
                   placeholder="Your email"
                   defaultValue={user?.email ?? ""}
                   icon={EnvelopeIcon}
                 />
-                <FormError id={email.errorId}>{email.error}</FormError>
+                <FormError id={email.errorId}>{email.errors}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label>Notifications</Label>
                 <CheckboxWithLabel
-                  id="marketingEmails"
-                  {...conform.input(marketingEmails, { type: "checkbox" })}
+                  {...getInputProps(marketingEmails, { type: "checkbox" })}
                   label="Receive onboarding emails"
                   variant="simple/small"
                   defaultChecked={user.marketingEmails}
                 />
-                <FormError id={marketingEmails.errorId}>{marketingEmails.error}</FormError>
+                <FormError id={marketingEmails.errorId}>{marketingEmails.errors}</FormError>
               </InputGroup>
 
               <FormButtons
