@@ -7,7 +7,8 @@
     "**/*.d.ts",
     "**/seed.js",
     "**/seedCloud.ts",
-    "**/populate.js"
+    "**/populate.js",
+    "internal-packages/tsql/src/grammar/"
   ],
   "rules": {
     "no-unused-vars": "off",
