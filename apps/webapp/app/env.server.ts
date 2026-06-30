@@ -1718,6 +1718,11 @@ const EnvironmentSchema = z
 
     // Clickhouse
     CLICKHOUSE_URL: z.string(),
+    // Optional read replica endpoint. Read-only clients (logs, query, admin, runsList,
+    // engine, realtime) and the events client's READ path default to this when their own
+    // URL is unset; writes always stay on CLICKHOUSE_URL. Set once to move all reads to a
+    // replica. Must share storage with the CLICKHOUSE_URL warehouse.
+    CLICKHOUSE_READER_URL: z.string().optional(),
     CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
     CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
     CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
@@ -1780,13 +1785,13 @@ const EnvironmentSchema = z
     LOGS_CLICKHOUSE_URL: z
       .string()
       .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
 
     // Query page ClickHouse limits (for TSQL queries)
     QUERY_CLICKHOUSE_URL: z
       .string()
       .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
     QUERY_CLICKHOUSE_MAX_EXECUTION_TIME: z.coerce.number().int().default(10),
     QUERY_CLICKHOUSE_MAX_MEMORY_USAGE: z.coerce.number().int().default(1_073_741_824), // 1GB in bytes
     QUERY_CLICKHOUSE_MAX_AST_ELEMENTS: z.coerce.number().int().default(4_000_000),
@@ -1805,7 +1810,7 @@ const EnvironmentSchema = z
     ADMIN_CLICKHOUSE_URL: z
       .string()
       .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
 
     EVENTS_CLICKHOUSE_URL: z
       .string()
@@ -1823,7 +1828,7 @@ const EnvironmentSchema = z
     RUN_ENGINE_CLICKHOUSE_URL: z
       .string()
       .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
     RUN_ENGINE_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
     RUN_ENGINE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
     RUN_ENGINE_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(5),
@@ -1835,7 +1840,7 @@ const EnvironmentSchema = z
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_URL: z
       .string()
       .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
     REALTIME_BACKEND_NATIVE_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce
       .number()
@@ -1852,7 +1857,7 @@ const EnvironmentSchema = z
     RUNS_LIST_CLICKHOUSE_URL: z
       .string()
       .optional()
-      .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+      .transform((v) => v ?? process.env.CLICKHOUSE_READER_URL ?? process.env.CLICKHOUSE_URL),
     RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
     RUNS_LIST_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
     RUNS_LIST_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
