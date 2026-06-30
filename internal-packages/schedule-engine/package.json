@@ -20,7 +20,7 @@
     "@trigger.dev/core": "workspace:*",
     "@trigger.dev/database": "workspace:*",
     "cron-parser": "^4.9.0",
-    "zod": "3.25.76"
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@internal/testcontainers": "workspace:*",

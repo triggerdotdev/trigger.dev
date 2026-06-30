@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { EnvelopeIcon, NoSymbolIcon, UserPlusIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData, useFetcher, useNavigation } from "@remix-run/react";
@@ -1014,11 +1014,11 @@ export function PurchaseSeatsModal({
   // when the role can't manage billing. The action enforces it independently.
   const noBillingTooltip = "You don't have permission to manage billing";
   const trigger = canManageBilling ? (
-    (triggerButton ?? (
+    triggerButton ?? (
       <Button variant="primary/small" onClick={() => setOpen(true)}>
         {title}
       </Button>
-    ))
+    )
   ) : triggerButton ? (
     cloneElement(triggerButton, { disabled: true, tooltip: noBillingTooltip })
   ) : (
@@ -1036,11 +1036,7 @@ export function PurchaseSeatsModal({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent>
         <DialogHeader>{title}</DialogHeader>
-        <fetcher.Form
-          method="post"
-          action={organizationTeamPath(organization)}
-          {...getFormProps(form)}
-        >
+        <fetcher.Form method="post" action={organizationTeamPath(organization)} {...getFormProps(form)}>
           <input type="hidden" name="_formType" value="purchase-seats" />
           <div className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-1">
@@ -1056,7 +1052,7 @@ export function PurchaseSeatsModal({
                   Total extra seats
                 </Label>
                 <InputNumberStepper
-                  {...getInputProps(amount, { type: "number" })}
+                  {...getInputProps(amount, { type: "number", value: false })}
                   step={seatPricing.stepSize}
                   min={0}
                   max={undefined}

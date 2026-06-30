@@ -134,7 +134,7 @@ async function rejectRestrictedKeyWithoutAuthorization({
   );
 }
 
-type AnyZodSchema = z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;
+type AnyZodSchema = z.ZodType;
 
 // A multi-resource auth check has two possible directions, and route authors
 // have to pick one explicitly:

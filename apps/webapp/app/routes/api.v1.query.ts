@@ -113,7 +113,7 @@ const { action, loader } = createActionApiRoute(
     const { result, periodClipped: _periodClipped, maxQueryPeriod: _maxQueryPeriod } = queryResult;
 
     if (format === "csv") {
-      const csv = rowsToCSV(result.rows, result.columns);
+      const csv = rowsToCSV(result.rows as Record<string, unknown>[], result.columns);
 
       return json({
         format: "csv",

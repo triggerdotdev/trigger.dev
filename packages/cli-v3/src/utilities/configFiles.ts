@@ -22,13 +22,13 @@ const CliConfigProfileSettings = z.object({
 });
 type CliConfigProfileSettings = z.infer<typeof CliConfigProfileSettings>;
 
-const OldCliConfigFile = z.record(CliConfigProfileSettings);
+const OldCliConfigFile = z.record(z.string(), CliConfigProfileSettings);
 type OldCliConfigFile = z.infer<typeof OldCliConfigFile>;
 
 const CliConfigFile = z.object({
   version: z.literal(2),
   currentProfile: z.string().default(DEFFAULT_PROFILE),
-  profiles: z.record(CliConfigProfileSettings),
+  profiles: z.record(z.string(), CliConfigProfileSettings),
   settings: z
     .object({
       hasSeenMCPInstallPrompt: z.boolean().optional(),

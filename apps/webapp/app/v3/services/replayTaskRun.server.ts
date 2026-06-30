@@ -20,7 +20,9 @@ type OverrideOptions = {
   metadata?: unknown;
   bulkActionId?: string;
   triggerSource?: string;
-} & RunOptionsData;
+  // zod v4 types `.optional().transform()` fields as required-with-undefined in the
+  // output; Partial keeps them omittable for callers passing a subset of overrides.
+} & Partial<RunOptionsData>;
 
 export class ReplayTaskRunService extends BaseService {
   public async call(existingTaskRun: TaskRun, overrideOptions: OverrideOptions = {}) {

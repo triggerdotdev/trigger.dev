@@ -1,5 +1,5 @@
 import { getFormProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { CheckCircleIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { Form, useActionData, useFetcher, useNavigation } from "@remix-run/react";

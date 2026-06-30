@@ -100,7 +100,7 @@ export const action = dashboardAction(
     // saves, defaulting to the safe answer. SaveFlagsBody keeps it required for our own client, so
     // dropping it from the page is a compile error rather than a silently disabled unlock.
     const payloadSchema = z.object({
-      flags: z.record(z.unknown()),
+      flags: z.record(z.string(), z.unknown()),
       // The page only submits the flags it is managing, so an omitted key is ambiguous for the
       // locked flags: this says whether the admin unlocked them and is therefore authoritative
       // over them too.

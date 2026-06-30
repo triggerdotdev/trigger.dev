@@ -27,7 +27,6 @@
     "nanoid": "^5.1.16",
     "p-limit": "^6.2.0",
     "seedrandom": "^3.0.5",
-    "zod": "3.25.76",
     "cron-parser": "^4.9.0"
   },
   "devDependencies": {
@@ -38,7 +37,8 @@
     "esbuild": "^0.23.0",
     "rimraf": "6.0.1",
     "tsdown": "0.22.10",
-    "tsx": "4.17.0"
+    "tsx": "4.17.0",
+    "zod": "4.4.3"
   },
   "engines": {
     "node": ">=18.20.0"
@@ -52,5 +52,8 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     }
+  },
+  "peerDependencies": {
+    "zod": "^3.25.0 || ^4.0.0"
   }
 }

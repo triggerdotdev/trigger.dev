@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { uiComponent } from "@team-plain/ui-components";
 import { z } from "zod";
@@ -56,8 +56,7 @@ const feedbackTypeLiterals = Object.keys(feedbackTypes).map((key) => z.literal(k
 const feedbackType = z.union(
   [feedbackTypeLiterals[0], feedbackTypeLiterals[1], ...feedbackTypeLiterals.slice(2)],
   {
-    required_error: "Must be either 'bug' or 'feature'",
-    invalid_type_error: "Must be either 'bug' or 'feature'",
+    error: "Must be a valid feedback type",
   }
 );
 

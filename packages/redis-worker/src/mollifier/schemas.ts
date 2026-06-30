@@ -56,12 +56,12 @@ export const BufferEntrySchema = z.object({
   // so an entry written by an accept Lua predating this field — or one
   // surviving across the deploy that introduced it — still parses instead
   // of being silently dropped on pop.
-  createdAtMicros: stringToInt.default("0"),
+  createdAtMicros: stringToInt.default(0),
   // Drainer-ack flag: `true` once the drainer has materialised this run
   // into PG. The hash persists for a short grace TTL after ack so direct
   // reads (retrieve, trace, etc.) still resolve while PG replica lag
   // settles. Absent on pre-ack entries.
-  materialised: stringToBool.default("false"),
+  materialised: stringToBool.default(false),
   // Denormalised pointer to the Redis idempotency lookup key (set when
   // the run was accepted with an idempotency key, empty otherwise). The
   // ack Lua reads this to DEL the lookup atomically with marking the
@@ -71,7 +71,7 @@ export const BufferEntrySchema = z.object({
   // Incremented atomically by the CAS metadata Lua. Matches the
   // semantic of `TaskRun.metadataVersion` on the PG side (which the
   // UpdateMetadataService uses for the same retry-on-conflict pattern).
-  metadataVersion: stringToInt.default("0"),
+  metadataVersion: stringToInt.default(0),
   lastError: stringToError.optional(),
 });
 
