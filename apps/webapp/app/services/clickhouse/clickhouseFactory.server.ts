@@ -298,10 +298,9 @@ function initializeEventsClickhouseClient(): ClickHouse {
     maxOpenConnections: env.EVENTS_CLICKHOUSE_MAX_OPEN_CONNECTIONS,
   };
 
-  // This client both inserts events and reads traces/spans/logs. When a reader replica
-  // is configured, split it so queries hit the replica while inserts stay on the writer.
-  if (env.CLICKHOUSE_READER_URL) {
-    const readerUrl = new URL(env.CLICKHOUSE_READER_URL);
+  // Mixed read+write client: split reads to its own EVENTS_READER_CLICKHOUSE_URL (not the global reader) so inserts can never hit the replica.
+  if (env.EVENTS_READER_CLICKHOUSE_URL) {
+    const readerUrl = new URL(env.EVENTS_READER_CLICKHOUSE_URL);
     readerUrl.searchParams.delete("secure");
 
     if (readerUrl.toString() !== writerUrl.toString()) {

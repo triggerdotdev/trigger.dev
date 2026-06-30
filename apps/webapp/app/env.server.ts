@@ -1689,6 +1689,8 @@ const EnvironmentSchema = z
       .string()
       .optional()
       .transform((v) => v ?? process.env.CLICKHOUSE_URL),
+    // Events read replica (traces/spans/logs). No CLICKHOUSE_READER_URL fallback by design: this write-capable client opts in explicitly.
+    EVENTS_READER_CLICKHOUSE_URL: z.string().optional(),
     EVENTS_CLICKHOUSE_KEEP_ALIVE_ENABLED: z.string().default("1"),
     EVENTS_CLICKHOUSE_KEEP_ALIVE_IDLE_SOCKET_TTL_MS: z.coerce.number().int().optional(),
     EVENTS_CLICKHOUSE_MAX_OPEN_CONNECTIONS: z.coerce.number().int().default(10),
