@@ -95,7 +95,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
     project.organizationId,
-    "standard"
+    "runsList"
   );
   const presenter = new NextRunListPresenter($replica, clickhouse);
   const list = presenter.call(project.organizationId, environment.id, {
