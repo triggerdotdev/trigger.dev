@@ -2366,7 +2366,7 @@ export class ClickHousePrinter {
       return `(${virtualExpression})`;
     }
 
-    // JSON-path access on a String-backed JSON column compiles to a JSON_VALUE bridge over the
+    // JSON-path access on a String-backed JSON column compiles to a JSONExtract bridge over the
     // raw String column instead of native JSON sub-column access.
     const rawColumnAccess = this.getRawColumnAccessForField(node.chain);
     if (rawColumnAccess !== null) {
@@ -2616,14 +2616,16 @@ export class ClickHousePrinter {
 
   /**
    * If a field chain is JSON-path access on a column backed by a `rawColumn` (a String holding
-   * serialized JSON), build the `JSON_VALUE` bridge expression. Returns null otherwise.
+   * serialized JSON), build the JSONExtract bridge expression. Returns null otherwise.
    *
-   * e.g. `output.foo` -> `JSON_VALUE(output_raw, '$.foo')`
-   *      `r.output.a.b` -> `JSON_VALUE(r.output_raw, '$.a.b')`
+   * e.g. `output.foo` -> JSONExtract over output_raw with key 'foo'
+   *      `r.output.a.b` -> JSONExtract over r.output_raw with keys 'a', 'b'
    *
-   * The path is inlined as an escaped string literal (rather than a query parameter) so that
-   * the same access produces byte-identical SQL in SELECT and GROUP BY, which ClickHouse
-   * requires for the expressions to match.
+   * The bridge returns string scalars unquoted (so `=`, LIKE and display behave like native
+   * scalar access) while still returning object/array subtrees as raw JSON text. Missing keys
+   * yield an empty string. Keys are inlined as escaped literals (not query parameters) so the
+   * same access produces byte-identical SQL in SELECT and GROUP BY, which ClickHouse requires
+   * for the expressions to match.
    */
   private getRawColumnAccessForField(chain: Array<string | number>): string | null {
     if (chain.length < 2) return null;
@@ -2657,24 +2659,24 @@ export class ClickHousePrinter {
 
     if (pathParts.length === 0) return null;
 
-    const jsonPath = this.buildJsonPath(pathParts);
-    return `JSON_VALUE(${rawColumnExpr}, ${escapeClickHouseString(jsonPath)})`;
+    const keyArgs = this.buildJsonExtractKeyArgs(pathParts);
+    const type = `JSONType(${rawColumnExpr}, ${keyArgs})`;
+    const string = `JSONExtractString(${rawColumnExpr}, ${keyArgs})`;
+    const raw = `JSONExtractRaw(${rawColumnExpr}, ${keyArgs})`;
+    // String leaf -> unquoted value (keeps =/LIKE/display faithful). Everything else (number,
+    // bool, object, array, null) -> raw JSON text, which preserves subtrees. A missing key is
+    // not a String either, so it falls to JSONExtractRaw and yields an empty string.
+    return `if(${type} = 'String', ${string}, ${raw})`;
   }
 
   /**
-   * Build a ClickHouse JSON path (e.g. `$.a.b[0]`) from a field chain's path parts.
-   * String parts become `.key`; numeric parts become `[index]`.
+   * Build the comma-separated key arguments for a JSONExtract* call from a field chain's path
+   * parts. String parts become escaped string-literal keys; numeric parts become array indices.
    */
-  private buildJsonPath(parts: Array<string | number>): string {
-    let path = "$";
-    for (const part of parts) {
-      if (typeof part === "number") {
-        path += `[${part}]`;
-      } else {
-        path += `.${part}`;
-      }
-    }
-    return path;
+  private buildJsonExtractKeyArgs(parts: Array<string | number>): string {
+    return parts
+      .map((part) => (typeof part === "number" ? String(part) : escapeClickHouseString(part)))
+      .join(", ");
   }
 
   /**

@@ -1611,7 +1611,8 @@ describe("Field Mapping Tests", () => {
 
   describe("output stored as serialized text (rawColumn bridge)", () => {
     // `output` is a JSON column physically stored as serialized JSON text in the String
-    // column output_raw. Path access bridges to JSON_VALUE; bare access reads the String.
+    // column output_raw. Path access bridges to a JSONExtract expression (unquoted scalars,
+    // raw JSON for object/array subtrees); bare access reads the String directly.
     const outputSchema: TableSchema = {
       ...taskRunsSchema,
       columns: {
@@ -1633,7 +1634,7 @@ describe("Field Mapping Tests", () => {
     } as const;
 
     clickhouseTest(
-      "filters and selects JSON paths via JSON_VALUE over output_raw",
+      "filters and selects JSON paths over output_raw",
       async ({ clickhouseContainer }) => {
         const client = new ClickhouseClient({
           name: "test",
@@ -1642,13 +1643,16 @@ describe("Field Mapping Tests", () => {
 
         const insert = insertTaskRuns(client, { async_insert: 0 });
         const [insertError] = await insert([
-          createTaskRun({ run_id: "run_o1", output_raw: JSON.stringify({ foo: "bar", n: 42 }) }),
+          createTaskRun({
+            run_id: "run_o1",
+            output_raw: JSON.stringify({ foo: "bar", n: 42, nested: { id: 7 }, list: [1, 2] }),
+          }),
           createTaskRun({ run_id: "run_o2", output_raw: JSON.stringify({ foo: "baz" }) }),
           createTaskRun({ run_id: "run_o3", output_raw: "" }),
         ]);
         expect(insertError).toBeNull();
 
-        // Path access in SELECT + WHERE both compile to JSON_VALUE(output_raw, '$.foo')
+        // Scalar path access in SELECT + WHERE returns the value unquoted
         const [error, result] = await executeTSQL(client, {
           name: "test-output-path",
           query: "SELECT run_id, output.foo AS foo FROM task_runs WHERE output.foo = 'bar'",
@@ -1670,6 +1674,18 @@ describe("Field Mapping Tests", () => {
         });
         expect(nError).toBeNull();
         expect(nResult?.rows).toEqual([{ n: "42" }]);
+
+        // Object and array subtrees come back as raw JSON text, not an empty string
+        const [subError, subResult] = await executeTSQL(client, {
+          name: "test-output-path-subtree",
+          query:
+            "SELECT output.nested AS nested, output.list AS list FROM task_runs WHERE run_id = 'run_o1'",
+          schema: z.object({ nested: z.string(), list: z.string() }),
+          enforcedWhereClause: tenant,
+          tableSchema: [outputSchema],
+        });
+        expect(subError).toBeNull();
+        expect(subResult?.rows).toEqual([{ nested: JSON.stringify({ id: 7 }), list: "[1,2]" }]);
       }
     );
 

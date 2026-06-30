@@ -357,7 +357,7 @@ export const runsSchema: TableSchema = {
       // column, so reads/writes can't hit the JSON binary type-complexity ceiling.
       nullValue: "''", // Empty raw string means "no output"
       textColumn: "output_raw", // Full-value reads/search use the raw String column
-      rawColumn: "output_raw", // Path access (output.foo) compiles to JSON_VALUE(output_raw, '$.foo')
+      rawColumn: "output_raw", // Path access (output.foo) compiles to a JSONExtract bridge over output_raw
     },
     error: {
       name: "error",

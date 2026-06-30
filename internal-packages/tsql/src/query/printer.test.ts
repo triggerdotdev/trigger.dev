@@ -980,34 +980,41 @@ describe("ClickHousePrinter", () => {
       });
     }
 
+    // The bridge expression for a single key: unquoted scalar strings, raw JSON for subtrees,
+    // '' for missing keys.
+    const nameBridge =
+      "if(JSONType(output_raw, 'name') = 'String', " +
+      "JSONExtractString(output_raw, 'name'), JSONExtractRaw(output_raw, 'name'))";
+
     it("uses the raw String column for bare selection", () => {
       const ctx = createRawColumnContext();
       const { sql } = printQuery("SELECT output FROM runs", ctx);
 
       expect(sql).toContain("output_raw AS output");
-      expect(sql).not.toContain("JSON_VALUE");
+      expect(sql).not.toContain("JSONExtract");
     });
 
-    it("compiles single-level path access to JSON_VALUE", () => {
+    it("compiles single-level path access to a JSONExtract bridge", () => {
       const ctx = createRawColumnContext();
       const { sql } = printQuery("SELECT output.name FROM runs", ctx);
 
-      expect(sql).toContain("JSON_VALUE(output_raw, '$.name') AS output_name");
+      expect(sql).toContain(`${nameBridge} AS output_name`);
       expect(sql).not.toContain(".:String");
     });
 
-    it("compiles nested path access to JSON_VALUE", () => {
+    it("compiles nested path access to a JSONExtract bridge with multiple keys", () => {
       const ctx = createRawColumnContext();
       const { sql } = printQuery("SELECT output.data.name FROM runs", ctx);
 
-      expect(sql).toContain("JSON_VALUE(output_raw, '$.data.name') AS output_data_name");
+      expect(sql).toContain("JSONExtractString(output_raw, 'data', 'name')");
+      expect(sql).toContain("AS output_data_name");
     });
 
-    it("compiles path access in WHERE to JSON_VALUE", () => {
+    it("compiles path access in WHERE to a JSONExtract bridge", () => {
       const ctx = createRawColumnContext();
       const { sql } = printQuery("SELECT id FROM runs WHERE output.name = 'test'", ctx);
 
-      expect(sql).toContain("equals(JSON_VALUE(output_raw, '$.name'),");
+      expect(sql).toContain(`equals(${nameBridge},`);
     });
 
     it("uses the raw String column for bare LIKE search", () => {
@@ -1015,7 +1022,7 @@ describe("ClickHousePrinter", () => {
       const { sql } = printQuery("SELECT id FROM runs WHERE output LIKE '%boom%'", ctx);
 
       expect(sql).toContain("like(output_raw,");
-      expect(sql).not.toContain("JSON_VALUE");
+      expect(sql).not.toContain("JSONExtract");
     });
 
     it("uses the empty-string nullValue for IS NULL on the raw String column", () => {
@@ -1025,15 +1032,19 @@ describe("ClickHousePrinter", () => {
       expect(sql).toContain("equals(output_raw, '')");
     });
 
-    it("produces matching JSON_VALUE in SELECT and GROUP BY", () => {
+    it("produces a matching bridge expression in SELECT and GROUP BY", () => {
       const ctx = createRawColumnContext();
       const { sql } = printQuery(
         "SELECT output.status, count() AS c FROM runs GROUP BY output.status",
         ctx
       );
 
-      expect(sql).toContain("JSON_VALUE(output_raw, '$.status') AS output_status");
-      expect(sql).toContain("GROUP BY JSON_VALUE(output_raw, '$.status')");
+      const statusBridge =
+        "if(JSONType(output_raw, 'status') = 'String', " +
+        "JSONExtractString(output_raw, 'status'), JSONExtractRaw(output_raw, 'status'))";
+
+      expect(sql).toContain(`${statusBridge} AS output_status`);
+      expect(sql).toContain(`GROUP BY ${statusBridge}`);
       expect(sql).not.toContain(".:String");
     });
   });
