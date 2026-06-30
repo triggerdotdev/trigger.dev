@@ -107,7 +107,7 @@ export const action: ActionFunction = async ({ request }) => {
 
       return json(
         {
-          intent: submission.intent,
+          intent: intent,
           payload: submission.payload,
           error: { "": [error.message] },
         },
@@ -144,7 +144,7 @@ export default function Page() {
               className="mb-0 text-sky-500"
               title={simplur`You have ${invites.length} new invitation[|s]`}
             />
-            <FormError>{form.error}</FormError>
+            <FormError>{form.errors}</FormError>
             {invites.map((invite) => (
               <Form key={invite.id} method="post" {...getFormProps(form)}>
                 <Fieldset>
