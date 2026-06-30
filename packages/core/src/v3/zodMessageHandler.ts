@@ -109,7 +109,8 @@ export class ZodMessageHandler<TMessageCatalog extends ZodMessageCatalogSchema> 
       };
     }
 
-    const ack = await handler(parsedMessage.data.payload);
+    // parsedMessage.data.payload is parsed output at runtime; zod v4 distinguishes input/output
+    const ack = await handler(parsedMessage.data.payload as Parameters<typeof handler>[0]);
 
     return {
       success: true,
@@ -277,7 +278,8 @@ export class ZodMessageSender<TMessageCatalog extends ZodMessageCatalogSchema> {
     }
 
     try {
-      await this.#sender({ type, payload, version: "v1" });
+      // send the validated/normalized output so zod transforms, defaults, and coercions are applied
+      await this.#sender({ type, payload: parsedPayload.data, version: "v1" });
     } catch (error) {
       console.error("[ZodMessageSender] Failed to send message", error);
     }
@@ -332,7 +334,8 @@ export async function sendMessageInCatalog<TMessageCatalog extends ZodMessageCat
     throw new ZodSchemaParsedError(parsedPayload.error, payload);
   }
 
-  await sender({ type, payload, version: "v1" });
+  // send the validated/normalized output so zod transforms, defaults, and coercions are applied
+  await sender({ type, payload: parsedPayload.data, version: "v1" });
 }
 
 export type MessageCatalogToSocketIoEvents<TCatalog extends ZodMessageCatalogSchema> = {

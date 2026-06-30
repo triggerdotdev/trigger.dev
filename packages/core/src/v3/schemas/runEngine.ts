@@ -289,7 +289,7 @@ export const DequeuedMessage = z.object({
     machine: MachinePreset,
     attemptNumber: z.number(),
     masterQueue: z.string(),
-    traceContext: z.record(z.unknown()),
+    traceContext: z.record(z.string(), z.unknown()),
     annotations: RunAnnotations.optional(),
   }),
   environment: z.object({

@@ -65,5 +65,5 @@ type EventMatcher = z.infer<typeof EventMatcher>;
 export type EventFilter = { [key: string]: EventMatcher | EventFilter };
 
 export const EventFilter: z.ZodType<EventFilter> = z.lazy(() =>
-  z.record(z.union([EventMatcher, EventFilter]))
+  z.record(z.string(), z.union([EventMatcher, EventFilter]))
 );
