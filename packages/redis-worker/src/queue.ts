@@ -304,6 +304,42 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     }
   }
 
+  /**
+   * Age (in ms) of the oldest *overdue* message — the oldest item whose scheduled
+   * time has already passed (score <= now). Returns 0 when the queue is empty or
+   * only holds future/delayed or in-flight (future-scored) items.
+   *
+   * Resolves the candidate against the `items` hash so orphaned `queue` entries
+   * (a member whose payload is missing — the same stale state `dequeueItems`
+   * cleans up) don't report a phantom stall for work that can't be dequeued. The
+   * Lua scans due items oldest-first and returns the first score whose payload
+   * still exists.
+   *
+   * This is the generic stall signal: it stays at 0 while a queue drains healthily
+   * and rises only when due work sits undrained (poison block, dead consumer,
+   * backpressure).
+   */
+  async oldestMessageAge(): Promise<number> {
+    try {
+      const now = Date.now();
+      // -1 sentinel = nothing due, or every due entry is orphaned.
+      const score = Number(await this.redis.getOldestDueScore(`queue`, `items`, now));
+
+      if (!Number.isFinite(score) || score < 0) {
+        return 0;
+      }
+
+      return Math.max(0, now - score);
+    } catch (e) {
+      this.logger.error(`SimpleQueue ${this.name}.oldestMessageAge(): error getting oldest age`, {
+        queue: this.name,
+        error: e,
+      });
+      // Swallow: a transient Redis error must not break observable metric collection.
+      return 0;
+    }
+  }
+
   async getJob(id: string): Promise<QueueItem<TMessageCatalog> | null> {
     const result = await this.redis.getJob(`queue`, `items`, id);
 
@@ -481,6 +517,30 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
         end
 
         return dequeued
+      `,
+    });
+
+    this.redis.defineCommand("getOldestDueScore", {
+      numberOfKeys: 2,
+      lua: `
+        local queue = KEYS[1]
+        local items = KEYS[2]
+        local now = tonumber(ARGV[1])
+
+        -- Oldest-first scan of due items, bounded so a long prefix of orphans can't
+        -- make this O(n). Orphans are rare (dequeueItems removes them), so in the
+        -- common case this returns on the first iteration. Read-only: unlike
+        -- dequeueItems we don't ZREM orphans here — a metric probe must not mutate.
+        local result = redis.call('ZRANGEBYSCORE', queue, '-inf', now, 'WITHSCORES', 'LIMIT', 0, 100)
+
+        for i = 1, #result, 2 do
+          local id = result[i]
+          if redis.call('HEXISTS', items, id) == 1 then
+            return result[i + 1]
+          end
+        end
+
+        return -1
       `,
     });
 
@@ -695,5 +755,14 @@ declare module "@internal/redis" {
       id: string,
       callback?: Callback<[string, string, string] | null>
     ): Result<[string, string, string] | null, Context>;
+
+    getOldestDueScore(
+      //keys
+      queue: string,
+      items: string,
+      //args
+      now: number,
+      callback?: Callback<string | number>
+    ): Result<string | number, Context>;
   }
 }
