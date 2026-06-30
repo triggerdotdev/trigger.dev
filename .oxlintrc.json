@@ -10,16 +10,9 @@
     "**/populate.js",
     "internal-packages/tsql/src/grammar/"
   ],
-  "overrides": [
-    {
-      "files": ["**/*.test.ts", "**/*.test.tsx", "**/tests/**", "**/testcontainers/**"],
-      "rules": {
-        "no-empty-pattern": "off"
-      }
-    }
-  ],
   "rules": {
     "no-unused-vars": "off",
+    "no-empty-pattern": "off",
     "no-unused-expressions": ["warn", { "allowShortCircuit": true, "allowTernary": true }],
     "typescript/consistent-type-imports": "off",
     "import/no-duplicates": "off",
