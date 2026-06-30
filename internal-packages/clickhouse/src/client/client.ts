@@ -493,7 +493,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
           }
 
           for (const row of rows) {
-            const rowData = row.json();
+            const rowData = row.json() as any[];
 
             const hydratedRow: Record<string, any> = {};
             for (let i = 0; i < req.columns.length; i++) {
