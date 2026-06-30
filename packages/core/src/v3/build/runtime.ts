@@ -4,12 +4,14 @@ import { BuildRuntime } from "../schemas/build.js";
 import { dedupFlags } from "./flags.js";
 import { homedir } from "node:os";
 
-export const DEFAULT_RUNTIME = "node" satisfies BuildRuntime;
+export const DEFAULT_RUNTIME = "node-24" satisfies BuildRuntime;
 
 export function binaryForRuntime(runtime: BuildRuntime): string {
   switch (runtime) {
     case "node":
     case "node-22":
+    case "node-24":
+    case "node-26":
       return "node";
     case "bun":
       return "bun";
@@ -22,6 +24,8 @@ export function execPathForRuntime(runtime: BuildRuntime): string {
   switch (runtime) {
     case "node":
     case "node-22":
+    case "node-24":
+    case "node-26":
       return process.execPath;
     case "bun":
       if (typeof process.env.BUN_INSTALL === "string") {
@@ -50,7 +54,9 @@ export function execOptionsForRuntime(
 ): string {
   switch (runtime) {
     case "node":
-    case "node-22": {
+    case "node-22":
+    case "node-24":
+    case "node-26": {
       const importEntryPoint = options.loaderEntryPoint
         ? `--import=${pathToFileURL(options.loaderEntryPoint).href}`
         : undefined;
