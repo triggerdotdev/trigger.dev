@@ -6,7 +6,11 @@ type Literal = z.infer<typeof LiteralSchema>;
 export type DeserializedJson = Literal | { [key: string]: DeserializedJson } | DeserializedJson[];
 
 export const DeserializedJsonSchema: z.ZodType<DeserializedJson> = z.lazy(() =>
-  z.union([LiteralSchema, z.array(DeserializedJsonSchema), z.record(z.string(), DeserializedJsonSchema)])
+  z.union([
+    LiteralSchema,
+    z.array(DeserializedJsonSchema),
+    z.record(z.string(), DeserializedJsonSchema),
+  ])
 );
 
 const SerializableSchema = z.union([
@@ -26,5 +30,9 @@ export type SerializableJson =
   | SerializableJson[];
 
 export const SerializableJsonSchema: z.ZodType<SerializableJson> = z.lazy(() =>
-  z.union([SerializableSchema, z.array(SerializableJsonSchema), z.record(z.string(), SerializableJsonSchema)])
+  z.union([
+    SerializableSchema,
+    z.array(SerializableJsonSchema),
+    z.record(z.string(), SerializableJsonSchema),
+  ])
 );

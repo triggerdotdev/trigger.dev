@@ -323,7 +323,10 @@ export default function Page() {
                   <FormError id={confirmEmail.errorId}>{confirmEmail.errors}</FormError>
                 </InputGroup>
               ) : (
-                <input {...getInputProps(confirmEmail, { type: "hidden" })} value={user.email} />
+                <input
+                  {...getInputProps(confirmEmail, { type: "hidden", value: false })}
+                  value={user.email}
+                />
               )}
 
               {isManagedCloud && (
