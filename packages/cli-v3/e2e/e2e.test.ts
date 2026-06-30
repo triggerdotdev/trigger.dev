@@ -52,7 +52,7 @@ if (testCases.length === 0) {
   }
 }
 
-describe.concurrent("buildWorker", async () => {
+describe("buildWorker", async () => {
   beforeEach<E2EFixtureTest>(async ({ fixtureDir, skip, packageManager, workspaceDir }) => {
     await rimraf(path.join(workspaceDir, "**/node_modules"), {
       glob: true,
