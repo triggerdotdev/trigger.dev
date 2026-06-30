@@ -208,7 +208,7 @@ class Worker<TCatalog extends WorkerCatalog> {
     );
 
     const oldestMessageAgeObservableGauge = this.meter.createObservableGauge(
-      "redis_worker.queue.oldest_message_age_ms",
+      "redis_worker.queue.oldest_message_age",
       {
         description: "Age of the oldest overdue message in the queue",
         unit: "ms",
