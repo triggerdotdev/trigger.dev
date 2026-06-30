@@ -206,6 +206,17 @@ class Worker<TCatalog extends WorkerCatalog> {
     concurrencyLimitPendingObservableGauge.addCallback(
       this.#updateConcurrencyLimitPendingMetric.bind(this)
     );
+
+    const oldestMessageAgeObservableGauge = this.meter.createObservableGauge(
+      "redis_worker.queue.oldest_message_age_ms",
+      {
+        description: "Age of the oldest overdue message in the queue",
+        unit: "ms",
+        valueType: ValueType.INT,
+      }
+    );
+
+    oldestMessageAgeObservableGauge.addCallback(this.#updateOldestMessageAgeMetric.bind(this));
   }
 
   async #updateQueueSizeMetric(observableResult: ObservableResult<Attributes>) {
@@ -219,6 +230,14 @@ class Worker<TCatalog extends WorkerCatalog> {
   async #updateDeadLetterQueueSizeMetric(observableResult: ObservableResult<Attributes>) {
     const deadLetterQueueSize = await this.queue.sizeOfDeadLetterQueue();
     observableResult.observe(deadLetterQueueSize, {
+      worker_name: this.options.name,
+    });
+  }
+
+  async #updateOldestMessageAgeMetric(observableResult: ObservableResult<Attributes>) {
+    const oldestMessageAge = await this.queue.oldestMessageAge();
+
+    observableResult.observe(oldestMessageAge, {
       worker_name: this.options.name,
     });
   }

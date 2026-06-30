@@ -304,6 +304,44 @@ export class SimpleQueue<TMessageCatalog extends MessageCatalogSchema> {
     }
   }
 
+  /**
+   * Age (in ms) of the oldest *overdue* message — the oldest item whose scheduled
+   * time has already passed (score <= now). Returns 0 when the queue is empty or
+   * only holds future/delayed or in-flight (future-scored) items.
+   *
+   * This is the generic stall signal: it stays at 0 while a queue drains healthily
+   * and rises only when due work sits undrained (poison block, dead consumer,
+   * backpressure).
+   */
+  async oldestMessageAge(): Promise<number> {
+    try {
+      const now = Date.now();
+      const result = await this.redis.zrangebyscore(
+        `queue`,
+        "-inf",
+        now,
+        "WITHSCORES",
+        "LIMIT",
+        0,
+        1
+      );
+
+      if (!result || result.length < 2) {
+        return 0;
+      }
+
+      const score = Number(result[1]);
+      return Math.max(0, now - score);
+    } catch (e) {
+      this.logger.error(`SimpleQueue ${this.name}.oldestMessageAge(): error getting oldest age`, {
+        queue: this.name,
+        error: e,
+      });
+      // Swallow: a transient Redis error must not break observable metric collection.
+      return 0;
+    }
+  }
+
   async getJob(id: string): Promise<QueueItem<TMessageCatalog> | null> {
     const result = await this.redis.getJob(`queue`, `items`, id);
 

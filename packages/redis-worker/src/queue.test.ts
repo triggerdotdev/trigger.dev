@@ -215,6 +215,56 @@ describe("SimpleQueue", () => {
     }
   });
 
+  redisTest("oldestMessageAge", { timeout: 20_000 }, async ({ redisContainer }) => {
+    const queue = new SimpleQueue({
+      name: "test-1",
+      schema: {
+        test: z.object({
+          value: z.number(),
+        }),
+      },
+      redisOptions: {
+        host: redisContainer.getHost(),
+        port: redisContainer.getPort(),
+        password: redisContainer.getPassword(),
+      },
+      logger: new Logger("test", "log"),
+    });
+
+    try {
+      // empty queue → 0
+      expect(await queue.oldestMessageAge()).toBe(0);
+
+      // only a future-scheduled item → 0 (not yet overdue)
+      await queue.enqueue({
+        id: "future",
+        job: "test",
+        item: { value: 1 },
+        availableAt: new Date(Date.now() + 60_000),
+        visibilityTimeoutMs: 2000,
+      });
+      expect(await queue.oldestMessageAge()).toBe(0);
+
+      // an overdue item → age > 0
+      await queue.enqueue({
+        id: "overdue",
+        job: "test",
+        item: { value: 2 },
+        availableAt: new Date(Date.now() - 5_000),
+        visibilityTimeoutMs: 2000,
+      });
+      const age = await queue.oldestMessageAge();
+      expect(age).toBeGreaterThanOrEqual(5_000);
+
+      // once dequeued, the item is invisible (future-scored) → back to 0
+      const [first] = await queue.dequeue();
+      expect(first?.id).toBe("overdue");
+      expect(await queue.oldestMessageAge()).toBe(0);
+    } finally {
+      await queue.close();
+    }
+  });
+
   redisTest("invisibility timeout", { timeout: 20_000 }, async ({ redisContainer }) => {
     const queue = new SimpleQueue({
       name: "test-1",
