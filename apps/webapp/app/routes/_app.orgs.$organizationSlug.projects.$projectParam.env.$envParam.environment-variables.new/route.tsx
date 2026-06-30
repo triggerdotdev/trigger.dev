@@ -79,19 +79,22 @@ const schema = z.object({
     if (i === "true") return true;
     return false;
   }, z.boolean()),
-  environmentIds: z.preprocess((i) => {
-    if (typeof i === "string") return [i];
+  environmentIds: z.preprocess(
+    (i) => {
+      if (typeof i === "string") return [i];
 
-    if (Array.isArray(i)) {
-      const ids = i.filter((v) => typeof v === "string" && v !== "");
-      if (ids.length === 0) {
-        return;
+      if (Array.isArray(i)) {
+        const ids = i.filter((v) => typeof v === "string" && v !== "");
+        if (ids.length === 0) {
+          return;
+        }
+        return ids;
       }
-      return ids;
-    }
 
-    return;
-  }, z.array(z.string(), { error: "At least one environment is required" })),
+      return;
+    },
+    z.array(z.string(), { error: "At least one environment is required" })
+  ),
   variables: z.preprocess((i) => {
     if (!Array.isArray(i)) {
       return [];

@@ -308,7 +308,10 @@ export class HttpServer {
       return { success: false, error: parsed.error.message };
     }
 
-    return { success: true, data: parsed.data as TSchema extends z.ZodFirstPartySchemaTypes ? z.infer<TSchema> : TData };
+    return {
+      success: true,
+      data: parsed.data as TSchema extends z.ZodFirstPartySchemaTypes ? z.infer<TSchema> : TData,
+    };
   }
 
   private parseQueryParams(url: string): Record<string, string> {

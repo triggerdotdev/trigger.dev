@@ -27,7 +27,8 @@ export const BuildManifest = z.object({
   branch: z.string().optional(),
   config: ConfigManifest,
   files: z.array(TaskFile),
-  sources: z.record(z.string(), 
+  sources: z.record(
+    z.string(),
     z.object({
       contents: z.string(),
       contentHash: z.string(),

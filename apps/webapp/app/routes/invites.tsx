@@ -134,7 +134,10 @@ export default function Page() {
   return (
     <AppContainer className="bg-charcoal-900">
       <BackgroundWrapper>
-        <MainCenteredContainer variant="onboarding" className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
+        <MainCenteredContainer
+          variant="onboarding"
+          className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg"
+        >
           <div>
             <FormTitle
               LeadingIcon={<EnvelopeIcon className="size-6 text-cyan-500" />}
@@ -155,12 +158,7 @@ export default function Page() {
                       <input name="organizationId" type="hidden" value={invite.organizationId} />
                     </div>
                     <div className="flex flex-col gap-y-1">
-                      <Button
-                        type="submit"
-                        name="intent"
-                        value="accept"
-                        variant={"primary/small"}
-                      >
+                      <Button type="submit" name="intent" value="accept" variant={"primary/small"}>
                         Accept
                       </Button>
                       <Button
