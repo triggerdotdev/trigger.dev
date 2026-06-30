@@ -1,6 +1,6 @@
 import { getFormProps, useForm, type SubmissionResult } from "@conform-to/react";
 
-import { parseWithZod } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod/v4";
 import { Form, useActionData } from "@remix-run/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
@@ -37,7 +37,7 @@ export const billingLimitFormSchema = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("custom"),
     amount: z.coerce
-      .number({ invalid_type_error: "Not a valid amount" })
+      .number({ error: "Not a valid amount" })
       .positive("Amount must be greater than 0"),
     cancelInProgressRuns: z
       .preprocess((v) => v === "on" || v === true || v === "true", z.boolean())

@@ -100,7 +100,10 @@ export function ArchiveButton({
             {...getFormProps(form)}
             className="w-full"
           >
-            <input value={environment.id} {...getInputProps(environmentId, { type: "hidden", value: false })} />
+            <input
+              value={environment.id}
+              {...getInputProps(environmentId, { type: "hidden", value: false })}
+            />
             <input
               value={`${location.pathname}${location.search}`}
               {...getInputProps(redirectPath, { type: "hidden", value: false })}

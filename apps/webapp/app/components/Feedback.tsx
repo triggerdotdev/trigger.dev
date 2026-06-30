@@ -1,4 +1,10 @@
-import { getFormProps, getSelectProps, getInputProps, getTextareaProps, useForm } from "@conform-to/react";
+import {
+  getFormProps,
+  getSelectProps,
+  getInputProps,
+  getTextareaProps,
+  useForm,
+} from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod/v4";
 import { InformationCircleIcon, ArrowUpCircleIcon } from "@heroicons/react/20/solid";
 import { EnvelopeIcon, ShieldCheckIcon } from "@heroicons/react/24/solid";
@@ -114,9 +120,17 @@ export function Feedback({
             type === "concurrency" ||
             type === "hipaa"
           ) && <hr className="border-grid-dimmed" />}
-          <Form method="post" action="/resources/feedback" {...getFormProps(form)} className="w-full">
+          <Form
+            method="post"
+            action="/resources/feedback"
+            {...getFormProps(form)}
+            className="w-full"
+          >
             <Fieldset className="max-w-full gap-y-3">
-              <input value={location.pathname} {...getInputProps(fields.path, { type: "hidden", value: false })} />
+              <input
+                value={location.pathname}
+                {...getInputProps(fields.path, { type: "hidden", value: false })}
+              />
               <InputGroup className="max-w-full">
                 {type === "feature" && (
                   <InfoPanel
