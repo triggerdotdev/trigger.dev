@@ -82,7 +82,7 @@ export class Exec {
     const argsForLogging = redactArgsForLogging(args);
     const argsTrimmedForLogging = redactArgsForLogging(argsTrimmed);
 
-    const commandWithFirstArg = `${command}${argsTrimmed?.length ? ` ${argsTrimmed[0]}` : ""}`;
+    const commandWithFirstArg = `${command}${argsTrimmedForLogging?.length ? ` ${argsTrimmedForLogging[0]}` : ""}`;
     this.logger.debug(`exec: ${commandWithFirstArg}`, {
       command,
       args: argsForLogging,
