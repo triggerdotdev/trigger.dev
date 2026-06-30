@@ -448,7 +448,7 @@ describe("slimSubmitMessageForWire", () => {
     };
     const slim = slimSubmitMessageForWire(assistantMsg);
     expect(slim?.parts).toHaveLength(1);
-    expect((slim!.parts[0] as any).toolCallId).toBe("tc-resolved");
+    expect((slim!.parts![0] as any).toolCallId).toBe("tc-resolved");
   });
 
   it("handles undefined input", () => {
