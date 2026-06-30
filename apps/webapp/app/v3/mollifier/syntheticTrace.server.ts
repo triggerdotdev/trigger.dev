@@ -84,5 +84,7 @@ export function buildSyntheticTraceForBufferedRun(run: SyntheticRun) {
     queuedDuration: undefined,
     overridesBySpanId: undefined,
     linkedRunIdBySpanId: {} as Record<string, string>,
+    isTruncated: false,
+    missingAnchor: false,
   };
 }

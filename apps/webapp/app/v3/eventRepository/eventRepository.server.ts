@@ -438,109 +438,22 @@ export class EventRepository implements IEventRepository {
         { includeDebugLogs: options?.includeDebugLogs }
       );
 
-      let preparedEvents: Array<PreparedEvent> = [];
-      let rootSpanId: string | undefined;
-      const eventsBySpanId = new Map<string, PreparedEvent>();
-
-      for (const event of events) {
-        preparedEvents.push(prepareEvent(event));
-
-        if (!rootSpanId && !event.parentId) {
-          rootSpanId = event.spanId;
-        }
-      }
-
-      for (const event of preparedEvents) {
-        const existingEvent = eventsBySpanId.get(event.spanId);
-
-        if (!existingEvent) {
-          eventsBySpanId.set(event.spanId, event);
-          continue;
-        }
-
-        // This is an invisible event, and we just want to keep the original event but concat together
-        // the event.events with the existingEvent.events
-        if (event.kind === "UNSPECIFIED") {
-          eventsBySpanId.set(event.spanId, {
-            ...existingEvent,
-            events: [...(existingEvent.events ?? []), ...(event.events ?? [])],
-          });
-          continue;
-        }
-
-        if (event.isCancelled || !event.isPartial) {
-          const mergedEvent: PreparedEvent = {
-            ...event,
-            // Preserve style from the original partial event
-            style: existingEvent.style,
-            events: [...(existingEvent.events ?? []), ...(event.events ?? [])],
-          };
-          eventsBySpanId.set(event.spanId, mergedEvent);
-          continue;
-        }
-      }
-
-      preparedEvents = Array.from(eventsBySpanId.values());
-
-      const spansBySpanId = new Map<string, SpanSummary>();
-
-      const spans = preparedEvents.map((event) => {
-        const overrides = getAncestorOverrides({
-          spansById: eventsBySpanId,
-          span: event,
-        });
-
-        const ancestorCancelled = overrides?.isCancelled ?? false;
-        const ancestorIsError = overrides?.isError ?? false;
-        const duration = overrides?.duration ?? event.duration;
-        const events = [...(overrides?.events ?? []), ...(event.events ?? [])];
-        const isPartial = ancestorCancelled || ancestorIsError ? false : event.isPartial;
-        const isCancelled =
-          event.isCancelled === true ? true : event.isPartial && ancestorCancelled;
-        const isError = isCancelled
-          ? false
-          : typeof overrides?.isError === "boolean"
-            ? overrides.isError
-            : event.isError;
-
-        const span = {
-          id: event.spanId,
-          parentId: event.parentId ?? undefined,
-          runId: event.runId,
-          data: {
-            message: event.message,
-            style: event.style,
-            duration,
-            isError,
-            isPartial,
-            isCancelled,
-            isDebug: event.kind === TaskEventKind.LOG,
-            startTime: getDateFromNanoseconds(event.startTime),
-            level: event.level,
-            events,
-          },
-        };
-
-        spansBySpanId.set(event.spanId, span);
-
-        return span;
-      });
-
-      if (!rootSpanId) {
-        return;
-      }
-
-      const rootSpan = spansBySpanId.get(rootSpanId);
-
-      if (!rootSpan) {
-        return;
-      }
-
-      return {
-        rootSpan,
-        spans,
-      };
+      return buildTraceSummaryFromQueriedEvents(events);
     });
+  }
+
+  public async getTraceSubtreeSummary(
+    _storeTable: TaskEventStoreTable,
+    _environmentId: string,
+    _traceId: string,
+    _anchorSpanId: string,
+    _startCreatedAt: Date,
+    _endCreatedAt?: Date,
+    _options?: { includeDebugLogs?: boolean }
+  ): Promise<TraceSummary | undefined> {
+    // Subtree traversal is ClickHouse-only. Dashboard falls back to the full
+    // summary when this returns undefined.
+    return undefined;
   }
 
   public async getTraceDetailedSummary(
@@ -560,128 +473,47 @@ export class EventRepository implements IEventRepository {
         { includeDebugLogs: options?.includeDebugLogs }
       );
 
-      let preparedEvents: Array<PreparedDetailedEvent> = [];
-      let rootSpanId: string | undefined;
-      const eventsBySpanId = new Map<string, PreparedDetailedEvent>();
-
-      for (const event of events) {
-        preparedEvents.push(prepareDetailedEvent(event));
-
-        if (!rootSpanId && !event.parentId) {
-          rootSpanId = event.spanId;
-        }
-      }
-
-      for (const event of preparedEvents) {
-        const existingEvent = eventsBySpanId.get(event.spanId);
-
-        if (!existingEvent) {
-          eventsBySpanId.set(event.spanId, event);
-          continue;
-        }
-
-        // This is an invisible event, and we just want to keep the original event but concat together
-        // the event.events with the existingEvent.events
-        if (event.kind === "UNSPECIFIED") {
-          eventsBySpanId.set(event.spanId, {
-            ...existingEvent,
-            events: [...(existingEvent.events ?? []), ...(event.events ?? [])],
-          });
-          continue;
-        }
-
-        if (event.isCancelled || !event.isPartial) {
-          // If we have a cancelled event and an existing partial event,
-          // merge them: use cancelled event data but preserve style from the partial event
-          if (event.isCancelled && existingEvent.isPartial && !existingEvent.isCancelled) {
-            const mergedEvent: PreparedDetailedEvent = {
-              ...event, // Use cancelled event as base (has correct timing, status, events)
-              // Preserve style from the original partial event
-              style: existingEvent.style,
-              events: [...(existingEvent.events ?? []), ...(event.events ?? [])],
-            };
-            eventsBySpanId.set(event.spanId, mergedEvent);
-            continue;
-          }
-        }
-      }
-
-      preparedEvents = Array.from(eventsBySpanId.values());
-
-      if (!rootSpanId) {
-        return;
-      }
-
-      // Build hierarchical structure
-      const spanDetailedSummaryMap = new Map<string, SpanDetailedSummary>();
-
-      // First pass: create all span detailed summaries
-      for (const event of preparedEvents) {
-        const overrides = getAncestorOverrides({
-          spansById: eventsBySpanId,
-          span: event,
-        });
-
-        const ancestorCancelled = overrides?.isCancelled ?? false;
-        const ancestorIsError = overrides?.isError ?? false;
-        const duration = overrides?.duration ?? event.duration;
-        const events = [...(overrides?.events ?? []), ...(event.events ?? [])];
-        const isPartial = ancestorCancelled || ancestorIsError ? false : event.isPartial;
-        const isCancelled =
-          event.isCancelled === true ? true : event.isPartial && ancestorCancelled;
-        const isError = isCancelled
-          ? false
-          : typeof overrides?.isError === "boolean"
-            ? overrides.isError
-            : event.isError;
-
-        const properties = event.properties
-          ? removePrivateProperties(event.properties as Attributes)
-          : {};
-
-        const spanDetailedSummary: SpanDetailedSummary = {
-          id: event.spanId,
-          parentId: event.parentId ?? undefined,
-          runId: event.runId,
-          data: {
-            message: event.message,
-            taskSlug: event.taskSlug ?? undefined,
-            events: events?.filter((e) => !e.name.startsWith("trigger.dev")),
-            startTime: getDateFromNanoseconds(event.startTime),
-            duration: nanosecondsToMilliseconds(duration),
-            isError,
-            isPartial,
-            isCancelled,
-            level: event.level,
-            properties,
-          },
-          children: [],
-        };
-
-        spanDetailedSummaryMap.set(event.spanId, spanDetailedSummary);
-      }
-
-      // Second pass: build parent-child relationships
-      for (const spanSummary of spanDetailedSummaryMap.values()) {
-        if (spanSummary.parentId) {
-          const parent = spanDetailedSummaryMap.get(spanSummary.parentId);
-          if (parent) {
-            parent.children.push(spanSummary);
-          }
-        }
-      }
-
-      const rootSpan = spanDetailedSummaryMap.get(rootSpanId);
-
-      if (!rootSpan) {
-        return;
-      }
-
-      return {
-        traceId,
-        rootSpan,
-      };
+      return buildTraceDetailedSummaryFromQueriedEvents(traceId, events);
     });
+  }
+
+  public async getTraceDetailedSubtreeSummary(
+    storeTable: TaskEventStoreTable,
+    environmentId: string,
+    traceId: string,
+    anchorSpanId: string,
+    startCreatedAt: Date,
+    endCreatedAt?: Date,
+    options?: { includeDebugLogs?: boolean }
+  ): Promise<TraceDetailedSummary | undefined> {
+    const events = await this.taskEventStore.findDetailedTraceEvents(
+      storeTable,
+      traceId,
+      startCreatedAt,
+      endCreatedAt,
+      { includeDebugLogs: options?.includeDebugLogs }
+    );
+
+    let summary = buildTraceDetailedSummaryFromQueriedEvents(traceId, events);
+
+    if (!summary) {
+      summary = buildTraceDetailedSummaryFromQueriedEvents(traceId, events, anchorSpanId);
+    }
+
+    if (!summary) {
+      return;
+    }
+
+    const anchorSpan = findSpanInDetailedTree(summary.rootSpan, anchorSpanId);
+    if (anchorSpan) {
+      return {
+        traceId: summary.traceId,
+        rootSpan: anchorSpan,
+        isTruncated: summary.isTruncated,
+      };
+    }
+
+    return summary;
   }
 
   public async *streamTraceEvents(
@@ -1587,6 +1419,243 @@ function prepareEvent(event: QueriedEvent): PreparedEvent {
     duration: Number(event.duration),
     events: parseEventsField(event.events),
     style: parseStyleField(event.style),
+  };
+}
+
+function buildTraceSummaryFromQueriedEvents(
+  events: QueriedEvent[],
+  rootSpanId?: string
+): TraceSummary | undefined {
+  let preparedEvents: Array<PreparedEvent> = [];
+  let resolvedRootSpanId: string | undefined = rootSpanId;
+  const eventsBySpanId = new Map<string, PreparedEvent>();
+
+  for (const event of events) {
+    preparedEvents.push(prepareEvent(event));
+
+    if (!resolvedRootSpanId && !event.parentId) {
+      resolvedRootSpanId = event.spanId;
+    }
+  }
+
+  for (const event of preparedEvents) {
+    const existingEvent = eventsBySpanId.get(event.spanId);
+
+    if (!existingEvent) {
+      eventsBySpanId.set(event.spanId, event);
+      continue;
+    }
+
+    if (event.kind === "UNSPECIFIED") {
+      eventsBySpanId.set(event.spanId, {
+        ...existingEvent,
+        events: [...(existingEvent.events ?? []), ...(event.events ?? [])],
+      });
+      continue;
+    }
+
+    if (event.isCancelled || !event.isPartial) {
+      const mergedEvent: PreparedEvent = {
+        ...event,
+        style: existingEvent.style,
+        events: [...(existingEvent.events ?? []), ...(event.events ?? [])],
+      };
+      eventsBySpanId.set(event.spanId, mergedEvent);
+      continue;
+    }
+  }
+
+  preparedEvents = Array.from(eventsBySpanId.values());
+
+  const spansBySpanId = new Map<string, SpanSummary>();
+
+  const spans = preparedEvents.map((event) => {
+    const overrides = getAncestorOverrides({
+      spansById: eventsBySpanId,
+      span: event,
+    });
+
+    const ancestorCancelled = overrides?.isCancelled ?? false;
+    const ancestorIsError = overrides?.isError ?? false;
+    const duration = overrides?.duration ?? event.duration;
+    const spanEvents = [...(overrides?.events ?? []), ...(event.events ?? [])];
+    const isPartial = ancestorCancelled || ancestorIsError ? false : event.isPartial;
+    const isCancelled = event.isCancelled === true ? true : event.isPartial && ancestorCancelled;
+    const isError = isCancelled
+      ? false
+      : typeof overrides?.isError === "boolean"
+        ? overrides.isError
+        : event.isError;
+
+    const span = {
+      id: event.spanId,
+      parentId: event.parentId ?? undefined,
+      runId: event.runId,
+      data: {
+        message: event.message,
+        style: event.style,
+        duration,
+        isError,
+        isPartial,
+        isCancelled,
+        isDebug: event.kind === TaskEventKind.LOG,
+        startTime: getDateFromNanoseconds(event.startTime),
+        level: event.level,
+        events: spanEvents,
+      },
+    };
+
+    spansBySpanId.set(event.spanId, span);
+
+    return span;
+  });
+
+  if (!resolvedRootSpanId) {
+    return;
+  }
+
+  const rootSpan = spansBySpanId.get(resolvedRootSpanId);
+
+  if (!rootSpan) {
+    return;
+  }
+
+  return {
+    rootSpan,
+    spans,
+  };
+}
+
+function findSpanInDetailedTree(
+  span: SpanDetailedSummary,
+  spanId: string
+): SpanDetailedSummary | undefined {
+  if (span.id === spanId) {
+    return span;
+  }
+  for (const child of span.children) {
+    const found = findSpanInDetailedTree(child, spanId);
+    if (found) {
+      return found;
+    }
+  }
+  return undefined;
+}
+
+function buildTraceDetailedSummaryFromQueriedEvents(
+  traceId: string,
+  events: DetailedTraceEvent[],
+  rootSpanId?: string
+): TraceDetailedSummary | undefined {
+  let preparedEvents: Array<PreparedDetailedEvent> = [];
+  let resolvedRootSpanId: string | undefined = rootSpanId;
+  const eventsBySpanId = new Map<string, PreparedDetailedEvent>();
+
+  for (const event of events) {
+    preparedEvents.push(prepareDetailedEvent(event));
+
+    if (!resolvedRootSpanId && !event.parentId) {
+      resolvedRootSpanId = event.spanId;
+    }
+  }
+
+  for (const event of preparedEvents) {
+    const existingEvent = eventsBySpanId.get(event.spanId);
+
+    if (!existingEvent) {
+      eventsBySpanId.set(event.spanId, event);
+      continue;
+    }
+
+    if (event.kind === "UNSPECIFIED") {
+      eventsBySpanId.set(event.spanId, {
+        ...existingEvent,
+        events: [...(existingEvent.events ?? []), ...(event.events ?? [])],
+      });
+      continue;
+    }
+
+    if (event.isCancelled || !event.isPartial) {
+      const mergedEvent: PreparedDetailedEvent = {
+        ...event,
+        style: existingEvent.style,
+        events: [...(existingEvent.events ?? []), ...(event.events ?? [])],
+      };
+      eventsBySpanId.set(event.spanId, mergedEvent);
+      continue;
+    }
+  }
+
+  preparedEvents = Array.from(eventsBySpanId.values());
+
+  if (!resolvedRootSpanId) {
+    return;
+  }
+
+  const spanDetailedSummaryMap = new Map<string, SpanDetailedSummary>();
+
+  for (const event of preparedEvents) {
+    const overrides = getAncestorOverrides({
+      spansById: eventsBySpanId as Map<string, PreparedEvent>,
+      span: event as PreparedEvent,
+    });
+
+    const ancestorCancelled = overrides?.isCancelled ?? false;
+    const ancestorIsError = overrides?.isError ?? false;
+    const duration = overrides?.duration ?? event.duration;
+    const spanEvents = [...(overrides?.events ?? []), ...(event.events ?? [])];
+    const isPartial = ancestorCancelled || ancestorIsError ? false : event.isPartial;
+    const isCancelled = event.isCancelled === true ? true : event.isPartial && ancestorCancelled;
+    const isError = isCancelled
+      ? false
+      : typeof overrides?.isError === "boolean"
+        ? overrides.isError
+        : event.isError;
+
+    const properties = event.properties
+      ? removePrivateProperties(event.properties as Attributes)
+      : {};
+
+    const spanDetailedSummary: SpanDetailedSummary = {
+      id: event.spanId,
+      parentId: event.parentId ?? undefined,
+      runId: event.runId,
+      data: {
+        message: event.message,
+        taskSlug: event.taskSlug ?? undefined,
+        events: spanEvents?.filter((e) => !e.name.startsWith("trigger.dev")),
+        startTime: getDateFromNanoseconds(event.startTime),
+        duration: nanosecondsToMilliseconds(duration),
+        isError,
+        isPartial,
+        isCancelled,
+        level: event.level,
+        properties,
+      },
+      children: [],
+    };
+
+    spanDetailedSummaryMap.set(event.spanId, spanDetailedSummary);
+  }
+
+  for (const spanSummary of spanDetailedSummaryMap.values()) {
+    if (spanSummary.parentId) {
+      const parent = spanDetailedSummaryMap.get(spanSummary.parentId);
+      if (parent) {
+        parent.children.push(spanSummary);
+      }
+    }
+  }
+
+  const rootSpan = spanDetailedSummaryMap.get(resolvedRootSpanId);
+
+  if (!rootSpan) {
+    return;
+  }
+
+  return {
+    traceId,
+    rootSpan,
   };
 }
 

@@ -448,7 +448,7 @@ paths:
     get:
       operationId: get_run_trace_v1
       summary: Retrieve run trace
-      description: Returns the full OTel trace tree for a run, including all spans and their children.
+      description: Returns the OTel trace subtree for the requested run — the run's span as `rootSpan`, its ancestor chain, and its descendant spans. For child or nested runs in a large trace, this is scoped to that run rather than the trace-wide root.
       responses:
         "200":
           description: Successful request
@@ -464,7 +464,9 @@ paths:
                         type: string
                         description: The OTel trace ID.
                       rootSpan:
-                        $ref: "#/components/schemas/SpanDetailedSummary"
+                        allOf:
+                          - $ref: "#/components/schemas/SpanDetailedSummary"
+                        description: The requested run's span, with nested descendant spans as `children`. Not necessarily the trace-wide root span.
         "401":
           description: Unauthorized request
           content:
