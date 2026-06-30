@@ -41,16 +41,12 @@ export function EnvironmentSelector({
   environment,
   className,
   isCollapsed = false,
-  showConnector = false,
 }: {
   organization: MatchedOrganization;
   project: SideMenuProject;
   environment: SideMenuEnvironment;
   className?: string;
   isCollapsed?: boolean;
-  /** Show an end tree-connector to the left of the icon so the selector reads
-   * as connected to the Project menu above it. Only used in the side menu. */
-  showConnector?: boolean;
 }) {
   const { isManagedCloud } = useFeatures();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -75,21 +71,6 @@ export function EnvironmentSelector({
               className
             )}
           >
-            {showConnector &&
-              !isCollapsed && (
-                // End tree-connector sized to the full button height (viewBox matches the
-                // 20x32 box) so the vertical line reaches the button's top edge and meets the
-                // Project button above, with the corner aligned to the environment icon's center.
-                <svg
-                  aria-hidden
-                  viewBox="0 0 20 32"
-                  fill="none"
-                  className="mr-1.5 h-8 w-5 shrink-0 text-charcoal-600"
-                >
-                  <line x1="10" y1="0" x2="10" y2="16" stroke="currentColor" strokeWidth="1" />
-                  <line x1="10" y1="16" x2="20" y2="16" stroke="currentColor" strokeWidth="1" />
-                </svg>
-              )}
             <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
               <EnvironmentIcon environment={environment} className="size-5 shrink-0" />
               <span
@@ -216,10 +197,6 @@ function Branches({
   branchEnvironments: SideMenuEnvironment[];
   currentEnvironment: SideMenuEnvironment;
 }) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const { urlForEnvironment } = useEnvironmentSwitcher();
   const navigation = useNavigation();
   const [isMenuOpen, setMenuOpen] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -251,23 +228,6 @@ function Branches({
     }, 150);
   };
 
-  const activeBranches = branchEnvironments.filter((env) => env.archivedAt === null);
-  const state =
-    branchEnvironments.length === 0
-      ? "no-branches"
-      : activeBranches.length === 0
-        ? "no-active-branches"
-        : "has-branches";
-
-  // Only surface the active environment's archived-branch item in the submenu it
-  // actually belongs to. Both Development and Preview render this component, so
-  // without the parent check an archived dev branch would leak into the Preview
-  // submenu (and vice-versa).
-  const currentBranchIsArchived =
-    environment.archivedAt !== null && environment.parentEnvironmentId === parentEnvironment.id;
-
-  const envTextClassName = environmentTextClassName(parentEnvironment);
-
   return (
     <Popover onOpenChange={(open) => setMenuOpen(open)} open={isMenuOpen}>
       <div onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} className="flex">
@@ -293,88 +253,134 @@ function Branches({
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >
-          <div className="flex flex-col gap-1 p-1">
-            {currentBranchIsArchived && (
-              <PopoverMenuItem
-                key={environment.id}
-                to={urlForEnvironment(environment)}
-                title={
-                  <>
-                    <span className={cn("block w-full", envTextClassName)}>
-                      {environment.branchName}
-                    </span>
-                    <Badge variant="extra-small">Archived</Badge>
-                  </>
-                }
-                icon={
-                  <BranchEnvironmentIconSmall className={cn("size-4 shrink-0", envTextClassName)} />
-                }
-                isSelected={environment.id === currentEnvironment.id}
-              />
-            )}
-            {state === "has-branches" ? (
-              <>
-                {branchEnvironments
-                  .filter((env) => env.archivedAt === null)
-                  .map((env) => (
-                    <PopoverMenuItem
-                      key={env.id}
-                      to={urlForEnvironment(env)}
-                      title={
-                        <span className={cn("block w-full", envTextClassName)}>
-                          {env.branchName ?? DEFAULT_DEV_BRANCH}
-                        </span>
-                      }
-                      icon={
-                        <BranchEnvironmentIconSmall
-                          className={cn("size-4 shrink-0", envTextClassName)}
-                        />
-                      }
-                      isSelected={env.id === currentEnvironment.id}
-                    />
-                  ))}
-              </>
-            ) : state === "no-branches" ? (
-              <div className="flex max-w-sm flex-col gap-1 p-2">
-                <div className="flex items-center gap-1">
-                  <BranchEnvironmentIconSmall className={cn("size-4", envTextClassName)} />
-                  <Header2>Create your first branch</Header2>
-                </div>
-                <Paragraph spacing variant="small">
-                  Branches are a way to test new features in isolation before merging them into the
-                  main environment.
-                </Paragraph>
-                <Paragraph variant="small">
-                  Branches are only available when using <V4Badge inline /> or above. Read our{" "}
-                  <TextLink to={docsPath("upgrade-to-v4")}>v4 upgrade guide</TextLink> to learn
-                  more.
-                </Paragraph>
-              </div>
-            ) : (
-              <div className="flex max-w-sm flex-col gap-1 p-2">
-                <Paragraph variant="extra-small">All branches are archived.</Paragraph>
-              </div>
-            )}
-          </div>
-          <div className="border-t border-charcoal-700 p-1">
-            {parentEnvironment.type === "DEVELOPMENT" ? (
-              <PopoverMenuItem
-                to={branchesDevPath(organization, project, environment)}
-                title="Manage dev branches"
-                icon={<Cog8ToothIcon className="size-4 text-text-dimmed" />}
-                leadingIconClassName="text-text-dimmed"
-              />
-            ) : (
-              <PopoverMenuItem
-                to={branchesPath(organization, project, environment)}
-                title="Manage preview branches"
-                icon={<Cog8ToothIcon className="size-4 text-text-dimmed" />}
-                leadingIconClassName="text-text-dimmed"
-              />
-            )}
-          </div>
+          <BranchesPopoverContent
+            parentEnvironment={parentEnvironment}
+            branchEnvironments={branchEnvironments}
+            currentEnvironment={currentEnvironment}
+          />
         </PopoverContent>
       </div>
     </Popover>
+  );
+}
+
+/**
+ * The inner content of the branches popover (branch list, empty states, and the
+ * "Manage branches" footer). Shared by the dropdown's hover submenu (`Branches`)
+ * and the side-menu segmented control's Preview popover.
+ */
+export function BranchesPopoverContent({
+  parentEnvironment,
+  branchEnvironments,
+  currentEnvironment,
+}: {
+  parentEnvironment: SideMenuEnvironment;
+  branchEnvironments: SideMenuEnvironment[];
+  currentEnvironment: SideMenuEnvironment;
+}) {
+  const organization = useOrganization();
+  const project = useProject();
+  const environment = useEnvironment();
+  const { urlForEnvironment } = useEnvironmentSwitcher();
+
+  const activeBranches = branchEnvironments.filter((env) => env.archivedAt === null);
+  const state =
+    branchEnvironments.length === 0
+      ? "no-branches"
+      : activeBranches.length === 0
+        ? "no-active-branches"
+        : "has-branches";
+
+  // Only surface the active environment's archived-branch item in the submenu it
+  // actually belongs to. Both Development and Preview render this component, so
+  // without the parent check an archived dev branch would leak into the Preview
+  // submenu (and vice-versa).
+  const currentBranchIsArchived =
+    environment.archivedAt !== null && environment.parentEnvironmentId === parentEnvironment.id;
+
+  const envTextClassName = environmentTextClassName(parentEnvironment);
+
+  return (
+    <>
+      <div className="flex flex-col gap-1 p-1">
+        {currentBranchIsArchived && (
+          <PopoverMenuItem
+            key={environment.id}
+            to={urlForEnvironment(environment)}
+            title={
+              <>
+                <span className={cn("block w-full", envTextClassName)}>
+                  {environment.branchName}
+                </span>
+                <Badge variant="extra-small">Archived</Badge>
+              </>
+            }
+            icon={
+              <BranchEnvironmentIconSmall className={cn("size-4 shrink-0", envTextClassName)} />
+            }
+            isSelected={environment.id === currentEnvironment.id}
+          />
+        )}
+        {state === "has-branches" ? (
+          <>
+            {branchEnvironments
+              .filter((env) => env.archivedAt === null)
+              .map((env) => (
+                <PopoverMenuItem
+                  key={env.id}
+                  to={urlForEnvironment(env)}
+                  title={
+                    <span className={cn("block w-full", envTextClassName)}>
+                      {env.branchName ?? DEFAULT_DEV_BRANCH}
+                    </span>
+                  }
+                  icon={
+                    <BranchEnvironmentIconSmall
+                      className={cn("size-4 shrink-0", envTextClassName)}
+                    />
+                  }
+                  isSelected={env.id === currentEnvironment.id}
+                />
+              ))}
+          </>
+        ) : state === "no-branches" ? (
+          <div className="flex max-w-sm flex-col gap-1 p-2">
+            <div className="flex items-center gap-1">
+              <BranchEnvironmentIconSmall className={cn("size-4", envTextClassName)} />
+              <Header2>Create your first branch</Header2>
+            </div>
+            <Paragraph spacing variant="small">
+              Branches are a way to test new features in isolation before merging them into the main
+              environment.
+            </Paragraph>
+            <Paragraph variant="small">
+              Branches are only available when using <V4Badge inline /> or above. Read our{" "}
+              <TextLink to={docsPath("upgrade-to-v4")}>v4 upgrade guide</TextLink> to learn more.
+            </Paragraph>
+          </div>
+        ) : (
+          <div className="flex max-w-sm flex-col gap-1 p-2">
+            <Paragraph variant="extra-small">All branches are archived.</Paragraph>
+          </div>
+        )}
+      </div>
+      <div className="border-t border-charcoal-700 p-1">
+        {parentEnvironment.type === "DEVELOPMENT" ? (
+          <PopoverMenuItem
+            to={branchesDevPath(organization, project, environment)}
+            title="Manage dev branches"
+            icon={<Cog8ToothIcon className="size-4 text-text-dimmed" />}
+            leadingIconClassName="text-text-dimmed"
+          />
+        ) : (
+          <PopoverMenuItem
+            to={branchesPath(organization, project, environment)}
+            title="Manage preview branches"
+            icon={<Cog8ToothIcon className="size-4 text-text-dimmed" />}
+            leadingIconClassName="text-text-dimmed"
+          />
+        )}
+      </div>
+    </>
   );
 }

@@ -110,10 +110,8 @@ import {
 import { AlphaBadge, NewBadge } from "../FeatureBadges";
 import { AskAI } from "../AskAI";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
-import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
-import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
-import { Dialog, DialogTrigger } from "../primitives/Dialog";
+import { ButtonContent, LinkButton } from "../primitives/Buttons";
 import { Paragraph } from "../primitives/Paragraph";
 import { Badge } from "../primitives/Badge";
 import { Popover, PopoverContent, PopoverMenuItem, PopoverTrigger } from "../primitives/Popover";
@@ -128,7 +126,7 @@ import {
 import { ShortcutsAutoOpen } from "../Shortcuts";
 import { CreateDashboardButton } from "./DashboardDialogs";
 import { DashboardList } from "./DashboardList";
-import { EnvironmentSelector } from "./EnvironmentSelector";
+import { EnvironmentSegmentedControl } from "./EnvironmentSegmentedControl";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
@@ -182,8 +180,6 @@ export function SideMenu({
   organization,
   organizations,
 }: SideMenuProps) {
-  const borderRef = useRef<HTMLDivElement>(null);
-  const [showHeaderDivider, setShowHeaderDivider] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(
     user.dashboardPreferences.sideMenu?.isCollapsed ?? false
   );
@@ -195,7 +191,6 @@ export function SideMenu({
   }>({});
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentPlan = useCurrentPlan();
-  const { isConnected } = useDevPresence();
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
   const isAdmin = useHasAdminAccess();
   const { isManagedCloud } = useFeatures();
@@ -292,20 +287,6 @@ export function SideMenu({
     action: handleToggleCollapsed,
   });
 
-  useEffect(() => {
-    const handleScroll = () => {
-      if (borderRef.current) {
-        const shouldShowHeaderDivider = borderRef.current.scrollTop > 1;
-        if (showHeaderDivider !== shouldShowHeaderDivider) {
-          setShowHeaderDivider(shouldShowHeaderDivider);
-        }
-      }
-    };
-
-    borderRef.current?.addEventListener("scroll", handleScroll);
-    return () => borderRef.current?.removeEventListener("scroll", handleScroll);
-  }, [showHeaderDivider]);
-
   return (
     <div
       className={cn(
@@ -348,71 +329,32 @@ export function SideMenu({
             </CollapsibleElement>
           ) : null}
         </div>
-        <div
-          className={cn(
-            "border-b px-1 pb-2 pt-2 transition duration-300",
-            showHeaderDivider || isCollapsed ? "border-grid-bright" : "border-transparent"
-          )}
-        >
+        <div className="border-b border-grid-bright px-1 pb-1 pt-2">
           <div className="w-full space-y-1">
             <SideMenuHeader title={"Project"} isCollapsed={isCollapsed} collapsedTitle="Proj" />
-            <div>
+            <div className="space-y-1">
               <ProjectSelector
                 organization={organization}
                 project={project}
                 isCollapsed={isCollapsed}
                 className="w-full"
               />
-              <div className="flex items-center">
-                <EnvironmentSelector
-                  organization={organization}
-                  project={project}
-                  environment={environment}
-                  className="w-full"
-                  isCollapsed={isCollapsed}
-                  showConnector
-                />
-                {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
-                  <CollapsibleElement isCollapsed={isCollapsed}>
-                    <Dialog>
-                      <TooltipProvider disableHoverableContent={true}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <div className="inline-flex">
-                              <DialogTrigger asChild>
-                                <Button
-                                  variant="minimal/small"
-                                  className="aspect-square h-7 p-1"
-                                  LeadingIcon={<ConnectionIcon isConnected={isConnected} />}
-                                />
-                              </DialogTrigger>
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent side="right" className={"text-xs"}>
-                            {isConnected === undefined
-                              ? "Checking connection…"
-                              : isConnected
-                                ? "Your dev server is connected"
-                                : "Your dev server is not connected"}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      <DevPresencePanel isConnected={isConnected} />
-                    </Dialog>
-                  </CollapsibleElement>
-                )}
-              </div>
+              <EnvironmentSegmentedControl
+                organization={organization}
+                project={project}
+                environment={environment}
+                isCollapsed={isCollapsed}
+              />
             </div>
           </div>
         </div>
         <div
           className={cn(
-            "min-h-0 overflow-y-auto pt-2",
+            "min-h-0 overflow-y-auto pt-1",
             isCollapsed
               ? "scrollbar-none"
               : "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
           )}
-          ref={borderRef}
         >
           <div className="mb-6 flex w-full flex-col gap-4 overflow-hidden px-1">
             <div className="w-full space-y-0">
@@ -1049,7 +991,9 @@ function ProjectSelector({
           <PopoverTrigger
             className={cn(
               "group flex h-8 items-center rounded pl-[0.4375rem] transition-colors hover:bg-charcoal-750",
-              isCollapsed ? "justify-center pr-0.5" : "justify-between pr-1",
+              isCollapsed
+                ? "justify-center pr-0.5"
+                : "justify-between border border-charcoal-700 pr-1",
               className
             )}
           >
