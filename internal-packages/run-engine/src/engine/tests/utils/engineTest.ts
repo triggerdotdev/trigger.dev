@@ -36,7 +36,7 @@ type EngineOptions = {
   };
 };
 
-const engineOptions = async (_: TestContext, use: Use<EngineOptions>) => {
+const engineOptions = async ({}: TestContext, use: Use<EngineOptions>) => {
   const options: EngineOptions = {
     worker: {
       workers: 1,

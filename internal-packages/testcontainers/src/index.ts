@@ -176,7 +176,7 @@ const getWorkerPostgresContainer = () => {
 // of the shared container whose connection points at the clone. This keeps prisma AND any code that
 // reads postgresContainer.getConnectionUri()/getDatabase() (e.g. logical replication) on the SAME
 // isolated database - and it's parallel-ready (each test owns its db).
-const clonedPostgresContainer = async (_: unknown, use: Use<StartedPostgreSqlContainer>) => {
+const clonedPostgresContainer = async ({}, use: Use<StartedPostgreSqlContainer>) => {
   const container = await getWorkerPostgresContainer();
   const baseUri = container.getConnectionUri();
   const cloneDb = `test_${pgCloneCounter++}`;
@@ -232,7 +232,7 @@ const dropCloneDatabase = async (baseUri: string, cloneDb: string) => {
 // A second migrated-but-empty database on the same worker postgres, cloned from the schema
 // template. For tests that need to simulate a read replica that hasn't caught up: schema
 // present, rows absent. Lazy - only booted when a test destructures it.
-const schemaOnlyPrismaFixture = async (_: unknown, use: Use<PrismaClient>) => {
+const schemaOnlyPrismaFixture = async ({}: {}, use: Use<PrismaClient>) => {
   const container = await getWorkerPostgresContainer();
   const baseUri = container.getConnectionUri();
   const cloneDb = `schema_only_${pgCloneCounter++}`;
@@ -323,7 +323,7 @@ export const redisOptions = async (
 // Worker-scoped redis: booted once per worker, FLUSHALL per test. Big win for redis-heavy files
 // (buffer.test.ts: 88 boots -> 1). Safe ONLY for tests that don't leave background redis work
 // (a Worker loop, BatchQueue) running past the test body - use isolatedRedisTest for those.
-const bootWorkerRedis = async (_: unknown, use: Use<StartedRedisContainer>) => {
+const bootWorkerRedis = async ({}, use: Use<StartedRedisContainer>) => {
   const { container } = await createRedisContainer({ port: 6379 });
   try {
     await use(container);
@@ -432,7 +432,7 @@ type ClickhouseTestContext = {
 };
 
 // Boot + migrate clickhouse once per worker.
-const bootWorkerClickhouse = async (_: unknown, use: Use<StartedClickHouseContainer>) => {
+const bootWorkerClickhouse = async ({}, use: Use<StartedClickHouseContainer>) => {
   const container = await withCiResourceLimits(new ClickHouseContainer()).start();
   const client = createClient({ url: container.getConnectionUrl() });
   await client.ping();
@@ -602,7 +602,7 @@ export const containerWithElectricAndRedisTest = test.extend<ContainerWithElectr
 });
 
 // Boot minio once per worker; reset the bucket per test (auto fixture).
-const bootWorkerMinio = async (_: unknown, use: Use<StartedMinIOContainer>) => {
+const bootWorkerMinio = async ({}, use: Use<StartedMinIOContainer>) => {
   const container = await withCiResourceLimits(new MinIOContainer()).start();
   try {
     await use(container);
