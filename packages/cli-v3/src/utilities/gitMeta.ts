@@ -60,15 +60,20 @@ function getLastCommit(directory: string): Promise<git.Commit> {
 }
 
 async function isDirty(directory: string): Promise<boolean> {
-  const result = await x("git", ["--no-optional-locks", "status", "-s"], {
-    nodeOptions: {
-      cwd: directory,
-    },
-  });
+  try {
+    const result = await x("git", ["--no-optional-locks", "status", "-s"], {
+      nodeOptions: {
+        cwd: directory,
+      },
+    });
 
-  // Example output (when dirty):
-  //    M ../fs-detectors/src/index.ts
-  return result.stdout.trim().length > 0;
+    // Example output (when dirty):
+    //    M ../fs-detectors/src/index.ts
+    return result.stdout.trim().length > 0;
+  // eslint-disable-next-line no-useless-catch
+  } catch (error) {
+    throw error;
+  }
 }
 
 async function parseGitConfig(configPath: string) {

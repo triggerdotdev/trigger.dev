@@ -198,41 +198,44 @@ export class DynamicFlushScheduler<T> {
       this.limiter(async () => {
         const itemCount = batch.length;
 
-        const tryFlush = async (flushId: string, batchToFlush: T[], attempt: number = 1) => {
+        // eslint-disable-next-line no-this-alias
+        const self = this;
+
+        async function tryFlush(flushId: string, batchToFlush: T[], attempt: number = 1) {
           try {
             const startTime = Date.now();
-            await this.callback(flushId, batchToFlush);
+            await self.callback(flushId, batchToFlush);
 
             const duration = Date.now() - startTime;
-            this.totalQueuedItems -= itemCount;
-            this.consecutiveFlushFailures = 0;
-            this.lastFlushTime = Date.now();
-            this.metrics.flushedBatches++;
-            this.metrics.totalItemsFlushed += itemCount;
+            self.totalQueuedItems -= itemCount;
+            self.consecutiveFlushFailures = 0;
+            self.lastFlushTime = Date.now();
+            self.metrics.flushedBatches++;
+            self.metrics.totalItemsFlushed += itemCount;
 
-            this.logger.debug("Batch flushed successfully", {
+            self.logger.debug("Batch flushed successfully", {
               flushId,
               itemCount,
               duration,
-              remainingQueueDepth: this.totalQueuedItems,
-              activeConcurrency: this.limiter.activeCount,
-              pendingConcurrency: this.limiter.pendingCount,
+              remainingQueueDepth: self.totalQueuedItems,
+              activeConcurrency: self.limiter.activeCount,
+              pendingConcurrency: self.limiter.pendingCount,
             });
           } catch (error) {
-            this.consecutiveFlushFailures++;
-            this.metrics.failedBatches++;
+            self.consecutiveFlushFailures++;
+            self.metrics.failedBatches++;
 
-            this.logger.error("Error attempting to flush batch", {
+            self.logger.error("Error attempting to flush batch", {
               flushId,
               itemCount,
               error,
-              consecutiveFailures: this.consecutiveFlushFailures,
+              consecutiveFailures: self.consecutiveFlushFailures,
               attempt,
             });
 
             // Back off on failures
-            if (this.consecutiveFlushFailures > 5) {
-              this.adjustConcurrency(true);
+            if (self.consecutiveFlushFailures > 5) {
+              self.adjustConcurrency(true);
             }
 
             if (attempt <= 3) {
@@ -242,7 +245,7 @@ export class DynamicFlushScheduler<T> {
               throw error;
             }
           }
-        };
+        }
 
         const [flushError] = await tryCatch(tryFlush(nanoid(), batch));
 

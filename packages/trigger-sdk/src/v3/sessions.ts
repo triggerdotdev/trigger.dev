@@ -800,6 +800,8 @@ export class SessionInputChannel {
   async waitWithIdleTimeout<T = unknown>(
     options: InputStreamWaitWithIdleTimeoutOptions
   ): Promise<{ ok: true; output: T } | { ok: false; error?: Error }> {
+    // eslint-disable-next-line no-this-alias
+    const self = this;
     const spanName =
       options.spanName ?? `sessions.open(${this.sessionId}).in.waitWithIdleTimeout()`;
 
@@ -807,7 +809,7 @@ export class SessionInputChannel {
       spanName,
       async (span) => {
         if (options.idleTimeoutInSeconds > 0) {
-          const warm = await sessionStreams.once(this.sessionId, "in", {
+          const warm = await sessionStreams.once(self.sessionId, "in", {
             timeoutMs: options.idleTimeoutInSeconds * 1000,
           });
           if (warm.ok) {
@@ -817,7 +819,7 @@ export class SessionInputChannel {
         }
 
         if (options.skipSuspend) {
-          // Match the cold-phase `this.wait()` result shape below so any
+          // Match the cold-phase `self.wait()` result shape below so any
           // caller that does `throw result.error` gets a real error
           // instead of `undefined`.
           span.setAttribute("wait.resolved", "skipped");
@@ -832,7 +834,7 @@ export class SessionInputChannel {
         }
 
         span.setAttribute("wait.resolved", "suspended");
-        const waitResult = await this.wait<T>({
+        const waitResult = await self.wait<T>({
           timeout: options.timeout,
           spanName: "suspended",
         });
@@ -846,10 +848,10 @@ export class SessionInputChannel {
       {
         attributes: {
           [SemanticInternalAttributes.STYLE_ICON]: "sessions",
-          session: this.sessionId,
+          session: self.sessionId,
           io: "in",
           ...accessoryAttributes({
-            items: [{ text: `${this.sessionId}.in`, variant: "normal" }],
+            items: [{ text: `${self.sessionId}.in`, variant: "normal" }],
             style: "codepath",
           }),
         },

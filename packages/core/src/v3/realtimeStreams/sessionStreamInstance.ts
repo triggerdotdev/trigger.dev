@@ -91,14 +91,17 @@ export class SessionStreamInstance<T> implements StreamsWriter {
   }
 
   public get stream(): AsyncIterableStream<T> {
+    // eslint-disable-next-line no-this-alias
+    const self = this;
+
     return new ReadableStream<T>({
-      start: async (controller) => {
-        const streamWriter = await this.streamPromise;
+      async start(controller) {
+        const streamWriter = await self.streamPromise;
 
         const iterator = streamWriter[Symbol.asyncIterator]();
 
         while (true) {
-          if (this.options.signal?.aborted) {
+          if (self.options.signal?.aborted) {
             controller.close();
             break;
           }
