@@ -193,7 +193,7 @@ async function resolveConfig(
     ["run_engine_v2" as const].concat(config.compatibilityFlags ?? [])
   );
 
-  const defaultRuntime: BuildRuntime = features.run_engine_v2 ? "node" : DEFAULT_RUNTIME;
+  const defaultRuntime: BuildRuntime = DEFAULT_RUNTIME;
 
   const mergedConfig = defu(
     {
@@ -283,6 +283,13 @@ async function autoDetectDirs(workingDir: string): Promise<string[]> {
 }
 
 function validateConfig(config: TriggerConfig, warn = true) {
+  if (config.runtime === "node") {
+    warn &&
+      prettyWarning(
+        `The "node" runtime is deprecated (it used Node.js 21 which is EOL). Please migrate to "node-24" (recommended LTS) or "node-22". Update your trigger.config.ts: runtime: "node-24"`
+      );
+  }
+
   if (config.additionalFiles && config.additionalFiles.length > 0) {
     warn &&
       prettyWarning(
