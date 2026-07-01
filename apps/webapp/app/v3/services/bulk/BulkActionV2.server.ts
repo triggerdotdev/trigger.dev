@@ -5,8 +5,6 @@ import {
   BulkActionType,
   type PrismaClient,
 } from "@trigger.dev/database";
-import { getRunFiltersFromRequest } from "~/presenters/RunFilters.server";
-import { type CreateBulkActionPayload } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.runs.bulkaction";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import {
   parseRunListInputOptions,
@@ -14,12 +12,14 @@ import {
   RunsRepository,
 } from "~/services/runsRepository/runsRepository.server";
 import { BaseService } from "../baseService.server";
+import { ServiceValidationError } from "../common.server";
 import { commonWorker } from "~/v3/commonWorker.server";
 import { env } from "~/env.server";
 import { logger } from "@trigger.dev/sdk";
 import { CancelTaskRunService } from "../cancelTaskRun.server";
 import { tryCatch } from "@trigger.dev/core";
 import { ReplayTaskRunService } from "../replayTaskRun.server";
+import { WorkerGroupService } from "../worker/workerGroupService.server";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
 import parseDuration from "parse-duration";
 import { v3BulkActionPath } from "~/utils/pathBuilder";
@@ -28,6 +28,19 @@ import pMap from "p-map";
 import { type PrismaReplicaClient } from "~/db.server";
 import { isSplitEnabled } from "~/v3/runOpsMigration/splitMode.server";
 import { hydrateRunsAcrossSeam, type SeamReadDeps } from "./BulkActionV2.batchReadThrough.server";
+
+export type CreateBulkActionInput = {
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  userId?: string | null;
+  action: "cancel" | "replay";
+  filters: RunListInputFilters;
+  title?: string;
+  region?: string;
+  emailNotification?: boolean;
+  triggerSource?: string;
+};
 
 export type ProcessToCompletionOptions = {
   /** Absolute timestamp (ms) after which processing stops and returns incomplete. */
@@ -53,25 +66,36 @@ export class BulkActionService extends BaseService {
     };
   }
 
-  public async create(
-    organizationId: string,
-    projectId: string,
-    environmentId: string,
-    userId: string,
-    payload: CreateBulkActionPayload,
-    request: Request
-  ) {
-    const filters = await getFilters(payload, request);
+  public async create(input: CreateBulkActionInput) {
+    const filters = freezeRunListFilters(input.filters);
 
     // Region is a replay-only override that re-routes the replayed runs. It's
     // stored alongside the run-list filters under a dedicated key so it isn't
     // mistaken for a `regions` selection filter when the params are parsed.
-    const replayRegion = payload.action === "replay" ? payload.region : undefined;
-    const params = replayRegion ? { ...filters, replayRegion } : filters;
+    const replayRegion = input.action === "replay" ? input.region : undefined;
+    if (replayRegion) {
+      // Validating the region override up-front so an invalid/unauthorized
+      // region surfaces as a user-input (400) error rather than a 500.
+      const [regionError] = await tryCatch(
+        new WorkerGroupService({ prisma: this._prisma }).getDefaultWorkerGroupForProject({
+          projectId: input.projectId,
+          regionOverride: replayRegion,
+        })
+      );
+      if (regionError) {
+        throw new ServiceValidationError(regionError.message, 400);
+      }
+    }
+
+    const params = {
+      ...filters,
+      ...(replayRegion ? { replayRegion } : {}),
+      ...(input.triggerSource ? { triggerSource: input.triggerSource } : {}),
+    };
 
     // Count the runs that will be affected by the bulk action
     const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
-      organizationId,
+      input.organizationId,
       "standard"
     );
     const runsRepository = new RunsRepository({
@@ -79,9 +103,9 @@ export class BulkActionService extends BaseService {
       prisma: this._replica as PrismaClient,
     });
     const count = await runsRepository.countRuns({
-      organizationId,
-      projectId,
-      environmentId,
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      environmentId: input.environmentId,
       ...filters,
     });
 
@@ -91,16 +115,16 @@ export class BulkActionService extends BaseService {
       data: {
         id,
         friendlyId,
-        projectId,
-        environmentId,
-        userId,
-        name: payload.title,
-        type: payload.action === "cancel" ? BulkActionType.CANCEL : BulkActionType.REPLAY,
+        projectId: input.projectId,
+        environmentId: input.environmentId,
+        userId: input.userId,
+        name: input.title,
+        type: input.action === "cancel" ? BulkActionType.CANCEL : BulkActionType.REPLAY,
         params,
         queryName: "bulk_action_v1",
         totalCount: count,
         completionNotification:
-          payload.emailNotification === true
+          input.emailNotification === true
             ? BulkActionNotificationType.EMAIL
             : BulkActionNotificationType.NONE,
       },
@@ -219,6 +243,10 @@ export class BulkActionService extends BaseService {
       "replayRegion" in rawParams && typeof (rawParams as any).replayRegion === "string"
         ? (rawParams as any).replayRegion
         : undefined;
+    const triggerSource =
+      "triggerSource" in rawParams && typeof (rawParams as any).triggerSource === "string"
+        ? (rawParams as any).triggerSource
+        : "dashboard";
     const filters = parseRunListInputOptions({
       organizationId: group.project.organizationId,
       projectId: group.projectId,
@@ -343,7 +371,7 @@ export class BulkActionService extends BaseService {
             const [error, result] = await tryCatch(
               replayService.call(run, {
                 bulkActionId: bulkActionId,
-                triggerSource: "dashboard",
+                triggerSource,
                 region: replayRegion,
               })
             );
@@ -505,28 +533,21 @@ export class BulkActionService extends BaseService {
   }
 }
 
-async function getFilters(
-  payload: CreateBulkActionPayload,
-  request: Request
-): Promise<RunListInputFilters> {
-  if (payload.mode === "selected") {
-    return {
-      runId: payload.selectedRunIds,
-    };
+export function freezeRunListFilters(filters: RunListInputFilters): RunListInputFilters {
+  const frozenFilters: RunListInputFilters = { ...filters };
+  delete (frozenFilters as any).cursor;
+  delete (frozenFilters as any).direction;
+
+  // Explicit run-id selections target specific, already-existing runs, so we
+  // don't apply a time bound (which could otherwise exclude a selected run).
+  if (frozenFilters.runId?.length) {
+    return frozenFilters;
   }
 
-  const filters = await getRunFiltersFromRequest(request);
-  filters.cursor = undefined;
-  filters.direction = undefined;
-
-  const {
-    period,
-    from: _from,
-    to: _to,
-  } = timeFilters({
-    period: filters.period,
-    from: filters.from,
-    to: filters.to,
+  const { period } = timeFilters({
+    period: frozenFilters.period,
+    from: frozenFilters.from,
+    to: frozenFilters.to,
   });
 
   // We fix the time period to a from/to date
@@ -538,18 +559,18 @@ async function getFilters(
 
     const to = new Date();
     const from = new Date(to.getTime() - periodMs);
-    filters.from = from.getTime();
-    filters.to = to.getTime();
-    filters.period = undefined;
-    return filters;
+    frozenFilters.from = from.getTime();
+    frozenFilters.to = to.getTime();
+    frozenFilters.period = undefined;
+    return frozenFilters;
   }
 
   // If no to date is set, we lock it to now
-  if (!filters.to) {
-    filters.to = Date.now();
+  if (!frozenFilters.to) {
+    frozenFilters.to = Date.now();
   }
 
-  filters.period = undefined;
+  frozenFilters.period = undefined;
 
-  return filters;
+  return frozenFilters;
 }

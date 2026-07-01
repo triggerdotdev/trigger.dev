@@ -9,6 +9,7 @@ import {
 } from "./common.js";
 import { BackgroundWorkerMetadata } from "./resources.js";
 import { DequeuedMessage, MachineResources } from "./runEngine.js";
+import { QueueTypeName } from "./queues.js";
 
 export const RunEngineVersion = z.union([z.literal("V1"), z.literal("V2")]);
 
@@ -1222,6 +1223,87 @@ export const ListRunResponse = z.object({
 });
 
 export type ListRunResponse = z.infer<typeof ListRunResponse>;
+
+const StringOrStringArray = z.union([z.string(), z.array(z.string())]);
+const MachineOrMachineArray = z.union([MachinePresetName, z.array(MachinePresetName)]);
+const QueueOrQueueArray = z.union([QueueTypeName, z.array(QueueTypeName)]);
+const DateOrNumber = z.union([z.coerce.date(), z.number()]);
+
+const BulkActionFilterRequestBody = z.object({
+  status: z.union([RunStatus, z.array(RunStatus)]).optional(),
+  taskIdentifier: StringOrStringArray.optional(),
+  version: StringOrStringArray.optional(),
+  from: DateOrNumber.optional(),
+  to: DateOrNumber.optional(),
+  period: z.string().optional(),
+  bulkAction: z.string().optional(),
+  tag: StringOrStringArray.optional(),
+  schedule: z.string().optional(),
+  isTest: z.boolean().optional(),
+  batch: z.string().optional(),
+  queue: QueueOrQueueArray.optional(),
+  machine: MachineOrMachineArray.optional(),
+  region: StringOrStringArray.optional(),
+});
+
+export const CreateBulkActionRequestBody = z
+  .object({
+    action: z.enum(["cancel", "replay"]),
+    filter: BulkActionFilterRequestBody.optional(),
+    runIds: z.array(z.string()).min(1).optional(),
+    name: z.string().optional(),
+    region: z.string().optional(),
+    emailNotification: z.boolean().optional(),
+  })
+  .refine((body) => (body.filter ? 1 : 0) + (body.runIds ? 1 : 0) === 1, {
+    message: "Exactly one of filter or runIds must be provided",
+  });
+
+export type CreateBulkActionRequestBody = z.infer<typeof CreateBulkActionRequestBody>;
+
+export const BulkActionStatus = z.enum(["PENDING", "COMPLETED", "ABORTED"]);
+export type BulkActionStatus = z.infer<typeof BulkActionStatus>;
+
+export const BulkActionType = z.enum(["CANCEL", "REPLAY"]);
+export type BulkActionType = z.infer<typeof BulkActionType>;
+
+export const BulkActionObject = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+  type: BulkActionType,
+  status: BulkActionStatus,
+  counts: z.object({
+    total: z.number(),
+    success: z.number(),
+    failure: z.number(),
+  }),
+  createdAt: z.coerce.date(),
+  completedAt: z.coerce.date().optional(),
+});
+
+export type BulkActionObject = z.infer<typeof BulkActionObject>;
+
+export const CreateBulkActionResponseBody = z.object({
+  id: z.string(),
+});
+
+export type CreateBulkActionResponseBody = z.infer<typeof CreateBulkActionResponseBody>;
+
+export const AbortBulkActionResponseBody = z.object({
+  id: z.string(),
+});
+
+export type AbortBulkActionResponseBody = z.infer<typeof AbortBulkActionResponseBody>;
+
+export const ListBulkActionsResponseBody = z.object({
+  data: z.array(BulkActionObject),
+  pagination: z.object({
+    next: z.string().optional(),
+    previous: z.string().optional(),
+  }),
+});
+
+export type ListBulkActionsResponseBody = z.infer<typeof ListBulkActionsResponseBody>;
 
 export const CreateEnvironmentVariableRequestBody = z.object({
   name: z.string(),
