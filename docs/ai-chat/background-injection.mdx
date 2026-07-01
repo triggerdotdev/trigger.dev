@@ -4,10 +4,6 @@ sidebarTitle: "Background injection"
 description: "Inject context from background work into the agent's conversation — self-review, RAG augmentation, or any async analysis."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 ## Overview
 
 `chat.inject()` queues model messages for injection into the conversation. Messages are picked up at the start of the next turn or at the next `prepareStep` boundary (between tool-call steps).

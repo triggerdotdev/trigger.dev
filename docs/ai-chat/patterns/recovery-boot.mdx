@@ -4,10 +4,6 @@ sidebarTitle: "Recovery boot"
 description: "Recover from cancel-mid-stream, crashes, and OOM kills with full conversational context. The smart default Just Works; the onRecoveryBoot hook is the override path for advanced policies."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 When a `chat.agent` run dies in the middle of streaming a response — the user cancels, the worker OOMs, or an unhandled exception kills the process — the durable streams hold what was in flight. The next run boots as a continuation, reads both stream tails, and reconstructs a chain that preserves the partial response so any follow-up (`keep going`, `actually do X instead`, a new question) has full context.
 
 The behavior is automatic. The `onRecoveryBoot` hook is opt-in for policies that need something different.

@@ -4,10 +4,6 @@ sidebarTitle: "Human-in-the-loop"
 description: "Pause the agent mid-response to ask the user a clarifying question, then resume with their answer."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 Some turns need to stop and ask the user something before they can finish — picking between options, confirming a destructive action, or clarifying an ambiguous request. The AI SDK calls this **human-in-the-loop** (HITL), and the building block is a tool with no `execute` function.
 
 When the LLM calls a tool that has no `execute`, `streamText` ends with the tool call still pending. The turn completes cleanly, the frontend renders UI to collect the answer, and when the user responds, a new turn resumes with the answer merged into the same assistant message.

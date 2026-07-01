@@ -4,10 +4,6 @@ sidebarTitle: "Persistence and replay"
 description: "How chat.agent rebuilds conversation history at run boot — durable JSON snapshot in object storage plus session.out replay, with a hydrateMessages short-circuit for backend-owned history."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 `chat.agent` runs are processes — they boot, stream a turn, and either suspend (waiting for the next message) or exit. When the next message arrives at a session whose previous run already exited, a **fresh** run boots with no in-memory state. Something has to rebuild the conversation history before that turn can produce a coherent response.
 
 This page walks through the **snapshot + replay** model the runtime uses by default, and the [`hydrateMessages`](/ai-chat/lifecycle-hooks#hydratemessages) short-circuit that turns the whole thing off when the customer owns history.

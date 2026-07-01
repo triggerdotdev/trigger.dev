@@ -4,10 +4,6 @@ sidebarTitle: "Tools"
 description: "Declare tools on chat.agent so toModelOutput survives across turns, get them back typed in run(), and type your messages from them."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 `chat.agent` doesn't call the model for you. Your tools still go to [`streamText`](https://sdk.vercel.ai/docs/ai-sdk-core/tools-and-tool-calling) inside `run()`. But you should **also declare them on the agent config**:
 
 ```ts

@@ -4,10 +4,6 @@ sidebarTitle: "Prompt caching"
 description: "Cache the stable prefix of your agent's prompt with Anthropic prompt caching to cut token cost and latency on every turn."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 **Prompt caching lets a provider reuse the unchanged prefix of your prompt across requests, billing it at a fraction of the input price and skipping re-processing.** With Anthropic, cache reads cost ~10% of base input tokens, so a long, stable system prompt or a growing conversation history pays full price once and reads cheaply on every turn after.
 
 Caching is a **byte-exact prefix match**: any change in the prefix invalidates everything after it. A multi-turn agent is the ideal case — the system prompt, tools, and earlier turns are identical turn over turn, so the cacheable prefix only grows. `chat.agent` is built to keep that prefix stable across turns, suspends, and resumes; this page shows how to place the cache breakpoints and verify they're hitting.
