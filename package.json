@@ -12,6 +12,7 @@
     "build:force": "turbo run build --force",
     "build:db:seed": "turbo run build:db:seed",
     "db:migrate": "turbo run db:migrate:deploy generate",
+    "db:migrate:run-ops": "pnpm --filter @trigger.dev/database run db:migrate:run-ops",
     "db:seed": "turbo run db:seed",
     "db:studio": "turbo run db:studio",
     "db:populate": "turbo run db:populate",

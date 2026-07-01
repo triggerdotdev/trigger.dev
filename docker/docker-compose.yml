@@ -11,6 +11,7 @@ name: triggerdotdev-docker
 volumes:
   database-data:
   database-data-alt:
+  database-runops-data:
   database-replica-data:
   redis-data:
   minio-data:
@@ -48,6 +49,36 @@ services:
       # The webapp opens ~50 pooled connections per instance and Electric another
       # ~40, so the default 100 is exhausted by one webapp + Electric alone. Raise
       # it so multiple instances / load tests have headroom.
+      - -c
+      - max_connections=500
+
+  # Opt-in NEW run-ops database, PG17 (the `database` above is PG14) — a separate cluster
+  # so the run-ops split's distinct-DB sentinel passes. Start with:
+  #   COMPOSE_PROFILES=runops pnpm run docker
+  database-runops:
+    container_name: ${CONTAINER_PREFIX:-}database-runops
+    profiles: ["runops"]
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres17
+    restart: always
+    volumes:
+      - ${DB_RUNOPS_VOLUME:-database-runops-data}:/var/lib/postgresql/data/
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    networks:
+      - app_network
+    ports:
+      - "${POSTGRES_RUNOPS_HOST_PORT:-5434}:5432"
+    command:
+      - -c
+      - listen_addresses=*
+      - -c
+      - wal_level=logical
+      - -c
+      - shared_preload_libraries=pg_partman_bgw
       - -c
       - max_connections=500
 

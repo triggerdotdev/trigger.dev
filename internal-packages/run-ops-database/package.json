@@ -1,0 +1,39 @@
+{
+  "name": "@internal/run-ops-database",
+  "private": true,
+  "version": "0.0.1",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "@triggerdotdev/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./prisma/schema.prisma": "./prisma/schema.prisma",
+    "./prisma/*": "./prisma/*",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@prisma/client": "6.14.0",
+    "prisma": "6.14.0"
+  },
+  "devDependencies": {
+    "rimraf": "6.0.1",
+    "vitest": "4.1.7"
+  },
+  "scripts": {
+    "clean": "rimraf dist",
+    "generate": "prisma generate",
+    "db:migrate:dev:create": "prisma migrate dev --create-only",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "pnpm run clean && tsc --noEmit false --outDir dist --declaration",
+    "dev": "tsc --noEmit false --outDir dist --declaration --watch",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset"
+  }
+}
