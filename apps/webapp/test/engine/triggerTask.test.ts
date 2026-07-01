@@ -19,6 +19,12 @@ import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "@internal/
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@opentelemetry/api";
 import type { IOPacket } from "@trigger.dev/core/v3";
+import {
+  RunId,
+  classifyKind,
+  generateInternalId,
+  generateKsuidId,
+} from "@trigger.dev/core/v3/isomorphic";
 import type { TaskRun } from "@trigger.dev/database";
 import { Redis } from "ioredis";
 import { IdempotencyKeyConcern } from "~/runEngine/concerns/idempotencyKeys.server";
@@ -42,7 +48,7 @@ import { RunEngineTriggerTaskService } from "../../app/runEngine/services/trigge
 import { promiseWithResolvers } from "@trigger.dev/core";
 import { setTimeout } from "node:timers/promises";
 
-vi.setConfig({ testTimeout: 60_000 }); // 60 seconds timeout
+vi.setConfig({ testTimeout: 60_000 });
 
 class MockPayloadProcessor implements PayloadProcessor {
   async process(request: TriggerTaskRequest): Promise<IOPacket> {
@@ -211,7 +217,6 @@ describe("RunEngineTriggerTaskService", () => {
 
     const taskIdentifier = "test-task";
 
-    //create background worker
     await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
     const queuesManager = new DefaultQueueManager(prisma, engine);
@@ -489,7 +494,6 @@ describe("RunEngineTriggerTaskService", () => {
 
     const taskIdentifier = "test-task";
 
-    //create background worker
     await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
 
     const queuesManager = new DefaultQueueManager(prisma, engine);
@@ -605,13 +609,12 @@ describe("RunEngineTriggerTaskService", () => {
 
       const taskIdentifier = "test-task";
 
-      //create background worker
       await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask, taskIdentifier]);
 
       const parentRun1 = await engine.trigger(
         {
           number: 1,
-          friendlyId: "run_p1",
+          friendlyId: "run_cmqxvncxq0000kaulzpafkicv",
           environment: authenticatedEnvironment,
           taskIdentifier: parentTask,
           payload: "{}",
@@ -642,7 +645,7 @@ describe("RunEngineTriggerTaskService", () => {
       const parentRun2 = await engine.trigger(
         {
           number: 2,
-          friendlyId: "run_p2",
+          friendlyId: "run_cmqxvncxr0001kauldv9mqa9z",
           environment: authenticatedEnvironment,
           taskIdentifier: parentTask,
           payload: "{}",
@@ -690,6 +693,7 @@ describe("RunEngineTriggerTaskService", () => {
         tracer: trace.getTracer("test", "0.0.0"),
         metadataMaximumSize: 1024 * 1024 * 1, // 1MB
         triggerRacepointSystem,
+        isKnownMigrated: async () => false,
       });
 
       const idempotencyKey = "test-idempotency-key";
@@ -1116,7 +1120,7 @@ describe("RunEngineTriggerTaskService", () => {
       const parentRun1 = await engine.trigger(
         {
           number: 1,
-          friendlyId: "run_p1",
+          friendlyId: "run_cmqxvncxq0000kaulzpafkicv",
           environment: authenticatedEnvironment,
           taskIdentifier: parentTask,
           payload: "{}",
@@ -1146,7 +1150,7 @@ describe("RunEngineTriggerTaskService", () => {
       const parentRun2 = await engine.trigger(
         {
           number: 2,
-          friendlyId: "run_p2",
+          friendlyId: "run_cmqxvncxr0001kauldv9mqa9z",
           environment: authenticatedEnvironment,
           taskIdentifier: parentTask,
           payload: "{}",
@@ -1205,6 +1209,7 @@ describe("RunEngineTriggerTaskService", () => {
         tracer: trace.getTracer("test", "0.0.0"),
         metadataMaximumSize: 1024 * 1024 * 1, // 1MB
         triggerRacepointSystem,
+        isKnownMigrated: async () => false,
       });
 
       const idempotencyKey = "test-preserve-friendly-id";
@@ -2272,6 +2277,302 @@ describe("DefaultQueueManager task metadata cache", () => {
       expect((current.run.annotations as { taskKind?: string } | null)?.taskKind).toBe("SCHEDULED");
 
       await redis.quit();
+      await engine.quit();
+    }
+  );
+});
+
+describe("RunEngineTriggerTaskService — child run residency inheritance", () => {
+  // Helper: stand up an engine + service wired for a single (real) Postgres/Redis
+  // pair, with an injectable marker boundary so the migrated-parent case can be
+  // driven without the split-DB infrastructure. Returns the service plus the
+  // authenticated environment and a registered task identifier.
+  async function setupResidencyService(
+    prisma: any,
+    redisOptions: any,
+    opts?: {
+      isKnownMigrated?: (runId: string) => Promise<boolean>;
+      isSplitEnabled?: () => Promise<boolean>;
+    }
+  ) {
+    const engine = new RunEngine({
+      prisma,
+      worker: { redis: redisOptions, workers: 1, tasksPerWorker: 10, pollIntervalMs: 100 },
+      queue: { redis: redisOptions },
+      runLock: { redis: redisOptions },
+      machines: {
+        defaultMachine: "small-1x",
+        machines: {
+          "small-1x": {
+            name: "small-1x" as const,
+            cpu: 0.5,
+            memory: 0.5,
+            centsPerMs: 0.0001,
+          },
+        },
+        baseCostInCents: 0.0005,
+      },
+      tracer: trace.getTracer("test", "0.0.0"),
+    });
+
+    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const taskIdentifier = "residency-task";
+    await setupBackgroundWorker(engine, authenticatedEnvironment, taskIdentifier);
+
+    const queuesManager = new DefaultQueueManager(prisma, engine);
+    const idempotencyKeyConcern = new IdempotencyKeyConcern(
+      prisma,
+      engine,
+      new MockTraceEventConcern()
+    );
+
+    const triggerTaskService = new RunEngineTriggerTaskService({
+      engine,
+      prisma,
+      payloadProcessor: new MockPayloadProcessor(),
+      queueConcern: queuesManager,
+      idempotencyKeyConcern,
+      validator: new MockTriggerTaskValidator(),
+      traceEventConcern: new MockTraceEventConcern(),
+      tracer: trace.getTracer("test", "0.0.0"),
+      metadataMaximumSize: 1024 * 1024 * 1,
+      // Default: nothing is migrated. Individual tests override.
+      isKnownMigrated: opts?.isKnownMigrated ?? (async () => false),
+      // Default split OFF in CI — matches split-off semantics and keeps the
+      // existing tests deterministic. Tests that exercise the marker pass true.
+      isSplitEnabled: opts?.isSplitEnabled ?? (async () => false),
+    });
+
+    return { engine, authenticatedEnvironment, taskIdentifier, triggerTaskService };
+  }
+
+  containerTest(
+    "root run mints by the env flag (cuid when split is off)",
+    async ({ prisma, redisOptions }) => {
+      const { engine, authenticatedEnvironment, taskIdentifier, triggerTaskService } =
+        await setupResidencyService(prisma, redisOptions);
+
+      const result = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: { payload: { test: "root" } },
+      });
+
+      expect(result?.run.friendlyId).toBeDefined();
+      // Split disabled in CI ⇒ flag resolves "cuid".
+      expect(classifyKind(result!.run.friendlyId)).toBe("cuid");
+
+      await engine.quit();
+    }
+  );
+
+  containerTest(
+    "child of a LEGACY (cuid) parent is minted cuid (born LEGACY)",
+    async ({ prisma, redisOptions }) => {
+      const { engine, authenticatedEnvironment, taskIdentifier, triggerTaskService } =
+        await setupResidencyService(prisma, redisOptions);
+
+      // Root parent — cuid in CI (split off).
+      const parent = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: { payload: { test: "parent" } },
+      });
+      expect(classifyKind(parent!.run.friendlyId)).toBe("cuid");
+
+      const child = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: { payload: { test: "child" }, options: { parentRunId: parent!.run.friendlyId } },
+      });
+
+      expect(classifyKind(child!.run.friendlyId)).toBe("cuid");
+
+      await engine.quit();
+    }
+  );
+
+  containerTest(
+    "child of a NEW (ksuid) parent is minted ksuid (born NEW)",
+    async ({ prisma, redisOptions }) => {
+      const { engine, authenticatedEnvironment, taskIdentifier, triggerTaskService } =
+        await setupResidencyService(prisma, redisOptions);
+
+      // Construct a NEW-resident parent directly by minting a ksuid friendlyId
+      // and creating its run row, so the child inherits NEW by id-shape alone
+      // (no marker needed). We trigger the parent with an explicit ksuid id via
+      // the runFriendlyId option so the row physically exists for the parent
+      // lookup the child path performs.
+      const parentFriendlyId = RunId.toFriendlyId(
+        // 27-char ksuid → classifies NEW
+        (await import("@trigger.dev/core/v3/isomorphic")).generateKsuidId()
+      );
+      expect(classifyKind(parentFriendlyId)).toBe("ksuid");
+
+      const parent = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: { payload: { test: "parent" } },
+        options: { runFriendlyId: parentFriendlyId },
+      });
+      expect(parent!.run.friendlyId).toBe(parentFriendlyId);
+
+      const child = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: { payload: { test: "child" }, options: { parentRunId: parentFriendlyId } },
+      });
+
+      expect(classifyKind(child!.run.friendlyId)).toBe("ksuid");
+
+      await engine.quit();
+    }
+  );
+
+  containerTest(
+    "child of a migrated LEGACY (cuid) parent is minted ksuid (born NEW)",
+    async ({ prisma, redisOptions }) => {
+      // The parent's id is a cuid (LEGACY by shape) but the migrated marker says
+      // it now lives on NEW. The child MUST inherit NEW. We drive this with an
+      // injected isKnownMigrated boundary that reports the parent as migrated.
+      let migratedParentFriendlyId = "";
+      const { engine, authenticatedEnvironment, taskIdentifier, triggerTaskService } =
+        await setupResidencyService(prisma, redisOptions, {
+          isKnownMigrated: async (id: string) => id === migratedParentFriendlyId,
+          isSplitEnabled: async () => true,
+        });
+
+      const parent = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: { payload: { test: "parent" } },
+      });
+      migratedParentFriendlyId = parent!.run.friendlyId;
+      expect(classifyKind(migratedParentFriendlyId)).toBe("cuid"); // LEGACY by shape
+
+      const child = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: {
+          payload: { test: "child" },
+          options: { parentRunId: migratedParentFriendlyId },
+        },
+      });
+
+      // Marker says parent is on NEW ⇒ child inherits NEW ⇒ ksuid.
+      expect(classifyKind(child!.run.friendlyId)).toBe("ksuid");
+
+      await engine.quit();
+    }
+  );
+
+  containerTest(
+    "child trigger does not consult the migrated marker when split is off",
+    async ({ prisma, redisOptions }) => {
+      let consulted = false;
+      const spy = async (_id: string) => {
+        consulted = true;
+        return false;
+      };
+      const { engine, authenticatedEnvironment, taskIdentifier, triggerTaskService } =
+        await setupResidencyService(prisma, redisOptions, {
+          isKnownMigrated: spy,
+          isSplitEnabled: async () => false,
+        });
+
+      const parent = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: { payload: { test: "parent" } },
+      });
+      expect(classifyKind(parent!.run.friendlyId)).toBe("cuid");
+
+      const child = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: { payload: { test: "child" }, options: { parentRunId: parent!.run.friendlyId } },
+      });
+
+      // Split off ⇒ pure id-shape inheritance, byte-identical to today.
+      expect(classifyKind(child!.run.friendlyId)).toBe("cuid");
+      // The marker resolver was NOT called when split is off.
+      expect(consulted).toBe(false);
+
+      await engine.quit();
+    }
+  );
+
+  containerTest(
+    "child trigger consults the migrated marker when split is on",
+    async ({ prisma, redisOptions }) => {
+      let consulted = false;
+      let migratedParentFriendlyId = "";
+      const { engine, authenticatedEnvironment, taskIdentifier, triggerTaskService } =
+        await setupResidencyService(prisma, redisOptions, {
+          isKnownMigrated: async (id: string) => {
+            consulted = true;
+            return id === migratedParentFriendlyId;
+          },
+          isSplitEnabled: async () => true,
+        });
+
+      const parent = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: { payload: { test: "parent" } },
+      });
+      migratedParentFriendlyId = parent!.run.friendlyId;
+      expect(classifyKind(migratedParentFriendlyId)).toBe("cuid");
+
+      const child = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: {
+          payload: { test: "child" },
+          options: { parentRunId: migratedParentFriendlyId },
+        },
+      });
+
+      // Split on ⇒ marker consulted; marker says migrated ⇒ ksuid.
+      expect(consulted).toBe(true);
+      expect(classifyKind(child!.run.friendlyId)).toBe("ksuid");
+
+      await engine.quit();
+    }
+  );
+
+  containerTest(
+    "caller-supplied runFriendlyId wins verbatim and skips residency inheritance",
+    async ({ prisma, redisOptions }) => {
+      let consulted = false;
+      const spy = async (_id: string) => {
+        consulted = true;
+        return false;
+      };
+      const { engine, authenticatedEnvironment, taskIdentifier, triggerTaskService } =
+        await setupResidencyService(prisma, redisOptions, {
+          isKnownMigrated: spy,
+          isSplitEnabled: async () => true,
+        });
+
+      // Explicit cuid id for the run, and a ksuid/NEW parent id.
+      const explicitFriendlyId = RunId.toFriendlyId(generateInternalId());
+      const parentFriendlyId = RunId.toFriendlyId(generateKsuidId());
+      expect(classifyKind(explicitFriendlyId)).toBe("cuid");
+      expect(classifyKind(parentFriendlyId)).toBe("ksuid");
+
+      const result = await triggerTaskService.call({
+        taskId: taskIdentifier,
+        environment: authenticatedEnvironment,
+        body: { payload: { test: "explicit" }, options: { parentRunId: parentFriendlyId } },
+        options: { runFriendlyId: explicitFriendlyId },
+      });
+
+      // Caller-supplied id wins verbatim — NOT re-minted to ksuid despite the NEW parent.
+      expect(result!.run.friendlyId).toBe(explicitFriendlyId);
+      // The supplied-id short-circuit skips the mint/marker entirely.
+      expect(consulted).toBe(false);
+
       await engine.quit();
     }
   );

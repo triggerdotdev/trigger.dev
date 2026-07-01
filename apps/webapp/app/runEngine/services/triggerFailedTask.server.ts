@@ -1,6 +1,6 @@
 import type { RunEngine } from "@internal/run-engine";
 import { TaskRunErrorCodes, type TaskRunError } from "@trigger.dev/core/v3";
-import { RunId } from "@trigger.dev/core/v3/isomorphic";
+import { RunId, generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
 import type {
   PrismaClientOrTransaction,
   RuntimeEnvironmentType,
@@ -8,6 +8,10 @@ import type {
 } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
+import { isKnownMigrated as defaultIsKnownMigrated } from "~/v3/runOpsMigration/knownMigratedFilter.server";
+import { isSplitEnabled as defaultIsSplitEnabled } from "~/v3/runOpsMigration/splitMode.server";
+import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedMintKind.server";
 import { getEventRepository } from "~/v3/eventRepository/index.server";
 import { runStore } from "~/v3/runStore.server";
 import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRunAlerts.server";
@@ -58,26 +62,74 @@ export class TriggerFailedTaskService {
   private readonly prisma: PrismaClientOrTransaction;
   private readonly replicaPrisma: PrismaClientOrTransaction;
   private readonly engine: RunEngine;
+  // Reports whether a run that is legacy by id-shape has already been moved to
+  // the new store. Injected for tests; defaults to the live resolver.
+  private readonly isKnownMigrated: (runId: string) => Promise<boolean>;
+  // Injected so the migrated-marker read stays off the hot path when split is off
+  // (same guard as RunEngineTriggerTaskService); defaults to the live resolver.
+  private readonly isSplitEnabled: () => Promise<boolean>;
 
   constructor(opts: {
     prisma: PrismaClientOrTransaction;
     engine: RunEngine;
     replicaPrisma?: PrismaClientOrTransaction;
+    isKnownMigrated?: (runId: string) => Promise<boolean>;
+    isSplitEnabled?: () => Promise<boolean>;
   }) {
     this.prisma = opts.prisma;
     this.replicaPrisma = opts.replicaPrisma ?? opts.prisma;
     this.engine = opts.engine;
+    this.isKnownMigrated = opts.isKnownMigrated ?? defaultIsKnownMigrated;
+    this.isSplitEnabled = opts.isSplitEnabled ?? defaultIsSplitEnabled;
+  }
+
+  // Mint a failed run's friendlyId. The id-kind decides which store the run is
+  // born in (cuid → legacy store, ksuid → new store); the whole subgraph of a
+  // run must agree. Root failed runs mint by the environment's setting; child
+  // failed runs inherit the parent's current store so they never split.
+  private async mintFailedRunFriendlyId(args: {
+    organizationId: string;
+    environmentId: string;
+    orgFeatureFlags?: unknown;
+    parentRunFriendlyId?: string;
+  }): Promise<string> {
+    const mintKind = args.parentRunFriendlyId
+      ? await resolveInheritedMintKind(args.parentRunFriendlyId, {
+          isSplitEnabled: this.isSplitEnabled,
+          isKnownMigrated: this.isKnownMigrated,
+        })
+      : await resolveRunIdMintKind({
+          organizationId: args.organizationId,
+          id: args.environmentId,
+          orgFeatureFlags: args.orgFeatureFlags,
+        });
+
+    return mintKind === "ksuid"
+      ? RunId.toFriendlyId(generateKsuidId())
+      : RunId.generate().friendlyId;
   }
 
   async call(request: TriggerFailedTaskRequest): Promise<string | null> {
-    const failedRunFriendlyId = RunId.generate().friendlyId;
     const taskRunError: TaskRunError = {
       type: "INTERNAL_ERROR" as const,
       code: request.errorCode ?? TaskRunErrorCodes.UNSPECIFIED_ERROR,
       message: request.errorMessage,
     };
 
+    // Held for the catch's log line; the in-try `const` is what consumers use.
+    let mintedFriendlyId: string | undefined;
+
     try {
+      // Mint inside the try: classifying a user-supplied parentRunId throws on
+      // an unclassifiable id, so keep it within the catch's null-return contract.
+      const failedRunFriendlyId = await this.mintFailedRunFriendlyId({
+        organizationId: request.environment.organizationId,
+        environmentId: request.environment.id,
+        orgFeatureFlags: request.environment.organization.featureFlags,
+        parentRunFriendlyId: request.parentRunId,
+      });
+      mintedFriendlyId = failedRunFriendlyId;
+
       const { repository, store } = await getEventRepository(
         request.environment.organization.id,
         request.environment.organization.featureFlags as Record<string, unknown>,
@@ -243,7 +295,7 @@ export class TriggerFailedTaskService {
         createError instanceof Error ? createError.message : String(createError);
       logger.error("TriggerFailedTaskService: failed to create pre-failed TaskRun", {
         taskId: request.taskId,
-        friendlyId: failedRunFriendlyId,
+        friendlyId: mintedFriendlyId,
         originalError: request.errorMessage,
         createError: createErrorMsg,
       });
@@ -270,9 +322,22 @@ export class TriggerFailedTaskService {
     batch?: { id: string; index: number };
     errorCode?: TaskRunErrorCodes;
   }): Promise<string | null> {
-    const failedRunFriendlyId = RunId.generate().friendlyId;
+    // Held for the catch's log line; the in-try `const` is what consumers use.
+    let mintedFriendlyId: string | undefined;
 
     try {
+      // Mint inside the try: classifying a user-supplied parentRunId throws on
+      // an unclassifiable id, so keep it within the catch's null-return contract.
+      const failedRunFriendlyId = await this.mintFailedRunFriendlyId({
+        organizationId: opts.organizationId,
+        environmentId: opts.environmentId,
+        // No loaded org flags in this path; resolveRunIdMintKind falls back to a
+        // single replica lookup by organizationId only when there is no parent.
+        orgFeatureFlags: undefined,
+        parentRunFriendlyId: opts.parentRunId,
+      });
+      mintedFriendlyId = failedRunFriendlyId;
+
       // Best-effort parent run lookup for rootTaskRunId/depth
       let parentTaskRunId: string | undefined;
       let rootTaskRunId: string | undefined;
@@ -347,7 +412,7 @@ export class TriggerFailedTaskService {
     } catch (createError) {
       logger.error("TriggerFailedTaskService: failed to create pre-failed TaskRun (no trace)", {
         taskId: opts.taskId,
-        friendlyId: failedRunFriendlyId,
+        friendlyId: mintedFriendlyId,
         originalError: opts.errorMessage,
         createError: createError instanceof Error ? createError.message : String(createError),
       });

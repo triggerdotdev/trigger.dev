@@ -3,6 +3,7 @@ import { TriggerClient } from "@trigger.dev/sdk";
 import { chat } from "@trigger.dev/sdk/ai";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import { runStore } from "~/v3/runStore.server";
 import { githubApp } from "./gitHub.server";
 import { logger } from "./logger.server";
 
@@ -211,10 +212,10 @@ export async function resolveRunCommit(
   environmentId: string,
   runFriendlyId: string
 ): Promise<{ sha: string; version: string; dirty: boolean } | null> {
-  const run = await prisma.taskRun.findFirst({
-    where: { friendlyId: runFriendlyId, runtimeEnvironmentId: environmentId },
-    select: { lockedToVersionId: true },
-  });
+  const run = await runStore.findRun(
+    { friendlyId: runFriendlyId, runtimeEnvironmentId: environmentId },
+    { select: { lockedToVersionId: true } }
+  );
   if (!run?.lockedToVersionId) return null;
 
   const deployment = await prisma.workerDeployment.findFirst({

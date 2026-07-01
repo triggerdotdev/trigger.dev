@@ -13,13 +13,17 @@ import { Evt } from "evt";
 import { z } from "zod";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
+import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { batchTriggerWorker } from "~/v3/batchTriggerWorker.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
+import { mintBatchFriendlyId } from "~/v3/runOpsMigration/mintBatchFriendlyId.server";
 import {
   downloadPacketFromObjectStore,
   uploadPacketToObjectStore,
 } from "../../v3/objectStore.server";
+import type { RunEngine } from "../../v3/runEngine.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
 import { TriggerTaskService } from "../../v3/services/triggerTask.server";
 import { startActiveSpan } from "../../v3/tracer.server";
@@ -64,9 +68,10 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
   constructor(
     batchProcessingStrategy?: BatchProcessingStrategy,
-    protected readonly _prisma: PrismaClientOrTransaction = prisma
+    protected readonly _prisma: PrismaClientOrTransaction = prisma,
+    engine?: RunEngine
   ) {
-    super({ prisma });
+    super({ prisma, engine });
 
     // Eric note: We need to force sequential processing because when doing parallel, we end up with high-contention on the parent run lock
     // becuase we are triggering a lot of runs at once, and each one is trying to lock the parent run.
@@ -84,11 +89,17 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         "call()",
         environment,
         async (span) => {
-          const { id: _id, friendlyId } = BatchId.generate();
+          const { friendlyId } = await mintBatchFriendlyId({
+            environment: {
+              organizationId: environment.organizationId,
+              id: environment.id,
+              orgFeatureFlags: environment.organization.featureFlags,
+            },
+            parentRunFriendlyId: body.parentRunId,
+          });
 
           span.setAttribute("batchId", friendlyId);
 
-          // Upload to object store
           const payloadPacket = await this.#handlePayloadPacket(
             body.items,
             `batch/${friendlyId}`,
@@ -155,20 +166,22 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     body: BatchTriggerTaskV2RequestBody,
     options: BatchTriggerTaskServiceOptions = {}
   ) {
+    // BatchTaskRun.runtimeEnvironmentId no longer has an FK into RuntimeEnvironment;
+    // validate env existence app-side (covers both create arms below).
+    await controlPlaneResolver.assertEnvExists(environment.id);
+
     if (body.items.length <= ASYNC_BATCH_PROCESS_SIZE_THRESHOLD) {
-      const batch = await this._prisma.batchTaskRun.create({
-        data: {
-          id: BatchId.fromFriendlyId(batchId),
-          friendlyId: batchId,
-          runtimeEnvironmentId: environment.id,
-          runCount: body.items.length,
-          runIds: [],
-          payload: payloadPacket.data,
-          payloadType: payloadPacket.dataType,
-          options,
-          batchVersion: "runengine:v1",
-          oneTimeUseToken: options.oneTimeUseToken,
-        },
+      const batch = await this._engine.runStore.createBatchTaskRun({
+        id: BatchId.fromFriendlyId(batchId),
+        friendlyId: batchId,
+        runtimeEnvironmentId: environment.id,
+        runCount: body.items.length,
+        runIds: [],
+        payload: payloadPacket.data,
+        payloadType: payloadPacket.dataType,
+        options,
+        batchVersion: "runengine:v1",
+        oneTimeUseToken: options.oneTimeUseToken,
       });
 
       this.onBatchTaskRunCreated.post(batch);
@@ -249,19 +262,17 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         }
       }
     } else {
-      const batch = await this._prisma.batchTaskRun.create({
-        data: {
-          id: BatchId.fromFriendlyId(batchId),
-          friendlyId: batchId,
-          runtimeEnvironmentId: environment.id,
-          runCount: body.items.length,
-          runIds: [],
-          payload: payloadPacket.data,
-          payloadType: payloadPacket.dataType,
-          options,
-          batchVersion: "runengine:v1",
-          oneTimeUseToken: options.oneTimeUseToken,
-        },
+      const batch = await this._engine.runStore.createBatchTaskRun({
+        id: BatchId.fromFriendlyId(batchId),
+        friendlyId: batchId,
+        runtimeEnvironmentId: environment.id,
+        runCount: body.items.length,
+        runIds: [],
+        payload: payloadPacket.data,
+        payloadType: payloadPacket.dataType,
+        options,
+        batchVersion: "runengine:v1",
+        oneTimeUseToken: options.oneTimeUseToken,
       });
 
       this.onBatchTaskRunCreated.post(batch);
@@ -336,7 +347,6 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
     const $attemptCount = options.attemptCount + 1;
 
-    // Add early return if max attempts reached
     if ($attemptCount > MAX_ATTEMPTS) {
       logger.error("[RunEngineBatchTrigger][processBatchTaskRun] Max attempts reached", {
         options,
@@ -346,23 +356,22 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
       return;
     }
 
-    const batch = await this._prisma.batchTaskRun.findFirst({
-      where: { id: options.batchId },
-      include: {
-        runtimeEnvironment: {
-          include: {
-            project: true,
-            organization: true,
-          },
-        },
-      },
-    });
+    const batch = await this._engine.runStore.findBatchTaskRunById(options.batchId);
 
     if (!batch) {
       return;
     }
 
-    // Check to make sure the currentIndex is not greater than the runCount
+    // BatchTaskRun -> RuntimeEnvironment FK is dropped; resolve the env from the scalar id.
+    const environment = await findEnvironmentById(batch.runtimeEnvironmentId);
+    if (!environment) {
+      logger.error("[RunEngineBatchTrigger][processBatchTaskRun] Environment not found", {
+        batchId: batch.id,
+        runtimeEnvironmentId: batch.runtimeEnvironmentId,
+      });
+      return;
+    }
+
     if (options.range.start >= batch.runCount) {
       logger.debug(
         "[RunEngineBatchTrigger][processBatchTaskRun] currentIndex is greater than runCount",
@@ -377,13 +386,12 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
       return;
     }
 
-    // Resolve the payload
     const payloadPacket = await downloadPacketFromObjectStore(
       {
         data: batch.payload ?? undefined,
         dataType: batch.payloadType,
       },
-      batch.runtimeEnvironment
+      environment
     );
 
     const payload = await parsePacket(payloadPacket);
@@ -404,7 +412,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
 
     const result = await this.#processBatchTaskRunItems({
       batch,
-      environment: batch.runtimeEnvironment,
+      environment,
       currentIndex: options.range.start,
       batchSize: options.range.count,
       items: $payload,
@@ -609,8 +617,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
       workingIndex++;
     }
 
-    //add the run ids to the batch
-    const updatedBatch = await this._prisma.batchTaskRun.update({
+    const updatedBatch = await this._engine.runStore.updateBatchTaskRun({
       where: { id: batch.id },
       data: {
         runIds: {
@@ -626,7 +633,6 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
       },
     });
 
-    //triggered all the runs
     if (updatedBatch.processingJobsCount >= updatedBatch.runCount) {
       logger.debug("[RunEngineBatchTrigger][processBatchTaskRun] All runs created", {
         batchId: batch.friendlyId,

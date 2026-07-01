@@ -14,6 +14,7 @@ import {
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
 import {
+  generateKsuidId,
   parseTraceparent,
   RunId,
   serializeTraceparent,
@@ -25,6 +26,10 @@ import { logger } from "~/services/logger.server";
 import { parseDelay } from "~/utils/delays";
 import { handleMetadataPacket } from "~/utils/packets";
 import { startSpan } from "~/v3/tracing.server";
+import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
+import { isKnownMigrated as defaultIsKnownMigrated } from "~/v3/runOpsMigration/knownMigratedFilter.server";
+import { isSplitEnabled as defaultIsSplitEnabled } from "~/v3/runOpsMigration/splitMode.server";
+import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedMintKind.server";
 import type {
   TriggerTaskServiceOptions,
   TriggerTaskServiceResult,
@@ -93,6 +98,14 @@ export class RunEngineTriggerTaskService {
   private readonly evaluateGate: MollifierEvaluateGate;
   private readonly getMollifierBuffer: MollifierGetBuffer;
   private readonly isMollifierGloballyEnabled: () => boolean;
+  // Resolves whether a run that classifies as legacy-by-id-shape has already
+  // been moved to the new store. Injected so tests can drive the migrated-parent
+  // case without the split-store infrastructure; defaults to the live resolver.
+  private readonly isKnownMigrated: (runId: string) => Promise<boolean>;
+  // Gates whether the marker-aware inheritance branch runs. With split OFF the
+  // child residency is a pure id-shape check — zero I/O on the hot path,
+  // byte-identical to today. Injected so tests can drive split on/off.
+  private readonly isSplitEnabled: () => Promise<boolean>;
 
   constructor(opts: {
     prisma: PrismaClientOrTransaction;
@@ -108,6 +121,8 @@ export class RunEngineTriggerTaskService {
     evaluateGate?: MollifierEvaluateGate;
     getMollifierBuffer?: MollifierGetBuffer;
     isMollifierGloballyEnabled?: () => boolean;
+    isKnownMigrated?: (runId: string) => Promise<boolean>;
+    isSplitEnabled?: () => Promise<boolean>;
   }) {
     this.prisma = opts.prisma;
     this.engine = opts.engine;
@@ -123,6 +138,37 @@ export class RunEngineTriggerTaskService {
     this.getMollifierBuffer = opts.getMollifierBuffer ?? defaultGetMollifierBuffer;
     this.isMollifierGloballyEnabled =
       opts.isMollifierGloballyEnabled ?? (() => env.TRIGGER_MOLLIFIER_ENABLED === "1");
+    this.isKnownMigrated = opts.isKnownMigrated ?? defaultIsKnownMigrated;
+    this.isSplitEnabled = opts.isSplitEnabled ?? defaultIsSplitEnabled;
+  }
+
+  // Mint a new run's friendlyId. The id-kind decides which store the run is born
+  // in (cuid → legacy store, ksuid → new store), so the whole subgraph of a run
+  // must agree. Two cases:
+  //
+  //  - ROOT run (no parent): mint by the environment's cutover setting.
+  //  - CHILD run (has a parent): inherit the parent's CURRENT residency, so a
+  //    parent and child never split across stores. A parent that is legacy by
+  //    id-shape but has already been moved to the new store (reported by the
+  //    migrated check) yields a new-store (ksuid) child.
+  private async mintRunFriendlyId(
+    environment: AuthenticatedEnvironment,
+    parentRunFriendlyId?: string
+  ): Promise<string> {
+    const mintKind = parentRunFriendlyId
+      ? await resolveInheritedMintKind(parentRunFriendlyId, {
+          isSplitEnabled: this.isSplitEnabled,
+          isKnownMigrated: this.isKnownMigrated,
+        })
+      : await resolveRunIdMintKind({
+          organizationId: environment.organizationId,
+          id: environment.id,
+          orgFeatureFlags: environment.organization.featureFlags,
+        });
+
+    return mintKind === "ksuid"
+      ? RunId.toFriendlyId(generateKsuidId())
+      : RunId.generate().friendlyId;
   }
 
   public async call({
@@ -150,7 +196,12 @@ export class RunEngineTriggerTaskService {
           span.setAttribute("taskId", taskId);
           span.setAttribute("attempt", attempt);
 
-          const runFriendlyId = options?.runFriendlyId ?? RunId.generate().friendlyId;
+          // Mint the run id. A caller-supplied id (idempotent retry) wins;
+          // otherwise mint by residency — inheriting the parent's store when a
+          // parent is present, else the environment's setting.
+          const runFriendlyId =
+            options?.runFriendlyId ??
+            (await this.mintRunFriendlyId(environment, body.options?.parentRunId));
           const triggerRequest = {
             taskId,
             friendlyId: runFriendlyId,
@@ -159,7 +210,6 @@ export class RunEngineTriggerTaskService {
             options,
           } satisfies TriggerTaskRequest;
 
-          // Validate max attempts
           const maxAttemptsValidation = this.validator.validateMaxAttempts({
             taskId,
             attempt,
@@ -169,7 +219,6 @@ export class RunEngineTriggerTaskService {
             throw maxAttemptsValidation.error;
           }
 
-          // Validate tags
           const tagValidation = this.validator.validateTags({
             tags: body.options?.tags,
           });
@@ -178,7 +227,6 @@ export class RunEngineTriggerTaskService {
             throw tagValidation.error;
           }
 
-          // Validate entitlement (unless skipChecks is enabled)
           let planType: string | undefined;
 
           if (!options.skipChecks) {
@@ -190,7 +238,6 @@ export class RunEngineTriggerTaskService {
               throw entitlementValidation.error;
             }
 
-            // Extract plan type from entitlement response
             planType = entitlementValidation.plan?.type;
           } else {
             // When skipChecks is enabled, planType should be passed via options
@@ -239,7 +286,6 @@ export class RunEngineTriggerTaskService {
             }
           }
 
-          // Get parent run if specified
           const parentRun = body.options?.parentRunId
             ? await runStore.findRun(
                 {
@@ -250,7 +296,6 @@ export class RunEngineTriggerTaskService {
               )
             : undefined;
 
-          // Validate parent run
           const parentRunValidation = this.validator.validateParentRun({
             taskId,
             parentRun: parentRun ?? undefined,
@@ -390,7 +435,6 @@ export class RunEngineTriggerTaskService {
             envType: environment.type,
           });
 
-          // Build annotations for this run
           const triggerSource = options.triggerSource ?? "api";
           const triggerAction = options.triggerAction ?? "trigger";
           const parentAnnotations = RunAnnotations.safeParse(parentRun?.annotations).data;

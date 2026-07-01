@@ -1,3 +1,4 @@
+import { isClassifiable, ownerEngine } from "@trigger.dev/core/v3/isomorphic";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
@@ -69,11 +70,27 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
       return;
     }
 
-    // Clear any runs awaiting deployment for execution
+    // NEW-1 defense-in-depth: the open-predicate findRuns fan-out can select runs from
+    // either DB, but the status flip below is a single control-plane updateMany. A
+    // ksuid (NEW-resident) run can only reach WAITING_FOR_DEPLOY via a misconfiguration
+    // (it is a V1/cuid-only status — V2 uses PENDING_VERSION). Surface it loudly rather
+    // than silently strand the run, and only mutate the LEGACY-resident runs the
+    // control-plane client can actually reach.
+    const newResidentRuns = runsWaitingForDeploy.filter(
+      (run) => isClassifiable(run.id) && ownerEngine(run.id) === "NEW"
+    );
+    if (newResidentRuns.length) {
+      logger.error(
+        "WAITING_FOR_DEPLOY selected NEW-resident runs; skipping their control-plane status flip",
+        { runIds: newResidentRuns.map((run) => run.id) }
+      );
+    }
+    const legacyRuns = runsWaitingForDeploy.filter((run) => !newResidentRuns.includes(run));
+
     const pendingRuns = await this._prisma.taskRun.updateMany({
       where: {
         id: {
-          in: runsWaitingForDeploy.map((run) => run.id),
+          in: legacyRuns.map((run) => run.id),
         },
       },
       data: {
@@ -83,12 +100,14 @@ export class ExecuteTasksWaitingForDeployService extends BaseService {
 
     if (pendingRuns.count) {
       logger.debug("Task runs waiting for deploy are now ready for execution", {
-        tasks: runsWaitingForDeploy.map((run) => run.id),
+        tasks: legacyRuns.map((run) => run.id),
         total: pendingRuns.count,
       });
     }
 
-    for (const run of runsWaitingForDeploy) {
+    // Only enqueue the runs whose status was actually flipped (the legacy set) — never
+    // marqs-enqueue a NEW-resident run we couldn't transition out of WAITING_FOR_DEPLOY.
+    for (const run of legacyRuns) {
       await marqs?.enqueueMessage(
         backgroundWorker.runtimeEnvironment,
         run.queue,

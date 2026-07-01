@@ -1,0 +1,216 @@
+import { heteroRunOpsPostgresTest, postgresTest } from "@internal/testcontainers";
+import type { RunOpsPrismaClient } from "@internal/run-ops-database";
+import type { PrismaClient } from "@trigger.dev/database";
+import { generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
+import { describe, expect, vi } from "vitest";
+import type { PrismaReplicaClient } from "~/db.server";
+import { resolveWaitpointThroughReadThrough } from "~/runEngine/concerns/resolveWaitpointThroughReadThrough.server";
+
+vi.setConfig({ testTimeout: 60_000 });
+
+// 25-char cuid (length-disjoint from the 27-char KSUID) -> LEGACY residency.
+function generateLegacyCuid() {
+  const suffix = Array.from(
+    { length: 24 },
+    () => "0123456789abcdefghijklmnopqrstuvwxyz"[Math.floor(Math.random() * 36)]
+  ).join("");
+  return `c${suffix}`;
+}
+
+function recording(
+  client: PrismaClient | RunOpsPrismaClient,
+  opts: { forbidden?: boolean } = {}
+) {
+  const calls: unknown[] = [];
+  const waitpoint = {
+    findFirst: (args: unknown) => {
+      calls.push(args);
+      if (opts.forbidden) {
+        throw new Error("this store must never be read");
+      }
+      return (client as unknown as PrismaReplicaClient).waitpoint.findFirst(args as never);
+    },
+  };
+  return { handle: { ...client, waitpoint } as unknown as PrismaReplicaClient, calls };
+}
+
+async function seedOrgProjectEnv(prisma: PrismaClient, suffix: string) {
+  const organization = await prisma.organization.create({
+    data: { title: `test-${suffix}`, slug: `test-${suffix}` },
+  });
+  const project = await prisma.project.create({
+    data: {
+      name: `test-${suffix}`,
+      slug: `test-${suffix}`,
+      organizationId: organization.id,
+      externalRef: `test-${suffix}`,
+    },
+  });
+  const environment = await prisma.runtimeEnvironment.create({
+    data: {
+      slug: `test-${suffix}`,
+      type: "PRODUCTION",
+      projectId: project.id,
+      organizationId: organization.id,
+      apiKey: `apikey-${suffix}`,
+      pkApiKey: `pk-${suffix}`,
+      shortcode: `test-${suffix}`,
+    },
+  });
+  return { organization, project, environment };
+}
+
+async function seedWaitpoint(
+  prisma: PrismaClient | RunOpsPrismaClient,
+  id: string,
+  env: { id: string; projectId: string }
+) {
+  return prisma.waitpoint.create({
+    data: {
+      id,
+      friendlyId: `waitpoint_${id}`,
+      type: "MANUAL",
+      status: "PENDING",
+      idempotencyKey: `idem-${id}`,
+      userProvidedIdempotencyKey: false,
+      projectId: env.projectId,
+      environmentId: env.id,
+    },
+  });
+}
+
+const read = (waitpointId: string, environmentId: string) => (client: PrismaReplicaClient) =>
+  client.waitpoint.findFirst({
+    where: { id: waitpointId, environmentId },
+    select: { id: true, status: true, projectId: true, environmentId: true },
+  });
+
+describe("resolveWaitpointThroughReadThrough (hetero PG14 legacy + dedicated run-ops PG17)", () => {
+  heteroRunOpsPostgresTest(
+    "ksuid waitpoint resolves on the dedicated run-ops client; legacy replica never touched",
+    async ({ prisma17, prisma14 }) => {
+      const id = generateKsuidId();
+      expect(id.length).toBe(27);
+
+      // [TEST-NEWSEED] The dedicated run-ops DB has no control-plane tables; the waitpoint's
+      // environment/project FKs are synthetic scalar ids.
+      const environmentId = generateKsuidId();
+      const projectId = generateKsuidId();
+      const seeded = await seedWaitpoint(prisma17, id, { id: environmentId, projectId });
+
+      const newClient = recording(prisma17);
+      const legacy = recording(prisma14, { forbidden: true });
+
+      const result = await resolveWaitpointThroughReadThrough({
+        waitpointId: id,
+        environmentId,
+        read: read(id, environmentId),
+        deps: {
+          splitEnabled: true,
+          newClient: newClient.handle,
+          legacyReplica: legacy.handle,
+          isKnownMigrated: async () => false,
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe(seeded.id);
+      expect(result!.projectId).toBe(projectId);
+      expect(result!.environmentId).toBe(environmentId);
+      expect(newClient.calls.length).toBe(1);
+      expect(legacy.calls.length).toBe(0);
+    }
+  );
+
+  heteroRunOpsPostgresTest(
+    "cuid waitpoint resolves off the LEGACY replica (new probed first, miss)",
+    async ({ prisma17, prisma14 }) => {
+      const id = generateLegacyCuid();
+      expect(id.length).toBe(25);
+
+      const { project, environment } = await seedOrgProjectEnv(prisma14, "legacy");
+      const seeded = await seedWaitpoint(prisma14, id, {
+        id: environment.id,
+        projectId: project.id,
+      });
+
+      const newClient = recording(prisma17);
+      const legacy = recording(prisma14);
+
+      const result = await resolveWaitpointThroughReadThrough({
+        waitpointId: id,
+        environmentId: environment.id,
+        read: read(id, environment.id),
+        deps: {
+          splitEnabled: true,
+          newClient: newClient.handle,
+          legacyReplica: legacy.handle,
+          isKnownMigrated: async () => false,
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe(seeded.id);
+      expect(newClient.calls.length).toBe(1);
+      expect(legacy.calls.length).toBe(1);
+    }
+  );
+
+  heteroRunOpsPostgresTest(
+    "not-found maps to null (no throw)",
+    async ({ prisma17, prisma14 }) => {
+      const id = generateLegacyCuid();
+      const { environment } = await seedOrgProjectEnv(prisma14, "nf");
+
+      const result = await resolveWaitpointThroughReadThrough({
+        waitpointId: id,
+        environmentId: environment.id,
+        read: read(id, environment.id),
+        deps: {
+          splitEnabled: true,
+          newClient: recording(prisma17).handle,
+          legacyReplica: recording(prisma14).handle,
+          isKnownMigrated: async () => false,
+        },
+      });
+
+      expect(result).toBeNull();
+    }
+  );
+
+  postgresTest(
+    "passthrough (single-DB): one plain read; legacy + isKnownMigrated never invoked",
+    async ({ prisma }) => {
+      const id = generateKsuidId();
+      const { project, environment } = await seedOrgProjectEnv(prisma, "pt");
+      const seeded = await seedWaitpoint(prisma, id, {
+        id: environment.id,
+        projectId: project.id,
+      });
+
+      const single = recording(prisma);
+      const legacy = recording(prisma, { forbidden: true });
+      let knownMigratedInvoked = false;
+
+      const result = await resolveWaitpointThroughReadThrough({
+        waitpointId: id,
+        environmentId: environment.id,
+        read: read(id, environment.id),
+        deps: {
+          newClient: single.handle,
+          legacyReplica: legacy.handle,
+          isKnownMigrated: async () => {
+            knownMigratedInvoked = true;
+            return false;
+          },
+        },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe(seeded.id);
+      expect(single.calls.length).toBe(1);
+      expect(legacy.calls.length).toBe(0);
+      expect(knownMigratedInvoked).toBe(false);
+    }
+  );
+});

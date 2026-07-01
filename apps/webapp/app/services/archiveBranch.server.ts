@@ -81,6 +81,9 @@ export class ArchiveBranchService {
         };
       }
 
+      // Branch archive is a SOFT update — do NOT hard-delete run-ops rows here (it would destroy a
+      // retained branch's history). RunOpsCascadeCleanupService.cleanupEnvironment belongs on the
+      // env hard-delete/purge path (owned by the cloud env-purge runbook), which has no site today.
       const slug = `${environment.slug}-${nanoid(6)}`;
       const shortcode = slug;
 

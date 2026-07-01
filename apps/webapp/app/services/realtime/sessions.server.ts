@@ -1,7 +1,8 @@
 import type { PrismaClient, Session } from "@trigger.dev/database";
 import type { SessionItem } from "@trigger.dev/core/v3";
+import type { RunStore } from "@internal/run-store";
 import { $replica, prisma } from "~/db.server";
-import { runStore } from "~/v3/runStore.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
 
 /**
  * Prefix that {@link SessionId.generate} attaches to every Session friendlyId.
@@ -18,6 +19,9 @@ const SESSION_FRIENDLY_ID_PREFIX = "session_";
  * friendlyIds, anything else is looked up against `externalId` scoped to
  * the caller's environment.
  */
+// CONTROL-PLANE: `Session` lives on the control-plane DB; these reads are NOT
+// routed to run-ops read-through — only the `TaskRun` currentRunId resolves in
+// this file are run-ops read-through routed.
 export async function resolveSessionByIdOrExternalId(
   prisma: Pick<PrismaClient, "session">,
   runtimeEnvironmentId: string,
@@ -119,18 +123,27 @@ export function serializeSession(session: Session): SessionItem {
  * this so the wire-side `currentRunId` is consistent with the rest of
  * the public API (which only accepts friendlyIds for run lookups).
  *
- * Skips the lookup when `currentRunId` is null. The read goes through
- * `$replica` — a TaskRun's `friendlyId` is immutable so replica lag is
- * harmless, and serializing on the writer would just add hot-path load.
+ * Skips the lookup when `currentRunId` is null.
+ *
+ * Resolves `currentRunId` -> `friendlyId` through `runStore.findRun` so a
+ * ksuid (NEW-DB) session run resolves from its owning store rather than the
+ * control-plane replica. Mirrors `sessionRunManager.server.ts`.
+ * Tenant-scoped because `Session.currentRunId` is a no-FK pointer.
  */
-export async function serializeSessionWithFriendlyRunId(session: Session): Promise<SessionItem> {
+export async function serializeSessionWithFriendlyRunId(
+  session: Session,
+  runStore: RunStore = defaultRunStore
+): Promise<SessionItem> {
   const base = serializeSession(session);
   if (!session.currentRunId) return base;
 
   const run = await runStore.findRun(
-    { id: session.currentRunId },
-    { select: { friendlyId: true } },
-    $replica
+    {
+      id: session.currentRunId,
+      projectId: session.projectId,
+      runtimeEnvironmentId: session.runtimeEnvironmentId,
+    },
+    { select: { friendlyId: true } }
   );
 
   return {
@@ -148,27 +161,28 @@ export async function serializeSessionWithFriendlyRunId(session: Session): Promi
  */
 export async function serializeSessionsWithFriendlyRunIds(
   sessions: Session[],
-  scope: { projectId: string; runtimeEnvironmentId: string }
+  scope: { projectId: string; runtimeEnvironmentId: string },
+  runStore: RunStore = defaultRunStore
 ): Promise<SessionItem[]> {
   const runIds = [
     ...new Set(sessions.map((s) => s.currentRunId).filter((id): id is string => !!id)),
   ];
 
-  // `currentRunId` is a plain string pointer (no FK), so scope the lookup to
-  // the caller's tenant — a stale value must not resolve a run in another env.
-  const runs = runIds.length
-    ? await runStore.findRuns(
-        {
+  // `runStore.findRuns` fans out across both stores under split (NEW + LEGACY
+  // replica merge) and is a plain `$replica` find when split is off. Tenant-
+  // scoped: `Session.currentRunId` is a no-FK pointer, so a stale id must never
+  // resolve a run in another env.
+  const runs =
+    runIds.length > 0
+      ? await runStore.findRuns({
           where: {
             id: { in: runIds },
             projectId: scope.projectId,
             runtimeEnvironmentId: scope.runtimeEnvironmentId,
           },
           select: { id: true, friendlyId: true },
-        },
-        $replica
-      )
-    : [];
+        })
+      : [];
   const friendlyIdByRunId = new Map(runs.map((run) => [run.id, run.friendlyId]));
 
   return sessions.map((session) => ({

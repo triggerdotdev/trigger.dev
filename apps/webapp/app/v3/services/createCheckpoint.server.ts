@@ -146,14 +146,12 @@ export class CreateCheckpointService extends BaseService {
         break;
       }
       case "WAIT_FOR_BATCH": {
-        const batchRun = await this._prisma.batchTaskRun.findFirst({
-          where: {
-            friendlyId: reason.batchFriendlyId,
-          },
-          select: {
-            resumedAt: true,
-          },
-        });
+        // Routed by friendlyId so a ksuid (NEW-resident) batch is found on the owning DB;
+        // env-scoped to the dependent attempt's run (a batch shares its dependent's env).
+        const batchRun = await this.runStore.findBatchTaskRunByFriendlyId(
+          reason.batchFriendlyId,
+          attempt.taskRun.runtimeEnvironmentId
+        );
 
         if (!batchRun) {
           logger.error("CreateCheckpointService: Pre-check - Batch not found", {
@@ -363,15 +361,12 @@ export class CreateCheckpointService extends BaseService {
           });
           await marqs?.cancelHeartbeat(attempt.taskRunId);
 
-          const batchRun = await this._prisma.batchTaskRun.findFirst({
-            select: {
-              id: true,
-              batchVersion: true,
-            },
-            where: {
-              friendlyId: reason.batchFriendlyId,
-            },
-          });
+          // Routed by friendlyId so a ksuid (NEW-resident) batch is found on the owning DB;
+          // env-scoped to the dependent attempt's run (a batch shares its dependent's env).
+          const batchRun = await this.runStore.findBatchTaskRunByFriendlyId(
+            reason.batchFriendlyId,
+            attempt.taskRun.runtimeEnvironmentId
+          );
 
           if (!batchRun) {
             logger.error("CreateCheckpointService: Batch not found", {

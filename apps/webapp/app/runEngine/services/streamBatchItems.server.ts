@@ -13,7 +13,7 @@ import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseSer
 import { BatchPayloadProcessor } from "../concerns/batchPayloads.server";
 
 /**
- * Phase 2 retry idempotency check (TRI-9944).
+ * Phase 2 retry idempotency check.
  *
  * Returns true when the batch is in a state that means the Phase 2 stream's
  * job has already been done — every item has a TaskRun record (real or
@@ -128,24 +128,12 @@ export class StreamBatchItemsService extends WithRunEngine {
         // Convert friendly ID to internal ID
         const batchId = this.parseBatchFriendlyId(batchFriendlyId);
 
-        // Validate batch exists and belongs to this environment
-        const batch = await this._prisma.batchTaskRun.findFirst({
-          where: {
-            id: batchId,
-            runtimeEnvironmentId: environment.id,
-          },
-          select: {
-            id: true,
-            friendlyId: true,
-            status: true,
-            runCount: true,
-            sealed: true,
-            batchVersion: true,
-            processingCompletedAt: true,
-          },
-        });
+        // Validate batch exists and belongs to this environment. Routed by batch id so a
+        // ksuid (NEW-resident) batch is found on the owning DB; the env-ownership check that
+        // was in the where clause is enforced app-side below.
+        const batch = await this._engine.runStore.findBatchTaskRunById(batchId);
 
-        if (!batch) {
+        if (!batch || batch.runtimeEnvironmentId !== environment.id) {
           throw new ServiceValidationError(`Batch ${batchFriendlyId} not found`);
         }
 
@@ -215,10 +203,7 @@ export class StreamBatchItemsService extends WithRunEngine {
           // milliseconds between the loop ending and getBatchEnqueuedCount() being called.
           // Check both sealed (sealed by this endpoint on a concurrent request) and
           // COMPLETED (sealed by the BatchQueue completion path before we got here).
-          const currentBatch = await this._prisma.batchTaskRun.findFirst({
-            where: { id: batchId },
-            select: { sealed: true, status: true, processingCompletedAt: true },
-          });
+          const currentBatch = await this._engine.runStore.findBatchTaskRunById(batchId);
 
           if (
             isIdempotentRetrySuccess(
@@ -279,7 +264,7 @@ export class StreamBatchItemsService extends WithRunEngine {
         // Seal the batch - use conditional update to prevent TOCTOU race
         // Another concurrent request may have already sealed this batch
         const now = new Date();
-        const sealResult = await this._prisma.batchTaskRun.updateMany({
+        const sealResult = await this._engine.runStore.updateManyBatchTaskRun({
           where: {
             id: batchId,
             sealed: false,
@@ -306,16 +291,7 @@ export class StreamBatchItemsService extends WithRunEngine {
           //     batch-queue/index.ts.
           // Either way the goal — a durable batch that the SDK stops retrying —
           // has been achieved, so we return sealed: true.
-          const currentBatch = await this._prisma.batchTaskRun.findFirst({
-            where: { id: batchId },
-            select: {
-              id: true,
-              friendlyId: true,
-              status: true,
-              sealed: true,
-              processingCompletedAt: true,
-            },
-          });
+          const currentBatch = await this._engine.runStore.findBatchTaskRunById(batchId);
 
           if (
             isIdempotentRetrySuccess(
