@@ -1,4 +1,4 @@
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { metricsRegister } from "~/metrics.server";
 

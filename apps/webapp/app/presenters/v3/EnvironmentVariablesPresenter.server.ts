@@ -1,9 +1,10 @@
-import { $replica, PrismaClient, PrismaReplicaClient, prisma } from "~/db.server";
+import type { PrismaClient, PrismaReplicaClient} from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import type { Project } from "~/models/project.server";
 import type { User } from "~/models/user.server";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import type { EnvironmentVariableUpdater } from "~/v3/environmentVariables/repository";
-import { SyncEnvVarsMapping, EnvSlug } from "~/v3/vercel/vercelProjectIntegrationSchema";
+import type { SyncEnvVarsMapping, EnvSlug } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { loadEnvironmentVariablesEnvironments } from "./environmentVariablesEnvironments.server";
 

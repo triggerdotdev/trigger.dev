@@ -1,5 +1,5 @@
-import { TaskRunExecutionResult } from "../../schemas/common.js";
-import { DequeuedMessage, StartRunAttemptResult } from "../../schemas/runEngine.js";
+import type { TaskRunExecutionResult } from "../../schemas/common.js";
+import type { DequeuedMessage, StartRunAttemptResult } from "../../schemas/runEngine.js";
 
 export type WorkerEvents = {
   runQueueMessage: [

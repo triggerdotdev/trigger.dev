@@ -1,5 +1,5 @@
-import { EnqueueSystem } from "./enqueueSystem.js";
-import { SystemResources } from "./systems.js";
+import type { EnqueueSystem } from "./enqueueSystem.js";
+import type { SystemResources } from "./systems.js";
 
 export type PendingVersionSystemOptions = {
   resources: SystemResources;

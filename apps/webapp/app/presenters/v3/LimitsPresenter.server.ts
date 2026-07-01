@@ -1,5 +1,5 @@
 import { Ratelimit } from "@upstash/ratelimit";
-import { RuntimeEnvironmentType } from "@trigger.dev/database";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { createHash } from "node:crypto";
 import { env } from "~/env.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";

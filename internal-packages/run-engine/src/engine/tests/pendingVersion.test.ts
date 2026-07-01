@@ -3,7 +3,7 @@ import { trace } from "@internal/tracing";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "timers/promises";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
-import { DequeuedMessage } from "@trigger.dev/core/v3";
+import type { DequeuedMessage } from "@trigger.dev/core/v3";
 import { PostgresPendingVersionRunIdLookup } from "./postgresPendingVersionLookup.js";
 
 vi.setConfig({ testTimeout: 60_000 });

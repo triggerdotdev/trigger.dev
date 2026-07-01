@@ -1,10 +1,12 @@
-import { SupervisorHttpClient } from "../runEngineWorker/index.js";
-import {
+import type { SupervisorHttpClient } from "../runEngineWorker/index.js";
+import type {
   CheckpointServiceSuspendRequestBodyInput,
-  CheckpointServiceSuspendResponseBody,
-  CheckpointServiceRestoreRequestBodyInput,
+  CheckpointServiceRestoreRequestBodyInput} from "../schemas/checkpoints.js";
+import {
+  CheckpointServiceSuspendResponseBody
 } from "../schemas/checkpoints.js";
-import { CheckpointType, DequeuedMessage } from "../schemas/runEngine.js";
+import type { CheckpointType} from "../schemas/runEngine.js";
+import { DequeuedMessage } from "../schemas/runEngine.js";
 import { SimpleStructuredLogger } from "../utils/structuredLogger.js";
 
 export type CheckpointClientOptions = {

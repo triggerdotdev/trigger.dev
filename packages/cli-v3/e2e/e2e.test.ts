@@ -1,5 +1,5 @@
 import { alwaysExternal } from "@trigger.dev/core/v3/build";
-import { BuildManifest,WorkerManifest } from "@trigger.dev/core/v3/schemas";
+import type { BuildManifest,WorkerManifest } from "@trigger.dev/core/v3/schemas";
 import * as fs from "node:fs";
 import { mkdir,rename,rm } from "node:fs/promises";
 import * as path from "node:path";
@@ -11,9 +11,12 @@ import { writeJSONFile } from "../src/utilities/fileSystem.js";
 import { logger } from "../src/utilities/logger.js";
 import { normalizeImportPath } from "../src/utilities/normalizeImportPath.js";
 import { getTmpDir } from "../src/utilities/tempDirectories.js";
-import { fixturesConfig,TestCase } from "./fixtures.js";
-import { E2EOptions,E2EOptionsSchema } from "./schemas.js";
-import { executeTestCaseRun,installFixtureDeps,LOCKFILES,PackageManager,parsePackageManager,runTsc } from "./utils.js";
+import type {TestCase } from "./fixtures.js";
+import { fixturesConfig } from "./fixtures.js";
+import type { E2EOptions} from "./schemas.js";
+import {E2EOptionsSchema } from "./schemas.js";
+import type {PackageManager} from "./utils.js";
+import { executeTestCaseRun,installFixtureDeps,LOCKFILES,parsePackageManager,runTsc } from "./utils.js";
 
 const TIMEOUT = 120_000;
 

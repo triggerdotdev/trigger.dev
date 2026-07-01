@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import {
+import type {
   GetSocketCallbackSchema,
   GetSocketMessageSchema,
   GetSocketMessagesWithCallback,
@@ -11,7 +11,7 @@ import {
 import { z } from "zod";
 import { ZodSchemaParsedError } from "./zodMessageHandler.js";
 import { inspect } from "node:util";
-import {
+import type {
   ExecutorToWorkerMessageCatalog,
   WorkerToExecutorMessageCatalog,
 } from "./schemas/messages.js";

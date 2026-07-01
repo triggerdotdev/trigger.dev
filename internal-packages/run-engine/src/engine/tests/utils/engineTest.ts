@@ -1,4 +1,9 @@
-import { TestContext, test, TestAPI } from "vitest";
+import type { TestContext, TestAPI } from "vitest";
+import { test } from "vitest";
+import type {
+  StartedNetwork,
+  StartedPostgreSqlContainer,
+  StartedRedisContainer} from "@internal/testcontainers";
 import {
   logCleanup,
   network,
@@ -6,16 +11,13 @@ import {
   prisma,
   redisContainer,
   redisOptions,
-  StartedNetwork,
-  StartedPostgreSqlContainer,
-  StartedRedisContainer,
   type PostgresAndRedisContext,
 } from "@internal/testcontainers";
 import { RunEngine } from "../../index.js";
-import { PrismaClient } from "@trigger.dev/database";
-import { RedisOptions } from "@internal/redis";
+import type { PrismaClient } from "@trigger.dev/database";
+import type { RedisOptions } from "@internal/redis";
 import { trace } from "@internal/tracing";
-import { RunEngineOptions } from "../../types.js";
+import type { RunEngineOptions } from "../../types.js";
 
 type Use<T> = (value: T) => Promise<void>;
 

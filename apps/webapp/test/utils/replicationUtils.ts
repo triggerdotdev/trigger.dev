@@ -1,6 +1,6 @@
 import { ClickHouse } from "@internal/clickhouse";
-import { RedisOptions } from "@internal/redis";
-import { PrismaClient } from "~/db.server";
+import type { RedisOptions } from "@internal/redis";
+import type { PrismaClient } from "~/db.server";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
 import { TestReplicationClickhouseFactory } from "./testReplicationClickhouseFactory";
 import { afterEach } from "vitest";

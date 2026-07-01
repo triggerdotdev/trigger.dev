@@ -13,9 +13,10 @@ import { initMollifierStaleSweepWorker } from "~/v3/mollifierStaleSweepWorker.se
 import { initBillingLimitWorker } from "~/v3/billingLimitWorker.server";
 import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
+import type {
+  OperatingSystemPlatform} from "./components/primitives/OperatingSystemProvider";
 import {
-  OperatingSystemContextProvider,
-  OperatingSystemPlatform,
+  OperatingSystemContextProvider
 } from "./components/primitives/OperatingSystemProvider";
 import { Prisma } from "./db.server";
 import { env } from "./env.server";

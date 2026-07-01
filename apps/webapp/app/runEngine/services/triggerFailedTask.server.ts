@@ -1,4 +1,4 @@
-import { RunEngine } from "@internal/run-engine";
+import type { RunEngine } from "@internal/run-engine";
 import { TaskRunErrorCodes,type TaskRunError } from "@trigger.dev/core/v3";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction,RuntimeEnvironmentType,TaskRun } from "@trigger.dev/database";

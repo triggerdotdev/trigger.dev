@@ -2,8 +2,9 @@ import { confirm,intro,isCancel,log } from "@clack/prompts";
 import { VERSION } from "@trigger.dev/core";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { getDevBranch } from "@trigger.dev/core/v3";
-import { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { Command,Option as CommandOption } from "commander";
+import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
+import type { Command} from "commander";
+import {Option as CommandOption } from "commander";
 import { resolve } from "node:path";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
@@ -14,7 +15,8 @@ handleTelemetry,
 wrapCommandAction,
 } from "../cli/common.js";
 import { loadConfig,watchConfig } from "../config.js";
-import { DevSessionInstance,startDevSession } from "../dev/devSession.js";
+import type { DevSessionInstance} from "../dev/devSession.js";
+import {startDevSession } from "../dev/devSession.js";
 import { createLockFile } from "../dev/lock.js";
 import { chalkError } from "../utilities/cliOutput.js";
 import {
@@ -29,7 +31,8 @@ awaitAndDisplayPlatformNotification,
 fetchPlatformNotification,
 } from "../utilities/platformNotifications.js";
 import { runtimeChecks } from "../utilities/runtimeCheck.js";
-import { getProjectClient,LoginResultOk } from "../utilities/session.js";
+import type {LoginResultOk } from "../utilities/session.js";
+import { getProjectClient } from "../utilities/session.js";
 import { spinner } from "../utilities/windows.js";
 import { verifyDirectory } from "./deploy.js";
 import { installMcpServer } from "./install-mcp.js";

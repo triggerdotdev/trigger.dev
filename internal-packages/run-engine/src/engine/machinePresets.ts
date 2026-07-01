@@ -1,4 +1,5 @@
-import { MachineConfig, MachinePreset, MachinePresetName } from "@trigger.dev/core/v3";
+import type { MachinePreset} from "@trigger.dev/core/v3";
+import { MachineConfig, MachinePresetName } from "@trigger.dev/core/v3";
 import { Logger } from "@trigger.dev/core/logger";
 
 const logger = new Logger("machinePresetFromConfig");

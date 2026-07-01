@@ -5,7 +5,8 @@ import {
   RateLimiterConfig,
   createLimiterFromConfig,
 } from "~/services/authorizationRateLimitMiddleware.server";
-import { createRedisRateLimitClient, Duration, RateLimiter } from "~/services/rateLimiter.server";
+import type { Duration} from "~/services/rateLimiter.server";
+import { createRedisRateLimitClient, RateLimiter } from "~/services/rateLimiter.server";
 import { singleton } from "~/utils/singleton";
 
 const BatchLimitsConfig = z.object({

@@ -1,8 +1,9 @@
-import { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import * as esbuild from "esbuild";
-import { CliApiClient } from "../apiClient.js";
+import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
+import type * as esbuild from "esbuild";
+import type { CliApiClient } from "../apiClient.js";
+import type {
+  BundleResult} from "../build/bundle.js";
 import {
-  BundleResult,
   bundleWorker,
   createBuildManifestFromBundle,
   getBundleResultFromBuild,
@@ -19,9 +20,10 @@ import { createExternalsBuildExtension, resolveAlwaysExternal } from "../build/e
 import { type DevCommandOptions } from "../commands/dev.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
+import type {
+  EphemeralDirectory} from "../utilities/tempDirectories.js";
 import {
   clearTmpDirs,
-  EphemeralDirectory,
   getStoreDir,
   getTmpDir,
 } from "../utilities/tempDirectories.js";

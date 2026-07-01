@@ -1,3 +1,12 @@
+import type {
+  AsyncIterableStream,
+  WriterStreamOptions,
+  PipeStreamOptions,
+  PipeStreamResult,
+  ReadStreamOptions,
+  AppendStreamOptions,
+  RealtimeDefinedStream,
+  InferStreamType} from "@trigger.dev/core/v3";
 import {
   type ApiRequestOptions,
   realtimeStreams,
@@ -8,14 +17,6 @@ import {
   accessoryAttributes,
   SemanticInternalAttributes,
   apiClientManager,
-  AsyncIterableStream,
-  WriterStreamOptions,
-  PipeStreamOptions,
-  PipeStreamResult,
-  ReadStreamOptions,
-  AppendStreamOptions,
-  RealtimeDefinedStream,
-  InferStreamType,
   ManualWaitpointPromise,
   WaitpointTimeoutError,
   runtime,

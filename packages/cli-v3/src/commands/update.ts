@@ -1,9 +1,10 @@
 import { confirm, intro, isCancel, log, outro } from "@clack/prompts";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { detectPackageManager, installDependencies } from "nypm";
 import { dirname, join, resolve } from "path";
-import { PackageJson, readPackageJSON, type ResolveOptions, resolvePackageJSON } from "pkg-types";
-import { z } from "zod";
+import type { PackageJson} from "pkg-types";
+import { readPackageJSON, type ResolveOptions, resolvePackageJSON } from "pkg-types";
+import type { z } from "zod";
 import { CommonCommandOptions, OutroCommandError, wrapCommandAction } from "../cli/common.js";
 import { chalkError, prettyError, prettyWarning } from "../utilities/cliOutput.js";
 import { removeFile, writeJSONFilePreserveOrder } from "../utilities/fileSystem.js";

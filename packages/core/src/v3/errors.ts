@@ -1,15 +1,17 @@
-import { z } from "zod";
-import { DeploymentErrorData } from "./schemas/api.js";
-import { ImportTaskFileErrors, WorkerManifest } from "./schemas/build.js";
-import {
+import type { z } from "zod";
+import type { DeploymentErrorData } from "./schemas/api.js";
+import type { WorkerManifest } from "./schemas/build.js";
+import { ImportTaskFileErrors } from "./schemas/build.js";
+import type {
   SerializedError,
   TaskRunError,
-  TaskRunErrorCodes,
-  TaskRunInternalError,
+  TaskRunInternalError} from "./schemas/common.js";
+import {
+  TaskRunErrorCodes
 } from "./schemas/common.js";
 import { TaskMetadataFailedToParseData } from "./schemas/messages.js";
 import { links } from "./links.js";
-import { ExceptionEventProperties } from "./schemas/openTelemetry.js";
+import type { ExceptionEventProperties } from "./schemas/openTelemetry.js";
 import { assertExhaustive } from "../utils.js";
 
 /**

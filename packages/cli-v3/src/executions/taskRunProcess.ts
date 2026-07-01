@@ -1,16 +1,17 @@
-import {
-  attemptKey,
+import type {
   CompletedWaitpoint,
-  ExecutorToWorkerMessageCatalog,
   MachinePresetResources,
   ServerBackgroundWorker,
-  TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionPayload,
   TaskRunExecutionResult,
+  WorkerManifest} from "@trigger.dev/core/v3";
+import {
+  attemptKey,
+  ExecutorToWorkerMessageCatalog,
+  TaskRunErrorCodes,
   type TaskRunInternalError,
   tryCatch,
-  WorkerManifest,
   WorkerToExecutorMessageCatalog,
 } from "@trigger.dev/core/v3";
 import {
@@ -18,12 +19,13 @@ import {
   ZodIpcConnection,
 } from "@trigger.dev/core/v3/zodIpc";
 import { Evt } from "evt";
-import { ChildProcess, fork } from "node:child_process";
+import type { ChildProcess} from "node:child_process";
+import { fork } from "node:child_process";
 import { chalkError, chalkGrey, chalkRun, prettyPrintDate } from "../utilities/cliOutput.js";
 
 import { execOptionsForRuntime, execPathForRuntime } from "@trigger.dev/core/v3/build";
 import { nodeOptionsWithMaxOldSpaceSize } from "@trigger.dev/core/v3/machines";
-import { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
+import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { logger } from "../utilities/logger.js";
 import {
   CancelledProcessError,

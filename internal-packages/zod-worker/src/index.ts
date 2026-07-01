@@ -20,8 +20,8 @@ import {
 } from "graphile-worker";
 import omit from "lodash.omit";
 import { z } from "zod";
-import { Logger } from "@trigger.dev/core/logger";
-import {
+import type { Logger } from "@trigger.dev/core/logger";
+import type {
   PrismaClient,
   PrismaClientOrTransaction,
   PrismaReplicaClient,

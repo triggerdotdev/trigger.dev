@@ -1,11 +1,12 @@
-import { PostStartCauses,PreStopCauses } from "@trigger.dev/core/v3";
-import {
-ProviderShell,
-SimpleLogger,
+import type { PostStartCauses,PreStopCauses } from "@trigger.dev/core/v3";
+import type {
 TaskOperations,
 TaskOperationsCreateOptions,
 TaskOperationsIndexOptions,
-TaskOperationsRestoreOptions,
+TaskOperationsRestoreOptions} from "@trigger.dev/core/v3/apps";
+import {
+ProviderShell,
+SimpleLogger,
 isExecaChildProcess,
 } from "@trigger.dev/core/v3/apps";
 import { testDockerCheckpoint } from "@trigger.dev/core/v3/serverOnly";

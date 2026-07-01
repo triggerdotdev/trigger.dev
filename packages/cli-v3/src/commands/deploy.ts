@@ -1,20 +1,22 @@
 import { intro, log, outro } from "@clack/prompts";
 import { getBranch, prepareDeploymentError, tryCatch } from "@trigger.dev/core/v3";
-import {
+import type {
   InitializeDeploymentRequestBody,
   InitializeDeploymentResponseBody,
   GitMeta,
   DeploymentFinalizedEvent,
-  DeploymentEventFromString,
-  DeploymentTriggeredVia,
+  DeploymentTriggeredVia} from "@trigger.dev/core/v3/schemas";
+import {
+  DeploymentEventFromString
 } from "@trigger.dev/core/v3/schemas";
-import { Command, Option as CommandOption } from "commander";
+import type { Command} from "commander";
+import { Option as CommandOption } from "commander";
 import { join, relative, resolve } from "node:path";
 import { isCI } from "std-env";
 import { x } from "tinyexec";
 import { z } from "zod";
 import chalk from "chalk";
-import { CliApiClient } from "../apiClient.js";
+import type { CliApiClient } from "../apiClient.js";
 import { buildWorker } from "../build/buildWorker.js";
 import { resolveAlwaysExternal } from "../build/externals.js";
 import { createContextArchive, getArchiveSize } from "../deploy/archiveContext.js";

@@ -1,6 +1,6 @@
 const API_NAME = "resource-catalog";
 
-import {
+import type {
   PromptManifest,
   QueueManifest,
   SkillManifest,
@@ -8,7 +8,7 @@ import {
   TaskManifest,
   WorkerManifest,
 } from "../schemas/index.js";
-import {
+import type {
   PromptMetadataWithFunctions,
   TaskMetadataWithFunctions,
   TaskSchema,

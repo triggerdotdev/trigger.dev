@@ -3,7 +3,7 @@ import { join } from "path";
 import ini from "ini";
 import git from "git-last-commit";
 import { x } from "tinyexec";
-import { GitMeta } from "@trigger.dev/core/v3";
+import type { GitMeta } from "@trigger.dev/core/v3";
 
 export async function createGitMeta(directory: string): Promise<GitMeta | undefined> {
   if (isGitHubApp()) {

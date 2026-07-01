@@ -1,5 +1,5 @@
 import { render } from "@react-email/render";
-import { MailMessage, MailTransport, PlainTextMailMessage } from "./index";
+import type { MailMessage, MailTransport, PlainTextMailMessage } from "./index";
 
 export type NullMailTransportOptions = {
   type: undefined;

@@ -5,10 +5,11 @@ import {
   TaskMetadataParseError,
   UncaughtExceptionError,
 } from "@trigger.dev/core/v3/errors";
-import {
+import type {
   BuildRuntime,
-  indexerToWorkerMessages,
-  WorkerManifest,
+  WorkerManifest} from "@trigger.dev/core/v3/schemas";
+import {
+  indexerToWorkerMessages
 } from "@trigger.dev/core/v3/schemas";
 import { parseMessageFromCatalog } from "@trigger.dev/core/v3/zodMessageHandler";
 import { fork } from "node:child_process";

@@ -2,7 +2,7 @@ import { request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";
 import { URL } from "node:url";
 import { randomBytes } from "node:crypto";
-import { StreamsWriter, StreamWriteResult } from "./types.js";
+import type { StreamsWriter, StreamWriteResult } from "./types.js";
 
 export type StreamsWriterV1Options<T> = {
   baseUrl: string;

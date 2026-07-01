@@ -2,7 +2,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { z } from "zod";
 import { SimpleStructuredLogger } from "../utils/structuredLogger.js";
 import { HttpReply, getJsonBody } from "../apps/http.js";
-import { Registry, Histogram, Counter } from "prom-client";
+import type { Registry} from "prom-client";
+import { Histogram, Counter } from "prom-client";
 import { tryCatch } from "../../utils.js";
 
 const logger = new SimpleStructuredLogger("http-server");

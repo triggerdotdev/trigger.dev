@@ -1,5 +1,5 @@
 import { tryCatch } from "../tryCatch.js";
-import { HeartbeatsManager } from "./types.js";
+import type { HeartbeatsManager } from "./types.js";
 import { setInterval, setImmediate, setTimeout } from "node:timers/promises";
 
 export class StandardHeartbeatsManager implements HeartbeatsManager {

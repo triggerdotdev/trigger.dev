@@ -1,6 +1,6 @@
 import { WORKLOAD_HEADERS } from "../consts.js";
 import { createHeaders } from "../util.js";
-import { WorkloadClientCommonOptions } from "./types.js";
+import type { WorkloadClientCommonOptions } from "./types.js";
 
 export function getDefaultWorkloadHeaders(
   options: WorkloadClientCommonOptions

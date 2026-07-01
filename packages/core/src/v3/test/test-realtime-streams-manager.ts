@@ -1,5 +1,6 @@
+import type {
+  AsyncIterableStream} from "../streams/asyncIterableStream.js";
 import {
-  AsyncIterableStream,
   createAsyncIterableStreamFromAsyncIterable,
 } from "../streams/asyncIterableStream.js";
 import type {

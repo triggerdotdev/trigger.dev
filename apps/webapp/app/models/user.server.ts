@@ -3,8 +3,9 @@ import type { GitHubProfile } from "remix-auth-github";
 import type { GoogleProfile } from "remix-auth-google";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
+import type {
+  DashboardPreferences} from "~/services/dashboardPreferences.server";
 import {
-  DashboardPreferences,
   getDashboardPreferences,
 } from "~/services/dashboardPreferences.server";
 export type { User } from "@trigger.dev/database";

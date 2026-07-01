@@ -3,17 +3,19 @@ import { type Result, fromPromise, ok, okAsync, ResultAsync } from "neverthrow";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
-import {
-  VercelIntegrationRepository,
+import type {
   VercelCustomEnvironment,
-  VercelEnvironmentVariable,
+  VercelEnvironmentVariable} from "~/models/vercelIntegration.server";
+import {
+  VercelIntegrationRepository
 } from "~/models/vercelIntegration.server";
 import { type GitHubAppInstallation } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { isReservedForExternalSync } from "~/v3/environmentVariableRules.server";
+import type {
+  VercelProjectIntegrationData} from "~/v3/vercel/vercelProjectIntegrationSchema";
 import {
-  VercelProjectIntegrationDataSchema,
-  VercelProjectIntegrationData,
+  VercelProjectIntegrationDataSchema
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { BasePresenter } from "./basePresenter.server";
 

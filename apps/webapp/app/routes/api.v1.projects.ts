@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import { GetProjectsResponseBody } from "@trigger.dev/core/v3";
+import type { GetProjectsResponseBody } from "@trigger.dev/core/v3";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";

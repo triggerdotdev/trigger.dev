@@ -1,18 +1,19 @@
 import * as k8s from "@kubernetes/client-node";
-import {
+import type {
   EnvironmentType,
   MachinePreset,
   PostStartCauses,
   PreStopCauses,
 } from "@trigger.dev/core/v3";
-import {
-  ProviderShell,
-  SimpleLogger,
+import type {
   TaskOperations,
   TaskOperationsCreateOptions,
   TaskOperationsIndexOptions,
   TaskOperationsPrePullDeploymentOptions,
-  TaskOperationsRestoreOptions,
+  TaskOperationsRestoreOptions} from "@trigger.dev/core/v3/apps";
+import {
+  ProviderShell,
+  SimpleLogger
 } from "@trigger.dev/core/v3/apps";
 import { PodCleaner } from "./podCleaner";
 import { TaskMonitor } from "./taskMonitor";

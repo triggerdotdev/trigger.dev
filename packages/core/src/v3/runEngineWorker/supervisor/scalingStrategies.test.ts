@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
+import type {
+  ScalingStrategyOptions} from "./scalingStrategies.js";
 import {
   NoneScalingStrategy,
   SmoothScalingStrategy,
-  AggressiveScalingStrategy,
-  ScalingStrategyOptions,
+  AggressiveScalingStrategy
 } from "./scalingStrategies.js";
 import { QueueMetricsProcessor } from "./queueMetricsProcessor.js";
 

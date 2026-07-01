@@ -54,8 +54,9 @@
  * helpers like `stepCountIs` / `convertToModelMessages`).
  */
 
+import type {
+  ApiClient} from "@trigger.dev/core/v3";
 import {
-  ApiClient,
   SessionStreamInstance,
   TRIGGER_CONTROL_SUBTYPE,
   apiClientManager,

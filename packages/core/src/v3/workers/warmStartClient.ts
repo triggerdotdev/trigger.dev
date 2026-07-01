@@ -1,7 +1,8 @@
 import { DequeuedMessage } from "../schemas/runEngine.js";
 import { SimpleStructuredLogger } from "../utils/structuredLogger.js";
 import { WarmStartConnectResponse } from "../schemas/warmStart.js";
-import { ApiResult, wrapZodFetch } from "../zodfetch.js";
+import type { ApiResult} from "../zodfetch.js";
+import { wrapZodFetch } from "../zodfetch.js";
 import { ExponentialBackoff } from "../apps/backoff.js";
 
 export type WarmStartClientOptions = {

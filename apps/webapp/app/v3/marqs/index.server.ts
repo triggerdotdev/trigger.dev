@@ -1,13 +1,14 @@
 import { type RedisOptions } from "@internal/redis";
+import type {
+  Span,
+  SpanOptions,
+  Tracer} from "@opentelemetry/api";
 import {
   context,
   propagation,
-  Span,
   SpanKind,
-  SpanOptions,
   SpanStatusCode,
-  trace,
-  Tracer,
+  trace
 } from "@opentelemetry/api";
 import {
   SEMATTRS_MESSAGE_ID,
@@ -22,7 +23,7 @@ import Redis, { type Callback, type Result } from "ioredis";
 import { setInterval as setIntervalAsync } from "node:timers/promises";
 import z from "zod";
 import { env } from "~/env.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { signalsEmitter } from "~/services/signals.server";
 import { singleton } from "~/utils/singleton";
@@ -38,15 +39,16 @@ import {
 } from "./constants.server";
 import { FairDequeuingStrategy } from "./fairDequeuingStrategy.server";
 import { MarQSShortKeyProducer } from "./marqsKeyProducer";
-import {
+import type {
   EnqueueMessageReserveConcurrencyOptions,
   MarQSFairDequeueStrategy,
   MarQSKeyProducer,
   MarQSKeyProducerEnv,
   MarQSPriorityLevel,
-  MessagePayload,
   MessageQueueSubscriber,
-  VisibilityTimeoutStrategy,
+  VisibilityTimeoutStrategy} from "./types";
+import {
+  MessagePayload
 } from "./types";
 import { V3LegacyRunEngineWorkerVisibilityTimeout } from "./v3VisibilityTimeout.server";
 

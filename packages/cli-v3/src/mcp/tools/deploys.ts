@@ -2,7 +2,7 @@ import { DeployInput, ListDeploysInput } from "../schemas.js";
 import { toolsMetadata } from "../config.js";
 import { ToolMeta } from "../types.js";
 import { respondWithError, toolHandler } from "../utils.js";
-import { McpContext } from "../context.js";
+import type { McpContext } from "../context.js";
 import { x } from "tinyexec";
 import { getPackageJson, tryResolveTriggerPackageVersion } from "../../commands/update.js";
 import { VERSION } from "../../version.js";

@@ -1,5 +1,6 @@
 import type { RunEngine } from "@internal/run-engine";
-import { Prisma, TaskQueueType } from "@trigger.dev/database";
+import type { Prisma} from "@trigger.dev/database";
+import { TaskQueueType } from "@trigger.dev/database";
 import { type PrismaClientOrTransaction } from "~/db.server";
 import { type AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { determineEngineVersion } from "~/v3/engineVersion.server";

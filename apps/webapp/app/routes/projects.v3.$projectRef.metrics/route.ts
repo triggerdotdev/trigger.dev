@@ -1,4 +1,5 @@
-import { LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs} from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { Registry } from "prom-client";
 import { z } from "zod";
 import { prisma } from "~/db.server";

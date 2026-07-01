@@ -1,6 +1,8 @@
+import type {
+AnyTask,
+Task} from "@trigger.dev/core/v3";
 import {
 accessoryAttributes,
-AnyTask,
 type ChatSnapshotV1,
 type ApiClientConfiguration,
 apiClientManager,
@@ -25,7 +27,6 @@ type SessionTriggerConfig,
 SemanticInternalAttributes,
 SESSION_IN_EVENT_ID_HEADER,
 sessionStreams,
-Task,
 taskContext,
 type TaskIdentifier,
 type TaskOptions,

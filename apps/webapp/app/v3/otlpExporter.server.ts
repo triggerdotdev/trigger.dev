@@ -1,20 +1,22 @@
-import { trace, Tracer } from "@opentelemetry/api";
+import type { Tracer } from "@opentelemetry/api";
+import { trace } from "@opentelemetry/api";
 import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
-import {
+import type {
   AnyValue,
   ExportLogsServiceRequest,
-  ExportLogsServiceResponse,
   ExportMetricsServiceRequest,
-  ExportMetricsServiceResponse,
   ExportTraceServiceRequest,
-  ExportTraceServiceResponse,
   KeyValue,
   ResourceLogs,
   ResourceMetrics,
   ResourceSpans,
-  SeverityNumber,
   Span,
-  Span_Event,
+  Span_Event} from "@trigger.dev/otlp-importer";
+import {
+  ExportLogsServiceResponse,
+  ExportMetricsServiceResponse,
+  ExportTraceServiceResponse,
+  SeverityNumber,
   Span_SpanKind,
   Status_StatusCode,
 } from "@trigger.dev/otlp-importer";

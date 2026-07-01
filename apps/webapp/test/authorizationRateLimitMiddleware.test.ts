@@ -11,7 +11,8 @@ vi.mock("./logger.server", () => ({
   },
 }));
 
-import express, { Express } from "express";
+import type { Express } from "express";
+import express from "express";
 import request from "supertest";
 import { authorizationRateLimitMiddleware } from "../app/services/authorizationRateLimitMiddleware.server.js";
 

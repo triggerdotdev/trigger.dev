@@ -24,7 +24,7 @@ import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 import { WaitpointPresenter } from "./WaitpointPresenter.server";
 import { engine } from "~/v3/runEngine.server";
-import { IEventRepository, SpanDetail } from "~/v3/eventRepository/eventRepository.types";
+import type { IEventRepository, SpanDetail } from "~/v3/eventRepository/eventRepository.types";
 import { safeJsonParse } from "~/utils/json";
 import {
   extractAISpanData,

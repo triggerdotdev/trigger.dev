@@ -1,4 +1,4 @@
-import { AttributeValue, Attributes } from "@opentelemetry/api";
+import type { AttributeValue, Attributes } from "@opentelemetry/api";
 import { getEnvVar } from "./utils/getEnv.js";
 
 function getOtelEnvVarLimit(key: string, defaultValue: number) {

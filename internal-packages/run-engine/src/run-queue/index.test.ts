@@ -4,7 +4,7 @@ import { Logger } from "@trigger.dev/core/logger";
 import { describe } from "node:test";
 import { setTimeout } from "node:timers/promises";
 import { RunQueue } from "./index.js";
-import { InputPayload } from "./types.js";
+import type { InputPayload } from "./types.js";
 import { createRedisClient } from "@internal/redis";
 import { FairQueueSelectionStrategy } from "./fairQueueSelectionStrategy.js";
 import { RunQueueFullKeyProducer } from "./keyProducer.js";

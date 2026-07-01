@@ -1,6 +1,7 @@
-import { InitialUsageState, UsageManager, UsageMeasurement, UsageSample } from "./types.js";
+import type { InitialUsageState, UsageManager, UsageMeasurement, UsageSample } from "./types.js";
 import { clock } from "../clock-api.js";
-import { ClockTime, calculateDurationInMs } from "../clock/clock.js";
+import type { ClockTime} from "../clock/clock.js";
+import { calculateDurationInMs } from "../clock/clock.js";
 
 class DevUsageMeasurement implements UsageMeasurement {
   private _pauses: Map<string, { start: ClockTime; end?: ClockTime }> = new Map();

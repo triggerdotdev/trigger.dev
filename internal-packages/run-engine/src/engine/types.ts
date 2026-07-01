@@ -1,22 +1,23 @@
 import { type RedisOptions } from "@internal/redis";
-import { Meter, Tracer } from "@internal/tracing";
-import { Logger, LogLevel } from "@trigger.dev/core/logger";
-import {
+import type { Meter, Tracer } from "@internal/tracing";
+import type { Logger, LogLevel } from "@trigger.dev/core/logger";
+import type {
   MachinePreset,
   MachinePresetName,
   RetryOptions,
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
-import { PrismaClient, PrismaReplicaClient, TaskRun, Waitpoint } from "@trigger.dev/database";
+import type { PrismaClient, PrismaReplicaClient, TaskRun, Waitpoint } from "@trigger.dev/database";
+import type {
+  Worker} from "@trigger.dev/redis-worker";
 import {
-  Worker,
   type WorkerConcurrencyOptions,
   type GlobalRateLimiter,
 } from "@trigger.dev/redis-worker";
-import { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
-import { MinimalAuthenticatedEnvironment } from "../shared/index.js";
-import { LockRetryConfig } from "./locking.js";
-import { workerCatalog } from "./workerCatalog.js";
+import type { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
+import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
+import type { LockRetryConfig } from "./locking.js";
+import type { workerCatalog } from "./workerCatalog.js";
 import { type BillingPlan } from "./billingCache.js";
 import type { DRRConfig } from "../batch-queue/types.js";
 import type { PendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";

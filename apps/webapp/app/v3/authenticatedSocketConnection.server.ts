@@ -8,7 +8,7 @@ import { Evt } from "evt";
 import { randomUUID } from "node:crypto";
 import type { CloseEvent, ErrorEvent, MessageEvent } from "ws";
 import { WebSocket } from "ws";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { DevQueueConsumer } from "./marqs/devQueueConsumer.server";
 

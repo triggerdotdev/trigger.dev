@@ -7,10 +7,10 @@ import {
 } from "@internal/cache";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
-import { AuthenticatedEnvironment } from "../apiAuth.server";
+import type { AuthenticatedEnvironment } from "../apiAuth.server";
 import { RedisRealtimeStreams } from "./redisRealtimeStreams.server";
 import { S2RealtimeStreams } from "./s2realtimeStreams.server";
-import { StreamIngestor, StreamResponder } from "./types";
+import type { StreamIngestor, StreamResponder } from "./types";
 
 function initializeRedisRealtimeStreams() {
   return new RedisRealtimeStreams({

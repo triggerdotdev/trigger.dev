@@ -1,11 +1,16 @@
 import type { Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
-import {
+import type {
   AnyOnCatchErrorHookFunction,
   AnyOnFailureHookFunction,
   AnyOnInitHookFunction,
   AnyOnStartHookFunction,
   AnyOnSuccessHookFunction,
+  LogLevel,
+  TaskRunExecution,
+  TriggerConfig,
+  UsageMeasurement} from "@trigger.dev/core/v3";
+import {
   apiClientManager,
   attemptKey,
   clock,
@@ -14,7 +19,6 @@ import {
   lifecycleHooks,
   localsAPI,
   logger,
-  LogLevel,
   OTEL_LOG_ATTRIBUTE_COUNT_LIMIT,
   resourceCatalog,
   runMetadata,
@@ -23,10 +27,7 @@ import {
   taskContext,
   TaskRunContext,
   TaskRunErrorCodes,
-  TaskRunExecution,
   timeout,
-  TriggerConfig,
-  UsageMeasurement,
   waitUntil,
   WorkerManifest,
   WorkerToExecutorMessageCatalog,
@@ -38,6 +39,8 @@ import {
   resetIdempotencyKeyCatalog,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
+import type {
+  TracingDiagnosticLogLevel} from "@trigger.dev/core/v3/workers";
 import {
   ConsoleInterceptor,
   DevUsageManager,
@@ -56,7 +59,6 @@ import {
   StandardRunTimelineMetricsManager,
   StandardWaitUntilManager,
   TaskExecutor,
-  TracingDiagnosticLogLevel,
   TracingSDK,
   usage,
   UsageTimeoutManager,

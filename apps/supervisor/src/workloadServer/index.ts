@@ -1,6 +1,8 @@
 import { SnapshotCallbackPayloadSchema } from "@internal/compute";
 import { type CheckpointClient,HttpServer } from "@trigger.dev/core/v3/serverOnly";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
+import type {
+WorkloadRunSnapshotsSinceResponseBody} from "@trigger.dev/core/v3/workers";
 import {
 type SupervisorHttpClient,
 WORKLOAD_HEADERS,
@@ -15,7 +17,6 @@ WorkloadRunAttemptCompleteRequestBody,
 type WorkloadRunAttemptCompleteResponseBody,
 WorkloadRunAttemptStartRequestBody,
 type WorkloadRunAttemptStartResponseBody,
-WorkloadRunSnapshotsSinceResponseBody,
 type WorkloadServerToClientEvents,
 type WorkloadSuspendRunResponseBody,
 } from "@trigger.dev/core/v3/workers";

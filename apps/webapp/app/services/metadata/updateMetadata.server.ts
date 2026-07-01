@@ -1,9 +1,10 @@
+import type {
+  IOPacket,
+  RunMetadataChangeOperation,
+  UpdateMetadataRequestBody} from "@trigger.dev/core/v3";
 import {
   applyMetadataOperations,
-  IOPacket,
-  parsePacket,
-  RunMetadataChangeOperation,
-  UpdateMetadataRequestBody,
+  parsePacket
 } from "@trigger.dev/core/v3";
 import type { PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -12,7 +13,8 @@ import { ServiceValidationError } from "~/v3/services/common.server";
 import { Effect, Schedule, Duration, Fiber } from "effect";
 import { type RuntimeFiber } from "effect/Fiber";
 import { setTimeout } from "timers/promises";
-import { Logger, LogLevel } from "@trigger.dev/core/logger";
+import type { LogLevel } from "@trigger.dev/core/logger";
+import { Logger } from "@trigger.dev/core/logger";
 import type { RunStore } from "@internal/run-store";
 
 const RUN_UPDATABLE_WINDOW_MS = 60 * 60 * 1000; // 1 hour

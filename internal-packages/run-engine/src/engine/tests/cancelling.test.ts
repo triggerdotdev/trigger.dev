@@ -3,7 +3,7 @@ import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "timers/promises";
-import { EventBusEventArgs } from "../eventBus.js";
+import type { EventBusEventArgs } from "../eventBus.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });

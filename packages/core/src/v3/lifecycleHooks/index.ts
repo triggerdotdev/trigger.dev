@@ -2,7 +2,7 @@ const API_NAME = "lifecycle-hooks";
 
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { NoopLifecycleHooksManager } from "./manager.js";
-import {
+import type {
   AnyOnCatchErrorHookFunction,
   AnyOnCleanupHookFunction,
   AnyOnCompleteHookFunction,
@@ -17,8 +17,9 @@ import {
   RegisteredHookFunction,
   RegisterHookFunctionParams,
   TaskWait,
-  type LifecycleHooksManager,
-  AnyOnStartAttemptHookFunction,
+  AnyOnStartAttemptHookFunction} from "./types.js";
+import {
+  type LifecycleHooksManager
 } from "./types.js";
 
 const NOOP_LIFECYCLE_HOOKS_MANAGER = new NoopLifecycleHooksManager();

@@ -3,7 +3,7 @@ import { chalkGreen, chalkError, chalkWarning, chalkTask, chalkPurple } from "./
 import chalk from "chalk";
 import type { Metafile } from "esbuild";
 import CLITable from "cli-table3";
-import { BackgroundWorker } from "../dev/backgroundWorker.js";
+import type { BackgroundWorker } from "../dev/backgroundWorker.js";
 
 export function analyzeWorker(
   worker: BackgroundWorker,

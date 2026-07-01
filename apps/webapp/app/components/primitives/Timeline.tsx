@@ -1,8 +1,9 @@
+import type {
+  ComponentPropsWithoutRef,
+  ReactNode} from "react";
 import {
   Component,
-  ComponentPropsWithoutRef,
   Fragment,
-  ReactNode,
   createContext,
   useCallback,
   useContext,

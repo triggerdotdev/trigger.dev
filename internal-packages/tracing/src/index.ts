@@ -1,6 +1,7 @@
+import type {
+Meter} from "@opentelemetry/api";
 import {
 context,
-Meter,
 metrics,
 propagation,
 ROOT_CONTEXT,

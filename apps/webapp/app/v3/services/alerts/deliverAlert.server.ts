@@ -6,13 +6,14 @@ import {
   type WebAPIRateLimitedError,
   type WebAPIRequestError,
 } from "@slack/web-api";
+import type {
+  RunStatus} from "@trigger.dev/core/v3";
 import {
   createJsonErrorObject,
   type DeploymentFailedWebhook,
   type DeploymentSuccessWebhook,
   isOOMRunError,
   type RunFailedWebhook,
-  RunStatus,
   TaskRunError,
 } from "@trigger.dev/core/v3";
 import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.dev/database";

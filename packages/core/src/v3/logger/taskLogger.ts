@@ -1,12 +1,13 @@
-import { Attributes, Span, SpanOptions } from "@opentelemetry/api";
-import { Logger, SeverityNumber } from "@opentelemetry/api-logs";
+import type { Attributes, Span, SpanOptions } from "@opentelemetry/api";
+import type { Logger} from "@opentelemetry/api-logs";
+import { SeverityNumber } from "@opentelemetry/api-logs";
 import { iconStringForSeverity } from "../icons.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
-import { TriggerTracer } from "../tracer.js";
+import type { TriggerTracer } from "../tracer.js";
 import { flattenAttributes } from "../utils/flattenAttributes.js";
-import { ClockTime } from "../clock/clock.js";
+import type { ClockTime } from "../clock/clock.js";
 import { clock } from "../clock-api.js";
-import { Prettify } from "../types/utils.js";
+import type { Prettify } from "../types/utils.js";
 
 export type LogLevel = "none" | "error" | "warn" | "info" | "debug" | "log";
 

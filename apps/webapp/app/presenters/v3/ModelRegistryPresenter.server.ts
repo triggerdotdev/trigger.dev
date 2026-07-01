@@ -1,6 +1,6 @@
-import { ClickHouse } from "@internal/clickhouse";
+import type { ClickHouse } from "@internal/clickhouse";
 import { modelCatalog } from "@internal/llm-model-catalog";
-import { PrismaClientOrTransaction } from "~/db.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
 import { BasePresenter } from "./basePresenter.server";
 import { z } from "zod";
 

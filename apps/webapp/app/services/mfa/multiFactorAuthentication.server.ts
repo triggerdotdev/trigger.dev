@@ -1,4 +1,5 @@
-import { SecretReference, User, type PrismaClient } from "@trigger.dev/database";
+import type { SecretReference, User} from "@trigger.dev/database";
+import { type PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { createRandomStringGenerator } from "@better-auth/utils/random";

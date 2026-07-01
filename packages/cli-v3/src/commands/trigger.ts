@@ -1,5 +1,5 @@
 import { intro, outro } from "@clack/prompts";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { z } from "zod";
 import { CommonCommandOptions, handleTelemetry, wrapCommandAction } from "../cli/common.js";
 import { printInitialBanner } from "../utilities/initialBanner.js";

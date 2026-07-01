@@ -1,4 +1,4 @@
-import { SpanEvent } from "@trigger.dev/core/v3";
+import type { SpanEvent } from "@trigger.dev/core/v3";
 import { millisecondsToNanoseconds } from "@trigger.dev/core/v3/utils/durations";
 
 export type TimelineEventState = "complete" | "error" | "inprogress" | "delayed";

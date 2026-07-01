@@ -1,18 +1,16 @@
 // TypeScript port of posthog/hogql/printer.py
 // ClickHouse SQL printer with tenant isolation and schema validation
 
-import {
+import type {
   And,
   Alias,
   ArithmeticOperation,
-  ArithmeticOperationOp,
   Array as ASTArray,
   ArrayAccess,
   AST,
   BetweenExpr,
   Call,
   CompareOperation,
-  CompareOperationOp,
   Constant,
   CTE,
   Dict,
@@ -34,7 +32,10 @@ import {
   TupleAccess,
   WindowExpr,
   WindowFrameExpr,
-  WindowFunction,
+  WindowFunction} from "./ast";
+import {
+  ArithmeticOperationOp,
+  CompareOperationOp
 } from "./ast";
 import { escapeClickHouseIdentifier, escapeTSQLIdentifier, escapeClickHouseString } from "./escape";
 import { ImpossibleASTError, NotImplementedError, QueryError } from "./errors";
@@ -46,17 +47,18 @@ import {
   findTSQLFunction,
   validateFunctionArgs,
 } from "./functions";
-import { PrinterContext, WhereClauseCondition } from "./printer_context";
+import type { PrinterContext, WhereClauseCondition } from "./printer_context";
 import { calculateTimeBucketInterval } from "./time_buckets";
+import type {
+  TableSchema,
+  ColumnSchema,
+  OutputColumnMetadata,
+  ClickHouseType} from "./schema";
 import {
   findTable,
   validateTable,
-  TableSchema,
-  ColumnSchema,
   getInternalValue,
   isVirtualColumn,
-  OutputColumnMetadata,
-  ClickHouseType,
   hasFieldMapping,
   getInternalValueFromMappingCaseInsensitive,
   type ColumnFormatType,

@@ -45,7 +45,8 @@
  *     "redis://writeonly.example.com:6379"
  */
 
-import { PrismaClient, TaskRunExecutionStatus } from "@trigger.dev/database";
+import type { TaskRunExecutionStatus } from "@trigger.dev/database";
+import { PrismaClient } from "@trigger.dev/database";
 import { createRedisClient } from "@internal/redis";
 
 interface StuckRun {

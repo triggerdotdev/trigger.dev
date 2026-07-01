@@ -1,8 +1,10 @@
-import { Logger, LogLevel } from "@trigger.dev/core/logger";
-import Redis, { RedisOptions } from "ioredis";
+import type { LogLevel } from "@trigger.dev/core/logger";
+import { Logger } from "@trigger.dev/core/logger";
+import type { RedisOptions } from "ioredis";
+import Redis from "ioredis";
 import { defaultReconnectOnError } from "@internal/redis";
 import { env } from "~/env.server";
-import { StreamIngestor, StreamResponder, StreamResponseOptions } from "./types";
+import type { StreamIngestor, StreamResponder, StreamResponseOptions } from "./types";
 
 export type RealtimeStreamsOptions = {
   redis: RedisOptions | undefined;

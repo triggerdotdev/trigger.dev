@@ -5,43 +5,47 @@ import {
   type RedisOptions,
   type Result,
 } from "@internal/redis";
-import {
+import type {
   Attributes,
-  context,
-  getMeter,
   Meter,
   ObservableResult,
+  Span,
+  SpanOptions,
+  Tracer} from "@internal/tracing";
+import {
+  context,
+  getMeter,
   propagation,
   SEMATTRS_MESSAGE_ID,
   SEMATTRS_MESSAGING_OPERATION,
   SEMATTRS_MESSAGING_SYSTEM,
-  Span,
   SpanKind,
-  SpanOptions,
-  Tracer,
   ValueType,
 } from "@internal/tracing";
 import { promiseWithResolvers, tryCatch } from "@trigger.dev/core";
-import { Logger, LogLevel } from "@trigger.dev/core/logger";
+import type { LogLevel } from "@trigger.dev/core/logger";
+import { Logger } from "@trigger.dev/core/logger";
 import { calculateNextRetryDelay, flattenAttributes } from "@trigger.dev/core/v3";
 import { type RetryOptions } from "@trigger.dev/core/v3/schemas";
 import { Decimal } from "@trigger.dev/database";
 import { CronSchema, Worker, type WorkerConcurrencyOptions } from "@trigger.dev/redis-worker";
 import { nanoid } from "nanoid";
-import { Readable } from "node:stream";
+import type { Readable } from "node:stream";
 import { setInterval, setTimeout } from "node:timers/promises";
 import { z } from "zod";
+import type {
+  MinimalAuthenticatedEnvironment} from "../shared/index.js";
 import {
-  attributesFromAuthenticatedEnv,
-  MinimalAuthenticatedEnvironment,
+  attributesFromAuthenticatedEnv
 } from "../shared/index.js";
-import {
+import type {
   InputPayload,
-  OutputPayload,
   OutputPayloadV2,
   RunQueueKeyProducer,
   RunQueueKeyProducerEnvironment,
-  RunQueueSelectionStrategy,
+  RunQueueSelectionStrategy} from "./types.js";
+import {
+  OutputPayload
 } from "./types.js";
 import { WorkerQueueResolver } from "./workerQueueResolver.js";
 

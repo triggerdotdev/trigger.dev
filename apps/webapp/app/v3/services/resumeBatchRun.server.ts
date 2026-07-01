@@ -1,9 +1,9 @@
-import { PrismaClientOrTransaction } from "~/db.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
 import { commonWorker } from "../commonWorker.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
-import { BatchTaskRun } from "@trigger.dev/database";
+import type { BatchTaskRun } from "@trigger.dev/database";
 import { workerQueue } from "~/services/worker.server";
 import { isV3Disabled } from "../engineDeprecation.server";
 

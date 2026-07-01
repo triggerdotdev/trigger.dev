@@ -4,22 +4,24 @@ import {
   DefaultStatefulContext,
   Namespace,
 } from "@internal/cache";
-import {
+import type {
   CheckpointInput,
   CompleteRunAttemptResult,
   DequeuedMessage,
   ExecutionResult,
   MachinePreset,
-  SemanticInternalAttributes,
   StartRunAttemptResult,
-  TaskRunExecutionResult,
+  TaskRunExecutionResult} from "@trigger.dev/core/v3";
+import {
+  SemanticInternalAttributes
 } from "@trigger.dev/core/v3";
 import { fromFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { WORKER_HEADERS, type WorkerQueueClass } from "@trigger.dev/core/v3/workers";
+import type {
+  RuntimeEnvironment,
+  WorkerInstanceGroup} from "@trigger.dev/database";
 import {
   Prisma,
-  RuntimeEnvironment,
-  WorkerInstanceGroup,
   WorkerInstanceGroupType,
 } from "@trigger.dev/database";
 import { createHash, timingSafeEqual } from "crypto";
@@ -37,7 +39,8 @@ import {
   isWorkerQueueDequeueDisabled,
   recordBlockedDequeue,
 } from "~/runEngine/concerns/dequeueGate.server";
-import { WithRunEngine, WithRunEngineOptions } from "../baseService.server";
+import type { WithRunEngineOptions } from "../baseService.server";
+import { WithRunEngine } from "../baseService.server";
 
 const authenticatedWorkerInstanceCache = singleton(
   "authenticatedWorkerInstanceCache",

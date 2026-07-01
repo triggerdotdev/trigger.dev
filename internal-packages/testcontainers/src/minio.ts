@@ -1,7 +1,8 @@
+import type {
+  StartedTestContainer} from "testcontainers";
 import {
   AbstractStartedContainer,
   GenericContainer,
-  StartedTestContainer,
   Wait,
 } from "testcontainers";
 import { x } from "tinyexec";

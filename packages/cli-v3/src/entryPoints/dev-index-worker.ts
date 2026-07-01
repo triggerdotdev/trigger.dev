@@ -1,15 +1,17 @@
+import type {
+  TriggerConfig} from "@trigger.dev/core/v3";
 import {
   BuildManifest,
   type HandleErrorFunction,
   indexerToWorkerMessages,
   resourceCatalog,
   type PromptManifest,
-  type TaskManifest,
-  TriggerConfig,
+  type TaskManifest
 } from "@trigger.dev/core/v3";
+import type {
+  TracingDiagnosticLogLevel} from "@trigger.dev/core/v3/workers";
 import {
   StandardResourceCatalog,
-  TracingDiagnosticLogLevel,
   TracingSDK,
 } from "@trigger.dev/core/v3/workers";
 import { sendMessageInCatalog, ZodSchemaParsedError } from "@trigger.dev/core/v3/zodMessageHandler";

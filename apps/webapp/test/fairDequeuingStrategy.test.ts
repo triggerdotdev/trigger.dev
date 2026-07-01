@@ -15,7 +15,7 @@ import {
   setupQueue,
 } from "./utils/marqs.js";
 import { trace } from "@opentelemetry/api";
-import { EnvQueues } from "~/v3/marqs/types.js";
+import type { EnvQueues } from "~/v3/marqs/types.js";
 import { MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET } from "~/v3/marqs/constants.server.js";
 import { createRedisClient } from "@internal/redis";
 

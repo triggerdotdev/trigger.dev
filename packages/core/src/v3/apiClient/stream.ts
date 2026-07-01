@@ -1,15 +1,17 @@
-import { z } from "zod";
+import type { z } from "zod";
+import type {
+  Offset} from "@electric-sql/client";
 import {
   FetchError,
   isChangeMessage,
   isControlMessage,
-  Offset,
   ShapeStream,
   type Message,
   type Row,
   type ShapeStreamInterface,
 } from "@electric-sql/client";
-import { AsyncIterableStream, createAsyncIterableStream } from "../streams/asyncIterableStream.js";
+import type { AsyncIterableStream} from "../streams/asyncIterableStream.js";
+import { createAsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { API_VERSION_HEADER_NAME, API_VERSION } from "./version.js";
 
 export type ZodShapeStreamOptions = {

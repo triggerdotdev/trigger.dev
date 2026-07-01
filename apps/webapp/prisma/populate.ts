@@ -5,9 +5,10 @@
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { prisma } from "../app/db.server";
 import { createHash } from "crypto";
-import {
+import type {
   BackgroundWorker,
-  BackgroundWorkerTask,
+  BackgroundWorkerTask} from "@trigger.dev/database";
+import {
   RuntimeEnvironmentType,
   WorkerInstanceGroupType,
 } from "@trigger.dev/database";

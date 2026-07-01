@@ -1,8 +1,9 @@
 import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
+import type {
+  GetPersonalAccessTokenResponse} from "@trigger.dev/core/v3";
 import {
-  GetPersonalAccessTokenRequestSchema,
-  GetPersonalAccessTokenResponse,
+  GetPersonalAccessTokenRequestSchema
 } from "@trigger.dev/core/v3";
 import { generateErrorMessage } from "zod-error";
 import { logger } from "~/services/logger.server";

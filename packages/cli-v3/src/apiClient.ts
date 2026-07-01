@@ -1,18 +1,27 @@
+import type {
+  CreateArtifactRequestBody,
+  CreateBackgroundWorkerRequestBody,
+  DevDequeueRequestBody,
+  DevDisconnectRequestBody,
+  FailDeploymentRequestBody,
+  FinalizeDeploymentRequestBody,
+  ImportEnvironmentVariablesRequestBody,
+  InitializeDeploymentRequestBody,
+  StartDeploymentIndexingRequestBody,
+  TriggerTaskRequestBody,
+  UpsertBranchRequestBody,
+  WorkersCreateRequestBody,
+  CreateProjectRequestBody,
+  GetJWTRequestBody} from "@trigger.dev/core/v3";
 import {
   CreateAuthorizationCodeResponseSchema,
-  CreateArtifactRequestBody,
   CreateArtifactResponseBody,
-  CreateBackgroundWorkerRequestBody,
   CreateBackgroundWorkerResponse,
   DevConfigResponseBody,
-  DevDequeueRequestBody,
   DevDequeueResponseBody,
-  DevDisconnectRequestBody,
   DevDisconnectResponseBody,
   EnvironmentVariableResponseBody,
-  FailDeploymentRequestBody,
   FailDeploymentResponseBody,
-  FinalizeDeploymentRequestBody,
   GetDeploymentResponseBody,
   GetEnvironmentVariablesResponseBody,
   GetLatestDeploymentResponseBody,
@@ -20,39 +29,33 @@ import {
   GetProjectEnvResponse,
   GetProjectResponseBody,
   GetProjectsResponseBody,
-  ImportEnvironmentVariablesRequestBody,
-  InitializeDeploymentRequestBody,
   InitializeDeploymentResponseBody,
   PromoteDeploymentResponseBody,
-  StartDeploymentIndexingRequestBody,
   StartDeploymentIndexingResponseBody,
-  TriggerTaskRequestBody,
   TriggerTaskResponse,
-  UpsertBranchRequestBody,
   UpsertBranchResponseBody,
   WhoAmIResponseSchema,
-  WorkersCreateRequestBody,
   WorkersCreateResponseBody,
   WorkersListResponseBody,
-  CreateProjectRequestBody,
   GetOrgsResponseBody,
   GetWorkerByTagResponse,
-  GetJWTRequestBody,
   GetJWTResponse,
   ApiBranchListResponseBody,
   GenerateRegistryCredentialsResponseBody,
   RemoteBuildProviderStatusResponseBody,
 } from "@trigger.dev/core/v3";
-import {
+import type {
   WorkloadDebugLogRequestBody,
   WorkloadHeartbeatRequestBody,
+  WorkloadRunAttemptCompleteRequestBody} from "@trigger.dev/core/v3/workers";
+import {
   WorkloadHeartbeatResponseBody,
-  WorkloadRunAttemptCompleteRequestBody,
   WorkloadRunAttemptCompleteResponseBody,
   WorkloadRunAttemptStartResponseBody,
   WorkloadRunLatestSnapshotResponseBody,
 } from "@trigger.dev/core/v3/workers";
-import { ApiResult, wrapZodFetch, zodfetchSSE } from "@trigger.dev/core/v3/zodfetch";
+import type { ApiResult} from "@trigger.dev/core/v3/zodfetch";
+import { wrapZodFetch, zodfetchSSE } from "@trigger.dev/core/v3/zodfetch";
 import { EventSource } from "eventsource";
 import { z } from "zod";
 import { logger } from "./utilities/logger.js";

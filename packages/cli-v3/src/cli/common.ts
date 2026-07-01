@@ -1,5 +1,5 @@
 import { outro } from "@clack/prompts";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { BundleError } from "../build/bundle.js";

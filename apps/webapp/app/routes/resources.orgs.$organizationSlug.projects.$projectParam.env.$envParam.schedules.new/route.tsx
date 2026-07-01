@@ -8,7 +8,8 @@ import {
   useLocation,
   useNavigation,
 } from "@remix-run/react";
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs} from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { parseExpression } from "cron-parser";
 import cronstrue from "cronstrue";
@@ -43,7 +44,7 @@ import { prisma } from "~/db.server";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.server";
+import type { EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import {

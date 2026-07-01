@@ -1,35 +1,40 @@
-import { Attributes, AttributeValue, trace, Tracer } from "@opentelemetry/api";
+import type { Attributes, AttributeValue, Tracer } from "@opentelemetry/api";
+import { trace } from "@opentelemetry/api";
 import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
-import {
+import type {
   AttemptFailedSpanEvent,
-  correctErrorStackTrace,
   ExceptionEventProperties,
   ExceptionSpanEvent,
+  SpanEvent,
+  SpanEvents,
+  TaskEventStyle,
+  TaskRunError} from "@trigger.dev/core/v3";
+import {
+  correctErrorStackTrace,
   flattenAttributes,
   isExceptionSpanEvent,
   nanosecondsToMilliseconds,
   PRIMARY_VARIANT,
   SemanticInternalAttributes,
-  SpanEvent,
-  SpanEvents,
-  TaskEventStyle,
-  TaskRunError,
   unflattenAttributes,
 } from "@trigger.dev/core/v3";
 import { serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import type { MetricsV1Input } from "@internal/clickhouse";
-import { Prisma, TaskEvent, TaskEventKind } from "@trigger.dev/database";
+import type { TaskEvent} from "@trigger.dev/database";
+import { Prisma, TaskEventKind } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import { Gauge } from "prom-client";
-import { $replica, prisma, PrismaClient, PrismaReplicaClient } from "~/db.server";
+import type { PrismaClient, PrismaReplicaClient } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { metricsRegister } from "~/metrics.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { DynamicFlushScheduler } from "../dynamicFlushScheduler.server";
 import { tracePubSub } from "../services/tracePubSub.server";
-import { DetailedTraceEvent, TaskEventStore, TaskEventStoreTable } from "../taskEventStore.server";
+import type { DetailedTraceEvent, TaskEventStoreTable } from "../taskEventStore.server";
+import { TaskEventStore } from "../taskEventStore.server";
 import { startActiveSpan } from "../tracer.server";
 import { startSpan } from "../tracing.server";
 import {

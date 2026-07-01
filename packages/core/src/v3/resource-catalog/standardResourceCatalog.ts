@@ -1,4 +1,4 @@
-import {
+import type {
   PromptManifest,
   PromptMetadata,
   SkillManifest,
@@ -9,12 +9,12 @@ import {
   WorkerManifest,
   QueueManifest,
 } from "../schemas/index.js";
-import {
+import type {
   PromptMetadataWithFunctions,
   TaskMetadataWithFunctions,
   TaskSchema,
 } from "../types/index.js";
-import { ResourceCatalog } from "./catalog.js";
+import type { ResourceCatalog } from "./catalog.js";
 
 /**
  * Sentinel file-context value the runtime workers set around task execution

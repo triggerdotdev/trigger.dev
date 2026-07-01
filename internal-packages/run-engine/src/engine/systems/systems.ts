@@ -1,13 +1,13 @@
-import { Meter, Tracer } from "@internal/tracing";
-import { RunStore } from "@internal/run-store";
-import { Logger } from "@trigger.dev/core/logger";
-import { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
-import { RunQueue } from "../../run-queue/index.js";
-import { EventBus } from "../eventBus.js";
-import { RunLocker } from "../locking.js";
-import { PendingVersionRunIdLookup } from "../services/pendingVersionLookup.js";
-import { EngineWorker } from "../types.js";
-import { RaceSimulationSystem } from "./raceSimulationSystem.js";
+import type { Meter, Tracer } from "@internal/tracing";
+import type { RunStore } from "@internal/run-store";
+import type { Logger } from "@trigger.dev/core/logger";
+import type { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
+import type { RunQueue } from "../../run-queue/index.js";
+import type { EventBus } from "../eventBus.js";
+import type { RunLocker } from "../locking.js";
+import type { PendingVersionRunIdLookup } from "../services/pendingVersionLookup.js";
+import type { EngineWorker } from "../types.js";
+import type { RaceSimulationSystem } from "./raceSimulationSystem.js";
 
 export type SystemResources = {
   prisma: PrismaClient;

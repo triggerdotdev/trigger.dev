@@ -1,4 +1,4 @@
-import { MachineResources } from "../../schemas/runEngine.js";
+import type { MachineResources } from "../../schemas/runEngine.js";
 
 export type SupervisorClientCommonOptions = {
   apiUrl: string;

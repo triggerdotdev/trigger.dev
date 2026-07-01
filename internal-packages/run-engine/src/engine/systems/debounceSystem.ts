@@ -1,7 +1,8 @@
+import type {
+  Redis,
+  RedisOptions} from "@internal/redis";
 import {
   createRedisClient,
-  Redis,
-  RedisOptions,
   type Callback,
   type Result,
 } from "@internal/redis";
@@ -10,16 +11,17 @@ import {
   parseNaturalLanguageDuration,
   parseNaturalLanguageDurationInMs,
 } from "@trigger.dev/core/v3/isomorphic";
-import {
+import type {
   PrismaClientOrTransaction,
   PrismaReplicaClient,
   TaskRun,
   Waitpoint,
 } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
-import { SystemResources } from "./systems.js";
-import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
-import { DelayedRunSystem } from "./delayedRunSystem.js";
+import type { SystemResources } from "./systems.js";
+import type { ExecutionSnapshotSystem} from "./executionSnapshotSystem.js";
+import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
+import type { DelayedRunSystem } from "./delayedRunSystem.js";
 import { LockAcquisitionTimeoutError } from "../locking.js";
 
 export type DebounceOptions = {

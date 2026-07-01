@@ -20,7 +20,7 @@ import { setupAuthenticatedEnvironment } from "@internal/run-engine/tests";
 // body. NoClickhouse because this suite never touches ClickHouse - skips the worker-scoped boot+migrate.
 import { containerTestWithIsolatedRedisNoClickhouse as containerTest } from "@internal/testcontainers";
 import { trace } from "@opentelemetry/api";
-import { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient } from "@trigger.dev/database";
 import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import {
   StreamBatchItemsService,

@@ -1,10 +1,10 @@
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
-import { TaskRunError } from "@trigger.dev/core/v3/schemas";
-import { PrismaClientOrTransaction, TaskRunStatus } from "@trigger.dev/database";
+import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
+import type { PrismaClientOrTransaction, TaskRunStatus } from "@trigger.dev/database";
 import { isExecuting } from "../statuses.js";
 import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
-import { SystemResources } from "./systems.js";
-import { WaitpointSystem } from "./waitpointSystem.js";
+import type { SystemResources } from "./systems.js";
+import type { WaitpointSystem } from "./waitpointSystem.js";
 import { startSpan } from "@internal/tracing";
 import pMap from "p-map";
 

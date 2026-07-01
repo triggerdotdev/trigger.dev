@@ -1,4 +1,5 @@
-import { WorkerInstanceGroup, WorkerInstanceGroupType, WorkloadType } from "@trigger.dev/database";
+import type { WorkerInstanceGroup, WorkloadType } from "@trigger.dev/database";
+import { WorkerInstanceGroupType } from "@trigger.dev/database";
 import { WithRunEngine } from "../baseService.server";
 import { WorkerGroupTokenService } from "./workerGroupTokenService.server";
 import { logger } from "~/services/logger.server";

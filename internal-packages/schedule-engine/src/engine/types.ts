@@ -1,7 +1,7 @@
-import { Logger } from "@trigger.dev/core/logger";
-import { Meter, Tracer } from "@internal/tracing";
-import { Prisma, PrismaClient } from "@trigger.dev/database";
-import { RedisOptions } from "@internal/redis";
+import type { Logger } from "@trigger.dev/core/logger";
+import type { Meter, Tracer } from "@internal/tracing";
+import type { Prisma, PrismaClient } from "@trigger.dev/database";
+import type { RedisOptions } from "@internal/redis";
 
 export type SchedulingEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
   include: { project: true; organization: true; orgMember: true };

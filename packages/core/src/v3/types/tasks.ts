@@ -1,6 +1,6 @@
-import { SerializableJson } from "../../schemas/json.js";
-import { TriggerApiRequestOptions } from "../apiClient/index.js";
-import {
+import type { SerializableJson } from "../../schemas/json.js";
+import type { TriggerApiRequestOptions } from "../apiClient/index.js";
+import type {
   AnyOnCatchErrorHookFunction,
   OnCatchErrorHookFunction,
   OnCleanupHookFunction,
@@ -15,8 +15,8 @@ import {
   OnCancelHookFunction,
   OnStartAttemptHookFunction,
 } from "../lifecycleHooks/types.js";
-import { RunTags } from "../schemas/api.js";
-import {
+import type { RunTags } from "../schemas/api.js";
+import type {
   MachineCpu,
   MachineMemory,
   MachinePresetName,
@@ -25,12 +25,12 @@ import {
   TaskMetadata,
   TaskRunContext,
 } from "../schemas/index.js";
-import { IdempotencyKey } from "./idempotencyKeys.js";
-import { QueueOptions } from "./queues.js";
-import { AnySchemaParseFn, inferSchemaIn, inferSchemaOut, Schema } from "./schemas.js";
-import { inferToolParameters, ToolTaskParameters } from "./tools.js";
-import { Prettify } from "./utils.js";
-import { JSONSchema } from "./jsonSchema.js";
+import type { IdempotencyKey } from "./idempotencyKeys.js";
+import type { QueueOptions } from "./queues.js";
+import type { AnySchemaParseFn, inferSchemaIn, inferSchemaOut, Schema } from "./schemas.js";
+import type { inferToolParameters, ToolTaskParameters } from "./tools.js";
+import type { Prettify } from "./utils.js";
+import type { JSONSchema } from "./jsonSchema.js";
 
 export type Queue = QueueOptions;
 export type TaskSchema = Schema;

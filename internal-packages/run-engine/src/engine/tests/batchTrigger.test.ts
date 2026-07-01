@@ -1,6 +1,7 @@
 import { containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
-import { DequeuedMessage,TaskRunErrorCodes } from "@trigger.dev/core/v3";
+import type { DequeuedMessage} from "@trigger.dev/core/v3";
+import {TaskRunErrorCodes } from "@trigger.dev/core/v3";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { setTimeout } from "node:timers/promises";
 import { expect } from "vitest";

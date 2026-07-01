@@ -3,10 +3,10 @@ import type {
   RetrieveCurrentDeploymentResponseBody,
   ApiDeploymentListOptions,
   ApiDeploymentListResponseItem,
-} from "@trigger.dev/core/v3";
+
+  CursorPagePromise} from "@trigger.dev/core/v3";
 import {
   apiClientManager,
-  CursorPagePromise,
   isRequestOptions,
   mergeRequestOptions,
 } from "@trigger.dev/core/v3";

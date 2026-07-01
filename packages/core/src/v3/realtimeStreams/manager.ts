@@ -1,9 +1,10 @@
-import { ApiClient } from "../apiClient/index.js";
+import type { ApiClient } from "../apiClient/index.js";
 import { ensureAsyncIterable, ensureReadableStream } from "../streams/asyncIterableStream.js";
-import { AnyZodFetchOptions } from "../zodfetch.js";
+import type { AnyZodFetchOptions } from "../zodfetch.js";
 import { taskContext } from "../task-context-api.js";
-import { CreateStreamResponseLike, StreamInstance } from "./streamInstance.js";
-import {
+import type { CreateStreamResponseLike} from "./streamInstance.js";
+import { StreamInstance } from "./streamInstance.js";
+import type {
   RealtimeStreamInstance,
   RealtimeStreamOperationOptions,
   RealtimeStreamsManager,

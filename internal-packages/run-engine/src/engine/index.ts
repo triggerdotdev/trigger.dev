@@ -1,34 +1,38 @@
-import { createRedisClient, Redis } from "@internal/redis";
-import { type Counter, getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
+import type { Redis } from "@internal/redis";
+import { createRedisClient } from "@internal/redis";
+import type { Meter, Tracer } from "@internal/tracing";
+import { type Counter, getMeter, startSpan, trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
-import {
+import type {
   CheckpointInput,
   CompleteRunAttemptResult,
   CreateCheckpointResult,
   DequeuedMessage,
   ExecutionResult,
-  formatDurationMilliseconds,
   RunExecutionData,
   StartRunAttemptResult,
   TaskRunContext,
   TaskRunExecutionResult,
-  TaskRunInternalError,
+  TaskRunInternalError} from "@trigger.dev/core/v3";
+import {
+  formatDurationMilliseconds
 } from "@trigger.dev/core/v3";
-import { TaskRunError } from "@trigger.dev/core/v3/schemas";
+import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import {
   parseNaturalLanguageDurationInMs,
   RunId,
   WaitpointId,
 } from "@trigger.dev/core/v3/isomorphic";
-import {
-  Prisma,
+import type {
   PrismaClient,
   PrismaClientOrTransaction,
   PrismaReplicaClient,
   RuntimeEnvironmentType,
   TaskRun,
   TaskRunExecutionSnapshot,
-  Waitpoint,
+  Waitpoint} from "@trigger.dev/database";
+import {
+  Prisma
 } from "@trigger.dev/database";
 import { Worker } from "@trigger.dev/redis-worker";
 import { assertNever } from "assert-never";
@@ -45,7 +49,7 @@ import type {
 import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrategy.js";
 import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
-import { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared/index.js";
+import type { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { BillingCache } from "./billingCache.js";
 import {
   ExecutionSnapshotNotFoundError,
@@ -53,7 +57,7 @@ import {
   RunDuplicateIdempotencyKeyError,
   RunOneTimeUseTokenError,
 } from "./errors.js";
-import { EventBus, EventBusEvents } from "./eventBus.js";
+import type { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
 import { getFinalRunStatuses } from "./statuses.js";
 import { BatchSystem } from "./systems/batchSystem.js";
@@ -72,11 +76,12 @@ import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
 import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { NoopPendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
-import { SystemResources } from "./systems/systems.js";
-import { PostgresRunStore, RunStore } from "@internal/run-store";
+import type { SystemResources } from "./systems/systems.js";
+import type { RunStore } from "@internal/run-store";
+import { PostgresRunStore } from "@internal/run-store";
 import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
-import {
+import type {
   EngineWorker,
   HeartbeatTimeouts,
   ReportableQueue,

@@ -1,10 +1,11 @@
-import { CreateBackgroundWorkerRequestBody, logger, tryCatch } from "@trigger.dev/core/v3";
+import type { CreateBackgroundWorkerRequestBody} from "@trigger.dev/core/v3";
+import { logger, tryCatch } from "@trigger.dev/core/v3";
 import type {
   BackgroundWorker,
   PrismaClientOrTransaction,
   WorkerDeployment,
 } from "@trigger.dev/database";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { type TaskMetadataCache } from "~/services/taskMetadataCache.server";
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
 import { BaseService, ServiceValidationError } from "./baseService.server";

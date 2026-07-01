@@ -5,12 +5,13 @@ import type {
   WriterStreamOptions,
 } from "@trigger.dev/core/v3";
 import { ensureReadableStream, ManualWaitpointPromise } from "@trigger.dev/core/v3";
+import type {
+  SessionPipeStreamOptions,
+  SessionSubscribeOptions} from "../sessions.js";
 import {
   SessionHandle,
   SessionInputChannel,
-  SessionOutputChannel,
-  SessionPipeStreamOptions,
-  SessionSubscribeOptions,
+  SessionOutputChannel
 } from "../sessions.js";
 
 /**

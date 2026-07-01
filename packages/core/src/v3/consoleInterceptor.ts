@@ -4,7 +4,7 @@ import util from "node:util";
 import { iconStringForSeverity } from "./icons.js";
 import { SemanticInternalAttributes } from "./semanticInternalAttributes.js";
 import { flattenAttributes } from "./utils/flattenAttributes.js";
-import { ClockTime } from "./clock/clock.js";
+import type { ClockTime } from "./clock/clock.js";
 import { clock } from "./clock-api.js";
 
 export class ConsoleInterceptor {

@@ -1,5 +1,6 @@
-import { Filter, FlatTree, FlatTreeItem } from "./TreeView";
-import { Changes, NodeState, NodesState, TreeState } from "./reducer";
+import type { Filter, FlatTree} from "./TreeView";
+import { FlatTreeItem } from "./TreeView";
+import type { Changes, NodeState, NodesState, TreeState } from "./reducer";
 
 type PartialNodeState = Record<string, Partial<NodeState>>;
 

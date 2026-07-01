@@ -6,7 +6,8 @@ import {
   type Result,
 } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
-import { BufferEntry, BufferEntrySchema } from "./schemas.js";
+import type { BufferEntry} from "./schemas.js";
+import { BufferEntrySchema } from "./schemas.js";
 
 export type MollifierBufferOptions = {
   redisOptions: RedisOptions;

@@ -1,21 +1,23 @@
 import { z } from "zod";
 import { fromZodError, ValidationError } from "zod-validation-error";
-import { RetryOptions } from "../schemas/index.js";
+import type { RetryOptions } from "../schemas/index.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
 import { ApiConnectionError, ApiError, ApiSchemaValidationError } from "./errors.js";
 
-import { Attributes, context, propagation, Span, trace } from "@opentelemetry/api";
+import type { Attributes, Span} from "@opentelemetry/api";
+import { context, propagation, trace } from "@opentelemetry/api";
 import { suppressTracing } from "@opentelemetry/core";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import type { TriggerTracer } from "../tracer.js";
 import { accessoryAttributes } from "../utils/styleAttributes.js";
-import {
-  CursorPage,
+import type {
   CursorPageParams,
   CursorPageResponse,
-  OffsetLimitPage,
   OffsetLimitPageParams,
-  OffsetLimitPageResponse,
+  OffsetLimitPageResponse} from "./pagination.js";
+import {
+  CursorPage,
+  OffsetLimitPage
 } from "./pagination.js";
 import { EventSource, type ErrorEvent } from "eventsource";
 import { randomUUID } from "../utils/crypto.js";

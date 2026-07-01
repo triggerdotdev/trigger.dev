@@ -1,15 +1,17 @@
 import type { DisconnectReason, Namespace, Server, Socket } from "socket.io";
 import { ZodMessageSender } from "./zodMessageHandler.js";
-import {
+import type {
   ZodMessageCatalogToSocketIoEvents,
   ZodSocketMessageCatalogSchema,
-  ZodSocketMessageHandler,
-  ZodSocketMessageHandlers,
+  ZodSocketMessageHandlers} from "./zodSocket.js";
+import {
+  ZodSocketMessageHandler
 } from "./zodSocket.js";
 // @ts-ignore
 import type { DefaultEventsMap, EventsMap } from "socket.io/dist/typed-events";
-import { z } from "zod";
-import { SimpleStructuredLogger, StructuredLogger } from "./utils/structuredLogger.js";
+import type { z } from "zod";
+import type { StructuredLogger } from "./utils/structuredLogger.js";
+import { SimpleStructuredLogger } from "./utils/structuredLogger.js";
 
 interface ExtendedError extends Error {
   data?: any;

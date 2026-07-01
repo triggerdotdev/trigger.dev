@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import type { Command } from "commander";
 import { printStandloneInitialBanner } from "../../utilities/initialBanner.js";
 import {
   CommonCommandOptions,

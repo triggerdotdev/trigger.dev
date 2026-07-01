@@ -1,10 +1,9 @@
-import { ParserRuleContext } from "antlr4ts/ParserRuleContext";
-import { Token } from "antlr4ts/Token";
-import { ErrorNode } from "antlr4ts/tree/ErrorNode";
-import { ParseTree } from "antlr4ts/tree/ParseTree";
-import { TerminalNode } from "antlr4ts/tree/TerminalNode";
-import {
-  AliasContext,
+import type { ParserRuleContext } from "antlr4ts/ParserRuleContext";
+import type { Token } from "antlr4ts/Token";
+import type { ErrorNode } from "antlr4ts/tree/ErrorNode";
+import type { ParseTree } from "antlr4ts/tree/ParseTree";
+import type { TerminalNode } from "antlr4ts/tree/TerminalNode";
+import type {
   BlockContext,
   CatchBlockContext,
   ColumnExprAliasContext,
@@ -120,22 +119,21 @@ import {
   WithClauseContext,
   WithExprColumnContext,
   WithExprListContext,
-  WithExprSubqueryContext,
-} from "../grammar/TSQLParser.js";
-import { TSQLParserVisitor } from "../grammar/TSQLParserVisitor.js";
+  WithExprSubqueryContext} from "../grammar/TSQLParser.js";
 import {
+  AliasContext
+} from "../grammar/TSQLParser.js";
+import type { TSQLParserVisitor } from "../grammar/TSQLParserVisitor.js";
+import type {
   Alias,
   And,
   ArithmeticOperation,
-  ArithmeticOperationOp,
   ArrayAccess,
   Array as ArrayExpression,
-  AST,
   BetweenExpr,
   Block,
   Call,
   CompareOperation,
-  CompareOperationOp,
   Constant,
   CTE,
   Declaration,
@@ -178,7 +176,11 @@ import {
   WhileStatement,
   WindowExpr,
   WindowFrameExpr,
-  WindowFunction,
+  WindowFunction} from "./ast";
+import {
+  ArithmeticOperationOp,
+  AST,
+  CompareOperationOp
 } from "./ast";
 import { RESERVED_KEYWORDS } from "./constants";
 import { BaseTSQLError, NotImplementedError, SyntaxError } from "./errors";

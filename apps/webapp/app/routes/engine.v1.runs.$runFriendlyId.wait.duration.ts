@@ -1,5 +1,7 @@
-import { json, TypedResponse } from "@remix-run/server-runtime";
-import { WaitForDurationRequestBody, WaitForDurationResponseBody } from "@trigger.dev/core/v3";
+import type { TypedResponse } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
+import type { WaitForDurationResponseBody } from "@trigger.dev/core/v3";
+import { WaitForDurationRequestBody } from "@trigger.dev/core/v3";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
 
 import { z } from "zod";

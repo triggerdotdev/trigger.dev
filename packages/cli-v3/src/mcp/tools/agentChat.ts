@@ -1,6 +1,7 @@
 import { z } from "zod";
+import type {
+  ApiClient} from "@trigger.dev/core/v3";
 import {
-  ApiClient,
   controlSubtype,
   SSEStreamSubscription,
   TRIGGER_CONTROL_SUBTYPE,

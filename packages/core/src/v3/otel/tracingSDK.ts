@@ -1,8 +1,9 @@
+import type {
+  TracerProvider} from "@opentelemetry/api";
 import {
   DiagConsoleLogger,
   DiagLogLevel,
   TraceFlags,
-  TracerProvider,
   diag,
   metrics,
 } from "@opentelemetry/api";
@@ -13,18 +14,20 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { HostMetrics } from "@opentelemetry/host-metrics";
 import { registerInstrumentations, type Instrumentation } from "@opentelemetry/instrumentation";
+import type {
+  Resource} from "@opentelemetry/resources";
 import {
   detectResources,
   processDetector,
-  Resource,
   resourceFromAttributes,
 } from "@opentelemetry/resources";
-import {
-  BatchLogRecordProcessor,
+import type {
   LogRecordExporter,
   LogRecordProcessor,
+  ReadableLogRecord} from "@opentelemetry/sdk-logs";
+import {
+  BatchLogRecordProcessor,
   LoggerProvider,
-  ReadableLogRecord,
   SimpleLogRecordProcessor,
 } from "@opentelemetry/sdk-logs";
 import {
@@ -34,13 +37,15 @@ import {
   type MetricReader,
   type PushMetricExporter,
 } from "@opentelemetry/sdk-metrics";
-import { RandomIdGenerator, SpanProcessor } from "@opentelemetry/sdk-trace-base";
+import type { SpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { RandomIdGenerator } from "@opentelemetry/sdk-trace-base";
+import type {
+  ReadableSpan,
+  SpanExporter} from "@opentelemetry/sdk-trace-node";
 import {
   BatchSpanProcessor,
   NodeTracerProvider,
-  ReadableSpan,
-  SimpleSpanProcessor,
-  SpanExporter,
+  SimpleSpanProcessor
 } from "@opentelemetry/sdk-trace-node";
 import { VERSION } from "../../version.js";
 import {

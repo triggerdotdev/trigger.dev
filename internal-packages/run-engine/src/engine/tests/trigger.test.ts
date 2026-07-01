@@ -1,7 +1,7 @@
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { expect } from "vitest";
-import { EventBusEventArgs } from "../eventBus.js";
+import type { EventBusEventArgs } from "../eventBus.js";
 import { RunEngine } from "../index.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 import { setTimeout } from "node:timers/promises";

@@ -1,9 +1,10 @@
 import { BulkActionId } from "@trigger.dev/core/v3/isomorphic";
+import type {
+  Prisma} from "@trigger.dev/database";
 import {
   BulkActionNotificationType,
   BulkActionStatus,
   BulkActionType,
-  Prisma,
   type PrismaClient,
   type TaskRunStatus,
 } from "@trigger.dev/database";

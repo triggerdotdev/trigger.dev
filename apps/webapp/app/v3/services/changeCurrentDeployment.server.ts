@@ -1,6 +1,6 @@
 import { BackgroundWorkerMetadata, tryCatch } from "@trigger.dev/core/v3";
 import { CURRENT_DEPLOYMENT_LABEL } from "@trigger.dev/core/v3/isomorphic";
-import { PrismaClientOrTransaction, WorkerDeployment } from "@trigger.dev/database";
+import type { PrismaClientOrTransaction, WorkerDeployment } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import {
