@@ -249,6 +249,33 @@ async function verifyRedisConnection(container: StartedRedisContainer) {
   }
 }
 
+export async function createElectricContainer(
+  postgresContainer: StartedPostgreSqlContainer,
+  network: StartedNetwork
+) {
+  const databaseUrl = `postgresql://${postgresContainer.getUsername()}:${postgresContainer.getPassword()}@${postgresContainer.getIpAddress(
+    network.getName()
+  )}:5432/${postgresContainer.getDatabase()}?sslmode=disable`;
+
+  const container = await withCiResourceLimits(
+    new GenericContainer(
+      "electricsql/electric:1.2.4@sha256:20da3d0b0e74926c5623392db67fd56698b9e374c4aeb6cb5cadeb8fea171c36"
+    )
+  )
+    .withExposedPorts(3000)
+    .withNetwork(network)
+    .withEnvironment({
+      DATABASE_URL: databaseUrl,
+      ELECTRIC_INSECURE: "true",
+    })
+    .start();
+
+  return {
+    container,
+    origin: `http://${container.getHost()}:${container.getMappedPort(3000)}`,
+  };
+}
+
 export async function createMinIOContainer(network: StartedNetwork) {
   const container = await withCiResourceLimits(new MinIOContainer())
     .withNetwork(network)

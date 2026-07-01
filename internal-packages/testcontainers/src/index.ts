@@ -17,6 +17,7 @@ import { getTaskMetadata, logCleanup, logSetup } from "./logs";
 import { type MinIOConnectionConfig, type StartedMinIOContainer, MinIOContainer } from "./minio";
 import {
   createClickHouseContainer,
+  createElectricContainer,
   createPostgresContainer,
   createRedisContainer,
   postgresUriWithDatabase,
@@ -43,8 +44,14 @@ type RedisContext = NetworkContext & {
   redisOptions: RedisOptions;
 };
 
+type ElectricContext = {
+  electricOrigin: string;
+};
+
 export type ContainerContext = NetworkContext & PostgresContext & RedisContext & ClickhouseContext;
 export type PostgresAndRedisContext = NetworkContext & PostgresContext & RedisContext;
+export type ContainerWithElectricAndRedisContext = ContainerContext & ElectricContext;
+export type ContainerWithElectricContext = NetworkContext & PostgresContext & ElectricContext;
 
 export type {
   StartedClickHouseContainer,
@@ -761,6 +768,24 @@ export const replicationContainerTest = test.extend<ReplicationContainerTestCont
   clickhouseContainer: [bootWorkerClickhouse, { scope: "worker" }],
   resetClickhouse: [truncateClickhouseFixture, { auto: true }],
   clickhouseClient: scopedClickhouseClient,
+});
+
+export const containerWithElectricTest = test.extend<ContainerWithElectricContext>({
+  network,
+  postgresContainer,
+  prisma,
+  electricOrigin,
+});
+
+export const containerWithElectricAndRedisTest = test.extend<ContainerWithElectricAndRedisContext>({
+  network,
+  postgresContainer,
+  prisma,
+  redisContainer,
+  redisOptions,
+  electricOrigin,
+  clickhouseContainer,
+  clickhouseClient,
 });
 
 // Boot minio once per worker; reset the bucket per test (auto fixture).
