@@ -1,10 +1,17 @@
 import { describe, expect, vi } from "vitest";
 
-// Mock the db prisma client
+// Mock the db prisma client. The run-ops handles are stubbed so the idempotency
+// dedup import resolves; with split off (below) they are never used — the concern's
+// constructor prisma is passed through to every store call.
 vi.mock("~/db.server", () => ({
   prisma: {},
   $replica: {},
+  runOpsNewPrisma: {},
+  runOpsLegacyPrisma: {},
 }));
+
+// Keep split off so resolveIdempotencyDedupClient returns the passed container client.
+vi.mock("~/v3/runOpsMigration/splitMode.server", () => ({ isSplitEnabled: async () => false }));
 
 vi.mock("~/services/platform.v3.server", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;

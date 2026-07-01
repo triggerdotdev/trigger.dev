@@ -43,6 +43,8 @@ describe("TriggerFailedTaskService — failed run residency", () => {
       const service = new TriggerFailedTaskService({
         prisma,
         engine,
+        // Read the parent through the same store the engine wrote it to.
+        runStore: engine.runStore,
         isKnownMigrated: async () => false,
       });
 
@@ -97,6 +99,8 @@ describe("TriggerFailedTaskService — failed run residency", () => {
       const service = new TriggerFailedTaskService({
         prisma,
         engine,
+        // Read the parent through the same store the engine wrote it to.
+        runStore: engine.runStore,
         isKnownMigrated: async () => false,
       });
 
@@ -154,6 +158,8 @@ describe("TriggerFailedTaskService — failed run residency", () => {
       const service = new TriggerFailedTaskService({
         prisma,
         engine,
+        // Read the parent through the same store the engine wrote it to.
+        runStore: engine.runStore,
         isKnownMigrated: async () => false,
       });
 
@@ -201,6 +207,8 @@ describe("TriggerFailedTaskService — failed run residency", () => {
       const service = new TriggerFailedTaskService({
         prisma,
         engine,
+        // Read the parent through the same store the engine wrote it to.
+        runStore: engine.runStore,
         isKnownMigrated: async (id: string) => id === parentFriendlyId,
       });
 
@@ -247,6 +255,8 @@ describe("TriggerFailedTaskService — failed run residency", () => {
       const service = new TriggerFailedTaskService({
         prisma,
         engine,
+        // Read the parent through the same store the engine wrote it to.
+        runStore: engine.runStore,
         isKnownMigrated: async () => false,
       });
 
@@ -278,6 +288,8 @@ describe("TriggerFailedTaskService — failed run residency", () => {
       const service = new TriggerFailedTaskService({
         prisma,
         engine,
+        // Read the parent through the same store the engine wrote it to.
+        runStore: engine.runStore,
         isKnownMigrated: async () => false,
       });
 

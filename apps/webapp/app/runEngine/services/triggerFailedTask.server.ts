@@ -13,7 +13,8 @@ import { isKnownMigrated as defaultIsKnownMigrated } from "~/v3/runOpsMigration/
 import { isSplitEnabled as defaultIsSplitEnabled } from "~/v3/runOpsMigration/splitMode.server";
 import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedMintKind.server";
 import { getEventRepository } from "~/v3/eventRepository/index.server";
-import { runStore } from "~/v3/runStore.server";
+import { runStore as defaultRunStore } from "~/v3/runStore.server";
+import type { RunStore } from "@internal/run-store";
 import { PerformTaskRunAlertsService } from "~/v3/services/alerts/performTaskRunAlerts.server";
 import { DefaultQueueManager } from "../concerns/queues.server";
 import type { TriggerTaskRequest } from "../types";
@@ -68,6 +69,10 @@ export class TriggerFailedTaskService {
   // Injected so the migrated-marker read stays off the hot path when split is off
   // (same guard as RunEngineTriggerTaskService); defaults to the live resolver.
   private readonly isSplitEnabled: () => Promise<boolean>;
+  // Resolves the parent run for depth/root/parent linkage. Defaults to the shared
+  // singleton (in production the same store the engine writes through). Injected in
+  // tests so the read resolves on the same store the engine wrote to.
+  private readonly runStore: RunStore;
 
   constructor(opts: {
     prisma: PrismaClientOrTransaction;
@@ -75,12 +80,14 @@ export class TriggerFailedTaskService {
     replicaPrisma?: PrismaClientOrTransaction;
     isKnownMigrated?: (runId: string) => Promise<boolean>;
     isSplitEnabled?: () => Promise<boolean>;
+    runStore?: RunStore;
   }) {
     this.prisma = opts.prisma;
     this.replicaPrisma = opts.replicaPrisma ?? opts.prisma;
     this.engine = opts.engine;
     this.isKnownMigrated = opts.isKnownMigrated ?? defaultIsKnownMigrated;
     this.isSplitEnabled = opts.isSplitEnabled ?? defaultIsSplitEnabled;
+    this.runStore = opts.runStore ?? defaultRunStore;
   }
 
   // Mint a failed run's friendlyId. The id-kind decides which store the run is
@@ -138,7 +145,7 @@ export class TriggerFailedTaskService {
 
       // Resolve parent run for rootTaskRunId and depth (same as triggerTask.server.ts)
       const parentRun = request.parentRunId
-        ? await runStore.findRun(
+        ? await this.runStore.findRun(
             {
               id: RunId.fromFriendlyId(request.parentRunId),
               runtimeEnvironmentId: request.environment.id,
@@ -344,7 +351,7 @@ export class TriggerFailedTaskService {
       let depth = 0;
 
       if (opts.parentRunId) {
-        const parentRun = await runStore.findRun(
+        const parentRun = await this.runStore.findRun(
           {
             id: RunId.fromFriendlyId(opts.parentRunId),
             runtimeEnvironmentId: opts.environmentId,

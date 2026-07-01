@@ -338,6 +338,10 @@ describe("PerformTaskRunAlertsService passthrough (single-DB)", () => {
 
       const service = new PerformTaskRunAlertsService({
         prisma,
+        // The single-DB default store: a passthrough PostgresRunStore over the one
+        // container. Injected explicitly so the read resolves on the container the run
+        // was seeded into, not the ambient module singleton.
+        runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
         controlPlaneResolver: buildControlPlaneResolver(prisma),
       });
       await service.call(id).catch(() => {});
