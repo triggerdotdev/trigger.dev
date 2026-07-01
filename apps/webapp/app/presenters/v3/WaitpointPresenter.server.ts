@@ -71,7 +71,7 @@ export class WaitpointPresenter extends BasePresenter {
     let _isTimeout = false;
     if (waitpoint.outputIsError && output) {
       if (isWaitpointOutputTimeout(output)) {
-        isTimeout = true;
+        _isTimeout = true;
       }
     }
 

@@ -10,7 +10,7 @@ async function waitTillGcFinishes() {
 
   const promise = new Promise<PerformanceEntry>((resolve, reject) => {
     resolver = resolve;
-    rejector = reject;
+    _rejector = reject;
   });
 
   const obs = new PerformanceObserver((list) => {

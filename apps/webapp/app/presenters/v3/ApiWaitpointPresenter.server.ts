@@ -58,7 +58,7 @@ export class ApiWaitpointPresenter extends BasePresenter {
 
       let _isTimeout = false;
       if (waitpoint.outputIsError && waitpoint.output) {
-        isTimeout = true;
+        _isTimeout = true;
       }
 
       return {
