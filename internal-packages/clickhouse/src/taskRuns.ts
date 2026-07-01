@@ -211,6 +211,7 @@ export function insertTaskRunsCompactArrays(ch: ClickhouseWriter, settings?: Cli
     settings: {
       enable_json_type: 1,
       type_json_skip_duplicated_paths: 1,
+      input_format_json_infer_array_of_dynamic_from_array_of_different_types: 1,
       ...settings,
     },
   });
@@ -225,6 +226,7 @@ export function insertTaskRuns(ch: ClickhouseWriter, settings?: ClickHouseSettin
     settings: {
       enable_json_type: 1,
       type_json_skip_duplicated_paths: 1,
+      input_format_json_infer_array_of_dynamic_from_array_of_different_types: 1,
       ...settings,
     },
   });
@@ -349,6 +351,7 @@ export function insertRawTaskRunPayloadsCompactArrays(
       async_insert_busy_timeout_ms: 1000,
       enable_json_type: 1,
       type_json_skip_duplicated_paths: 1,
+      input_format_json_infer_array_of_dynamic_from_array_of_different_types: 1,
       ...settings,
     },
   });
@@ -367,6 +370,7 @@ export function insertRawTaskRunPayloads(ch: ClickhouseWriter, settings?: ClickH
       async_insert_busy_timeout_ms: 1000,
       enable_json_type: 1,
       type_json_skip_duplicated_paths: 1,
+      input_format_json_infer_array_of_dynamic_from_array_of_different_types: 1,
       ...settings,
     },
   });
