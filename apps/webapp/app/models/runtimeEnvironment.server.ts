@@ -2,6 +2,7 @@ import type { AuthenticatedEnvironment } from "@internal/run-engine";
 import type { Prisma, PrismaClientOrTransaction, RuntimeEnvironment } from "@trigger.dev/database";
 import { $replica, prisma } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { logger } from "~/services/logger.server";
 import { getUsername } from "~/utils/username";
 import { isDefaultDevBranch, sanitizeBranchName } from "@trigger.dev/core/v3/utils/gitBranch";
@@ -271,24 +272,32 @@ export async function findEnvironmentFromRun(
   runId: string,
   tx?: PrismaClientOrTransaction
 ): Promise<EnvironmentFromRun | null> {
-  // The include (no select) already pulls every taskRun scalar, so runTags/batchId
-  // ride along for free — no extra query for the realtime publish to send a full record.
+  // Run-ops scalars (runTags/batchId/runtimeEnvironmentId) from the run store; the env half is
+  // resolved via the control-plane resolver so the run-ops DB can split without a cross-DB join.
   const taskRun = await runStore.findRun(
     {
       id: runId,
     },
     {
-      include: {
-        runtimeEnvironment: { include: authIncludeBase },
+      select: {
+        runTags: true,
+        batchId: true,
+        runtimeEnvironmentId: true,
       },
     },
     tx ?? $replica
   );
-  if (!taskRun?.runtimeEnvironment) {
+  if (!taskRun) {
+    return null;
+  }
+  const environment = await controlPlaneResolver.resolveAuthenticatedEnv(
+    taskRun.runtimeEnvironmentId
+  );
+  if (!environment) {
     return null;
   }
   return {
-    environment: toAuthenticated(taskRun.runtimeEnvironment),
+    environment,
     runTags: taskRun.runTags,
     batchId: taskRun.batchId,
   };

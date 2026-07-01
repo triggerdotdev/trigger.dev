@@ -7,6 +7,7 @@ import {
   type PrismaTransactionClient,
   type PrismaTransactionOptions,
 } from "@trigger.dev/database";
+import { RunOpsPrismaClient } from "@internal/run-ops-database";
 import invariant from "tiny-invariant";
 import { z } from "zod";
 import { env } from "./env.server";
@@ -18,6 +19,8 @@ import {
   logTransactionInfrastructureError,
 } from "./utils/prismaErrors";
 import { singleton } from "./utils/singleton";
+import { isSplitEnabled } from "./v3/runOpsMigration/splitMode.server";
+import { computeRunOpsSplitReadEnabled } from "./v3/runOpsMigration/runOpsSplitReadGate";
 import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
 import type { Span } from "@opentelemetry/api";
 import { context, trace } from "@opentelemetry/api";
@@ -130,6 +133,32 @@ function tagDatasource<T extends PrismaClient>(datasource: "writer" | "replica",
   }) as unknown as T;
 }
 
+// Same extension as tagDatasource but typed for RunOpsPrismaClient (different
+// generated package — does not extend @trigger.dev/database.PrismaClient).
+function tagDatasourceRunOps(
+  datasource: "writer" | "replica",
+  client: RunOpsPrismaClient
+): RunOpsPrismaClient {
+  return client.$extends({
+    name: "datasource-tagger",
+    query: {
+      $allOperations: ({ query, args }) => {
+        trace.getActiveSpan()?.setAttribute("db.datasource", datasource);
+        return context.with(
+          context.active().setValue(DATASOURCE_CONTEXT_KEY, datasource),
+          async () => await query(args)
+        );
+      },
+    },
+  }) as unknown as RunOpsPrismaClient;
+}
+
+// Same wrapper as captureInfrastructureErrors, bridged via double cast because
+// that helper is constrained to T extends @trigger.dev/database.PrismaClient.
+function captureInfraErrorsRunOps(client: RunOpsPrismaClient): RunOpsPrismaClient {
+  return captureInfrastructureErrors(client as unknown as PrismaClient) as unknown as RunOpsPrismaClient;
+}
+
 export const prisma = singleton("prisma", () =>
   captureInfrastructureErrors(tagDatasource("writer", getClient()))
 );
@@ -139,11 +168,146 @@ export const $replica: PrismaReplicaClient = singleton("replica", () => {
   return replica ? captureInfrastructureErrors(tagDatasource("replica", replica)) : prisma;
 });
 
-function getClient() {
-  const { DATABASE_URL } = process.env;
-  invariant(typeof DATABASE_URL === "string", "DATABASE_URL env var not set");
+export type RunOpsClients = { writer: PrismaClient; replica: PrismaReplicaClient };
+export type NewRunOpsClients = { writer: RunOpsPrismaClient; replica: RunOpsPrismaClient };
+export type RunOpsTopology = {
+  newRunOps: NewRunOpsClients;
+  legacyRunOps: RunOpsClients;
+  controlPlane: RunOpsClients;
+};
+export type SelectRunOpsTopologyConfig = {
+  splitEnabled: boolean;
+  legacyUrl?: string;
+  newUrl?: string;
+  newReplicaUrl?: string;
+};
+export type RunOpsClientBuilders = {
+  controlPlane: RunOpsClients;
+  buildNewWriter: (url: string, clientType: string) => RunOpsPrismaClient;
+  buildNewReplica: (url: string, clientType: string) => RunOpsPrismaClient;
+};
 
-  const databaseUrl = extendQueryParams(DATABASE_URL, {
+// Pure run-ops client selector. No env, no isSplitEnabled() — those
+// belong in the env-bound singleton (see runOpsTopology below). The builder
+// callbacks are the only side-effecting boundary, so split-OFF (the default)
+// calls NEITHER and opens no second connection.
+export function selectRunOpsTopology(
+  config: SelectRunOpsTopologyConfig,
+  builders: RunOpsClientBuilders
+): RunOpsTopology {
+  const { controlPlane } = builders;
+
+  const cpFallback: NewRunOpsClients = {
+    writer: controlPlane.writer as unknown as RunOpsPrismaClient,
+    replica: controlPlane.replica as unknown as RunOpsPrismaClient,
+  };
+
+  if (!config.splitEnabled) {
+    return { newRunOps: cpFallback, legacyRunOps: controlPlane, controlPlane };
+  }
+
+  if (!config.legacyUrl || !config.newUrl) {
+    return { newRunOps: cpFallback, legacyRunOps: controlPlane, controlPlane };
+  }
+
+  const legacyRunOps = controlPlane;
+
+  const newWriter = builders.buildNewWriter(config.newUrl, "run-ops-new-writer");
+  const newReplica: RunOpsPrismaClient = config.newReplicaUrl
+    ? builders.buildNewReplica(config.newReplicaUrl, "run-ops-new-reader")
+    : newWriter;
+
+  return {
+    newRunOps: { writer: newWriter, replica: newReplica },
+    legacyRunOps,
+    controlPlane,
+  };
+}
+
+// The env-bound run-ops topology singleton. The split decision uses
+// a cheap synchronous env predicate (governs whether a second pool is opened);
+// the async distinct-DB sentinel is enforced separately at boot via
+// assertRunOpsSplitSentinel(). Because the builder callbacks only run when
+// splitEnabled is true, single-DB reuses prisma/$replica by reference and opens
+// nothing new. The builders apply the SAME wrapper pair the control-plane
+// singletons use (captureInfrastructureErrors(tagDatasource(role, raw))).
+const runOpsTopology: RunOpsTopology = singleton("runOpsTopology", () => {
+  const newUrl = env.TASK_RUN_DATABASE_URL;
+  const splitEnabled = !!newUrl && !!env.TASK_RUN_LEGACY_DATABASE_URL;
+
+  return selectRunOpsTopology(
+    {
+      splitEnabled,
+      legacyUrl: env.TASK_RUN_LEGACY_DATABASE_URL,
+      newUrl,
+      newReplicaUrl: env.TASK_RUN_DATABASE_READ_REPLICA_URL,
+    },
+    {
+      controlPlane: { writer: prisma, replica: $replica },
+      buildNewWriter: (url, clientType) =>
+        captureInfraErrorsRunOps(
+          tagDatasourceRunOps("writer", buildRunOpsWriterClient({ url, clientType }))
+        ),
+      buildNewReplica: (url, clientType) =>
+        captureInfraErrorsRunOps(
+          tagDatasourceRunOps("replica", buildRunOpsReplicaClient({ url, clientType }))
+        ),
+    }
+  );
+});
+
+// Typed as RunOpsPrismaClient for the run-store boundary.
+export const runOpsNewPrismaClient: RunOpsPrismaClient = runOpsTopology.newRunOps.writer;
+export const runOpsNewReplicaClient: RunOpsPrismaClient = runOpsTopology.newRunOps.replica;
+// Legacy-typed aliases kept for the remaining consumers that still expect PrismaClient /
+// PrismaReplicaClient (idempotency residency, read-through, handlers, cascade cleanup).
+export const runOpsNewPrisma: PrismaClient = runOpsTopology.newRunOps.writer as unknown as PrismaClient;
+export const runOpsNewReplica: PrismaReplicaClient = runOpsTopology.newRunOps.replica as unknown as PrismaReplicaClient;
+export const runOpsLegacyPrisma: PrismaClient = runOpsTopology.legacyRunOps.writer;
+export const runOpsLegacyReplica: PrismaReplicaClient = runOpsTopology.legacyRunOps.replica;
+
+export const runOpsSplitReadEnabled: boolean = computeRunOpsSplitReadEnabled({
+  newReplica: runOpsNewReplicaClient,
+  controlPlaneWriter: prisma,
+  controlPlaneReplica: $replica,
+  hasNewUrl: !!env.TASK_RUN_DATABASE_URL,
+  hasLegacyUrl: !!env.TASK_RUN_LEGACY_DATABASE_URL,
+});
+
+// Boot-time interlock: if the flag is on but the distinct-DB sentinel does not
+// confirm two physically-distinct run-ops DBs, refuse to enable split (data-loss
+// interlock). Async, so it cannot live in the synchronous singleton factory —
+// call it from the eager-boot path before any run-ops routing is wired.
+export async function assertRunOpsSplitSentinel(): Promise<void> {
+  if (!env.RUN_OPS_SPLIT_ENABLED) return;
+  const ok = await isSplitEnabled();
+  if (!ok) {
+    throw new Error(
+      "RUN_OPS_SPLIT_ENABLED is on but the distinct-DB sentinel did not confirm two physically-distinct run-ops DBs; refusing to enable split (data-loss interlock)."
+    );
+  }
+}
+
+function getClient() {
+  // Control-plane datasource repoint: prefer the dedicated control-plane DSN, falling back to
+  // DATABASE_URL so self-host / single-DB installs boot byte-identical when CONTROL_PLANE_DATABASE_URL is unset.
+  const url = env.CONTROL_PLANE_DATABASE_URL ?? env.DATABASE_URL;
+  invariant(typeof url === "string", "neither CONTROL_PLANE_DATABASE_URL nor DATABASE_URL is set");
+
+  return buildWriterClient({ url, clientType: "writer" });
+}
+
+// Generalized writer builder shared by the control-plane client and the run-ops
+// clients. Returns a RAW, untagged, un-wrapped PrismaClient — the
+// caller applies tagDatasource + captureInfrastructureErrors.
+export function buildWriterClient({
+  url,
+  clientType,
+}: {
+  url: string;
+  clientType: string;
+}): PrismaClient {
+  const databaseUrl = extendQueryParams(url, {
     connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
     pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
     connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
@@ -215,7 +379,7 @@ function getClient() {
   if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
     client.$on("info", (log) => {
       logger.info("PrismaClient info", {
-        clientType: "writer",
+        clientType,
         event: {
           timestamp: log.timestamp,
           message: log.message,
@@ -226,7 +390,7 @@ function getClient() {
 
     client.$on("warn", (log) => {
       logger.warn("PrismaClient warn", {
-        clientType: "writer",
+        clientType,
         event: {
           timestamp: log.timestamp,
           message: log.message,
@@ -237,7 +401,7 @@ function getClient() {
 
     client.$on("error", (log) => {
       logger.error("PrismaClient error", {
-        clientType: "writer",
+        clientType,
         event: {
           timestamp: log.timestamp,
           message: log.message,
@@ -268,12 +432,29 @@ function getClient() {
 }
 
 function getReplicaClient() {
-  if (!env.DATABASE_READ_REPLICA_URL) {
+  // Control-plane replica repoint: prefer the dedicated control-plane replica, falling back to
+  // DATABASE_READ_REPLICA_URL. Early-return undefined only when BOTH are unset, so $replica keeps
+  // falling back to prisma exactly as today when no replica is configured.
+  const url = env.CONTROL_PLANE_DATABASE_READ_REPLICA_URL ?? env.DATABASE_READ_REPLICA_URL;
+  if (!url) {
     console.log(`🔌 No database replica, using the regular client`);
     return;
   }
 
-  const replicaUrl = extendQueryParams(env.DATABASE_READ_REPLICA_URL, {
+  return buildReplicaClient({ url, clientType: "reader" });
+}
+
+// Generalized replica builder shared by the control-plane replica and the run-ops
+// replicas. Returns a RAW, untagged, un-wrapped PrismaClient — the
+// caller applies tagDatasource + captureInfrastructureErrors.
+export function buildReplicaClient({
+  url,
+  clientType,
+}: {
+  url: string;
+  clientType: string;
+}): PrismaClient {
+  const replicaUrl = extendQueryParams(url, {
     connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
     pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
     connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
@@ -345,7 +526,7 @@ function getReplicaClient() {
   if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
     replicaClient.$on("info", (log) => {
       logger.info("PrismaClient info", {
-        clientType: "reader",
+        clientType,
         event: {
           timestamp: log.timestamp,
           message: log.message,
@@ -356,7 +537,7 @@ function getReplicaClient() {
 
     replicaClient.$on("warn", (log) => {
       logger.warn("PrismaClient warn", {
-        clientType: "reader",
+        clientType,
         event: {
           timestamp: log.timestamp,
           message: log.message,
@@ -367,7 +548,7 @@ function getReplicaClient() {
 
     replicaClient.$on("error", (log) => {
       logger.error("PrismaClient error", {
-        clientType: "reader",
+        clientType,
         event: {
           timestamp: log.timestamp,
           message: log.message,
@@ -394,6 +575,108 @@ function getReplicaClient() {
   console.log(`🔌 read replica connected`);
 
   return replicaClient;
+}
+
+function buildRunOpsWriterClient({
+  url,
+  clientType,
+}: {
+  url: string;
+  clientType: string;
+}): RunOpsPrismaClient {
+  const databaseUrl = extendQueryParams(url, {
+    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
+    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
+    application_name: env.SERVICE_NAME,
+  });
+
+  console.log(`🔌 setting up run-ops prisma client to ${redactUrlSecrets(databaseUrl)}`);
+
+  const client = new RunOpsPrismaClient({
+    datasources: { db: { url: databaseUrl.href } },
+    log: [
+      { emit: "event", level: "error" },
+      { emit: "event", level: "info" },
+      { emit: "event", level: "warn" },
+      ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
+      process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
+        ? [{ emit: "event", level: "query" }]
+        : []) as { emit: "event"; level: "query" }[]),
+    ],
+  });
+
+  if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
+    client.$on("info", (log) => logger.info("RunOpsPrismaClient info", { clientType, event: log }));
+    client.$on("warn", (log) => logger.warn("RunOpsPrismaClient warn", { clientType, event: log }));
+    client.$on("error", (log) =>
+      logger.error("RunOpsPrismaClient error", { clientType, event: log, ignoreError: true })
+    );
+  }
+
+  client.$on("query", (log) => queryPerformanceMonitor.onQuery("writer", log));
+
+  const connectPromise = client.$connect();
+  if (env.NODE_ENV === "test") {
+    connectPromise.catch((error) => {
+      logger.warn("Failed to eagerly connect run-ops prisma client (writer)", { error });
+    });
+  }
+
+  console.log(`🔌 run-ops prisma client connected`);
+
+  return client;
+}
+
+function buildRunOpsReplicaClient({
+  url,
+  clientType,
+}: {
+  url: string;
+  clientType: string;
+}): RunOpsPrismaClient {
+  const replicaUrl = extendQueryParams(url, {
+    connection_limit: env.DATABASE_CONNECTION_LIMIT.toString(),
+    pool_timeout: env.DATABASE_POOL_TIMEOUT.toString(),
+    connection_timeout: env.DATABASE_CONNECTION_TIMEOUT.toString(),
+    application_name: env.SERVICE_NAME,
+  });
+
+  console.log(`🔌 setting up run-ops read replica connection to ${redactUrlSecrets(replicaUrl)}`);
+
+  const client = new RunOpsPrismaClient({
+    datasources: { db: { url: replicaUrl.href } },
+    log: [
+      { emit: "event", level: "error" },
+      { emit: "event", level: "info" },
+      { emit: "event", level: "warn" },
+      ...((process.env.VERBOSE_PRISMA_LOGS === "1" ||
+      process.env.VERY_SLOW_QUERY_THRESHOLD_MS !== undefined
+        ? [{ emit: "event", level: "query" }]
+        : []) as { emit: "event"; level: "query" }[]),
+    ],
+  });
+
+  if (process.env.PRISMA_LOG_TO_STDOUT !== "1") {
+    client.$on("info", (log) => logger.info("RunOpsPrismaClient info", { clientType, event: log }));
+    client.$on("warn", (log) => logger.warn("RunOpsPrismaClient warn", { clientType, event: log }));
+    client.$on("error", (log) =>
+      logger.error("RunOpsPrismaClient error", { clientType, event: log })
+    );
+  }
+
+  client.$on("query", (log) => queryPerformanceMonitor.onQuery("replica", log));
+
+  const connectPromise = client.$connect();
+  if (env.NODE_ENV === "test") {
+    connectPromise.catch((error) => {
+      logger.warn("Failed to eagerly connect run-ops prisma client (replica)", { error });
+    });
+  }
+
+  console.log(`🔌 run-ops read replica connected`);
+
+  return client;
 }
 
 function extendQueryParams(hrefOrUrl: string | URL, queryParams: Record<string, string>) {

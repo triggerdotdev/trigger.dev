@@ -15,7 +15,7 @@ import { bootstrap } from "./bootstrap";
 import { LocaleContextProvider } from "./components/primitives/LocaleProvider";
 import type { OperatingSystemPlatform } from "./components/primitives/OperatingSystemProvider";
 import { OperatingSystemContextProvider } from "./components/primitives/OperatingSystemProvider";
-import { Prisma } from "./db.server";
+import { assertRunOpsSplitSentinel, Prisma } from "./db.server";
 import { env } from "./env.server";
 import { eventLoopMonitor } from "./eventLoopMonitor.server";
 import { logger } from "./services/logger.server";
@@ -269,6 +269,17 @@ process.on("uncaughtException", (error, origin) => {
   }
 
   process.exit(1);
+});
+
+// Boot-time run-ops split interlock. Async, so it runs as a
+// fire-and-forget at startup; a flag-on-but-sentinel-fails misconfig crashes
+// the process loudly before any run-ops routing is wired.
+singleton("AssertRunOpsSplitSentinel", () => {
+  assertRunOpsSplitSentinel().catch((error) => {
+    logger.error("Run-ops split sentinel assertion failed; refusing to start", { error });
+    process.exit(1);
+  });
+  return true;
 });
 
 singleton("RunEngineEventBusHandlers", registerRunEngineEventBusHandlers);

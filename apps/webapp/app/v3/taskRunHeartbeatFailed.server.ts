@@ -8,6 +8,7 @@ import type { PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
 import { socketIo } from "./handleSocketIo.server";
 import { TaskRunErrorCodes } from "@trigger.dev/core/v3";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { isV3Disabled } from "./engineDeprecation.server";
 
 export class TaskRunHeartbeatFailedService extends BaseService {
@@ -23,16 +24,8 @@ export class TaskRunHeartbeatFailedService extends BaseService {
           friendlyId: true,
           status: true,
           lockedAt: true,
-          runtimeEnvironment: {
-            select: {
-              type: true,
-            },
-          },
-          lockedToVersion: {
-            select: {
-              supportsLazyAttempts: true,
-            },
-          },
+          runtimeEnvironmentId: true,
+          lockedToVersionId: true,
           _count: {
             select: {
               attempts: true,
@@ -57,6 +50,16 @@ export class TaskRunHeartbeatFailedService extends BaseService {
       logger.debug("[TaskRunHeartbeatFailedService] Skipping heartbeat for shut-down v3 run", {
         runId,
       });
+      return;
+    }
+
+    const env = await controlPlaneResolver.resolveEnv(taskRun.runtimeEnvironmentId);
+    const lockedWorker = await controlPlaneResolver.resolveRunLockedWorker({
+      lockedToVersionId: taskRun.lockedToVersionId,
+    });
+
+    if (!env) {
+      logger.debug("TaskRunHeartbeatFailedService: environment not found", { runId });
       return;
     }
 
@@ -143,7 +146,7 @@ export class TaskRunHeartbeatFailedService extends BaseService {
         );
 
         try {
-          if (taskRun.runtimeEnvironment.type === "DEVELOPMENT") {
+          if (env.type === "DEVELOPMENT") {
             return;
           }
 
@@ -152,7 +155,7 @@ export class TaskRunHeartbeatFailedService extends BaseService {
             version: "v1",
             runId: taskRun.id,
             // Give the run a few seconds to exit to complete any flushing etc
-            delayInMs: taskRun.lockedToVersion?.supportsLazyAttempts ? 5_000 : undefined,
+            delayInMs: lockedWorker?.lockedToVersion?.supportsLazyAttempts ? 5_000 : undefined,
           });
         } catch (error) {
           logger.error("[TaskRunHeartbeatFailedService] Error signaling run cancellation", {

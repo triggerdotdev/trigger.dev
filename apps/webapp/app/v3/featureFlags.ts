@@ -17,6 +17,8 @@ export const FEATURE_FLAG = {
   computeMigrationFreePercentage: "computeMigrationFreePercentage",
   computeMigrationPaidPercentage: "computeMigrationPaidPercentage",
   computeMigrationRequireTemplate: "computeMigrationRequireTemplate",
+  devBranchesEnabled: "devBranchesEnabled",
+  runOpsMintKsuid: "runOpsMintKsuid",
 } as const;
 
 export const FeatureFlagCatalog = {
@@ -47,6 +49,11 @@ export const FeatureFlagCatalog = {
   // When on, migrated orgs build their compute template in required mode at deploy
   // (fails the deploy on error) instead of shadow. Strict boolean (see above).
   [FEATURE_FLAG.computeMigrationRequireTemplate]: z.boolean(),
+  // Per-org access to development branches. Off unless enabled for the org.
+  [FEATURE_FLAG.devBranchesEnabled]: z.coerce.boolean(),
+  // Per-org KSUID mint cutover. Defaults to "cuid"; only honored when
+  // RUN_OPS_MINT_KSUID_ENABLED is on AND isSplitEnabled() is true.
+  [FEATURE_FLAG.runOpsMintKsuid]: z.enum(["cuid", "ksuid"]),
 };
 
 export type FeatureFlagKey = keyof typeof FeatureFlagCatalog;
