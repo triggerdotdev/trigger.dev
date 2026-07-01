@@ -4,8 +4,30 @@ import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { BasePresenter } from "./basePresenter.server";
 import { waitpointStatusToApiStatus } from "./WaitpointListPresenter.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
+import type { PrismaClientOrTransaction, PrismaReplicaClient } from "~/db.server";
+import { readThroughRun } from "~/v3/runOpsMigration/readThrough.server";
+import { isKnownMigrated } from "~/v3/runOpsMigration/knownMigratedFilter.server";
+
+// When omitted, clients default to the inherited _replica handle => passthrough reads the
+// replica exactly as today. Pure boundaries (isKnownMigrated/isPastRetention) are injectable
+// for tests. Typed PrismaReplicaClient to match readThroughRun's readNew/readLegacy + deps.
+type ApiWaitpointPresenterReadThroughDeps = {
+  newClient?: PrismaReplicaClient;
+  legacyReplica?: PrismaReplicaClient;
+  splitEnabled?: boolean;
+  isKnownMigrated?: (id: string) => Promise<boolean>;
+  isPastRetention?: (id: string) => boolean;
+};
 
 export class ApiWaitpointPresenter extends BasePresenter {
+  constructor(
+    prismaClient?: PrismaClientOrTransaction,
+    replicaClient?: PrismaClientOrTransaction,
+    private readonly readThroughDeps?: ApiWaitpointPresenterReadThroughDeps
+  ) {
+    super(prismaClient, replicaClient);
+  }
+
   public async call(
     environment: {
       id: string;
@@ -19,35 +41,62 @@ export class ApiWaitpointPresenter extends BasePresenter {
     waitpointId: string
   ) {
     return this.trace("call", async (span) => {
-      const waitpoint = await this._replica.waitpoint.findFirst({
-        where: {
-          id: waitpointId,
-          environmentId: environment.id,
-        },
-        select: {
-          id: true,
-          friendlyId: true,
-          type: true,
-          status: true,
-          idempotencyKey: true,
-          userProvidedIdempotencyKey: true,
-          idempotencyKeyExpiresAt: true,
-          inactiveIdempotencyKey: true,
-          output: true,
-          outputType: true,
-          outputIsError: true,
-          completedAfter: true,
-          completedAt: true,
-          createdAt: true,
-          connectedRuns: {
-            select: {
-              friendlyId: true,
-            },
-            take: 5,
+      // Public waitpoint retrieve. Split on: new run-ops client first, then the LEGACY
+      // RUN-OPS READ REPLICA ONLY for ids not known-migrated — never the legacy primary.
+      // Split off (single-DB / self-host): one plain waitpoint.findFirst against the replica
+      // (passthrough). The waitpointId is the residency-classifiable KSUID id (the route
+      // pre-decodes the friendlyId via WaitpointId.toId).
+      const hydrate = (client: PrismaReplicaClient) =>
+        client.waitpoint.findFirst({
+          where: {
+            id: waitpointId,
+            environmentId: environment.id,
           },
-          tags: true,
+          select: {
+            id: true,
+            friendlyId: true,
+            type: true,
+            status: true,
+            idempotencyKey: true,
+            userProvidedIdempotencyKey: true,
+            idempotencyKeyExpiresAt: true,
+            inactiveIdempotencyKey: true,
+            output: true,
+            outputType: true,
+            outputIsError: true,
+            completedAfter: true,
+            completedAt: true,
+            createdAt: true,
+            connectedRuns: {
+              select: {
+                friendlyId: true,
+              },
+              take: 5,
+            },
+            tags: true,
+          },
+        });
+
+      const result = await readThroughRun({
+        runId: waitpointId,
+        environmentId: environment.id,
+        readNew: (client) => hydrate(client),
+        readLegacy: (replica) => hydrate(replica),
+        deps: {
+          splitEnabled: this.readThroughDeps?.splitEnabled,
+          // Default both clients to the inherited _replica handle (declared
+          // PrismaClientOrTransaction but $replica at runtime) so passthrough reads the replica
+          // as today; split mode injects a distinct newClient.
+          newClient: this.readThroughDeps?.newClient ?? (this._replica as PrismaReplicaClient),
+          legacyReplica:
+            this.readThroughDeps?.legacyReplica ?? (this._replica as PrismaReplicaClient),
+          isKnownMigrated: this.readThroughDeps?.isKnownMigrated ?? isKnownMigrated,
+          isPastRetention: this.readThroughDeps?.isPastRetention,
         },
       });
+
+      const waitpoint =
+        result.source === "new" || result.source === "legacy-replica" ? result.value : null;
 
       if (!waitpoint) {
         logger.error(`WaitpointPresenter: Waitpoint not found`, {

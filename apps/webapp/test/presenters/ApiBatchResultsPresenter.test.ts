@@ -177,7 +177,9 @@ containerTest(
       });
     }
 
-    const presenter = new ApiBatchResultsPresenter(prisma);
+    // Pass the testcontainer prisma as both the primary and the replica: the passthrough path
+    // reads the batch row off the replica and the member runs off the primary (via the run store).
+    const presenter = new ApiBatchResultsPresenter(prisma, prisma);
     const result = await presenter.call(
       batchFriendlyId,
       authEnv(environment, project, organization)
@@ -243,7 +245,9 @@ containerTest(
       });
     }
 
-    const presenter = new ApiBatchResultsPresenter(prisma);
+    // Pass the testcontainer prisma as both the primary and the replica: the passthrough path
+    // reads the batch row off the replica and the member runs off the primary (via the run store).
+    const presenter = new ApiBatchResultsPresenter(prisma, prisma);
     const result = await presenter.call(
       batchFriendlyId,
       authEnv(environment, project, organization)
@@ -267,7 +271,9 @@ containerTest("ApiBatchResultsPresenter short-circuits an empty batch", async ({
     },
   });
 
-  const presenter = new ApiBatchResultsPresenter(prisma);
+  // Pass the testcontainer prisma as both the primary and the replica: the passthrough path
+  // reads the batch row off the replica and the member runs off the primary (via the run store).
+  const presenter = new ApiBatchResultsPresenter(prisma, prisma);
   const result = await presenter.call(batchFriendlyId, authEnv(environment, project, organization));
 
   expect(result).toEqual({ id: batchFriendlyId, items: [] });

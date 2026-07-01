@@ -141,6 +141,8 @@ export class TaskDetailPresenter {
     };
   }
 
+  // SPLIT-NEUTRAL: served entirely from ClickHouse (task_runs_v2);
+  // no run-ops Postgres read — single-DB behavior is n-a, RoutingRunStore is not involved.
   async getActivity({
     organizationId,
     projectId,

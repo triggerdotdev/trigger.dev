@@ -1,6 +1,6 @@
-import { type BatchTaskRunStatus, Prisma } from "@trigger.dev/database";
+import { type BatchTaskRunStatus } from "@trigger.dev/database";
 import parse from "parse-duration";
-import { sqlDatabaseSchema } from "~/db.server";
+import { type PrismaClientOrTransaction } from "~/db.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { BasePresenter } from "./basePresenter.server";
 import { type Direction } from "~/components/ListPagination";
@@ -28,7 +28,108 @@ export type BatchList = Awaited<ReturnType<BatchListPresenter["call"]>>;
 export type BatchListItem = BatchList["batches"][0];
 export type BatchListAppliedFilters = BatchList["filters"];
 
+// The row shape of the raw BatchTaskRun keyset scan. Extracted to a named type so the
+// store-selected scan closure and the keyset merge in `#scanBatchTaskRun` can reference it.
+type BatchRow = {
+  id: string;
+  friendlyId: string;
+  runtimeEnvironmentId: string;
+  status: BatchTaskRunStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  completedAt: Date | null;
+  runCount: number;
+  batchVersion: string;
+};
+
 export class BatchListPresenter extends BasePresenter {
+  // Optional run-ops read-routing. Omitted (single-DB / self-host) => everything
+  // reads from `_replica` exactly as today (passthrough). Field names are local to
+  // this presenter; only the read-routing convention (optional handles, default-to-_replica,
+  // boot-constant splitEnabled) is mirrored, not the literal RunsRepositoryOptions names.
+  constructor(
+    prismaClient?: PrismaClientOrTransaction,
+    replicaClient?: PrismaClientOrTransaction,
+    private readonly readRoute?: {
+      runOpsNew?: PrismaClientOrTransaction; // new run-ops client
+      runOpsLegacyReplica?: PrismaClientOrTransaction; // legacy run-ops READ REPLICA only — never the legacy primary
+      controlPlaneReplica?: PrismaClientOrTransaction; // control-plane DB (for project)
+      splitEnabled?: boolean; // resolved boot constant
+    }
+  ) {
+    super(prismaClient, replicaClient);
+  }
+
+  // Control-plane READ handle for the `project` lookup. In single-DB / when omitted this is
+  // `_replica` ⇒ unchanged.
+  get #controlPlaneReplica(): PrismaClientOrTransaction {
+    return this.readRoute?.controlPlaneReplica ?? this._replica;
+  }
+
+  // Run-ops reads for the Batches dashboard. Split on: new run-ops DB first; the LEGACY
+  // RUN-OPS READ REPLICA ONLY for the older not-yet-migrated remainder/empty-state — never the
+  // legacy primary. Split off (single-DB / self-host): one plain `_replica` read (passthrough).
+  // `project` is resolved on the control-plane DB; the environment↔batch join is in-memory (no
+  // cross-seam SQL join).
+  async #scanBatchTaskRun(
+    pageSize: number,
+    direction: Direction,
+    scan: (client: PrismaClientOrTransaction) => Promise<BatchRow[]>
+  ): Promise<BatchRow[]> {
+    if (!this.readRoute?.splitEnabled) {
+      return scan(this._replica);
+    }
+
+    const newRows = await scan(this.readRoute.runOpsNew ?? this._replica);
+
+    // New DB filled the page — skip the legacy read entirely; older rows fall on a later page.
+    if (newRows.length >= pageSize + 1) {
+      return newRows;
+    }
+
+    const legacyRows = await scan(this.readRoute.runOpsLegacyReplica ?? this._replica);
+
+    // De-dupe by id (new wins), re-sort under the page's keyset order, re-apply the over-fetch
+    // LIMIT — reproduces the pageSize+1 window a single union scan would return.
+    const byId = new Map<string, BatchRow>();
+    for (const row of newRows) {
+      byId.set(row.id, row);
+    }
+    for (const row of legacyRows) {
+      if (!byId.has(row.id)) {
+        byId.set(row.id, row);
+      }
+    }
+
+    // codepoint comparator (NEVER localeCompare): BatchTaskRun.id is ASCII (cuid or ksuid).
+    const sign = direction === "forward" ? 1 : -1; // forward => DESC; backward => ASC
+    return Array.from(byId.values())
+      .sort((a, b) => (a.id < b.id ? sign : a.id > b.id ? -sign : 0))
+      .slice(0, pageSize + 1);
+  }
+
+  // Empty-state probe. Split on: probe the new run-ops DB first, then the legacy READ REPLICA only
+  // (never the legacy primary). Split off (single-DB / self-host): one plain `_replica` probe.
+  async #probeAnyBatch(environmentId: string): Promise<boolean> {
+    const onNew = await (this.readRoute?.runOpsNew ?? this._replica).batchTaskRun.findFirst({
+      where: { runtimeEnvironmentId: environmentId },
+    });
+    if (onNew) {
+      return true;
+    }
+
+    if (!this.readRoute?.splitEnabled) {
+      return false;
+    }
+
+    const onLegacy = await (
+      this.readRoute?.runOpsLegacyReplica ?? this._replica
+    ).batchTaskRun.findFirst({
+      where: { runtimeEnvironmentId: environmentId },
+    });
+    return Boolean(onLegacy);
+  }
+
   public async call({
     userId,
     projectId,
@@ -53,8 +154,7 @@ export class BatchListPresenter extends BasePresenter {
 
     const hasFilters = hasStatusFilters || friendlyId !== undefined || !time.isDefault;
 
-    // Find the project scoped to the organization
-    const project = await this._replica.project.findFirstOrThrow({
+    const project = await this.#controlPlaneReplica.project.findFirstOrThrow({
       select: {
         id: true,
         environments: {
@@ -83,66 +183,58 @@ export class BatchListPresenter extends BasePresenter {
 
     const periodMs = time.period ? parse(time.period) : undefined;
 
-    //get the batches
-    const batches = await this._replica.$queryRaw<
-      {
-        id: string;
-        friendlyId: string;
-        runtimeEnvironmentId: string;
-        status: BatchTaskRunStatus;
-        createdAt: Date;
-        updatedAt: Date;
-        completedAt: Date | null;
-        runCount: bigint;
-        batchVersion: string;
-      }[]
-    >`
-    SELECT
-    b.id,
-    b."friendlyId",
-    b."runtimeEnvironmentId",
-    b.status,
-    b."createdAt",
-    b."updatedAt",
-    b."completedAt",
-    b."runCount",
-    b."batchVersion"
-FROM
-    ${sqlDatabaseSchema}."BatchTaskRun" b
-WHERE
-    -- environment
-    b."runtimeEnvironmentId" = ${environmentId}
-    -- cursor
-    ${
-      cursor
-        ? direction === "forward"
-          ? Prisma.sql`AND b.id < ${cursor}`
-          : Prisma.sql`AND b.id > ${cursor}`
-        : Prisma.empty
+    let createdAtGte: Date | undefined;
+    if (periodMs != null) {
+      createdAtGte = new Date(Date.now() - periodMs);
     }
-    -- filters
-    ${friendlyId ? Prisma.sql`AND b."friendlyId" = ${friendlyId}` : Prisma.empty}
-    ${
-      statuses && statuses.length > 0
-        ? Prisma.sql`AND b.status = ANY(ARRAY[${Prisma.join(
-            statuses
-          )}]::"BatchTaskRunStatus"[]) AND b."batchVersion" <> 'v1'`
-        : Prisma.empty
+    if (time.from !== undefined) {
+      createdAtGte =
+        createdAtGte === undefined
+          ? time.from
+          : time.from > createdAtGte
+            ? time.from
+            : createdAtGte;
     }
-    ${
-      periodMs
-        ? Prisma.sql`AND b."createdAt" >= NOW() - INTERVAL '1 millisecond' * ${periodMs}`
-        : Prisma.empty
-    }
-    ${
-      time.from
-        ? Prisma.sql`AND b."createdAt" >= ${time.from.toISOString()}::timestamp`
-        : Prisma.empty
-    }
-    ${time.to ? Prisma.sql`AND b."createdAt" <= ${time.to.toISOString()}::timestamp` : Prisma.empty}
-    ORDER BY
-        ${direction === "forward" ? Prisma.sql`b.id DESC` : Prisma.sql`b.id ASC`}
-    LIMIT ${pageSize + 1}`;
+    const createdAtLte: Date | undefined = time.to;
+
+    const batches = await this.#scanBatchTaskRun(
+      pageSize,
+      direction,
+      (client) =>
+        client.batchTaskRun.findMany({
+          where: {
+            runtimeEnvironmentId: environmentId,
+            ...(cursor
+              ? { id: direction === "forward" ? { lt: cursor } : { gt: cursor } }
+              : {}),
+            ...(friendlyId ? { friendlyId } : {}),
+            ...(statuses && statuses.length > 0
+              ? { status: { in: statuses }, batchVersion: { not: "v1" } }
+              : {}),
+            ...(createdAtGte !== undefined || createdAtLte !== undefined
+              ? {
+                  createdAt: {
+                    ...(createdAtGte !== undefined ? { gte: createdAtGte } : {}),
+                    ...(createdAtLte !== undefined ? { lte: createdAtLte } : {}),
+                  },
+                }
+              : {}),
+          },
+          orderBy: { id: direction === "forward" ? "desc" : "asc" },
+          take: pageSize + 1,
+          select: {
+            id: true,
+            friendlyId: true,
+            runtimeEnvironmentId: true,
+            status: true,
+            createdAt: true,
+            updatedAt: true,
+            completedAt: true,
+            runCount: true,
+            batchVersion: true,
+          },
+        })
+    );
 
     const hasMore = batches.length > pageSize;
 
@@ -174,15 +266,7 @@ WHERE
 
     let hasAnyBatches = batchesToReturn.length > 0;
     if (!hasAnyBatches) {
-      const firstBatch = await this._replica.batchTaskRun.findFirst({
-        where: {
-          runtimeEnvironmentId: environmentId,
-        },
-      });
-
-      if (firstBatch) {
-        hasAnyBatches = true;
-      }
+      hasAnyBatches = await this.#probeAnyBatch(environmentId);
     }
 
     return {

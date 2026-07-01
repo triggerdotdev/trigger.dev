@@ -13,7 +13,6 @@ import { getTaskIdentifiers } from "~/models/task.server";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { regionForDisplay } from "~/runEngine/concerns/workerQueueSplit.server";
 import { machinePresetFromRun } from "~/v3/machinePresets.server";
-import { runStore } from "~/v3/runStore.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { isCancellableRunStatus, isFinalRunStatus, isPendingRunStatus } from "~/v3/taskStatus";
 
@@ -54,8 +53,50 @@ export type NextRunListAppliedFilters = NextRunList["filters"];
 export class NextRunListPresenter {
   constructor(
     private readonly replica: PrismaClientOrTransaction,
-    private readonly clickhouse: ClickHouse
+    private readonly clickhouse: ClickHouse,
+    private readonly readThroughDeps?: {
+      // The new run-ops client + the legacy run-ops read replica (never the legacy writer).
+      // Omitted => single-DB / self-host: both default to `replica` (passthrough).
+      newClient?: PrismaClientOrTransaction;
+      legacyReplica?: PrismaClientOrTransaction;
+      // Resolved boot constant from isSplitEnabled(). When false/absent:
+      // list hydrate runs passthrough and the empty-state probe is one plain findFirst.
+      splitEnabled?: boolean;
+    }
   ) {}
+
+  // Existence probe for the empty-state. run-ops (TaskRun) read.
+  // Split off / single-DB: one plain findFirst on `replica` (passthrough).
+  // Split on: true if a row exists in the NEW run-ops DB OR the LEGACY run-ops
+  // read replica only (never the legacy writer). New first to avoid touching
+  // legacy whenever the new DB already answers.
+  async #anyRunExistsInEnv(environmentId: string): Promise<boolean> {
+    const splitEnabled = this.readThroughDeps?.splitEnabled ?? false;
+
+    if (!splitEnabled) {
+      const firstRun = await this.replica.taskRun.findFirst({
+        where: { runtimeEnvironmentId: environmentId },
+        select: { id: true },
+      });
+      return firstRun !== null;
+    }
+
+    const newClient = this.readThroughDeps?.newClient ?? this.replica;
+    const newRun = await newClient.taskRun.findFirst({
+      where: { runtimeEnvironmentId: environmentId },
+      select: { id: true },
+    });
+    if (newRun) {
+      return true;
+    }
+
+    const legacyReplica = this.readThroughDeps?.legacyReplica ?? this.replica;
+    const legacyRun = await legacyReplica.taskRun.findFirst({
+      where: { runtimeEnvironmentId: environmentId },
+      select: { id: true },
+    });
+    return legacyRun !== null;
+  }
 
   public async call(
     organizationId: string,
@@ -113,10 +154,8 @@ export class NextRunListPresenter {
       rootOnly === true ||
       !time.isDefault;
 
-    //get all possible tasks
     const possibleTasksAsync = getTaskIdentifiers(environmentId);
 
-    //get possible bulk actions
     const bulkActionsAsync = this.replica.bulkActionGroup.findMany({
       select: {
         friendlyId: true,
@@ -168,6 +207,13 @@ export class NextRunListPresenter {
     const runsRepository = new RunsRepository({
       clickhouse: this.clickhouse,
       prisma: this.replica as PrismaClient,
+      readThrough: this.readThroughDeps
+        ? {
+            newClient: this.readThroughDeps.newClient ?? this.replica,
+            legacyReplica: this.readThroughDeps.legacyReplica ?? this.replica,
+            splitEnabled: this.readThroughDeps.splitEnabled ?? false,
+          }
+        : undefined,
     });
 
     function clampToNow(date: Date): Date {
@@ -207,16 +253,7 @@ export class NextRunListPresenter {
     let hasAnyRuns = runs.length > 0;
 
     if (!hasAnyRuns) {
-      const firstRun = await runStore.findRun(
-        {
-          runtimeEnvironmentId: environmentId,
-        },
-        this.replica
-      );
-
-      if (firstRun) {
-        hasAnyRuns = true;
-      }
+      hasAnyRuns = await this.#anyRunExistsInEnv(environmentId);
     }
 
     return {
