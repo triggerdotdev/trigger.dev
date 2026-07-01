@@ -508,15 +508,15 @@ export class BulkActionService extends BaseService {
     });
 
     if (!group) {
-      throw new Error(`Bulk action not found: ${friendlyId}`);
+      throw new ServiceValidationError("Bulk action not found", 404);
     }
 
     if (group.status === BulkActionStatus.COMPLETED) {
-      throw new Error(`Bulk action group already completed: ${friendlyId}`);
+      throw new ServiceValidationError("Bulk action is already completed", 409);
     }
 
     if (group.status === BulkActionStatus.ABORTED) {
-      throw new Error(`Bulk action group already aborted: ${friendlyId}`);
+      throw new ServiceValidationError("Bulk action is already aborted", 409);
     }
 
     //ack the job (this doesn't guarantee it won't run again)

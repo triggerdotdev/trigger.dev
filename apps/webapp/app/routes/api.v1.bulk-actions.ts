@@ -57,10 +57,7 @@ const { action } = createActionApiRoute(
       }
 
       logger.error("Failed to create API bulk action", { error });
-      return json(
-        { error: error instanceof Error ? error.message : "Failed to create bulk action" },
-        { status: 500 }
-      );
+      return json({ error: "Failed to create bulk action" }, { status: 500 });
     }
   }
 );
