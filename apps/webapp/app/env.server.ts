@@ -1606,6 +1606,14 @@ const EnvironmentSchema = z
     BETTERSTACK_API_KEY: z.string().optional(),
     BETTERSTACK_STATUS_PAGE_ID: z.string().optional(),
 
+    // Incident notifications: fan a published status report out over
+    // Slack/email/Discord. Each surface no-ops unless configured; the unsigned
+    // webhook is gated by a shared secret in the URL.
+    INCIDENT_NOTIFY_ENABLED: z.string().default("0"),
+    BETTERSTACK_INCIDENT_WEBHOOK_SECRET: z.string().optional(),
+    INCIDENT_NOTIFY_SLACK_CHANNEL_PREFIX: z.string().optional(),
+    INCIDENT_NOTIFY_DISCORD_WEBHOOK_URL: z.string().optional(),
+
     RUN_REPLICATION_REDIS_HOST: z
       .string()
       .optional()
@@ -2010,6 +2018,14 @@ const EnvironmentSchema = z
   .and(GithubAppEnvSchema)
   .and(S2EnvSchema)
   .superRefine((env, ctx) => {
+    if (env.INCIDENT_NOTIFY_ENABLED === "1" && !env.BETTERSTACK_INCIDENT_WEBHOOK_SECRET) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["BETTERSTACK_INCIDENT_WEBHOOK_SECRET"],
+        message: "BETTERSTACK_INCIDENT_WEBHOOK_SECRET is required when INCIDENT_NOTIFY_ENABLED=1",
+      });
+    }
+
     const presets = new Set(env.COMPUTE_TEMPLATE_MACHINE_PRESETS);
     for (const required of env.COMPUTE_TEMPLATE_MACHINE_PRESETS_REQUIRED) {
       if (!presets.has(required)) {

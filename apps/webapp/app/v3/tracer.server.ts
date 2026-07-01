@@ -52,6 +52,7 @@ import {
 import { env } from "~/env.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { singleton } from "~/utils/singleton";
+import { redactSensitiveQueryParams } from "~/utils/redactUrl";
 import { LoggerSpanExporter } from "./telemetry/loggerExporter.server";
 import { CompactMetricExporter } from "./telemetry/compactMetricExporter.server";
 import { logger } from "~/services/logger.server";
@@ -309,7 +310,43 @@ function setupTelemetry() {
   ];
 
   if (!env.DISABLE_HTTP_INSTRUMENTATION) {
-    instrumentations.unshift(new HttpInstrumentation(), new ExpressInstrumentation());
+    instrumentations.unshift(
+      new HttpInstrumentation({
+        // Redact credential query params from span URL attributes (both legacy
+        // http.* and stable url.* semconv, in case dual-emit is enabled).
+        applyCustomAttributesOnSpan: (span, request) => {
+          // `url` only exists on incoming requests; narrows to IncomingMessage.
+          if (!("url" in request) || typeof request.url !== "string") {
+            return;
+          }
+
+          const rawTarget = request.url;
+          const redactedTarget = redactSensitiveQueryParams(rawTarget);
+          if (redactedTarget === rawTarget) {
+            return; // nothing sensitive to redact
+          }
+
+          span.setAttribute("http.target", redactedTarget);
+          const queryStart = redactedTarget.indexOf("?");
+          if (queryStart !== -1) {
+            span.setAttribute("url.query", redactedTarget.slice(queryStart + 1));
+          }
+
+          const host = request.headers?.host;
+          if (host) {
+            const forwardedProto = request.headers?.["x-forwarded-proto"];
+            const forwarded = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto;
+            const proto =
+              forwarded?.split(",")[0] ??
+              ((request.socket as { encrypted?: boolean })?.encrypted ? "https" : "http");
+            const redactedUrl = redactSensitiveQueryParams(`${proto}://${host}${rawTarget}`);
+            span.setAttribute("http.url", redactedUrl);
+            span.setAttribute("url.full", redactedUrl);
+          }
+        },
+      }),
+      new ExpressInstrumentation()
+    );
   }
 
   if (env.INTERNAL_OTEL_TRACE_INSTRUMENT_PRISMA_ENABLED === "1") {

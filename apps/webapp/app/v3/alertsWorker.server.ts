@@ -4,9 +4,17 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
+import { NormalizedIncidentUpdateSchema } from "~/services/betterstack/incidentWebhook";
 import { DeliverAlertService } from "./services/alerts/deliverAlert.server";
 import { DeliverErrorGroupAlertService } from "./services/alerts/deliverErrorGroupAlert.server";
 import { ErrorAlertEvaluator } from "./services/alerts/errorAlertEvaluator.server";
+import { deliverIncidentToDiscord } from "./services/alerts/incidentNotifications/deliverDiscord.server";
+import {
+  deliverIncidentEmailPage,
+  deliverIncidentEmailToRecipient,
+} from "./services/alerts/incidentNotifications/deliverEmail.server";
+import { deliverIncidentToSlack } from "./services/alerts/incidentNotifications/deliverSlack.server";
+import { fanoutIncidentNotification } from "./services/alerts/incidentNotifications/fanout.server";
 import { PerformDeploymentAlertsService } from "./services/alerts/performDeploymentAlerts.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
 
@@ -93,6 +101,52 @@ function initializeWorker() {
         },
         logErrors: true,
       },
+      "v3.fanoutIncidentNotification": {
+        schema: NormalizedIncidentUpdateSchema,
+        visibilityTimeoutMs: 30_000,
+        retry: {
+          maxAttempts: 3,
+        },
+        logErrors: true,
+      },
+      "v3.deliverIncidentSlack": {
+        schema: z.object({ update: NormalizedIncidentUpdateSchema }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 3,
+        },
+        logErrors: true,
+      },
+      "v3.deliverIncidentDiscord": {
+        schema: z.object({ update: NormalizedIncidentUpdateSchema }),
+        visibilityTimeoutMs: 30_000,
+        retry: {
+          maxAttempts: 3,
+        },
+        logErrors: true,
+      },
+      "v3.deliverIncidentEmail": {
+        schema: z.object({
+          update: NormalizedIncidentUpdateSchema,
+          cursor: z.string().nullable(),
+        }),
+        visibilityTimeoutMs: 60_000,
+        retry: {
+          maxAttempts: 3,
+        },
+        logErrors: true,
+      },
+      "v3.deliverIncidentEmailRecipient": {
+        schema: z.object({
+          update: NormalizedIncidentUpdateSchema,
+          recipient: z.object({ userId: z.string(), email: z.string() }),
+        }),
+        visibilityTimeoutMs: 30_000,
+        retry: {
+          maxAttempts: 3,
+        },
+        logErrors: true,
+      },
     },
     concurrency: {
       workers: env.ALERTS_WORKER_CONCURRENCY_WORKERS,
@@ -125,6 +179,21 @@ function initializeWorker() {
       "v3.deliverErrorGroupAlert": async ({ payload }) => {
         const service = new DeliverErrorGroupAlertService();
         await service.call(payload);
+      },
+      "v3.fanoutIncidentNotification": async ({ payload }) => {
+        await fanoutIncidentNotification(payload);
+      },
+      "v3.deliverIncidentSlack": async ({ payload }) => {
+        await deliverIncidentToSlack(payload.update);
+      },
+      "v3.deliverIncidentDiscord": async ({ payload }) => {
+        await deliverIncidentToDiscord(payload.update);
+      },
+      "v3.deliverIncidentEmail": async ({ payload }) => {
+        await deliverIncidentEmailPage(payload);
+      },
+      "v3.deliverIncidentEmailRecipient": async ({ payload }) => {
+        await deliverIncidentEmailToRecipient(payload);
       },
     },
   });

@@ -24,6 +24,32 @@ const WORKERS =
 const HTTP_KEEPALIVE_TIMEOUT_MS =
   Number.parseInt(process.env.HTTP_KEEPALIVE_TIMEOUT_MS || "", 10) || 65 * 1000;
 
+// Local copy of app/utils/redactUrl.ts — server.ts is built without bundling or
+// `~` alias resolution, so it can't import app modules. Keep in sync.
+const SENSITIVE_QUERY_PARAMS = ["token", "secret", "access_token", "api_key"];
+
+function redactSensitiveQueryParams(url: string): string {
+  const queryStart = url.indexOf("?");
+  if (queryStart === -1) {
+    return url;
+  }
+
+  try {
+    const params = new URLSearchParams(url.slice(queryStart + 1));
+    let didRedact = false;
+    for (const key of SENSITIVE_QUERY_PARAMS) {
+      if (params.has(key)) {
+        params.set(key, "[redacted]");
+        didRedact = true;
+      }
+    }
+    return didRedact ? `${url.slice(0, queryStart)}?${params.toString()}` : url;
+  } catch {
+    // Never let redaction (or a malformed query) break request handling.
+    return url;
+  }
+}
+
 function forkWorkers() {
   for (let i = 0; i < WORKERS; i++) {
     cluster.fork();
@@ -116,6 +142,10 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
   // log dominates log volume. HTTP_ACCESS_LOG_DISABLED suppresses successful
   // (2xx) access logs; non-2xx responses are always logged so errors stay visible.
   const suppressSuccessfulAccessLogs = process.env.HTTP_ACCESS_LOG_DISABLED === "1";
+  // Redact credential query params from the access log :url.
+  morgan.token("url", (req: express.Request) =>
+    redactSensitiveQueryParams(req.originalUrl || req.url)
+  );
   app.use(
     morgan("tiny", {
       skip: (_req, res) =>
@@ -168,7 +198,13 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
       res.on("close", () => abortController.abort());
 
       runWithHttpContext(
-        { requestId, path: req.url, host: req.hostname, method: req.method, abortController },
+        {
+          requestId,
+          path: redactSensitiveQueryParams(req.url),
+          host: req.hostname,
+          method: req.method,
+          abortController,
+        },
         next
       );
     });

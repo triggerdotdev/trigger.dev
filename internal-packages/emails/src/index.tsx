@@ -20,6 +20,9 @@ import MfaDisabledEmail, { MfaDisabledEmailSchema } from "../emails/mfa-disabled
 import BulkActionCompletedEmail, {
   BulkActionCompletedEmailSchema,
 } from "../emails/bulk-action-complete";
+import IncidentNotificationEmail, {
+  IncidentNotificationEmailSchema,
+} from "../emails/incident-notification";
 
 export { type MailTransportOptions };
 
@@ -38,6 +41,7 @@ export const DeliverEmailSchema = z
     MfaEnabledEmailSchema,
     MfaDisabledEmailSchema,
     BulkActionCompletedEmailSchema,
+    IncidentNotificationEmailSchema,
   ])
   .and(z.object({ to: z.string() }));
 
@@ -156,6 +160,12 @@ export class EmailClient {
         return {
           subject: `Bulk action finished`,
           component: <BulkActionCompletedEmail {...data} />,
+        };
+      }
+      case "incident-notification": {
+        return {
+          subject: `[Trigger.dev ${data.statusLabel}] ${data.name}`,
+          component: <IncidentNotificationEmail {...data} />,
         };
       }
     }
