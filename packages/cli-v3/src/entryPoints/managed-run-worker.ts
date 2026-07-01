@@ -34,6 +34,7 @@ import {
   realtimeStreams,
   inputStreams,
   sessionStreams,
+  resetIdempotencyKeyCatalog,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
 import {
@@ -350,6 +351,7 @@ function resetExecutionEnvironment() {
   taskContext.disable();
   standardTraceContextManager.reset();
   standardHeartbeatsManager.reset();
+  resetIdempotencyKeyCatalog();
 
   // Wait for all streams to finish before completing the run
   waitUntil.register({

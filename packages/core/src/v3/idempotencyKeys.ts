@@ -38,6 +38,17 @@ export function getIdempotencyKeyOptions(
   return undefined;
 }
 
+/**
+ * Clears the in-process idempotency key catalog.
+ *
+ * The catalog maps an idempotency-key hash back to its original key and scope so
+ * the SDK can attach that metadata when triggering. The worker calls this at each
+ * run boundary so the mapping does not accumulate across warm-start runs.
+ */
+export function resetIdempotencyKeyCatalog(): void {
+  idempotencyKeyCatalog.clear();
+}
+
 export function isIdempotencyKey(
   value: string | string[] | IdempotencyKey
 ): value is IdempotencyKey {

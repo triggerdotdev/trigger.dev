@@ -8,4 +8,5 @@ export type IdempotencyKeyOptions = {
 export interface IdempotencyKeyCatalog {
   registerKeyOptions(hash: string, options: IdempotencyKeyOptions): void;
   getKeyOptions(hash: string): IdempotencyKeyOptions | undefined;
+  clear(): void;
 }
