@@ -425,7 +425,7 @@ export class RedisRealtimeStreams implements StreamIngestor, StreamResponder {
         }
 
         // Search through this batch for the client's last chunk
-        for (const [id, fields] of entries) {
+        for (const [_id, fields] of entries) {
           let entryClientId: string | null = null;
           let chunkIndex: number | null = null;
           let data: string | null = null;

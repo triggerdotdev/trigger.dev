@@ -201,8 +201,8 @@ function ReplayForm({
   });
   const {
     environment,
-    payload,
-    metadata,
+    payload: _payload,
+    metadata: _metadata,
     delaySeconds,
     ttlSeconds,
     idempotencyKey,

@@ -729,7 +729,7 @@ export class TriggerTaskServiceV1 extends BaseService {
         return packet;
       }
 
-      const { needsOffloading, size } = packetRequiresOffloading(
+      const { needsOffloading, size: _size } = packetRequiresOffloading(
         packet,
         env.TASK_PAYLOAD_OFFLOAD_THRESHOLD
       );

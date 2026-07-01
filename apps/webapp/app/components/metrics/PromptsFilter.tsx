@@ -20,7 +20,7 @@ interface PromptsFilterProps {
 }
 
 export function PromptsFilter({ possiblePrompts }: PromptsFilterProps) {
-  const { values, replace, del } = useSearchParams();
+  const { values, replace: _replace, del } = useSearchParams();
   const selectedPrompts = values("prompts");
 
   if (selectedPrompts.length === 0 || selectedPrompts.every((v) => v === "")) {

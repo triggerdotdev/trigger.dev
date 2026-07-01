@@ -69,7 +69,7 @@ const { action, loader } = createActionApiRoute(
       traceparent,
       tracestate,
       "x-trigger-worker": isFromWorker,
-      "x-trigger-client": triggerClient,
+      "x-trigger-client": _triggerClient,
       "x-trigger-engine-version": engineVersion,
       "x-trigger-request-idempotency-key": requestIdempotencyKey,
       "x-trigger-realtime-streams-version": realtimeStreamsVersion,

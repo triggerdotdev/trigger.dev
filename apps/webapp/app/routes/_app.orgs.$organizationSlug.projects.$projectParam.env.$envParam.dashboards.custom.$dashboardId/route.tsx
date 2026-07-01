@@ -185,7 +185,7 @@ export default function Page() {
     isAdmin,
     maxRows,
     possibleTasks,
-    widgetCount: initialWidgetCount,
+    widgetCount: _initialWidgetCount,
   } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();

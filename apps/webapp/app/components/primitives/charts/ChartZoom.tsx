@@ -36,7 +36,7 @@ export type ChartZoomProps = {
  * ```
  */
 export function ChartZoom({ syncWithDateRange = false, minDataPoints = 3 }: ChartZoomProps) {
-  const { zoom, data, dataKey, onZoomChange } = useChartContext();
+  const { zoom, data: _data, dataKey: _dataKey, onZoomChange: _onZoomChange } = useChartContext();
   const _globalDateRange = useDateRange();
 
   if (!zoom) {

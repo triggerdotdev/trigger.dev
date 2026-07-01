@@ -25,7 +25,7 @@ import { appliedSummary, FilterMenuProvider } from "~/components/runs/v3/SharedF
 const shortcut = { key: "q" };
 
 export function QueuesFilter() {
-  const { values, replace, del } = useSearchParams();
+  const { values, replace: _replace, del } = useSearchParams();
   const selectedQueues = values("queues");
 
   if (selectedQueues.length === 0 || selectedQueues.every((v) => v === "")) {

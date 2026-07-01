@@ -120,7 +120,7 @@ export function VercelOnboardingModal({
   const fetcher = useTypedFetcher<typeof loader>();
   const envMappingFetcher = useFetcher();
   const completeOnboardingFetcher = useFetcher();
-  const { Form: CompleteOnboardingForm } = completeOnboardingFetcher;
+  const { Form: _CompleteOnboardingForm } = completeOnboardingFetcher;
   const [searchParams] = useSearchParams();
   const origin = searchParams.get("origin");
   const fromMarketplaceContext = origin === "marketplace";

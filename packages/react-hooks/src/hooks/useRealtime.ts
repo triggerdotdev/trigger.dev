@@ -805,7 +805,7 @@ function useRealtimeStreamImplementation<TPart>(
   }, [parts]);
 
   // Add state to track when the subscription is complete
-  const { data: isComplete = false, mutate: setIsComplete } = useSWR<boolean>(
+  const { data: _isComplete = false, mutate: setIsComplete } = useSWR<boolean>(
     [idKey, runId, streamKey, "complete"],
     null
   );

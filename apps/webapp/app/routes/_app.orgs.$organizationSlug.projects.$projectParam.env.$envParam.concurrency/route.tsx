@@ -84,7 +84,7 @@ export const meta: MetaFunction = () => {
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+  const { organizationSlug, projectParam, envParam: _envParam } = EnvironmentParamSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {

@@ -19,7 +19,8 @@
         "varsIgnorePattern": "^_",
         "caughtErrors": "all",
         "caughtErrorsIgnorePattern": "^_",
-        "destructuredArrayIgnorePattern": "^_"
+        "destructuredArrayIgnorePattern": "^_",
+        "ignoreRestSiblings": true
       }
     ],
     "no-empty-pattern": "off",

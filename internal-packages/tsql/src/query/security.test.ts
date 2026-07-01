@@ -154,7 +154,7 @@ describe("Cross-Tenant Security", () => {
     });
 
     it("should not allow accessing other tenant's data via explicit condition", () => {
-      const { sql, params } = compile(
+      const { sql: _sql, params } = compile(
         "SELECT * FROM task_runs WHERE organization_id = 'org_other_tenant'"
       );
 
@@ -230,21 +230,21 @@ describe("SQL Injection Prevention", () => {
     });
 
     it("should handle quote escape attempts", () => {
-      const { sql, params } = compile("SELECT * FROM task_runs WHERE status = 'test''injection'");
+      const { sql: _sql, params } = compile("SELECT * FROM task_runs WHERE status = 'test''injection'");
 
       // Should be safely parameterized
       expect(Object.values(params).some((v) => typeof v === "string")).toBe(true);
     });
 
     it("should handle backslash escape attempts", () => {
-      const { sql, params } = compile("SELECT * FROM task_runs WHERE status = 'test\\'injection'");
+      const { sql, params: _params } = compile("SELECT * FROM task_runs WHERE status = 'test\\'injection'");
 
       // Should be safely parameterized
       expect(sql).not.toContain("injection'");
     });
 
     it("should handle unicode characters in strings", () => {
-      const { sql, params } = compile("SELECT * FROM task_runs WHERE status = 'test™injection'");
+      const { sql: _sql, params } = compile("SELECT * FROM task_runs WHERE status = 'test™injection'");
 
       // Should be safely parameterized
       expect(Object.values(params).some((v) => typeof v === "string")).toBe(true);

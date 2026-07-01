@@ -96,7 +96,7 @@ export function DateField({
   }, [defaultValue]);
 
   const ref = useRef<null | HTMLDivElement>(null);
-  const { labelProps, fieldProps } = useDateField(
+  const { labelProps: _labelProps, fieldProps } = useDateField(
     {
       label,
     },

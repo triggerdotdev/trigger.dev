@@ -31,7 +31,7 @@ interface LogsTaskFilterProps {
 }
 
 export function LogsTaskFilter({ possibleTasks }: LogsTaskFilterProps) {
-  const { values, replace, del } = useSearchParams();
+  const { values, replace: _replace, del } = useSearchParams();
   const selectedTasks = values("tasks");
 
   if (selectedTasks.length === 0 || selectedTasks.every((v) => v === "")) {

@@ -146,7 +146,7 @@ function TreeViewParent({
 
   const {
     nodes,
-    selected,
+    selected: _selected,
     getTreeProps,
     getNodeProps,
     toggleNodeSelection,
@@ -154,7 +154,7 @@ function TreeViewParent({
     selectNode,
     selectFirstVisibleNode,
     selectLastVisibleNode,
-    scrollToNode,
+    scrollToNode: _scrollToNode,
     virtualizer,
   } = useTree({
     tree,

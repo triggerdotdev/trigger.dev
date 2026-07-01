@@ -67,7 +67,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404, statusText: "Organization not found" });
   }
 
-  const [error, regions] = await tryCatch(getPrivateLinkRegions(organization.id));
+  const [_error, regions] = await tryCatch(getPrivateLinkRegions(organization.id));
 
   const awsAccountIds = env.PRIVATE_CONNECTIONS_AWS_ACCOUNT_IDS?.split(",").filter(Boolean) ?? [];
 

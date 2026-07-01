@@ -84,7 +84,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     promptVersions,
     operations,
     providers,
-    tags,
+    tags: _tags,
   } = submission.data;
 
   // Check they should be able to access it

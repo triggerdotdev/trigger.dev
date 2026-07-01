@@ -155,7 +155,7 @@ describe("RunsReplicationService (part 1/7)", () => {
         logLevel: "warn",
       });
 
-      const { tracer, exporter } = createInMemoryTracing();
+      const { tracer, exporter: _exporter } = createInMemoryTracing();
 
       const runsReplicationService = new RunsReplicationService({
         clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),

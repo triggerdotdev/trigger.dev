@@ -374,7 +374,7 @@ export class Database {
     // This is a skeleton structure - adapt to your setup
 
     const timings = options?.timings || new TSQLTimingsClass();
-    const { team, modifiers } = options || {};
+    const { team, modifiers: _modifiers } = options || {};
 
     // Validate team/teamId
     if (!teamId && !team) {

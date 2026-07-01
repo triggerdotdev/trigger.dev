@@ -955,7 +955,7 @@ function normalizeApiUrlForBuild(apiUrl: string): string {
 function getHostIP() {
   const interfaces = networkInterfaces();
 
-  for (const [name, iface] of Object.entries(interfaces)) {
+  for (const [_name, iface] of Object.entries(interfaces)) {
     if (!iface) {
       continue;
     }

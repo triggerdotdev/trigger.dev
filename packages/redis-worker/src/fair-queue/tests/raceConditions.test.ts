@@ -389,7 +389,7 @@ describe("Race Condition Tests", () => {
 
         // Verify no duplicates
         expect(duplicateDetected).toBe(false);
-        for (const [msgId, count] of processedMessages) {
+        for (const [_msgId, count] of processedMessages) {
           expect(count).toBe(1);
         }
 
@@ -867,7 +867,7 @@ describe("Race Condition Tests", () => {
         await queue.stop();
 
         // Verify retry sequence for each message
-        for (const [msgId, attempts] of processedAttempts) {
+        for (const [_msgId, attempts] of processedAttempts) {
           expect(attempts).toContain(1);
           expect(attempts).toContain(2);
           expect(attempts).toContain(3);

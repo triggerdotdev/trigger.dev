@@ -33,7 +33,7 @@ describe("streams.pipe consistency", () => {
     const mockStream = new ReadableStream();
 
     // This should not throw anymore
-    const { waitUntilComplete } = streams.pipe("test-key", mockStream, {
+    const { waitUntilComplete: _waitUntilComplete } = streams.pipe("test-key", mockStream, {
       target: "root",
     });
 
@@ -50,7 +50,7 @@ describe("streams.pipe consistency", () => {
     const mockStream = new ReadableStream();
 
     // This should not throw anymore
-    const { waitUntilComplete } = streams.pipe("test-key", mockStream, {
+    const { waitUntilComplete: _waitUntilComplete } = streams.pipe("test-key", mockStream, {
       target: "parent",
     });
 

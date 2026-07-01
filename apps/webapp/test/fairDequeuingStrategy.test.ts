@@ -420,13 +420,13 @@ describe("FairDequeuingStrategy", () => {
       expect(firstPositionStdDevEnvs).toBeLessThan(5); // Allow 5% standard deviation for envs
 
       // Verify that each org and env gets a fair chance at first position
-      for (const [orgId, stats] of Object.entries(orgStats)) {
+      for (const [_orgId, stats] of Object.entries(orgStats)) {
         const firstPositionPercentage = (stats.firstPosition / iterations) * 100;
         expect(firstPositionPercentage).toBeGreaterThan(expectedFirstPositionPercentage * 0.7); // Within 30% of expected
         expect(firstPositionPercentage).toBeLessThan(expectedFirstPositionPercentage * 1.3);
       }
 
-      for (const [envId, stats] of Object.entries(envStats)) {
+      for (const [_envId, stats] of Object.entries(envStats)) {
         const firstPositionPercentage = (stats.firstPosition / iterations) * 100;
         expect(firstPositionPercentage).toBeGreaterThan(expectedEnvFirstPositionPercentage * 0.7); // Within 30% of expected
         expect(firstPositionPercentage).toBeLessThan(expectedEnvFirstPositionPercentage * 1.3);

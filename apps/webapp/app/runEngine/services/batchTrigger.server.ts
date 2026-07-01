@@ -84,7 +84,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         "call()",
         environment,
         async (span) => {
-          const { id, friendlyId } = BatchId.generate();
+          const { id: _id, friendlyId } = BatchId.generate();
 
           span.setAttribute("batchId", friendlyId);
 

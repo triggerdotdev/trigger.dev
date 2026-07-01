@@ -85,7 +85,7 @@ export const postgresContainer = async (
   { network, task }: { network: StartedNetwork } & TestContext,
   use: Use<StartedPostgreSqlContainer>
 ) => {
-  const { container, metadata } = await withContainerSetup({
+  const { container, metadata: _metadata } = await withContainerSetup({
     name: "postgresContainer",
     task,
     setup: createPostgresContainer(network),
@@ -262,7 +262,7 @@ export const redisContainer = async (
   { network, task }: { network: StartedNetwork } & TestContext,
   use: Use<StartedRedisContainer>
 ) => {
-  const { container, metadata } = await withContainerSetup({
+  const { container, metadata: _metadata } = await withContainerSetup({
     name: "redisContainer",
     task,
     setup: createRedisContainer({
@@ -370,7 +370,7 @@ const electricOrigin = async (
   }: { postgresContainer: StartedPostgreSqlContainer; network: StartedNetwork } & TestContext,
   use: Use<string>
 ) => {
-  const { origin, container, metadata } = await withContainerSetup({
+  const { origin, container, metadata: _metadata } = await withContainerSetup({
     name: "electricContainer",
     task,
     setup: createElectricContainer(postgresContainer, network),
@@ -383,7 +383,7 @@ const clickhouseContainer = async (
   { network, task }: { network: StartedNetwork } & TestContext,
   use: Use<StartedClickHouseContainer>
 ) => {
-  const { container, metadata } = await withContainerSetup({
+  const { container, metadata: _metadata } = await withContainerSetup({
     name: "clickhouseContainer",
     task,
     setup: createClickHouseContainer(network),

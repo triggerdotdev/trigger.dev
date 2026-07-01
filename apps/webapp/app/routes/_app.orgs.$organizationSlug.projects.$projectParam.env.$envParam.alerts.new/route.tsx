@@ -230,7 +230,7 @@ export default function Page() {
     navigation.formMethod === "post" &&
     navigation.formData?.get("action") === "create";
 
-  const [form, { channelValue, alertTypes, environmentTypes, type, integrationId }] = useForm({
+  const [form, { channelValue, alertTypes, environmentTypes, type, integrationId: _integrationId }] = useForm({
     id: "create-alert",
     // TODO: type this
     lastResult: lastSubmission as any,

@@ -143,7 +143,7 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export function MfaSetup({ isEnabled }: { isEnabled: boolean }) {
-  const { state, actions, isQrDialogOpen, isRecoveryDialogOpen, isDisableDialogOpen } =
+  const { state, actions, isQrDialogOpen, isRecoveryDialogOpen: _isRecoveryDialogOpen, isDisableDialogOpen } =
     useMfaSetup(isEnabled);
 
   const handleToggle = (enabled: boolean) => {

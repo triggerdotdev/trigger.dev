@@ -355,7 +355,7 @@ export class ModelRegistryPresenter extends BasePresenter {
     // and nest the rest as variants
     const baseModels: ModelCatalogItem[] = [];
 
-    for (const [groupKey, group] of variantGroups) {
+    for (const [_groupKey, group] of variantGroups) {
       if (group.length === 1) {
         // Standalone model, no variants
         baseModels.push(group[0]);

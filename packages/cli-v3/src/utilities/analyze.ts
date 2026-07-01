@@ -51,7 +51,7 @@ export function printBundleTree(
   const outputDefinesTaskIds = buildOutputDefinesTaskIdsMap(workerManifest, metafile);
 
   for (const item of data) {
-    const { filePath, taskIds, bundleSize, bundleChildren, timing } = item;
+    const { filePath, taskIds, bundleSize: _bundleSize, bundleChildren, timing } = item;
 
     // Print the root
     const displayPath = getDisplayPath(filePath, preservePath);

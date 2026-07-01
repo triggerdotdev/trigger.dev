@@ -269,7 +269,7 @@ function SpanBody({
   const _organization = useOrganization();
   const _project = useProject();
   const _environment = useEnvironment();
-  const { value, replace } = useSearchParams();
+  const { value, replace: _replace } = useSearchParams();
   let tab = value("tab");
 
   if (tab === "context") {

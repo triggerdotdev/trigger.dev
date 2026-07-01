@@ -83,7 +83,7 @@ export function ChartLineRenderer({
     config,
     data,
     dataKey,
-    dataKeys,
+    dataKeys: _dataKeys,
     visibleSeries,
     state,
     highlight,
