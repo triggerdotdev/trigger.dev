@@ -4,6 +4,7 @@ import type {
   SsoCompleteError,
   SsoController,
   SsoDecisionError,
+  SsoFlow,
   SsoMutationError,
   SsoPortalError,
   SsoProfile,

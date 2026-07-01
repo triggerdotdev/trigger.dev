@@ -26,7 +26,6 @@ import { TSQLParseTreeConverter } from "./query/parser.js";
 import { printToClickHouse, type PrintResult } from "./query/printer.js";
 import {
   createPrinterContext,
-  type BetweenCondition,
   type QuerySettings,
   type SimpleComparisonCondition,
   type TimeRange,

@@ -7,7 +7,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import type { BatchTaskRunStatus, RuntimeEnvironment } from "@trigger.dev/database";
+import type { BatchTaskRunStatus } from "@trigger.dev/database";
 import { type ReactNode, useCallback, useRef, useState } from "react";
 import { z } from "zod";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";

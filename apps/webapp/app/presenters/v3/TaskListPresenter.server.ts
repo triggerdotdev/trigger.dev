@@ -10,7 +10,6 @@ import {
   ClickHouseEnvironmentMetricsRepository,
   type CurrentRunningStats,
   type DailyTaskActivity,
-  type EnvironmentMetricsRepository,
 } from "~/services/environmentMetricsRepository.server";
 import { singleton } from "~/utils/singleton";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";

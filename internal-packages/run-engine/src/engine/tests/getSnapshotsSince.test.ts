@@ -6,7 +6,6 @@ import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js
 import { setTimeout } from "node:timers/promises";
 import {
   generateTestScenarios,
-  type SnapshotTestScenario,
 } from "./helpers/executionStateMachine.js";
 import {
   createWaitpointsWithOutput,

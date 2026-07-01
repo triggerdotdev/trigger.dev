@@ -51,7 +51,6 @@ import {
   type MollifierGetBuffer,
 } from "~/v3/mollifier/mollifierBuffer.server";
 import { mollifyTrigger } from "~/v3/mollifier/mollifierMollify.server";
-import { type MollifierBuffer } from "@trigger.dev/redis-worker";
 import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
 import { runStore } from "~/v3/runStore.server";
 

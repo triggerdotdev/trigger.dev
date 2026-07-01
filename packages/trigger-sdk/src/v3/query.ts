@@ -1,8 +1,6 @@
 import type {
   ApiRequestOptions,
   Prettify,
-  QueryExecuteResponseBody,
-  QueryExecuteCSVResponseBody,
 } from "@trigger.dev/core/v3";
 import { apiClientManager, mergeRequestOptions } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";

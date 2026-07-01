@@ -1,4 +1,3 @@
-import type { Decimal } from "@trigger.dev/database";
 
 export type PricingCondition = {
   usageDetailPattern: string;

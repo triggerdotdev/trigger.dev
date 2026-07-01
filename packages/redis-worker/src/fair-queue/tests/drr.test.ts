@@ -1,6 +1,6 @@
 import { describe, expect } from "vitest";
 import { redisTest } from "@internal/testcontainers";
-import { createRedisClient, type Redis } from "@internal/redis";
+import { createRedisClient } from "@internal/redis";
 import { DRRScheduler } from "../schedulers/drr.js";
 import { DefaultFairQueueKeyProducer } from "../keyProducer.js";
 import type { FairQueueKeyProducer, SchedulerContext } from "../types.js";

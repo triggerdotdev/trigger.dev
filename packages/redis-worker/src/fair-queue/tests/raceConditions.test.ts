@@ -15,7 +15,6 @@ import type {
   FairQueueKeyProducer,
   FairQueueOptions,
   QueueDescriptor,
-  StoredMessage,
 } from "../types.js";
 import { createRedisClient, type RedisOptions } from "@internal/redis";
 

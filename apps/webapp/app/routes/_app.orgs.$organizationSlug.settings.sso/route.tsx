@@ -6,7 +6,7 @@ import {
   LockClosedIcon,
 } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
-import { redirect, type ActionFunctionArgs } from "@remix-run/server-runtime";
+import { redirect } from "@remix-run/server-runtime";
 import { useEffect, useState } from "react";
 import { useFetcher, useRevalidator } from "@remix-run/react";
 import { z } from "zod";

@@ -16,7 +16,6 @@ import { setInterval, setTimeout } from "node:timers/promises";
 import { BatchQueue } from "../batch-queue/index.js";
 import type {
   BatchItem,
-  CompleteBatchResult,
   InitializeBatchOptions,
   ProcessBatchItemCallback,
   BatchCompletionCallback,

@@ -1,4 +1,4 @@
-import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
+import { createRedisClient, type Redis } from "@internal/redis";
 import { SpanKind, type Span } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { nanoid } from "nanoid";
@@ -16,7 +16,6 @@ import {
   BatchedSpanManager,
 } from "./telemetry.js";
 import type {
-  ConcurrencyGroupConfig,
   DeadLetterMessage,
   DispatchSchedulerContext,
   EnqueueBatchOptions,

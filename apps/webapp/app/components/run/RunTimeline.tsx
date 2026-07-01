@@ -1,5 +1,4 @@
 import { ClockIcon } from "@heroicons/react/20/solid";
-import type { SpanEvent } from "@trigger.dev/core/v3";
 import {
   formatDuration,
   millisecondsToNanoseconds,

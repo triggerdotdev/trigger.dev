@@ -1,6 +1,6 @@
 import { ClickHouse } from "@internal/clickhouse";
 import { replicationContainerTest } from "@internal/testcontainers";
-import { fork, type ChildProcess } from "node:child_process";
+import { fork } from "node:child_process";
 import { performance, PerformanceObserver } from "node:perf_hooks";
 import { setTimeout } from "node:timers/promises";
 import path from "node:path";

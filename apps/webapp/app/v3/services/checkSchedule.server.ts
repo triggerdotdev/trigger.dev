@@ -4,7 +4,7 @@ import { BaseService, ServiceValidationError } from "./baseService.server";
 import { getLimit } from "~/services/platform.v3.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { env } from "~/env.server";
-import { type PrismaClientOrTransaction, type RuntimeEnvironmentType } from "@trigger.dev/database";
+import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 
 type Schedule = {
   cron: string;

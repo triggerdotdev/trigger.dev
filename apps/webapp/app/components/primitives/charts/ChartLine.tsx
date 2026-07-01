@@ -11,10 +11,8 @@ import {
   type YAxisProps,
 } from "recharts";
 import {
-  type ChartConfig,
   ChartTooltip,
   ChartTooltipContent,
-  type ChartState,
 } from "~/components/primitives/charts/Chart";
 import { ChartLineLoading, ChartLineNoData, ChartLineInvalid } from "./ChartLoading";
 import { useChartContext } from "./ChartContext";
@@ -22,7 +20,6 @@ import { ChartRoot, useHasNoData } from "./ChartRoot";
 import { defaultYAxisTickFormatter, useYAxisWidth } from "./useYAxisWidth";
 import { CHART_MARGIN } from "./ChartBar";
 // Legend is now rendered by ChartRoot outside the chart container
-import type { ZoomRange } from "./hooks/useZoomSelection";
 
 type CurveType =
   | "basis"

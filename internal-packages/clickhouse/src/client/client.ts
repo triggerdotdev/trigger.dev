@@ -4,8 +4,6 @@ import {
   ClickHouseLogLevel,
   type ClickHouseSettings,
   createClient,
-  type ResultSet,
-  type Row,
   type BaseQueryParams,
   type InsertResult,
 } from "@clickhouse/client";

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { parseTSQLSelect, parseTSQLExpr, compileTSQL } from "../index.js";
 import { ClickHousePrinter, printToClickHouse, type PrintResult } from "./printer.js";
 import { createPrinterContext, PrinterContext } from "./printer_context.js";
-import { createSchemaRegistry, column, type TableSchema, type SchemaRegistry } from "./schema.js";
+import { createSchemaRegistry, column, type TableSchema } from "./schema.js";
 import type { BucketThreshold } from "./time_buckets.js";
 import { QueryError, SyntaxError } from "./errors.js";
 
