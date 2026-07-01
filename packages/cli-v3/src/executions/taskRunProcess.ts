@@ -1,26 +1,10 @@
-import type {
-  CompletedWaitpoint,
-  MachinePresetResources,
-  ServerBackgroundWorker,
-  TaskRunExecution,
-  TaskRunExecutionPayload,
-  TaskRunExecutionResult,
-  WorkerManifest} from "@trigger.dev/core/v3";
-import {
-  attemptKey,
-  ExecutorToWorkerMessageCatalog,
-  TaskRunErrorCodes,
-  type TaskRunInternalError,
-  tryCatch,
-  WorkerToExecutorMessageCatalog,
-} from "@trigger.dev/core/v3";
+import { type CompletedWaitpoint, type MachinePresetResources, type ServerBackgroundWorker, type TaskRunExecution, type TaskRunExecutionPayload, type TaskRunExecutionResult, type WorkerManifest, attemptKey, ExecutorToWorkerMessageCatalog, TaskRunErrorCodes, type TaskRunInternalError, tryCatch, WorkerToExecutorMessageCatalog } from "@trigger.dev/core/v3";
 import {
   type WorkerToExecutorProcessConnection,
   ZodIpcConnection,
 } from "@trigger.dev/core/v3/zodIpc";
 import { Evt } from "evt";
-import type { ChildProcess} from "node:child_process";
-import { fork } from "node:child_process";
+import { type ChildProcess, fork } from "node:child_process";
 import { chalkError, chalkGrey, chalkRun, prettyPrintDate } from "../utilities/cliOutput.js";
 
 import { execOptionsForRuntime, execPathForRuntime } from "@trigger.dev/core/v3/build";

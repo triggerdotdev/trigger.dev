@@ -1,18 +1,5 @@
-import type { Redis} from "@internal/redis";
-import { createRedisClient, type RedisOptions } from "@internal/redis";
-import type {
-  Attributes,
-  Histogram,
-  Meter,
-  ObservableResult,
-  Tracer} from "@internal/tracing";
-import {
-  metrics,
-  SpanKind,
-  startSpan,
-  trace,
-  ValueType,
-} from "@internal/tracing";
+import { type Redis, createRedisClient, type RedisOptions } from "@internal/redis";
+import { type Attributes, type Histogram, type Meter, type ObservableResult, type Tracer, metrics, SpanKind, startSpan, trace, ValueType } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { calculateNextRetryDelay } from "@trigger.dev/core/v3";
 import { type RetryOptions } from "@trigger.dev/core/v3/schemas";
@@ -20,8 +7,7 @@ import { shutdownManager } from "@trigger.dev/core/v3/serverOnly";
 import { nanoid } from "nanoid";
 import pLimit from "p-limit";
 import { z } from "zod";
-import type { AnyQueueItem} from "./queue.js";
-import { SimpleQueue } from "./queue.js";
+import { type AnyQueueItem, SimpleQueue } from "./queue.js";
 import { parseExpression } from "cron-parser";
 
 export const CronSchema = z.object({

@@ -1,5 +1,4 @@
-import type { Redis} from "@internal/redis";
-import { createRedisClient, type RedisOptions } from "@internal/redis";
+import { type Redis, createRedisClient, type RedisOptions } from "@internal/redis";
 import { startSpan, type Tracer } from "@internal/tracing";
 import {
   createCache,

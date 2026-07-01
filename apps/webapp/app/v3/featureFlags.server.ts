@@ -1,11 +1,6 @@
 import { type z } from "zod";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";
-import type {
-  FeatureFlagCatalogSchema} from "~/v3/featureFlags";
-import {
-  type FeatureFlagKey,
-  FeatureFlagCatalog
-} from "~/v3/featureFlags";
+import { type FeatureFlagCatalogSchema, type FeatureFlagKey, FeatureFlagCatalog } from "~/v3/featureFlags";
 
 export type FlagsOptions<T extends FeatureFlagKey> = {
   key: T;

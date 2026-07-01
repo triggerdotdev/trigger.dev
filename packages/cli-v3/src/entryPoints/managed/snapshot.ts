@@ -1,6 +1,5 @@
 import { assertExhaustive,tryCatch } from "@trigger.dev/core/utils";
-import type { TaskRunExecutionStatus} from "@trigger.dev/core/v3";
-import {type RunExecutionData } from "@trigger.dev/core/v3";
+import { type TaskRunExecutionStatus, type RunExecutionData } from "@trigger.dev/core/v3";
 import type { RunLogger,SendDebugLogOptions } from "./logger.js";
 import type { MetadataClient } from "./overrides.js";
 

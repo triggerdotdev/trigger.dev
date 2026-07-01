@@ -1,8 +1,7 @@
 import type { Result } from "@trigger.dev/core/v3";
 import type { z } from "zod";
 import type { InsertError, QueryError } from "./errors.js";
-import type { ClickHouseSettings } from "@clickhouse/client";
-import type { BaseQueryParams, InsertResult } from "@clickhouse/client";
+import { type ClickHouseSettings, type BaseQueryParams, type InsertResult } from "@clickhouse/client";
 import type { ClickhouseQueryBuilder, ClickhouseQueryFastBuilder } from "./queryBuilder.js";
 
 export type ClickhouseQueryFunction<TInput, TOutput> = (

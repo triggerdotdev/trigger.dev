@@ -1,39 +1,14 @@
-import type { Redis } from "@internal/redis";
-import { createRedisClient } from "@internal/redis";
-import type { Meter, Tracer } from "@internal/tracing";
-import { type Counter, getMeter, startSpan, trace } from "@internal/tracing";
+import { type Redis, createRedisClient } from "@internal/redis";
+import { type Meter, type Tracer, type Counter, getMeter, startSpan, trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
-import type {
-  CheckpointInput,
-  CompleteRunAttemptResult,
-  CreateCheckpointResult,
-  DequeuedMessage,
-  ExecutionResult,
-  RunExecutionData,
-  StartRunAttemptResult,
-  TaskRunContext,
-  TaskRunExecutionResult,
-  TaskRunInternalError} from "@trigger.dev/core/v3";
-import {
-  formatDurationMilliseconds
-} from "@trigger.dev/core/v3";
+import { type CheckpointInput, type CompleteRunAttemptResult, type CreateCheckpointResult, type DequeuedMessage, type ExecutionResult, type RunExecutionData, type StartRunAttemptResult, type TaskRunContext, type TaskRunExecutionResult, type TaskRunInternalError, formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import {
   parseNaturalLanguageDurationInMs,
   RunId,
   WaitpointId,
 } from "@trigger.dev/core/v3/isomorphic";
-import type {
-  PrismaClient,
-  PrismaClientOrTransaction,
-  PrismaReplicaClient,
-  RuntimeEnvironmentType,
-  TaskRun,
-  TaskRunExecutionSnapshot,
-  Waitpoint} from "@trigger.dev/database";
-import {
-  Prisma
-} from "@trigger.dev/database";
+import { type PrismaClient, type PrismaClientOrTransaction, type PrismaReplicaClient, type RuntimeEnvironmentType, type TaskRun, type TaskRunExecutionSnapshot, type Waitpoint, Prisma } from "@trigger.dev/database";
 import { Worker } from "@trigger.dev/redis-worker";
 import { assertNever } from "assert-never";
 import { EventEmitter } from "node:events";
@@ -77,8 +52,7 @@ import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { NoopPendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
 import type { SystemResources } from "./systems/systems.js";
-import type { RunStore } from "@internal/run-store";
-import { PostgresRunStore } from "@internal/run-store";
+import { type RunStore, PostgresRunStore } from "@internal/run-store";
 import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import type {

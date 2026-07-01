@@ -8,12 +8,7 @@ import type {
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
 import type { PrismaClient, PrismaReplicaClient, TaskRun, Waitpoint } from "@trigger.dev/database";
-import type {
-  Worker} from "@trigger.dev/redis-worker";
-import {
-  type WorkerConcurrencyOptions,
-  type GlobalRateLimiter,
-} from "@trigger.dev/redis-worker";
+import { type Worker, type WorkerConcurrencyOptions, type GlobalRateLimiter } from "@trigger.dev/redis-worker";
 import type { FairQueueSelectionStrategyOptions } from "../run-queue/fairQueueSelectionStrategy.js";
 import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import type { LockRetryConfig } from "./locking.js";

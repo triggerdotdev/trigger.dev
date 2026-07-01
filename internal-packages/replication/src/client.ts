@@ -1,17 +1,12 @@
-import type {Redis} from "@internal/redis";
-import { createRedisClient,type RedisOptions } from "@internal/redis";
-import type {Tracer } from "@internal/tracing";
-import { startSpan,trace } from "@internal/tracing";
+import { type Redis, createRedisClient, type RedisOptions } from "@internal/redis";
+import { type Tracer, startSpan, trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { tryCatch } from "@trigger.dev/core/utils";
 import EventEmitter from "node:events";
-import type {ClientConfig,Connection } from "pg";
-import { Client } from "pg";
-import type { Lock } from "redlock";
-import Redlock from "redlock";
+import { type ClientConfig, type Connection, Client } from "pg";
+import Redlock, { type Lock } from "redlock";
 import { LogicalReplicationClientError } from "./errors.js";
-import type {PgoutputMessage} from "./pgoutput.js";
-import { getPgoutputStartReplicationSQL,PgoutputParser } from "./pgoutput.js";
+import { type PgoutputMessage, getPgoutputStartReplicationSQL, PgoutputParser } from "./pgoutput.js";
 
 export interface LogicalReplicationClientOptions {
   /**

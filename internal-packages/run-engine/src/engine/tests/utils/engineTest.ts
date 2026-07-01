@@ -1,18 +1,5 @@
-import type { TestContext, TestAPI } from "vitest";
-import { test } from "vitest";
-import type {
-  StartedNetwork,
-  StartedPostgreSqlContainer,
-  StartedRedisContainer} from "@internal/testcontainers";
-import {
-  logCleanup,
-  network,
-  postgresContainer,
-  prisma,
-  redisContainer,
-  redisOptions,
-  type PostgresAndRedisContext,
-} from "@internal/testcontainers";
+import { type TestContext, type TestAPI, test } from "vitest";
+import { type StartedNetwork, type StartedPostgreSqlContainer, type StartedRedisContainer, logCleanup, network, postgresContainer, prisma, redisContainer, redisOptions, type PostgresAndRedisContext } from "@internal/testcontainers";
 import { RunEngine } from "../../index.js";
 import type { PrismaClient } from "@trigger.dev/database";
 import type { RedisOptions } from "@internal/redis";

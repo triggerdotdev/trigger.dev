@@ -1,12 +1,9 @@
-import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
-import { PostgreSqlContainer } from "@testcontainers/postgresql";
+import { type StartedPostgreSqlContainer, PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { StartedRedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
-import type { RedisOptions } from "ioredis";
-import Redis from "ioredis";
+import Redis, { type RedisOptions } from "ioredis";
 import { Network, type StartedNetwork } from "testcontainers";
-import type { TestContext} from "vitest";
-import { test } from "vitest";
+import { type TestContext, test } from "vitest";
 import {
   createClickHouseContainer,
   createElectricContainer,
@@ -20,17 +17,9 @@ import {
 } from "./utils";
 import { getTaskMetadata, logCleanup, logSetup } from "./logs";
 import path from "path";
-import type {
-  StartedClickHouseContainer} from "./clickhouse";
-import {
-  ClickHouseContainer,
-  runClickhouseMigrations,
-  truncateClickhouseTables,
-} from "./clickhouse";
-import type { StartedMinIOContainer} from "./minio";
-import { MinIOContainer, type MinIOConnectionConfig } from "./minio";
-import type { ClickHouseClient} from "@clickhouse/client";
-import { createClient } from "@clickhouse/client";
+import { type StartedClickHouseContainer, ClickHouseContainer, runClickhouseMigrations, truncateClickhouseTables } from "./clickhouse";
+import { type StartedMinIOContainer, MinIOContainer, type MinIOConnectionConfig } from "./minio";
+import { type ClickHouseClient, createClient } from "@clickhouse/client";
 
 export { assertNonNullable, createPostgresContainer } from "./utils";
 export { logCleanup };

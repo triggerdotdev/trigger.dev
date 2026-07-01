@@ -54,15 +54,7 @@
  * helpers like `stepCountIs` / `convertToModelMessages`).
  */
 
-import type {
-  ApiClient} from "@trigger.dev/core/v3";
-import {
-  SessionStreamInstance,
-  TRIGGER_CONTROL_SUBTYPE,
-  apiClientManager,
-  type ApiClientConfiguration,
-  type SessionTriggerConfig,
-} from "@trigger.dev/core/v3";
+import { type ApiClient, SessionStreamInstance, TRIGGER_CONTROL_SUBTYPE, apiClientManager, type ApiClientConfiguration, type SessionTriggerConfig } from "@trigger.dev/core/v3";
 // Runtime VALUES via the ESM/CJS shim so the CJS build can `require` ESM-only
 // `ai@7` (see ../imports/ai-runtime.ts).
 import {

@@ -1,42 +1,7 @@
 // TypeScript port of posthog/hogql/printer.py
 // ClickHouse SQL printer with tenant isolation and schema validation
 
-import type {
-  And,
-  Alias,
-  ArithmeticOperation,
-  Array as ASTArray,
-  ArrayAccess,
-  AST,
-  BetweenExpr,
-  Call,
-  CompareOperation,
-  Constant,
-  CTE,
-  Dict,
-  Expression,
-  Field,
-  JoinConstraint,
-  JoinExpr,
-  Lambda,
-  LimitByExpr,
-  Not,
-  Or,
-  OrderExpr,
-  Placeholder,
-  RatioExpr,
-  SampleExpr,
-  SelectQuery,
-  SelectSetQuery,
-  Tuple,
-  TupleAccess,
-  WindowExpr,
-  WindowFrameExpr,
-  WindowFunction} from "./ast";
-import {
-  ArithmeticOperationOp,
-  CompareOperationOp
-} from "./ast";
+import { type And, type Alias, type ArithmeticOperation, type Array as ASTArray, type ArrayAccess, type AST, type BetweenExpr, type Call, type CompareOperation, type Constant, type CTE, type Dict, type Expression, type Field, type JoinConstraint, type JoinExpr, type Lambda, type LimitByExpr, type Not, type Or, type OrderExpr, type Placeholder, type RatioExpr, type SampleExpr, type SelectQuery, type SelectSetQuery, type Tuple, type TupleAccess, type WindowExpr, type WindowFrameExpr, type WindowFunction, ArithmeticOperationOp, CompareOperationOp } from "./ast";
 import { escapeClickHouseIdentifier, escapeTSQLIdentifier, escapeClickHouseString } from "./escape";
 import { ImpossibleASTError, NotImplementedError, QueryError } from "./errors";
 import {
@@ -49,20 +14,7 @@ import {
 } from "./functions";
 import type { PrinterContext, WhereClauseCondition } from "./printer_context";
 import { calculateTimeBucketInterval } from "./time_buckets";
-import type {
-  TableSchema,
-  ColumnSchema,
-  OutputColumnMetadata,
-  ClickHouseType} from "./schema";
-import {
-  findTable,
-  validateTable,
-  getInternalValue,
-  isVirtualColumn,
-  hasFieldMapping,
-  getInternalValueFromMappingCaseInsensitive,
-  type ColumnFormatType,
-} from "./schema";
+import { type TableSchema, type ColumnSchema, type OutputColumnMetadata, type ClickHouseType, findTable, validateTable, getInternalValue, isVirtualColumn, hasFieldMapping, getInternalValueFromMappingCaseInsensitive, type ColumnFormatType } from "./schema";
 
 /**
  * Result of printing an AST to ClickHouse SQL
