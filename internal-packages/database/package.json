@@ -18,7 +18,6 @@
     "generate": "prisma generate",
     "db:migrate:dev:create": "prisma migrate dev --create-only",
     "db:migrate:deploy": "prisma migrate deploy",
-    "db:migrate:run-ops": "node scripts/migrate-run-ops.mjs",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
