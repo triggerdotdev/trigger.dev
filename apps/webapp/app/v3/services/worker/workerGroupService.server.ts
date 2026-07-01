@@ -67,7 +67,7 @@ export class WorkerGroupService extends WithRunEngine {
     });
 
     if (workerGroup.type === WorkerInstanceGroupType.MANAGED) {
-      const managedCount = await this._prisma.workerInstanceGroup.count({
+      const _managedCount = await this._prisma.workerInstanceGroup.count({
         where: {
           type: WorkerInstanceGroupType.MANAGED,
         },

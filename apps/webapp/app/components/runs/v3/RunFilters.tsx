@@ -956,7 +956,7 @@ function AppliedBulkActionsFilter({ bulkActions }: Pick<RunFiltersProps, "bulkAc
     return null;
   }
 
-  const action = bulkActions.find((action) => action.id === bulkId);
+  const _action = bulkActions.find((action) => action.id === bulkId);
 
   return (
     <FilterMenuProvider>

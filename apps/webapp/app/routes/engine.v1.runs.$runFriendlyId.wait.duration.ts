@@ -49,7 +49,7 @@ const { action } = createActionApiRoute(
         idempotencyKeyExpiresAt: idempotencyKeyExpiresAt,
       });
 
-      const waitResult = await engine.blockRunWithWaitpoint({
+      const _waitResult = await engine.blockRunWithWaitpoint({
         runId: run.id,
         waitpoints: waitpoint.id,
         projectId: authentication.environment.project.id,

@@ -31,7 +31,7 @@ export function registerGlobal<Type extends keyof TriggerDotDevGlobalAPI>(
 
   if (!allowOverride && api[type]) {
     // already registered an API of this type
-    const err = new Error(`trigger.dev: Attempted duplicate registration of API: ${type}`);
+    const _err = new Error(`trigger.dev: Attempted duplicate registration of API: ${type}`);
     return false;
   }
 

@@ -14,7 +14,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = resolve(__dirname, "../fixtures");
 
 // Find the SDK package in the monorepo
-const sdkDir = resolve(__dirname, "../../../../packages/trigger-sdk");
+const _sdkDir = resolve(__dirname, "../../../../packages/trigger-sdk");
 
 // Common execa options
 const execaOpts: ExecaOptions = {

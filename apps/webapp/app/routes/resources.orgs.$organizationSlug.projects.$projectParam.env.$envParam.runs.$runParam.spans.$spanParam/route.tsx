@@ -266,9 +266,9 @@ function SpanBody({
   runParam?: string;
   closePanel?: () => void;
 }) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
+  const _organization = useOrganization();
+  const _project = useProject();
+  const _environment = useEnvironment();
   const { value, replace } = useSearchParams();
   let tab = value("tab");
 

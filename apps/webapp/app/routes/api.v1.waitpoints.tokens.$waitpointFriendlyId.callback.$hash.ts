@@ -83,7 +83,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       `${WaitpointId.toFriendlyId(waitpointId)}/http-callback`
     );
 
-    const result = await engine.completeWaitpoint({
+    const _result = await engine.completeWaitpoint({
       id: waitpointId,
       output: finalData.data
         ? { type: finalData.dataType, value: finalData.data, isError: false }

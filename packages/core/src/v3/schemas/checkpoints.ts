@@ -1,7 +1,7 @@
 import { CheckpointType, DequeuedMessage } from "./runEngine.js";
 import z from "zod";
 
-const CallbackUrl = z
+const _CallbackUrl = z
   .string()
   .url()
   .transform((url) => new URL(url));

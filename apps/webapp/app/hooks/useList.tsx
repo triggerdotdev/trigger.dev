@@ -16,7 +16,7 @@ type UpdateAction<T> = {
   item: T;
 };
 
-type DeleteAction<T> = {
+type DeleteAction<_T> = {
   type: "delete";
   index: number;
 };

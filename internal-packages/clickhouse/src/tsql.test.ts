@@ -949,7 +949,7 @@ describe("TSQL Virtual Column Tests", () => {
 
     const insert = insertTaskRuns(client, { async_insert: 0 });
 
-    const now = Date.now();
+    const _now = Date.now();
 
     await insert([
       createTaskRun({

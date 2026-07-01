@@ -73,7 +73,7 @@ describe("RunEngine getSnapshotsSince", () => {
         );
 
         await setTimeout(500);
-        const dequeued = await engine.dequeueFromWorkerQueue({
+        const _dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_empty",
           workerQueue: "main",
         });
@@ -218,7 +218,7 @@ describe("RunEngine getSnapshotsSince", () => {
 
         // The latest snapshot should have completedWaitpoints if the waitpoint was completed.
         // Note: This depends on timing - the finishWaitpoint job needs to have processed.
-        const latest = result![result!.length - 1];
+        const _latest = result![result!.length - 1];
         // completedWaitpoints may be empty if the waitpoint hasn't been processed yet
         // This is acceptable as the test is primarily about snapshot ordering
 
@@ -345,7 +345,7 @@ describe("RunEngine getSnapshotsSince", () => {
         expect(result!.length).toBeGreaterThan(0);
 
         // Only the latest should have waitpoints
-        const latest = result![result!.length - 1];
+        const _latest = result![result!.length - 1];
 
         // Earlier snapshots must have empty completedWaitpoints
         for (let i = 0; i < result!.length - 1; i++) {

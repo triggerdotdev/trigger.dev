@@ -251,7 +251,7 @@ describe("FairDequeuingStrategy", () => {
 
       const startDistribute2 = performance.now();
 
-      const result2 = await strategy.distributeFairQueuesFromParentQueue(
+      const _result2 = await strategy.distributeFairQueuesFromParentQueue(
         "parent-queue",
         "consumer-1"
       );
@@ -265,7 +265,7 @@ describe("FairDequeuingStrategy", () => {
 
       const startDistribute3 = performance.now();
 
-      const result3 = await strategy.distributeFairQueuesFromParentQueue(
+      const _result3 = await strategy.distributeFairQueuesFromParentQueue(
         "parent-queue",
         "consumer-1"
       );

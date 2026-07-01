@@ -135,7 +135,7 @@ export class EnvironmentVariablesRepository implements Repository {
 
     try {
       for (const variable of values) {
-        const result = await $transaction(this.prismaClient, "create env var", async (tx) => {
+        const _result = await $transaction(this.prismaClient, "create env var", async (tx) => {
           const environmentVariable = await tx.environmentVariable.upsert({
             where: {
               projectId_key: {
@@ -388,7 +388,7 @@ export class EnvironmentVariablesRepository implements Repository {
             },
           });
 
-          const variableValue = await tx.environmentVariableValue.create({
+          const _variableValue = await tx.environmentVariableValue.create({
             data: {
               variableId: environmentVariable.id,
               environmentId: value.environmentId,

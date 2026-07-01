@@ -6,7 +6,7 @@ import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 
 async function waitTillGcFinishes() {
   let resolver: (value: PerformanceEntry) => void;
-  let rejector: (reason?: any) => void;
+  let _rejector: (reason?: any) => void;
 
   const promise = new Promise<PerformanceEntry>((resolve, reject) => {
     resolver = resolve;

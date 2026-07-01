@@ -138,8 +138,8 @@ export function BillingLimitConfigSection({
   const limitSubmission =
     actionData?.formIntent === "billing-limit" ? actionData.submission : undefined;
 
-  const needsInitialSave = !billingLimit.isConfigured;
-  const isLimitDirty =
+  const _needsInitialSave = !billingLimit.isConfigured;
+  const _isLimitDirty =
     mode !== savedMode || (mode === "custom" && customAmount !== savedCustomAmount);
   const isDirty = isBillingLimitFormDirty({
     billingLimit,

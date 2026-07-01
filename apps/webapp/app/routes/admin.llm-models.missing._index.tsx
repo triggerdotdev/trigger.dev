@@ -23,7 +23,7 @@ const LOOKBACK_OPTIONS = [
   { label: "30 days", value: 720 },
 ];
 
-const SearchParams = z.object({
+const _SearchParams = z.object({
   lookbackHours: z.coerce.number().optional(),
 });
 

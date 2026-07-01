@@ -216,7 +216,7 @@ describe("RunEngine Waitpoints", () => {
       });
       expect(waitpoint.completedAfter!.toISOString()).toBe(date.toISOString());
 
-      const result = await engine.blockRunWithWaitpoint({
+      const _result = await engine.blockRunWithWaitpoint({
         runId: run.id,
         waitpoints: [waitpoint.id],
         projectId: authenticatedEnvironment.project.id,
@@ -1218,7 +1218,7 @@ describe("RunEngine Waitpoints", () => {
           consumerId: "test_snapshotsince",
           workerQueue: "main",
         });
-        const attemptResult = await engine.startRunAttempt({
+        const _attemptResult = await engine.startRunAttempt({
           runId: dequeued[0].run.id,
           snapshotId: dequeued[0].snapshot.id,
         });

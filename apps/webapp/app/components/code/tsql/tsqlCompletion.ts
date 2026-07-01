@@ -172,7 +172,7 @@ function createColumnCompletions(table: TableSchema, prefix?: string): Completio
  */
 function extractTablesFromQuery(doc: string, schema: TableSchema[]): Map<string, TableSchema> {
   const tableMap = new Map<string, TableSchema>();
-  const tableNames = schema.map((t) => t.name);
+  const _tableNames = schema.map((t) => t.name);
 
   // Simple regex to find table references in FROM and JOIN clauses
   // Handles: FROM table_name, FROM table_name AS alias, FROM table_name alias

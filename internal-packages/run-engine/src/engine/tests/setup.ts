@@ -206,7 +206,7 @@ export async function setupBackgroundWorker(
   }
 
   for (const queueName of queueOptions?.customQueues ?? []) {
-    const taskQueue = await engine.prisma.taskQueue.upsert({
+    const _taskQueue = await engine.prisma.taskQueue.upsert({
       where: {
         runtimeEnvironmentId_name: {
           name: queueName,

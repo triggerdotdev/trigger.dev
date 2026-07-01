@@ -126,7 +126,7 @@ export function VercelOnboardingModal({
   const fromMarketplaceContext = origin === "marketplace";
 
   const availableProjects = onboardingData?.availableProjects || [];
-  const hasProjectSelected = onboardingData?.hasProjectSelected ?? false;
+  const _hasProjectSelected = onboardingData?.hasProjectSelected ?? false;
   const customEnvironments = onboardingData?.customEnvironments || [];
   const envVars = onboardingData?.environmentVariables || [];
   const existingVars = onboardingData?.existingVariables || {};
@@ -216,7 +216,7 @@ export function VercelOnboardingModal({
     environmentId: string;
     displayName: string;
   } | null>(null);
-  const availableEnvSlugsForOnboarding = getAvailableEnvSlugs(
+  const _availableEnvSlugsForOnboarding = getAvailableEnvSlugs(
     hasStagingEnvironment,
     hasPreviewEnvironment
   );
@@ -445,7 +445,7 @@ export function VercelOnboardingModal({
 
   const overlappingEnvVarsCount = enabledEnvVars.filter((v) => existingVars[v.key]).length;
 
-  const isSubmitting = navigation.state === "submitting" || navigation.state === "loading";
+  const _isSubmitting = navigation.state === "submitting" || navigation.state === "loading";
 
   const actionUrl = vercelResourcePath(organizationSlug, projectSlug, environmentSlug);
 
@@ -620,7 +620,7 @@ export function VercelOnboardingModal({
     gitHubAppInstallations.length,
   ]);
 
-  const handleFinishOnboarding = useCallback(
+  const _handleFinishOnboarding = useCallback(
     (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
       const form = e.currentTarget;

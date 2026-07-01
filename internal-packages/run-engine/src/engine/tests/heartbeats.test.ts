@@ -54,7 +54,7 @@ describe("RunEngine heartbeats", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      const backgroundWorker = await setupBackgroundWorker(
+      const _backgroundWorker = await setupBackgroundWorker(
         engine,
         authenticatedEnvironment,
         taskIdentifier
@@ -84,7 +84,7 @@ describe("RunEngine heartbeats", () => {
       await setTimeout(500);
 
       //dequeue the run
-      const dequeued = await engine.dequeueFromWorkerQueue({
+      const _dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
         workerQueue: "main",
       });
@@ -173,7 +173,7 @@ describe("RunEngine heartbeats", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      const backgroundWorker = await setupBackgroundWorker(
+      const _backgroundWorker = await setupBackgroundWorker(
         engine,
         authenticatedEnvironment,
         taskIdentifier
@@ -203,7 +203,7 @@ describe("RunEngine heartbeats", () => {
       await setTimeout(500);
 
       //dequeue the run
-      const dequeued = await engine.dequeueFromWorkerQueue({
+      const _dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
         workerQueue: "main",
       });
@@ -295,7 +295,7 @@ describe("RunEngine heartbeats", () => {
         const taskIdentifier = "test-task";
 
         //create background worker
-        const backgroundWorker = await setupBackgroundWorker(
+        const _backgroundWorker = await setupBackgroundWorker(
           engine,
           authenticatedEnvironment,
           taskIdentifier
@@ -428,7 +428,7 @@ describe("RunEngine heartbeats", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      const backgroundWorker = await setupBackgroundWorker(
+      const _backgroundWorker = await setupBackgroundWorker(
         engine,
         authenticatedEnvironment,
         taskIdentifier
@@ -541,7 +541,7 @@ describe("RunEngine heartbeats", () => {
         const taskIdentifier = "test-task";
 
         //create background worker
-        const backgroundWorker = await setupBackgroundWorker(
+        const _backgroundWorker = await setupBackgroundWorker(
           engine,
           authenticatedEnvironment,
           taskIdentifier
@@ -694,7 +694,7 @@ describe("RunEngine heartbeats", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      const backgroundWorker = await setupBackgroundWorker(engine, authenticatedEnvironment, [
+      const _backgroundWorker = await setupBackgroundWorker(engine, authenticatedEnvironment, [
         taskIdentifier,
         "child-task",
       ]);
@@ -734,7 +734,7 @@ describe("RunEngine heartbeats", () => {
         snapshotId: dequeued[0].snapshot.id,
       });
 
-      const childRun = await engine.trigger(
+      const _childRun = await engine.trigger(
         {
           number: 1,
           friendlyId: "run_c1234",
@@ -845,7 +845,7 @@ describe("RunEngine heartbeats", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      const backgroundWorker = await setupBackgroundWorker(
+      const _backgroundWorker = await setupBackgroundWorker(
         engine,
         authenticatedEnvironment,
         taskIdentifier

@@ -1976,7 +1976,7 @@ function executeTask(
     },
   };
 
-  const worker: ServerBackgroundWorker = {
+  const _worker: ServerBackgroundWorker = {
     id: "test-background-worker-id",
     version: "1.0.0",
     contentHash: "test-content-hash",

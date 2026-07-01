@@ -164,7 +164,7 @@ export class TriggerTracer {
   startSpan(name: string, options?: SpanOptions, ctx?: Context) {
     const parentContext = ctx ?? context.active();
 
-    const attributes = options?.attributes ?? {};
+    const _attributes = options?.attributes ?? {};
 
     const span = this.tracer.startSpan(name, options, parentContext);
 

@@ -100,7 +100,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
     switch (submission.value.type) {
       case "DATETIME": {
-        const result = await engine.completeWaitpoint({
+        const _result = await engine.completeWaitpoint({
           id: waitpointId,
         });
 
@@ -113,7 +113,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       case "MANUAL": {
         if (submission.value.isTimeout) {
           try {
-            const result = await engine.completeWaitpoint({
+            const _result = await engine.completeWaitpoint({
               id: waitpointId,
               output: {
                 type: "application/json",
@@ -173,7 +173,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             `${WaitpointId.toFriendlyId(waitpointId)}/token`
           );
 
-          const result = await engine.completeWaitpoint({
+          const _result = await engine.completeWaitpoint({
             id: waitpointId,
             output: finalData.data
               ? { type: finalData.dataType, value: finalData.data, isError: false }

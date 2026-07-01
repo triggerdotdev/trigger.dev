@@ -465,7 +465,7 @@ export type AnyBatchedRunHandle = BatchedRunHandle<string, any, any>;
 /**
  * A BatchRunHandle can be used to retrieve the runs of a batch trigger in a typesafe manner.
  */
-export type BatchRunHandle<TTaskIdentifier extends string, TPayload, TOutput> = BrandedRun<
+export type BatchRunHandle<_TTaskIdentifier extends string, TPayload, TOutput> = BrandedRun<
   {
     batchId: string;
     runCount: number;

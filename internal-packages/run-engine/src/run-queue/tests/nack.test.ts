@@ -261,7 +261,7 @@ describe("RunQueue.nackMessage", () => {
         });
 
         // Check the score of the message in the queue
-        const queueKey = queue.keys.queueKey(authenticatedEnvDev, messageDev.queue);
+        const _queueKey = queue.keys.queueKey(authenticatedEnvDev, messageDev.queue);
         const score = await queue.oldestMessageInQueue(authenticatedEnvDev, messageDev.queue);
         expect(typeof score).toBe("number");
         if (typeof score !== "number") {

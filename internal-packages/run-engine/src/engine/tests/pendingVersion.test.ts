@@ -133,7 +133,7 @@ describe("RunEngine pending version", () => {
         expect(executionData2R2.run.status).toBe("PENDING_VERSION");
 
         //create background worker
-        const backgroundWorker = await setupBackgroundWorker(
+        const _backgroundWorker = await setupBackgroundWorker(
           engine,
           authenticatedEnvironment,
           taskIdentifier
@@ -284,7 +284,7 @@ describe("RunEngine pending version", () => {
         expect(executionData2R2.run.status).toBe("PENDING_VERSION");
 
         //create background worker
-        const backgroundWorker = await setupBackgroundWorker(
+        const _backgroundWorker = await setupBackgroundWorker(
           engine,
           authenticatedEnvironment,
           taskIdentifier,

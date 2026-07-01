@@ -242,7 +242,7 @@ async function getCommitMessage(
 
     if (!message && prNumber) {
       // If that didn't work, try fetching the PR branch
-      const branchResult = await x(
+      const _branchResult = await x(
         "git",
         ["fetch", "origin", `pull/${prNumber}/head:pr-${prNumber}`],
         {

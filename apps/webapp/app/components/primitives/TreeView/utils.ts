@@ -92,7 +92,7 @@ export function selectedIdFromState(state: NodesState): string | undefined {
   return selected?.[0];
 }
 
-export function applyFilterToState<TData>({
+export function applyFilterToState<_TData>({
   tree,
   nodes,
   filter,
@@ -243,7 +243,7 @@ export function generateChanges(a: NodesState, b: NodesState): Changes {
   const collapsedIdsA = new Set(collapsedIdsFromState(a));
   const collapsedIdsB = new Set(collapsedIdsFromState(b));
 
-  const collapsedChanges = [...difference(collapsedIdsA, collapsedIdsB)];
+  const _collapsedChanges = [...difference(collapsedIdsA, collapsedIdsB)];
 
   return {
     selectedId: selectedIdA !== selectedIdB ? selectedIdB : undefined,

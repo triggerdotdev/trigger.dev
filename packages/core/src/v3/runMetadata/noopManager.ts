@@ -48,7 +48,7 @@ export class NoopRunMetadataManager implements RunMetadataManager {
   get parent(): RunMetadataUpdater {
     // Store a reference to this object
     // eslint-disable-next-line no-this-alias
-    const self = this;
+    const _self = this;
 
     // Create a local reference to ensure proper context
     const parentUpdater: RunMetadataUpdater = {
@@ -73,7 +73,7 @@ export class NoopRunMetadataManager implements RunMetadataManager {
   get root(): RunMetadataUpdater {
     // Store a reference to this object
     // eslint-disable-next-line no-this-alias
-    const self = this;
+    const _self = this;
 
     // Create a local reference to ensure proper context
     const rootUpdater: RunMetadataUpdater = {

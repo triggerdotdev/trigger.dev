@@ -42,7 +42,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const clientName = (searchParams.success ? searchParams.data.clientName : undefined) ?? "unknown";
 
   try {
-    const personalAccessToken = await createPersonalAccessTokenFromAuthorizationCode(
+    const _personalAccessToken = await createPersonalAccessTokenFromAuthorizationCode(
       parsedParams.data.authorizationCode,
       userId
     );

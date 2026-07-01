@@ -107,7 +107,7 @@ export const action: ActionFunction = async ({ request }) => {
   }
 
   try {
-    const user = await updateUser({
+    const _user = await updateUser({
       id: userId,
       name: submission.value.name,
       email: submission.value.email,

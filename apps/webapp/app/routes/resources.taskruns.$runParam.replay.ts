@@ -102,7 +102,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     $replica
   );
 
-  let synthetic:
+  let _synthetic:
     | (Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>> & { __synth: true })
     | undefined;
   if (!run) {

@@ -119,7 +119,7 @@ describe("RunEngine cancelling", () => {
         });
 
         //start the child run
-        const childAttempt = await engine.startRunAttempt({
+        const _childAttempt = await engine.startRunAttempt({
           runId: childRun.id,
           snapshotId: dequeuedChild[0].snapshot.id,
         });
@@ -151,7 +151,7 @@ describe("RunEngine cancelling", () => {
         });
 
         // call completeAttempt manually (this will happen from the worker)
-        const completeResult = await engine.completeRunAttempt({
+        const _completeResult = await engine.completeRunAttempt({
           runId: parentRun.id,
           snapshotId: executionData!.snapshot.id,
           completion: {

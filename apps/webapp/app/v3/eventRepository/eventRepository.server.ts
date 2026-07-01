@@ -958,7 +958,7 @@ export class EventRepository implements IEventRepository {
 
     const traceId = propagatedContext?.traceparent?.traceId ?? generateTraceId();
     const parentId = options.parentId ?? propagatedContext?.traceparent?.spanId;
-    const tracestate = propagatedContext?.tracestate;
+    const _tracestate = propagatedContext?.tracestate;
     const spanId = options.spanIdSeed
       ? generateDeterministicSpanId(traceId, options.spanIdSeed)
       : generateSpanId();
@@ -1038,7 +1038,7 @@ export class EventRepository implements IEventRepository {
       ? generateTraceId()
       : (propagatedContext?.traceparent?.traceId ?? generateTraceId());
     const parentId = options.spanParentAsLink ? undefined : propagatedContext?.traceparent?.spanId;
-    const tracestate = options.spanParentAsLink ? undefined : propagatedContext?.tracestate;
+    const _tracestate = options.spanParentAsLink ? undefined : propagatedContext?.tracestate;
     const spanId = options.spanIdSeed
       ? generateDeterministicSpanId(traceId, options.spanIdSeed)
       : generateSpanId();

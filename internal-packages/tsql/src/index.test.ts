@@ -36,7 +36,7 @@ const taskRunsSchema: TableSchema = {
 /**
  * Test table schema with tenant columns (lookup table with tenant isolation)
  */
-const lookupTableSchema: TableSchema = {
+const _lookupTableSchema: TableSchema = {
   name: "lookup_table",
   clickhouseName: "trigger_dev.lookup_table",
   tenantColumns: {

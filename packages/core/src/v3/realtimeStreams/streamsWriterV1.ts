@@ -108,8 +108,8 @@ export class StreamsWriterV1<T> implements StreamsWriter {
       });
 
       req.on("error", async (error) => {
-        const errorCode = "code" in error ? error.code : undefined;
-        const errorMsg = error instanceof Error ? error.message : String(error);
+        const _errorCode = "code" in error ? error.code : undefined;
+        const _errorMsg = error instanceof Error ? error.message : String(error);
 
         // Check if this is a retryable connection error
         if (this.isRetryableError(error)) {

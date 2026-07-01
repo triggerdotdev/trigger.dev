@@ -368,7 +368,7 @@ describe("SnapshotManager", () => {
     const executionOrder: string[] = [];
     const executionTimes: { start: number; end: number; type: string }[] = [];
     let currentlyExecuting = false;
-    let handlerExecutionCount = 0;
+    let _handlerExecutionCount = 0;
 
     const manager = new SnapshotManager({
       runnerId: "test-runner-1",

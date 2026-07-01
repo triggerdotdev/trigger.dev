@@ -32,7 +32,7 @@ export function HelpAndFeedback({
   projectId?: string;
 }) {
   const [isHelpMenuOpen, setHelpMenuOpen] = useState(false);
-  const currentPlan = useCurrentPlan();
+  const _currentPlan = useCurrentPlan();
   const { changelogs } = useRecentChangelogs(organizationId, projectId);
 
   useShortcutKeys({

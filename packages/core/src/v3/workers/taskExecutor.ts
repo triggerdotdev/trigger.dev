@@ -454,7 +454,7 @@ export class TaskExecutor {
       return;
     }
 
-    const result = await runTimelineMetrics.measureMetric(
+    const _result = await runTimelineMetrics.measureMetric(
       "trigger.dev/execution",
       "onWait",
       async () => {
@@ -527,7 +527,7 @@ export class TaskExecutor {
       return;
     }
 
-    const result = await runTimelineMetrics.measureMetric(
+    const _result = await runTimelineMetrics.measureMetric(
       "trigger.dev/execution",
       "onCancel",
       async () => {
@@ -608,7 +608,7 @@ export class TaskExecutor {
       return;
     }
 
-    const result = await runTimelineMetrics.measureMetric(
+    const _result = await runTimelineMetrics.measureMetric(
       "trigger.dev/execution",
       "onResume",
       async () => {

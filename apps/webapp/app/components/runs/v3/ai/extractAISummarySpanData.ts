@@ -21,8 +21,8 @@ export function extractAISummarySpanData(
   const aiModel = rec(ai.model);
   const aiResponse = rec(ai.response);
   const aiUsage = rec(ai.usage);
-  const aiSettings = rec(ai.settings);
-  const aiRequest = rec(ai.request);
+  const _aiSettings = rec(ai.settings);
+  const _aiRequest = rec(ai.request);
   const aiTelemetry = rec(ai.telemetry);
   const trigger = rec(properties.trigger);
   const triggerLlm = rec(trigger.llm);
