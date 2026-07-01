@@ -224,11 +224,6 @@ export function lastVisibleNode(tree: FlatTree<any>, nodes: NodesState) {
     .reverse()
     .find((node) => nodes[node.id].visible === true);
 }
-
-function areSetsEqual<T>(a: Set<T>, b: Set<T>): boolean {
-  return a.size === b.size && [...a].every((value) => b.has(value));
-}
-
 function difference<T>(a: Set<T>, b: Set<T>): Set<T> {
   return new Set([...a].filter((x) => !b.has(x)));
 }

@@ -326,16 +326,6 @@ function SpanBody({
     </div>
   );
 }
-
-function formatSpanDuration(nanoseconds: number): string {
-  const ms = nanoseconds / 1_000_000;
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  const mins = Math.floor(ms / 60_000);
-  const secs = ((ms % 60_000) / 1000).toFixed(0);
-  return `${mins}m ${secs}s`;
-}
-
 function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
   if (!spanOverrides) {
     return span;
@@ -1274,36 +1264,6 @@ function RunError({ error }: { error: TaskRunError }) {
     }
   }
 }
-
-function CollapsibleProperties({ code }: { code: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="border-t border-grid-bright pt-2">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-1 text-xs font-medium text-text-dimmed hover:text-text-bright"
-      >
-        <ChevronUpIcon
-          className={cn("size-3.5 transition-transform", open ? "rotate-180" : "rotate-90")}
-        />
-        Raw properties
-      </button>
-      {open && (
-        <div className="mt-1.5">
-          <CodeBlock
-            code={code}
-            maxLines={20}
-            showLineNumbers={false}
-            showCopyButton
-            showTextWrapping
-            showOpenInModal
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
 function SpanEntity({ span }: { span: Span }) {
   const isAdmin = useHasAdminAccess();
 

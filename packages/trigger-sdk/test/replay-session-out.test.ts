@@ -22,21 +22,6 @@ function textTurn(id: string, text: string, role: "assistant" = "assistant"): UI
     { type: "finish" } as UIMessageChunk,
   ];
 }
-
-/**
- * Same as `textTurn` but omits the trailing `finish` chunk — simulates a
- * crashed turn whose stream ended mid-message. The runtime's reducer
- * should run `cleanupAbortedParts` on the resulting trailing message.
- */
-function partialTurn(id: string, text: string): UIMessageChunk[] {
-  return [
-    { type: "start", messageId: id, messageMetadata: { role: "assistant" } } as UIMessageChunk,
-    { type: "text-start", id: `${id}.t1` } as UIMessageChunk,
-    { type: "text-delta", id: `${id}.t1`, delta: text } as UIMessageChunk,
-    // No text-end, no finish.
-  ];
-}
-
 /**
  * Stub `apiClientManager.clientOrThrow().readSessionStreamRecords` so the
  * helper sees a `{ records: StreamRecord[] }` response. Each StreamRecord

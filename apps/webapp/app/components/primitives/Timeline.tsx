@@ -70,10 +70,6 @@ function useTimeline() {
 
 type TimelineMousePositionContextState = { x: number; y: number } | undefined;
 const TimelineMousePositionContext = createContext<TimelineMousePositionContextState>(undefined);
-function useTimelineMousePosition() {
-  return useContext(TimelineMousePositionContext);
-}
-
 export type RootProps = {
   /** If the timeline doesn't start at zero. Doesn't impact layout but gives you the times back */
   startMs?: number;

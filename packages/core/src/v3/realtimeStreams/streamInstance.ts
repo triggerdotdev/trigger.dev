@@ -160,22 +160,3 @@ function parseCreateStreamResponse(
     streamName,
   };
 }
-
-async function* streamToAsyncIterator<T>(stream: ReadableStream<T>): AsyncIterableIterator<T> {
-  const reader = stream.getReader();
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      yield value;
-    }
-  } finally {
-    safeReleaseLock(reader);
-  }
-}
-
-function safeReleaseLock(reader: ReadableStreamDefaultReader<any>) {
-  try {
-    reader.releaseLock();
-  } catch (error) {}
-}

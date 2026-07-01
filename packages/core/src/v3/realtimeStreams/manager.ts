@@ -244,30 +244,3 @@ type ParsedStreamResponse =
       flushIntervalMs?: number;
       maxRetries?: number;
     };
-
-function parseCreateStreamResponse(
-  version: string,
-  headers: Record<string, string> | undefined
-): ParsedStreamResponse {
-  if (version === "v1") {
-    return { version: "v1" };
-  }
-
-  const accessToken = headers?.["x-s2-access-token"];
-  const basin = headers?.["x-s2-basin"];
-
-  if (!accessToken || !basin) {
-    return { version: "v1" };
-  }
-
-  const flushIntervalMs = headers?.["x-s2-flush-interval-ms"];
-  const maxRetries = headers?.["x-s2-max-retries"];
-
-  return {
-    version: "v2",
-    accessToken,
-    basin,
-    flushIntervalMs: flushIntervalMs ? parseInt(flushIntervalMs) : undefined,
-    maxRetries: maxRetries ? parseInt(maxRetries) : undefined,
-  };
-}

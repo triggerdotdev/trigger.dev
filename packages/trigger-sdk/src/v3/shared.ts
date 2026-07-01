@@ -1728,23 +1728,6 @@ async function executeBatchTwoPhaseStreaming(
   // Now we can use the regular 2-phase approach
   return executeBatchTwoPhase(apiClient, itemsArray, options, requestOptions);
 }
-
-// ============================================================================
-// Streaming Helpers
-// ============================================================================
-
-/**
- * Type guard to check if a value is an AsyncIterable
- */
-function isAsyncIterable<T>(value: unknown): value is AsyncIterable<T> {
-  return (
-    value != null &&
-    typeof value === "object" &&
-    Symbol.asyncIterator in value &&
-    typeof (value as AsyncIterable<T>)[Symbol.asyncIterator] === "function"
-  );
-}
-
 /**
  * Type guard to check if a value is a ReadableStream
  */
