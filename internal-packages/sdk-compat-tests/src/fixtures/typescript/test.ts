@@ -6,22 +6,12 @@
  */
 
 import {
-  task,
-  logger,
-  schedules,
-  runs,
-  configure,
-  queue,
-  retry,
-  wait,
-  metadata,
-  tags,
-  type Context,
-  type RetryOptions,
+queue,
+task,
+type RetryOptions
 } from "@trigger.dev/sdk";
 
 // Type-only import test
-import type { ApiClientConfiguration } from "@trigger.dev/sdk";
 
 // Test typed task with payload
 interface MyPayload {

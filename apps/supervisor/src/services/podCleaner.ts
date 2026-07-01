@@ -1,8 +1,7 @@
-import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
-import { K8sApi } from "../clients/kubernetes.js";
-import { createK8sApi } from "../clients/kubernetes.js";
 import { IntervalService } from "@trigger.dev/core/v3";
-import { Counter, Gauge, Registry } from "prom-client";
+import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
+import { Counter,Gauge,Registry } from "prom-client";
+import { createK8sApi,K8sApi } from "../clients/kubernetes.js";
 import { register } from "../metrics.js";
 
 export type PodCleanerOptions = {

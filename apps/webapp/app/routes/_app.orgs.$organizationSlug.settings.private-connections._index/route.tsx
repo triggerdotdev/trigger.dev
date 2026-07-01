@@ -1,42 +1,38 @@
-import { LinkButton } from "~/components/primitives/Buttons";
-import { Form, useFetcher, useRevalidator, type MetaFunction } from "@remix-run/react";
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { tryCatch } from "@trigger.dev/core/utils";
-import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
-  MainHorizontallyCenteredContainer,
-  PageBody,
-  PageContainer,
+BookOpenIcon,
+ClipboardDocumentIcon,
+PlusIcon,
+TrashIcon,
+} from "@heroicons/react/20/solid";
+import { Form,useRevalidator,type MetaFunction } from "@remix-run/react";
+import { json,type ActionFunctionArgs,type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { tryCatch } from "@trigger.dev/core/utils";
+import type { PrivateLinkConnectionStatus } from "@trigger.dev/platform";
+import { useMemo,useState } from "react";
+import { redirect,typedjson,useTypedLoaderData } from "remix-typedjson";
+import {
+MainHorizontallyCenteredContainer,
+PageBody,
+PageContainer,
 } from "~/components/layout/AppLayout";
-import { Badge } from "~/components/primitives/Badge";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar,PageAccessories,PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
-import { canAccessPrivateConnections } from "~/v3/canAccessPrivateConnections.server";
+import { useInterval } from "~/hooks/useInterval";
+import { redirectWithErrorMessage,redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
-import { getPrivateLinks } from "~/services/platform.v3.server";
+import { deletePrivateLink,getPrivateLinks } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import {
-  docsPath,
-  OrganizationParamsSchema,
-  organizationPath,
-  v3PrivateConnectionsPath,
+docsPath,
+OrganizationParamsSchema,
+organizationPath,
+v3PrivateConnectionsPath,
 } from "~/utils/pathBuilder";
+import { canAccessPrivateConnections } from "~/v3/canAccessPrivateConnections.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import type { PrivateLinkConnectionStatus } from "@trigger.dev/platform";
-import { Button } from "~/components/primitives/Buttons";
-import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { deletePrivateLink } from "~/services/platform.v3.server";
-import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import {
-  BookOpenIcon,
-  ClipboardDocumentIcon,
-  PlusIcon,
-  TrashIcon,
-} from "@heroicons/react/20/solid";
-import { useMemo, useState } from "react";
-import { useInterval } from "~/hooks/useInterval";
 
 export const meta: MetaFunction = () => {
   return [{ title: `Private Connections | Trigger.dev` }];

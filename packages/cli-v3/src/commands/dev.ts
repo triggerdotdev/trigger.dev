@@ -1,43 +1,41 @@
-import { intro } from "@clack/prompts";
-import { resolve } from "node:path";
-import { spinner } from "../utilities/windows.js";
-import { loadConfig } from "../config.js";
-import { verifyDirectory } from "./deploy.js";
+import { confirm,intro,isCancel,log } from "@clack/prompts";
+import { VERSION } from "@trigger.dev/core";
+import { tryCatch } from "@trigger.dev/core/utils";
+import { getDevBranch } from "@trigger.dev/core/v3";
 import { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { Command, Option as CommandOption } from "commander";
+import { Command,Option as CommandOption } from "commander";
+import { resolve } from "node:path";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
 import {
-  CommonCommandOptions,
-  commonOptions,
-  handleTelemetry,
-  wrapCommandAction,
+CommonCommandOptions,
+commonOptions,
+handleTelemetry,
+wrapCommandAction,
 } from "../cli/common.js";
-import { watchConfig } from "../config.js";
-import { DevSessionInstance, startDevSession } from "../dev/devSession.js";
+import { loadConfig,watchConfig } from "../config.js";
+import { DevSessionInstance,startDevSession } from "../dev/devSession.js";
 import { createLockFile } from "../dev/lock.js";
 import { chalkError } from "../utilities/cliOutput.js";
+import {
+readConfigHasSeenMCPInstallPrompt,
+writeConfigHasSeenMCPInstallPrompt,
+} from "../utilities/configFiles.js";
+import { printDevBanner,printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
-import { printDevBanner, printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import {
-  awaitAndDisplayPlatformNotification,
-  fetchPlatformNotification,
+awaitAndDisplayPlatformNotification,
+fetchPlatformNotification,
 } from "../utilities/platformNotifications.js";
 import { runtimeChecks } from "../utilities/runtimeCheck.js";
-import { getProjectClient, LoginResultOk } from "../utilities/session.js";
-import { login } from "./login.js";
-import { updateTriggerPackages } from "./update.js";
-import {
-  readConfigHasSeenMCPInstallPrompt,
-  writeConfigHasSeenMCPInstallPrompt,
-} from "../utilities/configFiles.js";
-import { confirm, isCancel, log } from "@clack/prompts";
+import { getProjectClient,LoginResultOk } from "../utilities/session.js";
+import { spinner } from "../utilities/windows.js";
+import { verifyDirectory } from "./deploy.js";
 import { installMcpServer } from "./install-mcp.js";
-import { tryCatch } from "@trigger.dev/core/utils";
-import { VERSION } from "@trigger.dev/core";
+import { login } from "./login.js";
 import { initiateSkillsInstallWizard } from "./skills.js";
-import { getDevBranch } from "@trigger.dev/core/v3";
+import { updateTriggerPackages } from "./update.js";
 
 const DevArchiveCommandOptions = CommonCommandOptions.extend({
   branch: z.string().optional(),

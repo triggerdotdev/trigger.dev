@@ -1,136 +1,132 @@
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { VERSION } from "../../version.js";
+import { ApiClientConfiguration } from "../apiClientManager-api.js";
 import { generateJWT } from "../jwt.js";
 import {
-  AddTagsRequestBody,
-  ApiDeploymentListOptions,
-  ApiDeploymentListResponseItem,
-  ApiDeploymentListSearchParams,
-  RetrieveCurrentDeploymentResponseBody,
-  AppendToStreamResponseBody,
-  BatchItemNDJSON,
-  BatchTaskRunExecutionResult,
-  BatchTriggerTaskV3RequestBody,
-  BatchTriggerTaskV3Response,
-  CanceledRunResponse,
-  CloseSessionRequestBody,
-  CompleteWaitpointTokenRequestBody,
-  CompleteWaitpointTokenResponseBody,
-  CreatedSessionResponseBody,
-  CreateSessionRequestBody,
-  EndAndContinueSessionRequestBody,
-  EndAndContinueSessionResponseBody,
-  ListSessionsOptions,
-  ListSessionsResponseBody,
-  ListedSessionItem,
-  RetrieveSessionResponseBody,
-  UpdateSessionRequestBody,
-  CreateBatchRequestBody,
-  CreateBatchResponse,
-  CreateEnvironmentVariableRequestBody,
-  CreateInputStreamWaitpointRequestBody,
-  CreateInputStreamWaitpointResponseBody,
-  CreateSessionStreamWaitpointRequestBody,
-  CreateSessionStreamWaitpointResponseBody,
-  CreateScheduleOptions,
-  CreateStreamResponseBody,
-  CreateUploadPayloadUrlResponseBody,
-  CreateWaitpointTokenRequestBody,
-  CreateWaitpointTokenResponseBody,
-  DeletedScheduleObject,
-  EnvironmentVariableResponseBody,
-  EnvironmentVariableWithSecret,
-  ListQueueOptions,
-  ListRunResponseItem,
-  ListScheduleOptions,
-  QueueItem,
-  QueueTypeName,
-  QueryExecuteRequestBody,
-  QueryExecuteResponseBody,
-  QueryExecuteCSVResponseBody,
-  QuerySchemaResponseBody,
-  ListDashboardsResponseBody,
-  ReplayRunResponse,
-  RescheduleRunRequestBody,
-  ResetIdempotencyKeyResponse,
-  RetrieveBatchV2Response,
-  RetrieveQueueParam,
-  ResolvePromptRequestBody,
-  ResolvePromptResponseBody,
-  ListPromptsResponseBody,
-  ListPromptVersionsResponseBody,
-  PromotePromptVersionRequestBody,
-  CreatePromptOverrideRequestBody,
-  UpdatePromptOverrideRequestBody,
-  ReactivatePromptOverrideRequestBody,
-  PromptOkResponseBody,
-  PromptOverrideCreatedResponseBody,
-  RetrieveRunResponse,
-  RetrieveRunTraceResponseBody,
-  RetrieveSpanDetailResponseBody,
-  ScheduleObject,
-  SendInputStreamResponseBody,
-  StreamBatchItemsResponse,
-  TaskRunExecutionResult,
-  ReadSessionStreamRecordsResponseBody,
-  TriggerTaskRequestBody,
-  TriggerTaskResponse,
-  UpdateEnvironmentVariableRequestBody,
-  UpdateMetadataRequestBody,
-  UpdateMetadataResponseBody,
-  UpdateScheduleOptions,
-  WaitForDurationRequestBody,
-  WaitForDurationResponseBody,
-  WaitForWaitpointTokenResponseBody,
-  WaitpointRetrieveTokenResponse,
-  WaitpointTokenItem,
+AddTagsRequestBody,
+ApiDeploymentListOptions,
+ApiDeploymentListResponseItem,
+AppendToStreamResponseBody,
+BatchItemNDJSON,
+BatchTaskRunExecutionResult,
+BatchTriggerTaskV3RequestBody,
+BatchTriggerTaskV3Response,
+CanceledRunResponse,
+CloseSessionRequestBody,
+CompleteWaitpointTokenRequestBody,
+CompleteWaitpointTokenResponseBody,
+CreateBatchRequestBody,
+CreateBatchResponse,
+CreateEnvironmentVariableRequestBody,
+CreateInputStreamWaitpointRequestBody,
+CreateInputStreamWaitpointResponseBody,
+CreatePromptOverrideRequestBody,
+CreateScheduleOptions,
+CreateSessionRequestBody,
+CreateSessionStreamWaitpointRequestBody,
+CreateSessionStreamWaitpointResponseBody,
+CreateStreamResponseBody,
+CreateUploadPayloadUrlResponseBody,
+CreateWaitpointTokenRequestBody,
+CreateWaitpointTokenResponseBody,
+CreatedSessionResponseBody,
+DeletedScheduleObject,
+EndAndContinueSessionRequestBody,
+EndAndContinueSessionResponseBody,
+EnvironmentVariableResponseBody,
+EnvironmentVariableWithSecret,
+ListDashboardsResponseBody,
+ListPromptVersionsResponseBody,
+ListPromptsResponseBody,
+ListQueueOptions,
+ListRunResponseItem,
+ListScheduleOptions,
+ListSessionsOptions,
+ListedSessionItem,
+PromotePromptVersionRequestBody,
+PromptOkResponseBody,
+PromptOverrideCreatedResponseBody,
+QueryExecuteResponseBody,
+QuerySchemaResponseBody,
+QueueItem,
+QueueTypeName,
+ReactivatePromptOverrideRequestBody,
+ReadSessionStreamRecordsResponseBody,
+ReplayRunResponse,
+RescheduleRunRequestBody,
+ResetIdempotencyKeyResponse,
+ResolvePromptRequestBody,
+ResolvePromptResponseBody,
+RetrieveBatchV2Response,
+RetrieveCurrentDeploymentResponseBody,
+RetrieveQueueParam,
+RetrieveRunResponse,
+RetrieveRunTraceResponseBody,
+RetrieveSessionResponseBody,
+RetrieveSpanDetailResponseBody,
+RetryOptions,
+ScheduleObject,
+SendInputStreamResponseBody,
+StreamBatchItemsResponse,
+TaskRunExecutionResult,
+TriggerTaskRequestBody,
+TriggerTaskResponse,
+UpdateEnvironmentVariableRequestBody,
+UpdateMetadataRequestBody,
+UpdateMetadataResponseBody,
+UpdatePromptOverrideRequestBody,
+UpdateScheduleOptions,
+UpdateSessionRequestBody,
+WaitForDurationRequestBody,
+WaitForDurationResponseBody,
+WaitForWaitpointTokenResponseBody,
+WaitpointRetrieveTokenResponse,
+WaitpointTokenItem
 } from "../schemas/index.js";
+import { controlSubtype,type ControlEvent } from "../sessionStreams/wireProtocol.js";
 import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { taskContext } from "../task-context-api.js";
-import { AnyRunTypes, TriggerJwtOptions } from "../types/tasks.js";
+import { AnyRunTypes,TriggerJwtOptions } from "../types/tasks.js";
 import { Prettify } from "../types/utils.js";
-import {
-  AnyZodFetchOptions,
-  ApiPromise,
-  ApiRequestOptions,
-  CursorPagePromise,
-  ZodFetchOptions,
-  isRequestOptions,
-  zodfetch,
-  zodfetchCursorPage,
-  zodfetchOffsetLimitPage,
-} from "./core.js";
-import { ApiConnectionError, ApiError, BatchNotSealedError } from "./errors.js";
-import { calculateNextRetryDelay } from "../utils/retries.js";
-import { RetryOptions } from "../schemas/index.js";
-import {
-  AnyRealtimeRun,
-  AnyRunShape,
-  RealtimeRun,
-  RunShape,
-  RunStreamCallback,
-  RunSubscription,
-  SSEStreamSubscriptionFactory,
-  SSEStreamSubscription,
-  TaskRunShape,
-  runShapeStream,
-  RealtimeRunSkipColumns,
-  type SSEStreamPart,
-} from "./runStream.js";
-import { controlSubtype, type ControlEvent } from "../sessionStreams/wireProtocol.js";
-import {
-  CreateEnvironmentVariableParams,
-  ImportEnvironmentVariablesParams,
-  ListProjectRunsQueryParams,
-  ListRunsQueryParams,
-  ListWaitpointTokensQueryParams,
-  SubscribeToRunsQueryParams,
-  UpdateEnvironmentVariableParams,
-} from "./types.js";
-import { API_VERSION, API_VERSION_HEADER_NAME } from "./version.js";
-import { ApiClientConfiguration } from "../apiClientManager-api.js";
 import { getEnvVar } from "../utils/getEnv.js";
+import { calculateNextRetryDelay } from "../utils/retries.js";
+import {
+AnyZodFetchOptions,
+ApiPromise,
+ApiRequestOptions,
+CursorPagePromise,
+ZodFetchOptions,
+isRequestOptions,
+zodfetch,
+zodfetchCursorPage,
+zodfetchOffsetLimitPage,
+} from "./core.js";
+import { ApiConnectionError,ApiError,BatchNotSealedError } from "./errors.js";
+import {
+AnyRealtimeRun,
+AnyRunShape,
+RealtimeRun,
+RealtimeRunSkipColumns,
+RunShape,
+RunStreamCallback,
+RunSubscription,
+SSEStreamSubscription,
+SSEStreamSubscriptionFactory,
+TaskRunShape,
+runShapeStream,
+type SSEStreamPart,
+} from "./runStream.js";
+import {
+CreateEnvironmentVariableParams,
+ImportEnvironmentVariablesParams,
+ListProjectRunsQueryParams,
+ListRunsQueryParams,
+ListWaitpointTokensQueryParams,
+SubscribeToRunsQueryParams,
+UpdateEnvironmentVariableParams,
+} from "./types.js";
+import { API_VERSION,API_VERSION_HEADER_NAME } from "./version.js";
 
 export type CreateWaitpointTokenResponse = Prettify<
   CreateWaitpointTokenResponseBody & {
@@ -145,11 +141,9 @@ export type CreateBatchApiResponse = Prettify<
 >;
 
 export type {
-  CreateEnvironmentVariableParams,
-  ImportEnvironmentVariablesParams,
-  SubscribeToRunsQueryParams,
-  UpdateEnvironmentVariableParams,
-  RealtimeRunSkipColumns,
+CreateEnvironmentVariableParams,
+ImportEnvironmentVariablesParams,RealtimeRunSkipColumns,SubscribeToRunsQueryParams,
+UpdateEnvironmentVariableParams
 };
 
 export type ClientTriggerOptions = {
@@ -183,17 +177,15 @@ export type ApiClientFutureFlags = {
   v2RealtimeStreams?: boolean;
 };
 
-export { isRequestOptions, SSEStreamSubscription };
+export { SSEStreamSubscription,isRequestOptions };
 export type {
-  AnyRealtimeRun,
-  AnyRunShape,
-  ApiRequestOptions,
-  RealtimeRun,
-  RunShape,
-  RunStreamCallback,
-  RunSubscription,
-  TaskRunShape,
-  SSEStreamPart,
+AnyRealtimeRun,
+AnyRunShape,
+ApiRequestOptions,
+RealtimeRun,
+RunShape,
+RunStreamCallback,
+RunSubscription,SSEStreamPart,TaskRunShape
 };
 
 export * from "./getBranch.js";

@@ -1,13 +1,12 @@
-import { tryCatch } from "@trigger.dev/core/utils";
-import { Redis, type RedisOptions } from "@internal/redis";
-import EventEmitter from "node:events";
-import { Client, ClientConfig, Connection } from "pg";
-import Redlock, { Lock } from "redlock";
-import { createRedisClient } from "@internal/redis";
+import { createRedisClient,Redis,type RedisOptions } from "@internal/redis";
+import { startSpan,trace,Tracer } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
+import { tryCatch } from "@trigger.dev/core/utils";
+import EventEmitter from "node:events";
+import { Client,ClientConfig,Connection } from "pg";
+import Redlock,{ Lock } from "redlock";
 import { LogicalReplicationClientError } from "./errors.js";
-import { PgoutputMessage, PgoutputParser, getPgoutputStartReplicationSQL } from "./pgoutput.js";
-import { startSpan, trace, Tracer } from "@internal/tracing";
+import { getPgoutputStartReplicationSQL,PgoutputMessage,PgoutputParser } from "./pgoutput.js";
 
 export interface LogicalReplicationClientOptions {
   /**

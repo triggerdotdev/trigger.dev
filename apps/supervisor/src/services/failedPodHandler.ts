@@ -1,10 +1,9 @@
-import { LogLevel, SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
-import { K8sApi } from "../clients/kubernetes.js";
-import { createK8sApi } from "../clients/kubernetes.js";
-import { Informer, V1Pod } from "@kubernetes/client-node";
-import { Counter, Registry, Histogram } from "prom-client";
-import { register } from "../metrics.js";
+import { Informer,V1Pod } from "@kubernetes/client-node";
+import { LogLevel,SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
+import { Counter,Histogram,Registry } from "prom-client";
 import { setTimeout } from "timers/promises";
+import { createK8sApi,K8sApi } from "../clients/kubernetes.js";
+import { register } from "../metrics.js";
 
 type PodStatus = "Pending" | "Running" | "Succeeded" | "Failed" | "Unknown" | "GracefulShutdown";
 

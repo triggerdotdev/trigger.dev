@@ -1,29 +1,26 @@
 import {
-  Body,
-  Column,
-  Container,
-  Head,
-  Html,
-  Link,
-  Preview,
-  Row,
-  Section,
-  Text,
+Body,
+Button,
+Column,
+Container,
+Head,
+Html,
+Preview,
+Row,
+Text
 } from "@react-email/components";
+import { z } from "zod";
 import { Footer } from "./components/Footer";
 import { Image } from "./components/Image";
 import {
-  anchor,
-  bullets,
-  container,
-  grey,
-  h1,
-  main,
-  paragraphLight,
-  sans,
+bullets,
+container,
+grey,
+h1,
+main,
+paragraphLight,
+sans
 } from "./components/styles";
-import { z } from "zod";
-import { Button } from "@react-email/components";
 
 export const BulkActionCompletedEmailSchema = z.object({
   email: z.literal("bulk-action-completed"),
