@@ -10,6 +10,7 @@ import type {
   TaskRunStatus,
   Waitpoint,
 } from "@trigger.dev/database";
+import { RunStore } from "@internal/run-store";
 import { ExecutionSnapshotNotFoundError } from "../errors.js";
 import type { HeartbeatTimeouts } from "../types.js";
 import type { SystemResources } from "./systems.js";
@@ -124,8 +125,13 @@ function enhanceExecutionSnapshotWithWaitpoints(
  */
 async function getSnapshotWaitpointIds(
   prisma: PrismaClientOrTransaction,
-  snapshotId: string
+  snapshotId: string,
+  runStore?: RunStore
 ): Promise<string[]> {
+  if (runStore) {
+    return runStore.findSnapshotCompletedWaitpointIds(snapshotId, prisma);
+  }
+
   const result = await prisma.$queryRaw<{ B: string }[]>`
     SELECT "B" FROM "_completedWaitpoints" WHERE "A" = ${snapshotId}
   `;
@@ -139,16 +145,19 @@ async function getSnapshotWaitpointIds(
  */
 async function fetchWaitpointsInChunks(
   prisma: PrismaClientOrTransaction,
-  waitpointIds: string[]
+  waitpointIds: string[],
+  runStore?: RunStore
 ): Promise<Waitpoint[]> {
   if (waitpointIds.length === 0) return [];
 
   const allWaitpoints: Waitpoint[] = [];
   for (let i = 0; i < waitpointIds.length; i += WAITPOINT_CHUNK_SIZE) {
     const chunk = waitpointIds.slice(i, i + WAITPOINT_CHUNK_SIZE);
-    const waitpoints = await prisma.waitpoint.findMany({
-      where: { id: { in: chunk } },
-    });
+    const waitpoints = runStore
+      ? await runStore.findManyWaitpoints({ where: { id: { in: chunk } } }, prisma)
+      : await prisma.waitpoint.findMany({
+          where: { id: { in: chunk } },
+        });
     allWaitpoints.push(...waitpoints);
   }
   return allWaitpoints;
@@ -157,47 +166,25 @@ async function fetchWaitpointsInChunks(
 /* Gets the most recent valid snapshot for a run */
 export async function getLatestExecutionSnapshot(
   prisma: PrismaClientOrTransaction,
-  runId: string
+  runId: string,
+  runStore?: RunStore
 ): Promise<EnhancedExecutionSnapshot> {
-  const snapshot = await prisma.taskRunExecutionSnapshot.findFirst({
-    where: { runId, isValid: true },
-    include: {
-      completedWaitpoints: true,
-      checkpoint: true,
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const snapshot = runStore
+    ? await runStore.findLatestExecutionSnapshot(runId, prisma)
+    : await prisma.taskRunExecutionSnapshot.findFirst({
+        where: { runId, isValid: true },
+        include: {
+          completedWaitpoints: true,
+          checkpoint: true,
+        },
+        orderBy: { createdAt: "desc" },
+      });
 
   if (!snapshot) {
     throw new Error(`No execution snapshot found for TaskRun ${runId}`);
   }
 
   return enhanceExecutionSnapshot(snapshot);
-}
-
-export async function getExecutionSnapshotCompletedWaitpoints(
-  prisma: PrismaClientOrTransaction,
-  snapshotId: string
-) {
-  const waitpoints = await prisma.taskRunExecutionSnapshot.findFirst({
-    where: { id: snapshotId },
-    include: {
-      completedWaitpoints: true,
-    },
-  });
-
-  //deduplicate waitpoints
-  const waitpointIds = new Set<string>();
-  return (
-    waitpoints?.completedWaitpoints.filter((waitpoint) => {
-      if (waitpointIds.has(waitpoint.id)) {
-        return false;
-      } else {
-        waitpointIds.add(waitpoint.id);
-        return true;
-      }
-    }) ?? []
-  );
 }
 
 export function executionResultFromSnapshot(snapshot: TaskRunExecutionSnapshot): ExecutionResult {
@@ -272,41 +259,67 @@ export function executionDataFromSnapshot(snapshot: EnhancedExecutionSnapshot): 
 export async function getExecutionSnapshotsSince(
   prisma: PrismaClientOrTransaction,
   runId: string,
-  sinceSnapshotId: string
+  sinceSnapshotId: string,
+  runStore?: RunStore
 ): Promise<EnhancedExecutionSnapshot[]> {
   // Step 1: Find the createdAt of the sinceSnapshotId
-  const sinceSnapshot = await prisma.taskRunExecutionSnapshot.findFirst({
-    where: { id: sinceSnapshotId, runId },
-    select: { createdAt: true },
-  });
+  const sinceSnapshot = runStore
+    ? await runStore.findExecutionSnapshot(
+        {
+          where: { id: sinceSnapshotId, runId },
+          select: { createdAt: true },
+        },
+        prisma
+      )
+    : await prisma.taskRunExecutionSnapshot.findFirst({
+        where: { id: sinceSnapshotId, runId },
+        select: { createdAt: true },
+      });
 
   if (!sinceSnapshot) {
     throw new ExecutionSnapshotNotFoundError(sinceSnapshotId);
   }
 
   // Step 2: Fetch snapshots WITHOUT waitpoints to avoid N×M data explosion
-  const snapshots = await prisma.taskRunExecutionSnapshot.findMany({
-    where: {
-      runId,
-      isValid: true,
-      createdAt: { gt: sinceSnapshot.createdAt },
-    },
-    include: {
-      checkpoint: true,
-      // DO NOT include completedWaitpoints here - this causes the N×M explosion
-    },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
+  const snapshots = runStore
+    ? await runStore.findManyExecutionSnapshots(
+        {
+          where: {
+            runId,
+            isValid: true,
+            createdAt: { gt: sinceSnapshot.createdAt },
+          },
+          include: {
+            checkpoint: true,
+            // DO NOT include completedWaitpoints here - this causes the N×M explosion
+          },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+        },
+        prisma
+      )
+    : await prisma.taskRunExecutionSnapshot.findMany({
+        where: {
+          runId,
+          isValid: true,
+          createdAt: { gt: sinceSnapshot.createdAt },
+        },
+        include: {
+          checkpoint: true,
+          // DO NOT include completedWaitpoints here - this causes the N×M explosion
+        },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      });
 
   if (snapshots.length === 0) return [];
 
   // Step 3: Get waitpoint IDs for the LATEST snapshot only (first in desc order)
   const latestSnapshot = snapshots[0];
-  const waitpointIds = await getSnapshotWaitpointIds(prisma, latestSnapshot.id);
+  const waitpointIds = await getSnapshotWaitpointIds(prisma, latestSnapshot.id, runStore);
 
   // Step 4: Fetch waitpoints in chunks to avoid NAPI string conversion limits
-  const waitpoints = await fetchWaitpointsInChunks(prisma, waitpointIds);
+  const waitpoints = await fetchWaitpointsInChunks(prisma, waitpointIds, runStore);
 
   // Step 5: Build enhanced snapshots - only latest gets waitpoints, others get empty arrays
   // The runner only uses completedWaitpoints from the latest snapshot anyway
@@ -366,18 +379,18 @@ export class ExecutionSnapshotSystem {
         index?: number;
       }[];
       error?: string;
-    }
+    },
+    // When set (inside runStore.runInTransaction), the snapshot write goes through the owning store
+    // with `prisma` = that store's own tx, so it shares ONE transaction with the sibling write (e.g.
+    // startAttempt) and a mid-pair failure rolls both back. Otherwise the router routes it.
+    // The heartbeat/eventBus side effects below are unchanged.
+    store?: RunStore
   ) {
-    const newSnapshot = await prisma.taskRunExecutionSnapshot.create({
-      data: {
-        engine: "V2",
-        executionStatus: snapshot.executionStatus,
-        description: snapshot.description,
+    const newSnapshot = await (store ?? this.$.runStore).createExecutionSnapshot(
+      {
+        run,
+        snapshot,
         previousSnapshotId,
-        runId: run.id,
-        // We can't set the runStatus to DEQUEUED because it will break older runners
-        runStatus: run.status === "DEQUEUED" ? "PENDING" : run.status,
-        attemptNumber: run.attemptNumber ?? undefined,
         batchId,
         environmentId,
         environmentType,
@@ -386,21 +399,11 @@ export class ExecutionSnapshotSystem {
         checkpointId,
         workerId,
         runnerId,
-        metadata: snapshot.metadata ?? undefined,
-        completedWaitpoints: {
-          connect: completedWaitpoints?.map((w) => ({ id: w.id })),
-        },
-        completedWaitpointOrder: completedWaitpoints
-          ?.filter((c) => c.index !== undefined)
-          .sort((a, b) => a.index! - b.index!)
-          .map((w) => w.id),
-        isValid: error ? false : true,
+        completedWaitpoints,
         error,
       },
-      include: {
-        checkpoint: true,
-      },
-    });
+      prisma
+    );
 
     if (!error) {
       //set heartbeat (if relevant)
@@ -449,7 +452,7 @@ export class ExecutionSnapshotSystem {
     const prisma = tx ?? this.$.prisma;
 
     //we don't need to acquire a run lock for any of this, it's not critical if it happens on an older version
-    const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
+    const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
     if (latestSnapshot.id !== snapshotId) {
       this.$.logger.log("heartbeatRun: no longer the latest snapshot, stopping the heartbeat.", {
         runId,
@@ -503,7 +506,7 @@ export class ExecutionSnapshotSystem {
   }): Promise<ExecutionResult> {
     const prisma = tx ?? this.$.prisma;
 
-    const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
+    const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
 
     this.$.logger.debug("restartHeartbeatForRun: enqueuing heartbeat", {
       runId,

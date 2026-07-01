@@ -1,5 +1,6 @@
 import type { Meter, Tracer } from "@internal/tracing";
 import type { RunStore } from "@internal/run-store";
+import type { ControlPlaneResolver } from "../controlPlaneResolver.js";
 import type { Logger } from "@trigger.dev/core/logger";
 import type { PrismaClient, PrismaReplicaClient } from "@trigger.dev/database";
 import type { RunQueue } from "../../run-queue/index.js";
@@ -13,6 +14,7 @@ export type SystemResources = {
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
   runStore: RunStore;
+  controlPlaneResolver: ControlPlaneResolver;
   worker: EngineWorker;
   eventBus: EventBus;
   logger: Logger;

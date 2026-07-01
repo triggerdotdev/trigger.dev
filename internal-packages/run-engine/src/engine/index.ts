@@ -80,6 +80,10 @@ import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { NoopPendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
 import type { SystemResources } from "./systems/systems.js";
 import { type RunStore, PostgresRunStore } from "@internal/run-store";
+import {
+  type ControlPlaneResolver,
+  PassthroughControlPlaneResolver,
+} from "./controlPlaneResolver.js";
 import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
 import type {
@@ -111,6 +115,7 @@ export class RunEngine {
   prisma: PrismaClient;
   readOnlyPrisma: PrismaReplicaClient;
   runStore: RunStore;
+  controlPlaneResolver: ControlPlaneResolver;
   runQueue: RunQueue;
   eventBus: EventBus = new EventEmitter<EventBusEvents>();
   executionSnapshotSystem: ExecutionSnapshotSystem;
@@ -132,10 +137,17 @@ export class RunEngine {
     this.logger = options.logger ?? new Logger("RunEngine", this.options.logLevel ?? "info");
     this.prisma = options.prisma;
     this.readOnlyPrisma = options.readOnlyPrisma ?? this.prisma;
-    this.runStore = new PostgresRunStore({
-      prisma: this.prisma,
-      readOnlyPrisma: this.readOnlyPrisma,
-    });
+    this.runStore =
+      options.store ??
+      new PostgresRunStore({
+        prisma: this.prisma,
+        readOnlyPrisma: this.readOnlyPrisma,
+      });
+    this.controlPlaneResolver =
+      options.controlPlaneResolver ??
+      new PassthroughControlPlaneResolver({
+        prisma: this.prisma,
+      });
     this.runLockRedis = createRedisClient(
       {
         ...options.runLock.redis,
@@ -327,6 +339,7 @@ export class RunEngine {
       prisma: this.prisma,
       readOnlyPrisma: this.readOnlyPrisma,
       runStore: this.runStore,
+      controlPlaneResolver: this.controlPlaneResolver,
       worker: this.worker,
       eventBus: this.eventBus,
       logger: this.logger,
@@ -431,7 +444,6 @@ export class RunEngine {
     });
 
     // Initialize BatchQueue for DRR-based batch processing (if configured)
-    // Only start consumers if consumerDisabled is not set or is false
     const startBatchQueueConsumers = options.batchQueue?.consumerEnabled ?? true;
 
     this.batchQueue = new BatchQueue({
@@ -638,7 +650,11 @@ export class RunEngine {
       const id = RunId.fromFriendlyId(snapshot.friendlyId);
       const error: TaskRunError = { type: "STRING_ERROR", raw: cancelReason };
 
+      // App-level replacement for the dropped TaskRun env/project Cascade FKs.
+      await this.controlPlaneResolver.assertEnvExists(snapshot.environment.id);
+
       try {
+        // Forward the bare caller tx so the routing store picks the owning DB by id.
         const taskRun = await this.runStore.createCancelledRun(
           {
             data: {
@@ -717,7 +733,7 @@ export class RunEngine {
               organizationId: snapshot.environment.organization.id,
             },
           },
-          prisma
+          tx
         );
 
         if (emitRunCancelledEvent) {
@@ -843,7 +859,6 @@ export class RunEngine {
       "trigger",
       async (span) => {
         // Handle debounce before creating a new run
-        // Store claimId if we successfully claimed the debounce key
         let debounceClaimId: string | undefined;
 
         if (debounce) {
@@ -904,7 +919,8 @@ export class RunEngine {
                 batch,
                 workerId,
                 runnerId,
-                tx: prisma,
+                // No tx: the block edge is a routed, run-co-resident write, not part of the
+                // control-plane trigger tx. Threading it pinned the edge write to the wrong DB.
               });
             }
 
@@ -928,10 +944,14 @@ export class RunEngine {
         // Apply defaultMaxTtl: use as default when no TTL is provided, clamp when larger
         const resolvedTtl = this.#resolveMaxTtl(ttl);
 
-        //create run
         let taskRun: TaskRun & { associatedWaitpoint: Waitpoint | null };
         const taskRunId = RunId.fromFriendlyId(friendlyId);
+
+        // App-level replacement for the dropped TaskRun env/project Cascade FKs.
+        await this.controlPlaneResolver.assertEnvExists(environment.id);
+
         try {
+          // Forward the bare caller tx so the routing store picks the owning DB by id.
           taskRun = await this.runStore.createRun(
             {
               data: {
@@ -1032,7 +1052,7 @@ export class RunEngine {
                     })
                   : undefined,
             },
-            prisma
+            tx
           );
         } catch (error) {
           if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -1085,7 +1105,6 @@ export class RunEngine {
               waitpoints: taskRun.associatedWaitpoint.id,
               projectId: taskRun.associatedWaitpoint.projectId,
               batch,
-              tx: prisma,
             });
           } else {
             // Single triggerAndWait: acquire the parent run lock to safely transition
@@ -1098,7 +1117,6 @@ export class RunEngine {
               batch,
               workerId,
               runnerId,
-              tx: prisma,
             });
           }
         }
@@ -1264,6 +1282,9 @@ export class RunEngine {
       async (span) => {
         const taskRunId = RunId.fromFriendlyId(friendlyId);
 
+        // App-level replacement for the dropped TaskRun env/project Cascade FKs.
+        await this.controlPlaneResolver.assertEnvExists(environment.id);
+
         // Build associated waitpoint data if parent is waiting for this run
         const waitpointData =
           resumeParentOnCompletion && parentTaskRunId
@@ -1273,7 +1294,6 @@ export class RunEngine {
               })
             : undefined;
 
-        // Create the run in terminal SYSTEM_FAILURE status.
         // No execution snapshot is needed: this run never gets dequeued, executed,
         // or heartbeated, so nothing will call getLatestExecutionSnapshot on it.
         const taskRun = await this.runStore.createFailedRun(
@@ -1308,7 +1328,7 @@ export class RunEngine {
             },
             associatedWaitpoint: waitpointData,
           },
-          this.prisma
+          undefined
         );
 
         span.setAttribute("runId", taskRun.id);
@@ -1629,6 +1649,7 @@ export class RunEngine {
    * If you pass an `idempotencyKey`, the waitpoint will be created only if it doesn't already exist.
    */
   async createDateTimeWaitpoint({
+    runId,
     projectId,
     environmentId,
     completedAfter,
@@ -1636,6 +1657,8 @@ export class RunEngine {
     idempotencyKeyExpiresAt,
     tx,
   }: {
+    /** The run that will block on this waitpoint. Co-locates the waitpoint with the run's DB. */
+    runId?: string;
     projectId: string;
     environmentId: string;
     completedAfter: Date;
@@ -1644,6 +1667,7 @@ export class RunEngine {
     tx?: PrismaClientOrTransaction;
   }) {
     return this.waitpointSystem.createDateTimeWaitpoint({
+      runId,
       projectId,
       environmentId,
       completedAfter,
@@ -1657,6 +1681,7 @@ export class RunEngine {
    * If you pass an `idempotencyKey` and it already exists, it will return the existing waitpoint.
    */
   async createManualWaitpoint({
+    runId,
     environmentId,
     projectId,
     idempotencyKey,
@@ -1664,6 +1689,8 @@ export class RunEngine {
     timeout,
     tags,
   }: {
+    /** The run that will block on this waitpoint. Co-locates the waitpoint with the run's DB. */
+    runId?: string;
     environmentId: string;
     projectId: string;
     idempotencyKey?: string;
@@ -1672,6 +1699,7 @@ export class RunEngine {
     tags?: string[];
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
     return this.waitpointSystem.createManualWaitpoint({
+      runId,
       environmentId,
       projectId,
       idempotencyKey,
@@ -1699,20 +1727,21 @@ export class RunEngine {
     organizationId: string;
     tx?: PrismaClientOrTransaction;
   }): Promise<Waitpoint | null> {
-    const prisma = tx ?? this.prisma;
-
     try {
-      const waitpoint = await prisma.waitpoint.create({
-        data: {
-          ...WaitpointId.generate(),
-          type: "BATCH",
-          idempotencyKey: batchId,
-          userProvidedIdempotencyKey: false,
-          completedByBatchId: batchId,
-          environmentId,
-          projectId,
+      const waitpoint = await this.runStore.createWaitpoint(
+        {
+          data: {
+            ...WaitpointId.generate(),
+            type: "BATCH",
+            idempotencyKey: batchId,
+            userProvidedIdempotencyKey: false,
+            completedByBatchId: batchId,
+            environmentId,
+            projectId,
+          },
         },
-      });
+        tx
+      );
 
       await this.blockRunWithWaitpoint({
         runId,
@@ -1720,7 +1749,7 @@ export class RunEngine {
         projectId,
         organizationId,
         batch: { id: batchId },
-        tx: prisma,
+        // No tx: the block edge routes to the run's owning DB, not the control-plane tx.
       });
 
       return waitpoint;
@@ -1835,21 +1864,24 @@ export class RunEngine {
     projectId: string;
     waitpointId: string;
   }): Promise<Waitpoint | null> {
-    const waitpoint = await this.prisma.waitpoint.findFirst({
-      where: { id: waitpointId },
-      include: {
-        blockingTaskRuns: {
-          select: {
-            taskRun: {
-              select: {
-                id: true,
-                friendlyId: true,
+    const waitpoint = await this.runStore.findWaitpoint(
+      {
+        where: { id: waitpointId },
+        include: {
+          blockingTaskRuns: {
+            select: {
+              taskRun: {
+                select: {
+                  id: true,
+                  friendlyId: true,
+                },
               },
             },
           },
         },
       },
-    });
+      this.prisma
+    );
 
     if (!waitpoint) return null;
     if (waitpoint.environmentId !== environmentId) return null;
@@ -1910,6 +1942,14 @@ export class RunEngine {
       isError: boolean;
     };
   }): Promise<Waitpoint> {
+    // Consult the cross-seam guard FIRST so an unclassifiable id fails loudly
+    // here (never a silent local apply). Do NOT branch on decision.store: store routing is
+    // installed below, as the first statement of waitpointSystem.completeWaitpoint;
+    // we delegate unconditionally and inherit it. No-op when unset.
+    const guard = this.options.crossSeamGuard;
+    if (guard) {
+      await guard({ waitpointId: id, routeKind: "RESUME_TOKEN" });
+    }
     return this.waitpointSystem.completeWaitpoint({ id, output });
   }
 
@@ -2028,7 +2068,7 @@ export class RunEngine {
   }): Promise<RunExecutionData | null> {
     const prisma = tx ?? this.prisma;
     try {
-      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
+      const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.runStore);
       return executionDataFromSnapshot(snapshot);
     } catch (e) {
       this.logger.error("Failed to getRunExecutionData", {
@@ -2058,7 +2098,7 @@ export class RunEngine {
     const prisma = tx ?? (useReplica ? this.readOnlyPrisma : this.prisma);
 
     const query = async (client: PrismaClientOrTransaction) => {
-      const snapshots = await getExecutionSnapshotsSince(client, runId, snapshotId);
+      const snapshots = await getExecutionSnapshotsSince(client, runId, snapshotId, this.runStore);
       return snapshots.map(executionDataFromSnapshot);
     };
 
@@ -2162,10 +2202,8 @@ export class RunEngine {
 
   async quit() {
     try {
-      // stop the worker queue observer loop
       this.workerQueueObserverAbortController?.abort();
 
-      //stop the run queue
       await this.runQueue.quit();
       await this.worker.stop();
       await this.ttlWorker.stop();
@@ -2174,13 +2212,11 @@ export class RunEngine {
       // This is just a failsafe
       await this.runLockRedis.quit();
 
-      // Close the batch queue and its Redis connections
       await this.batchQueue.close();
 
-      // Close the debounce system Redis connection
       await this.debounceSystem.quit();
     } catch (_error) {
-      // And should always throw
+      // Best-effort shutdown; ignore quit/close errors.
     }
   }
 
@@ -2228,7 +2264,7 @@ export class RunEngine {
   }
 
   async #repairRun(runId: string, dryRun: boolean) {
-    const snapshot = await getLatestExecutionSnapshot(this.prisma, runId);
+    const snapshot = await getLatestExecutionSnapshot(this.prisma, runId, this.runStore);
 
     if (
       snapshot.executionStatus === "QUEUED" ||
@@ -2393,7 +2429,7 @@ export class RunEngine {
   }) {
     const prisma = tx ?? this.prisma;
     return await this.runLock.lock("handleStalledSnapshot", [runId], async () => {
-      const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
+      const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId, this.runStore);
       if (latestSnapshot.id !== snapshotId) {
         this.logger.log(
           "RunEngine.#handleStalledSnapshot() no longer the latest snapshot, stopping the heartbeat.",
@@ -2429,19 +2465,7 @@ export class RunEngine {
           });
 
           //the run didn't start executing, we need to requeue it
-          const run = await this.runStore.findRun(
-            { id: runId },
-            {
-              include: {
-                runtimeEnvironment: {
-                  include: {
-                    organization: true,
-                  },
-                },
-              },
-            },
-            prisma
-          );
+          const run = await this.runStore.findRun({ id: runId }, prisma);
 
           if (!run) {
             this.logger.error(
@@ -2675,7 +2699,7 @@ export class RunEngine {
     executionStatus: string;
   }) {
     return await this.runLock.lock("handleRepairSnapshot", [runId], async () => {
-      const latestSnapshot = await getLatestExecutionSnapshot(this.prisma, runId);
+      const latestSnapshot = await getLatestExecutionSnapshot(this.prisma, runId, this.runStore);
 
       if (latestSnapshot.id !== snapshotId) {
         this.logger.log(
@@ -2838,7 +2862,6 @@ export class RunEngine {
       },
     });
 
-    // Log the finished runs
     for (const run of runs) {
       this.logger.info("Concurrency sweeper callback found finished run", {
         runId: run.id,

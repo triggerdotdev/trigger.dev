@@ -778,7 +778,7 @@ describe("PostgresRunStore", () => {
   );
 
   postgresTest(
-    "lockRunToWorker sets status to DEQUEUED with lock columns, includes runtimeEnvironment, and creates one PENDING_EXECUTING snapshot",
+    "lockRunToWorker sets status to DEQUEUED with lock columns and creates one PENDING_EXECUTING snapshot (no runtimeEnvironment relation)",
     async ({ prisma }) => {
       const { organization, project, environment } = await seedEnvironment(prisma);
 
@@ -877,8 +877,9 @@ describe("PostgresRunStore", () => {
       expect(locked.lockedById).toBe(workerTask.id);
       expect(locked.lockedToVersionId).toBe(backgroundWorker.id);
       expect(locked.lockedQueueId).toBe(queue.id);
-      expect(locked.runtimeEnvironment).toBeDefined();
-      expect(locked.runtimeEnvironment.id).toBe(environment.id);
+      // The result is base-TaskRun scalars only — no control-plane relation.
+      expect(locked.runtimeEnvironmentId).toBe(environment.id);
+      expect((locked as Record<string, unknown>).runtimeEnvironment).toBeUndefined();
 
       const snap = await prisma.taskRunExecutionSnapshot.findUnique({ where: { id: snapshotId } });
       expect(snap).not.toBeNull();
@@ -1740,8 +1741,8 @@ describe("PostgresRunStore — read", () => {
     async ({ prisma }) => {
       const { organization, project, environment } = await seedEnvironment(prisma);
 
-      // Use a NoopRunStore-style read replica that must NOT be hit: pass the writer
-      // (prisma) explicitly so reads go through it for read-after-write consistency.
+      // The read replica must NOT be hit here: pass the writer (prisma) explicitly
+      // so reads go through it for read-after-write consistency.
       const store = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
       const runId = "run_find_read_after_write_1";
 

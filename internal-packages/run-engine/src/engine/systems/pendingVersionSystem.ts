@@ -128,21 +128,28 @@ export class PendingVersionSystem {
     });
 
     for (const run of pendingRuns) {
-      const promoted = await this.$.prisma.$transaction(async (tx) => {
+      // Atomic unit: the status promotion and the new QUEUED snapshot must commit together
+      // or a crash between them leaves the run promoted-to-PENDING with no snapshot. Under the run-ops
+      // split these route to the run's owning DB but, as two router calls, would each auto-commit.
+      // `runInTransaction` shares ONE owning-DB transaction; the inner writes use the tx-bound `store`
+      // (promotePendingVersionRuns directly, the snapshot via enqueueRun's `store` passthrough). The
+      // Redis enqueue inside enqueueRun is NOT in this transaction (Redis never was — unchanged).
+      const promoted = await this.$.runStore.runInTransaction(run.id, async (store, tx) => {
         // Idempotency guard: only flips PENDING_VERSION → PENDING. If another
         // worker already promoted this run between our findMany and the
         // update, count is 0 and we skip the enqueue.
-        const updateResult = await this.$.runStore.promotePendingVersionRuns(run.id, tx);
+        const updateResult = await store.promotePendingVersionRuns(run.id, tx);
 
         if (updateResult.count === 0) {
           return false;
         }
 
-        const updatedRun = await this.$.runStore.findRunOrThrow({ id: run.id }, tx);
+        const updatedRun = await store.findRunOrThrow({ id: run.id }, tx);
 
         await this.enqueueSystem.enqueueRun({
           run: updatedRun,
           env: backgroundWorker.runtimeEnvironment,
+          store,
           tx,
           // PENDING_VERSION re-enqueue is the first time this run is actually
           // entering the run queue (the original enqueue was held back waiting

@@ -23,7 +23,6 @@ export class BatchSystem {
       id: `tryCompleteBatch:${batchId}`,
       job: "tryCompleteBatch",
       payload: { batchId: batchId },
-      //200ms in the future
       availableAt: new Date(Date.now() + 200),
     });
   }
@@ -38,20 +37,7 @@ export class BatchSystem {
    */
   async #tryCompleteBatch({ batchId }: { batchId: string }) {
     return startSpan(this.$.tracer, "#tryCompleteBatch", async (span) => {
-      const batch = await this.$.prisma.batchTaskRun.findFirst({
-        select: {
-          status: true,
-          runtimeEnvironmentId: true,
-          processingJobsCount: true,
-          runCount: true,
-          batchVersion: true,
-          successfulRunCount: true,
-          failedRunCount: true,
-        },
-        where: {
-          id: batchId,
-        },
-      });
+      const batch = await this.$.runStore.findBatchTaskRunById(batchId, undefined, this.$.prisma);
 
       if (!batch) {
         this.$.logger.error("#tryCompleteBatch batch doesn't exist", { batchId });
@@ -103,21 +89,30 @@ export class BatchSystem {
 
       if (runs.every((r) => isFinalRunStatus(r.status))) {
         this.$.logger.debug("#tryCompleteBatch: All runs are completed", { batchId });
-        await this.$.prisma.batchTaskRun.update({
-          where: {
-            id: batchId,
+        await this.$.runStore.updateBatchTaskRun(
+          {
+            where: {
+              id: batchId,
+            },
+            data: {
+              status: "COMPLETED",
+            },
+            select: {
+              id: true,
+            },
           },
-          data: {
-            status: "COMPLETED",
-          },
-        });
+          this.$.prisma
+        );
 
         //get waitpoint (if there is one)
-        const waitpoint = await this.$.prisma.waitpoint.findFirst({
-          where: {
-            completedByBatchId: batchId,
+        const waitpoint = await this.$.runStore.findWaitpoint(
+          {
+            where: {
+              completedByBatchId: batchId,
+            },
           },
-        });
+          this.$.prisma
+        );
 
         if (!waitpoint) {
           this.$.logger.debug(

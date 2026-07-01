@@ -8,8 +8,10 @@ import type {
   Waitpoint,
 } from "@trigger.dev/database";
 import { Prisma } from "@trigger.dev/database";
+import type { RunStore } from "@internal/run-store";
 import { assertNever } from "assert-never";
 import { nanoid } from "nanoid";
+import { UnclassifiableWaitpointId } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { isFinalRunStatus } from "../statuses.js";
 import type { EnqueueSystem } from "./enqueueSystem.js";
@@ -57,12 +59,18 @@ export class WaitpointSystem {
     runId: string;
     tx?: PrismaClientOrTransaction;
   }) {
-    const prisma = tx ?? this.$.prisma;
-    const deleted = await prisma.taskRunWaitpoint.deleteMany({
-      where: {
-        taskRunId: runId,
-      },
-    });
+    // A tx pins a specific client and must not be re-routed through the store.
+    const deleted = tx
+      ? await tx.taskRunWaitpoint.deleteMany({
+          where: {
+            taskRunId: runId,
+          },
+        })
+      : await this.$.runStore.deleteManyTaskRunWaitpoints({
+          where: {
+            taskRunId: runId,
+          },
+        });
 
     return deleted.count;
   }
@@ -80,9 +88,24 @@ export class WaitpointSystem {
       isError: boolean;
     };
   }): Promise<Waitpoint> {
+    // Residency store-selection guard. completeWaitpoint arrives with only
+    // (waitpointId, output) — no run id — so the owning run-ops store is selected
+    // by the waitpoint's own residency. In single-DB this is the one store
+    // (no classification). An unclassifiable id throws loud — never default-routes.
+    let store: RunStore;
+    try {
+      store = await this.$.runStore.forWaitpointCompletion(id, { routeKind: "MANUAL" });
+    } catch (error) {
+      this.$.logger.error("completeWaitpoint: unclassifiable waitpointId", {
+        waitpointId: id,
+        error,
+      });
+      throw new UnclassifiableWaitpointId(id, { cause: error });
+    }
+
     // 1. Complete the Waitpoint (if not completed)
     const [updateError, updateResult] = await tryCatch(
-      this.$.prisma.waitpoint.updateMany({
+      store.updateManyWaitpoints({
         where: { id, status: "PENDING" },
         data: {
           status: "COMPLETED",
@@ -106,7 +129,10 @@ export class WaitpointSystem {
       );
     }
 
-    const waitpoint = await this.$.prisma.waitpoint.findFirst({
+    // Re-read the just-written row from the RESOLVED store's PRIMARY: the replica (findWaitpoint's
+    // default) can miss it under lag → false "not found" → the parent hangs; this.$.prisma would
+    // instead hit the wrong DB. findWaitpointOnPrimary reads the owning store's primary.
+    const waitpoint = await store.findWaitpointOnPrimary({
       where: { id },
     });
 
@@ -122,11 +148,17 @@ export class WaitpointSystem {
       throw new Error("Waitpoint not completed");
     }
 
-    // 2. Find the TaskRuns blocked by this waitpoint
-    const affectedTaskRuns = await this.$.prisma.taskRunWaitpoint.findMany({
-      where: { waitpointId: id },
-      select: { taskRunId: true, spanIdToComplete: true, createdAt: true },
-    });
+    // 2. Find the TaskRuns blocked by this waitpoint. The edge (TaskRunWaitpoint) co-locates
+    // with its RUN, not this token, so it can live on the OTHER run-ops DB: read via the router
+    // (which fans the waitpointId lookup across both DBs) rather than the token's own `store`,
+    // or a cross-DB blocked run is never found and hangs forever.
+    const affectedTaskRuns = await this.$.runStore.findManyTaskRunWaitpoints(
+      {
+        where: { waitpointId: id },
+        select: { taskRunId: true, spanIdToComplete: true, createdAt: true },
+      },
+      this.$.prisma
+    );
 
     if (affectedTaskRuns.length === 0) {
       this.$.logger.debug(`completeWaitpoint: no TaskRunWaitpoints found for waitpoint`, {
@@ -178,6 +210,7 @@ export class WaitpointSystem {
    * If you pass an `idempotencyKey`, the waitpoint will be created only if it doesn't already exist.
    */
   async createDateTimeWaitpoint({
+    runId,
     projectId,
     environmentId,
     completedAfter,
@@ -185,6 +218,7 @@ export class WaitpointSystem {
     idempotencyKeyExpiresAt,
     tx,
   }: {
+    runId?: string;
     projectId: string;
     environmentId: string;
     completedAfter: Date;
@@ -192,15 +226,33 @@ export class WaitpointSystem {
     idempotencyKeyExpiresAt?: Date;
     tx?: PrismaClientOrTransaction;
   }) {
-    const prisma = tx ?? this.$.prisma;
-
+    // Co-location invariant: a DATETIME wait waitpoint lives on the same run-ops DB as the run that
+    // blocks on it (so the block edge's local `Waitpoint` join resolves and completion/resume stay
+    // local). The minted waitpoint id is always a cuid, so without `coLocateWithRunId` the upsert
+    // would always route to LEGACY and a ksuid run on NEW would hang. The (env,idempotencyKey) dedup
+    // is within the owning run/tree (co-resident on one DB), so the dedup probe + rotation target the
+    // SAME store. With no run id (a standalone token has no owning run yet) the lookup falls back to
+    // a cross-DB NEW-then-LEGACY scan and the upsert routes by id-shape. A caller-supplied tx pins a
+    // client (same physical DB as the control-plane tx → LEGACY), so it stays on direct prisma.
+    const colocate = runId ? { coLocateWithRunId: runId } : undefined;
     const existingWaitpoint = idempotencyKey
-      ? await prisma.waitpoint.findFirst({
-          where: {
-            environmentId,
-            idempotencyKey,
-          },
-        })
+      ? tx
+        ? await tx.waitpoint.findFirst({
+            where: {
+              environmentId,
+              idempotencyKey,
+            },
+          })
+        : await this.$.runStore.findWaitpoint(
+            {
+              where: {
+                environmentId,
+                idempotencyKey,
+              },
+            },
+            undefined,
+            colocate
+          )
       : undefined;
 
     if (existingWaitpoint) {
@@ -210,7 +262,7 @@ export class WaitpointSystem {
       ) {
         //the idempotency key has expired
         //remove the waitpoint idempotencyKey
-        await prisma.waitpoint.update({
+        const rotateArgs = {
           where: {
             id: existingWaitpoint.id,
           },
@@ -218,7 +270,12 @@ export class WaitpointSystem {
             idempotencyKey: nanoid(24),
             inactiveIdempotencyKey: existingWaitpoint.idempotencyKey,
           },
-        });
+        };
+        if (tx) {
+          await tx.waitpoint.update(rotateArgs);
+        } else {
+          await this.$.runStore.updateWaitpoint(rotateArgs, undefined, colocate);
+        }
 
         //let it fall through to create a new waitpoint
       } else {
@@ -226,7 +283,7 @@ export class WaitpointSystem {
       }
     }
 
-    const waitpoint = await prisma.waitpoint.upsert({
+    const upsertArgs = {
       where: {
         environmentId_idempotencyKey: {
           environmentId,
@@ -235,7 +292,7 @@ export class WaitpointSystem {
       },
       create: {
         ...WaitpointId.generate(),
-        type: "DATETIME",
+        type: "DATETIME" as const,
         idempotencyKey: idempotencyKey ?? nanoid(24),
         idempotencyKeyExpiresAt,
         userProvidedIdempotencyKey: !!idempotencyKey,
@@ -244,7 +301,10 @@ export class WaitpointSystem {
         completedAfter,
       },
       update: {},
-    });
+    };
+    const waitpoint = tx
+      ? await tx.waitpoint.upsert(upsertArgs)
+      : await this.$.runStore.upsertWaitpoint(upsertArgs, undefined, colocate);
 
     await this.$.worker.enqueue({
       id: `finishWaitpoint.${waitpoint.id}`,
@@ -260,6 +320,7 @@ export class WaitpointSystem {
    * If you pass an `idempotencyKey` and it already exists, it will return the existing waitpoint.
    */
   async createManualWaitpoint({
+    runId,
     environmentId,
     projectId,
     idempotencyKey,
@@ -267,6 +328,7 @@ export class WaitpointSystem {
     timeout,
     tags,
   }: {
+    runId?: string;
     environmentId: string;
     projectId: string;
     idempotencyKey?: string;
@@ -274,13 +336,23 @@ export class WaitpointSystem {
     timeout?: Date;
     tags?: string[];
   }): Promise<{ waitpoint: Waitpoint; isCached: boolean }> {
+    // Co-location invariant (see createDateTimeWaitpoint): when a `runId` is supplied the waitpoint
+    // co-locates with that run's DB and the (env,idempotencyKey) dedup is per-run (co-resident). A
+    // standalone token (api.v1.waitpoints.tokens.ts) passes no run id — it is created without an
+    // owner, blocked later by whichever run waits on it (possibly cross-DB, resolved by the
+    // run-co-resident block edge + completion fan-out), so it routes by id-shape and dedups cross-DB. No tx here.
+    const colocate = runId ? { coLocateWithRunId: runId } : undefined;
     const existingWaitpoint = idempotencyKey
-      ? await this.$.prisma.waitpoint.findFirst({
-          where: {
-            environmentId,
-            idempotencyKey,
+      ? await this.$.runStore.findWaitpoint(
+          {
+            where: {
+              environmentId,
+              idempotencyKey,
+            },
           },
-        })
+          undefined,
+          colocate
+        )
       : undefined;
 
     if (existingWaitpoint) {
@@ -290,15 +362,19 @@ export class WaitpointSystem {
       ) {
         //the idempotency key has expired
         //remove the waitpoint idempotencyKey
-        await this.$.prisma.waitpoint.update({
-          where: {
-            id: existingWaitpoint.id,
+        await this.$.runStore.updateWaitpoint(
+          {
+            where: {
+              id: existingWaitpoint.id,
+            },
+            data: {
+              idempotencyKey: nanoid(24),
+              inactiveIdempotencyKey: existingWaitpoint.idempotencyKey,
+            },
           },
-          data: {
-            idempotencyKey: nanoid(24),
-            inactiveIdempotencyKey: existingWaitpoint.idempotencyKey,
-          },
-        });
+          undefined,
+          colocate
+        );
 
         //let it fall through to create a new waitpoint
       } else {
@@ -311,26 +387,30 @@ export class WaitpointSystem {
 
     while (attempts < maxRetries) {
       try {
-        const waitpoint = await this.$.prisma.waitpoint.upsert({
-          where: {
-            environmentId_idempotencyKey: {
-              environmentId,
-              idempotencyKey: idempotencyKey ?? nanoid(24),
+        const waitpoint = await this.$.runStore.upsertWaitpoint(
+          {
+            where: {
+              environmentId_idempotencyKey: {
+                environmentId,
+                idempotencyKey: idempotencyKey ?? nanoid(24),
+              },
             },
+            create: {
+              ...WaitpointId.generate(),
+              type: "MANUAL",
+              idempotencyKey: idempotencyKey ?? nanoid(24),
+              idempotencyKeyExpiresAt,
+              userProvidedIdempotencyKey: !!idempotencyKey,
+              environmentId,
+              projectId,
+              completedAfter: timeout,
+              tags,
+            },
+            update: {},
           },
-          create: {
-            ...WaitpointId.generate(),
-            type: "MANUAL",
-            idempotencyKey: idempotencyKey ?? nanoid(24),
-            idempotencyKeyExpiresAt,
-            userProvidedIdempotencyKey: !!idempotencyKey,
-            environmentId,
-            projectId,
-            completedAfter: timeout,
-            tags,
-          },
-          update: {},
-        });
+          undefined,
+          colocate
+        );
 
         //schedule the timeout
         if (timeout) {
@@ -367,21 +447,20 @@ export class WaitpointSystem {
   /**
    * Prevents a run from continuing until the waitpoint is completed.
    *
-   * This method uses two separate SQL statements intentionally:
+   * The block edge is written via the run-ops store, routed by the owning run id so it co-resides
+   * with the run (`blockRunWithWaitpointEdges`). It is NOT pinned to the caller's control-plane tx:
+   * doing so joined `Waitpoint` on the wrong DB for a run whose waitpoint lives on the run-ops DB,
+   * wrote 0 edges, and silently never suspended the parent. Like `blockRunWithCreatedBatch`, this is
+   * a routed, run-co-resident write rather than part of the control-plane trigger tx — there is no
+   * cross-DB transaction. The edge write is idempotent (ON CONFLICT DO NOTHING) and the snapshot
+   * transition is re-derivable, so a crash between the two leaves no corruption: a retry re-writes
+   * the same edge and re-checks the pending count.
    *
-   * 1. A CTE that INSERTs TaskRunWaitpoint rows (blocking connections) and
-   *    _WaitpointRunConnections rows (historical connections).
-   *
-   * 2. A separate SELECT that checks if any of the requested waitpoints are still PENDING.
-   *
-   * These MUST be separate statements because of PostgreSQL MVCC in READ COMMITTED isolation:
-   * each statement gets its own snapshot. If a concurrent `completeWaitpoint` commits between
-   * the CTE starting and finishing, the CTE's snapshot won't see the COMPLETED status. By using
-   * a separate SELECT, we get a fresh snapshot that reflects the latest committed state.
-   *
-   * The pending check queries ALL requested waitpoint IDs (not just the ones actually inserted
-   * by the CTE). This is intentional: if a TaskRunWaitpoint row already existed (ON CONFLICT
-   * DO NOTHING skipped the insert), a still-PENDING waitpoint should still count as blocking.
+   * The pending check is a SEPARATE store call (not folded into the edge write) on purpose: under
+   * PostgreSQL READ COMMITTED each statement gets its own snapshot, so if a concurrent
+   * `completeWaitpoint` commits between the edge write and the check, this fresh query still sees the
+   * COMPLETED status. It queries ALL requested waitpoint IDs (not just the ones inserted): a row
+   * that already existed (ON CONFLICT skipped the insert) but is still PENDING must still block.
    */
   async blockRunWithWaitpoint({
     runId,
@@ -413,51 +492,29 @@ export class WaitpointSystem {
     let $waitpoints = typeof waitpoints === "string" ? [waitpoints] : waitpoints;
 
     return await this.$.runLock.lock("blockRunWithWaitpoint", [runId], async () => {
-      let snapshot: TaskRunExecutionSnapshot = await getLatestExecutionSnapshot(prisma, runId);
+      let snapshot: TaskRunExecutionSnapshot = await getLatestExecutionSnapshot(
+        prisma,
+        runId,
+        this.$.runStore
+      );
 
-      // Insert the blocking connections and the historical run connections.
-      // We use a CTE to do both inserts atomically. Data-modifying CTEs are
-      // always executed regardless of whether they're referenced in the outer query.
-      await prisma.$queryRaw`
-        WITH inserted AS (
-          INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt", "spanIdToComplete", "batchId", "batchIndex")
-          SELECT
-            gen_random_uuid(),
-            ${runId},
-            w.id,
-            ${projectId},
-            NOW(),
-            NOW(),
-            ${spanIdToComplete ?? null},
-            ${batch?.id ?? null},
-            ${batch?.index ?? null}
-          FROM "Waitpoint" w
-          WHERE w.id IN (${Prisma.join($waitpoints)})
-          ON CONFLICT DO NOTHING
-          RETURNING "waitpointId"
-        ),
-        connected_runs AS (
-          INSERT INTO "_WaitpointRunConnections" ("A", "B")
-          SELECT ${runId}, w.id
-          FROM "Waitpoint" w
-          WHERE w.id IN (${Prisma.join($waitpoints)})
-          ON CONFLICT DO NOTHING
-        )
-        SELECT COUNT(*) FROM inserted`;
+      // Insert the blocking + historical connections via the run-ops store, routed by the owning
+      // run id so the edge co-resides with the run. Never pinned to the caller's control-plane tx:
+      // that joined `Waitpoint` on the wrong DB and wrote 0 edges. The pending check stays a
+      // SEPARATE store call so it gets its own READ COMMITTED snapshot (see the doc comment above).
+      await this.$.runStore.blockRunWithWaitpointEdges({
+        runId,
+        waitpointIds: $waitpoints,
+        projectId,
+        spanIdToComplete,
+        batchId: batch?.id,
+        batchIndex: batch?.index,
+      });
 
-      // Check if the run is actually blocked using a separate query.
-      // This MUST be a separate statement from the CTE above because in READ COMMITTED
-      // isolation, each statement gets its own snapshot. The CTE's snapshot is taken when
-      // it starts, so if a concurrent completeWaitpoint commits during the CTE, the CTE
-      // won't see it. This fresh query gets a new snapshot that reflects the latest commits.
-      const pendingCheck = await prisma.$queryRaw<{ pending_count: bigint }[]>`
-        SELECT COUNT(*) as pending_count
-        FROM "Waitpoint"
-        WHERE id IN (${Prisma.join($waitpoints)})
-        AND status = 'PENDING'
-      `;
+      // Check if the run is actually blocked using a separate query (see above).
+      const pendingCount = await this.$.runStore.countPendingWaitpoints($waitpoints);
 
-      const isRunBlocked = Number(pendingCheck.at(0)?.pending_count ?? 0) > 0;
+      const isRunBlocked = pendingCount > 0;
 
       let newStatus: TaskRunExecutionStatus = "SUSPENDED";
       if (
@@ -544,7 +601,6 @@ export class WaitpointSystem {
     timeout,
     spanIdToComplete,
     batch,
-    tx,
   }: {
     runId: string;
     waitpoints: string | string[];
@@ -552,41 +608,20 @@ export class WaitpointSystem {
     timeout?: Date;
     spanIdToComplete?: string;
     batch: { id: string; index?: number };
-    tx?: PrismaClientOrTransaction;
   }): Promise<void> {
-    const prisma = tx ?? this.$.prisma;
     const $waitpoints = typeof waitpoints === "string" ? [waitpoints] : waitpoints;
 
-    // Insert the blocking connections and the historical run connections.
-    // No lock needed: ON CONFLICT DO NOTHING makes concurrent inserts safe,
-    // and the parent snapshot is already EXECUTING_WITH_WAITPOINTS from
-    // blockRunWithCreatedBatch.
-    await prisma.$queryRaw`
-      WITH inserted AS (
-        INSERT INTO "TaskRunWaitpoint" ("id", "taskRunId", "waitpointId", "projectId", "createdAt", "updatedAt", "spanIdToComplete", "batchId", "batchIndex")
-        SELECT
-          gen_random_uuid(),
-          ${runId},
-          w.id,
-          ${projectId},
-          NOW(),
-          NOW(),
-          ${spanIdToComplete ?? null},
-          ${batch.id},
-          ${batch.index ?? null}
-        FROM "Waitpoint" w
-        WHERE w.id IN (${Prisma.join($waitpoints)})
-        ON CONFLICT DO NOTHING
-        RETURNING "waitpointId"
-      ),
-      connected_runs AS (
-        INSERT INTO "_WaitpointRunConnections" ("A", "B")
-        SELECT ${runId}, w.id
-        FROM "Waitpoint" w
-        WHERE w.id IN (${Prisma.join($waitpoints)})
-        ON CONFLICT DO NOTHING
-      )
-      SELECT COUNT(*) FROM inserted`;
+    // Same routed edge write as blockRunWithWaitpoint, routed by the owning run id. No lock
+    // needed: ON CONFLICT DO NOTHING makes concurrent inserts safe, and the parent snapshot is
+    // already EXECUTING_WITH_WAITPOINTS from blockRunWithCreatedBatch.
+    await this.$.runStore.blockRunWithWaitpointEdges({
+      runId,
+      waitpointIds: $waitpoints,
+      projectId,
+      spanIdToComplete,
+      batchId: batch.id,
+      batchIndex: batch.index,
+    });
 
     // Schedule timeout jobs if needed
     if (timeout) {
@@ -653,17 +688,20 @@ export class WaitpointSystem {
 
     return await this.$.runLock.lock("continueRunIfUnblocked", [runId], async () => {
       // 1. Get the any blocking waitpoints
-      const blockingWaitpoints = await this.$.prisma.taskRunWaitpoint.findMany({
-        where: { taskRunId: runId },
-        select: {
-          id: true,
-          batchId: true,
-          batchIndex: true,
-          waitpoint: {
-            select: { id: true, status: true, type: true, completedAfter: true },
+      const blockingWaitpoints = await this.$.runStore.findManyTaskRunWaitpoints(
+        {
+          where: { taskRunId: runId },
+          select: {
+            id: true,
+            batchId: true,
+            batchIndex: true,
+            waitpoint: {
+              select: { id: true, status: true, type: true, completedAfter: true },
+            },
           },
         },
-      });
+        this.$.prisma
+      );
 
       // 2. There are blockers still, so do nothing
       if (blockingWaitpoints.some((w) => w.waitpoint.status !== "COMPLETED")) {
@@ -678,24 +716,11 @@ export class WaitpointSystem {
         };
       }
 
-      // 3. Get the run with environment
+      // 3. Get the run (run-ops scalars) + resolve its environment via the control-plane resolver,
+      // so the run-ops DB can split without a cross-provider join.
       const run = await this.$.runStore.findRun(
         {
           id: runId,
-        },
-        {
-          include: {
-            runtimeEnvironment: {
-              select: {
-                id: true,
-                type: true,
-                maximumConcurrencyLimit: true,
-                concurrencyLimitBurstFactor: true,
-                project: { select: { id: true } },
-                organization: { select: { id: true } },
-              },
-            },
-          },
         },
         this.$.prisma
       );
@@ -707,8 +732,18 @@ export class WaitpointSystem {
         throw new Error(`continueRunIfUnblocked: run not found: ${runId}`);
       }
 
+      const env = await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+
+      if (!env) {
+        this.$.logger.error(`continueRunIfUnblocked: environment not found`, {
+          runId,
+          runtimeEnvironmentId: run.runtimeEnvironmentId,
+        });
+        throw new Error(`continueRunIfUnblocked: run not found: ${runId}`);
+      }
+
       //4. Continue the run whether it's executing or not
-      const snapshot = await getLatestExecutionSnapshot(this.$.prisma, runId);
+      const snapshot = await getLatestExecutionSnapshot(this.$.prisma, runId, this.$.runStore);
 
       switch (snapshot.executionStatus) {
         case "RUN_CREATED": {
@@ -867,7 +902,7 @@ export class WaitpointSystem {
           //this prioritizes dequeuing waiting runs over new runs
           const newSnapshot = await this.enqueueSystem.enqueueRun({
             run,
-            env: run.runtimeEnvironment,
+            env,
             snapshot: {
               status: "QUEUED",
               description: "Run was QUEUED, because all waitpoints are completed",
@@ -895,7 +930,7 @@ export class WaitpointSystem {
 
       if (blockingWaitpoints.length > 0) {
         //5. Remove the blocking waitpoints
-        await this.$.prisma.taskRunWaitpoint.deleteMany({
+        await this.$.runStore.deleteManyTaskRunWaitpoints({
           where: {
             taskRunId: runId,
             id: { in: blockingWaitpoints.map((b) => b.id) },
@@ -1009,12 +1044,13 @@ export class WaitpointSystem {
       }
 
       // Operational decision: use latest execution snapshot, not TaskRun status
-      const snapshot = await getLatestExecutionSnapshot(prisma, runId);
+      const snapshot = await getLatestExecutionSnapshot(prisma, runId, this.$.runStore);
 
       // Create waitpoint and link to run atomically
       const waitpointData = this.buildRunAssociatedWaitpoint({ projectId, environmentId });
 
-      const waitpoint = await prisma.waitpoint.create({
+      // RUN-type within-tree waitpoint that belongs to runId; routes by owning run id.
+      const waitpoint = await this.$.runStore.createWaitpoint({
         data: {
           ...waitpointData,
           completedByTaskRunId: runId,

@@ -111,3 +111,20 @@ export class ExecutionSnapshotNotFoundError extends Error {
     this.name = "ExecutionSnapshotNotFoundError";
   }
 }
+
+export class UnclassifiableWaitpointId extends Error {
+  readonly waitpointId: string;
+  readonly waitpointIdLength: number;
+  readonly cause?: unknown;
+  constructor(waitpointId: string, options?: { cause?: unknown }) {
+    super(
+      `Unclassifiable waitpointId for completion: length ${waitpointId.length} matches neither cuid nor ksuid — waitpointId=${JSON.stringify(
+        waitpointId
+      )}`
+    );
+    this.name = "UnclassifiableWaitpointId";
+    this.waitpointId = waitpointId;
+    this.waitpointIdLength = waitpointId.length;
+    this.cause = options?.cause;
+  }
+}

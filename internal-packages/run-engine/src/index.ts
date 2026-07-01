@@ -12,6 +12,13 @@ export type {
   PendingVersionRunIdLookupResult,
 } from "./engine/services/pendingVersionLookup.js";
 export { NoopPendingVersionRunIdLookup } from "./engine/services/pendingVersionLookup.js";
+export { PassthroughControlPlaneResolver } from "./engine/controlPlaneResolver.js";
+export type {
+  ControlPlaneResolver,
+  ResolvedEngineEnv,
+  ResolvedAuthenticatedEnv,
+  ResolvedWorkerVersion,
+} from "./engine/controlPlaneResolver.js";
 
 // Batch Queue exports
 export { BatchQueue, BatchCompletionTracker } from "./batch-queue/index.js";
@@ -26,3 +33,17 @@ export type {
   ProcessBatchItemCallback,
   BatchCompletionCallback,
 } from "./batch-queue/types.js";
+
+// Redirect-marker / tombstone fencing primitive. Exported so the webapp
+// known-migrated adapter can consult the OLD-side fence as the migrated authority.
+export {
+  ensureRedirectMarkerTable,
+  writeRedirectMarker,
+  readRedirectMarker,
+  isFenced,
+} from "./engine/services/redirectMarker.js";
+export type {
+  WriteRedirectMarkerInput,
+  RedirectMarkerClient,
+} from "./engine/services/redirectMarker.js";
+
