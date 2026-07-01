@@ -369,7 +369,6 @@ model RuntimeEnvironment {
   backgroundWorkerTasks      BackgroundWorkerTask[]
   taskRuns                   TaskRun[]
   taskQueues                 TaskQueue[]
-  batchTaskRuns              BatchTaskRun[]
   environmentVariableValues  EnvironmentVariableValue[]
   checkpoints                Checkpoint[]
   workerDeployments          WorkerDeployment[]
@@ -939,7 +938,6 @@ model TaskRun {
   updatedAt DateTime @updatedAt
 
   attempts TaskRunAttempt[] @relation("attempts")
-  tags     TaskRunTag[]
 
   /// Denormized column that holds the raw tags
   runTags String[]
@@ -1003,8 +1001,6 @@ model TaskRun {
   dependency             TaskRunDependency?
   CheckpointRestoreEvent CheckpointRestoreEvent[]
   executionSnapshots     TaskRunExecutionSnapshot[]
-
-  alerts ProjectAlert[]
 
   scheduleInstanceId String?
   scheduleId         String?
@@ -1574,8 +1570,6 @@ model TaskRunTag {
 
   friendlyId String @unique
 
-  runs TaskRun[]
-
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   projectId String
 
@@ -1674,7 +1668,6 @@ model TaskRunAttempt {
   checkpoints            Checkpoint[]
   batchTaskRunItems      BatchTaskRunItem[]
   CheckpointRestoreEvent CheckpointRestoreEvent[]
-  alerts                 ProjectAlert[]
   childRuns              TaskRun[]                @relation("TaskParentRunAttempt")
 
   @@unique([taskRunId, number])
@@ -1872,7 +1865,6 @@ model BatchTaskRun {
   friendlyId              String             @unique
   idempotencyKey          String?
   idempotencyKeyExpiresAt DateTime?
-  runtimeEnvironment      RuntimeEnvironment @relation(fields: [runtimeEnvironmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   status                  BatchTaskRunStatus @default(PENDING)
   runtimeEnvironmentId    String
   /// This only includes new runs, not idempotent runs.
@@ -2373,10 +2365,10 @@ model ProjectAlert {
 
   type ProjectAlertType
 
-  taskRunAttempt   TaskRunAttempt? @relation(fields: [taskRunAttemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  // Run-ops split: these reference run-subgraph rows that live on the dedicated run-ops DB for ksuid
+  // runs, so the cross-DB FK can't hold. Scalar-only; the run is resolved via runStore.findRun.
   taskRunAttemptId String?
 
-  taskRun   TaskRun? @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   taskRunId String?
 
   workerDeployment   WorkerDeployment? @relation(fields: [workerDeploymentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -2488,7 +2480,6 @@ model BulkActionGroup {
   environmentId String?
 
   type  BulkActionType
-  items BulkActionItem[]
 
   /// When the group is created it's pending. After we've processed all the items it's completed. This does not mean the associated runs are completed.
   status BulkActionStatus @default(PENDING)
@@ -2556,7 +2547,6 @@ model BulkActionItem {
   /// @deprecated not used in new BulkActions
   friendlyId String?
 
-  group   BulkActionGroup @relation(fields: [groupId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   groupId String
 
   type BulkActionType
