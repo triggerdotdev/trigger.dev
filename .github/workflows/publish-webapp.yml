@@ -38,7 +38,7 @@ on:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     env:
       PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING: 1
     outputs:
