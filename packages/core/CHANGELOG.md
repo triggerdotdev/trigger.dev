@@ -1,5 +1,15 @@
 # internal-platform
 
+## 4.5.0-rc.8
+
+### Patch Changes
+
+- Add support for dev branches to the webapp and CLI. This allows humans (and agents) to run multiple local dev servers simultaneously, with a separate dashboard for each one. ([#4023](https://github.com/triggerdotdev/trigger.dev/pull/4023))
+- Add request and response schemas for the new Errors API (error groups). These back the env-scoped HTTP endpoints for listing error groups, retrieving a single group, and changing its state (resolve, ignore, unresolve), plus a `filter[error]` option on the runs list to fetch the runs behind a group. Exported from `@trigger.dev/core/v3` so the SDK can reuse them. ([#4005](https://github.com/triggerdotdev/trigger.dev/pull/4005))
+- Add an optional `skipBodyParsing` flag to the internal HTTP server route definition, letting a route respond without reading or parsing the request body. ([#4009](https://github.com/triggerdotdev/trigger.dev/pull/4009))
+- Fix idempotency key metadata (original key + scope) being silently dropped when a single run creates more than 1000 idempotency keys. The in-process catalog that maps a key's hash back to its original key/scope is no longer bounded to 1000 entries, so `idempotencyKeys.create()` results retain their metadata regardless of how many are created in a run. The catalog is now cleared at each run boundary so it does not accumulate across warm-start runs. ([#4094](https://github.com/triggerdotdev/trigger.dev/pull/4094))
+- Redact credential-bearing flag values (e.g. `--password`, `--token`) from `Exec` command debug logs ([#4087](https://github.com/triggerdotdev/trigger.dev/pull/4087))
+
 ## 4.5.0-rc.7
 
 ### Patch Changes
@@ -67,7 +77,10 @@
 - Add Agent Skills for `chat.agent`. Drop a folder with a `SKILL.md` and any helper scripts/references next to your task code, register it with `skills.define({ id, path })`, and the CLI bundles it into the deploy image automatically — no `trigger.config.ts` changes. The agent gets a one-line summary in its system prompt and discovers full instructions on demand via `loadSkill`, with `bash` and `readFile` tools scoped per-skill (path-traversal guards, output caps, abort-signal propagation). ([#3543](https://github.com/triggerdotdev/trigger.dev/pull/3543))
 
   ```ts
-  const pdfSkill = skills.define({ id: "pdf-extract", path: "./skills/pdf-extract" });
+  const pdfSkill = skills.define({
+    id: "pdf-extract",
+    path: "./skills/pdf-extract",
+  });
 
   chat.skills.set([await pdfSkill.local()]);
   ```
@@ -93,12 +106,15 @@
   import { useChat } from "@ai-sdk/react";
   import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 
-  const transport = useTriggerChatTransport({ task: "my-chat", accessToken, startSession });
+  const transport = useTriggerChatTransport({
+    task: "my-chat",
+    accessToken,
+    startSession,
+  });
   const { messages, sendMessage } = useChat({ transport });
   ```
 
   **What you get:**
-
   - **AI SDK `useChat` integration** — a custom [`ChatTransport`](https://sdk.vercel.ai/docs/ai-sdk-ui/transport) (`useTriggerChatTransport`) plugs straight into Vercel AI SDK's `useChat` hook. Text streaming, tool calls, reasoning, and `data-*` parts all work natively over Trigger.dev's realtime streams. No custom API routes needed.
   - **First-turn fast path (`chat.headStart`)** — opt-in handler that runs the first turn's `streamText` step in your warm server process while the agent run boots in parallel, cutting cold-start TTFC by roughly half (measured 2801ms → 1218ms on `claude-sonnet-4-6`). The agent owns step 2+ (tool execution, persistence, hooks) so heavy deps stay where they belong. Web Fetch handler works natively in Next.js, Hono, SvelteKit, Remix, Workers, etc.; bridge to Express/Fastify/Koa via `chat.toNodeListener`. New `@trigger.dev/sdk/chat-server` subpath.
   - **Multi-turn durability via Sessions** — every chat is backed by a durable Session that outlives any individual run. Conversations resume across page refreshes, idle timeout, crashes, and deploys; `resume: true` reconnects via `lastEventId` so clients only see new chunks. `sessions.list` enumerates chats for inbox-style UIs.
@@ -129,16 +145,23 @@
   import { sessions, tasks } from "@trigger.dev/sdk";
 
   // Trigger a task and subscribe to its session output in one call
-  const { runId, stream } = await tasks.triggerAndSubscribe("my-task", payload, {
-    externalId: "user-456",
-  });
+  const { runId, stream } = await tasks.triggerAndSubscribe(
+    "my-task",
+    payload,
+    {
+      externalId: "user-456",
+    },
+  );
 
   for await (const chunk of stream) {
     // ...
   }
 
   // Enumerate existing sessions (powers inbox-style UIs without a separate index)
-  for await (const s of sessions.list({ type: "chat.agent", tag: "user:user-456" })) {
+  for await (const s of sessions.list({
+    type: "chat.agent",
+    tag: "user:user-456",
+  })) {
     console.log(s.id, s.externalId, s.createdAt, s.closedAt);
   }
   ```
@@ -168,7 +191,6 @@
 - Fix `list_deploys` MCP tool failing when deployments have null `runtime` or `runtimeVersion` fields. ([#3224](https://github.com/triggerdotdev/trigger.dev/pull/3224))
 - Propagate run tags to span attributes so they can be extracted server-side for LLM cost attribution metadata. ([#3213](https://github.com/triggerdotdev/trigger.dev/pull/3213))
 - Add `get_span_details` MCP tool for inspecting individual spans within a run trace. ([#3255](https://github.com/triggerdotdev/trigger.dev/pull/3255))
-
   - New `get_span_details` tool returns full span attributes, timing, events, and AI enrichment (model, tokens, cost, speed)
   - Span IDs now shown in `get_run_details` trace output for easy discovery
   - New API endpoint `GET /api/v1/runs/:runId/spans/:spanId`
@@ -177,7 +199,6 @@
 - MCP server improvements: new tools, bug fixes, and new flags. ([#3224](https://github.com/triggerdotdev/trigger.dev/pull/3224))
 
   **New tools:**
-
   - `get_query_schema` — discover available TRQL tables and columns
   - `query` — execute TRQL queries against your data
   - `list_dashboards` — list built-in dashboards and their widgets
@@ -190,19 +211,16 @@
   - `dev_server_status` — check dev server status and view recent logs
 
   **New API endpoints:**
-
   - `GET /api/v1/query/schema` — query table schema discovery
   - `GET /api/v1/query/dashboards` — list built-in dashboards
 
   **New features:**
-
   - `--readonly` flag hides write tools (`deploy`, `trigger_task`, `cancel_run`) so the AI cannot make changes
   - `read:query` JWT scope for query endpoint authorization
   - `get_run_details` trace output is now paginated with cursor support
   - MCP tool annotations (`readOnlyHint`, `destructiveHint`) for all tools
 
   **Bug fixes:**
-
   - Fixed `search_docs` tool failing due to renamed upstream Mintlify tool (`SearchTriggerDev` → `search_trigger_dev`)
   - Fixed `list_deploys` failing when deployments have null `runtime`/`runtimeVersion` fields (#3139)
   - Fixed `list_preview_branches` crashing due to incorrect response shape access
@@ -210,7 +228,6 @@
   - Fixed dev CLI leaking build directories on rebuild — deprecated workers now clean up their build dirs when their last run completes
 
   **Context optimizations:**
-
   - `get_query_schema` now requires a table name and returns only one table's schema (was returning all tables)
   - `get_current_worker` no longer inlines payload schemas; use new `get_task_schema` tool instead
   - Query results formatted as text tables instead of JSON (~50% fewer tokens)
@@ -260,7 +277,6 @@
 ### Patch Changes
 
 - Add support for AI SDK v6 (Vercel AI SDK) ([#2919](https://github.com/triggerdotdev/trigger.dev/pull/2919))
-
   - Updated peer dependency to allow `ai@^6.0.0` alongside v4 and v5
   - Updated internal code to handle async validation from AI SDK v6's Schema type
 
@@ -562,8 +578,14 @@
   await childTask.trigger({ message: "Hello, world!" });
 
   // This will override the task's machine preset and any defaults. Works with all trigger functions.
-  await childTask.trigger({ message: "Hello, world!" }, { machine: "small-2x" });
-  await childTask.triggerAndWait({ message: "Hello, world!" }, { machine: "small-2x" });
+  await childTask.trigger(
+    { message: "Hello, world!" },
+    { machine: "small-2x" },
+  );
+  await childTask.triggerAndWait(
+    { message: "Hello, world!" },
+    { machine: "small-2x" },
+  );
 
   await childTask.batchTrigger([
     { payload: { message: "Hello, world!" }, options: { machine: "micro" } },
@@ -577,7 +599,7 @@
   await tasks.trigger<typeof childTask>(
     "child",
     { message: "Hello, world!" },
-    { machine: "small-2x" }
+    { machine: "small-2x" },
   );
   await tasks.batchTrigger<typeof childTask>("child", [
     { payload: { message: "Hello, world!" }, options: { machine: "micro" } },
@@ -639,7 +661,6 @@
 ### Minor Changes
 
 - Improved Batch Triggering: ([#1502](https://github.com/triggerdotdev/trigger.dev/pull/1502))
-
   - The new Batch Trigger endpoint is now asynchronous and supports up to 500 runs per request.
   - The new endpoint also supports triggering multiple different tasks in a single batch request (support in the SDK coming soon).
   - The existing `batchTrigger` method now supports the new endpoint, and shouldn't require any changes to your code.
@@ -653,14 +674,19 @@
   });
   // Works for individual items as well:
   await myTask.batchTrigger([
-    { payload: { foo: "bar" }, options: { idempotencyKey: "my-key", idempotencyKeyTTL: "60s" } },
+    {
+      payload: { foo: "bar" },
+      options: { idempotencyKey: "my-key", idempotencyKeyTTL: "60s" },
+    },
   ]);
   // And `trigger`:
-  await myTask.trigger({ foo: "bar" }, { idempotencyKey: "my-key", idempotencyKeyTTL: "60s" });
+  await myTask.trigger(
+    { foo: "bar" },
+    { idempotencyKey: "my-key", idempotencyKeyTTL: "60s" },
+  );
   ```
 
   ### Breaking Changes
-
   - We've removed the `idempotencyKey` option from `triggerAndWait` and `batchTriggerAndWait`, because it can lead to permanently frozen runs in deployed tasks. We're working on upgrading our entire system to support idempotency keys on these methods, and we'll re-add the option once that's complete.
 
 ### Patch Changes
@@ -892,7 +918,6 @@
   All important socket.io RPCs will now be retried with backoff. Actions relying on checkpoints will be replayed if we haven't been checkpointed and restored as expected, e.g. after reconnect.
 
   Other changes:
-
   - Fix retry check in shared queue
   - Fix env var sync spinner
   - Heartbeat between retries
@@ -1014,7 +1039,10 @@
   Before:
 
   ```ts
-  await yourTask.trigger({ payload: { foo: "bar" }, options: { idempotencyKey: "key_1234" } });
+  await yourTask.trigger({
+    payload: { foo: "bar" },
+    options: { idempotencyKey: "key_1234" },
+  });
   await yourTask.triggerAndWait({
     payload: { foo: "bar" },
     options: { idempotencyKey: "key_1234" },
@@ -1034,8 +1062,14 @@
   await yourTask.trigger({ foo: "bar" }, { idempotencyKey: "key_1234" });
   await yourTask.triggerAndWait({ foo: "bar" }, { idempotencyKey: "key_1234" });
 
-  await yourTask.batchTrigger([{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }]);
-  await yourTask.batchTriggerAndWait([{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }]);
+  await yourTask.batchTrigger([
+    { payload: { foo: "bar" } },
+    { payload: { foo: "baz" } },
+  ]);
+  await yourTask.batchTriggerAndWait([
+    { payload: { foo: "bar" } },
+    { payload: { foo: "baz" } },
+  ]);
   ```
 
   We've also changed the API of the `triggerAndWait` result. Before, if the subtask that was triggered finished with an error, we would automatically "rethrow" the error in the parent task.
@@ -1069,7 +1103,6 @@
 
 - e04d44866: v3: sanitize errors with null unicode characters in some places
 - 26093896d: When using idempotency keys, triggerAndWait and batchTriggerAndWait will still work even if the existing runs have already been completed (or even partially completed, in the case of batchTriggerAndWait)
-
   - TaskRunExecutionResult.id is now the run friendlyId, not the attempt friendlyId
   - A single TaskRun can now have many batchItems, in the case of batchTriggerAndWait while using idempotency keys
   - A run’s idempotencyKey is now added to the ctx as well as the TaskEvent and displayed in the span view
@@ -1188,7 +1221,6 @@
   All important socket.io RPCs will now be retried with backoff. Actions relying on checkpoints will be replayed if we haven't been checkpointed and restored as expected, e.g. after reconnect.
 
   Other changes:
-
   - Fix retry check in shared queue
   - Fix env var sync spinner
   - Heartbeat between retries
@@ -1464,7 +1496,10 @@
   Before:
 
   ```ts
-  await yourTask.trigger({ payload: { foo: "bar" }, options: { idempotencyKey: "key_1234" } });
+  await yourTask.trigger({
+    payload: { foo: "bar" },
+    options: { idempotencyKey: "key_1234" },
+  });
   await yourTask.triggerAndWait({
     payload: { foo: "bar" },
     options: { idempotencyKey: "key_1234" },
@@ -1484,8 +1519,14 @@
   await yourTask.trigger({ foo: "bar" }, { idempotencyKey: "key_1234" });
   await yourTask.triggerAndWait({ foo: "bar" }, { idempotencyKey: "key_1234" });
 
-  await yourTask.batchTrigger([{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }]);
-  await yourTask.batchTriggerAndWait([{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }]);
+  await yourTask.batchTrigger([
+    { payload: { foo: "bar" } },
+    { payload: { foo: "baz" } },
+  ]);
+  await yourTask.batchTriggerAndWait([
+    { payload: { foo: "bar" } },
+    { payload: { foo: "baz" } },
+  ]);
   ```
 
   We've also changed the API of the `triggerAndWait` result. Before, if the subtask that was triggered finished with an error, we would automatically "rethrow" the error in the parent task.
@@ -1518,7 +1559,6 @@
   ```
 
 - 26093896d: When using idempotency keys, triggerAndWait and batchTriggerAndWait will still work even if the existing runs have already been completed (or even partially completed, in the case of batchTriggerAndWait)
-
   - TaskRunExecutionResult.id is now the run friendlyId, not the attempt friendlyId
   - A single TaskRun can now have many batchItems, in the case of batchTriggerAndWait while using idempotency keys
   - A run’s idempotencyKey is now added to the ctx as well as the TaskEvent and displayed in the span view
