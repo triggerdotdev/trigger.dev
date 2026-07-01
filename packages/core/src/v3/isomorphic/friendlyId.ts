@@ -7,20 +7,6 @@ export function generateFriendlyId(prefix: string, size?: number) {
   return `${prefix}_${idGenerator(size)}`;
 }
 
-// Injected by the server split-mode bootstrap. Default false =
-// today's behavior (cuid). Isomorphic file: never read process.env here.
-let ksuidMintEnabled = false;
-
-/** Server bootstrap calls this once with isSplitEnabled(). Off by default. */
-export function setKsuidMintEnabled(enabled: boolean): void {
-  ksuidMintEnabled = enabled;
-}
-
-/** Test/diagnostic read-back of the current mint mode. */
-export function isKsuidMintEnabled(): boolean {
-  return ksuidMintEnabled;
-}
-
 // KSUID epoch (2014-05-13T16:53:20Z) — seconds offset applied to the unix timestamp.
 const KSUID_EPOCH = 1_400_000_000;
 const KSUID_TIMESTAMP_BYTES = 4;
@@ -136,10 +122,7 @@ export function decodeKsuid(idOrFriendlyId: string): DecodedKsuid {
   };
 }
 
-export function generateInternalId(useKsuidWhenEnabled = false): string {
-  if (useKsuidWhenEnabled && ksuidMintEnabled) {
-    return generateKsuidId();
-  }
+export function generateInternalId(): string {
   return cuid();
 }
 
@@ -190,13 +173,10 @@ export function fromFriendlyId(friendlyId: string, expectedEntityName?: string):
 }
 
 export class IdUtil {
-  constructor(
-    private entityName: string,
-    private ksuidWhenEnabled = false
-  ) {}
+  constructor(private entityName: string) {}
 
   generate() {
-    const internalId = generateInternalId(this.ksuidWhenEnabled);
+    const internalId = generateInternalId();
 
     return {
       id: internalId,
@@ -225,9 +205,9 @@ export class IdUtil {
 export const BackgroundWorkerId = new IdUtil("worker");
 export const CheckpointId = new IdUtil("checkpoint");
 export const QueueId = new IdUtil("queue");
-export const RunId = new IdUtil("run", true);
+export const RunId = new IdUtil("run");
 export const SnapshotId = new IdUtil("snapshot");
-export const WaitpointId = new IdUtil("waitpoint", true);
+export const WaitpointId = new IdUtil("waitpoint");
 export const BatchId = new IdUtil("batch");
 export const BulkActionId = new IdUtil("bulk");
 export const AttemptId = new IdUtil("attempt");

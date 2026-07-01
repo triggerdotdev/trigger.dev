@@ -4,8 +4,6 @@ import {
   WaitpointId,
   SnapshotId,
   QueueId,
-  setKsuidMintEnabled,
-  isKsuidMintEnabled,
   generateKsuidId,
   decodeKsuid,
   KSUID_PAYLOAD_BYTES,
@@ -14,12 +12,8 @@ import {
 const CUID_LEN = 25;
 const KSUID_LEN = 27;
 
-afterEach(() => setKsuidMintEnabled(false)); // never leak flag state across tests
-
-describe("KSUID mint (flag-gated) for RunId + WaitpointId", () => {
-  it("flag OFF: run + waitpoint mint cuid (25) and round-trip", () => {
-    setKsuidMintEnabled(false);
-    expect(isKsuidMintEnabled()).toBe(false);
+describe("RunId + WaitpointId mint cuid by default; ksuid via generateKsuidId", () => {
+  it("default: run + waitpoint mint cuid (25) and round-trip", () => {
     for (const util of [RunId, WaitpointId]) {
       const { id, friendlyId } = util.generate();
       expect(id.length).toBe(CUID_LEN);
@@ -30,37 +24,27 @@ describe("KSUID mint (flag-gated) for RunId + WaitpointId", () => {
     }
   });
 
-  it("flag ON: run + waitpoint mint 27-char and round-trip", () => {
-    setKsuidMintEnabled(true);
-    expect(isKsuidMintEnabled()).toBe(true);
+  it("explicit ksuid: a run/waitpoint friendlyId over generateKsuidId() is 27-char and round-trips", () => {
     for (const util of [RunId, WaitpointId]) {
-      const { id, friendlyId } = util.generate();
+      const id = generateKsuidId();
+      const friendlyId = util.toFriendlyId(id);
       expect(id.length).toBe(KSUID_LEN);
       expect(util.fromFriendlyId(friendlyId)).toBe(id);
       expect(util.toId(friendlyId)).toBe(id);
       expect(util.toId(id)).toBe(id);
-      expect(util.toFriendlyId(id)).toBe(friendlyId);
     }
   });
 
-  it("flag ON: SnapshotId stays cuid (25) — never 27-char", () => {
-    setKsuidMintEnabled(true);
-    const { id } = SnapshotId.generate();
-    expect(id.length).toBe(CUID_LEN);
-  });
-
-  it("flag ON: a non-run/waitpoint entity stays cuid (25)", () => {
-    setKsuidMintEnabled(true);
+  it("SnapshotId + QueueId stay cuid (25)", () => {
+    expect(SnapshotId.generate().id.length).toBe(CUID_LEN);
     expect(QueueId.generate().id.length).toBe(CUID_LEN);
   });
 
-  it("disjoint lengths: 27 (new) vs 25 (cuid) — the classifier margin", () => {
-    setKsuidMintEnabled(true);
-    expect(RunId.generate().id.length).not.toBe(SnapshotId.generate().id.length);
+  it("disjoint lengths: 27 (ksuid) vs 25 (cuid) — the classifier margin", () => {
+    expect(generateKsuidId().length).not.toBe(SnapshotId.generate().id.length);
   });
 
-  it("generateKsuidId() is directly callable, independent of the flag", () => {
-    setKsuidMintEnabled(false); // must NOT be gated behind the global flag
+  it("generateKsuidId() is directly callable and yields 27 chars", () => {
     expect(generateKsuidId().length).toBe(KSUID_LEN);
   });
 });

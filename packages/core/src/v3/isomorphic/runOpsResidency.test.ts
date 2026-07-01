@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { RunId, WaitpointId, SnapshotId, setKsuidMintEnabled } from "./friendlyId.js";
+import { describe, expect, it } from "vitest";
+import { RunId, WaitpointId, SnapshotId, generateKsuidId } from "./friendlyId.js";
 import {
   ownerEngine,
   classifyResidency,
@@ -8,13 +8,10 @@ import {
   UnclassifiableRunId,
 } from "./runOpsResidency.js";
 
-afterEach(() => setKsuidMintEnabled(false)); // never leak mint-flag state across tests
-
 const SAMPLES = 50_000; // property-scale; CI-fast. (Bump locally toward "millions" for deeper coverage.)
 
 describe("ownerEngine — residency classifier", () => {
-  it("cuid-length ids (mint flag OFF) classify LEGACY, friendly + internal", () => {
-    setKsuidMintEnabled(false);
+  it("cuid-length ids (default mint) classify LEGACY, friendly + internal", () => {
     for (const util of [RunId, WaitpointId]) {
       const { id, friendlyId } = util.generate();
       expect(ownerEngine(id)).toBe("LEGACY");
@@ -25,10 +22,10 @@ describe("ownerEngine — residency classifier", () => {
     }
   });
 
-  it("ksuid-length ids (mint flag ON) classify NEW, friendly + internal", () => {
-    setKsuidMintEnabled(true);
+  it("ksuid-length ids (explicit generateKsuidId) classify NEW, friendly + internal", () => {
     for (const util of [RunId, WaitpointId]) {
-      const { id, friendlyId } = util.generate();
+      const id = generateKsuidId();
+      const friendlyId = util.toFriendlyId(id);
       expect(ownerEngine(id)).toBe("NEW");
       expect(ownerEngine(friendlyId)).toBe("NEW");
       expect(classifyResidency(id)).toBe("NEW");
@@ -38,10 +35,8 @@ describe("ownerEngine — residency classifier", () => {
 
   it("disjointness: no cuid sample is ever NEW, no ksuid sample is ever LEGACY", () => {
     for (let i = 0; i < SAMPLES; i++) {
-      setKsuidMintEnabled(false);
       expect(ownerEngine(RunId.generate().id)).toBe("LEGACY");
-      setKsuidMintEnabled(true);
-      expect(ownerEngine(RunId.generate().id)).toBe("NEW");
+      expect(ownerEngine(generateKsuidId())).toBe("NEW");
     }
   });
 
@@ -61,8 +56,7 @@ describe("ownerEngine — residency classifier", () => {
     }
   });
 
-  it("SnapshotId (always cuid, even with flag ON) classifies LEGACY — proves snapshot needs no residency key", () => {
-    setKsuidMintEnabled(true);
+  it("SnapshotId (always cuid) classifies LEGACY — proves snapshot needs no residency key", () => {
     expect(ownerEngine(SnapshotId.generate().id)).toBe("LEGACY");
   });
 });
