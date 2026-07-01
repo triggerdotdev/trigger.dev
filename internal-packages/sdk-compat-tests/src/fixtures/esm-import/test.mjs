@@ -20,6 +20,7 @@ import {
 } from "@trigger.dev/sdk";
 
 // Test /v3 subpath (legacy, but should still work)
+// eslint-disable-next-line import/no-duplicates
 import { task as taskV3 } from "@trigger.dev/sdk/v3";
 
 // Validate exports are functions/objects
