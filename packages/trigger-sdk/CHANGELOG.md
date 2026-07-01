@@ -1,5 +1,38 @@
 # @trigger.dev/sdk
 
+## 4.5.0-rc.8
+
+### Patch Changes
+
+- Fix `chat.agent` / `AgentChat` when the agent is deployed to a Trigger.dev preview branch. The realtime message-append and stream-subscribe calls now send the `x-trigger-branch` header (sourced from the same resolver `sessions.start` uses), so messaging a preview-branch chat agent no longer fails with `x-trigger-branch header required for preview env`. ([#4018](https://github.com/triggerdotdev/trigger.dev/pull/4018))
+- Fix Head Start handovers breaking when a `chat.agent` also defines a `prepareMessages` hook. A handover hands the first turn's pending tool call to the agent as a tool-approval round whose trailing tool message must reach the model untouched. A `prepareMessages` hook that rewrites the last message (for example the recommended prompt-caching breakpoint) could disturb it, so the turn failed with "tool_use ids were found without tool_result". The agent now preserves that approval tail across `prepareMessages`, so caching and Head Start compose cleanly. ([#4018](https://github.com/triggerdotdev/trigger.dev/pull/4018))
+- `chat.headStart` now accepts an `apiClient` option (base URL + access token), so the head-start route can create the session and trigger the agent run against a different project/environment than the warm server's ambient Trigger config. Useful when your `chat.agent` lives in a separate project from the app serving the route. Mirrors the `apiClient` option on `chat.createStartSessionAction`; your LLM provider keys stay in the `run` callback and are unaffected. ([#4018](https://github.com/triggerdotdev/trigger.dev/pull/4018))
+
+  ```ts
+  export const POST = chat.headStart({
+    agentId: "my-agent",
+    apiClient: { baseURL, accessToken },
+    run: async ({ chat }) =>
+      streamText({
+        ...chat.toStreamTextOptions({ tools }),
+        model: anthropic("claude-sonnet-4-6"),
+      }),
+  });
+  ```
+
+- `chat.createStartSessionAction` now accepts an `apiClient` option, so you can scope a chat session start to a specific environment's API config (`baseURL` / `accessToken`) without setting a global `TRIGGER_SECRET_KEY`. Useful when one server starts chats across more than one environment. ([#4018](https://github.com/triggerdotdev/trigger.dev/pull/4018))
+
+  ```ts
+  const startSession = chat.createStartSessionAction("my-chat", {
+    apiClient: { baseURL, accessToken },
+  });
+
+  await startSession({ chatId, clientData });
+  ```
+
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.8`
+
 ## 4.5.0-rc.7
 
 ### Patch Changes
@@ -16,7 +49,11 @@
   if (isFinal) {
     await chat.writeTurnComplete(); // step 1 is the response, no streamText
   } else {
-    const result = streamText({ model, messages: conversation.modelMessages, tools });
+    const result = streamText({
+      model,
+      messages: conversation.modelMessages,
+      tools,
+    });
     // Pass originalMessages so the handed-over tool round merges into the
     // step-1 assistant instead of starting a new message.
     const response = await chat.pipeAndCapture(result, {
@@ -34,7 +71,8 @@
   export const POST = chat.headStart({
     agentId: "my-agent",
     triggerConfig: { tags: ["org:acme"], queue: "chat" },
-    run: async ({ chat }) => streamText({ ...chat.toStreamTextOptions(), model }),
+    run: async ({ chat }) =>
+      streamText({ ...chat.toStreamTextOptions(), model }),
   });
   ```
 
@@ -51,7 +89,9 @@
 
   // provider-agnostic equivalent
   chat.toStreamTextOptions({
-    systemProviderOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+    systemProviderOptions: {
+      anthropic: { cacheControl: { type: "ephemeral" } },
+    },
   });
 
   // or where the prompt is defined
@@ -63,7 +103,6 @@
   Without an option, `system` stays a plain string. Pairs with a `prepareMessages` cache breakpoint to cache the conversation prefix across turns too.
 
 - Three fixes for custom agent loops (`chat.customAgent`, `chat.createSession`, and hand-rolled `MessageAccumulator` loops): ([#3936](https://github.com/triggerdotdev/trigger.dev/pull/3936))
-
   - Continuation runs no longer replay already-answered user messages into the first turn. The `.in` resume cursor is now seeded before any listener attaches (the same boot logic `chat.agent` uses), so a chat that continues after a cancel, crash, or upgrade only sees genuinely new messages.
   - Steering a hand-rolled loop mid-stream no longer wipes the in-flight assistant response. `chat.pipeAndCapture` now stamps a server-generated message id on the stream, so a `prepareStep` injection keeps the partial text instead of replacing the message.
   - Task-backed tools (`ai.toolExecute`) now work from custom agent loops: the parent's session is threaded to the child run, so child tasks can stream progress into the chat with `chat.stream.writer({ target: "root" })` instead of failing with "session handle is not initialized".
@@ -129,7 +168,6 @@
 ### Patch Changes
 
 - Fix `chat.agent` HITL continuations on reasoning-heavy turns. Two changes that work together: ([#3719](https://github.com/triggerdotdev/trigger.dev/pull/3719))
-
   - The per-turn merge now overlays the wire copy's tool-part state advancement onto the agent's existing chain — `state` + the matching resolution field (`output` / `errorText` / `approval`) come from the wire, everything else (text, reasoning, tool `input`, provider metadata) stays whatever the snapshot or `hydrateMessages` returned. Previously a full-message replace overwrote those fields with whatever the client shipped, so a slimmed wire copy landed a tool call with no `arguments` on the next LLM call. Covers `output-available` / `output-error` (HITL `addToolOutput`) and `approval-responded` / `output-denied` (approval flow).
   - `TriggerChatTransport.sendMessages` and `AgentChat.sendRaw` now slim assistant messages that carry advanced tool parts. The wire payload is just `{ id, role, parts: [<state + resolution field>] }` for `submit-message` continuations; everything else passes through. Reasoning blobs and full tool inputs no longer ride the wire on every `addToolOutput` / `addToolApproveResponse`, so continuation payloads stay well under the `.in/append` cap on long agent loops.
 
@@ -145,7 +183,10 @@
       const record = await db.chat.findUnique({ where: { id: chatId } });
       const stored = record?.messages ?? [];
       if (upsertIncomingMessage(stored, { trigger, incomingMessages })) {
-        await db.chat.update({ where: { id: chatId }, data: { messages: stored } });
+        await db.chat.update({
+          where: { id: chatId },
+          data: { messages: stored },
+        });
       }
       return stored;
     },
@@ -223,7 +264,6 @@
   ```
 
   **What you get:**
-
   - **Code-defined, deploy-versioned templates** — define with `prompts.define({ id, model, config, variables, content })`. Every deploy creates a new version visible in the dashboard. Mustache-style placeholders (`{{var}}`, `{{#cond}}...{{/cond}}`) with Zod / ArkType / Valibot-typed variables.
   - **Dashboard overrides** — change a prompt's text or model from the dashboard without redeploying. Overrides take priority over the deployed "current" version and are environment-scoped (dev / staging / production independent).
   - **Resolve API** — `prompt.resolve(vars, { version?, label? })` returns the compiled `text`, resolved `model`, `version`, and labels. Standalone `prompts.resolve<typeof handle>(slug, vars)` for cross-file resolution with full type inference on slug and variable shape.
@@ -237,12 +277,16 @@
 - Adds `onBoot` to `chat.agent` — a lifecycle hook that fires once per worker process picking up the chat. Runs for the initial run, preloaded runs, AND reactive continuation runs (post-cancel, crash, `endRun`, `requestUpgrade`, OOM retry), before any other hook. Use it to initialize `chat.local`, open per-process resources, or re-hydrate state from your DB on continuation — anywhere the SAME run picking up after suspend/resume isn't enough. ([#3543](https://github.com/triggerdotdev/trigger.dev/pull/3543))
 
   ```ts
-  const userContext = chat.local<{ name: string; plan: string }>({ id: "userContext" });
+  const userContext = chat.local<{ name: string; plan: string }>({
+    id: "userContext",
+  });
 
   export const myChat = chat.agent({
     id: "my-chat",
     onBoot: async ({ clientData, continuation }) => {
-      const user = await db.user.findUnique({ where: { id: clientData.userId } });
+      const user = await db.user.findUnique({
+        where: { id: clientData.userId },
+      });
       userContext.init({ name: user.name, plan: user.plan });
     },
     run: async ({ messages, signal }) =>
@@ -270,12 +314,15 @@
   import { useChat } from "@ai-sdk/react";
   import { useTriggerChatTransport } from "@trigger.dev/sdk/chat/react";
 
-  const transport = useTriggerChatTransport({ task: "my-chat", accessToken, startSession });
+  const transport = useTriggerChatTransport({
+    task: "my-chat",
+    accessToken,
+    startSession,
+  });
   const { messages, sendMessage } = useChat({ transport });
   ```
 
   **What you get:**
-
   - **AI SDK `useChat` integration** — a custom [`ChatTransport`](https://sdk.vercel.ai/docs/ai-sdk-ui/transport) (`useTriggerChatTransport`) plugs straight into Vercel AI SDK's `useChat` hook. Text streaming, tool calls, reasoning, and `data-*` parts all work natively over Trigger.dev's realtime streams. No custom API routes needed.
   - **First-turn fast path (`chat.headStart`)** — opt-in handler that runs the first turn's `streamText` step in your warm server process while the agent run boots in parallel, cutting cold-start TTFC by roughly half (measured 2801ms → 1218ms on `claude-sonnet-4-6`). The agent owns step 2+ (tool execution, persistence, hooks) so heavy deps stay where they belong. Web Fetch handler works natively in Next.js, Hono, SvelteKit, Remix, Workers, etc.; bridge to Express/Fastify/Koa via `chat.toNodeListener`. New `@trigger.dev/sdk/chat-server` subpath.
   - **Multi-turn durability via Sessions** — every chat is backed by a durable Session that outlives any individual run. Conversations resume across page refreshes, idle timeout, crashes, and deploys; `resume: true` reconnects via `lastEventId` so clients only see new chunks. `sessions.list` enumerates chats for inbox-style UIs.
@@ -305,7 +352,11 @@
   onTurnComplete: async ({ responseMessage }) => {
     const newResults = chat.history.extractNewToolResults(responseMessage);
     for (const r of newResults) {
-      await db.toolResults.upsert({ id: r.toolCallId, output: r.output, errorText: r.errorText });
+      await db.toolResults.upsert({
+        id: r.toolCallId,
+        output: r.output,
+        errorText: r.errorText,
+      });
     }
   };
   ```
@@ -316,16 +367,23 @@
   import { sessions, tasks } from "@trigger.dev/sdk";
 
   // Trigger a task and subscribe to its session output in one call
-  const { runId, stream } = await tasks.triggerAndSubscribe("my-task", payload, {
-    externalId: "user-456",
-  });
+  const { runId, stream } = await tasks.triggerAndSubscribe(
+    "my-task",
+    payload,
+    {
+      externalId: "user-456",
+    },
+  );
 
   for await (const chunk of stream) {
     // ...
   }
 
   // Enumerate existing sessions (powers inbox-style UIs without a separate index)
-  for await (const s of sessions.list({ type: "chat.agent", tag: "user:user-456" })) {
+  for await (const s of sessions.list({
+    type: "chat.agent",
+    tag: "user:user-456",
+  })) {
     console.log(s.id, s.externalId, s.createdAt, s.closedAt);
   }
   ```
@@ -337,7 +395,10 @@
 - Add Agent Skills for `chat.agent`. Drop a folder with a `SKILL.md` and any helper scripts/references next to your task code, register it with `skills.define({ id, path })`, and the CLI bundles it into the deploy image automatically — no `trigger.config.ts` changes. The agent gets a one-line summary in its system prompt and discovers full instructions on demand via `loadSkill`, with `bash` and `readFile` tools scoped per-skill (path-traversal guards, output caps, abort-signal propagation). ([#3543](https://github.com/triggerdotdev/trigger.dev/pull/3543))
 
   ```ts
-  const pdfSkill = skills.define({ id: "pdf-extract", path: "./skills/pdf-extract" });
+  const pdfSkill = skills.define({
+    id: "pdf-extract",
+    path: "./skills/pdf-extract",
+  });
 
   chat.skills.set([await pdfSkill.local()]);
   ```
@@ -363,12 +424,14 @@
   import { chat } from "@trigger.dev/sdk/ai";
   import type { myChat } from "@/trigger/chat";
 
-  export const startChatSession = chat.createStartSessionAction<typeof myChat>("my-chat");
+  export const startChatSession =
+    chat.createStartSessionAction<typeof myChat>("my-chat");
 
   // In the browser, threaded from the transport's typed startSession callback:
   const transport = useTriggerChatTransport<typeof myChat>({
     task: "my-chat",
-    startSession: ({ chatId, clientData }) => startChatSession({ chatId, clientData }),
+    startSession: ({ chatId, clientData }) =>
+      startChatSession({ chatId, clientData }),
     // ...
   });
   ```
@@ -446,12 +509,14 @@
   import type { QueryTable } from "@trigger.dev/sdk";
 
   // Basic untyped query
-  const result = await query.execute("SELECT run_id, status FROM runs LIMIT 10");
+  const result = await query.execute(
+    "SELECT run_id, status FROM runs LIMIT 10",
+  );
 
   // Type-safe query using QueryTable to pick specific columns
-  const typedResult = await query.execute<QueryTable<"runs", "run_id" | "status" | "triggered_at">>(
-    "SELECT run_id, status, triggered_at FROM runs LIMIT 10"
-  );
+  const typedResult = await query.execute<
+    QueryTable<"runs", "run_id" | "status" | "triggered_at">
+  >("SELECT run_id, status, triggered_at FROM runs LIMIT 10");
   typedResult.results.forEach((row) => {
     console.log(row.run_id, row.status); // Fully typed
   });
@@ -459,7 +524,7 @@
   // Aggregation query with inline types
   const stats = await query.execute<{ status: string; count: number }>(
     "SELECT status, COUNT(*) as count FROM runs GROUP BY status",
-    { scope: "project", period: "30d" }
+    { scope: "project", period: "30d" },
   );
 
   // CSV export
@@ -495,7 +560,6 @@
 ### Patch Changes
 
 - Add support for AI SDK v6 (Vercel AI SDK) ([#2919](https://github.com/triggerdotdev/trigger.dev/pull/2919))
-
   - Updated peer dependency to allow `ai@^6.0.0` alongside v4 and v5
   - Updated internal code to handle async validation from AI SDK v6's Schema type
 
@@ -575,7 +639,7 @@
   tasks.onStartAttempt(({ ctx, payload, task }) => {
     console.log(
       `Run ${ctx.run.id} started on task ${task} attempt ${ctx.run.attempt.number}`,
-      ctx.run
+      ctx.run,
     );
   });
   ```
@@ -729,13 +793,16 @@
       // Now context.active() refers to your external trace context
       propagation.inject(context.active(), headersObject);
 
-      const result = await fetch("http://localhost:3000/api/demo-call-from-trigger", {
-        headers: new Headers(headersObject),
-        method: "POST",
-        body: JSON.stringify({
-          message: "Hello from Trigger.dev",
-        }),
-      });
+      const result = await fetch(
+        "http://localhost:3000/api/demo-call-from-trigger",
+        {
+          headers: new Headers(headersObject),
+          method: "POST",
+          body: JSON.stringify({
+            message: "Hello from Trigger.dev",
+          }),
+        },
+      );
 
       return result.json();
     });
@@ -752,7 +819,6 @@
 - Add jsonSchema support when indexing tasks ([#2353](https://github.com/triggerdotdev/trigger.dev/pull/2353))
 - Fixed an issue with realtime streams that timeout and resume streaming dropping chunks ([#1993](https://github.com/triggerdotdev/trigger.dev/pull/1993))
 - Added and cleaned up the run ctx param: ([#2322](https://github.com/triggerdotdev/trigger.dev/pull/2322))
-
   - New optional properties `ctx.run.parentTaskRunId` and `ctx.run.rootTaskRunId` reference the current run's root/parent ID.
   - Removed deprecated properties from `ctx`
   - Added a new `ctx.deployment` object that contains information about the deployment associated with the run.
@@ -771,14 +837,12 @@
 - Deprecate toolTask and replace with `ai.tool(mySchemaTask)` ([#1863](https://github.com/triggerdotdev/trigger.dev/pull/1863))
 - Display clickable links in Cursor terminal ([#1998](https://github.com/triggerdotdev/trigger.dev/pull/1998))
 - Removes the `releaseConcurrencyOnWaitpoint` option on queues and the `releaseConcurrency` option on various wait functions. Replaced with the following default behavior: ([#2284](https://github.com/triggerdotdev/trigger.dev/pull/2284))
-
   - Concurrency is never released when a run is first blocked via a waitpoint, at either the env or queue level.
   - Concurrency is always released when a run is checkpointed and shutdown, at both the env and queue level.
 
   Additionally, environment concurrency limits now have a new "Burst Factor", defaulting to 2.0x. The "Burst Factor" allows the environment-wide concurrency limit to be higher than any individual queue's concurrency limit. For example, if you have an environment concurrency limit of 100, and a Burst Factor of 2.0x, then you can execute up to 200 runs concurrently, but any one task/queue can still only execute 100 runs concurrently.
 
   We've done some work cleaning up the run statuses. The new statuses are:
-
   - `PENDING_VERSION`: Task is waiting for a version update because it cannot execute without additional information (task, queue, etc.)
   - `QUEUED`: Task is waiting to be executed by a worker
   - `DEQUEUED`: Task has been dequeued and is being sent to a worker to start executing.
@@ -794,14 +858,12 @@
   - `TIMED_OUT`: Task has reached it's maxDuration and has been stopped
 
   We've removed the following statuses:
-
   - `WAITING_FOR_DEPLOY`: This is no longer used, and is replaced by `PENDING_VERSION`
   - `FROZEN`: This is no longer used, and is replaced by `WAITING`
   - `INTERRUPTED`: This is no longer used
   - `REATTEMPTING`: This is no longer used, and is replaced by `EXECUTING`
 
   We've also added "boolean" helpers to runs returned via the API and from Realtime:
-
   - `isQueued`: Returns true when the status is `QUEUED`, `PENDING_VERSION`, or `DELAYED`
   - `isExecuting`: Returns true when the status is `EXECUTING`, `DEQUEUED`. These count against your concurrency limits.
   - `isWaiting`: Returns true when the status is `WAITING`. These do not count against your concurrency limits.
@@ -903,13 +965,16 @@
       // Now context.active() refers to your external trace context
       propagation.inject(context.active(), headersObject);
 
-      const result = await fetch("http://localhost:3000/api/demo-call-from-trigger", {
-        headers: new Headers(headersObject),
-        method: "POST",
-        body: JSON.stringify({
-          message: "Hello from Trigger.dev",
-        }),
-      });
+      const result = await fetch(
+        "http://localhost:3000/api/demo-call-from-trigger",
+        {
+          headers: new Headers(headersObject),
+          method: "POST",
+          body: JSON.stringify({
+            message: "Hello from Trigger.dev",
+          }),
+        },
+      );
 
       return result.json();
     });
@@ -936,7 +1001,6 @@
 
 - fix: importing from runEngine/index.js breaks non-node runtimes ([#2328](https://github.com/triggerdotdev/trigger.dev/pull/2328))
 - Added and cleaned up the run ctx param: ([#2322](https://github.com/triggerdotdev/trigger.dev/pull/2322))
-
   - New optional properties `ctx.run.parentTaskRunId` and `ctx.run.rootTaskRunId` reference the current run's root/parent ID.
   - Removed deprecated properties from `ctx`
   - Added a new `ctx.deployment` object that contains information about the deployment associated with the run.
@@ -965,14 +1029,12 @@
 ### Patch Changes
 
 - Removes the `releaseConcurrencyOnWaitpoint` option on queues and the `releaseConcurrency` option on various wait functions. Replaced with the following default behavior: ([#2284](https://github.com/triggerdotdev/trigger.dev/pull/2284))
-
   - Concurrency is never released when a run is first blocked via a waitpoint, at either the env or queue level.
   - Concurrency is always released when a run is checkpointed and shutdown, at both the env and queue level.
 
   Additionally, environment concurrency limits now have a new "Burst Factor", defaulting to 2.0x. The "Burst Factor" allows the environment-wide concurrency limit to be higher than any individual queue's concurrency limit. For example, if you have an environment concurrency limit of 100, and a Burst Factor of 2.0x, then you can execute up to 200 runs concurrently, but any one task/queue can still only execute 100 runs concurrently.
 
   We've done some work cleaning up the run statuses. The new statuses are:
-
   - `PENDING_VERSION`: Task is waiting for a version update because it cannot execute without additional information (task, queue, etc.)
   - `QUEUED`: Task is waiting to be executed by a worker
   - `DEQUEUED`: Task has been dequeued and is being sent to a worker to start executing.
@@ -988,14 +1050,12 @@
   - `TIMED_OUT`: Task has reached it's maxDuration and has been stopped
 
   We've removed the following statuses:
-
   - `WAITING_FOR_DEPLOY`: This is no longer used, and is replaced by `PENDING_VERSION`
   - `FROZEN`: This is no longer used, and is replaced by `WAITING`
   - `INTERRUPTED`: This is no longer used
   - `REATTEMPTING`: This is no longer used, and is replaced by `EXECUTING`
 
   We've also added "boolean" helpers to runs returned via the API and from Realtime:
-
   - `isQueued`: Returns true when the status is `QUEUED`, `PENDING_VERSION`, or `DELAYED`
   - `isExecuting`: Returns true when the status is `EXECUTING`, `DEQUEUED`. These count against your concurrency limits.
   - `isWaiting`: Returns true when the status is `WAITING`. These do not count against your concurrency limits.
@@ -1213,11 +1273,13 @@
   The main change is that there's now an SDK function to verify and parse them (similar to Stripe SDK).
 
   ```ts
-  const event = await webhooks.constructEvent(request, process.env.ALERT_WEBHOOK_SECRET!);
+  const event = await webhooks.constructEvent(
+    request,
+    process.env.ALERT_WEBHOOK_SECRET!,
+  );
   ```
 
   If the signature you provide matches the one from the dashboard when you create the webhook, you will get a nicely typed object back for these three types:
-
   - "alert.run.failed"
   - "alert.deployment.success"
   - "alert.deployment.failed"
@@ -1267,8 +1329,14 @@
   await childTask.trigger({ message: "Hello, world!" });
 
   // This will override the task's machine preset and any defaults. Works with all trigger functions.
-  await childTask.trigger({ message: "Hello, world!" }, { machine: "small-2x" });
-  await childTask.triggerAndWait({ message: "Hello, world!" }, { machine: "small-2x" });
+  await childTask.trigger(
+    { message: "Hello, world!" },
+    { machine: "small-2x" },
+  );
+  await childTask.triggerAndWait(
+    { message: "Hello, world!" },
+    { machine: "small-2x" },
+  );
 
   await childTask.batchTrigger([
     { payload: { message: "Hello, world!" }, options: { machine: "micro" } },
@@ -1282,7 +1350,7 @@
   await tasks.trigger<typeof childTask>(
     "child",
     { message: "Hello, world!" },
-    { machine: "small-2x" }
+    { machine: "small-2x" },
   );
   await tasks.batchTrigger<typeof childTask>("child", [
     { payload: { message: "Hello, world!" }, options: { machine: "micro" } },
@@ -1379,7 +1447,6 @@
 ### Minor Changes
 
 - Improved Batch Triggering: ([#1502](https://github.com/triggerdotdev/trigger.dev/pull/1502))
-
   - The new Batch Trigger endpoint is now asynchronous and supports up to 500 runs per request.
   - The new endpoint also supports triggering multiple different tasks in a single batch request (support in the SDK coming soon).
   - The existing `batchTrigger` method now supports the new endpoint, and shouldn't require any changes to your code.
@@ -1393,14 +1460,19 @@
   });
   // Works for individual items as well:
   await myTask.batchTrigger([
-    { payload: { foo: "bar" }, options: { idempotencyKey: "my-key", idempotencyKeyTTL: "60s" } },
+    {
+      payload: { foo: "bar" },
+      options: { idempotencyKey: "my-key", idempotencyKeyTTL: "60s" },
+    },
   ]);
   // And `trigger`:
-  await myTask.trigger({ foo: "bar" }, { idempotencyKey: "my-key", idempotencyKeyTTL: "60s" });
+  await myTask.trigger(
+    { foo: "bar" },
+    { idempotencyKey: "my-key", idempotencyKeyTTL: "60s" },
+  );
   ```
 
   ### Breaking Changes
-
   - We've removed the `idempotencyKey` option from `triggerAndWait` and `batchTriggerAndWait`, because it can lead to permanently frozen runs in deployed tasks. We're working on upgrading our entire system to support idempotency keys on these methods, and we'll re-add the option once that's complete.
 
 ### Patch Changes
@@ -1675,7 +1747,10 @@
   Before:
 
   ```ts
-  await yourTask.trigger({ payload: { foo: "bar" }, options: { idempotencyKey: "key_1234" } });
+  await yourTask.trigger({
+    payload: { foo: "bar" },
+    options: { idempotencyKey: "key_1234" },
+  });
   await yourTask.triggerAndWait({
     payload: { foo: "bar" },
     options: { idempotencyKey: "key_1234" },
@@ -1695,8 +1770,14 @@
   await yourTask.trigger({ foo: "bar" }, { idempotencyKey: "key_1234" });
   await yourTask.triggerAndWait({ foo: "bar" }, { idempotencyKey: "key_1234" });
 
-  await yourTask.batchTrigger([{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }]);
-  await yourTask.batchTriggerAndWait([{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }]);
+  await yourTask.batchTrigger([
+    { payload: { foo: "bar" } },
+    { payload: { foo: "baz" } },
+  ]);
+  await yourTask.batchTriggerAndWait([
+    { payload: { foo: "bar" } },
+    { payload: { foo: "baz" } },
+  ]);
   ```
 
   We've also changed the API of the `triggerAndWait` result. Before, if the subtask that was triggered finished with an error, we would automatically "rethrow" the error in the parent task.
@@ -1729,7 +1810,6 @@
   ```
 
 - 26093896d: When using idempotency keys, triggerAndWait and batchTriggerAndWait will still work even if the existing runs have already been completed (or even partially completed, in the case of batchTriggerAndWait)
-
   - TaskRunExecutionResult.id is now the run friendlyId, not the attempt friendlyId
   - A single TaskRun can now have many batchItems, in the case of batchTriggerAndWait while using idempotency keys
   - A run’s idempotencyKey is now added to the ctx as well as the TaskEvent and displayed in the span view
@@ -2204,7 +2284,10 @@
   Before:
 
   ```ts
-  await yourTask.trigger({ payload: { foo: "bar" }, options: { idempotencyKey: "key_1234" } });
+  await yourTask.trigger({
+    payload: { foo: "bar" },
+    options: { idempotencyKey: "key_1234" },
+  });
   await yourTask.triggerAndWait({
     payload: { foo: "bar" },
     options: { idempotencyKey: "key_1234" },
@@ -2224,8 +2307,14 @@
   await yourTask.trigger({ foo: "bar" }, { idempotencyKey: "key_1234" });
   await yourTask.triggerAndWait({ foo: "bar" }, { idempotencyKey: "key_1234" });
 
-  await yourTask.batchTrigger([{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }]);
-  await yourTask.batchTriggerAndWait([{ payload: { foo: "bar" } }, { payload: { foo: "baz" } }]);
+  await yourTask.batchTrigger([
+    { payload: { foo: "bar" } },
+    { payload: { foo: "baz" } },
+  ]);
+  await yourTask.batchTriggerAndWait([
+    { payload: { foo: "bar" } },
+    { payload: { foo: "baz" } },
+  ]);
   ```
 
   We've also changed the API of the `triggerAndWait` result. Before, if the subtask that was triggered finished with an error, we would automatically "rethrow" the error in the parent task.
@@ -2258,7 +2347,6 @@
   ```
 
 - 26093896d: When using idempotency keys, triggerAndWait and batchTriggerAndWait will still work even if the existing runs have already been completed (or even partially completed, in the case of batchTriggerAndWait)
-
   - TaskRunExecutionResult.id is now the run friendlyId, not the attempt friendlyId
   - A single TaskRun can now have many batchItems, in the case of batchTriggerAndWait while using idempotency keys
   - A run’s idempotencyKey is now added to the ctx as well as the TaskEvent and displayed in the span view

@@ -1,5 +1,23 @@
 # trigger.dev
 
+## 4.5.0-rc.8
+
+### Patch Changes
+
+- Add support for dev branches to the webapp and CLI. This allows humans (and agents) to run multiple local dev servers simultaneously, with a separate dashboard for each one. ([#4023](https://github.com/triggerdotdev/trigger.dev/pull/4023))
+- Fix idempotency key metadata (original key + scope) being silently dropped when a single run creates more than 1000 idempotency keys. The in-process catalog that maps a key's hash back to its original key/scope is no longer bounded to 1000 entries, so `idempotencyKeys.create()` results retain their metadata regardless of how many are created in a run. The catalog is now cleared at each run boundary so it does not accumulate across warm-start runs. ([#4094](https://github.com/triggerdotdev/trigger.dev/pull/4094))
+- Adds `trigger.dev mint-token`, which mints a short-lived delegated token from your stored personal access token. The token authenticates against the API as you, can be narrowed with `--cap` and given a lifetime with `--ttl`, and prints to stdout so it can be captured. ([#3997](https://github.com/triggerdotdev/trigger.dev/pull/3997))
+
+  ```bash
+  UAT=$(trigger.dev mint-token --ttl 3600 --cap read:runs)
+  ```
+
+- Runner debug logs are now disabled by default. Set `SEND_RUN_DEBUG_LOGS=true` on the supervisor to re-enable them. ([#3992](https://github.com/triggerdotdev/trigger.dev/pull/3992))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0-rc.8`
+  - `@trigger.dev/build@4.5.0-rc.8`
+  - `@trigger.dev/schema-to-json@4.5.0-rc.8`
+
 ## 4.5.0-rc.7
 
 ### Patch Changes
@@ -88,7 +106,10 @@
 - Add Agent Skills for `chat.agent`. Drop a folder with a `SKILL.md` and any helper scripts/references next to your task code, register it with `skills.define({ id, path })`, and the CLI bundles it into the deploy image automatically — no `trigger.config.ts` changes. The agent gets a one-line summary in its system prompt and discovers full instructions on demand via `loadSkill`, with `bash` and `readFile` tools scoped per-skill (path-traversal guards, output caps, abort-signal propagation). ([#3543](https://github.com/triggerdotdev/trigger.dev/pull/3543))
 
   ```ts
-  const pdfSkill = skills.define({ id: "pdf-extract", path: "./skills/pdf-extract" });
+  const pdfSkill = skills.define({
+    id: "pdf-extract",
+    path: "./skills/pdf-extract",
+  });
 
   chat.skills.set([await pdfSkill.local()]);
   ```
@@ -132,7 +153,6 @@
 - Fix dev CLI leaking build directories on rebuild, causing disk space accumulation. Deprecated workers are now pruned (capped at 2 retained) when no active runs reference them. The watchdog process also cleans up `.trigger/tmp/` when the dev CLI is killed ungracefully (e.g. SIGKILL from pnpm). ([#3224](https://github.com/triggerdotdev/trigger.dev/pull/3224))
 - Fix `--load` flag being silently ignored on local/self-hosted builds. ([#3114](https://github.com/triggerdotdev/trigger.dev/pull/3114))
 - Add `get_span_details` MCP tool for inspecting individual spans within a run trace. ([#3255](https://github.com/triggerdotdev/trigger.dev/pull/3255))
-
   - New `get_span_details` tool returns full span attributes, timing, events, and AI enrichment (model, tokens, cost, speed)
   - Span IDs now shown in `get_run_details` trace output for easy discovery
   - New API endpoint `GET /api/v1/runs/:runId/spans/:spanId`
@@ -141,7 +161,6 @@
 - MCP server improvements: new tools, bug fixes, and new flags. ([#3224](https://github.com/triggerdotdev/trigger.dev/pull/3224))
 
   **New tools:**
-
   - `get_query_schema` — discover available TRQL tables and columns
   - `query` — execute TRQL queries against your data
   - `list_dashboards` — list built-in dashboards and their widgets
@@ -154,19 +173,16 @@
   - `dev_server_status` — check dev server status and view recent logs
 
   **New API endpoints:**
-
   - `GET /api/v1/query/schema` — query table schema discovery
   - `GET /api/v1/query/dashboards` — list built-in dashboards
 
   **New features:**
-
   - `--readonly` flag hides write tools (`deploy`, `trigger_task`, `cancel_run`) so the AI cannot make changes
   - `read:query` JWT scope for query endpoint authorization
   - `get_run_details` trace output is now paginated with cursor support
   - MCP tool annotations (`readOnlyHint`, `destructiveHint`) for all tools
 
   **Bug fixes:**
-
   - Fixed `search_docs` tool failing due to renamed upstream Mintlify tool (`SearchTriggerDev` → `search_trigger_dev`)
   - Fixed `list_deploys` failing when deployments have null `runtime`/`runtimeVersion` fields (#3139)
   - Fixed `list_preview_branches` crashing due to incorrect response shape access
@@ -174,7 +190,6 @@
   - Fixed dev CLI leaking build directories on rebuild — deprecated workers now clean up their build dirs when their last run completes
 
   **Context optimizations:**
-
   - `get_query_schema` now requires a table name and returns only one table's schema (was returning all tables)
   - `get_current_worker` no longer inlines payload schemas; use new `get_task_schema` tool instead
   - Query results formatted as text tables instead of JSON (~50% fewer tokens)
@@ -1298,7 +1313,6 @@
   All important socket.io RPCs will now be retried with backoff. Actions relying on checkpoints will be replayed if we haven't been checkpointed and restored as expected, e.g. after reconnect.
 
   Other changes:
-
   - Fix retry check in shared queue
   - Fix env var sync spinner
   - Heartbeat between retries
@@ -1426,7 +1440,6 @@
 - e9a63a486: Lock SDK and CLI deps on exact core version
 - 8757fdcee: v3: [prod] force flush timeout should be 1s
 - 26093896d: When using idempotency keys, triggerAndWait and batchTriggerAndWait will still work even if the existing runs have already been completed (or even partially completed, in the case of batchTriggerAndWait)
-
   - TaskRunExecutionResult.id is now the run friendlyId, not the attempt friendlyId
   - A single TaskRun can now have many batchItems, in the case of batchTriggerAndWait while using idempotency keys
   - A run’s idempotencyKey is now added to the ctx as well as the TaskEvent and displayed in the span view
@@ -1683,7 +1696,6 @@
   All important socket.io RPCs will now be retried with backoff. Actions relying on checkpoints will be replayed if we haven't been checkpointed and restored as expected, e.g. after reconnect.
 
   Other changes:
-
   - Fix retry check in shared queue
   - Fix env var sync spinner
   - Heartbeat between retries
@@ -2088,7 +2100,6 @@
 ### Patch Changes
 
 - 26093896d: When using idempotency keys, triggerAndWait and batchTriggerAndWait will still work even if the existing runs have already been completed (or even partially completed, in the case of batchTriggerAndWait)
-
   - TaskRunExecutionResult.id is now the run friendlyId, not the attempt friendlyId
   - A single TaskRun can now have many batchItems, in the case of batchTriggerAndWait while using idempotency keys
   - A run’s idempotencyKey is now added to the ctx as well as the TaskEvent and displayed in the span view
