@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import {
   createIdempotencyKey,
   getIdempotencyKeyOptions,
@@ -6,6 +6,12 @@ import {
 } from "./idempotencyKeys.js";
 
 describe("idempotencyKeys metadata retention", () => {
+  // The catalog is a process-global singleton; reset it between tests so entries
+  // registered by one test don't leak into the next.
+  afterEach(() => {
+    resetIdempotencyKeyCatalog();
+  });
+
   it("retains key/scope options for every key created in a run, even beyond 1000", async () => {
     const count = 3000;
     const keys: string[] = [];
