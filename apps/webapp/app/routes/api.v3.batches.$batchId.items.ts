@@ -9,7 +9,6 @@ import {
 import { authenticateApiRequestWithFailure } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
-import { engine } from "~/v3/runEngine.server";
 
 const ParamsSchema = z.object({
   batchId: z.string(),
@@ -117,7 +116,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 }
 
-export async function loader({ request }: LoaderFunctionArgs) {
+export async function loader({ request: _request }: LoaderFunctionArgs) {
   // Return 405 for GET requests - only POST is allowed
   return json(
     {

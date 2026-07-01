@@ -1,20 +1,23 @@
-import { trace, Tracer } from "@opentelemetry/api";
+import type { Tracer } from "@opentelemetry/api";
+import { trace } from "@opentelemetry/api";
 import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
-import {
+import type {
   AnyValue,
   ExportLogsServiceRequest,
-  ExportLogsServiceResponse,
   ExportMetricsServiceRequest,
-  ExportMetricsServiceResponse,
   ExportTraceServiceRequest,
-  ExportTraceServiceResponse,
   KeyValue,
   ResourceLogs,
   ResourceMetrics,
   ResourceSpans,
-  SeverityNumber,
   Span,
   Span_Event,
+} from "@trigger.dev/otlp-importer";
+import {
+  ExportLogsServiceResponse,
+  ExportMetricsServiceResponse,
+  ExportTraceServiceResponse,
+  SeverityNumber,
   Span_SpanKind,
   Status_StatusCode,
 } from "@trigger.dev/otlp-importer";
@@ -509,7 +512,7 @@ function floorToTenSecondBucket(timeUnixNano: bigint | number): string {
 
 function convertMetricsToClickhouseRows(
   resourceMetrics: ResourceMetrics,
-  spanAttributeValueLengthLimit: number
+  _spanAttributeValueLengthLimit: number
 ): MetricsV1Input[] {
   const resourceAttributes = resourceMetrics.resource?.attributes ?? [];
   const resourceProperties = extractEventProperties(resourceAttributes);
@@ -802,7 +805,7 @@ function convertSelectedKeyValueItemsToMap(
   return result;
 }
 
-function detectPrimitiveValue(
+function _detectPrimitiveValue(
   attributes: Record<string, string | number | boolean | undefined> | undefined,
   sentinel: string
 ): Record<string, string | number | boolean | undefined> | string | number | boolean | undefined {
@@ -1000,52 +1003,6 @@ function extractNumberAttribute(
   if (!attribute) return fallback;
 
   return isIntValue(attribute?.value) ? Number(attribute.value.intValue) : fallback;
-}
-
-function extractDoubleAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>
-): number | undefined;
-function extractDoubleAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>,
-  fallback: number
-): number;
-function extractDoubleAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>,
-  fallback?: number
-): number | undefined {
-  const key = Array.isArray(name) ? name.filter(Boolean).join(".") : name;
-
-  const attribute = attributes.find((attribute) => attribute.key === key);
-
-  if (!attribute) return fallback;
-
-  return isDoubleValue(attribute?.value) ? Number(attribute.value.doubleValue) : fallback;
-}
-
-function extractBooleanAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>
-): boolean | undefined;
-function extractBooleanAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>,
-  fallback: boolean
-): boolean;
-function extractBooleanAttribute(
-  attributes: KeyValue[],
-  name: string | Array<string | undefined>,
-  fallback?: boolean
-): boolean | undefined {
-  const key = Array.isArray(name) ? name.filter(Boolean).join(".") : name;
-
-  const attribute = attributes.find((attribute) => attribute.key === key);
-
-  if (!attribute) return fallback;
-
-  return isBoolValue(attribute?.value) ? attribute.value.boolValue : fallback;
 }
 
 function extractArrayAttribute(

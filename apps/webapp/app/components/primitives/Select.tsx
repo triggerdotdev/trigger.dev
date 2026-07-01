@@ -536,7 +536,7 @@ export interface SelectLinkItemProps extends Ariakit.SelectItemProps {
 }
 
 export function SelectLinkItem({
-  checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
+  checkIcon: _checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
   to,
   ...props
 }: SelectLinkItemProps) {
@@ -560,7 +560,7 @@ export interface SelectButtonItemProps extends Omit<Ariakit.SelectItemProps, "on
 }
 
 export function SelectButtonItem({
-  checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
+  checkIcon: _checkIcon = <Ariakit.SelectItemCheck className="size-8 flex-none text-white" />,
   onClick,
   ...props
 }: SelectButtonItemProps) {
@@ -627,7 +627,7 @@ export function SelectGroupLabel(props: SelectGroupLabelProps) {
 }
 
 export interface SelectHeadingProps extends Ariakit.SelectHeadingProps {}
-export function SelectHeading({ render, ...props }: SelectHeadingProps) {
+export function SelectHeading({ render, ..._props }: SelectHeadingProps) {
   return (
     <div className="flex h-[1.375rem] flex-none cursor-default items-center gap-2 border-b border-charcoal-700 bg-charcoal-750 px-2.5 text-xxs uppercase text-text-bright">
       <Ariakit.SelectHeading render={render} />

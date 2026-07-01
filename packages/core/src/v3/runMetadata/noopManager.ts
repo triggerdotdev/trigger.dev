@@ -1,53 +1,53 @@
-import { DeserializedJson } from "../../schemas/json.js";
-import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
-import { ApiRequestOptions } from "../zodfetch.js";
+import type { DeserializedJson } from "../../schemas/json.js";
+import type { AsyncIterableStream } from "../streams/asyncIterableStream.js";
+import type { ApiRequestOptions } from "../zodfetch.js";
 import type { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 
 export class NoopRunMetadataManager implements RunMetadataManager {
-  append(key: string, value: DeserializedJson): this {
+  append(_key: string, _value: DeserializedJson): this {
     throw new Error("Method not implemented.");
   }
-  remove(key: string, value: DeserializedJson): this {
+  remove(_key: string, _value: DeserializedJson): this {
     throw new Error("Method not implemented.");
   }
-  increment(key: string, value: number): this {
+  increment(_key: string, _value: number): this {
     throw new Error("Method not implemented.");
   }
-  decrement(key: string, value: number): this {
+  decrement(_key: string, _value: number): this {
     throw new Error("Method not implemented.");
   }
-  stream<T>(key: string, value: AsyncIterable<T>): Promise<AsyncIterable<T>> {
+  stream<T>(_key: string, _value: AsyncIterable<T>): Promise<AsyncIterable<T>> {
     throw new Error("Method not implemented.");
   }
-  fetchStream<T>(key: string, signal?: AbortSignal): Promise<AsyncIterableStream<T>> {
+  fetchStream<T>(_key: string, _signal?: AbortSignal): Promise<AsyncIterableStream<T>> {
     throw new Error("Method not implemented.");
   }
-  flush(requestOptions?: ApiRequestOptions): Promise<void> {
+  flush(_requestOptions?: ApiRequestOptions): Promise<void> {
     throw new Error("Method not implemented.");
   }
-  refresh(requestOptions?: ApiRequestOptions): Promise<void> {
+  refresh(_requestOptions?: ApiRequestOptions): Promise<void> {
     throw new Error("Method not implemented.");
   }
-  enterWithMetadata(metadata: Record<string, DeserializedJson>): void {}
+  enterWithMetadata(_metadata: Record<string, DeserializedJson>): void {}
   current(): Record<string, DeserializedJson> | undefined {
     throw new Error("Method not implemented.");
   }
-  getKey(key: string): DeserializedJson | undefined {
+  getKey(_key: string): DeserializedJson | undefined {
     throw new Error("Method not implemented.");
   }
-  set(key: string, value: DeserializedJson): this {
+  set(_key: string, _value: DeserializedJson): this {
     throw new Error("Method not implemented.");
   }
-  del(key: string): this {
+  del(_key: string): this {
     throw new Error("Method not implemented.");
   }
-  update(metadata: Record<string, DeserializedJson>): this {
+  update(_metadata: Record<string, DeserializedJson>): this {
     throw new Error("Method not implemented.");
   }
 
   get parent(): RunMetadataUpdater {
     // Store a reference to this object
-    // eslint-disable-next-line no-this-alias
+    // eslint-disable-next-line no-this-alias no-unused-vars
     const self = this;
 
     // Create a local reference to ensure proper context
@@ -72,7 +72,7 @@ export class NoopRunMetadataManager implements RunMetadataManager {
 
   get root(): RunMetadataUpdater {
     // Store a reference to this object
-    // eslint-disable-next-line no-this-alias
+    // eslint-disable-next-line no-this-alias no-unused-vars
     const self = this;
 
     // Create a local reference to ensure proper context

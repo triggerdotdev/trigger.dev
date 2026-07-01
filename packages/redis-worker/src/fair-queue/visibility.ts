@@ -280,7 +280,7 @@ export class VisibilityManager {
    * @param tenantId - The tenant ID
    * @param score - Optional score for the message (defaults to now)
    */
-  async release<TPayload = unknown>(
+  async release<_TPayload = unknown>(
     messageId: string,
     queueId: string,
     queueKey: string,

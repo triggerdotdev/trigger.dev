@@ -105,7 +105,9 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation,
       synthesisedResponse,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaReplica: fakePrisma([row]) as unknown as typeof import("~/db.server").$replica,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
       getBuffer: () => bufferReturning("applied_to_snapshot"),
     });
@@ -121,7 +123,9 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation,
       synthesisedResponse: () => "snap",
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
       getBuffer: () => bufferReturning("applied_to_snapshot"),
     });
@@ -141,7 +145,9 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation: async () => "pg",
       synthesisedResponse: synthesised,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
       getBuffer: () => bufferReturning("applied_to_snapshot"),
     });
@@ -169,7 +175,9 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation,
       synthesisedResponse: () => "snap",
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaWriter: fakePrisma([row]) as unknown as typeof import("~/db.server").prisma,
       getBuffer: () => null,
     });
@@ -182,7 +190,9 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation: async () => "pg",
       synthesisedResponse: () => "snap",
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaWriter: fakePrisma([null]) as unknown as typeof import("~/db.server").prisma,
       getBuffer: () => null,
     });
@@ -194,7 +204,9 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation: async () => "pg",
       synthesisedResponse: () => "snap",
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaWriter: fakePrisma([null]) as unknown as typeof import("~/db.server").prisma,
       getBuffer: () => bufferReturning("not_found"),
     });
@@ -208,7 +220,9 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation,
       synthesisedResponse: () => "snap",
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaWriter: fakePrisma([row]) as unknown as typeof import("~/db.server").prisma,
       getBuffer: () => bufferReturning("not_found"),
     });
@@ -227,7 +241,9 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation,
       synthesisedResponse: () => "snap",
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
       getBuffer: () => buffer,
       sleep: async (ms) => {
@@ -256,7 +272,9 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation,
       synthesisedResponse: () => "snap",
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
       getBuffer: () => buffer,
       sleep: async (ms) => {
@@ -279,7 +297,9 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation: async () => "pg",
       synthesisedResponse: () => "snap",
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
       getBuffer: () => buffer,
       sleep: async (ms) => {
@@ -306,7 +326,9 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation,
       synthesisedResponse: () => "snap",
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
       getBuffer: () => buffer,
       sleep: async (ms) => {
@@ -331,7 +353,9 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation: async () => "pg",
       synthesisedResponse: () => "snap",
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
       getBuffer: () => buffer,
       sleep: async (ms) => {
@@ -356,7 +380,9 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation: async () => "pg",
       synthesisedResponse: () => "snap",
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
       getBuffer: () => buffer,
       sleep: async (ms) => {
@@ -383,7 +409,9 @@ describe("mutateWithFallback", () => {
       pgMutation,
       synthesisedResponse,
       rejectedResponse: () => "too-many-tags",
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
       getBuffer: () => bufferReturning("limit_exceeded"),
     });
@@ -398,7 +426,9 @@ describe("mutateWithFallback", () => {
         ...baseInput,
         pgMutation: async () => "pg",
         synthesisedResponse: () => "snap",
+        // eslint-disable-next-line typescript/consistent-type-imports
         prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+        // eslint-disable-next-line typescript/consistent-type-imports
         prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
         getBuffer: () => bufferReturning("limit_exceeded"),
       })
@@ -428,7 +458,9 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation,
       synthesisedResponse,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
       getBuffer: () => buffer,
     });
@@ -455,7 +487,9 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation: async () => "pg",
       synthesisedResponse: () => "snap",
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
       getBuffer: () => buffer,
     });
@@ -468,7 +502,9 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation: async () => "pg",
       synthesisedResponse: () => "snap",
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
+      // eslint-disable-next-line typescript/consistent-type-imports
       prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
       getBuffer: () => null,
     });

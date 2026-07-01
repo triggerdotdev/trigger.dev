@@ -27,7 +27,7 @@ export type TitleWidgetProps = {
 export function TitleWidget({
   title,
   isDraggable,
-  isResizing,
+  isResizing: _isResizing,
   onRename,
   onDelete,
 }: TitleWidgetProps) {

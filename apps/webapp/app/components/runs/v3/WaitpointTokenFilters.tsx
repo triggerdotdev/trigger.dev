@@ -4,7 +4,7 @@ import { Form, useFetcher } from "@remix-run/react";
 import { WaitpointTokenStatus, waitpointTokenStatuses } from "@trigger.dev/core/v3";
 import { ListChecks } from "lucide-react";
 import { matchSorter } from "match-sorter";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef } from "react";
 import { z } from "zod";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
@@ -62,7 +62,7 @@ type WaitpointTokenFiltersProps = {
   hasFilters: boolean;
 };
 
-export function WaitpointTokenFilters(props: WaitpointTokenFiltersProps) {
+export function WaitpointTokenFilters(_props: WaitpointTokenFiltersProps) {
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
   const hasFilters =

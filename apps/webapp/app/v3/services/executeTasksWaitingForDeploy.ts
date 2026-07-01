@@ -1,4 +1,3 @@
-import { PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { commonWorker } from "../commonWorker.server";

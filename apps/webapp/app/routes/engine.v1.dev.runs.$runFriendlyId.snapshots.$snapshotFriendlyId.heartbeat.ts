@@ -1,6 +1,7 @@
-import { json, TypedResponse } from "@remix-run/server-runtime";
+import type { TypedResponse } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { RunId, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
-import { WorkloadHeartbeatResponseBody } from "@trigger.dev/core/v3/workers";
+import type { WorkloadHeartbeatResponseBody } from "@trigger.dev/core/v3/workers";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
@@ -18,7 +19,7 @@ const { action } = createActionApiRoute(
   },
   async ({
     authentication,
-    body,
+    body: _body,
     params,
   }): Promise<TypedResponse<WorkloadHeartbeatResponseBody>> => {
     const { runFriendlyId, snapshotFriendlyId } = params;

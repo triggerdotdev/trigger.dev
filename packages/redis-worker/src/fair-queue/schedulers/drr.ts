@@ -1,4 +1,4 @@
-import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
+import { createRedisClient, type Redis } from "@internal/redis";
 import { BaseScheduler } from "../scheduler.js";
 import type {
   DRRSchedulerConfig,
@@ -63,7 +63,7 @@ export class DRRScheduler extends BaseScheduler {
    */
   async selectQueues(
     masterQueueShard: string,
-    consumerId: string,
+    _consumerId: string,
     context: SchedulerContext
   ): Promise<TenantQueues[]> {
     // Get all queues from the master shard
@@ -143,7 +143,7 @@ export class DRRScheduler extends BaseScheduler {
    */
   async selectQueuesFromDispatch(
     dispatchShardKey: string,
-    consumerId: string,
+    _consumerId: string,
     context: DispatchSchedulerContext
   ): Promise<TenantQueues[]> {
     // Level 1: Get tenants from dispatch index

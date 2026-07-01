@@ -1,17 +1,15 @@
-import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import {
   ArrowDownIcon,
   EnvelopeIcon,
   ExclamationTriangleIcon,
   InformationCircleIcon,
-  PlusIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import {
   Form,
   useActionData,
-  useNavigate,
   useNavigation,
   useSearchParams,
   type MetaFunction,
@@ -74,7 +72,7 @@ import { SetConcurrencyAddOnService } from "~/v3/services/setConcurrencyAddOn.se
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { cn } from "~/utils/cn";
-import { logger } from "~/services/logger.server";
+
 import { AllocateConcurrencyService } from "~/v3/services/allocateConcurrency.server";
 
 export const meta: MetaFunction = () => {
@@ -87,7 +85,11 @@ export const meta: MetaFunction = () => {
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+  const {
+    organizationSlug,
+    projectParam,
+    envParam: _envParam,
+  } = EnvironmentParamSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {
@@ -158,10 +160,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const formData = await request.formData();
-  const submission = parseWithZod(formData, { schema: FormSchema });
+  const submission = parse(formData, { schema: FormSchema });
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
+  if (!submission.value || submission.intent !== "submit") {
+    return json(submission);
   }
 
   if (submission.value.action === "allocate") {
@@ -176,17 +178,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     );
 
     if (error) {
-      return json(
-        submission.reply({
-          fieldErrors: {
-            environments: [error instanceof Error ? error.message : "Unknown error"],
-          },
-        })
-      );
+      submission.error.environments = [error instanceof Error ? error.message : "Unknown error"];
+      return json(submission);
     }
 
     if (!result.success) {
-      return json(submission.reply({ fieldErrors: { environments: [result.error] } }));
+      submission.error.environments = [result.error];
+      return json(submission);
     }
 
     return redirectWithSuccessMessage(
@@ -199,18 +197,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const currentPlan = await getCurrentPlan(project.organizationId);
   const purchaseBlockReason = getSelfServePurchaseBlockReason(currentPlan);
   if (purchaseBlockReason === "plan_unavailable") {
-    return json(
-      submission.reply({
-        fieldErrors: { amount: ["Unable to verify billing status. Please try again."] },
-      }),
-      { status: 503 }
-    );
+    submission.error.amount = ["Unable to verify billing status. Please try again."];
+    return json(submission, { status: 503 });
   }
   if (purchaseBlockReason === "managed_billing") {
-    return json(
-      submission.reply({ fieldErrors: { amount: ["Contact us to request more concurrency."] } }),
-      { status: 403 }
-    );
+    submission.error.amount = ["Contact us to request more concurrency."];
+    return json(submission, { status: 403 });
   }
 
   const service = new SetConcurrencyAddOnService();
@@ -225,15 +217,13 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   );
 
   if (error) {
-    return json(
-      submission.reply({
-        fieldErrors: { amount: [error instanceof Error ? error.message : "Unknown error"] },
-      })
-    );
+    submission.error.amount = [error instanceof Error ? error.message : "Unknown error"];
+    return json(submission);
   }
 
   if (!result.success) {
-    return json(submission.reply({ fieldErrors: { amount: [result.error] } }));
+    submission.error.amount = [result.error];
+    return json(submission);
   }
 
   return redirectWithSuccessMessage(
@@ -319,16 +309,15 @@ function Upgradable({
   maxQuota,
 }: ConcurrencyResult) {
   const lastSubmission = useActionData();
-  const [form, fields] = useForm({
+  const [form, { environments: formEnvironments }] = useForm({
     id: "allocate-concurrency",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema: FormSchema });
+      return parse(formData, { schema: FormSchema });
     },
     shouldRevalidate: "onSubmit",
   });
-  const { environments: formEnvironments } = fields;
 
   const navigation = useNavigation();
   const isLoading = navigation.state !== "idle" && navigation.formMethod === "POST";
@@ -476,9 +465,11 @@ function Upgradable({
               </TableRow>
             </TableBody>
           </Table>
-          <FormError id={formEnvironments.id}>{formEnvironments.errors}</FormError>
+          <FormError id={formEnvironments.id}>
+            {formEnvironments.error ?? formEnvironments.initialError?.[""]?.[0]}
+          </FormError>
         </div>
-        <Form className="flex flex-col gap-2" method="post" {...getFormProps(form)} id="allocate">
+        <Form className="flex flex-col gap-2" method="post" {...form.props} id="allocate">
           <input type="hidden" name="action" value="allocate" />
           <div className="flex items-center pb-1">
             <Header3 className="grow">Concurrency allocation</Header3>
@@ -626,16 +617,15 @@ function PurchaseConcurrencyModal({
 }) {
   const showSelfServe = useShowSelfServe();
   const lastSubmission = useActionData();
-  const [form, fields] = useForm({
+  const [form, { amount }] = useForm({
     id: "purchase-concurrency",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema: FormSchema });
+      return parse(formData, { schema: FormSchema });
     },
     shouldRevalidate: "onSubmit",
   });
-  const { amount } = fields;
 
   const [amountValue, setAmountValue] = useState(extraConcurrency);
   const navigation = useNavigation();
@@ -691,7 +681,7 @@ function PurchaseConcurrencyModal({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>{title}</DialogHeader>
-        <Form method="post" {...getFormProps(form)}>
+        <Form method="post" {...form.props}>
           <div className="flex flex-col gap-4 pt-2">
             <Paragraph variant="base/bright" spacing>
               You can purchase bundles of {concurrencyPricing.stepSize} concurrency for{" "}
@@ -705,7 +695,7 @@ function PurchaseConcurrencyModal({
                   Total extra concurrency
                 </Label>
                 <InputNumberStepper
-                  {...getInputProps(amount, { type: "number" })}
+                  {...conform.input(amount, { type: "number" })}
                   step={concurrencyPricing.stepSize}
                   min={0}
                   max={undefined}
@@ -713,8 +703,10 @@ function PurchaseConcurrencyModal({
                   onChange={(e) => setAmountValue(Number(e.target.value))}
                   disabled={isLoading}
                 />
-                <FormError id={amount.errorId}>{amount.errors}</FormError>
-                <FormError>{form.errors}</FormError>
+                <FormError id={amount.errorId}>
+                  {amount.error ?? amount.initialError?.[""]?.[0]}
+                </FormError>
+                <FormError>{form.error}</FormError>
               </InputGroup>
             </Fieldset>
             {state === "need_to_increase_unallocated" ? (

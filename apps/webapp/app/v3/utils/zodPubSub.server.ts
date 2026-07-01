@@ -1,8 +1,10 @@
-import { Logger } from "@trigger.dev/core/logger";
-import { ZodMessageCatalogSchema, ZodMessageHandler } from "@trigger.dev/core/v3/zodMessageHandler";
+import type { Logger } from "@trigger.dev/core/logger";
+import type { ZodMessageCatalogSchema } from "@trigger.dev/core/v3/zodMessageHandler";
+import { ZodMessageHandler } from "@trigger.dev/core/v3/zodMessageHandler";
 import { Evt } from "evt";
-import { z } from "zod";
-import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
+import type { z } from "zod";
+import type { RedisClient, RedisWithClusterOptions } from "~/redis.server";
+import { createRedisClient } from "~/redis.server";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
 
@@ -64,7 +66,7 @@ class RedisZodSubscriber<
     this._subscriber.quit();
   }
 
-  async #onMessage(pattern: string, channel: string, serializedMessage: string) {
+  async #onMessage(pattern: string, _channel: string, serializedMessage: string) {
     if (pattern !== this._pattern) {
       return;
     }

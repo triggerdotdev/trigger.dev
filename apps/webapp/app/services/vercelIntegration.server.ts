@@ -9,13 +9,15 @@ import { prisma, $transaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
-import {
-  VercelProjectIntegrationDataSchema,
+import type {
   VercelProjectIntegrationData,
   VercelIntegrationConfig,
   SyncEnvVarsMapping,
   TriggerEnvironmentType,
   EnvSlug,
+} from "~/v3/vercel/vercelProjectIntegrationSchema";
+import {
+  VercelProjectIntegrationDataSchema,
   envTypeToSlug,
   createDefaultVercelIntegrationData,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";

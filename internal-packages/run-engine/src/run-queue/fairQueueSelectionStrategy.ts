@@ -1,4 +1,4 @@
-import { createRedisClient, Redis, type RedisOptions } from "@internal/redis";
+import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
 import { startSpan, type Tracer } from "@internal/tracing";
 import {
   createCache,
@@ -9,7 +9,7 @@ import {
 } from "@internal/cache";
 import { randomUUID } from "crypto";
 import seedrandom from "seedrandom";
-import {
+import type {
   EnvDescriptor,
   EnvQueues,
   RunQueueKeyProducer,
@@ -629,8 +629,8 @@ export class FairQueueSelectionStrategy implements RunQueueSelectionStrategy {
 
 export class NoopFairDequeuingStrategy implements RunQueueSelectionStrategy {
   async distributeFairQueuesFromParentQueue(
-    parentQueue: string,
-    consumerId: string
+    _parentQueue: string,
+    _consumerId: string
   ): Promise<Array<EnvQueues>> {
     return [];
   }

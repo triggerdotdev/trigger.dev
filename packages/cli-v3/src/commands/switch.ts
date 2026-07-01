@@ -1,6 +1,6 @@
 import { intro, isCancel, log, outro, select } from "@clack/prompts";
-import { Command } from "commander";
-import { z } from "zod";
+import type { Command } from "commander";
+import type { z } from "zod";
 import {
   CommonCommandOptions,
   handleTelemetry,
@@ -45,7 +45,7 @@ export async function switchProfilesCommand(profile: string | undefined, options
   });
 }
 
-export async function switchProfiles(profile: string | undefined, options: SwitchProfilesOptions) {
+export async function switchProfiles(profile: string | undefined, _options: SwitchProfilesOptions) {
   intro("Switch profiles");
 
   const authConfig = readAuthConfigFile();

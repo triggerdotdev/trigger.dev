@@ -3,7 +3,7 @@ import slug from "slug";
 import { $replica, prisma } from "~/db.server";
 import type { Prisma, Project } from "@trigger.dev/database";
 import { type Organization, createEnvironment } from "./organization.server";
-import { env } from "~/env.server";
+
 import { projectCreated } from "~/services/projectCreated.server";
 export type { Project } from "@trigger.dev/database";
 

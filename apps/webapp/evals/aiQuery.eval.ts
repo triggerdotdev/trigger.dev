@@ -30,7 +30,7 @@ interface ParsedQueryResult {
 const QuerySimilarity = {
   name: "QuerySimilarity",
   scorer: async ({
-    input,
+    input: _input,
     output,
     expected,
   }: {

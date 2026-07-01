@@ -1,9 +1,8 @@
+import type { IOPacket, TriggerTaskRequestBody } from "@trigger.dev/core/v3";
 import {
-  IOPacket,
   packetRequiresOffloading,
   taskRunErrorEnhancer,
   taskRunErrorToString,
-  TriggerTaskRequestBody,
 } from "@trigger.dev/core/v3";
 import {
   parseNaturalLanguageDuration,
@@ -14,7 +13,7 @@ import { Prisma } from "@trigger.dev/database";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { MAX_TAGS_PER_RUN } from "~/models/taskRunTag.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { autoIncrementCounter } from "~/services/autoIncrementCounter.server";
 import { logger } from "~/services/logger.server";
 import { getEntitlement } from "~/services/platform.v3.server";
@@ -35,12 +34,8 @@ import { BaseService, ServiceValidationError } from "./baseService.server";
 import { EnqueueDelayedRunService } from "./enqueueDelayedRun.server";
 import { enqueueRun } from "./enqueueRun.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
-import {
-  MAX_ATTEMPTS,
-  OutOfEntitlementError,
-  TriggerTaskServiceOptions,
-  TriggerTaskServiceResult,
-} from "./triggerTask.server";
+import type { TriggerTaskServiceOptions, TriggerTaskServiceResult } from "./triggerTask.server";
+import { MAX_ATTEMPTS, OutOfEntitlementError } from "./triggerTask.server";
 
 // This is here for backwords compatibility for v3 users
 const QueueOptions = z.object({
@@ -720,14 +715,14 @@ export class TriggerTaskServiceV1 extends BaseService {
     pathPrefix: string,
     environment: AuthenticatedEnvironment
   ) {
-    return await startActiveSpan("handlePayloadPacket()", async (span) => {
+    return await startActiveSpan("handlePayloadPacket()", async (_span) => {
       const packet = this.#createPayloadPacket(payload, payloadType);
 
       if (!packet.data) {
         return packet;
       }
 
-      const { needsOffloading, size } = packetRequiresOffloading(
+      const { needsOffloading, size: _size } = packetRequiresOffloading(
         packet,
         env.TASK_PAYLOAD_OFFLOAD_THRESHOLD
       );

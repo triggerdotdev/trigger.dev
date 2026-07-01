@@ -1,11 +1,7 @@
-import { trace } from "@opentelemetry/api";
 import { clientWebsocketMessages, serverWebsocketMessages } from "@trigger.dev/core/v3";
 import type { StructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
-import {
-  MessageCatalogToSocketIoEvents,
-  ZodMessageHandler,
-  ZodMessageSender,
-} from "@trigger.dev/core/v3/zodMessageHandler";
+import type { MessageCatalogToSocketIoEvents } from "@trigger.dev/core/v3/zodMessageHandler";
+import { ZodMessageHandler, ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
 import { Evt } from "evt";
 import { randomUUID } from "node:crypto";
 import type { DisconnectReason, Namespace, Socket } from "socket.io";
@@ -106,10 +102,10 @@ export class SharedSocketConnection {
       schema: clientWebsocketMessages,
       logger,
       messages: {
-        READY_FOR_TASKS: async (payload) => {
+        READY_FOR_TASKS: async (_payload) => {
           this._sharedQueueConsumerPool.start();
         },
-        BACKGROUND_WORKER_DEPRECATED: async (payload) => {
+        BACKGROUND_WORKER_DEPRECATED: async (_payload) => {
           // await this._sharedConsumer.deprecateBackgroundWorker(payload.backgroundWorkerId);
         },
         BACKGROUND_WORKER_MESSAGE: async (payload) => {

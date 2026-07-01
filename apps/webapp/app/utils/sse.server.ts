@@ -18,7 +18,12 @@ type Event = {
   data: string;
 };
 
-export function sse({ request, pingInterval = 1000, updateInterval = 348, run }: SseProps) {
+export function sse({
+  request: _request,
+  pingInterval = 1000,
+  updateInterval = 348,
+  run,
+}: SseProps) {
   if (env.DISABLE_SSE === "1" || env.DISABLE_SSE === "true") {
     return new Response("SSE disabled", { status: 200 });
   }

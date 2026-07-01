@@ -174,7 +174,7 @@ export default function Page() {
   );
 }
 
-function BatchesTable({ batches, hasFilters, filters }: BatchList) {
+function BatchesTable({ batches, hasFilters: _hasFilters, filters: _filters }: BatchList) {
   const navigation = useNavigation();
   const location = useLocation();
   const isLoading =

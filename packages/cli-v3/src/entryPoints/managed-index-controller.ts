@@ -1,9 +1,6 @@
-import {
-  BuildManifest,
-  CreateBackgroundWorkerRequestBody,
-  serializeIndexingError,
-} from "@trigger.dev/core/v3";
-import { readFile, writeFile } from "node:fs/promises";
+import type { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
+import { BuildManifest, serializeIndexingError } from "@trigger.dev/core/v3";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { env } from "std-env";
 import { CliApiClient } from "../apiClient.js";
@@ -89,7 +86,7 @@ async function indexDeployment({
 
     console.log("Writing index.json", process.cwd());
 
-    const { timings, ...manifestWithoutTimings } = workerManifest;
+    const { timings: _timings, ...manifestWithoutTimings } = workerManifest;
     await writeJSONFile(join(process.cwd(), "index.json"), manifestWithoutTimings, true);
 
     const sourceFiles = resolveSourceFiles(buildManifest.sources, workerManifest.tasks);

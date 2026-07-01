@@ -294,7 +294,7 @@ function TaskTypePanel(props: TaskTypePanelProps) {
 function EmptyContent({
   title,
   description,
-  example,
+  example: _example,
   listingPath,
   docsHref,
   cta,

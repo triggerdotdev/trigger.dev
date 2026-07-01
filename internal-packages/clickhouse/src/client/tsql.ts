@@ -16,10 +16,10 @@ import {
   type FieldMappings,
   type TimeRange,
   type WhereClauseCondition,
+  type OutputColumnMetadata,
 } from "@internal/tsql";
 import type { ClickhouseReader, QueryStats } from "./types.js";
 import { QueryError } from "./errors.js";
-import type { OutputColumnMetadata } from "@internal/tsql";
 import { Logger } from "@trigger.dev/core/logger";
 
 const logger = new Logger("tsql", "info");

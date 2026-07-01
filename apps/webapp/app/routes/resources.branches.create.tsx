@@ -1,5 +1,5 @@
-import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { useFetcher, useLocation, useSearchParams } from "@remix-run/react";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
@@ -26,9 +26,9 @@ export async function action({ request }: ActionFunctionArgs) {
   const userId = await requireUserId(request);
 
   const formData = await request.formData();
-  const submission = parseWithZod(formData, { schema: CreateBranchFormSchema });
+  const submission = parse(formData, { schema: CreateBranchFormSchema });
 
-  if (submission.status !== "success") {
+  if (!submission.value) {
     return redirectWithErrorMessage("/", request, "Invalid form data");
   }
 
@@ -40,15 +40,12 @@ export async function action({ request }: ActionFunctionArgs) {
 
   if (result.success) {
     if (result.alreadyExisted) {
-      return json(
-        submission.reply({
-          fieldErrors: {
-            branchName: [
-              `Branch "${result.branch.branchName}" already exists. You can archive it and create a new one with the same name.`,
-            ],
-          },
-        })
-      );
+      submission.error = {
+        branchName: [
+          `Branch "${result.branch.branchName}" already exists. You can archive it and create a new one with the same name.`,
+        ],
+      };
+      return json(submission);
     }
 
     // Branches of both types are created through here; route the success
@@ -65,7 +62,8 @@ export async function action({ request }: ActionFunctionArgs) {
     );
   }
 
-  return json(submission.reply({ fieldErrors: { branchName: [result.error] } }));
+  submission.error = { branchName: [result.error] };
+  return json(submission);
 }
 
 export function NewBranchPanel({
@@ -86,9 +84,9 @@ export function NewBranchPanel({
 
   const [form, { projectId, env: envField, branchName, failurePath }] = useForm({
     id: "create-branch",
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema: CreateBranchFormSchema });
+      return parse(formData, { schema: CreateBranchFormSchema });
     },
     shouldRevalidate: "onInput",
   });
@@ -112,19 +110,19 @@ export function NewBranchPanel({
           <fetcher.Form
             method="post"
             action="/resources/branches/create"
-            {...getFormProps(form)}
+            {...form.props}
             className="w-full"
           >
             <Fieldset className="max-w-full gap-y-3">
-              <input value={project.id} {...getInputProps(projectId, { type: "hidden" })} />
-              <input value={env} {...getInputProps(envField, { type: "hidden" })} />
+              <input value={project.id} {...conform.input(projectId, { type: "hidden" })} />
+              <input value={env} {...conform.input(envField, { type: "hidden" })} />
               <input
                 value={location.pathname}
-                {...getInputProps(failurePath, { type: "hidden" })}
+                {...conform.input(failurePath, { type: "hidden" })}
               />
               <InputGroup className="max-w-full">
                 <Label>Branch name</Label>
-                <Input {...getInputProps(branchName, { type: "text" })} />
+                <Input {...conform.input(branchName)} />
                 <Hint>
                   Must not contain: spaces <InlineCode variant="extra-small">~</InlineCode>{" "}
                   <InlineCode variant="extra-small">^</InlineCode>{" "}
@@ -138,9 +136,9 @@ export function NewBranchPanel({
                   <InlineCode variant="extra-small">{"@{"}</InlineCode>{" "}
                   <InlineCode variant="extra-small">.lock</InlineCode>
                 </Hint>
-                <FormError id={branchName.errorId}>{branchName.errors}</FormError>
+                <FormError id={branchName.errorId}>{branchName.error}</FormError>
               </InputGroup>
-              <FormError>{form.errors}</FormError>
+              <FormError>{form.error}</FormError>
               <FormButtons
                 confirmButton={
                   <Button type="submit" variant="primary/medium">

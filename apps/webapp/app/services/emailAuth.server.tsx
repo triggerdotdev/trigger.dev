@@ -21,7 +21,7 @@ const emailStrategy = new EmailLinkStrategy(
   },
   async ({
     email,
-    form,
+    form: _form,
     magicLinkVerify,
   }: {
     email: string;

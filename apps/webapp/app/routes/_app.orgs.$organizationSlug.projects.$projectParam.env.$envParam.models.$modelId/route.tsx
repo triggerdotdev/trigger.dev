@@ -13,14 +13,7 @@ import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import * as Property from "~/components/primitives/PropertyTable";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
-} from "~/components/primitives/Table";
+
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { InlineCode } from "~/components/code/InlineCode";
 import { MetricWidget } from "~/routes/resources.metric";

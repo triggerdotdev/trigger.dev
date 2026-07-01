@@ -1,9 +1,9 @@
-import { DeserializedJson } from "../../schemas/json.js";
-import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
+import type { DeserializedJson } from "../../schemas/json.js";
+import type { AsyncIterableStream } from "../streams/asyncIterableStream.js";
 import { getGlobal, registerGlobal } from "../utils/globals.js";
-import { ApiRequestOptions } from "../zodfetch.js";
+import type { ApiRequestOptions } from "../zodfetch.js";
 import { NoopRunMetadataManager } from "./noopManager.js";
-import { RunMetadataManager, RunMetadataUpdater } from "./types.js";
+import type { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 
 const API_NAME = "run-metadata";
 

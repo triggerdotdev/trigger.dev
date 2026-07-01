@@ -74,7 +74,7 @@ describe("RunEngine triggerAndWait", () => {
 
       //dequeue parent
       await setTimeout(500);
-      const dequeued = await engine.dequeueFromWorkerQueue({
+      const _dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
         workerQueue: "main",
       });
@@ -82,7 +82,7 @@ describe("RunEngine triggerAndWait", () => {
       //create an attempt
       const initialExecutionData = await engine.getRunExecutionData({ runId: parentRun.id });
       assertNonNullable(initialExecutionData);
-      const attemptResult = await engine.startRunAttempt({
+      const _attemptResult = await engine.startRunAttempt({
         runId: parentRun.id,
         snapshotId: initialExecutionData.snapshot.id,
       });
@@ -268,7 +268,7 @@ describe("RunEngine triggerAndWait", () => {
           consumerId: "test_12345",
           workerQueue: "main",
         });
-        const attemptResult = await engine.startRunAttempt({
+        const _attemptResult = await engine.startRunAttempt({
           runId: parentRun1.id,
           snapshotId: dequeued[0].snapshot.id,
         });
@@ -358,7 +358,7 @@ describe("RunEngine triggerAndWait", () => {
         });
 
         //create the 2nd parent attempt
-        const attemptResultParent2 = await engine.startRunAttempt({
+        const _attemptResultParent2 = await engine.startRunAttempt({
           runId: parentRun2.id,
           snapshotId: dequeued2[0].snapshot.id,
         });

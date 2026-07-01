@@ -1,8 +1,8 @@
 import { assertExhaustive } from "../../utils.js";
 import { clock } from "../clock-api.js";
 import { lifecycleHooks } from "../lifecycle-hooks-api.js";
-import { DebugLogPropertiesInput } from "../runEngineWorker/index.js";
-import {
+import type { DebugLogPropertiesInput } from "../runEngineWorker/index.js";
+import type {
   BatchTaskRunExecutionResult,
   CompletedWaitpoint,
   TaskRunContext,
@@ -12,8 +12,8 @@ import {
   WaitpointTokenResult,
 } from "../schemas/index.js";
 import { tryCatch } from "../tryCatch.js";
-import { ExecutorToWorkerProcessConnection } from "../zodIpc.js";
-import { RuntimeManager } from "./manager.js";
+import type { ExecutorToWorkerProcessConnection } from "../zodIpc.js";
+import type { RuntimeManager } from "./manager.js";
 import { preventMultipleWaits } from "./preventMultipleWaits.js";
 
 /** A function that resolves a waitpoint */
@@ -89,7 +89,7 @@ export class SharedRuntimeManager implements RuntimeManager {
       const promises = Array.from({ length: params.runCount }, (_, index) => {
         const resolverId = `${params.id}_${index}` as ResolverId;
 
-        return new Promise<CompletedWaitpoint>((resolve, reject) => {
+        return new Promise<CompletedWaitpoint>((resolve, _reject) => {
           this.resolversById.set(resolverId, resolve);
         });
       });

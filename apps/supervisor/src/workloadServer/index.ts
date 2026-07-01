@@ -3,25 +3,25 @@ import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLog
 import EventEmitter from "node:events";
 import { z } from "zod";
 import {
-  type SupervisorHttpClient,
   WORKLOAD_HEADERS,
+  WorkloadDebugLogRequestBody,
+  WorkloadHeartbeatRequestBody,
+  WorkloadRunAttemptCompleteRequestBody,
+  WorkloadRunAttemptStartRequestBody,
+  type WorkloadRunSnapshotsSinceResponseBody,
+  type SupervisorHttpClient,
   type WorkloadClientSocketData,
   type WorkloadClientToServerEvents,
   type WorkloadContinueRunExecutionResponseBody,
-  WorkloadDebugLogRequestBody,
   type WorkloadDequeueFromVersionResponseBody,
-  WorkloadHeartbeatRequestBody,
   type WorkloadHeartbeatResponseBody,
-  WorkloadRunAttemptCompleteRequestBody,
   type WorkloadRunAttemptCompleteResponseBody,
-  WorkloadRunAttemptStartRequestBody,
   type WorkloadRunAttemptStartResponseBody,
-  WorkloadRunSnapshotsSinceResponseBody,
   type WorkloadServerToClientEvents,
   type WorkloadSuspendRunResponseBody,
 } from "@trigger.dev/core/v3/workers";
 import { HttpServer, type CheckpointClient } from "@trigger.dev/core/v3/serverOnly";
-import { type IncomingMessage } from "node:http";
+import { type IncomingMessage, type ServerResponse } from "node:http";
 import { register } from "../metrics.js";
 import { env } from "../env.js";
 import { SnapshotCallbackPayloadSchema } from "@internal/compute";
@@ -31,7 +31,6 @@ import {
 } from "../services/computeSnapshotService.js";
 import type { ComputeWorkloadManager } from "../workloadManager/compute.js";
 import type { OtlpTraceService } from "../services/otlpTraceService.js";
-import type { ServerResponse } from "node:http";
 import {
   emitOneShot,
   runWideEvent,

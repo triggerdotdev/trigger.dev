@@ -130,7 +130,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function Page() {
-  const { regions, isPaying } = useTypedLoaderData<typeof loader>();
+  const { regions, isPaying: _isPaying } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const isAdmin = useHasAdminAccess();
   const { isManagedCloud } = useFeatures();

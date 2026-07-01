@@ -231,7 +231,7 @@ export function isLegacyDollarAmountField(
   return rawAmount === planDollars || rawAmount === effectiveDollars;
 }
 
-function isAbsoluteDollarAlertLevels(levels: number[]): boolean {
+function _isAbsoluteDollarAlertLevels(levels: number[]): boolean {
   if (levels.length === 0) {
     return false;
   }
@@ -337,8 +337,8 @@ export function getAlertPreviewLimitCents(
 export function storedAlertsToThresholds(
   alerts: BillingAlertsFormData,
   mode: BillingLimitMode,
-  effectiveLimitCents: number,
-  planLimitCents: number
+  _effectiveLimitCents: number,
+  _planLimitCents: number
 ): number[] {
   const amountCents = getSavedAlertAmountCents(alerts);
 
@@ -407,8 +407,8 @@ export function previewDollarAmountForPercent(
 export function hasLegacySpikeAlertLevels(
   alerts: BillingAlertsFormData,
   mode: BillingLimitMode,
-  effectiveLimitCents: number,
-  planLimitCents: number
+  _effectiveLimitCents: number,
+  _planLimitCents: number
 ): boolean {
   if (!isPercentageAlertMode(mode)) {
     return false;

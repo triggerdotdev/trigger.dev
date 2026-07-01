@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { streams } from "./streams.js";
-import { taskContext, realtimeStreams } from "@trigger.dev/core/v3";
+import { realtimeStreams } from "@trigger.dev/core/v3";
 
 vi.mock("@trigger.dev/core/v3", async (importOriginal) => {
+  // eslint-disable-next-line typescript/consistent-type-imports
   const original = await importOriginal<typeof import("@trigger.dev/core/v3")>();
   return {
     ...original,
@@ -32,7 +33,7 @@ describe("streams.pipe consistency", () => {
     const mockStream = new ReadableStream();
 
     // This should not throw anymore
-    const { waitUntilComplete } = streams.pipe("test-key", mockStream, {
+    const { waitUntilComplete: _waitUntilComplete } = streams.pipe("test-key", mockStream, {
       target: "root",
     });
 
@@ -49,7 +50,7 @@ describe("streams.pipe consistency", () => {
     const mockStream = new ReadableStream();
 
     // This should not throw anymore
-    const { waitUntilComplete } = streams.pipe("test-key", mockStream, {
+    const { waitUntilComplete: _waitUntilComplete } = streams.pipe("test-key", mockStream, {
       target: "parent",
     });
 

@@ -1,6 +1,7 @@
 import { render } from "@react-email/render";
 import nodemailer from "nodemailer";
-import { EmailError, MailMessage, MailTransport, PlainTextMailMessage } from "./index";
+import type { MailMessage, MailTransport, PlainTextMailMessage } from "./index";
+import { EmailError } from "./index";
 
 export type SmtpMailTransportOptions = {
   type: "smtp";

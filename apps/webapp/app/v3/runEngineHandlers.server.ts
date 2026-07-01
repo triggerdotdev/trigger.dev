@@ -1,14 +1,15 @@
-import { CompleteBatchResult } from "@internal/run-engine";
+import type { CompleteBatchResult } from "@internal/run-engine";
 import { SpanKind } from "@internal/tracing";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { createJsonErrorObject, sanitizeError } from "@trigger.dev/core/v3";
+import { createJsonErrorObject, sanitizeError, TaskRunErrorCodes } from "@trigger.dev/core/v3";
 import { RunId } from "@trigger.dev/core/v3/isomorphic";
-import { BatchTaskRunStatus, Prisma, RuntimeEnvironmentType } from "@trigger.dev/database";
+import type { BatchTaskRunStatus, Prisma } from "@trigger.dev/database";
+
 import { TriggerFailedTaskService } from "~/runEngine/services/triggerFailedTask.server";
 import { $replica, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { findEnvironmentById, findEnvironmentFromRun } from "~/models/runtimeEnvironment.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
 import { reportInvocationUsage } from "~/services/platform.v3.server";
@@ -23,7 +24,6 @@ import { engine } from "./runEngine.server";
 import { runStore } from "./runStore.server";
 import { publishChangeRecord } from "~/services/realtime/runChangeNotifierInstance.server";
 import { PerformTaskRunAlertsService } from "./services/alerts/performTaskRunAlerts.server";
-import { TaskRunErrorCodes } from "@trigger.dev/core/v3";
 
 export function registerRunEngineEventBusHandlers() {
   engine.eventBus.on("runSucceeded", async ({ time, run, organization, environment }) => {
@@ -96,7 +96,7 @@ export function registerRunEngineEventBusHandlers() {
   });
 
   // Handle alerts
-  engine.eventBus.on("runFailed", async ({ time, run }) => {
+  engine.eventBus.on("runFailed", async ({ time: _time, run }) => {
     try {
       await PerformTaskRunAlertsService.enqueue(run.id);
     } catch (error) {
@@ -574,7 +574,7 @@ export function registerRunEngineEventBusHandlers() {
     }
   );
 
-  engine.eventBus.on("runAttemptStarted", async ({ time, run, organization }) => {
+  engine.eventBus.on("runAttemptStarted", async ({ time: _time, run, organization }) => {
     try {
       if (run.attemptNumber === 1 && run.baseCostInCents > 0) {
         await reportInvocationUsage(organization.id, run.baseCostInCents, { runId: run.id });
@@ -588,7 +588,7 @@ export function registerRunEngineEventBusHandlers() {
     }
   });
 
-  engine.eventBus.on("runMetadataUpdated", async ({ time, run }) => {
+  engine.eventBus.on("runMetadataUpdated", async ({ time: _time, run }) => {
     const result = await findEnvironmentFromRun(run.id);
 
     if (!result) {

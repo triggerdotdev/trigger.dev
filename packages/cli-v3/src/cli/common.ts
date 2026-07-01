@@ -1,5 +1,5 @@
 import { outro } from "@clack/prompts";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { BundleError } from "../build/bundle.js";
@@ -37,7 +37,7 @@ export class OutroCommandError extends SkipCommandError {}
 export async function handleTelemetry(action: () => Promise<void>) {
   try {
     await action();
-  } catch (e) {
+  } catch (_e) {
     process.exitCode = 1;
   }
 }

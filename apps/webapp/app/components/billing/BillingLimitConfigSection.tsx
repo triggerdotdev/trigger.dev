@@ -1,6 +1,6 @@
-import { getFormProps, useForm, type SubmissionResult } from "@conform-to/react";
+import { useForm, type Submission } from "@conform-to/react";
 
-import { parseWithZod } from "@conform-to/zod";
+import { parse } from "@conform-to/zod";
 import { Form, useActionData } from "@remix-run/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
@@ -18,7 +18,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
 import type { BillingLimitResult } from "~/services/billingLimit.schemas";
-import { cn } from "~/utils/cn";
+
 import { formatCurrency } from "~/utils/numberFormatter";
 
 export const billingLimitFormSchema = z.discriminatedUnion("mode", [
@@ -49,7 +49,7 @@ type BillingLimitFormValue = z.infer<typeof billingLimitFormSchema>;
 
 type BillingLimitActionData = {
   formIntent: "billing-limit";
-  submission: SubmissionResult;
+  submission: Submission<BillingLimitFormValue>;
 };
 
 export function isBillingLimitFormDirty(input: {
@@ -118,7 +118,6 @@ export function BillingLimitConfigSection({
   const [customAmount, setCustomAmount] = useState(savedCustomAmount);
   const [cancelInProgressRuns, setCancelInProgressRuns] = useState(savedCancelInProgressRuns);
   const customAmountInputRef = useRef<HTMLInputElement>(null);
-  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     setMode(savedMode);
@@ -141,8 +140,8 @@ export function BillingLimitConfigSection({
   const limitSubmission =
     actionData?.formIntent === "billing-limit" ? actionData.submission : undefined;
 
-  const needsInitialSave = !billingLimit.isConfigured;
-  const isLimitDirty =
+  const _needsInitialSave = !billingLimit.isConfigured;
+  const _isLimitDirty =
     mode !== savedMode || (mode === "custom" && customAmount !== savedCustomAmount);
   const isDirty = isBillingLimitFormDirty({
     billingLimit,
@@ -157,10 +156,10 @@ export function BillingLimitConfigSection({
 
   const [form, fields] = useForm({
     id: "billing-limit",
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     shouldRevalidate: "onInput",
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema: billingLimitFormSchema });
+      return parse(formData, { schema: billingLimitFormSchema });
     },
     defaultValue: {
       mode: savedMode,
@@ -168,8 +167,8 @@ export function BillingLimitConfigSection({
   });
 
   useEffect(() => {
-    formRef.current?.dispatchEvent(new Event("input", { bubbles: true }));
-  }, [customAmount, mode]);
+    form.ref.current?.dispatchEvent(new Event("input", { bubbles: true }));
+  }, [customAmount, form.ref, mode]);
 
   const planLimitLabel = formatCurrency(planLimitCents / 100, false);
   const showPlanInfoCallout = mode === "plan";
@@ -186,7 +185,7 @@ export function BillingLimitConfigSection({
         </Paragraph>
       </div>
 
-      <Form method="post" {...getFormProps(form)} ref={formRef}>
+      <Form method="post" {...form.props}>
         <input type="hidden" name="intent" value="billing-limit" />
         <Fieldset>
           <input type="hidden" name="mode" value={mode} />
@@ -246,7 +245,7 @@ export function BillingLimitConfigSection({
                       fullWidth
                     />
                     {fields.amount && (
-                      <FormError id={fields.amount.errorId}>{fields.amount.errors}</FormError>
+                      <FormError id={fields.amount.errorId}>{fields.amount.error}</FormError>
                     )}
                   </InputGroup>
                 )}

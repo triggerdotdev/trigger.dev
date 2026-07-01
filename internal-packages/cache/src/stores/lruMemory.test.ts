@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { LRUMemoryStore, createLRUMemoryStore } from "./lruMemory.js";
 import type { Entry } from "@unkey/cache/stores";
 

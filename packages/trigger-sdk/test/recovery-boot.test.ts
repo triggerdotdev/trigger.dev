@@ -3,9 +3,8 @@
 import { mockChatAgent } from "../src/v3/test/index.js";
 
 import { describe, expect, it, vi } from "vitest";
-import { chat } from "../src/v3/ai.js";
+import { chat, __setReplaySessionOutTailImplForTests } from "../src/v3/ai.js";
 import type { RecoveryBootEvent, RecoveryBootResult } from "../src/v3/ai.js";
-import { __setReplaySessionOutTailImplForTests } from "../src/v3/ai.js";
 import { simulateReadableStream, streamText } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";

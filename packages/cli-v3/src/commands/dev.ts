@@ -1,10 +1,11 @@
-import { intro } from "@clack/prompts";
+import { intro, confirm, isCancel, log } from "@clack/prompts";
 import { resolve } from "node:path";
 import { spinner } from "../utilities/windows.js";
-import { loadConfig } from "../config.js";
+import { loadConfig, watchConfig } from "../config.js";
 import { verifyDirectory } from "./deploy.js";
-import { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { Command, Option as CommandOption } from "commander";
+import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
+import type { Command } from "commander";
+import { Option as CommandOption } from "commander";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
 import {
@@ -13,8 +14,8 @@ import {
   handleTelemetry,
   wrapCommandAction,
 } from "../cli/common.js";
-import { watchConfig } from "../config.js";
-import { DevSessionInstance, startDevSession } from "../dev/devSession.js";
+import type { DevSessionInstance } from "../dev/devSession.js";
+import { startDevSession } from "../dev/devSession.js";
 import { createLockFile } from "../dev/lock.js";
 import { chalkError } from "../utilities/cliOutput.js";
 import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
@@ -25,14 +26,14 @@ import {
   fetchPlatformNotification,
 } from "../utilities/platformNotifications.js";
 import { runtimeChecks } from "../utilities/runtimeCheck.js";
-import { getProjectClient, LoginResultOk } from "../utilities/session.js";
+import type { LoginResultOk } from "../utilities/session.js";
+import { getProjectClient } from "../utilities/session.js";
 import { login } from "./login.js";
 import { updateTriggerPackages } from "./update.js";
 import {
   readConfigHasSeenMCPInstallPrompt,
   writeConfigHasSeenMCPInstallPrompt,
 } from "../utilities/configFiles.js";
-import { confirm, isCancel, log } from "@clack/prompts";
 import { installMcpServer } from "./install-mcp.js";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { VERSION } from "@trigger.dev/core";

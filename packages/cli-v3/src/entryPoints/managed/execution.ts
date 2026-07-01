@@ -1,28 +1,32 @@
 import {
+  SuspendedProcessError,
+  type TaskRunExecutionRetry,
+  type TaskRunExecutionStatus,
+  type WorkerManifest,
   type CompleteRunAttemptResult,
   type RunExecutionData,
-  SuspendedProcessError,
   type TaskRunExecutionMetrics,
   type TaskRunExecutionResult,
-  TaskRunExecutionRetry,
-  TaskRunExecutionStatus,
   type TaskRunFailedExecutionResult,
-  WorkerManifest,
 } from "@trigger.dev/core/v3";
-import { type WorkloadRunAttemptStartResponseBody } from "@trigger.dev/core/v3/workers";
+import {
+  type WorkloadRunAttemptStartResponseBody,
+  type WorkloadHttpClient,
+} from "@trigger.dev/core/v3/workers";
 import { TaskRunProcess } from "../../executions/taskRunProcess.js";
-import { RunLogger, SendDebugLogOptions } from "./logger.js";
-import { RunnerEnv } from "./env.js";
-import { WorkloadHttpClient } from "@trigger.dev/core/v3/workers";
+import type { RunLogger, SendDebugLogOptions } from "./logger.js";
+import type { RunnerEnv } from "./env.js";
 import { setTimeout as sleep } from "timers/promises";
 import { RunExecutionSnapshotPoller } from "./poller.js";
 import { assertExhaustive, tryCatch } from "@trigger.dev/core/utils";
-import { Metadata, MetadataClient } from "./overrides.js";
+import type { Metadata } from "./overrides.js";
+import { MetadataClient } from "./overrides.js";
 import { randomBytes } from "node:crypto";
-import { SnapshotManager, SnapshotState } from "./snapshot.js";
+import type { SnapshotState } from "./snapshot.js";
+import { SnapshotManager } from "./snapshot.js";
 import type { SupervisorSocket } from "./controller.js";
 import { RunNotifier } from "./notifier.js";
-import { TaskRunProcessProvider } from "./taskRunProcessProvider.js";
+import type { TaskRunProcessProvider } from "./taskRunProcessProvider.js";
 
 class ExecutionAbortError extends Error {
   constructor(message: string) {
@@ -593,7 +597,7 @@ export class RunExecution {
 
   private async executeRun({
     run,
-    snapshot,
+    snapshot: _snapshot,
     envVars,
     execution,
     metrics,

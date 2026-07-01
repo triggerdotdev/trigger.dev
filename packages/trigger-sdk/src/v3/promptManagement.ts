@@ -124,7 +124,7 @@ export async function resolvePrompt<TPromptHandle extends AnyPromptHandle = AnyP
 }
 
 /** List all prompts in the current environment. */
-export function listPrompts(requestOptions?: ApiRequestOptions): Promise<ListPromptsResponseBody> {
+export function listPrompts(_requestOptions?: ApiRequestOptions): Promise<ListPromptsResponseBody> {
   const apiClient = apiClientManager.clientOrThrow();
   return apiClient.listPrompts({
     tracer,
@@ -142,7 +142,7 @@ export function listPrompts(requestOptions?: ApiRequestOptions): Promise<ListPro
 /** List all versions for a prompt. */
 export function listPromptVersions(
   slug: string,
-  requestOptions?: ApiRequestOptions
+  _requestOptions?: ApiRequestOptions
 ): Promise<ListPromptVersionsResponseBody> {
   const apiClient = apiClientManager.clientOrThrow();
   return apiClient.listPromptVersions(slug, {
@@ -158,7 +158,7 @@ export function listPromptVersions(
 export async function promotePromptVersion(
   slug: string,
   version: number,
-  requestOptions?: ApiRequestOptions
+  _requestOptions?: ApiRequestOptions
 ): Promise<PromptOkResponseBody> {
   const apiClient = apiClientManager.clientOrThrow();
   return apiClient.promotePromptVersion(
@@ -179,7 +179,7 @@ export async function promotePromptVersion(
 export async function createPromptOverride(
   slug: string,
   body: CreatePromptOverrideRequestBody,
-  requestOptions?: ApiRequestOptions
+  _requestOptions?: ApiRequestOptions
 ): Promise<PromptOverrideCreatedResponseBody> {
   const apiClient = apiClientManager.clientOrThrow();
   return apiClient.createPromptOverride(slug, body, {
@@ -199,7 +199,7 @@ export async function createPromptOverride(
 export async function updatePromptOverride(
   slug: string,
   body: UpdatePromptOverrideRequestBody,
-  requestOptions?: ApiRequestOptions
+  _requestOptions?: ApiRequestOptions
 ): Promise<PromptOkResponseBody> {
   const apiClient = apiClientManager.clientOrThrow();
   return apiClient.updatePromptOverride(slug, body, {
@@ -214,7 +214,7 @@ export async function updatePromptOverride(
 /** Remove the active override, reverting to the current deployed version. */
 export async function removePromptOverride(
   slug: string,
-  requestOptions?: ApiRequestOptions
+  _requestOptions?: ApiRequestOptions
 ): Promise<PromptOkResponseBody> {
   const apiClient = apiClientManager.clientOrThrow();
   return apiClient.removePromptOverride(slug, {
@@ -230,7 +230,7 @@ export async function removePromptOverride(
 export async function reactivatePromptOverride(
   slug: string,
   version: number,
-  requestOptions?: ApiRequestOptions
+  _requestOptions?: ApiRequestOptions
 ): Promise<PromptOkResponseBody> {
   const apiClient = apiClientManager.clientOrThrow();
   return apiClient.reactivatePromptOverride(

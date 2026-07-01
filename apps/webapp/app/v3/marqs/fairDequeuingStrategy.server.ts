@@ -1,10 +1,11 @@
-import { createCache, DefaultStatefulContext, Namespace, Cache as UnkeyCache } from "@unkey/cache";
+import type { Cache as UnkeyCache } from "@unkey/cache";
+import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { createLRUMemoryStore } from "@internal/cache";
 import { randomUUID } from "crypto";
-import { Redis } from "ioredis";
-import { EnvQueues, MarQSFairDequeueStrategy, MarQSKeyProducer } from "./types";
+import type { Redis } from "ioredis";
+import type { EnvQueues, MarQSFairDequeueStrategy, MarQSKeyProducer } from "./types";
 import seedrandom from "seedrandom";
-import { Tracer } from "@opentelemetry/api";
+import type { Tracer } from "@opentelemetry/api";
 import { startSpan } from "../tracing.server";
 
 export type FairDequeuingStrategyBiases = {
@@ -589,8 +590,8 @@ export class FairDequeuingStrategy implements MarQSFairDequeueStrategy {
 
 export class NoopFairDequeuingStrategy implements MarQSFairDequeueStrategy {
   async distributeFairQueuesFromParentQueue(
-    parentQueue: string,
-    consumerId: string
+    _parentQueue: string,
+    _consumerId: string
   ): Promise<Array<EnvQueues>> {
     return [];
   }

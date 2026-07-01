@@ -114,7 +114,16 @@ export const RadioGroupItem = React.forwardRef<
   RadioGroupItemProps
 >(
   (
-    { className, children, variant = "simple", label, description, badges, icon, ...props },
+    {
+      className,
+      children: _children,
+      variant = "simple",
+      label,
+      description,
+      badges,
+      icon,
+      ...props
+    },
     ref
   ) => {
     const variation = variants[variant];

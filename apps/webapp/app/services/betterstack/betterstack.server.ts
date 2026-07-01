@@ -120,7 +120,7 @@ export class BetterStackClient {
   }
 
   private async fetchActiveReportTitle(
-    apiKey: string,
+    _apiKey: string,
     statusPageId: string,
     headers: Record<string, string>,
     retryConfig: { retry: { maxAttempts: number; minTimeoutInMs: number; maxTimeoutInMs: number } }

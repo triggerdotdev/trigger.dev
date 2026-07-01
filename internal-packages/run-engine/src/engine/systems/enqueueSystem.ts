@@ -1,13 +1,13 @@
-import {
+import type {
   Prisma,
   PrismaClientOrTransaction,
   TaskRun,
   TaskRunExecutionStatus,
 } from "@trigger.dev/database";
 import { parseNaturalLanguageDuration } from "@trigger.dev/core/v3/isomorphic";
-import { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
-import { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
-import { SystemResources } from "./systems.js";
+import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
+import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
+import type { SystemResources } from "./systems.js";
 
 export type EnqueueSystemOptions = {
   resources: SystemResources;

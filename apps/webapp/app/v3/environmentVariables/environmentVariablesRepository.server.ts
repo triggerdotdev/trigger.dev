@@ -21,7 +21,6 @@ import {
 } from "./repository";
 import { removeBlacklistedVariables } from "../environmentVariableRules.server";
 import { deduplicateVariableArray } from "../deduplicateVariableArray.server";
-import { logger } from "~/services/logger.server";
 
 function secretKeyProjectPrefix(projectId: string) {
   return `environmentvariable:${projectId}:`;
@@ -136,7 +135,7 @@ export class EnvironmentVariablesRepository implements Repository {
 
     try {
       for (const variable of values) {
-        const result = await $transaction(this.prismaClient, "create env var", async (tx) => {
+        const _result = await $transaction(this.prismaClient, "create env var", async (tx) => {
           const environmentVariable = await tx.environmentVariable.upsert({
             where: {
               projectId_key: {
@@ -389,7 +388,7 @@ export class EnvironmentVariablesRepository implements Repository {
             },
           });
 
-          const variableValue = await tx.environmentVariableValue.create({
+          const _variableValue = await tx.environmentVariableValue.create({
             data: {
               variableId: environmentVariable.id,
               environmentId: value.environmentId,
@@ -980,7 +979,7 @@ function renameVariables(variables: EnvironmentVariable[], renameMap: Record<str
 }
 
 async function resolveOverridableTriggerVariables(
-  runtimeEnvironment: RuntimeEnvironmentForEnvRepo
+  _runtimeEnvironment: RuntimeEnvironmentForEnvRepo
 ) {
   let result: Array<EnvironmentVariable> = [
     {
@@ -1130,7 +1129,7 @@ async function resolveBuiltInDevVariables(runtimeEnvironment: RuntimeEnvironment
 }
 
 async function resolveOverridableOtelDevVariables(
-  runtimeEnvironment: RuntimeEnvironmentForEnvRepo
+  _runtimeEnvironment: RuntimeEnvironmentForEnvRepo
 ) {
   let result: Array<EnvironmentVariable> = [
     {

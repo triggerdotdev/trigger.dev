@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod";
+import { parse } from "@conform-to/zod";
 import { useLocation } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -69,10 +69,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     v3ScheduleParams.parse(params);
 
   const formData = await request.formData();
-  const submission = parseWithZod(formData, { schema });
+  const submission = parse(formData, { schema });
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
+  if (!submission.value) {
+    return json(submission);
   }
 
   // `_format=json` → return JSON instead of redirecting; caller stays put.

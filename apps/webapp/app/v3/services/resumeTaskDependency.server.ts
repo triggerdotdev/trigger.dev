@@ -1,4 +1,4 @@
-import { TaskRunDependency } from "@trigger.dev/database";
+import type { TaskRunDependency } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { commonWorker } from "../commonWorker.server";

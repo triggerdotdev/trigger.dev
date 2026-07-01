@@ -1,5 +1,5 @@
-import { getFormProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import { type ActionFunction, type LoaderFunctionArgs, json, redirect } from "@remix-run/node";
 import { Form, useActionData } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -9,7 +9,7 @@ import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayo
 import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormTitle } from "~/components/primitives/FormTitle";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Header2 } from "~/components/primitives/Headers";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { FormError } from "~/components/primitives/FormError";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -21,7 +21,7 @@ import {
   isAcceptInviteFormError,
 } from "~/models/member.server";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { requireUser, requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { invitesPath, rootPath } from "~/utils/pathBuilder";
 import { EnvelopeIcon } from "@heroicons/react/20/solid";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
@@ -47,16 +47,14 @@ export const action: ActionFunction = async ({ request }) => {
   const user = await requireUser(request);
 
   const formData = await request.formData();
-  const submission = parseWithZod(formData, { schema });
+  const submission = parse(formData, { schema });
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
+  if (!submission.value) {
+    return json(submission);
   }
 
-  const intent = formData.get("intent");
-
   try {
-    if (intent === "accept") {
+    if (submission.intent === "accept") {
       const { remainingInvites, organization } = await acceptInvite({
         inviteId: submission.value.inviteId,
         organizationId: submission.value.organizationId,
@@ -72,7 +70,7 @@ export const action: ActionFunction = async ({ request }) => {
           `You joined ${organization.title}`
         );
       }
-    } else if (intent === "decline") {
+    } else if (submission.intent === "decline") {
       const { remainingInvites, organization } = await declineInvite({
         inviteId: submission.value.inviteId,
         user: { id: user.id, email: user.email },
@@ -107,7 +105,7 @@ export const action: ActionFunction = async ({ request }) => {
 
       return json(
         {
-          intent: intent,
+          intent: submission.intent,
           payload: submission.payload,
           error: { "": [error.message] },
         },
@@ -122,12 +120,12 @@ export default function Page() {
   const { invites } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
 
-  const [form, fields] = useForm({
+  const [form, { inviteId: _inviteId }] = useForm({
     id: "accept-invite",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema });
+      return parse(formData, { schema });
     },
   });
 
@@ -144,9 +142,9 @@ export default function Page() {
               className="mb-0 text-sky-500"
               title={simplur`You have ${invites.length} new invitation[|s]`}
             />
-            <FormError>{form.errors}</FormError>
+            <FormError>{form.error}</FormError>
             {invites.map((invite) => (
-              <Form key={invite.id} method="post" {...getFormProps(form)}>
+              <Form key={invite.id} method="post" {...form.props}>
                 <Fieldset>
                   <InputGroup className="flex items-center justify-between border-b border-charcoal-800 py-4">
                     <div className="flex flex-col gap-y-0.5 overflow-hidden">
@@ -158,12 +156,17 @@ export default function Page() {
                       <input name="organizationId" type="hidden" value={invite.organizationId} />
                     </div>
                     <div className="flex flex-col gap-y-1">
-                      <Button type="submit" name="intent" value="accept" variant={"primary/small"}>
+                      <Button
+                        type="submit"
+                        name={conform.INTENT}
+                        value="accept"
+                        variant={"primary/small"}
+                      >
                         Accept
                       </Button>
                       <Button
                         type="submit"
-                        name="intent"
+                        name={conform.INTENT}
                         value="decline"
                         variant={"secondary/small"}
                       >

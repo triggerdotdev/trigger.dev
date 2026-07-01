@@ -1,7 +1,8 @@
-import { Context, context, SpanKind } from "@opentelemetry/api";
+import type { Context } from "@opentelemetry/api";
+import { context, SpanKind } from "@opentelemetry/api";
 import { promiseWithResolvers } from "../../utils.js";
-import { ApiError, RateLimitError } from "../apiClient/errors.js";
-import { ConsoleInterceptor } from "../consoleInterceptor.js";
+import type { ApiError, RateLimitError } from "../apiClient/errors.js";
+import type { ConsoleInterceptor } from "../consoleInterceptor.js";
 import {
   isCompleteTaskWithOutput,
   isInternalError,
@@ -21,29 +22,28 @@ import {
   traceContext,
   waitUntil,
 } from "../index.js";
-import {
+import type {
   AnyOnMiddlewareHookFunction,
   RegisteredHookFunction,
   TaskCompleteResult,
   TaskInitOutput,
   TaskWait,
 } from "../lifecycleHooks/types.js";
-import { recordSpanException, TracingSDK } from "../otel/index.js";
+import type { TracingSDK } from "../otel/index.js";
+import { recordSpanException } from "../otel/index.js";
 import { runTimelineMetrics } from "../run-timeline-metrics-api.js";
-import {
-  COLD_VARIANT,
+import type {
   RetryOptions,
   TaskRunContext,
-  TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionResult,
   TaskRunExecutionRetry,
-  WARM_VARIANT,
 } from "../schemas/index.js";
+import { COLD_VARIANT, TaskRunErrorCodes, WARM_VARIANT } from "../schemas/index.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
-import { TriggerTracer } from "../tracer.js";
+import type { TriggerTracer } from "../tracer.js";
 import { tryCatch } from "../tryCatch.js";
-import { HandleErrorModificationOptions, TaskMetadataWithFunctions } from "../types/index.js";
+import type { HandleErrorModificationOptions, TaskMetadataWithFunctions } from "../types/index.js";
 import {
   conditionallyExportPacket,
   conditionallyImportPacket,
@@ -377,7 +377,7 @@ export class TaskExecutor {
         return async () => {
           await this._tracer.startActiveSpan(
             "middleware()",
-            async (span) => {
+            async (_span) => {
               await hook.fn({ payload, ctx, signal, task: this.task.id, next });
             },
             {
@@ -425,7 +425,7 @@ export class TaskExecutor {
     return runTimelineMetrics.measureMetric("trigger.dev/execution", "run", async () => {
       return await this._tracer.startActiveSpan(
         "run()",
-        async (span) => {
+        async (_span) => {
           // maxDuration is now enforced by killing the process, not by Promise.race
           // The signal is still passed to runFn for cancellation and other abort conditions
           return await runFn(payload, { ctx, init, signal });
@@ -451,7 +451,7 @@ export class TaskExecutor {
       return;
     }
 
-    const result = await runTimelineMetrics.measureMetric(
+    const _result = await runTimelineMetrics.measureMetric(
       "trigger.dev/execution",
       "onWait",
       async () => {
@@ -459,7 +459,7 @@ export class TaskExecutor {
           const [hookError] = await tryCatch(
             this._tracer.startActiveSpan(
               "onWait()",
-              async (span) => {
+              async (_span) => {
                 await hook.fn({ payload, ctx, signal, task: this.task.id, wait, init: initOutput });
               },
               {
@@ -481,7 +481,7 @@ export class TaskExecutor {
           const [hookError] = await tryCatch(
             this._tracer.startActiveSpan(
               "onWait()",
-              async (span) => {
+              async (_span) => {
                 await taskWaitHook({
                   payload,
                   ctx,
@@ -524,7 +524,7 @@ export class TaskExecutor {
       return;
     }
 
-    const result = await runTimelineMetrics.measureMetric(
+    const _result = await runTimelineMetrics.measureMetric(
       "trigger.dev/execution",
       "onCancel",
       async () => {
@@ -532,7 +532,7 @@ export class TaskExecutor {
           const [hookError] = await tryCatch(
             this._tracer.startActiveSpan(
               "onCancel()",
-              async (span) => {
+              async (_span) => {
                 await hook.fn({
                   payload,
                   ctx,
@@ -562,7 +562,7 @@ export class TaskExecutor {
           const [hookError] = await tryCatch(
             this._tracer.startActiveSpan(
               "onCancel()",
-              async (span) => {
+              async (_span) => {
                 await taskCancelHook({
                   payload,
                   ctx,
@@ -605,7 +605,7 @@ export class TaskExecutor {
       return;
     }
 
-    const result = await runTimelineMetrics.measureMetric(
+    const _result = await runTimelineMetrics.measureMetric(
       "trigger.dev/execution",
       "onResume",
       async () => {
@@ -613,7 +613,7 @@ export class TaskExecutor {
           const [hookError] = await tryCatch(
             this._tracer.startActiveSpan(
               "onResume()",
-              async (span) => {
+              async (_span) => {
                 await hook.fn({ payload, ctx, signal, task: this.task.id, wait, init: initOutput });
               },
               {
@@ -635,7 +635,7 @@ export class TaskExecutor {
           const [hookError] = await tryCatch(
             this._tracer.startActiveSpan(
               "onResume()",
-              async (span) => {
+              async (_span) => {
                 await taskResumeHook({
                   payload,
                   ctx,
@@ -784,7 +784,7 @@ export class TaskExecutor {
         await tryCatch(
           this._tracer.startActiveSpan(
             "onSuccess()",
-            async (span) => {
+            async (_span) => {
               await hook.fn({
                 payload,
                 output,
@@ -809,7 +809,7 @@ export class TaskExecutor {
         await tryCatch(
           this._tracer.startActiveSpan(
             "onSuccess()",
-            async (span) => {
+            async (_span) => {
               await taskSuccessHook({
                 payload,
                 output,
@@ -851,7 +851,7 @@ export class TaskExecutor {
         await tryCatch(
           this._tracer.startActiveSpan(
             "onFailure()",
-            async (span) => {
+            async (_span) => {
               await hook.fn({
                 payload,
                 error,
@@ -876,7 +876,7 @@ export class TaskExecutor {
         await tryCatch(
           this._tracer.startActiveSpan(
             "onFailure()",
-            async (span) => {
+            async (_span) => {
               await taskFailureHook({
                 payload,
                 error,
@@ -929,7 +929,7 @@ export class TaskExecutor {
         const [hookError] = await tryCatch(
           this._tracer.startActiveSpan(
             "onStart()",
-            async (span) => {
+            async (_span) => {
               await hook.fn({ payload, ctx, signal, task: this.task.id, init: initOutput });
             },
             {
@@ -951,7 +951,7 @@ export class TaskExecutor {
         const [hookError] = await tryCatch(
           this._tracer.startActiveSpan(
             "onStart()",
-            async (span) => {
+            async (_span) => {
               await taskStartHook({
                 payload,
                 ctx,
@@ -993,7 +993,7 @@ export class TaskExecutor {
           const [hookError] = await tryCatch(
             this._tracer.startActiveSpan(
               "onStartAttempt()",
-              async (span) => {
+              async (_span) => {
                 await hook.fn({ payload, ctx, signal, task: this.task.id });
               },
               {
@@ -1015,7 +1015,7 @@ export class TaskExecutor {
           const [hookError] = await tryCatch(
             this._tracer.startActiveSpan(
               "onStartAttempt()",
-              async (span) => {
+              async (_span) => {
                 await taskStartHook({
                   payload,
                   ctx,
@@ -1071,7 +1071,7 @@ export class TaskExecutor {
         const [hookError] = await tryCatch(
           this._tracer.startActiveSpan(
             "cleanup()",
-            async (span) => {
+            async (_span) => {
               await hook.fn({
                 payload,
                 ctx,
@@ -1099,7 +1099,7 @@ export class TaskExecutor {
         const [hookError] = await tryCatch(
           this._tracer.startActiveSpan(
             "cleanup()",
-            async (span) => {
+            async (_span) => {
               await taskCleanupHook({
                 payload,
                 ctx,
@@ -1132,7 +1132,7 @@ export class TaskExecutor {
 
     return this._tracer.startActiveSpan(
       "waitUntil",
-      async (span) => {
+      async (_span) => {
         return await waitUntil.blockUntilSettled();
       },
       {
@@ -1234,7 +1234,7 @@ export class TaskExecutor {
 
     return this._tracer.startActiveSpan(
       "catchError",
-      async (span) => {
+      async (_span) => {
         // Try task-specific catch error hook first
         if (taskCatchErrorHook) {
           const result = await taskCatchErrorHook({
@@ -1289,7 +1289,7 @@ export class TaskExecutor {
   #processHandleErrorResult(
     result: HandleErrorModificationOptions,
     attemptNumber: number,
-    defaultDelay?: number
+    _defaultDelay?: number
   ):
     | { status: "retry"; retry: TaskRunExecutionRetry; error?: unknown }
     | { status: "skipped"; error?: unknown }
@@ -1354,7 +1354,7 @@ export class TaskExecutor {
         await tryCatch(
           this._tracer.startActiveSpan(
             "onComplete()",
-            async (span) => {
+            async (_span) => {
               await hook.fn({
                 payload,
                 result,
@@ -1379,7 +1379,7 @@ export class TaskExecutor {
         await tryCatch(
           this._tracer.startActiveSpan(
             "onComplete()",
-            async (span) => {
+            async (_span) => {
               await taskCompleteHook({
                 payload,
                 result,

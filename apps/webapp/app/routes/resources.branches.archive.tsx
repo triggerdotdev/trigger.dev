@@ -1,8 +1,8 @@
-import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useActionData, useFetcher, useLocation } from "@remix-run/react";
-import { json, type ActionFunctionArgs } from "@remix-run/server-runtime";
+import { Form, useActionData, useLocation } from "@remix-run/react";
+import { type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { ArchiveIcon } from "~/assets/icons/ArchiveIcon";
 import { Button } from "~/components/primitives/Buttons";
@@ -29,9 +29,9 @@ export async function action({ request }: ActionFunctionArgs) {
   const userId = await requireUserId(request);
 
   const formData = await request.formData();
-  const submission = parseWithZod(formData, { schema });
+  const submission = parse(formData, { schema });
 
-  if (submission.status !== "success") {
+  if (!submission.value) {
     return redirectWithErrorMessage("/", request, "Invalid form data");
   }
 
@@ -69,9 +69,9 @@ export function ArchiveButton({
 
   const [form, { environmentId, redirectPath }] = useForm({
     id: "archive-branch",
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema });
+      return parse(formData, { schema });
     },
     shouldRevalidate: "onInput",
   });
@@ -97,13 +97,13 @@ export function ArchiveButton({
           <Form
             method="post"
             action="/resources/branches/archive"
-            {...getFormProps(form)}
+            {...form.props}
             className="w-full"
           >
-            <input value={environment.id} {...getInputProps(environmentId, { type: "hidden" })} />
+            <input value={environment.id} {...conform.input(environmentId, { type: "hidden" })} />
             <input
               value={`${location.pathname}${location.search}`}
-              {...getInputProps(redirectPath, { type: "hidden" })}
+              {...conform.input(redirectPath, { type: "hidden" })}
             />
             <Paragraph spacing>
               This will <span className="text-text-bright">permanently</span> make this branch{" "}
@@ -116,7 +116,7 @@ export function ArchiveButton({
             <Paragraph spacing>
               Once archived you can create a new branch with the same name.
             </Paragraph>
-            <FormError>{form.errors}</FormError>
+            <FormError>{form.error}</FormError>
             <FormButtons
               confirmButton={
                 <Button LeadingIcon={ArchiveIcon} type="submit" variant="danger/medium">

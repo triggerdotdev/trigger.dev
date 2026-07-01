@@ -402,7 +402,7 @@ describe("API", () => {
     const TASK_ID = "test-task";
     const path = `/api/v1/tasks/${TASK_ID}/trigger`;
 
-    async function seedAndRequest(
+    async function _seedAndRequest(
       headers: Record<string, string>,
       body: unknown = { payload: {} }
     ) {

@@ -1,19 +1,17 @@
+import type { UnkeyCache } from "@internal/cache";
 import {
   createCache,
   createLRUMemoryStore,
   DefaultStatefulContext,
   Namespace,
   RedisCacheStore,
-  UnkeyCache,
 } from "@internal/cache";
-import { RedisOptions } from "@internal/redis";
+import type { RedisOptions } from "@internal/redis";
 import { startSpan } from "@internal/tracing";
 import { tryCatch } from "@trigger.dev/core/utils";
-import {
+import type {
   CompleteRunAttemptResult,
   ExecutionResult,
-  FlushedRunMetadata,
-  GitMeta,
   MachinePreset,
   MachinePresetName,
   StartRunAttemptResult,
@@ -29,17 +27,18 @@ import {
   TaskRunInternalError,
   TaskRunSuccessfulExecutionResult,
 } from "@trigger.dev/core/v3/schemas";
+import { FlushedRunMetadata, GitMeta } from "@trigger.dev/core/v3/schemas";
 import {
   extractIdempotencyKeyScope,
   getUserProvidedIdempotencyKey,
 } from "@trigger.dev/core/v3/serverOnly";
 import { parsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
-import {
-  $transaction,
+import type {
   PrismaClientOrTransaction,
   RuntimeEnvironmentType,
   TaskRun,
 } from "@trigger.dev/database";
+import { $transaction } from "@trigger.dev/database";
 import { MAX_TASK_RUN_ATTEMPTS } from "../consts.js";
 import { runStatusFromError, ServiceValidationError } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
@@ -51,17 +50,19 @@ import {
   isInitialState,
   isPendingExecuting,
 } from "../statuses.js";
-import { RunEngineOptions } from "../types.js";
-import { BatchSystem } from "./batchSystem.js";
-import { DelayedRunSystem } from "./delayedRunSystem.js";
-import {
+import type { RunEngineOptions } from "../types.js";
+import type { BatchSystem } from "./batchSystem.js";
+import type { DelayedRunSystem } from "./delayedRunSystem.js";
+import type {
   EnhancedExecutionSnapshot,
-  executionResultFromSnapshot,
   ExecutionSnapshotSystem,
+} from "./executionSnapshotSystem.js";
+import {
+  executionResultFromSnapshot,
   getLatestExecutionSnapshot,
 } from "./executionSnapshotSystem.js";
-import { SystemResources } from "./systems.js";
-import { WaitpointSystem } from "./waitpointSystem.js";
+import type { SystemResources } from "./systems.js";
+import type { WaitpointSystem } from "./waitpointSystem.js";
 import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import type { AuthenticatedEnvironment } from "../../shared/index.js";
 
@@ -1172,7 +1173,7 @@ export class RunAttemptSystem {
     return startSpan(
       this.$.tracer,
       "systemFailure",
-      async (span) => {
+      async (_span) => {
         const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
         //already finished
@@ -1342,7 +1343,7 @@ export class RunAttemptSystem {
     const prisma = tx ?? this.$.prisma;
     reason = reason ?? "Canceled by user";
 
-    return startSpan(this.$.tracer, "cancelRun", async (span) => {
+    return startSpan(this.$.tracer, "cancelRun", async (_span) => {
       return this.$.runLock.lock("cancelRun", [runId], async () => {
         const latestSnapshot = await getLatestExecutionSnapshot(prisma, runId);
 
@@ -1586,7 +1587,7 @@ export class RunAttemptSystem {
   }): Promise<CompleteRunAttemptResult> {
     const prisma = this.$.prisma;
 
-    return startSpan(this.$.tracer, "permanentlyFailRun", async (span) => {
+    return startSpan(this.$.tracer, "permanentlyFailRun", async (_span) => {
       const status = runStatusFromError(error, latestSnapshot.environmentType);
 
       const truncatedError = this.#truncateTaskRunError(error);

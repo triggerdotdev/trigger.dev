@@ -137,7 +137,7 @@ describe("runStaleSweepOnce — unit", () => {
     let readAttempts = 0;
     const failingState = {
       ...state,
-      readOrgListSlice: async (start: number, count: number) => {
+      readOrgListSlice: async (_start: number, _count: number) => {
         readAttempts += 1;
         throw readErr;
       },

@@ -1,6 +1,8 @@
-import Redis, { RedisOptions } from "ioredis";
+import type { RedisOptions } from "ioredis";
+import Redis from "ioredis";
 import { defaultReconnectOnError } from "@internal/redis";
-import { Prisma, PrismaClientOrTransaction, PrismaTransactionOptions, prisma } from "~/db.server";
+import type { PrismaClientOrTransaction, PrismaTransactionOptions } from "~/db.server";
+import { Prisma, prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { singleton } from "~/utils/singleton";
 
@@ -20,7 +22,7 @@ export class AutoIncrementCounter {
     callback: (num: number, tx: PrismaClientOrTransaction) => Promise<T>,
     backfiller?: (key: string, db: PrismaClientOrTransaction) => Promise<number | undefined>,
     client: PrismaClientOrTransaction = prisma,
-    transactionOptions?: PrismaTransactionOptions
+    _transactionOptions?: PrismaTransactionOptions
   ): Promise<T | undefined> {
     let performedIncrement = false;
     let performedBackfill = false;

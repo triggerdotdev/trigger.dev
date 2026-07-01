@@ -391,7 +391,7 @@ describe("Worker", () => {
 
       // Verify queue size after second enqueue
       const size2 = await worker.queue.size({ includeFuture: true });
-      const size2Present = await worker.queue.size({ includeFuture: false });
+      const _size2Present = await worker.queue.size({ includeFuture: false });
       expect(size2).toBe(1); // Should still be 1 as it's the same ID
 
       // Wait for the first job to complete
@@ -400,15 +400,15 @@ describe("Worker", () => {
       }
 
       // Check queue size right after first job completes
-      const size3 = await worker.queue.size({ includeFuture: true });
-      const size3Present = await worker.queue.size({ includeFuture: false });
+      const _size3 = await worker.queue.size({ includeFuture: true });
+      const _size3Present = await worker.queue.size({ includeFuture: false });
 
       // Wait long enough for the second job to become available and potentially run
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Final queue size
-      const size4 = await worker.queue.size({ includeFuture: true });
-      const size4Present = await worker.queue.size({ includeFuture: false });
+      const _size4 = await worker.queue.size({ includeFuture: true });
+      const _size4Present = await worker.queue.size({ includeFuture: false });
 
       // First job should have run
       expect(processedPayloads).toContain("first-attempt");

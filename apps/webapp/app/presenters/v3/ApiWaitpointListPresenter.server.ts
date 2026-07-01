@@ -72,7 +72,7 @@ export class ApiWaitpointListPresenter extends BasePresenter {
     },
     searchParams: ApiWaitpointListSearchParams
   ) {
-    return this.trace("call", async (span) => {
+    return this.trace("call", async (_span) => {
       const options: WaitpointListOptions = {
         environment,
       };

@@ -1,29 +1,30 @@
 import {
   attemptKey,
-  CompletedWaitpoint,
   ExecutorToWorkerMessageCatalog,
-  MachinePresetResources,
-  ServerBackgroundWorker,
   TaskRunErrorCodes,
-  TaskRunExecution,
-  TaskRunExecutionPayload,
-  TaskRunExecutionResult,
-  type TaskRunInternalError,
   tryCatch,
-  WorkerManifest,
   WorkerToExecutorMessageCatalog,
+  type CompletedWaitpoint,
+  type MachinePresetResources,
+  type ServerBackgroundWorker,
+  type TaskRunExecution,
+  type TaskRunExecutionPayload,
+  type TaskRunExecutionResult,
+  type WorkerManifest,
+  type TaskRunInternalError,
 } from "@trigger.dev/core/v3";
 import {
   type WorkerToExecutorProcessConnection,
   ZodIpcConnection,
 } from "@trigger.dev/core/v3/zodIpc";
 import { Evt } from "evt";
-import { ChildProcess, fork } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import { fork } from "node:child_process";
 import { chalkError, chalkGrey, chalkRun, prettyPrintDate } from "../utilities/cliOutput.js";
 
 import { execOptionsForRuntime, execPathForRuntime } from "@trigger.dev/core/v3/build";
 import { nodeOptionsWithMaxOldSpaceSize } from "@trigger.dev/core/v3/machines";
-import { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
+import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
 import { logger } from "../utilities/logger.js";
 import {
   CancelledProcessError,
@@ -115,7 +116,7 @@ export class TaskRunProcess {
 
     try {
       await this.#cancel();
-    } catch (err) {}
+    } catch (_err) {}
 
     await this.#gracefullyTerminate(this.options.gracefulTerminationTimeoutInMs);
   }
@@ -606,6 +607,6 @@ export class TaskRunProcess {
   }
 }
 
-function executorArgs(workerManifest: WorkerManifest): string[] {
+function executorArgs(_workerManifest: WorkerManifest): string[] {
   return [];
 }

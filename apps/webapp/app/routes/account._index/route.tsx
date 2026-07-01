@@ -1,5 +1,5 @@
-import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { conformZodMessage, parseWithZod } from "@conform-to/zod";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import { Form, type MetaFunction, useActionData } from "@remix-run/react";
 import { type ActionFunction, json } from "@remix-run/server-runtime";
 import { z } from "zod";
@@ -55,7 +55,7 @@ function createSchema(
           //client-side validation skips this
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: conformZodMessage.VALIDATION_UNDEFINED,
+            message: conform.VALIDATION_UNDEFINED,
           });
         } else {
           // Tell zod this is an async validation by returning the promise
@@ -100,14 +100,14 @@ export const action: ActionFunction = async ({ request }) => {
     },
   });
 
-  const submission = await parseWithZod(formData, { schema: formSchema, async: true });
+  const submission = await parse(formData, { schema: formSchema, async: true });
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
+  if (!submission.value || submission.intent !== "submit") {
+    return json(submission);
   }
 
   try {
-    const user = await updateUser({
+    const _user = await updateUser({
       id: userId,
       name: submission.value.name,
       email: submission.value.email,
@@ -131,9 +131,9 @@ export default function Page() {
   const [form, { name, email, marketingEmails }] = useForm({
     id: "account",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema: createSchema() });
+      return parse(formData, { schema: createSchema() });
     },
   });
 
@@ -148,7 +148,7 @@ export default function Page() {
           <div className="mb-3 w-full border-b border-grid-dimmed pb-3">
             <Header2>Profile</Header2>
           </div>
-          <Form method="post" {...getFormProps(form)} className="w-full">
+          <Form method="post" {...form.props} className="w-full">
             <InputGroup className="mb-4">
               <Label htmlFor={name.id}>Profile picture</Label>
               <UserProfilePhoto className="size-24" />
@@ -157,33 +157,34 @@ export default function Page() {
               <InputGroup fullWidth>
                 <Label htmlFor={name.id}>Full name</Label>
                 <Input
-                  {...getInputProps(name, { type: "text" })}
+                  {...conform.input(name, { type: "text" })}
                   placeholder="Your full name"
                   defaultValue={user?.name ?? ""}
                   icon={AvatarCircleIcon}
                 />
                 <Hint>Your teammates will see this</Hint>
-                <FormError id={name.errorId}>{name.errors}</FormError>
+                <FormError id={name.errorId}>{name.error}</FormError>
               </InputGroup>
               <InputGroup fullWidth>
                 <Label htmlFor={email.id}>Email address</Label>
                 <Input
-                  {...getInputProps(email, { type: "text" })}
+                  {...conform.input(email, { type: "text" })}
                   placeholder="Your email"
                   defaultValue={user?.email ?? ""}
                   icon={EnvelopeIcon}
                 />
-                <FormError id={email.errorId}>{email.errors}</FormError>
+                <FormError id={email.errorId}>{email.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label>Notifications</Label>
                 <CheckboxWithLabel
-                  {...getInputProps(marketingEmails, { type: "checkbox" })}
+                  id="marketingEmails"
+                  {...conform.input(marketingEmails, { type: "checkbox" })}
                   label="Receive onboarding emails"
                   variant="simple/small"
                   defaultChecked={user.marketingEmails}
                 />
-                <FormError id={marketingEmails.errorId}>{marketingEmails.errors}</FormError>
+                <FormError id={marketingEmails.errorId}>{marketingEmails.error}</FormError>
               </InputGroup>
 
               <FormButtons

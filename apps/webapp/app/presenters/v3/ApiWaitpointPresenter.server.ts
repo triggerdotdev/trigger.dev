@@ -18,7 +18,7 @@ export class ApiWaitpointPresenter extends BasePresenter {
     },
     waitpointId: string
   ) {
-    return this.trace("call", async (span) => {
+    return this.trace("call", async (_span) => {
       const waitpoint = await this._replica.waitpoint.findFirst({
         where: {
           id: waitpointId,
@@ -56,9 +56,9 @@ export class ApiWaitpointPresenter extends BasePresenter {
         throw new ServiceValidationError("Waitpoint not found");
       }
 
-      let isTimeout = false;
+      let _isTimeout = false;
       if (waitpoint.outputIsError && waitpoint.output) {
-        isTimeout = true;
+        _isTimeout = true;
       }
 
       return {

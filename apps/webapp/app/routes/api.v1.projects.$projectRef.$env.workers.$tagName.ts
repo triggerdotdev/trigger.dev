@@ -1,7 +1,7 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
 import { z } from "zod";
-import { $replica, prisma } from "~/db.server";
+import { $replica } from "~/db.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 import { type GetWorkerByTagResponse } from "@trigger.dev/core/v3/schemas";
 import { env as $env } from "~/env.server";

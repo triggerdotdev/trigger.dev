@@ -1,4 +1,4 @@
-import {
+import type {
   BackgroundWorkerMetadata,
   BackgroundWorkerSourceFileMetadata,
   CreateBackgroundWorkerRequestBody,
@@ -9,9 +9,10 @@ import {
 import { BackgroundWorkerId, stringifyDuration } from "@trigger.dev/core/v3/isomorphic";
 import type { BackgroundWorker, TaskQueue, TaskQueueType } from "@trigger.dev/database";
 import cronstrue from "cronstrue";
-import { $transaction, Prisma, PrismaClientOrTransaction } from "~/db.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
+import { $transaction, Prisma } from "~/db.server";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import {
@@ -640,7 +641,7 @@ export class CreateDeclarativeScheduleError extends Error {
 
 export async function syncDeclarativeSchedules(
   tasks: TaskResource[],
-  worker: BackgroundWorker,
+  _worker: BackgroundWorker,
   environment: AuthenticatedEnvironment,
   prisma: PrismaClientOrTransaction
 ) {

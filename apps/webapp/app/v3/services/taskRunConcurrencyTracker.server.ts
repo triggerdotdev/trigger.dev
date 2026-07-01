@@ -23,7 +23,7 @@ class TaskRunConcurrencyTracker implements MessageQueueSubscriber {
     this.redis = new Redis(config.redis);
   }
 
-  async messageEnqueued(message: MessagePayload): Promise<void> {}
+  async messageEnqueued(_message: MessagePayload): Promise<void> {}
 
   async messageDequeued(message: MessagePayload): Promise<void> {
     logger.debug("TaskRunConcurrencyTracker.messageDequeued()", {

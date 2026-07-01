@@ -1,14 +1,8 @@
 import * as Ariakit from "@ariakit/react";
-import {
-  CalendarIcon,
-  CpuChipIcon,
-  Squares2X2Icon,
-  TrashIcon,
-  XMarkIcon,
-} from "@heroicons/react/20/solid";
+import { Squares2X2Icon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import type { BatchTaskRunStatus, RuntimeEnvironment } from "@trigger.dev/database";
-import { type ReactNode, useCallback, useRef, useState } from "react";
+import type { BatchTaskRunStatus } from "@trigger.dev/database";
+import { type ReactNode, useRef } from "react";
 import { z } from "zod";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Paragraph } from "~/components/primitives/Paragraph";
@@ -66,7 +60,7 @@ type BatchFiltersProps = {
   hasFilters: boolean;
 };
 
-export function BatchFilters(props: BatchFiltersProps) {
+export function BatchFilters(_props: BatchFiltersProps) {
   const location = useOptimisticLocation();
   const searchParams = new URLSearchParams(location.search);
   const hasFilters =
@@ -104,7 +98,7 @@ const statuses = allBatchStatuses.map((status) => ({
 function StatusDropdown({
   trigger,
   clearSearchValue,
-  searchValue,
+  searchValue: _searchValue,
   onClose,
 }: {
   trigger: ReactNode;

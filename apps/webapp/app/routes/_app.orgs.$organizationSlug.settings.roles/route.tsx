@@ -21,7 +21,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { cn } from "~/utils/cn";
+
 import { useOrganization } from "~/hooks/useOrganizations";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { rbac } from "~/services/rbac.server";

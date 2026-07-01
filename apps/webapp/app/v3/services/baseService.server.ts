@@ -1,9 +1,12 @@
-import { Span, SpanKind } from "@opentelemetry/api";
+import type { Span } from "@opentelemetry/api";
+import { SpanKind } from "@opentelemetry/api";
 import type { RunStore } from "@internal/run-store";
-import { $replica, PrismaClientOrTransaction, prisma } from "~/db.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { attributesFromAuthenticatedEnv, tracer } from "../tracer.server";
-import { engine, RunEngine } from "../runEngine.server";
+import type { RunEngine } from "../runEngine.server";
+import { engine } from "../runEngine.server";
 import { runStore as defaultRunStore } from "../runStore.server";
 import { ServiceValidationError } from "./common.server";
 

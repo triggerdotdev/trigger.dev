@@ -39,7 +39,7 @@ export function LiveTimer({
 export function LiveCountUp({
   lastUpdated,
   updateInterval = 250,
-  className,
+  className: _className,
 }: {
   lastUpdated: Date;
   updateInterval?: number;

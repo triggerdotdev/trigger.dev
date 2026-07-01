@@ -1,25 +1,27 @@
 import { z } from "zod";
-import {
+import type {
   WorkerApiConnectRequestBody,
-  WorkerApiConnectResponseBody,
-  WorkerApiContinueRunExecutionRequestBody,
   WorkerApiDequeueRequestBody,
-  WorkerApiDequeueResponseBody,
   WorkerApiHeartbeatRequestBody,
-  WorkerApiHeartbeatResponseBody,
   WorkerApiRunAttemptCompleteRequestBody,
-  WorkerApiRunAttemptCompleteResponseBody,
   WorkerApiRunAttemptStartRequestBody,
-  WorkerApiRunAttemptStartResponseBody,
   WorkerApiRunHeartbeatRequestBody,
-  WorkerApiRunHeartbeatResponseBody,
-  WorkerApiRunLatestSnapshotResponseBody,
   WorkerApiDebugLogBody,
   WorkerApiSuspendRunRequestBody,
+} from "./schemas.js";
+import {
+  WorkerApiConnectResponseBody,
+  WorkerApiContinueRunExecutionRequestBody,
+  WorkerApiDequeueResponseBody,
+  WorkerApiHeartbeatResponseBody,
+  WorkerApiRunAttemptCompleteResponseBody,
+  WorkerApiRunAttemptStartResponseBody,
+  WorkerApiRunHeartbeatResponseBody,
+  WorkerApiRunLatestSnapshotResponseBody,
   WorkerApiSuspendRunResponseBody,
   WorkerApiRunSnapshotsSinceResponseBody,
 } from "./schemas.js";
-import { SupervisorClientCommonOptions } from "./types.js";
+import type { SupervisorClientCommonOptions } from "./types.js";
 import { getDefaultWorkerHeaders } from "./util.js";
 import { wrapZodFetch } from "../../zodfetch.js";
 import { createHeaders } from "../util.js";

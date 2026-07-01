@@ -74,7 +74,7 @@ export class RulesManifest {
         const contents = await this.loader.loadRulesFile(option.path);
 
         // Omit path
-        const { path, installStrategy, ...rest } = option;
+        const { path: _path, installStrategy, ...rest } = option;
 
         const $installStrategy = RulesFileInstallStrategy.safeParse(installStrategy ?? "skills");
 

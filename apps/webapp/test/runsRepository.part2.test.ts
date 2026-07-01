@@ -401,7 +401,7 @@ describe("RunsRepository (part 2/4)", () => {
         },
       });
 
-      const run2 = await prisma.taskRun.create({
+      const _run2 = await prisma.taskRun.create({
         data: {
           friendlyId: "run_2",
           taskIdentifier: "my-task",

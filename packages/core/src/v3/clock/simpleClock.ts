@@ -1,5 +1,5 @@
 import { PreciseDate } from "@google-cloud/precise-date";
-import { Clock } from "./clock.js";
+import type { Clock } from "./clock.js";
 
 export class SimpleClock implements Clock {
   preciseNow(): [number, number] {

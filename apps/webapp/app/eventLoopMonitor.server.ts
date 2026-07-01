@@ -2,7 +2,8 @@ import { createHook } from "node:async_hooks";
 import { singleton } from "./utils/singleton";
 import { tracer } from "./v3/tracer.server";
 import { env } from "./env.server";
-import { context, Context } from "@opentelemetry/api";
+import type { Context } from "@opentelemetry/api";
+import { context } from "@opentelemetry/api";
 import { performance } from "node:perf_hooks";
 import { logger } from "./services/logger.server";
 import { signalsEmitter } from "./services/signals.server";
@@ -28,7 +29,7 @@ function notifyEventLoopBlocked(timeMs: number, asyncType: string): void {
 
 const cache = new Map<number, { type: string; start?: [number, number]; parentCtx?: Context }>();
 
-function init(asyncId: number, type: string, triggerAsyncId: number, resource: any) {
+function init(asyncId: number, type: string, _triggerAsyncId: number, _resource: any) {
   cache.set(asyncId, {
     type,
   });

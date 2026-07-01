@@ -208,7 +208,7 @@ export class Buildah {
     try {
       await x("buildah", ["login", "--get-login", registryHost], { throwOnError: true });
       return true;
-    } catch (error) {
+    } catch (_error) {
       return false;
     }
   }

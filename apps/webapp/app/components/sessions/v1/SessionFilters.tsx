@@ -651,7 +651,7 @@ function PermanentTaskIdentifierFilter({ possibleTasks }: { possibleTasks: Possi
 
 function ExternalIdDropdown({
   trigger,
-  searchValue,
+  searchValue: _searchValue,
   clearSearchValue,
   onClose,
 }: {
@@ -753,7 +753,7 @@ function AppliedExternalIdFilter() {
 
 function TagsDropdown({
   trigger,
-  searchValue,
+  searchValue: _searchValue,
   clearSearchValue,
   onClose,
 }: {

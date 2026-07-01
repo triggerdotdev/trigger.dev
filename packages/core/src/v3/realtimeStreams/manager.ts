@@ -1,9 +1,10 @@
-import { ApiClient } from "../apiClient/index.js";
-import { ensureAsyncIterable, ensureReadableStream } from "../streams/asyncIterableStream.js";
-import { AnyZodFetchOptions } from "../zodfetch.js";
+import type { ApiClient } from "../apiClient/index.js";
+import { ensureReadableStream } from "../streams/asyncIterableStream.js";
+import type { AnyZodFetchOptions } from "../zodfetch.js";
 import { taskContext } from "../task-context-api.js";
-import { CreateStreamResponseLike, StreamInstance } from "./streamInstance.js";
-import {
+import type { CreateStreamResponseLike } from "./streamInstance.js";
+import { StreamInstance } from "./streamInstance.js";
+import type {
   RealtimeStreamInstance,
   RealtimeStreamOperationOptions,
   RealtimeStreamsManager,
@@ -51,7 +52,7 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
     this.createStreamCache.set(cacheKey, promise);
     // Evict on failure so the next call retries instead of returning a
     // poisoned cache entry forever.
-    promise.catch((err) => {
+    promise.catch((_err) => {
       if (this.createStreamCache.get(cacheKey) === promise) {
         this.createStreamCache.delete(cacheKey);
       }
@@ -134,7 +135,7 @@ export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
       () => {
         this.activeStreams.delete(streamInfo);
       },
-      (err) => {
+      (_err) => {
         this.evictCreateStreamIfStale(runId, key, activeCreatePromise);
         this.activeStreams.delete(streamInfo);
       }
@@ -244,7 +245,7 @@ type ParsedStreamResponse =
       maxRetries?: number;
     };
 
-function parseCreateStreamResponse(
+function _parseCreateStreamResponse(
   version: string,
   headers: Record<string, string> | undefined
 ): ParsedStreamResponse {

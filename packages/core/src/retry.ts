@@ -25,7 +25,7 @@ export function calculateResetAt(
   }
 }
 
-function calculateUnixTimestampResetAt(resets: string, now: Date = new Date()): Date | undefined {
+function calculateUnixTimestampResetAt(resets: string, _now: Date = new Date()): Date | undefined {
   // Check if the input is null or undefined
   if (!resets) return undefined;
 
@@ -41,7 +41,7 @@ function calculateUnixTimestampResetAt(resets: string, now: Date = new Date()): 
 
 function calculateUnixTimestampInMsResetAt(
   resets: string,
-  now: Date = new Date()
+  _now: Date = new Date()
 ): Date | undefined {
   // Check if the input is null or undefined
   if (!resets) return undefined;
@@ -56,7 +56,7 @@ function calculateUnixTimestampInMsResetAt(
   return new Date(resetAt);
 }
 
-function calculateISO8601ResetAt(resets: string, now: Date = new Date()): Date | undefined {
+function calculateISO8601ResetAt(resets: string, _now: Date = new Date()): Date | undefined {
   // Check if the input is null or undefined
   if (!resets) return undefined;
 

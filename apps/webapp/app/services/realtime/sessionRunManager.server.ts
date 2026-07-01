@@ -1,6 +1,6 @@
 import type { Session, TaskRunStatus } from "@trigger.dev/database";
 import { SessionTriggerConfig as SessionTriggerConfigZod } from "@trigger.dev/core/v3";
-import { z } from "zod";
+import type { z } from "zod";
 import { prisma, $replica } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
@@ -509,7 +509,7 @@ async function resolveRunFriendlyId(runId: string): Promise<string> {
 
 async function cancelLostRaceRun(
   runId: string,
-  environment: AuthenticatedEnvironment
+  _environment: AuthenticatedEnvironment
 ): Promise<void> {
   const service = new CancelTaskRunService();
   // Read-after-write: the run was just triggered on the writer, so go

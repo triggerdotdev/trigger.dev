@@ -17,7 +17,7 @@ import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTi
 import { statusColor } from "~/components/primitives/charts/statusColors";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { CopyableText } from "~/components/primitives/CopyableText";
-import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";

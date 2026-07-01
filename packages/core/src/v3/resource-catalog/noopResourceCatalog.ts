@@ -1,4 +1,4 @@
-import {
+import type {
   PromptManifest,
   QueueManifest,
   SkillManifest,
@@ -11,14 +11,14 @@ import {
   type TaskMetadataWithFunctions,
   type TaskSchema,
 } from "../types/index.js";
-import { ResourceCatalog } from "./catalog.js";
+import type { ResourceCatalog } from "./catalog.js";
 
 export class NoopResourceCatalog implements ResourceCatalog {
-  registerTaskMetadata(task: TaskMetadataWithFunctions): void {
+  registerTaskMetadata(_task: TaskMetadataWithFunctions): void {
     // noop
   }
 
-  setCurrentFileContext(filePath: string, entryPoint: string): void {
+  setCurrentFileContext(_filePath: string, _entryPoint: string): void {
     // noop
   }
 
@@ -26,7 +26,7 @@ export class NoopResourceCatalog implements ResourceCatalog {
     // noop
   }
 
-  updateTaskMetadata(id: string, updates: Partial<TaskMetadataWithFunctions>): void {
+  updateTaskMetadata(_id: string, _updates: Partial<TaskMetadataWithFunctions>): void {
     // noop
   }
 
@@ -38,19 +38,19 @@ export class NoopResourceCatalog implements ResourceCatalog {
     return [];
   }
 
-  getTaskManifest(id: string): TaskManifest | undefined {
+  getTaskManifest(_id: string): TaskManifest | undefined {
     return undefined;
   }
 
-  getTask(id: string): TaskMetadataWithFunctions | undefined {
+  getTask(_id: string): TaskMetadataWithFunctions | undefined {
     return undefined;
   }
 
-  getTaskSchema(id: string): TaskSchema | undefined {
+  getTaskSchema(_id: string): TaskSchema | undefined {
     return undefined;
   }
 
-  taskExists(id: string): boolean {
+  taskExists(_id: string): boolean {
     return false;
   }
 
@@ -58,11 +58,11 @@ export class NoopResourceCatalog implements ResourceCatalog {
     // noop
   }
 
-  registerWorkerManifest(workerManifest: WorkerManifest): void {
+  registerWorkerManifest(_workerManifest: WorkerManifest): void {
     // noop
   }
 
-  registerQueueMetadata(queue: QueueManifest): void {
+  registerQueueMetadata(_queue: QueueManifest): void {
     // noop
   }
 
@@ -70,7 +70,7 @@ export class NoopResourceCatalog implements ResourceCatalog {
     return [];
   }
 
-  registerPromptMetadata(prompt: PromptMetadataWithFunctions): void {
+  registerPromptMetadata(_prompt: PromptMetadataWithFunctions): void {
     // noop
   }
 
@@ -78,15 +78,15 @@ export class NoopResourceCatalog implements ResourceCatalog {
     return [];
   }
 
-  getPrompt(id: string): PromptMetadataWithFunctions | undefined {
+  getPrompt(_id: string): PromptMetadataWithFunctions | undefined {
     return undefined;
   }
 
-  getPromptSchema(id: string): TaskSchema | undefined {
+  getPromptSchema(_id: string): TaskSchema | undefined {
     return undefined;
   }
 
-  registerSkillMetadata(skill: SkillMetadata): void {
+  registerSkillMetadata(_skill: SkillMetadata): void {
     // noop
   }
 
@@ -94,7 +94,7 @@ export class NoopResourceCatalog implements ResourceCatalog {
     return [];
   }
 
-  getSkillManifest(id: string): SkillManifest | undefined {
+  getSkillManifest(_id: string): SkillManifest | undefined {
     return undefined;
   }
 }

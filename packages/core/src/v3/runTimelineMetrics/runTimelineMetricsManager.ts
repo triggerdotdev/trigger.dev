@@ -1,6 +1,6 @@
-import { TaskRunExecutionMetrics } from "../schemas/schemas.js";
+import type { TaskRunExecutionMetrics } from "../schemas/schemas.js";
 import { getEnvVar } from "../utils/getEnv.js";
-import { RunTimelineMetric, RunTimelineMetricsManager } from "./types.js";
+import type { RunTimelineMetric, RunTimelineMetricsManager } from "./types.js";
 
 export class StandardRunTimelineMetricsManager implements RunTimelineMetricsManager {
   private _metrics: RunTimelineMetric[] = [];
@@ -60,7 +60,7 @@ export class StandardRunTimelineMetricsManager implements RunTimelineMetricsMana
 }
 
 export class NoopRunTimelineMetricsManager implements RunTimelineMetricsManager {
-  registerMetric(metric: RunTimelineMetric): void {
+  registerMetric(_metric: RunTimelineMetric): void {
     // Do nothing
   }
 

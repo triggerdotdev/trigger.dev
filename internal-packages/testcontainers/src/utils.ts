@@ -1,11 +1,14 @@
 import { createClient } from "@clickhouse/client";
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from "@testcontainers/postgresql";
-import { RedisContainer, StartedRedisContainer } from "@testcontainers/redis";
+import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { PostgreSqlContainer } from "@testcontainers/postgresql";
+import type { StartedRedisContainer } from "@testcontainers/redis";
+import { RedisContainer } from "@testcontainers/redis";
 import { tryCatch } from "@trigger.dev/core";
 import Redis from "ioredis";
 import path from "path";
 import { isDebug } from "std-env";
-import { GenericContainer, StartedNetwork, StartedTestContainer, Wait } from "testcontainers";
+import type { StartedNetwork, StartedTestContainer } from "testcontainers";
+import { GenericContainer, Wait } from "testcontainers";
 import { x } from "tinyexec";
 import type { TestContext } from "vitest";
 import { ClickHouseContainer, runClickhouseMigrations } from "./clickhouse";

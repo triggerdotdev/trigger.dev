@@ -30,7 +30,7 @@ import type { PlaygroundConversation } from "~/presenters/v3/PlaygroundPresenter
 import { DateTime } from "~/components/primitives/DateTime";
 import { cn } from "~/utils/cn";
 import { JSONEditor } from "~/components/code/JSONEditor";
-import { ToolUseRow, AssistantResponse, ChatBubble } from "~/components/runs/v3/ai/AIChatMessages";
+
 import { MessageBubble } from "~/components/runs/v3/agent/AgentMessageView";
 import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
 import {
@@ -199,7 +199,7 @@ function PlaygroundChat() {
       ? (recentConversations.find((c) => c.chatId === activeConversation.chatId)?.id ?? null)
       : null
   );
-  const [chatId, setChatId] = useState(() => activeConversation?.chatId ?? crypto.randomUUID());
+  const [chatId, _setChatId] = useState(() => activeConversation?.chatId ?? crypto.randomUUID());
   const [clientDataJson, setClientDataJson] = useState(() =>
     activeConversation?.clientData ? JSON.stringify(activeConversation.clientData, null, 2) : "{}"
   );

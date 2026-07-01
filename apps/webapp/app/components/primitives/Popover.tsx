@@ -8,7 +8,7 @@ import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { Link } from "@remix-run/react";
 import * as useShortcutKeys from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
-import { type ButtonContentPropsType, Button, ButtonContent } from "./Buttons";
+import { type ButtonContentPropsType, ButtonContent } from "./Buttons";
 import { Paragraph, type ParagraphVariant } from "./Paragraph";
 import { ShortcutKey } from "./ShortcutKey";
 import { type RenderIcon } from "./Icon";
@@ -145,7 +145,7 @@ const PopoverMenuItem = React.forwardRef<
 PopoverMenuItem.displayName = "PopoverMenuItem";
 
 function PopoverCustomTrigger({
-  isOpen,
+  isOpen: _isOpen,
   children,
   className,
   ...props
@@ -164,7 +164,7 @@ function PopoverCustomTrigger({
 }
 
 function PopoverSideMenuTrigger({
-  isOpen,
+  isOpen: _isOpen,
   children,
   className,
   shortcut,
@@ -233,7 +233,7 @@ const popoverArrowTriggerVariants = {
 type PopoverArrowTriggerVariant = keyof typeof popoverArrowTriggerVariants;
 
 function PopoverArrowTrigger({
-  isOpen,
+  isOpen: _isOpen,
   children,
   fullWidth = false,
   overflowHidden = false,
@@ -284,7 +284,7 @@ const popoverVerticalEllipseVariants = {
 type PopoverVerticalEllipseVariant = keyof typeof popoverVerticalEllipseVariants;
 
 function PopoverVerticalEllipseTrigger({
-  isOpen,
+  isOpen: _isOpen,
   variant = "minimal",
   className,
   ...props

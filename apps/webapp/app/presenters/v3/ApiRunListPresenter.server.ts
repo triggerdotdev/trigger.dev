@@ -1,14 +1,9 @@
-import {
-  type ListRunResponse,
-  type ListRunResponseItem,
-  MachinePresetName,
-  parsePacket,
-  RunStatus,
-} from "@trigger.dev/core/v3";
+import { MachinePresetName, parsePacket, RunStatus } from "@trigger.dev/core/v3";
 import { type Project, type RuntimeEnvironment, type TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
 import { z } from "zod";
-import { API_VERSIONS, RunStatusUnspecifiedApiVersion } from "~/api/versions";
+import type { API_VERSIONS } from "~/api/versions";
+import { RunStatusUnspecifiedApiVersion } from "~/api/versions";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { logger } from "~/services/logger.server";
 import { CoercedDate } from "~/utils/zod";
@@ -162,7 +157,7 @@ export class ApiRunListPresenter extends BasePresenter {
     apiVersion: API_VERSIONS,
     environment?: Pick<RuntimeEnvironment, "id" | "organizationId">
   ) {
-    return this.trace("call", async (span) => {
+    return this.trace("call", async (_span) => {
       const options: RunListOptions = {
         projectId: project.id,
       };

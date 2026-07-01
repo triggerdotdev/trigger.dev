@@ -9,8 +9,8 @@ import morgan from "morgan";
 import { nanoid } from "nanoid";
 import path from "path";
 import type { Server as IoServer } from "socket.io";
-import { WebSocketServer } from "ws";
-import { RateLimitMiddleware } from "~/services/apiRateLimit.server";
+import type { WebSocketServer } from "ws";
+import type { RateLimitMiddleware } from "~/services/apiRateLimit.server";
 import { type RunWithHttpContextFunction } from "~/services/httpAsyncStorage.server";
 import cluster from "node:cluster";
 import os from "node:os";
@@ -139,6 +139,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
     const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
     const engineRateLimiter: RateLimitMiddleware = build.entry.module.engineRateLimiter;
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
+    // eslint-disable-next-line typescript/consistent-type-imports
     const tenantContextMiddleware: import("express").RequestHandler =
       build.entry.module.tenantContextMiddleware;
 
@@ -237,7 +238,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
 
     let didCloseServer = false;
 
-    function closeServer(signal: NodeJS.Signals) {
+    function closeServer(_signal: NodeJS.Signals) {
       if (didCloseServer) return;
       didCloseServer = true;
 

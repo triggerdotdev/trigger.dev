@@ -98,7 +98,7 @@ type SelectItemProps = React.ComponentPropsWithoutRef<typeof SelectPrimitive.Ite
 };
 
 const SelectItem = React.forwardRef<React.ElementRef<typeof SelectPrimitive.Item>, SelectItemProps>(
-  ({ className, children, contentClassName, ...props }, ref) => (
+  ({ className, children, contentClassName: _contentClassName, ...props }, ref) => (
     <SelectPrimitive.Item
       ref={ref}
       className={cn(

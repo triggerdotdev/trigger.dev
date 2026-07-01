@@ -1,7 +1,8 @@
 "use client";
 
 import useSWRMutation from "swr/mutation";
-import { useApiClient, UseApiClientOptions } from "./useApiClient.js";
+import type { UseApiClientOptions } from "./useApiClient.js";
+import { useApiClient } from "./useApiClient.js";
 
 export interface InputStreamSendInstance<TData> {
   /** Send data to the input stream */
@@ -35,7 +36,7 @@ export function useInputStreamSend<TData>(
 ): InputStreamSendInstance<TData> {
   const apiClient = useApiClient(options);
 
-  async function sendToStream(key: string, { arg }: { arg: { data: TData } }) {
+  async function sendToStream(_key: string, { arg }: { arg: { data: TData } }) {
     if (!apiClient) {
       throw new Error("Could not send to input stream: Missing access token");
     }

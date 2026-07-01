@@ -1,18 +1,16 @@
 // TypeScript port of posthog/hogql/printer.py
 // ClickHouse SQL printer with tenant isolation and schema validation
 
-import {
+import type {
   And,
   Alias,
   ArithmeticOperation,
-  ArithmeticOperationOp,
   Array as ASTArray,
   ArrayAccess,
   AST,
   BetweenExpr,
   Call,
   CompareOperation,
-  CompareOperationOp,
   Constant,
   CTE,
   Dict,
@@ -36,29 +34,27 @@ import {
   WindowFrameExpr,
   WindowFunction,
 } from "./ast";
-import { escapeClickHouseIdentifier, escapeTSQLIdentifier, escapeClickHouseString } from "./escape";
+import { ArithmeticOperationOp, CompareOperationOp } from "./ast";
+import { escapeClickHouseIdentifier } from "./escape";
 import { ImpossibleASTError, NotImplementedError, QueryError } from "./errors";
 import {
-  TSQL_CLICKHOUSE_FUNCTIONS,
-  TSQL_AGGREGATIONS,
   TSQL_COMPARISON_MAPPING,
   findTSQLAggregation,
   findTSQLFunction,
   validateFunctionArgs,
 } from "./functions";
-import { PrinterContext, WhereClauseCondition } from "./printer_context";
+import type { PrinterContext, WhereClauseCondition } from "./printer_context";
 import { calculateTimeBucketInterval } from "./time_buckets";
 import {
-  findTable,
   validateTable,
-  TableSchema,
-  ColumnSchema,
   getInternalValue,
   isVirtualColumn,
-  OutputColumnMetadata,
-  ClickHouseType,
   hasFieldMapping,
   getInternalValueFromMappingCaseInsensitive,
+  type TableSchema,
+  type ColumnSchema,
+  type OutputColumnMetadata,
+  type ClickHouseType,
   type ColumnFormatType,
 } from "./schema";
 
@@ -837,7 +833,7 @@ export class ClickHousePrinter {
    */
   private getSelectableColumnsFromSchema(
     tableSchema: TableSchema,
-    tableAlias: string,
+    _tableAlias: string,
     collectMetadata: boolean,
     onlyCoreColumns = false
   ): string[] {

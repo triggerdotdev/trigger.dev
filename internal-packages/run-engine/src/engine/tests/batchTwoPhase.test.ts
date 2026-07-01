@@ -66,7 +66,7 @@ describe("RunEngine 2-Phase Batch API", () => {
       let completionResult: CompleteBatchResult | null = null;
 
       // Set up callbacks
-      engine.setBatchProcessItemCallback(async ({ batchId, itemIndex, item, meta }) => {
+      engine.setBatchProcessItemCallback(async ({ batchId, itemIndex, item, meta: _meta }) => {
         // Simulate creating a run
         const friendlyId = generateFriendlyId("run");
         const run = await engine.trigger(
@@ -211,10 +211,12 @@ describe("RunEngine 2-Phase Batch API", () => {
       let processCount = 0;
 
       // Set up callbacks
-      engine.setBatchProcessItemCallback(async ({ batchId, itemIndex, item, meta }) => {
-        processCount++;
-        return { success: true, runId: `run_${itemIndex}` };
-      });
+      engine.setBatchProcessItemCallback(
+        async ({ batchId: _batchId, itemIndex, item: _item, meta: _meta }) => {
+          processCount++;
+          return { success: true, runId: `run_${itemIndex}` };
+        }
+      );
 
       engine.setBatchCompletionCallback(async () => {});
 

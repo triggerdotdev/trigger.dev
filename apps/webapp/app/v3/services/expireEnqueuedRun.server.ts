@@ -1,4 +1,4 @@
-import { PrismaClientOrTransaction } from "~/db.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { commonWorker } from "../commonWorker.server";
 import { BaseService } from "./baseService.server";
@@ -8,7 +8,7 @@ import { getEventRepositoryForStore } from "../eventRepository/index.server";
 import { isV3Disabled } from "../engineDeprecation.server";
 
 export class ExpireEnqueuedRunService extends BaseService {
-  public static async ack(runId: string, tx?: PrismaClientOrTransaction) {
+  public static async ack(runId: string, _tx?: PrismaClientOrTransaction) {
     // We don't "dequeue" from the workerQueue here because it would be redundant and if this service
     // is called for a run that has already started, nothing happens
     await commonWorker.ack(`v3.expireRun:${runId}`);

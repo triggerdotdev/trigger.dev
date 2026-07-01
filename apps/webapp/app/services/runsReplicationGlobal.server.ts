@@ -1,4 +1,4 @@
-import { RunsReplicationService } from "./runsReplicationService.server";
+import type { RunsReplicationService } from "./runsReplicationService.server";
 
 const GLOBAL_RUNS_REPLICATION_KEY = Symbol.for("dev.trigger.ts.runs-replication");
 const GLOBAL_TCP_MONITOR_KEY = Symbol.for("dev.trigger.ts.tcp-monitor");

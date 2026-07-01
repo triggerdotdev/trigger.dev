@@ -1,10 +1,11 @@
 import { intro, outro, log } from "@clack/prompts";
-import { getBranch, parseDockerImageReference, prepareDeploymentError } from "@trigger.dev/core/v3";
-import { InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
-import { Command, Option as CommandOption } from "commander";
+import { getBranch, prepareDeploymentError } from "@trigger.dev/core/v3";
+import type { InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
+import type { Command } from "commander";
+import { Option as CommandOption } from "commander";
 import { resolve } from "node:path";
 import { z } from "zod";
-import { CliApiClient } from "../../apiClient.js";
+import type { CliApiClient } from "../../apiClient.js";
 import { buildWorker } from "../../build/buildWorker.js";
 import {
   CommonCommandOptions,

@@ -1,7 +1,7 @@
 import { JSONHeroPath } from "@jsonhero/path";
-import { Attributes, Span } from "@opentelemetry/api";
+import type { Attributes, Span } from "@opentelemetry/api";
 import { z } from "zod";
-import { ApiClient } from "../apiClient/index.js";
+import type { ApiClient } from "../apiClient/index.js";
 import { apiClientManager } from "../apiClientManager-api.js";
 import {
   OFFLOAD_IO_PACKET_LENGTH_LIMIT,
@@ -10,7 +10,7 @@ import {
 } from "../limits.js";
 import type { RetryOptions } from "../schemas/index.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
-import { TriggerTracer } from "../tracer.js";
+import type { TriggerTracer } from "../tracer.js";
 import { zodfetch } from "../zodfetch.js";
 import { flattenAttributes } from "./flattenAttributes.js";
 import superjson from "../imports/superjson.js";
@@ -125,7 +125,7 @@ export async function conditionallyExportPacket(
       } else {
         const result = await tracer.startActiveSpan(
           "store.uploadOutput",
-          async (span) => {
+          async (_span) => {
             return await exportPacket(packet, pathPrefix, $client);
           },
           {
@@ -247,7 +247,7 @@ export async function conditionallyImportPacket(
 
 export async function resolvePresignedPacketUrl(
   url: string,
-  tracer?: TriggerTracer
+  _tracer?: TriggerTracer
 ): Promise<any | undefined> {
   try {
     const response = await fetch(url);
@@ -265,7 +265,7 @@ export async function resolvePresignedPacketUrl(
     };
 
     return await parsePacket(packet);
-  } catch (error) {
+  } catch (_error) {
     return;
   }
 }
@@ -333,7 +333,7 @@ export async function createPacketAttributes(
         };
 
         return result;
-      } catch (e) {
+      } catch (_e) {
         return;
       }
 

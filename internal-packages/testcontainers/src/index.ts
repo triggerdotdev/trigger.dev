@@ -1,9 +1,12 @@
-import { PostgreSqlContainer, StartedPostgreSqlContainer } from "@testcontainers/postgresql";
-import { StartedRedisContainer } from "@testcontainers/redis";
+import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { PostgreSqlContainer } from "@testcontainers/postgresql";
+import type { StartedRedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
-import Redis, { RedisOptions } from "ioredis";
+import type { RedisOptions } from "ioredis";
+import Redis from "ioredis";
 import { Network, type StartedNetwork } from "testcontainers";
-import { TestContext, test } from "vitest";
+import type { TestContext } from "vitest";
+import { test } from "vitest";
 import {
   createClickHouseContainer,
   createElectricContainer,
@@ -17,14 +20,15 @@ import {
 } from "./utils";
 import { getTaskMetadata, logCleanup, logSetup } from "./logs";
 import path from "path";
+import type { StartedClickHouseContainer } from "./clickhouse";
 import {
   ClickHouseContainer,
-  StartedClickHouseContainer,
   runClickhouseMigrations,
   truncateClickhouseTables,
 } from "./clickhouse";
-import { MinIOContainer, StartedMinIOContainer, type MinIOConnectionConfig } from "./minio";
-import { ClickHouseClient, createClient } from "@clickhouse/client";
+import { MinIOContainer, type StartedMinIOContainer, type MinIOConnectionConfig } from "./minio";
+import type { ClickHouseClient } from "@clickhouse/client";
+import { createClient } from "@clickhouse/client";
 
 export { assertNonNullable, createPostgresContainer } from "./utils";
 export { logCleanup };
@@ -51,7 +55,7 @@ export type PostgresAndRedisContext = NetworkContext & PostgresContext & RedisCo
 export type ContainerWithElectricAndRedisContext = ContainerContext & ElectricContext;
 export type ContainerWithElectricContext = NetworkContext & PostgresContext & ElectricContext;
 
-type MinIOContext = NetworkContext & {
+type _MinIOContext = NetworkContext & {
   minioContainer: StartedMinIOContainer;
   minioConfig: MinIOConnectionConfig;
 };
@@ -96,7 +100,7 @@ export const postgresContainer = async (
   { network, task }: { network: StartedNetwork } & TestContext,
   use: Use<StartedPostgreSqlContainer>
 ) => {
-  const { container, metadata } = await withContainerSetup({
+  const { container, metadata: _metadata } = await withContainerSetup({
     name: "postgresContainer",
     task,
     setup: createPostgresContainer(network),
@@ -273,7 +277,7 @@ export const redisContainer = async (
   { network, task }: { network: StartedNetwork } & TestContext,
   use: Use<StartedRedisContainer>
 ) => {
-  const { container, metadata } = await withContainerSetup({
+  const { container, metadata: _metadata } = await withContainerSetup({
     name: "redisContainer",
     task,
     setup: createRedisContainer({
@@ -381,7 +385,11 @@ const electricOrigin = async (
   }: { postgresContainer: StartedPostgreSqlContainer; network: StartedNetwork } & TestContext,
   use: Use<string>
 ) => {
-  const { origin, container, metadata } = await withContainerSetup({
+  const {
+    origin,
+    container,
+    metadata: _metadata,
+  } = await withContainerSetup({
     name: "electricContainer",
     task,
     setup: createElectricContainer(postgresContainer, network),
@@ -394,7 +402,7 @@ const clickhouseContainer = async (
   { network, task }: { network: StartedNetwork } & TestContext,
   use: Use<StartedClickHouseContainer>
 ) => {
-  const { container, metadata } = await withContainerSetup({
+  const { container, metadata: _metadata } = await withContainerSetup({
     name: "clickhouseContainer",
     task,
     setup: createClickHouseContainer(network),

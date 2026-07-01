@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod";
+import { parse } from "@conform-to/zod";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/v3";
 import { z } from "zod";
@@ -47,10 +47,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   const formData = await request.formData();
-  const submission = parseWithZod(formData, { schema: PurchaseSchema });
+  const submission = parse(formData, { schema: PurchaseSchema });
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
+  if (!submission.value || submission.intent !== "submit") {
+    return json(submission);
   }
 
   const service = new SetSchedulesAddOnService();
@@ -64,15 +64,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
   );
 
   if (error) {
-    return json(
-      submission.reply({
-        fieldErrors: { amount: [error instanceof Error ? error.message : "Unknown error"] },
-      })
-    );
+    submission.error.amount = [error instanceof Error ? error.message : "Unknown error"];
+    return json(submission);
   }
 
   if (!result.success) {
-    return json(submission.reply({ fieldErrors: { amount: [result.error] } }));
+    submission.error.amount = [result.error];
+    return json(submission);
   }
 
   return json({ ok: true } as const);

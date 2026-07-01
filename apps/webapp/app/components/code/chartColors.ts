@@ -108,7 +108,7 @@ function hslToHex({ h, s, l }: HSLColor): string {
 }
 
 /** Convert a hex string to HSL (h: 0–360, s: 0–100, l: 0–100) */
-function hexToHsl(hex: string): HSLColor {
+function _hexToHsl(hex: string): HSLColor {
   const r = parseInt(hex.slice(1, 3), 16) / 255;
   const g = parseInt(hex.slice(3, 5), 16) / 255;
   const b = parseInt(hex.slice(5, 7), 16) / 255;

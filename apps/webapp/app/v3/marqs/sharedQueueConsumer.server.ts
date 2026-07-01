@@ -1,31 +1,21 @@
-import {
-  Context,
-  ROOT_CONTEXT,
-  Span,
-  SpanKind,
-  SpanOptions,
-  SpanStatusCode,
-  context,
-  trace,
-} from "@opentelemetry/api";
-import {
+import type { Context, Span, SpanOptions } from "@opentelemetry/api";
+import { ROOT_CONTEXT, SpanKind, SpanStatusCode, context, trace } from "@opentelemetry/api";
+import type {
   AckCallbackResult,
   MachinePreset,
   V3ProdTaskRunExecution,
   V3ProdTaskRunExecutionPayload,
   TaskRunError,
-  TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
-  parsePacket,
   serverWebsocketMessages,
-  SemanticInternalAttributes,
 } from "@trigger.dev/core/v3";
-import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
-import {
+import { TaskRunErrorCodes, parsePacket, SemanticInternalAttributes } from "@trigger.dev/core/v3";
+import type { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
+import type {
   BackgroundWorker,
   BackgroundWorkerTask,
   Prisma,
@@ -40,12 +30,12 @@ import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { marqs } from "~/v3/marqs/index.server";
+import type { RuntimeEnvironmentForEnvRepo } from "../environmentVariables/environmentVariablesRepository.server";
 import {
-  RuntimeEnvironmentForEnvRepo,
   RuntimeEnvironmentForEnvRepoPayload,
   resolveVariablesForEnvironment,
 } from "../environmentVariables/environmentVariablesRepository.server";
-import { EnvironmentVariable } from "../environmentVariables/repository";
+import type { EnvironmentVariable } from "../environmentVariables/repository";
 import { FailedTaskRunService } from "../failedTaskRun.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
@@ -66,7 +56,7 @@ import {
 } from "../taskStatus";
 import { tracer } from "../tracer.server";
 import { getMaxDuration } from "../utils/maxDuration";
-import { MessagePayload } from "./types";
+import type { MessagePayload } from "./types";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -230,7 +220,7 @@ export class SharedQueueConsumer {
     this.#enable();
   }
 
-  public async stop(reason: string = "Provider disconnected") {
+  public async stop(_reason: string = "Provider disconnected") {
     if (!this._enabled) {
       return;
     }
@@ -539,7 +529,7 @@ export class SharedQueueConsumer {
     data: SharedQueueMessageBody,
     dequeuedAt: Date
   ): Promise<HandleMessageResult> {
-    return await this.#startActiveSpan("handleMessage()", async (span) => {
+    return await this.#startActiveSpan("handleMessage()", async (_span) => {
       // TODO: For every ACK, decide what should be done with the existing run and attempts. Make sure to check the current statuses first.
       switch (data.type) {
         // MARK: EXECUTE
@@ -616,7 +606,7 @@ export class SharedQueueConsumer {
     }
 
     // Check if the task run is locked to a specific worker, if not, use the current worker deployment
-    const deployment = await this.#startActiveSpan("findCurrentWorkerDeployment", async (span) => {
+    const deployment = await this.#startActiveSpan("findCurrentWorkerDeployment", async (_span) => {
       return existingTaskRun.lockedById
         ? await getWorkerDeploymentFromWorkerTask(existingTaskRun.lockedById)
         : existingTaskRun.lockedToVersionId
@@ -990,7 +980,7 @@ export class SharedQueueConsumer {
   async #handleResumeMessage(
     message: MessagePayload,
     data: SharedQueueResumeMessageBody,
-    dequeuedAt: Date
+    _dequeuedAt: Date
   ): Promise<HandleMessageResult> {
     if (data.checkpointEventId) {
       try {
@@ -1357,7 +1347,7 @@ export class SharedQueueConsumer {
   async #handleResumeAfterDurationMessage(
     message: MessagePayload,
     data: SharedQueueResumeAfterDurationMessageBody,
-    dequeuedAt: Date
+    _dequeuedAt: Date
   ): Promise<HandleMessageResult> {
     try {
       const restoreService = new RestoreCheckpointService();
@@ -1400,7 +1390,7 @@ export class SharedQueueConsumer {
   async #handleFailMessage(
     message: MessagePayload,
     data: SharedQueueFailMessageBody,
-    dequeuedAt: Date
+    _dequeuedAt: Date
   ): Promise<HandleMessageResult> {
     const existingTaskRun = await prisma.taskRun.findFirst({
       where: {
@@ -1445,7 +1435,7 @@ export class SharedQueueConsumer {
   async #markRunAsWaitingForDeploy(runId: string) {
     logger.debug("Marking run as waiting for deploy", { runId });
 
-    const run = await prisma.taskRun.update({
+    const _run = await prisma.taskRun.update({
       where: {
         id: runId,
       },

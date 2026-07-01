@@ -1,13 +1,13 @@
-import { getFormProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import { CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
-import { Form, useActionData, useFetcher, useNavigation, useLocation } from "@remix-run/react";
+import { Form, useActionData, useNavigation, useLocation } from "@remix-run/react";
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Button } from "~/components/primitives/Buttons";
 import { PermissionLink } from "~/components/primitives/PermissionLink";
 import { Callout } from "~/components/primitives/Callout";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -52,7 +52,6 @@ import {
   type SyncEnvVarsMapping,
   type EnvSlug,
   envSlugArrayField,
-  envTypeToSlug,
   getAvailableEnvSlugs,
   getAvailableEnvSlugsForBuildSettings,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
@@ -252,10 +251,10 @@ export const action = dashboardAction(
     }
 
     const formData = await request.formData();
-    const submission = parseWithZod(formData, { schema: VercelActionSchema });
+    const submission = parse(formData, { schema: VercelActionSchema });
 
-    if (submission.status !== "success") {
-      return json(submission.reply());
+    if (!submission.value || submission.intent !== "submit") {
+      return json(submission);
     }
 
     const settingsPath = v3ProjectSettingsIntegrationsPath(
@@ -518,9 +517,9 @@ export const action = dashboardAction(
 function VercelConnectionPrompt({
   organizationSlug,
   projectSlug,
-  environmentSlug,
+  environmentSlug: _environmentSlug,
   hasOrgIntegration,
-  isGitHubConnected,
+  isGitHubConnected: _isGitHubConnected,
   onOpenModal,
   isLoading,
   canManageVercel = true,
@@ -734,12 +733,12 @@ function ConnectedVercelProjectForm({
     originalAutoPromote,
   ]);
 
-  const [configForm, fields] = useForm({
+  const [configForm, _fields] = useForm({
     id: "update-vercel-config",
-    lastResult: lastSubmission,
+    lastSubmission: lastSubmission,
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
-      return parseWithZod(formData, {
+      return parse(formData, {
         schema: UpdateVercelConfigFormSchema,
       });
     },
@@ -790,7 +789,7 @@ function ConnectedVercelProjectForm({
       ? { stg: "Map a custom Vercel environment to Staging to enable this" }
       : undefined;
 
-  const formatSelectedEnvs = (
+  const _formatSelectedEnvs = (
     selected: EnvSlug[],
     availableSlugs: EnvSlug[] = availableEnvSlugs
   ): string => {
@@ -860,7 +859,7 @@ function ConnectedVercelProjectForm({
       </div>
 
       {/* Configuration form */}
-      <Form method="post" action={actionUrl} {...getFormProps(configForm)}>
+      <Form method="post" action={actionUrl} {...configForm.props}>
         <input
           type="hidden"
           name="atomicBuilds"
@@ -1006,7 +1005,7 @@ function ConnectedVercelProjectForm({
               )}
             </div>
 
-            <FormError>{configForm.errors}</FormError>
+            <FormError>{configForm.error}</FormError>
           </InputGroup>
 
           <FormButtons
@@ -1099,9 +1098,9 @@ function VercelSettingsPanel({
   isLoadingVercelData?: boolean;
 }) {
   const fetcher = useTypedFetcher<typeof loader>();
-  const location = useLocation();
+  const _location = useLocation();
   const data = fetcher.data;
-  const [hasError, setHasError] = useState(false);
+  const [hasError, _setHasError] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
 
   useEffect(() => {

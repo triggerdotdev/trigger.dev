@@ -7,7 +7,8 @@ import {
 import { useRef, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
-import { Tree, TreeView, flattenTree, useTree } from "~/components/primitives/TreeView/TreeView";
+import type { Tree } from "~/components/primitives/TreeView/TreeView";
+import { TreeView, flattenTree, useTree } from "~/components/primitives/TreeView/TreeView";
 import { cn } from "~/utils/cn";
 
 const words = [
@@ -77,7 +78,7 @@ const words = [
 
 function generateTree(): Tree<{ title: string }> {
   const number = words.length;
-  const rawRows = new Array(number).fill("").map((elem, idx) => {
+  const rawRows = new Array(number).fill("").map((_elem, idx) => {
     return {
       id: words[idx],
       data: { title: `${idx + 1}. ${words[idx]}` },
@@ -145,7 +146,7 @@ function TreeViewParent({
 
   const {
     nodes,
-    selected,
+    selected: _selected,
     getTreeProps,
     getNodeProps,
     toggleNodeSelection,
@@ -153,7 +154,7 @@ function TreeViewParent({
     selectNode,
     selectFirstVisibleNode,
     selectLastVisibleNode,
-    scrollToNode,
+    scrollToNode: _scrollToNode,
     virtualizer,
   } = useTree({
     tree,
@@ -205,7 +206,13 @@ function TreeViewParent({
         getNodeProps={getNodeProps}
         getTreeProps={getTreeProps}
         parentClassName="h-96 bg-charcoal-900"
-        renderNode={({ node, state, index, virtualizer, virtualItem }) => (
+        renderNode={({
+          node,
+          state,
+          index: _index,
+          virtualizer: _virtualizer,
+          virtualItem: _virtualItem,
+        }) => (
           <div
             style={{
               paddingLeft: `${node.level * 1}rem`,

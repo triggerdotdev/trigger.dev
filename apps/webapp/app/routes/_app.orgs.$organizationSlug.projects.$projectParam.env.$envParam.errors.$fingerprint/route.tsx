@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod";
+import { parse } from "@conform-to/zod";
 import { BellAlertIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction, useFetcher, useRevalidator } from "@remix-run/react";
 import { type ActionFunctionArgs, json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
@@ -84,7 +84,7 @@ import {
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { ErrorGroupActions } from "~/v3/services/errorGroupActions.server";
 
-export const meta: MetaFunction<typeof loader> = ({ data }) => {
+export const meta: MetaFunction<typeof loader> = ({ data: _data }) => {
   return [
     {
       title: `Error Details | Trigger.dev`,
@@ -137,10 +137,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const formData = await request.formData();
-  const submission = parseWithZod(formData, { schema: actionSchema });
+  const submission = parse(formData, { schema: actionSchema });
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
+  if (!submission.value) {
+    return json(submission);
   }
 
   const actions = new ErrorGroupActions();
@@ -425,9 +425,9 @@ function ErrorGroupDetail({
   errorGroup,
   runList,
   activity,
-  organizationSlug,
-  projectParam,
-  envParam,
+  organizationSlug: _organizationSlug,
+  projectParam: _projectParam,
+  envParam: _envParam,
   fingerprint,
   canCancelRuns,
   canReplayRuns,
@@ -571,7 +571,7 @@ function ErrorGroupDetail({
 
 function ErrorDetailSidebar({
   errorGroup,
-  fingerprint,
+  fingerprint: _fingerprint,
 }: {
   errorGroup: ErrorGroupSummary;
   fingerprint: string;
@@ -916,8 +916,8 @@ function ActivityChart({
 const ActivityTooltip = ({
   active,
   payload,
-  versions,
-  colors,
+  versions: _versions,
+  colors: _colors,
 }: TooltipProps<number, string> & { versions: string[]; colors: string[] }) => {
   if (!active || !payload?.length) return null;
 
@@ -939,7 +939,7 @@ const ActivityTooltip = ({
       <div className="rounded-sm border border-grid-bright bg-background-dimmed px-3 py-2">
         <Header3 className="border-b border-b-charcoal-650 pb-2">{formattedDate}</Header3>
         <div className="mt-2 flex flex-col gap-1">
-          {payload.map((entry, i) => {
+          {payload.map((entry, _i) => {
             const value = (entry.value as number) ?? 0;
             return (
               <div key={entry.dataKey} className="flex items-center gap-2 text-xs">

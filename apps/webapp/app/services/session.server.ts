@@ -152,6 +152,6 @@ export async function requireUser(request: Request) {
   };
 }
 
-export async function logout(request: Request) {
+export async function logout(_request: Request) {
   return redirect("/logout");
 }

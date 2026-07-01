@@ -1,7 +1,8 @@
 import * as RadixSlider from "@radix-ui/react-slider";
-import { ComponentProps } from "react";
+import type { ComponentProps } from "react";
 import { cn } from "~/utils/cn";
-import { Icon, RenderIcon } from "./Icon";
+import type { RenderIcon } from "./Icon";
+import { Icon } from "./Icon";
 
 const variants = {
   tertiary: {

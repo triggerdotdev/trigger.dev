@@ -21,5 +21,5 @@ function gatherProcessEnv() {
   };
 
   // Filter out undefined values
-  return Object.fromEntries(Object.entries($env).filter(([key, value]) => value !== undefined));
+  return Object.fromEntries(Object.entries($env).filter(([_key, value]) => value !== undefined));
 }

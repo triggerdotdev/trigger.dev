@@ -1,13 +1,15 @@
-import { createCache, DefaultStatefulContext, Namespace, Cache as UnkeyCache } from "@unkey/cache";
+import type { Cache as UnkeyCache } from "@unkey/cache";
+import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { createLRUMemoryStore } from "@internal/cache";
 import { Ratelimit } from "@upstash/ratelimit";
-import { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
+import type { Request as ExpressRequest, Response as ExpressResponse, NextFunction } from "express";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { env } from "~/env.server";
-import { RedisWithClusterOptions } from "~/redis.server";
+import type { RedisWithClusterOptions } from "~/redis.server";
 import { logger } from "./logger.server";
-import { createRedisRateLimitClient, Duration, Limiter, RateLimiter } from "./rateLimiter.server";
+import type { Duration, Limiter } from "./rateLimiter.server";
+import { createRedisRateLimitClient, RateLimiter } from "./rateLimiter.server";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
 
 const DurationSchema = z.custom<Duration>((value) => {
@@ -91,7 +93,7 @@ async function resolveLimitConfig(
     });
   }
 
-  const cacheResult = await cache.limiter.swr(hashedAuthorizationValue, async (key) => {
+  const cacheResult = await cache.limiter.swr(hashedAuthorizationValue, async (_key) => {
     const override = await limiterConfigOverride(authorizationValue);
 
     if (!override) {

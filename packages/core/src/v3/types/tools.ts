@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Schema as AISchema } from "ai";
-import { Schema } from "./schemas.js";
+import type { Schema } from "./schemas.js";
 
 export type ToolTaskParameters = z.ZodTypeAny | AISchema<any>;
 

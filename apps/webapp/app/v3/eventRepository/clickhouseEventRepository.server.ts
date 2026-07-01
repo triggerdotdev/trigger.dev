@@ -8,26 +8,29 @@ import type {
   TaskEventV1Input,
   TaskEventV2Input,
 } from "@internal/clickhouse";
-import { Attributes, startSpan, trace, Tracer } from "@internal/tracing";
+import type { Attributes, Tracer } from "@internal/tracing";
+import { startSpan, trace } from "@internal/tracing";
 
 import { createJsonErrorObject } from "@trigger.dev/core/v3/errors";
 import { serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
-import {
+import type {
   AttemptFailedSpanEvent,
   CancellationSpanEvent,
   ExceptionSpanEvent,
-  isAttemptFailedSpanEvent,
-  isCancellationSpanEvent,
-  isExceptionSpanEvent,
   OtherSpanEvent,
-  PRIMARY_VARIANT,
   SpanEvents,
   TaskEventStyle,
   TaskRunError,
 } from "@trigger.dev/core/v3/schemas";
+import {
+  isAttemptFailedSpanEvent,
+  isCancellationSpanEvent,
+  isExceptionSpanEvent,
+  PRIMARY_VARIANT,
+} from "@trigger.dev/core/v3/schemas";
 import { SemanticInternalAttributes } from "@trigger.dev/core/v3/semanticInternalAttributes";
 import { unflattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes";
-import { TaskEventLevel } from "@trigger.dev/database";
+import type { TaskEventLevel } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { DynamicFlushScheduler } from "../dynamicFlushScheduler.server";
 import { tracePubSub } from "../services/tracePubSub.server";
@@ -44,7 +47,6 @@ import {
   getNowInNanoseconds,
   parseEventsField,
   removePrivateProperties,
-  isEmptyObject,
 } from "./common.server";
 import {
   isClickHouseJsonParseError,
@@ -1291,7 +1293,7 @@ export class ClickhouseEventRepository implements IEventRepository {
 
   // Query methods
   async getTraceSummary(
-    storeTable: TaskEventStoreTable,
+    _storeTable: TaskEventStoreTable,
     environmentId: string,
     traceId: string,
     startCreatedAt: Date,
@@ -1324,7 +1326,7 @@ export class ClickhouseEventRepository implements IEventRepository {
   }
 
   async getTraceSubtreeSummary(
-    storeTable: TaskEventStoreTable,
+    _storeTable: TaskEventStoreTable,
     environmentId: string,
     traceId: string,
     anchorSpanId: string,
@@ -1718,13 +1720,13 @@ export class ClickhouseEventRepository implements IEventRepository {
   }
 
   async getSpan(
-    storeTable: TaskEventStoreTable,
+    _storeTable: TaskEventStoreTable,
     environmentId: string,
     spanId: string,
     traceId: string,
     startCreatedAt: Date,
     endCreatedAt?: Date,
-    options?: { includeDebugLogs?: boolean }
+    _options?: { includeDebugLogs?: boolean }
   ): Promise<SpanDetail | undefined> {
     const startCreatedAtWithBuffer = new Date(startCreatedAt.getTime() - 60_000);
 
@@ -2341,7 +2343,7 @@ export class ClickhouseEventRepository implements IEventRepository {
   }
 
   async getTraceDetailedSummary(
-    storeTable: TaskEventStoreTable,
+    _storeTable: TaskEventStoreTable,
     environmentId: string,
     traceId: string,
     startCreatedAt: Date,
@@ -2374,7 +2376,7 @@ export class ClickhouseEventRepository implements IEventRepository {
   }
 
   async getTraceDetailedSubtreeSummary(
-    storeTable: TaskEventStoreTable,
+    _storeTable: TaskEventStoreTable,
     environmentId: string,
     traceId: string,
     anchorSpanId: string,
@@ -2455,7 +2457,7 @@ export class ClickhouseEventRepository implements IEventRepository {
   }
 
   async *streamTraceEvents(
-    storeTable: TaskEventStoreTable,
+    _storeTable: TaskEventStoreTable,
     environmentId: string,
     traceId: string,
     startCreatedAt: Date,
@@ -2629,7 +2631,7 @@ export class ClickhouseEventRepository implements IEventRepository {
   }
 
   async getRunEvents(
-    storeTable: TaskEventStoreTable,
+    _storeTable: TaskEventStoreTable,
     environmentId: string,
     traceId: string,
     runId: string,

@@ -1,6 +1,6 @@
 import { legacyRunEngineWorker } from "../legacyRunEngineWorker.server";
 import { TaskRunHeartbeatFailedService } from "../taskRunHeartbeatFailed.server";
-import { VisibilityTimeoutStrategy } from "./types";
+import type { VisibilityTimeoutStrategy } from "./types";
 
 export class V3GraphileVisibilityTimeout implements VisibilityTimeoutStrategy {
   async startHeartbeat(messageId: string, timeoutInMs: number): Promise<void> {

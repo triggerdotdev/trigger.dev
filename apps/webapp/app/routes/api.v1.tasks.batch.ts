@@ -1,11 +1,9 @@
 import { json } from "@remix-run/server-runtime";
-import {
-  BatchTriggerTaskV2RequestBody,
-  BatchTriggerTaskV2Response,
-  generateJWT,
-} from "@trigger.dev/core/v3";
+import type { BatchTriggerTaskV2Response } from "@trigger.dev/core/v3";
+import { BatchTriggerTaskV2RequestBody, generateJWT } from "@trigger.dev/core/v3";
 import { env } from "~/env.server";
-import { AuthenticatedEnvironment, getOneTimeUseToken } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import { getOneTimeUseToken } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute, everyResource } from "~/services/routeBuilders/apiBuilder.server";
 import { resolveIdempotencyKeyTTL } from "~/utils/idempotencyKeys.server";
@@ -44,7 +42,7 @@ const { action, loader } = createActionApiRoute(
     },
     corsStrategy: "all",
   },
-  async ({ body, headers, params, authentication }) => {
+  async ({ body, headers, params: _params, authentication }) => {
     if (!body.items.length) {
       return json({ error: "Batch cannot be triggered with no items" }, { status: 400 });
     }
@@ -77,7 +75,7 @@ const { action, loader } = createActionApiRoute(
       "x-trigger-span-parent-as-link": spanParentAsLink,
       "x-trigger-worker": isFromWorker,
       "x-trigger-client": triggerClient,
-      "x-trigger-engine-version": engineVersion,
+      "x-trigger-engine-version": _engineVersion,
       "batch-processing-strategy": batchProcessingStrategy,
       "x-trigger-realtime-streams-version": realtimeStreamsVersion,
       "x-trigger-source": triggerSourceHeader,

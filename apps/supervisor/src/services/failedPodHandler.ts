@@ -1,8 +1,9 @@
 import { LogLevel, SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
-import { K8sApi } from "../clients/kubernetes.js";
+import type { K8sApi } from "../clients/kubernetes.js";
 import { createK8sApi } from "../clients/kubernetes.js";
-import { Informer, V1Pod } from "@kubernetes/client-node";
-import { Counter, Registry, Histogram } from "prom-client";
+import type { Informer, V1Pod } from "@kubernetes/client-node";
+import type { Registry } from "prom-client";
+import { Counter, Histogram } from "prom-client";
 import { register } from "../metrics.js";
 import { setTimeout } from "timers/promises";
 

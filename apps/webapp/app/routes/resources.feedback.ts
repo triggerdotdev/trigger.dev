@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod";
+import { parse } from "@conform-to/zod";
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
 import { type PlainClient, uiComponent } from "@team-plain/typescript-sdk";
 import { z } from "zod";
@@ -6,7 +6,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
 import { sendToPlain } from "~/utils/plain.server";
 
-let client: PlainClient | undefined;
+let _client: PlainClient | undefined;
 
 export const feedbackTypes = {
   bug: {
@@ -73,10 +73,10 @@ export async function action({ request }: ActionFunctionArgs) {
   const user = await requireUser(request);
 
   const formData = await request.formData();
-  const submission = parseWithZod(formData, { schema });
+  const submission = parse(formData, { schema });
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
+  if (!submission.value || submission.intent !== "submit") {
+    return json(submission);
   }
 
   const inquiry = feedbackTypes[submission.value.feedbackType as FeedbackType];
@@ -118,10 +118,7 @@ export async function action({ request }: ActionFunctionArgs) {
       "Thanks for your feedback! We'll get back to you soon."
     );
   } catch (e) {
-    return json(
-      submission.reply({
-        fieldErrors: { message: [e instanceof Error ? e.message : "Unknown error"] },
-      })
-    );
+    submission.error.message = [e instanceof Error ? e.message : "Unknown error"];
+    return json(submission);
   }
 }

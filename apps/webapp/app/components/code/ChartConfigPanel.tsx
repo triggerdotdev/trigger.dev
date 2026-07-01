@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
 import { Select, SelectItem } from "../primitives/Select";
 import { Switch } from "../primitives/Switch";
 import SegmentedControl from "../primitives/SegmentedControl";
-import { Button } from "../primitives/Buttons";
+
 import {
   type AggregationType,
   type ChartConfiguration,

@@ -1,16 +1,10 @@
 import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import {
-  EnvironmentPauseSource,
-  type RuntimeEnvironment,
-  type Organization,
-  type Project,
-  type RuntimeEnvironmentType,
-} from "@trigger.dev/database";
+import { EnvironmentPauseSource } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { createEnvironment } from "~/models/organization.server";
+
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
-import { updateEnvConcurrencyLimits } from "~/v3/runQueue.server";
+
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 
 const ParamsSchema = z.object({

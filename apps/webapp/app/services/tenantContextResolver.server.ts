@@ -34,7 +34,7 @@ export function createTenantContextMiddleware(resolver: PathResolver) {
   // Always establish an ALS scope, even when the path carries no tenant
   // slugs. Authenticated loaders (e.g. the `_app` layout) then enrich the
   // same scope with `userId`, so non-tenant pages still get user attribution.
-  return function tenantContextMiddleware(req: Request, res: Response, next: NextFunction) {
+  return function tenantContextMiddleware(req: Request, _res: Response, next: NextFunction) {
     tenantContext.run(resolver(req.path), () => next());
   };
 }

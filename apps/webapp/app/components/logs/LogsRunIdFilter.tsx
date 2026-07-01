@@ -22,7 +22,7 @@ export function LogsRunIdFilter() {
 
   return (
     <FilterMenuProvider>
-      {(search, setSearch) => (
+      {(_search, setSearch) => (
         <RunIdDropdown
           trigger={
             <SelectTrigger
@@ -137,7 +137,7 @@ function AppliedRunIdFilter() {
 
   return (
     <FilterMenuProvider>
-      {(search, setSearch) => (
+      {(_search, setSearch) => (
         <RunIdDropdown
           trigger={
             <Ariakit.Select render={<div className="group cursor-pointer focus-custom" />}>

@@ -1,5 +1,5 @@
 import { WebClient } from "@slack/web-api";
-import {
+import type {
   IntegrationService,
   Organization,
   OrganizationIntegration,

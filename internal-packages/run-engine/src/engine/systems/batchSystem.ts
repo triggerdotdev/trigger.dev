@@ -1,7 +1,7 @@
 import { startSpan } from "@internal/tracing";
 import { isFinalRunStatus } from "../statuses.js";
-import { SystemResources } from "./systems.js";
-import { WaitpointSystem } from "./waitpointSystem.js";
+import type { SystemResources } from "./systems.js";
+import type { WaitpointSystem } from "./waitpointSystem.js";
 
 export type BatchSystemOptions = {
   resources: SystemResources;
@@ -37,7 +37,7 @@ export class BatchSystem {
    * This isn't used operationally, but it's used for the Batches dashboard page.
    */
   async #tryCompleteBatch({ batchId }: { batchId: string }) {
-    return startSpan(this.$.tracer, "#tryCompleteBatch", async (span) => {
+    return startSpan(this.$.tracer, "#tryCompleteBatch", async (_span) => {
       const batch = await this.$.prisma.batchTaskRun.findFirst({
         select: {
           status: true,

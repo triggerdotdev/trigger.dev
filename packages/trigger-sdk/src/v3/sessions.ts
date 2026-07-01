@@ -16,9 +16,12 @@ import type {
   RetrieveSessionResponseBody,
   UpdateSessionRequestBody,
   WriterStreamOptions,
+  CursorPagePromise,
+  ControlEvent,
+  InitializeSessionStreamResponseLike,
+  StreamWriteResult,
 } from "@trigger.dev/core/v3";
 import {
-  CursorPagePromise,
   InputStreamOncePromise,
   ManualWaitpointPromise,
   SemanticInternalAttributes,
@@ -33,11 +36,6 @@ import {
   taskContext,
   trimSessionStream,
   writeSessionControlRecord,
-} from "@trigger.dev/core/v3";
-import type {
-  ControlEvent,
-  InitializeSessionStreamResponseLike,
-  StreamWriteResult,
 } from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { SpanStatusCode } from "@opentelemetry/api";
@@ -488,7 +486,7 @@ export class SessionOutputChannel {
       this.#initPromise = fresh;
       // Evict on failure so the next call retries instead of returning a
       // poisoned cache entry forever.
-      fresh.catch((err) => {
+      fresh.catch((_err) => {
         if (this.#initPromise === fresh) {
           this.#initPromise = undefined;
         }

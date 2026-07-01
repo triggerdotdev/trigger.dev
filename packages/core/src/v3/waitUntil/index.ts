@@ -1,10 +1,10 @@
 import { getGlobal, registerGlobal } from "../utils/globals.js";
-import { MaybeDeferredPromise, WaitUntilManager } from "./types.js";
+import type { MaybeDeferredPromise, WaitUntilManager } from "./types.js";
 
 const API_NAME = "wait-until";
 
 class NoopManager implements WaitUntilManager {
-  register(promise: MaybeDeferredPromise): void {
+  register(_promise: MaybeDeferredPromise): void {
     // noop
   }
 

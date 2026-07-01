@@ -1,20 +1,13 @@
 import type { Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
 import {
-  AnyOnCatchErrorHookFunction,
-  AnyOnFailureHookFunction,
-  AnyOnInitHookFunction,
-  AnyOnStartHookFunction,
-  AnyOnSuccessHookFunction,
   apiClientManager,
   attemptKey,
   clock,
   ExecutorToWorkerMessageCatalog,
-  type HandleErrorFunction,
   lifecycleHooks,
   localsAPI,
   logger,
-  LogLevel,
   OTEL_LOG_ATTRIBUTE_COUNT_LIMIT,
   resourceCatalog,
   runMetadata,
@@ -23,10 +16,7 @@ import {
   taskContext,
   TaskRunContext,
   TaskRunErrorCodes,
-  TaskRunExecution,
   timeout,
-  TriggerConfig,
-  UsageMeasurement,
   waitUntil,
   WorkerManifest,
   WorkerToExecutorMessageCatalog,
@@ -35,8 +25,19 @@ import {
   realtimeStreams,
   inputStreams,
   sessionStreams,
+  type AnyOnCatchErrorHookFunction,
+  type AnyOnFailureHookFunction,
+  type AnyOnInitHookFunction,
+  type AnyOnStartHookFunction,
+  type AnyOnSuccessHookFunction,
+  type LogLevel,
+  type TaskRunExecution,
+  type TriggerConfig,
+  type UsageMeasurement,
+  type HandleErrorFunction,
 } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
+import type { TracingDiagnosticLogLevel } from "@trigger.dev/core/v3/workers";
 import {
   ConsoleInterceptor,
   DevUsageManager,
@@ -55,7 +56,6 @@ import {
   StandardRunTimelineMetricsManager,
   StandardWaitUntilManager,
   TaskExecutor,
-  TracingDiagnosticLogLevel,
   TracingSDK,
   usage,
   UsageTimeoutManager,
@@ -67,7 +67,7 @@ import {
 } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
-import { setInterval, setTimeout } from "node:timers/promises";
+import { setTimeout } from "node:timers/promises";
 import sourceMapSupport from "source-map-support";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";

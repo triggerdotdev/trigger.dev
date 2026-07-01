@@ -894,12 +894,12 @@ function TasksTreeView({
   rootSpanStatus,
   rootStartedAt,
   queuedDuration,
-  environmentType,
+  environmentType: _environmentType,
   shouldLiveReload,
   maximumLiveReloadingSetting,
   rootRun,
   parentRun,
-  isCompleted,
+  isCompleted: _isCompleted,
   treeSnapshot,
 }: TasksTreeViewProps) {
   const isAdmin = useHasAdminAccess();
@@ -1035,7 +1035,7 @@ function TasksTreeView({
               getNodeProps={getNodeProps}
               getTreeProps={getTreeProps}
               parentClassName="pl-3"
-              renderNode={({ node, state, index }) => (
+              renderNode={({ node, state, index: _index }) => (
                 <>
                   <div
                     className={cn(
@@ -1369,7 +1369,13 @@ function TimelineView({
               getNodeProps={getNodeProps}
               getTreeProps={getTreeProps}
               parentClassName="h-full scrollbar-hide"
-              renderNode={({ node, state, index, virtualizer, virtualItem }) => {
+              renderNode={({
+                node,
+                state,
+                index,
+                virtualizer: _virtualizer,
+                virtualItem: _virtualItem,
+              }) => {
                 const isTopSpan = node.id === events[0]?.id;
 
                 return (
@@ -1382,7 +1388,7 @@ function TimelineView({
                         : "bg-transparent hover:bg-grid-dimmed"
                     )}
                     // onMouseOver={() => console.log(`hover ${index}`)}
-                    onClick={(e) => {
+                    onClick={(_e) => {
                       toggleNodeSelection(node.id);
                     }}
                   >
@@ -1397,7 +1403,7 @@ function TimelineView({
                                 queueAdjustedNs(event.offset, queuedDuration)
                               )}
                             >
-                              {(ms) => (
+                              {(_ms) => (
                                 <motion.div
                                   className={cn(
                                     "-ml-[0.5px] h-[0.5625rem] w-px rounded-none",
@@ -1418,7 +1424,7 @@ function TimelineView({
                               )}
                               className="z-10"
                             >
-                              {(ms) => (
+                              {(_ms) => (
                                 <motion.div
                                   className={cn(
                                     "-ml-[0.1562rem] size-[0.3125rem] rounded-full border bg-background-bright",
@@ -1479,7 +1485,7 @@ function TimelineView({
                           queueAdjustedNs(node.data.offset, queuedDuration)
                         )}
                       >
-                        {(ms) => (
+                        {(_ms) => (
                           <motion.div
                             className={cn(
                               "-ml-0.5 size-3 rounded-full border-2 border-background-bright",
@@ -1563,7 +1569,13 @@ function NodeStatusIcon({ node }: { node: TraceEvent }) {
   return <TaskRunStatusIcon status="COMPLETED_SUCCESSFULLY" className={cn("size-4")} />;
 }
 
-function TaskLine({ isError, isSelected }: { isError: boolean; isSelected: boolean }) {
+function TaskLine({
+  isError: _isError,
+  isSelected: _isSelected,
+}: {
+  isError: boolean;
+  isSelected: boolean;
+}) {
   return <div className={cn("h-8 w-2 border-r border-grid-bright")} />;
 }
 
@@ -1920,7 +1932,7 @@ function ShortcutWithAction({
 }
 
 function NumberShortcuts({ toggleLevel }: { toggleLevel: (depth: number) => void }) {
-  useHotkeys(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"], (event, hotkeysEvent) => {
+  useHotkeys(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"], (event, _hotkeysEvent) => {
     toggleLevel(Number(event.key));
   });
 

@@ -1,14 +1,15 @@
 import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
 import { DEFAULT_DEV_BRANCH } from "@trigger.dev/core/v3/utils/gitBranch";
-import { ResolvedConfig } from "@trigger.dev/core/v3/build";
+import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import {
   createTaskMetadataFailedErrorStack,
   DuplicateTaskIdsError,
   TaskIndexingImportError,
   TaskMetadataParseError,
 } from "@trigger.dev/core/v3/errors";
-import { TaskRunError, TaskRunErrorCodes } from "@trigger.dev/core/v3/schemas";
-import { DevCommandOptions } from "../commands/dev.js";
+import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
+import { TaskRunErrorCodes } from "@trigger.dev/core/v3/schemas";
+import type { DevCommandOptions } from "../commands/dev.js";
 import {
   aiHelpLink,
   chalkError,
@@ -24,9 +25,10 @@ import {
   prettyError,
   prettyPrintDate,
 } from "../utilities/cliOutput.js";
-import { eventBus, EventBusEventArgs } from "../utilities/eventBus.js";
+import type { EventBusEventArgs } from "../utilities/eventBus.js";
+import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
-import { Socket } from "socket.io-client";
+import type { Socket } from "socket.io-client";
 import { BundleError } from "../build/bundle.js";
 import { analyzeWorker } from "../utilities/analyze.js";
 
@@ -43,15 +45,15 @@ export function startDevOutput(options: DevOutputOptions) {
 
   const baseUrl = `${dashboardUrl}/projects/v3/${config.project}`;
 
-  const rebuildStarted = (...[target]: EventBusEventArgs<"rebuildStarted">) => {
+  const rebuildStarted = (...[_target]: EventBusEventArgs<"rebuildStarted">) => {
     logger.log(chalkGrey("○ Rebuilding local worker…"));
   };
 
-  const buildStarted = (...[target]: EventBusEventArgs<"buildStarted">) => {
+  const buildStarted = (...[_target]: EventBusEventArgs<"buildStarted">) => {
     logger.log(chalkGrey("○ Building local worker…"));
   };
 
-  const buildFailed = (...[target, error]: EventBusEventArgs<"buildFailed">) => {
+  const buildFailed = (...[_target, error]: EventBusEventArgs<"buildFailed">) => {
     const errorText = error instanceof Error ? error.message : "Unknown error";
     const stack = error instanceof Error ? error.stack : undefined;
 
@@ -107,7 +109,7 @@ export function startDevOutput(options: DevOutputOptions) {
   };
 
   const backgroundWorkerIndexingError = (
-    ...[buildManifest, error]: EventBusEventArgs<"backgroundWorkerIndexingError">
+    ...[_buildManifest, error]: EventBusEventArgs<"backgroundWorkerIndexingError">
   ) => {
     if (error instanceof TaskIndexingImportError) {
       let errorText = "";
@@ -242,7 +244,7 @@ export function startDevOutput(options: DevOutputOptions) {
     logger.log(chalkGrey(`○ Connection was lost: ${reason}`));
   };
 
-  const socketConnectionReconnected = (reason: string) => {
+  const socketConnectionReconnected = (_reason: string) => {
     logger.log(chalkGrey(`○ Connection was restored`));
   };
 

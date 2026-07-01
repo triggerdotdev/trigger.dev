@@ -9,7 +9,7 @@ export const loader = createSSELoader({
   timeout: env.DEV_PRESENCE_SSE_TIMEOUT,
   interval: env.DEV_PRESENCE_TTL_MS * 0.8,
   debug: false,
-  handler: async ({ id, controller, debug, request }) => {
+  handler: async ({ id, controller: _controller, debug: _debug, request }) => {
     const authentication = await authenticateApiRequestWithFailure(request);
 
     if (!authentication.ok) {
@@ -37,7 +37,7 @@ export const loader = createSSELoader({
         await devPresence.setConnected({ userId, projectId, environmentId, ttl });
         send({ event: "start", data: `Started ${id}` });
       },
-      iterator: async ({ send, date }) => {
+      iterator: async ({ send, date: _date }) => {
         await devPresence.setConnected({ userId, projectId, environmentId, ttl });
         send({ event: "time", data: new Date().toISOString() });
       },

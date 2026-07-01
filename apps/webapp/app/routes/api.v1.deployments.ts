@@ -11,7 +11,7 @@ import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { InitializeDeploymentService } from "~/v3/services/initializeDeployment.server";
 
-export async function action({ request, params }: ActionFunctionArgs) {
+export async function action({ request, params: _params }: ActionFunctionArgs) {
   // Ensure this is a POST request
   if (request.method.toUpperCase() !== "POST") {
     return { status: 405, body: "Method Not Allowed" };

@@ -1,5 +1,5 @@
 import { EnvelopeIcon } from "@heroicons/react/24/solid";
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import crypto from "node:crypto";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -17,7 +17,7 @@ export const ParamsSchema = z.object({
   token: z.string(),
 });
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+export const loader = async ({ request: _request, params }: LoaderFunctionArgs) => {
   const { userId, token } = ParamsSchema.parse(params);
 
   try {

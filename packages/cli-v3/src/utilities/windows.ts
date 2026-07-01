@@ -90,7 +90,7 @@ const ballmerSpinner = () => ({
   start: (msg?: string): void => {
     log.step(msg ?? "");
   },
-  stop: (msg?: string, code?: number): void => {
+  stop: (msg?: string, _code?: number): void => {
     log.message(msg ?? "");
   },
   message: (msg?: string): void => {
@@ -102,7 +102,7 @@ const plainSpinner = () => ({
   start: (msg?: string): void => {
     console.log(msg ?? "");
   },
-  stop: (msg?: string, code?: number): void => {
+  stop: (msg?: string, _code?: number): void => {
     if (msg) console.log(msg ?? "");
   },
   message: (msg?: string): void => {

@@ -1,5 +1,6 @@
 import type { VirtualElement as IVirtualElement } from "@popperjs/core";
-import { ReactNode, useEffect, useState } from "react";
+import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePopper } from "react-popper";
 import { useEvent } from "react-use";

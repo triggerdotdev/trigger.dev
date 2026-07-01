@@ -1,16 +1,6 @@
-import { createRedisClient, Redis, type RedisOptions } from "@internal/redis";
-import {
-  Attributes,
-  Histogram,
-  Meter,
-  metrics,
-  ObservableResult,
-  SpanKind,
-  startSpan,
-  trace,
-  Tracer,
-  ValueType,
-} from "@internal/tracing";
+import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
+import type { Attributes, Histogram, Meter, ObservableResult, Tracer } from "@internal/tracing";
+import { metrics, SpanKind, startSpan, trace, ValueType } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { calculateNextRetryDelay } from "@trigger.dev/core/v3";
 import { type RetryOptions } from "@trigger.dev/core/v3/schemas";
@@ -18,7 +8,8 @@ import { shutdownManager } from "@trigger.dev/core/v3/serverOnly";
 import { nanoid } from "nanoid";
 import pLimit from "p-limit";
 import { z } from "zod";
-import { AnyQueueItem, SimpleQueue } from "./queue.js";
+import type { AnyQueueItem } from "./queue.js";
+import { SimpleQueue } from "./queue.js";
 import { parseExpression } from "cron-parser";
 
 export const CronSchema = z.object({
@@ -206,17 +197,6 @@ class Worker<TCatalog extends WorkerCatalog> {
     concurrencyLimitPendingObservableGauge.addCallback(
       this.#updateConcurrencyLimitPendingMetric.bind(this)
     );
-
-    const oldestMessageAgeObservableGauge = this.meter.createObservableGauge(
-      "redis_worker.queue.oldest_message_age",
-      {
-        description: "Age of the oldest overdue message in the queue",
-        unit: "ms",
-        valueType: ValueType.INT,
-      }
-    );
-
-    oldestMessageAgeObservableGauge.addCallback(this.#updateOldestMessageAgeMetric.bind(this));
   }
 
   async #updateQueueSizeMetric(observableResult: ObservableResult<Attributes>) {
@@ -230,14 +210,6 @@ class Worker<TCatalog extends WorkerCatalog> {
   async #updateDeadLetterQueueSizeMetric(observableResult: ObservableResult<Attributes>) {
     const deadLetterQueueSize = await this.queue.sizeOfDeadLetterQueue();
     observableResult.observe(deadLetterQueueSize, {
-      worker_name: this.options.name,
-    });
-  }
-
-  async #updateOldestMessageAgeMetric(observableResult: ObservableResult<Attributes>) {
-    const oldestMessageAge = await this.queue.oldestMessageAge();
-
-    observableResult.observe(oldestMessageAge, {
       worker_name: this.options.name,
     });
   }
@@ -422,7 +394,7 @@ class Worker<TCatalog extends WorkerCatalog> {
     return startSpan(
       this.tracer,
       "reschedule",
-      async (span) => {
+      async (_span) => {
         return this.withHistogram(
           this.metrics.rescheduleDuration,
           this.queue.reschedule(id, availableAt)
@@ -715,7 +687,7 @@ class Worker<TCatalog extends WorkerCatalog> {
     items: AnyQueueItem[],
     jobType: string,
     workerId: string,
-    limiter: ReturnType<typeof pLimit>
+    _limiter: ReturnType<typeof pLimit>
   ): Promise<void> {
     const catalogItem = this.options.catalog[jobType as any];
     const handler = this.jobs[jobType as any] as
@@ -1168,7 +1140,7 @@ class Worker<TCatalog extends WorkerCatalog> {
     this.subscriber?.on("message", this.handleRedriveMessage.bind(this));
   }
 
-  private async handleRedriveMessage(channel: string, message: string) {
+  private async handleRedriveMessage(_channel: string, message: string) {
     try {
       const { id } = JSON.parse(message) as any;
       if (typeof id !== "string") {

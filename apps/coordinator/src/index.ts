@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { Server } from "socket.io";
+import type { WaitReason } from "@trigger.dev/core/v3";
 import {
   CoordinatorToPlatformMessages,
   CoordinatorToProdWorkerMessages,
@@ -7,7 +8,6 @@ import {
   PlatformToCoordinatorMessages,
   ProdWorkerSocketData,
   ProdWorkerToCoordinatorMessages,
-  WaitReason,
 } from "@trigger.dev/core/v3";
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";
@@ -423,7 +423,7 @@ class TaskCoordinator {
 
         next();
       },
-      onConnection: async (socket, handler, sender) => {
+      onConnection: async (socket, _handler, _sender) => {
         const logger = new SimpleStructuredLogger("ns-prod-worker", undefined, {
           namespace: "prod-worker",
           socketId: socket.id,
@@ -1456,7 +1456,7 @@ class TaskCoordinator {
           }
         });
       },
-      onDisconnect: async (socket, handler, sender, logger) => {
+      onDisconnect: async (socket, _handler, _sender, logger) => {
         try {
           this.#platformSocket?.send("LOG", {
             metadata: socket.data,
@@ -1529,7 +1529,7 @@ class TaskCoordinator {
       }
     });
 
-    httpServer.on("clientError", (err, socket) => {
+    httpServer.on("clientError", (_err, socket) => {
       socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
     });
 
@@ -1760,7 +1760,7 @@ class TaskCoordinator {
       }
     });
 
-    httpServer.on("clientError", (err, socket) => {
+    httpServer.on("clientError", (_err, socket) => {
       socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
     });
 

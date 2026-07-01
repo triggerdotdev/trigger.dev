@@ -15,7 +15,7 @@ import { ssoController } from "~/services/sso.server";
 
 const SETTINGS_ROUTE_ID = "routes/_app.orgs.$organizationSlug.settings";
 
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+export const loader = async ({ request: _request, params: _params }: LoaderFunctionArgs) => {
   const [isUsingPlugin, isSsoUsingPlugin] = await Promise.all([
     rbac.isUsingPlugin(),
     ssoController.isUsingPlugin(),

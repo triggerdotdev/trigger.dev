@@ -23,12 +23,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { playgroundPresenter } from "~/presenters/v3/PlaygroundPresenter.server";
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { requireUser } from "~/services/session.server";
-import {
-  docsPath,
-  EnvironmentParamSchema,
-  v3PlaygroundAgentPath,
-  v3PlaygroundPath,
-} from "~/utils/pathBuilder";
+import { docsPath, EnvironmentParamSchema, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [{ title: "Playground | Trigger.dev" }];

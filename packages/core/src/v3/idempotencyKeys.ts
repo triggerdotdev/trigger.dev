@@ -5,7 +5,7 @@ import type {
   IdempotencyKeyScope,
 } from "./idempotency-key-catalog/catalog.js";
 import { taskContext } from "./task-context-api.js";
-import { IdempotencyKey } from "./types/idempotencyKeys.js";
+import type { IdempotencyKey } from "./types/idempotencyKeys.js";
 import { digestSHA256 } from "./utils/crypto.js";
 import type { ZodFetchOptions } from "./apiClient/core.js";
 

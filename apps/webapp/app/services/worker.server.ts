@@ -171,7 +171,7 @@ function getWorkerQueue() {
       "marqs.v3.queueConcurrencyMonitor": {
         // run every 5 minutes
         match: "*/5 * * * *",
-        handler: async (payload, job, helpers) => {
+        handler: async (_payload, _job, helpers) => {
           await MarqsConcurrencyMonitor.initiateV3Monitoring(helpers.abortSignal);
         },
       },
@@ -181,7 +181,7 @@ function getWorkerQueue() {
       scheduleEmail: {
         priority: 0,
         maxAttempts: 3,
-        handler: async (payload, job) => {
+        handler: async (payload, _job) => {
           await sendEmail(payload);
         },
       },
@@ -189,7 +189,7 @@ function getWorkerQueue() {
       "v3.resumeBatchRun": {
         priority: 0,
         maxAttempts: 5,
-        handler: async (payload, job) => {
+        handler: async (payload, _job) => {
           const service = new ResumeBatchRunService();
 
           await service.call(payload.batchRunId);
@@ -199,7 +199,7 @@ function getWorkerQueue() {
       "v3.resumeTaskDependency": {
         priority: 0,
         maxAttempts: 5,
-        handler: async (payload, job) => {
+        handler: async (payload, _job) => {
           const service = new ResumeTaskDependencyService();
 
           return await service.call(payload.dependencyId, payload.sourceTaskAttemptId);
@@ -209,7 +209,7 @@ function getWorkerQueue() {
       "v3.timeoutDeployment": {
         priority: 0,
         maxAttempts: 5,
-        handler: async (payload, job) => {
+        handler: async (payload, _job) => {
           const service = new TimeoutDeploymentService();
 
           return await service.call(payload.deploymentId, payload.fromStatus, payload.errorMessage);
@@ -219,7 +219,7 @@ function getWorkerQueue() {
       "v3.executeTasksWaitingForDeploy": {
         priority: 0,
         maxAttempts: 5,
-        handler: async (payload, job) => {
+        handler: async (payload, _job) => {
           const service = new ExecuteTasksWaitingForDeployService();
 
           return await service.call(payload.backgroundWorkerId);
@@ -240,7 +240,7 @@ function getWorkerQueue() {
       "v3.performTaskRunAlerts": {
         priority: 0,
         maxAttempts: 3,
-        handler: async (payload, job) => {
+        handler: async (payload, _job) => {
           const service = new PerformTaskRunAlertsService();
           return await service.call(payload.runId);
         },
@@ -249,7 +249,7 @@ function getWorkerQueue() {
       "v3.deliverAlert": {
         priority: 0,
         maxAttempts: 8,
-        handler: async (payload, job) => {
+        handler: async (payload, _job) => {
           const service = new DeliverAlertService();
 
           return await service.call(payload.alertId);
@@ -259,7 +259,7 @@ function getWorkerQueue() {
       "v3.performDeploymentAlerts": {
         priority: 0,
         maxAttempts: 3,
-        handler: async (payload, job) => {
+        handler: async (payload, _job) => {
           const service = new PerformDeploymentAlertsService();
 
           return await service.call(payload.deploymentId);
@@ -269,7 +269,7 @@ function getWorkerQueue() {
       "v3.performBulkAction": {
         priority: 0,
         maxAttempts: 3,
-        handler: async (payload, job) => {
+        handler: async (payload, _job) => {
           const service = new PerformBulkActionService();
 
           return await service.call(payload.bulkActionGroupId);
@@ -279,7 +279,7 @@ function getWorkerQueue() {
       "v3.performBulkActionItem": {
         priority: 0,
         maxAttempts: 3,
-        handler: async (payload, job) => {
+        handler: async (payload, _job) => {
           const service = new PerformBulkActionService();
 
           await service.performBulkActionItem(payload.bulkActionItemId);
@@ -288,13 +288,13 @@ function getWorkerQueue() {
       "v3.requeueTaskRun": {
         priority: 0,
         maxAttempts: 3,
-        handler: async (payload, job) => {}, // This is now handled by redisWorker
+        handler: async (_payload, _job) => {}, // This is now handled by redisWorker
       },
       // @deprecated, moved to commonWorker.server.ts
       "v3.retryAttempt": {
         priority: 0,
         maxAttempts: 3,
-        handler: async (payload, job) => {
+        handler: async (payload, _job) => {
           const service = new RetryAttemptService();
 
           return await service.call(payload.runId);
@@ -304,7 +304,7 @@ function getWorkerQueue() {
       "v3.enqueueDelayedRun": {
         priority: 0,
         maxAttempts: 8,
-        handler: async (payload, job) => {
+        handler: async (payload, _job) => {
           const service = new EnqueueDelayedRunService();
 
           return await service.call(payload.runId);
@@ -314,7 +314,7 @@ function getWorkerQueue() {
       "v3.expireRun": {
         priority: 0,
         maxAttempts: 8,
-        handler: async (payload, job) => {
+        handler: async (payload, _job) => {
           const service = new ExpireEnqueuedRunService();
 
           return await service.call(payload.runId);
@@ -324,7 +324,7 @@ function getWorkerQueue() {
       "v3.cancelTaskAttemptDependencies": {
         priority: 0,
         maxAttempts: 8,
-        handler: async (payload, job) => {
+        handler: async (payload, _job) => {
           const service = new CancelTaskAttemptDependenciesService();
 
           return await service.call(payload.attemptId);
@@ -334,7 +334,7 @@ function getWorkerQueue() {
       "v3.cancelDevSessionRuns": {
         priority: 0,
         maxAttempts: 5,
-        handler: async (payload, job) => {
+        handler: async (payload, _job) => {
           const service = new CancelDevSessionRunsService();
 
           return await service.call(payload);
@@ -344,7 +344,7 @@ function getWorkerQueue() {
       "v3.processBatchTaskRun": {
         priority: 0,
         maxAttempts: 5,
-        handler: async (payload, job) => {
+        handler: async (payload, _job) => {
           const service = new BatchTriggerV3Service(payload.strategy);
 
           await service.processBatchTaskRun(payload);
@@ -354,7 +354,7 @@ function getWorkerQueue() {
       "runengine.processBatchTaskRun": {
         priority: 0,
         maxAttempts: 5,
-        handler: async (payload, job) => {
+        handler: async (payload, _job) => {
           const service = new RunEngineBatchTriggerService(payload.strategy);
 
           await service.processBatchTaskRun(payload);

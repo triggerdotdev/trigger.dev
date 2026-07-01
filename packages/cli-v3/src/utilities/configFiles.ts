@@ -47,7 +47,7 @@ function getAuthConfigFilePath() {
   return path.join(getGlobalConfigFolderPath(), CONFIG_FILE);
 }
 
-function getAuthConfigFileBackupPath() {
+function _getAuthConfigFileBackupPath() {
   // Multiple calls won't overwrite old backups
   return path.join(getGlobalConfigFolderPath(), `${CONFIG_FILE}.bak-${Date.now()}`);
 }

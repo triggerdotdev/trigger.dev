@@ -374,7 +374,7 @@ export class Database {
     // This is a skeleton structure - adapt to your setup
 
     const timings = options?.timings || new TSQLTimingsClass();
-    const { team, modifiers } = options || {};
+    const { team, modifiers: _modifiers } = options || {};
 
     // Validate team/teamId
     if (!teamId && !team) {
@@ -470,7 +470,7 @@ function constantTypeToSerializedFieldType(
 export function serializeFields(
   fieldInput: Record<string, FieldOrTable>,
   context: TSQLContext,
-  tableChain: string[],
+  _tableChain: string[],
   dbColumns?: Record<string, any> // DataWarehouseTableColumns
 ): DatabaseSchemaField[] {
   // NOTE: This requires resolve_types_from_table from resolver
@@ -525,7 +525,7 @@ export function serializeFields(
       });
     } else if ("expr" in field) {
       // ExpressionField
-      const exprField = field as ExpressionField;
+      const _exprField = field as ExpressionField;
       // NOTE: Requires resolve_types_from_table
       // const resolvedExpr = resolveTypesFromTable(exprField.expr, tableChain, context, 'tsql');
       // const constantType = resolvedExpr.type?.resolve_constant_type(context);

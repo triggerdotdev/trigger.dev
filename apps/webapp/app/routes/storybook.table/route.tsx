@@ -1,5 +1,5 @@
 import React from "react";
-import { Header1, Header2 } from "~/components/primitives/Headers";
+import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
   CopyableTableCell,

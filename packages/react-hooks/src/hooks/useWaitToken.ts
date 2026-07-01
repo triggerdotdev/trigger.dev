@@ -1,7 +1,8 @@
 "use client";
 
 import useSWRMutation from "swr/mutation";
-import { useApiClient, UseApiClientOptions } from "./useApiClient.js";
+import type { UseApiClientOptions } from "./useApiClient.js";
+import { useApiClient } from "./useApiClient.js";
 
 /**
  * Base interface for task trigger instances.
@@ -43,7 +44,7 @@ export function useWaitToken<TOutput>(
 ): WaitTokenInstance<TOutput> {
   const apiClient = useApiClient(options);
 
-  async function completeWaitpoint(id: string, { arg: { output } }: { arg: { output: TOutput } }) {
+  async function completeWaitpoint(_id: string, { arg: { output } }: { arg: { output: TOutput } }) {
     if (!apiClient) {
       throw new Error("Could not complete waitpoint in useWaitToken: Missing access token");
     }

@@ -1,9 +1,11 @@
-import { PrismaClientOrTransaction, sqlDatabaseSchema } from "~/db.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
+
 import { env } from "~/env.server";
-import { getUsage, getUsageSeries } from "~/services/platform.v3.server";
+import { getUsageSeries } from "~/services/platform.v3.server";
 import { createTimeSeriesData } from "~/utils/graphs";
 import { BasePresenter } from "./basePresenter.server";
-import { DataPoint, linear } from "regression";
+import type { DataPoint } from "regression";
+import { linear } from "regression";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 
 type Options = {
@@ -122,7 +124,7 @@ async function getTaskUsageByOrganization(
   organizationId: string,
   startOfMonth: Date,
   endOfMonth: Date,
-  replica: PrismaClientOrTransaction
+  _replica: PrismaClientOrTransaction
 ) {
   const clickhouse = await clickhouseFactory.getClickhouseForOrganization(
     organizationId,

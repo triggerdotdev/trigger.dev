@@ -1,6 +1,6 @@
-import { PrismaClient } from "../generated/prisma";
+import type { PrismaClient } from "../generated/prisma";
 import { Decimal } from "decimal.js";
-import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
+import type { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 
 // Define the isolation levels manually
 type TransactionIsolationLevel =

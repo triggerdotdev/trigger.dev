@@ -6,7 +6,7 @@ import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { getTimezones } from "~/utils/timezones.server";
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
+export const loader = async ({ request: _request }: LoaderFunctionArgs) => {
   return typedjson({
     timezones: getTimezones(),
   });

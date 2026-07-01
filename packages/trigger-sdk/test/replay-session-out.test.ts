@@ -28,7 +28,7 @@ function textTurn(id: string, text: string, role: "assistant" = "assistant"): UI
  * crashed turn whose stream ended mid-message. The runtime's reducer
  * should run `cleanupAbortedParts` on the resulting trailing message.
  */
-function partialTurn(id: string, text: string): UIMessageChunk[] {
+function _partialTurn(id: string, text: string): UIMessageChunk[] {
   return [
     { type: "start", messageId: id, messageMetadata: { role: "assistant" } } as UIMessageChunk,
     { type: "text-start", id: `${id}.t1` } as UIMessageChunk,

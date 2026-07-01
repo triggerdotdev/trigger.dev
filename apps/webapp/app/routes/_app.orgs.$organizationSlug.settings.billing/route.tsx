@@ -17,7 +17,6 @@ import {
   OrganizationParamsSchema,
   organizationPath,
   v3StripePortalPath,
-  v3UsagePath,
 } from "~/utils/pathBuilder";
 import { PricingPlans } from "../resources.orgs.$organizationSlug.select-plan";
 import { type MetaFunction } from "@remix-run/react";

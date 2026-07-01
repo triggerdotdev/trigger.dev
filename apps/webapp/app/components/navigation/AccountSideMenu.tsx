@@ -16,7 +16,7 @@ import { AvatarCircleIcon } from "~/assets/icons/AvatarCircleIcon";
 import { ShieldIcon } from "~/assets/icons/ShieldIcon";
 import { PadlockIcon } from "~/assets/icons/PadlockIcon";
 
-export function AccountSideMenu({ user }: { user: User }) {
+export function AccountSideMenu({ user: _user }: { user: User }) {
   return (
     <div
       className={cn(

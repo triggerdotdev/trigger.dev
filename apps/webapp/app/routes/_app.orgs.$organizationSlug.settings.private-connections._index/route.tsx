@@ -1,6 +1,6 @@
 import { LinkButton } from "~/components/primitives/Buttons";
-import { Form, useFetcher, useRevalidator, type MetaFunction } from "@remix-run/react";
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { Form, useRevalidator, type MetaFunction } from "@remix-run/react";
+import { json, type LoaderFunctionArgs, type ActionFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
@@ -8,14 +8,14 @@ import {
   PageBody,
   PageContainer,
 } from "~/components/layout/AppLayout";
-import { Badge } from "~/components/primitives/Badge";
+
 import { Header2 } from "~/components/primitives/Headers";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
 import { canAccessPrivateConnections } from "~/v3/canAccessPrivateConnections.server";
 import { logger } from "~/services/logger.server";
-import { getPrivateLinks } from "~/services/platform.v3.server";
+import { getPrivateLinks, deletePrivateLink } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import {
   docsPath,
@@ -25,9 +25,7 @@ import {
 } from "~/utils/pathBuilder";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import type { PrivateLinkConnectionStatus } from "@trigger.dev/platform";
-import { Button } from "~/components/primitives/Buttons";
-import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { deletePrivateLink } from "~/services/platform.v3.server";
+
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import {
   BookOpenIcon,

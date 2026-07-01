@@ -1,5 +1,5 @@
-import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { conform, list, requestIntent, useFieldList, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import {
   EnvelopeIcon,
   GlobeAltIcon,
@@ -21,7 +21,7 @@ import { Hint } from "~/components/primitives/Hint";
 import { InlineCode } from "~/components/code/InlineCode";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
-import { Paragraph } from "~/components/primitives/Paragraph";
+
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { UnorderedList } from "~/components/primitives/UnorderedList";
 import type { ErrorAlertChannelData } from "~/presenters/v3/ErrorAlertChannelPresenter.server";
@@ -104,10 +104,10 @@ export function ConfigureErrorAlerts({
     existingWebhooks.length > 0 ? [...existingWebhooks.map((w) => w.url), ""] : [""]
   );
 
-  const [form, fields] = useForm<z.infer<typeof ErrorAlertsFormSchema>>({
+  const [form, { emails, webhooks, slackChannel, slackIntegrationId }] = useForm({
     id: "configure-error-alerts",
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema: ErrorAlertsFormSchema });
+      return parse(formData, { schema: ErrorAlertsFormSchema });
     },
     shouldRevalidate: "onSubmit",
     defaultValue: {
@@ -115,10 +115,9 @@ export function ConfigureErrorAlerts({
       webhooks: webhookFieldValues.current,
     },
   });
-  const { emails, webhooks, slackChannel, slackIntegrationId } = fields;
 
-  const emailFields = emails.getFieldList();
-  const webhookFields = webhooks.getFieldList();
+  const emailFields = useFieldList(form.ref, emails);
+  const webhookFields = useFieldList(form.ref, webhooks);
 
   return (
     <div className="grid h-full grid-rows-[auto_1fr_auto] overflow-hidden">
@@ -136,7 +135,7 @@ export function ConfigureErrorAlerts({
         />
       </div>
 
-      <fetcher.Form method="post" action={formAction} {...getFormProps(form)} className="contents">
+      <fetcher.Form method="post" action={formAction} {...form.props} className="contents">
         <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
           <Fieldset className="flex flex-col gap-4 p-4">
             <div className="flex flex-col">
@@ -156,7 +155,7 @@ export function ConfigureErrorAlerts({
                   {emailFields.map((emailField, index) => (
                     <Fragment key={emailField.key}>
                       <Input
-                        {...getInputProps(emailField, { type: "email" })}
+                        {...conform.input(emailField, { type: "email" })}
                         placeholder={index === 0 ? "Enter an email address" : "Add another email"}
                         icon={EnvelopeIcon}
                         onChange={(e) => {
@@ -165,11 +164,11 @@ export function ConfigureErrorAlerts({
                             emailFields.length === emailFieldValues.current.length &&
                             emailFieldValues.current.every((v) => v !== "")
                           ) {
-                            form.insert({ name: emails.name });
+                            requestIntent(form.ref.current ?? undefined, list.append(emails.name));
                           }
                         }}
                       />
-                      <FormError id={emailField.errorId}>{emailField.errors}</FormError>
+                      <FormError id={emailField.errorId}>{emailField.error}</FormError>
                     </Fragment>
                   ))}
                 </InputGroup>
@@ -316,7 +315,7 @@ export function ConfigureErrorAlerts({
                 {webhookFields.map((webhookField, index) => (
                   <Fragment key={webhookField.key}>
                     <Input
-                      {...getInputProps(webhookField, { type: "url" })}
+                      {...conform.input(webhookField, { type: "url" })}
                       placeholder={
                         index === 0 ? "https://example.com/webhook" : "Add another webhook URL"
                       }
@@ -327,18 +326,18 @@ export function ConfigureErrorAlerts({
                           webhookFields.length === webhookFieldValues.current.length &&
                           webhookFieldValues.current.every((v) => v !== "")
                         ) {
-                          form.insert({ name: webhooks.name });
+                          requestIntent(form.ref.current ?? undefined, list.append(webhooks.name));
                         }
                       }}
                     />
-                    <FormError id={webhookField.errorId}>{webhookField.errors}</FormError>
+                    <FormError id={webhookField.errorId}>{webhookField.error}</FormError>
                   </Fragment>
                 ))}
                 <Hint>We'll issue POST requests to these URLs with a JSON payload.</Hint>
               </InputGroup>
             </div>
 
-            <FormError>{form.errors}</FormError>
+            <FormError>{form.error}</FormError>
           </Fieldset>
         </div>
 

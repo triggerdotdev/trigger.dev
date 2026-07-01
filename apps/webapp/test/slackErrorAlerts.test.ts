@@ -1,8 +1,10 @@
 import { describe, test, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@trigger.dev/database";
 
+// eslint-disable-next-line typescript/consistent-type-imports
 let DeliverErrorGroupAlertService: typeof import("../app/v3/services/alerts/deliverErrorGroupAlert.server.js").DeliverErrorGroupAlertService;
 let prisma: PrismaClient;
+// eslint-disable-next-line typescript/consistent-type-imports
 let getSecretStore: typeof import("../app/services/secrets/secretStore.server.js").getSecretStore;
 
 type ErrorAlertPayload = {

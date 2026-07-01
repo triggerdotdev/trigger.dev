@@ -1,11 +1,11 @@
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
-import { DequeuedMessage } from "@trigger.dev/core/v3";
+import type { DequeuedMessage } from "@trigger.dev/core/v3";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
-import { PrismaClientOrTransaction } from "@trigger.dev/database";
+import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { expect } from "vitest";
 import { setTimeout } from "node:timers/promises";
-import { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
+import type { MinimalAuthenticatedEnvironment } from "../../shared/index.js";
 import { RunEngine } from "../index.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 

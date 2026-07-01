@@ -52,7 +52,7 @@ export function createRedisClient(
 
   // Skip error handling setup if running in Vitest
   if (process.env.VITEST) {
-    client.on("error", (error) => {
+    client.on("error", (_error) => {
       // swallow errors
     });
     return client;

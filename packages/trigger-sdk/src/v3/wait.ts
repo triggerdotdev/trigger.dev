@@ -1,7 +1,5 @@
 import { SpanStatusCode } from "@opentelemetry/api";
-import {
-  accessoryAttributes,
-  apiClientManager,
+import type {
   ApiPromise,
   ApiRequestOptions,
   CompleteWaitpointTokenResponseBody,
@@ -9,17 +7,21 @@ import {
   CreateWaitpointTokenResponse,
   CreateWaitpointTokenResponseBody,
   CursorPagePromise,
-  flattenAttributes,
   ListWaitpointTokensQueryParams,
+  WaitpointListTokenItem,
+  WaitpointRetrieveTokenResponse,
+  WaitpointTokenStatus,
+  WaitpointTokenTypedResult,
+} from "@trigger.dev/core/v3";
+import {
+  accessoryAttributes,
+  apiClientManager,
+  flattenAttributes,
   ManualWaitpointPromise,
   mergeRequestOptions,
   runtime,
   SemanticInternalAttributes,
   taskContext,
-  WaitpointListTokenItem,
-  WaitpointRetrieveTokenResponse,
-  WaitpointTokenStatus,
-  WaitpointTokenTypedResult,
   WaitpointTimeoutError,
 } from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
@@ -405,7 +407,7 @@ export const wait = {
     if (durationInMs <= DURATION_WAIT_CHARGE_THRESHOLD_MS) {
       return tracer.startActiveSpan(
         `wait.for()`,
-        async (span) => {
+        async (_span) => {
           if (durationInMs <= 0) {
             return;
           }
@@ -440,7 +442,7 @@ export const wait = {
 
     return tracer.startActiveSpan(
       `wait.for()`,
-      async (span) => {
+      async (_span) => {
         await runtime.waitUntil(result.waitpoint.id, date);
       },
       {
@@ -473,7 +475,7 @@ export const wait = {
     if (durationInMs <= DURATION_WAIT_CHARGE_THRESHOLD_MS) {
       return tracer.startActiveSpan(
         `wait.for()`,
-        async (span) => {
+        async (_span) => {
           if (durationInMs === 0) {
             return;
           }
@@ -517,7 +519,7 @@ export const wait = {
 
     return tracer.startActiveSpan(
       `wait.until()`,
-      async (span) => {
+      async (_span) => {
         if (options.throwIfInThePast && options.date < new Date()) {
           throw new Error("Date is in the past");
         }

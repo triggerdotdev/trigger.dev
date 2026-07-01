@@ -1,11 +1,8 @@
-import { FlushedRunMetadata, TaskRunError } from "@trigger.dev/core/v3";
-import {
-  RuntimeEnvironmentType,
-  TaskRunExecutionStatus,
-  TaskRunStatus,
-} from "@trigger.dev/database";
-import { EventEmitter } from "events";
-import { AuthenticatedEnvironment } from "../shared/index.js";
+import type { FlushedRunMetadata, TaskRunError } from "@trigger.dev/core/v3";
+import type { TaskRunExecutionStatus, TaskRunStatus } from "@trigger.dev/database";
+
+import type { EventEmitter } from "events";
+import type { AuthenticatedEnvironment } from "../shared/index.js";
 
 export type EventBusEvents = {
   runCreated: [

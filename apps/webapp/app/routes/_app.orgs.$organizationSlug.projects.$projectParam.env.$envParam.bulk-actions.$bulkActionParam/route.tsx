@@ -8,7 +8,7 @@ import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { BulkActionFilterSummary } from "~/components/BulkActionFilterSummary";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { LinkButton } from "~/components/primitives/Buttons";
 import { PermissionButton } from "~/components/primitives/PermissionButton";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
@@ -121,7 +121,7 @@ export const action = dashboardAction(
     }
 
     const service = new BulkActionService();
-    const [error, result] = await tryCatch(service.abort(bulkActionParam, environment.id));
+    const [error, _result] = await tryCatch(service.abort(bulkActionParam, environment.id));
 
     if (error) {
       logger.error("Failed to abort bulk action", {

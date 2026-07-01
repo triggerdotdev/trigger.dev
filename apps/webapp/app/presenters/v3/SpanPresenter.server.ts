@@ -24,7 +24,7 @@ import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 import { WaitpointPresenter } from "./WaitpointPresenter.server";
 import { engine } from "~/v3/runEngine.server";
-import { IEventRepository, SpanDetail } from "~/v3/eventRepository/eventRepository.types";
+import type { IEventRepository, SpanDetail } from "~/v3/eventRepository/eventRepository.types";
 import { safeJsonParse } from "~/utils/json";
 import {
   extractAISpanData,
@@ -94,7 +94,7 @@ export type Span = NonNullable<NonNullable<Result>["span"]>;
 type FindRunResult = NonNullable<
   Awaited<ReturnType<InstanceType<typeof SpanPresenter>["findRun"]>>
 >;
-type GetSpanResult = SpanDetail;
+type _GetSpanResult = SpanDetail;
 
 export class SpanPresenter extends BasePresenter {
   public async call({
@@ -228,14 +228,14 @@ export class SpanPresenter extends BasePresenter {
   }
 
   async getRun({
-    eventStore,
+    eventStore: _eventStore,
     environmentId,
-    traceId,
-    eventRepository,
+    traceId: _traceId,
+    eventRepository: _eventRepository,
     spanId,
     linkedRunId,
-    createdAt,
-    completedAt,
+    createdAt: _createdAt,
+    completedAt: _completedAt,
   }: {
     eventStore: TaskEventStoreTable;
     environmentId: string;

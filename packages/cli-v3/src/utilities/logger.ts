@@ -52,7 +52,7 @@ export class Logger {
   columns = process.stdout.columns;
 
   debug = (...args: unknown[]) => this.doLog("debug", args);
-  ignore = (...args: unknown[]) => {};
+  ignore = (..._args: unknown[]) => {};
   debugWithSanitization = (label: string, ...args: unknown[]) => {
     this.doLog("debug", [label, ...args]);
   };

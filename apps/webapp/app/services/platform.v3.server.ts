@@ -22,8 +22,6 @@ import {
   BillingLimitsActiveResultSchema,
   BillingLimitsPendingResolvesResultSchema,
   EntitlementResultSchema,
-  ResolveBillingLimitRequestSchema,
-  UpdateBillingLimitRequestSchema,
   asPlatformSchema,
   type BillingLimitResult,
   type BillingLimitsActiveResult,
@@ -275,7 +273,7 @@ export async function getCurrentPlan(orgId: string) {
     };
 
     return { ...result, usage };
-  } catch (e) {
+  } catch (_e) {
     recordPlatformFailure("getCurrentPlan", "caught");
     return undefined;
   }
@@ -316,7 +314,7 @@ export async function getLimits(orgId: string) {
     }
 
     return result.v3Subscription?.plan?.limits;
-  } catch (e) {
+  } catch (_e) {
     recordPlatformFailure("getLimits", "caught");
     return undefined;
   }
@@ -392,7 +390,7 @@ export async function customerPortalUrl(orgId: string, orgSlug: string) {
     return client.createPortalSession(orgId, {
       returnUrl: `${env.APP_ORIGIN}${organizationBillingPath({ slug: orgSlug })}`,
     });
-  } catch (e) {
+  } catch (_e) {
     recordPlatformFailure("customerPortalUrl", "caught");
     return undefined;
   }
@@ -408,7 +406,7 @@ export async function getPlans() {
       return undefined;
     }
     return result;
-  } catch (e) {
+  } catch (_e) {
     recordPlatformFailure("getPlans", "caught");
     return undefined;
   }
@@ -490,7 +488,7 @@ export async function setConcurrencyAddOn(organizationId: string, amount: number
       return undefined;
     }
     return result;
-  } catch (e) {
+  } catch (_e) {
     recordPlatformFailure("setConcurrencyAddOn", "caught");
     return undefined;
   }
@@ -506,7 +504,7 @@ export async function setSeatsAddOn(organizationId: string, amount: number) {
       return undefined;
     }
     return result;
-  } catch (e) {
+  } catch (_e) {
     recordPlatformFailure("setSeatsAddOn", "caught");
     return undefined;
   }
@@ -522,7 +520,7 @@ export async function setBranchesAddOn(organizationId: string, amount: number) {
       return undefined;
     }
     return result;
-  } catch (e) {
+  } catch (_e) {
     recordPlatformFailure("setBranchesAddOn", "caught");
     return undefined;
   }
@@ -538,7 +536,7 @@ export async function setSchedulesAddOn(organizationId: string, amount: number) 
       return undefined;
     }
     return result;
-  } catch (e) {
+  } catch (_e) {
     recordPlatformFailure("setSchedulesAddOn", "caught");
     return undefined;
   }
@@ -554,7 +552,7 @@ export async function getUsage(organizationId: string, { from, to }: { from: Dat
       return undefined;
     }
     return result;
-  } catch (e) {
+  } catch (_e) {
     recordPlatformFailure("getUsage", "caught");
     return undefined;
   }
@@ -577,7 +575,7 @@ export async function getCachedUsage(
     );
 
     return result.val;
-  } catch (e) {
+  } catch (_e) {
     recordPlatformFailure("getCachedUsage", "caught");
     return undefined;
   }
@@ -593,7 +591,7 @@ export async function getUsageSeries(organizationId: string, params: UsageSeries
       return undefined;
     }
     return result;
-  } catch (e) {
+  } catch (_e) {
     recordPlatformFailure("getUsageSeries", "caught");
     return undefined;
   }
@@ -617,7 +615,7 @@ export async function reportInvocationUsage(
       return undefined;
     }
     return result;
-  } catch (e) {
+  } catch (_e) {
     recordPlatformFailure("reportInvocationUsage", "caught");
     return undefined;
   }
@@ -656,7 +654,7 @@ export async function getEntitlement(
         return undefined;
       }
       return response;
-    } catch (e) {
+    } catch (_e) {
       recordPlatformFailure("getEntitlement", "caught");
       return undefined;
     }
@@ -690,7 +688,7 @@ export async function getBillingLimit(
           return undefined;
         }
         return response;
-      } catch (e) {
+      } catch (_e) {
         recordPlatformFailure("getBillingLimit", "caught");
         return undefined;
       }
@@ -701,7 +699,7 @@ export async function getBillingLimit(
     }
 
     return result.val;
-  } catch (e) {
+  } catch (_e) {
     recordPlatformFailure("getBillingLimit", "caught");
     return undefined;
   }
@@ -775,7 +773,7 @@ export async function getActiveBillingLimits(): Promise<BillingLimitsActiveResul
       return undefined;
     }
     return response;
-  } catch (e) {
+  } catch (_e) {
     recordPlatformFailure("getActiveBillingLimits", "caught");
     return undefined;
   }
@@ -797,7 +795,7 @@ export async function getPendingBillingLimitResolves(): Promise<
       return undefined;
     }
     return response;
-  } catch (e) {
+  } catch (_e) {
     recordPlatformFailure("getPendingBillingLimitResolves", "caught");
     return undefined;
   }

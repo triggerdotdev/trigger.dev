@@ -29,7 +29,7 @@ vi.setConfig({ testTimeout: 60_000 });
 describe("RunQueue.migrateLegacyMasterQueue", () => {
   redisTest(
     "should migrate the legacy master queue to the new master queues",
-    async ({ redisContainer, redisOptions }) => {
+    async ({ redisContainer, redisOptions: _redisOptions }) => {
       const queue = new RunQueue({
         ...testOptions,
         queueSelectionStrategy: new FairQueueSelectionStrategy({

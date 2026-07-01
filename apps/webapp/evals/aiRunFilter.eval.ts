@@ -14,7 +14,7 @@ import { openai } from "@ai-sdk/openai";
 dotenv.config({ path: "../../.env" });
 
 const queryTags: QueryTags = {
-  query: async (search) => {
+  query: async (_search) => {
     return {
       tags: ["user_1", "user_2", "org_1", "org_2"],
     };
@@ -22,7 +22,7 @@ const queryTags: QueryTags = {
 };
 
 const queryVersions: QueryVersions = {
-  query: async (versionPrefix, isCurrent) => {
+  query: async (_versionPrefix, isCurrent) => {
     if (isCurrent) {
       return {
         version: "20250721.1",
@@ -36,7 +36,7 @@ const queryVersions: QueryVersions = {
 };
 
 const queryQueues: QueryQueues = {
-  query: async (query, type) => {
+  query: async (_query, _type) => {
     return {
       queues: ["shared", "paid"],
     };

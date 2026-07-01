@@ -1,4 +1,4 @@
-import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
+import { createRedisClient, type Redis } from "@internal/redis";
 import { SpanKind, type Span } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { nanoid } from "nanoid";
@@ -7,7 +7,7 @@ import { type z } from "zod";
 import { ConcurrencyManager } from "./concurrency.js";
 import { MasterQueue } from "./masterQueue.js";
 import { TenantDispatch } from "./tenantDispatch.js";
-import { type RetryStrategy, ExponentialBackoffRetry } from "./retry.js";
+import { type RetryStrategy } from "./retry.js";
 import { isAbortError } from "../utils.js";
 import {
   FairQueueTelemetry,
@@ -16,7 +16,6 @@ import {
   BatchedSpanManager,
 } from "./telemetry.js";
 import type {
-  ConcurrencyGroupConfig,
   DeadLetterMessage,
   DispatchSchedulerContext,
   EnqueueBatchOptions,
@@ -967,10 +966,10 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
    * and filters at-capacity tenants. No DRR deficit tracking in this path.
    */
   async #fallbackDispatchToLegacyScheduler(
-    loopId: string,
+    _loopId: string,
     shardId: number,
-    context: DispatchSchedulerContext,
-    parentSpan?: Span
+    _context: DispatchSchedulerContext,
+    _parentSpan?: Span
   ): Promise<TenantQueues[]> {
     // Get tenants from dispatch
     const tenants = await this.tenantDispatch.getTenantsFromShard(shardId);
@@ -1467,7 +1466,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
     const dlqKey = this.keys.deadLetterQueueKey(storedMessage.tenantId);
     const dlqDataKey = this.keys.deadLetterQueueDataKey(storedMessage.tenantId);
-    const shardId = this.masterQueue.getShardForQueue(storedMessage.queueId);
+    const _shardId = this.masterQueue.getShardForQueue(storedMessage.queueId);
 
     const dlqMessage: DeadLetterMessage<z.infer<TPayloadSchema>> = {
       id: storedMessage.id,

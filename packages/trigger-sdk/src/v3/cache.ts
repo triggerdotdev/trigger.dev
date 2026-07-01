@@ -71,7 +71,7 @@ export function createCache(store: CacheStore): CacheFunction {
 
       const value = await tracer.startActiveSpan(
         "cache.getFreshValue",
-        async (span) => {
+        async (_span) => {
           return await fn();
         },
         {
@@ -84,7 +84,7 @@ export function createCache(store: CacheStore): CacheFunction {
 
       await tracer.startActiveSpan(
         "cache.set",
-        async (span) => {
+        async (_span) => {
           await store.set(cacheKey, {
             value,
             metadata: {

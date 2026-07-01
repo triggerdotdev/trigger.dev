@@ -1,5 +1,5 @@
-import { Attributes } from "@opentelemetry/api";
-import { Accessory } from "../schemas/index.js";
+import type { Attributes } from "@opentelemetry/api";
+import type { Accessory } from "../schemas/index.js";
 import { flattenAttributes } from "./flattenAttributes.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 

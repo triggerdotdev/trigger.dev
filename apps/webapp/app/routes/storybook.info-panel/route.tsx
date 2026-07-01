@@ -1,5 +1,4 @@
 import {
-  BeakerIcon,
   BellAlertIcon,
   BookOpenIcon,
   ClockIcon,

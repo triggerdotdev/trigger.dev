@@ -119,7 +119,7 @@ describe("applyMetadataMutationToBufferedRun — retry behaviour", () => {
 
   it("succeeds after 11 version conflicts (one under the default budget)", async () => {
     const { buffer } = makeBufferStub();
-    const setStateConflicts = (n: number) => {
+    const setStateConflicts = (_n: number) => {
       // Re-read state from the closure
       const state = buffer as unknown as {
         __state__?: never;

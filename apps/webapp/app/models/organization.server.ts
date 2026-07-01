@@ -86,7 +86,7 @@ export async function createOrganization(
     );
   }
 
-  const features = featuresForUrl(new URL(env.APP_ORIGIN));
+  const _features = featuresForUrl(new URL(env.APP_ORIGIN));
 
   const organization = await prisma.organization.create({
     data: {

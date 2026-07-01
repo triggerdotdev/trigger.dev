@@ -1,11 +1,7 @@
-import { ApiClient } from "../apiClient/index.js";
-import {
-  InputStreamManager,
-  InputStreamOncePromise,
-  InputStreamOnceResult,
-  InputStreamTimeoutError,
-} from "./types.js";
-import { InputStreamOnceOptions } from "../realtimeStreams/types.js";
+import type { ApiClient } from "../apiClient/index.js";
+import type { InputStreamManager, InputStreamOnceResult } from "./types.js";
+import { InputStreamOncePromise, InputStreamTimeoutError } from "./types.js";
+import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 import { computeReconnectDelayMs } from "../utils/reconnectBackoff.js";
 
 type InputStreamHandler = (data: unknown) => void | Promise<void>;
@@ -227,7 +223,7 @@ export class StandardInputStreamManager implements InputStreamManager {
     this.reconnectAttempts.delete(streamId);
   }
 
-  connectTail(runId: string, _fromSeq?: number): void {
+  connectTail(_runId: string, _fromSeq?: number): void {
     // No-op: tails are now created per-stream lazily
   }
 

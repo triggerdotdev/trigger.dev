@@ -85,7 +85,6 @@ import { requireUser } from "~/services/session.server";
 import {
   docsPath,
   EnvironmentParamSchema,
-  v3BillingPath,
   v3CreateBulkActionPath,
   v3EditSchedulePath,
   v3EnvironmentPath,

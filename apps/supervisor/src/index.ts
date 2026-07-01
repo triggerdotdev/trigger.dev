@@ -90,11 +90,11 @@ class ManagedSupervisor {
     // Strip secret-like env vars before debug-logging the rest. Add any new
     // secret env var here so it never lands in the DEBUG "Starting up" log.
     const {
-      TRIGGER_WORKER_TOKEN,
-      MANAGED_WORKER_SECRET,
-      COMPUTE_GATEWAY_AUTH_TOKEN,
-      DOCKER_REGISTRY_PASSWORD,
-      TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PASSWORD,
+      TRIGGER_WORKER_TOKEN: _TRIGGER_WORKER_TOKEN,
+      MANAGED_WORKER_SECRET: _MANAGED_WORKER_SECRET,
+      COMPUTE_GATEWAY_AUTH_TOKEN: _COMPUTE_GATEWAY_AUTH_TOKEN,
+      DOCKER_REGISTRY_PASSWORD: _DOCKER_REGISTRY_PASSWORD,
+      TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PASSWORD: _TRIGGER_DEQUEUE_BACKPRESSURE_REDIS_PASSWORD,
       ...envWithoutSecrets
     } = env;
 

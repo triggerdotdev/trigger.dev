@@ -1,6 +1,6 @@
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/node";
-import { requireUser, requireUserId } from "~/services/session.server";
+import { requireUser } from "~/services/session.server";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";

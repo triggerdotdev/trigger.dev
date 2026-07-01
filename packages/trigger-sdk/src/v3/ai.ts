@@ -1,28 +1,20 @@
 import {
   accessoryAttributes,
-  AnyTask,
   apiClientManager,
   controlSubtype,
   getSchemaParseFn,
   headerValue,
   InputStreamOncePromise,
-  type InputStreamOnceOptions,
-  type InputStreamWaitOptions,
-  type InputStreamWaitWithIdleTimeoutOptions,
   isSchemaZodEsque,
   logger,
   type MachinePresetName,
   ManualWaitpointPromise,
   OutOfMemoryError,
   sessionStreams,
-  type PipeStreamResult,
   type RealtimeDefinedInputStream,
   type RealtimeDefinedStream,
   type ApiClientConfiguration,
-  type ReadStreamOptions,
   SemanticInternalAttributes,
-  type SendInputStreamOptions,
-  Task,
   taskContext,
   type AppendStreamOptions,
   type InputStreamOnceResult,
@@ -37,7 +29,12 @@ import {
   SESSION_IN_EVENT_ID_HEADER,
   TRIGGER_CONTROL_SUBTYPE,
   generateJWT,
-  type WriterStreamOptions,
+  resourceCatalog,
+  type SessionTriggerConfig,
+  type ChatSnapshotV1,
+  type StreamWriteResult,
+  type AnyTask,
+  type Task,
 } from "@trigger.dev/core/v3";
 import type {
   FinishReason,
@@ -49,8 +46,9 @@ import type {
   UIMessage,
   UIMessageChunk,
   UIMessageStreamOptions,
+  JSONSchema7,
+  Schema,
 } from "ai";
-import type { ChatSnapshotV1, StreamWriteResult } from "@trigger.dev/core/v3";
 // Runtime VALUES go through the ESM/CJS shim so the CJS build can `require`
 // ESM-only `ai@7` (see ../imports/ai-runtime.ts).
 import {
@@ -64,7 +62,6 @@ import {
   tool as aiTool,
   zodSchema,
 } from "../imports/ai-runtime.js";
-import type { JSONSchema7, Schema } from "ai";
 
 // `ToolCallOptions` is defined locally rather than imported from `ai`: v7
 // renamed/removed that export (it's `ToolExecutionOptions<CONTEXT>` now), so a
@@ -93,18 +90,15 @@ import type { ResolvedSkill } from "./skill.js";
 // never touches `ai.ts`'s module graph, so the `node:*` builtins
 // pulled in transitively here never reach a client chunk.
 import { runBashInSkill, readFileInSkill } from "./agentSkillsRuntime.js";
-import { streams, markChatAgentRunForStreamsWarning } from "./streams.js";
+import { markChatAgentRunForStreamsWarning } from "./streams.js";
 import {
   sessions,
   type SessionHandle,
-  type SessionInputChannel,
-  type SessionOutputChannel,
   type SessionPipeStreamOptions,
   type SessionSubscribeOptions,
 } from "./sessions.js";
 import { createTask } from "./shared.js";
 import { ensureAiSdkTelemetry } from "./aiAutoTelemetry.js";
-import { resourceCatalog, type SessionTriggerConfig } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 
 /** Re-export for typing `ctx` in `chat.agent` hooks without importing `@trigger.dev/core`. */
@@ -1431,7 +1425,12 @@ async function withChatWriter<T>(fn: (writer: ChatWriter) => Promise<T> | T): Pr
 // browser bundles (which import them via `chat-client.ts` / `chat.ts`)
 // can pull the types without dragging `ai.ts` into the client graph.
 // Re-exported here so `@trigger.dev/sdk/ai` consumers see them.
-import type { ChatTaskWirePayload, ChatInputChunk } from "./ai-shared.js";
+import {
+  PENDING_MESSAGE_INJECTED_TYPE,
+  type ChatTaskWirePayload,
+  type ChatInputChunk,
+  type InferChatClientData,
+} from "./ai-shared.js";
 export type { ChatTaskWirePayload, ChatInputChunk } from "./ai-shared.js";
 
 /**
@@ -2760,7 +2759,6 @@ export type PendingMessagesOptions<TUIM extends UIMessage = UIMessage> = {
 // dragging `ai.ts` into the browser graph. Re-exported here so
 // `@trigger.dev/sdk/ai` consumers still see it.
 export { PENDING_MESSAGE_INJECTED_TYPE, upsertIncomingMessage } from "./ai-shared.js";
-import { PENDING_MESSAGE_INJECTED_TYPE } from "./ai-shared.js";
 
 /** @internal */
 type SteeringQueueEntry = { uiMessage: UIMessage; modelMessages: ModelMessage[] };
@@ -3395,7 +3393,7 @@ async function drainSteeringQueue(
         .map((p: any) => p.text)
         .join("") || ""
   );
-  const previewText =
+  const _previewText =
     messageTexts.length === 1 ? messageTexts[0]!.slice(0, 80) : `${queue.length} messages`;
 
   return tracer.startActiveSpan(
@@ -9461,7 +9459,7 @@ function createChatSession(
           const incomingForAccumulator: UIMessage[] = currentPayload.message
             ? [currentPayload.message]
             : [];
-          const messages = await accumulator.addIncoming(
+          const _messages = await accumulator.addIncoming(
             incomingForAccumulator,
             currentPayload.trigger,
             turn
@@ -9968,7 +9966,6 @@ function chatLocal<T extends Record<string, unknown>>(options: { id: string }): 
 // so the chat React hooks can import them without dragging `ai.ts` into
 // the browser graph. Re-exported here so `@trigger.dev/sdk/ai` consumers
 // still see them.
-import type { InferChatClientData, InferChatUIMessage } from "./ai-shared.js";
 export type {
   InferChatClientData,
   InferChatUIMessage,
@@ -10649,7 +10646,7 @@ function stripProviderMetadata(message: UIMessage): UIMessage {
       const openai = part.providerMetadata?.openai;
       if (!openai?.itemId) return part;
 
-      const { itemId, ...restOpenai } = openai;
+      const { itemId: _itemId, ...restOpenai } = openai;
       const { openai: _, ...restProviders } = part.providerMetadata;
       return {
         ...part,

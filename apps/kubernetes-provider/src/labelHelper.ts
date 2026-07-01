@@ -40,7 +40,7 @@ export class CustomLabelHelper {
     return key.toLowerCase().startsWith(prefix) && !this.isLabelSampleRateEnvVar(key);
   }
 
-  private getSampleRateEnvVarKey(type: OperationType, envKey: string) {
+  private getSampleRateEnvVarKey(_type: OperationType, envKey: string) {
     return `${envKey.toLowerCase()}${this.getLabelSampleRatePostfix()}`;
   }
 

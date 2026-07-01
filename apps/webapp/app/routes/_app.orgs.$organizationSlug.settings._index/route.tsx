@@ -1,6 +1,6 @@
 import colorWheelIcon from "../../assets/images/color-wheel.png";
-import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { conformZodMessage, parseWithZod } from "@conform-to/zod";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import {
   CheckIcon,
   ExclamationTriangleIcon,
@@ -125,7 +125,7 @@ export function createSchema(
         if (constraints.getSlugMatch === undefined) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: conformZodMessage.VALIDATION_UNDEFINED,
+            message: conform.VALIDATION_UNDEFINED,
           });
         } else {
           const { isMatch, organizationSlug } = constraints.getSlugMatch(slug);
@@ -156,10 +156,10 @@ export const action: ActionFunction = async ({ request, params }) => {
       return { isMatch: slug === organizationSlug, organizationSlug };
     },
   });
-  const submission = parseWithZod(formData, { schema });
+  const submission = parse(formData, { schema });
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
+  if (!submission.value || submission.intent !== "submit") {
+    return json(submission);
   }
 
   try {
@@ -283,10 +283,10 @@ export default function Page() {
   const [renameForm, { organizationName }] = useForm({
     id: "rename-organization",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
-      return parseWithZod(formData, {
+      return parse(formData, {
         schema: createSchema(),
       });
     },
@@ -295,11 +295,11 @@ export default function Page() {
   const [deleteForm, { organizationSlug }] = useForm({
     id: "delete-organization",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     shouldValidate: "onInput",
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
-      return parseWithZod(formData, {
+      return parse(formData, {
         schema: createSchema({
           getSlugMatch: (slug) => ({
             isMatch: slug === organization.slug,
@@ -335,19 +335,19 @@ export default function Page() {
             </div>
 
             <div>
-              <Form method="post" {...getFormProps(renameForm)}>
+              <Form method="post" {...renameForm.props}>
                 <input type="hidden" name="action" value="rename" />
                 <Fieldset className="gap-y-0">
                   <InputGroup fullWidth>
                     <Label htmlFor={organizationName.id}>Organization name</Label>
                     <Input
-                      {...getInputProps(organizationName, { type: "text" })}
+                      {...conform.input(organizationName, { type: "text" })}
                       defaultValue={organization.title}
                       placeholder="Your organization name"
                       icon={FolderIcon}
                       autoFocus
                     />
-                    <FormError id={organizationName.errorId}>{organizationName.errors}</FormError>
+                    <FormError id={organizationName.errorId}>{organizationName.error}</FormError>
                   </InputGroup>
                   <FormButtons
                     confirmButton={
@@ -370,7 +370,7 @@ export default function Page() {
               <Header2 spacing>Danger zone</Header2>
               <Form
                 method="post"
-                {...getFormProps(deleteForm)}
+                {...deleteForm.props}
                 className="w-full rounded-sm border border-rose-500/40"
               >
                 <input type="hidden" name="action" value="delete" />
@@ -378,13 +378,13 @@ export default function Page() {
                   <InputGroup>
                     <Label htmlFor={organizationSlug.id}>Delete organization</Label>
                     <Input
-                      {...getInputProps(organizationSlug, { type: "text" })}
+                      {...conform.input(organizationSlug, { type: "text" })}
                       placeholder="Your organization slug"
                       icon={ExclamationTriangleIcon}
                       fullWidth
                     />
-                    <FormError id={organizationSlug.errorId}>{organizationSlug.errors}</FormError>
-                    <FormError>{deleteForm.errors}</FormError>
+                    <FormError id={organizationSlug.errorId}>{organizationSlug.error}</FormError>
+                    <FormError>{deleteForm.error}</FormError>
                     <Hint>
                       This change is irreversible, so please be certain. Type in the Organization
                       slug <InlineCode variant="extra-small">{organization.slug}</InlineCode> and

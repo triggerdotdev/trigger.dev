@@ -6,6 +6,7 @@
  */
 
 // Test main export
+/* eslint-disable import/no-duplicates */
 import {
   task,
   logger,
@@ -21,6 +22,7 @@ import {
 
 // Test /v3 subpath (legacy, but should still work)
 import { task as taskV3 } from "@trigger.dev/sdk/v3";
+/* eslint-enable import/no-duplicates */
 
 // Validate exports are functions/objects
 const checks = [

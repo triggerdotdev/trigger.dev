@@ -276,7 +276,7 @@ function RunsList({
   useShortcutKeys({
     shortcut: { key: "r" },
     disabled: !canReplayRuns,
-    action: (e) => {
+    action: (_e) => {
       replace({
         bulkInspector: RUNS_BULK_INSPECTOR_OPEN_VALUE,
         action: "replay",
@@ -287,7 +287,7 @@ function RunsList({
   useShortcutKeys({
     shortcut: { key: "c" },
     disabled: !canCancelRuns,
-    action: (e) => {
+    action: (_e) => {
       replace({
         bulkInspector: RUNS_BULK_INSPECTOR_OPEN_VALUE,
         action: "cancel",

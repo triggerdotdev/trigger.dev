@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod";
+import { parse } from "@conform-to/zod";
 import { json, type LoaderFunctionArgs } from "@remix-run/node";
 import { type EnvironmentType, prettyPrintPacket } from "@trigger.dev/core/v3";
 import { typedjson } from "remix-typedjson";
@@ -102,7 +102,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     $replica
   );
 
-  let synthetic:
+  let _synthetic:
     | (Awaited<ReturnType<typeof findRunByIdWithMollifierFallback>> & { __synth: true })
     | undefined;
   if (!run) {
@@ -124,7 +124,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       organizationId: entry.orgId,
     });
     if (!buffered) throw new Response("Not Found", { status: 404 });
-    synthetic = Object.assign(buffered, { __synth: true as const });
+    _synthetic = Object.assign(buffered, { __synth: true as const });
     // Scope the project lookup to the buffer entry's org as well as the
     // env id. The prior `orgMember.findFirst` above confirms the user
     // belongs to `entry.orgId`; pinning `organizationId` here means a
@@ -306,10 +306,10 @@ export const action = dashboardAction(
     const { runParam } = params;
 
     const formData = await request.formData();
-    const submission = parseWithZod(formData, { schema: ReplayRunData });
+    const submission = parse(formData, { schema: ReplayRunData });
 
-    if (submission.status !== "success") {
-      return json(submission.reply());
+    if (!submission.value) {
+      return json(submission);
     }
 
     try {

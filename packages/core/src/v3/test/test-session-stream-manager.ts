@@ -1,8 +1,5 @@
-import {
-  InputStreamOncePromise,
-  InputStreamOnceResult,
-  InputStreamTimeoutError,
-} from "../inputStreams/types.js";
+import type { InputStreamOnceResult } from "../inputStreams/types.js";
+import { InputStreamOncePromise, InputStreamTimeoutError } from "../inputStreams/types.js";
 import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 import type { SessionChannelIO, SessionStreamManager } from "../sessionStreams/types.js";
 

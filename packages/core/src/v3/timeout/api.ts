@@ -1,10 +1,10 @@
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
-import { TimeoutManager } from "./types.js";
+import type { TimeoutManager } from "./types.js";
 
 const API_NAME = "timeout";
 
 class NoopTimeoutManager implements TimeoutManager {
-  abortAfterTimeout(timeoutInSeconds?: number): AbortController {
+  abortAfterTimeout(_timeoutInSeconds?: number): AbortController {
     return new AbortController();
   }
 

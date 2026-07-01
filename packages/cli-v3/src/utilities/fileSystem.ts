@@ -1,6 +1,6 @@
 import fsSync from "fs";
 import stringify from "json-stable-stringify";
-import fsModule, { writeFile } from "fs/promises";
+import fsModule from "fs/promises";
 import fs from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import pathModule from "node:path";
@@ -64,7 +64,7 @@ export async function createFileWithStore(
     } catch (linkError) {
       try {
         await fsModule.copyFile(storePath, filePath);
-      } catch (copyError) {
+      } catch (_copyError) {
         throw linkError; // Rethrow original error if copy also fails
       }
     }
@@ -80,7 +80,7 @@ export async function createFileWithStore(
   } catch (linkError) {
     try {
       await fsModule.copyFile(storePath, filePath);
-    } catch (copyError) {
+    } catch (_copyError) {
       throw linkError; // Rethrow original error if copy also fails
     }
   }
@@ -91,7 +91,7 @@ export async function createFileWithStore(
 export function isDirectory(configPath: string) {
   try {
     return fs.statSync(configPath).isDirectory();
-  } catch (error) {
+  } catch (_error) {
     // ignore error
     return false;
   }
@@ -194,7 +194,7 @@ export function readJSONFileSync(path: string) {
 export function safeDeleteFileSync(path: string) {
   try {
     fs.unlinkSync(path);
-  } catch (error) {
+  } catch (_error) {
     // ignore error
   }
 }

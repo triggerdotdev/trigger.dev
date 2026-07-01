@@ -5,7 +5,7 @@ import { z } from "zod";
 import { useState } from "react";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
-import { Paragraph } from "~/components/primitives/Paragraph";
+
 import { prisma } from "~/db.server";
 import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { llmPricingRegistry } from "~/v3/llmPricingRegistry.server";
@@ -166,7 +166,7 @@ export const action = dashboardAction(
 export default function AdminLlmModelDetailRoute() {
   const { model } = useTypedLoaderData<typeof loader>();
   const actionData = useActionData<{ success?: boolean; error?: string; details?: unknown[] }>();
-  const navigate = useNavigate();
+  const _navigate = useNavigate();
 
   const [modelName, setModelName] = useState(model.modelName);
   const [matchPattern, setMatchPattern] = useState(model.matchPattern);

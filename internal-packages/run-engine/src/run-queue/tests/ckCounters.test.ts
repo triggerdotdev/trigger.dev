@@ -5,7 +5,7 @@ import { describe } from "vitest";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
-import { InputPayload } from "../types.js";
+import type { InputPayload } from "../types.js";
 import { Decimal } from "@trigger.dev/database";
 
 // String form of the default counterTtlSeconds (86400). Tracked Lua scripts

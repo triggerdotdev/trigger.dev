@@ -1,12 +1,12 @@
 import { describe, expectTypeOf, it } from "vitest";
-import type { ApiPromise } from "@trigger.dev/core/v3";
+
 import { batch } from "./batch.js";
-import { runs } from "./runs.js";
-import * as envvars from "./envvars.js";
+import type { runs } from "./runs.js";
+import type * as envvars from "./envvars.js";
 import * as schedules from "./schedules/index.js";
 import * as prompts from "./prompts.js";
 import { auth } from "./auth.js";
-import type { Task, AnyTask } from "./shared.js";
+import type { Task } from "./shared.js";
 import { TriggerClient } from "./triggerClient.js";
 
 // Stand-in task type used to verify generic inference flows through the proxy.

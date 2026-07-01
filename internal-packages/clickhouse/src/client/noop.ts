@@ -1,14 +1,14 @@
-import { Result } from "@trigger.dev/core/v3";
+import type { Result } from "@trigger.dev/core/v3";
 import { InsertError, QueryError } from "./errors.js";
-import {
+import type {
   ClickhouseQueryBuilderFastFunction,
   ClickhouseQueryBuilderFunction,
   ClickhouseReader,
   ClickhouseWriter,
   QueryResultWithStats,
 } from "./types.js";
-import { z } from "zod";
-import { ClickHouseSettings, InsertResult } from "@clickhouse/client";
+import type { z } from "zod";
+import type { ClickHouseSettings, InsertResult } from "@clickhouse/client";
 import { ClickhouseQueryBuilder, ClickhouseQueryFastBuilder } from "./queryBuilder.js";
 
 export class NoopClient implements ClickhouseReader, ClickhouseWriter {
@@ -84,13 +84,13 @@ export class NoopClient implements ClickhouseReader, ClickhouseWriter {
     };
   }
 
-  public queryFast<TOut extends Record<string, any>, TParams extends Record<string, any>>(req: {
+  public queryFast<TOut extends Record<string, any>, TParams extends Record<string, any>>(_req: {
     name: string;
     query: string;
     columns: string[];
     settings?: ClickHouseSettings;
   }): (params: TParams) => Promise<Result<TOut[], QueryError>> {
-    return async (params: TParams) => {
+    return async (_params: TParams) => {
       return [null, []];
     };
   }
@@ -98,7 +98,7 @@ export class NoopClient implements ClickhouseReader, ClickhouseWriter {
   public queryFastStream<
     TOut extends Record<string, any>,
     TParams extends Record<string, any>,
-  >(req: {
+  >(_req: {
     name: string;
     query: string;
     columns: string[];
@@ -147,12 +147,12 @@ export class NoopClient implements ClickhouseReader, ClickhouseWriter {
     };
   }
 
-  public insertUnsafe<TRecord extends Record<string, any>>(req: {
+  public insertUnsafe<TRecord extends Record<string, any>>(_req: {
     name: string;
     table: string;
     settings?: ClickHouseSettings;
   }): (events: TRecord | TRecord[]) => Promise<Result<InsertResult, InsertError>> {
-    return async (events: TRecord | TRecord[]) => {
+    return async (_events: TRecord | TRecord[]) => {
       return [
         null,
         {
@@ -174,14 +174,14 @@ export class NoopClient implements ClickhouseReader, ClickhouseWriter {
     };
   }
 
-  public insertCompact<TRecord extends Record<string, any>>(req: {
+  public insertCompact<TRecord extends Record<string, any>>(_req: {
     name: string;
     table: string;
     columns: readonly string[];
     toArray: (record: TRecord) => any[];
     settings?: ClickHouseSettings;
   }): (events: TRecord | TRecord[]) => Promise<Result<InsertResult, InsertError>> {
-    return async (events: TRecord | TRecord[]) => {
+    return async (_events: TRecord | TRecord[]) => {
       return [
         null,
         {
@@ -203,13 +203,13 @@ export class NoopClient implements ClickhouseReader, ClickhouseWriter {
     };
   }
 
-  public insertCompactRaw(req: {
+  public insertCompactRaw(_req: {
     name: string;
     table: string;
     columns: readonly string[];
     settings?: ClickHouseSettings;
   }): (events: readonly any[][] | any[]) => Promise<Result<InsertResult, InsertError>> {
-    return async (events: readonly any[][] | any[]) => {
+    return async (_events: readonly any[][] | any[]) => {
       return [
         null,
         {

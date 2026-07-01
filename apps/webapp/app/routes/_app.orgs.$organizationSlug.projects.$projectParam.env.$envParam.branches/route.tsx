@@ -1,5 +1,5 @@
-import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import { ArrowUpCircleIcon, CheckIcon, EnvelopeIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
@@ -151,10 +151,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
       });
     }
 
-    const submission = parseWithZod(formData, { schema: PurchaseSchema });
+    const submission = parse(formData, { schema: PurchaseSchema });
 
-    if (submission.status !== "success") {
-      return json(submission.reply());
+    if (!submission.value || submission.intent !== "submit") {
+      return json(submission);
     }
 
     const service = new SetBranchesAddOnService();
@@ -168,15 +168,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
 
     if (error) {
-      return json(
-        submission.reply({
-          fieldErrors: { amount: [error instanceof Error ? error.message : "Unknown error"] },
-        })
-      );
+      submission.error.amount = [error instanceof Error ? error.message : "Unknown error"];
+      return json(submission);
     }
 
     if (!result.success) {
-      return json(submission.reply({ fieldErrors: { amount: [result.error] } }));
+      submission.error.amount = [result.error];
+      return json(submission);
     }
 
     return json({ ok: true } as const);
@@ -191,7 +189,7 @@ export default function Page() {
   const {
     branchableEnvironment,
     branches,
-    hasFilters,
+    hasFilters: _hasFilters,
     limits,
     currentPage,
     totalPages,
@@ -622,14 +620,14 @@ function PurchaseBranchesModal({
   const showSelfServe = useShowSelfServe();
   const fetcher = useFetcher();
   const lastSubmission =
-    fetcher.data && typeof fetcher.data === "object" && "status" in fetcher.data
+    fetcher.data && typeof fetcher.data === "object" && "intent" in fetcher.data
       ? fetcher.data
       : undefined;
   const [form, { amount }] = useForm({
     id: "purchase-branches",
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema: PurchaseSchema });
+      return parse(formData, { schema: PurchaseSchema });
     },
     shouldRevalidate: "onSubmit",
   });
@@ -687,7 +685,7 @@ function PurchaseBranchesModal({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>{title}</DialogHeader>
-        <fetcher.Form method="post" {...getFormProps(form)}>
+        <fetcher.Form method="post" {...form.props}>
           <input type="hidden" name="_formType" value="purchase-branches" />
           <div className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-1">
@@ -703,7 +701,7 @@ function PurchaseBranchesModal({
                   Total extra branches
                 </Label>
                 <InputNumberStepper
-                  {...getInputProps(amount, { type: "number" })}
+                  {...conform.input(amount, { type: "number" })}
                   step={branchPricing.stepSize}
                   min={0}
                   max={undefined}
@@ -711,8 +709,10 @@ function PurchaseBranchesModal({
                   onChange={(e) => setAmountValue(Number(e.target.value))}
                   disabled={isLoading}
                 />
-                <FormError id={amount.errorId}>{amount.errors}</FormError>
-                <FormError>{form.errors}</FormError>
+                <FormError id={amount.errorId}>
+                  {amount.error ?? amount.initialError?.[""]?.[0]}
+                </FormError>
+                <FormError>{form.error}</FormError>
               </InputGroup>
             </Fieldset>
             {state === "need_to_archive" ? (

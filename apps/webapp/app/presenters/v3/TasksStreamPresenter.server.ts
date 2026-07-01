@@ -5,7 +5,7 @@ import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { logger } from "~/services/logger.server";
 import { projectPubSub } from "~/v3/services/projectPubSub.server";
 
-type RunWithAttempts = {
+type _RunWithAttempts = {
   updatedAt: Date;
   attempts: {
     status: TaskRunAttempt["status"];
@@ -23,10 +23,10 @@ export class TasksStreamPresenter {
   }
 
   public async call({
-    request,
+    request: _request,
     organizationSlug,
     projectSlug,
-    environmentSlug,
+    environmentSlug: _environmentSlug,
     userId,
   }: {
     request: Request;

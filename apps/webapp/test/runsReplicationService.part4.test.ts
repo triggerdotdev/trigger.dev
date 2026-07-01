@@ -6,7 +6,6 @@ import { TaskRunStatus } from "~/database-types";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
 import { createInMemoryTracing, createInMemoryMetrics } from "./utils/tracing";
 import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
-import superjson from "superjson";
 
 vi.setConfig({ testTimeout: 60_000 });
 

@@ -248,7 +248,7 @@ describe("detectBadJsonStrings", () => {
   });
 });
 
-function processPacket(data: string): { data?: string; dataType?: string } {
+function _processPacket(data: string): { data?: string; dataType?: string } {
   if (detectBadJsonStrings(data)) {
     return { data: undefined };
   }

@@ -1,15 +1,14 @@
 import { describe, expect, test } from "vitest";
 import { ApiError } from "../src/v3/apiClient/errors.js";
 import { ConsoleInterceptor } from "../src/v3/consoleInterceptor.js";
-import {
-  lifecycleHooks,
+import type {
   RetryOptions,
   RunFnParams,
   ServerBackgroundWorker,
   TaskMetadataWithFunctions,
-  TaskRunErrorCodes,
   TaskRunExecution,
 } from "../src/v3/index.js";
+import { lifecycleHooks, TaskRunErrorCodes } from "../src/v3/index.js";
 import { StandardLifecycleHooksManager } from "../src/v3/lifecycleHooks/manager.js";
 import { TracingSDK } from "../src/v3/otel/tracingSDK.js";
 import { TriggerTracer } from "../src/v3/tracer.js";
@@ -46,7 +45,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, params: RunFnParams<any>) => {
           return {
             output: "test-output",
             init: params.init,
@@ -130,7 +129,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, params: RunFnParams<any>) => {
           return {
             output: "test-output",
             init: params.init,
@@ -191,7 +190,7 @@ describe("TaskExecutor", () => {
     // Register two global start hooks
     lifecycleHooks.registerGlobalStartHook({
       id: "global-start-1",
-      fn: async ({ payload, ctx, init }) => {
+      fn: async ({ payload, ctx: _ctx, init }) => {
         console.log("Executing global start hook 1");
         globalStartOrder.push("global-1");
         startPayloads.push(payload);
@@ -201,7 +200,7 @@ describe("TaskExecutor", () => {
 
     lifecycleHooks.registerGlobalStartHook({
       id: "global-start-2",
-      fn: async ({ payload, ctx, init }) => {
+      fn: async ({ payload, ctx: _ctx, init }) => {
         console.log("Executing global start hook 2");
         globalStartOrder.push("global-2");
         startPayloads.push(payload);
@@ -212,7 +211,7 @@ describe("TaskExecutor", () => {
     // Register task-specific start hook
     lifecycleHooks.registerTaskStartHook("test-task", {
       id: "task-start",
-      fn: async ({ payload, ctx, init }) => {
+      fn: async ({ payload, ctx: _ctx, init }) => {
         console.log("Executing task start hook");
         globalStartOrder.push("task");
         startPayloads.push(payload);
@@ -232,7 +231,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, params: RunFnParams<any>) => {
           return {
             output: "test-output",
             init: params.init,
@@ -286,7 +285,7 @@ describe("TaskExecutor", () => {
     // Register two global start hooks
     lifecycleHooks.registerGlobalStartAttemptHook({
       id: "global-start-1",
-      fn: async ({ payload, ctx }) => {
+      fn: async ({ payload, ctx: _ctx }) => {
         console.log("Executing global start hook 1");
         globalStartOrder.push("global-1");
         startPayloads.push(payload);
@@ -295,7 +294,7 @@ describe("TaskExecutor", () => {
 
     lifecycleHooks.registerGlobalStartAttemptHook({
       id: "global-start-2",
-      fn: async ({ payload, ctx }) => {
+      fn: async ({ payload, ctx: _ctx }) => {
         console.log("Executing global start hook 2");
         globalStartOrder.push("global-2");
         startPayloads.push(payload);
@@ -305,7 +304,7 @@ describe("TaskExecutor", () => {
     // Register task-specific start hook
     lifecycleHooks.registerTaskStartAttemptHook("test-task", {
       id: "task-start",
-      fn: async ({ payload, ctx }) => {
+      fn: async ({ payload, ctx: _ctx }) => {
         console.log("Executing task start hook");
         globalStartOrder.push("task");
         startPayloads.push(payload);
@@ -324,7 +323,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, params: RunFnParams<any>) => {
           return {
             output: "test-output",
             init: params.init,
@@ -419,7 +418,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, _params: RunFnParams<any>) => {
           throw expectedError;
         },
       },
@@ -524,7 +523,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, params: RunFnParams<any>) => {
           return {
             output: "test-output",
             init: params.init,
@@ -615,7 +614,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, _params: RunFnParams<any>) => {
           throw expectedError;
         },
       },
@@ -677,7 +676,7 @@ describe("TaskExecutor", () => {
     // Register task-specific catch error hook that doesn't handle the error
     lifecycleHooks.registerTaskCatchErrorHook("test-task", {
       id: "task-catch-error",
-      fn: async ({ payload, error, init, retry }) => {
+      fn: async ({ payload: _payload, error: _error, init: _init, retry: _retry }) => {
         console.log("Executing task catch error hook");
         hookCallOrder.push("task");
         // Return undefined to let it fall through to global handlers
@@ -688,7 +687,7 @@ describe("TaskExecutor", () => {
     // Register first global catch error hook that doesn't handle the error
     lifecycleHooks.registerGlobalCatchErrorHook({
       id: "global-catch-error-1",
-      fn: async ({ payload, error, init, retry }) => {
+      fn: async ({ payload: _payload, error: _error, init: _init, retry: _retry }) => {
         console.log("Executing global catch error hook 1");
         hookCallOrder.push("global-1");
         // Return undefined to let it fall through to next handler
@@ -699,7 +698,7 @@ describe("TaskExecutor", () => {
     // Register second global catch error hook that handles the error
     lifecycleHooks.registerGlobalCatchErrorHook({
       id: "global-catch-error-2",
-      fn: async ({ payload, error, init, retry }) => {
+      fn: async ({ payload: _payload, error: _error, init: _init, retry: _retry }) => {
         console.log("Executing global catch error hook 2");
         hookCallOrder.push("global-2");
         // Return a result to handle the error
@@ -717,7 +716,7 @@ describe("TaskExecutor", () => {
     // Register third global catch error hook that should never be called
     lifecycleHooks.registerGlobalCatchErrorHook({
       id: "global-catch-error-3",
-      fn: async ({ payload, error, init, retry }) => {
+      fn: async ({ payload: _payload, error: _error, init: _init, retry: _retry }) => {
         console.log("Executing global catch error hook 3");
         hookCallOrder.push("global-3");
         return undefined;
@@ -727,7 +726,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, _params: RunFnParams<any>) => {
           throw expectedError;
         },
       },
@@ -766,7 +765,7 @@ describe("TaskExecutor", () => {
     // Register task-specific catch error hook that handles the error
     lifecycleHooks.registerTaskCatchErrorHook("test-task", {
       id: "task-catch-error",
-      fn: async ({ payload, error, init }) => {
+      fn: async ({ payload: _payload, error: _error, init: _init }) => {
         console.log("Executing task catch error hook");
         hookCallOrder.push("task");
         return {
@@ -779,7 +778,7 @@ describe("TaskExecutor", () => {
     // Register global catch error hook that should never be called
     lifecycleHooks.registerGlobalCatchErrorHook({
       id: "global-catch-error",
-      fn: async ({ payload, error, init }) => {
+      fn: async ({ payload: _payload, error: _error, init: _init }) => {
         console.log("Executing global catch error hook");
         hookCallOrder.push("global");
         return undefined;
@@ -789,7 +788,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, _params: RunFnParams<any>) => {
           throw expectedError;
         },
       },
@@ -824,7 +823,7 @@ describe("TaskExecutor", () => {
     // Register task-specific catch error hook that specifies retry timing
     lifecycleHooks.registerTaskCatchErrorHook("test-task", {
       id: "task-catch-error",
-      fn: async ({ payload, error, init }) => {
+      fn: async ({ payload: _payload, error: _error, init: _init }) => {
         console.log("Executing task catch error hook");
         hookCallOrder.push("task");
         return {
@@ -837,7 +836,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, _params: RunFnParams<any>) => {
           throw expectedError;
         },
       },
@@ -877,7 +876,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, _params: RunFnParams<any>) => {
           throw expectedError;
         },
       },
@@ -930,7 +929,7 @@ describe("TaskExecutor", () => {
     // Register global start hook
     lifecycleHooks.registerGlobalStartHook({
       id: "global-start",
-      fn: async ({ payload }) => {
+      fn: async ({ payload: _payload }) => {
         executionOrder.push("start");
       },
     });
@@ -938,7 +937,7 @@ describe("TaskExecutor", () => {
     // Register global success hook
     lifecycleHooks.registerGlobalSuccessHook({
       id: "global-success",
-      fn: async ({ payload, output }) => {
+      fn: async ({ payload: _payload, output: _output }) => {
         executionOrder.push("success");
       },
     });
@@ -946,7 +945,7 @@ describe("TaskExecutor", () => {
     // Register global complete hook
     lifecycleHooks.registerGlobalCompleteHook({
       id: "global-complete",
-      fn: async ({ payload, result }) => {
+      fn: async ({ payload: _payload, result: _result }) => {
         executionOrder.push("complete");
       },
     });
@@ -954,7 +953,7 @@ describe("TaskExecutor", () => {
     // Register task-specific middleware that executes first
     lifecycleHooks.registerTaskMiddlewareHook("test-task", {
       id: "task-middleware",
-      fn: async ({ payload, ctx, next }) => {
+      fn: async ({ payload: _payload, ctx: _ctx, next }) => {
         executionOrder.push("task-middleware-before");
         await next();
         executionOrder.push("task-middleware-after");
@@ -964,7 +963,7 @@ describe("TaskExecutor", () => {
     // Register two global middleware hooks
     lifecycleHooks.registerGlobalMiddlewareHook({
       id: "global-middleware-1",
-      fn: async ({ payload, ctx, next }) => {
+      fn: async ({ payload: _payload, ctx: _ctx, next }) => {
         executionOrder.push("global-middleware-1-before");
         await next();
         executionOrder.push("global-middleware-1-after");
@@ -973,7 +972,7 @@ describe("TaskExecutor", () => {
 
     lifecycleHooks.registerGlobalMiddlewareHook({
       id: "global-middleware-2",
-      fn: async ({ payload, ctx, next }) => {
+      fn: async ({ payload: _payload, ctx: _ctx, next }) => {
         executionOrder.push("global-middleware-2-before");
         await next();
         executionOrder.push("global-middleware-2-after");
@@ -983,7 +982,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, params: RunFnParams<any>) => {
           executionOrder.push("run");
           return {
             output: "test-output",
@@ -1036,7 +1035,7 @@ describe("TaskExecutor", () => {
     // Register global middleware that throws an error
     lifecycleHooks.registerGlobalMiddlewareHook({
       id: "global-middleware",
-      fn: async ({ payload, ctx, next }) => {
+      fn: async ({ payload: _payload, ctx: _ctx, next }) => {
         executionOrder.push("middleware-before");
         throw expectedError;
         // Should never get here
@@ -1050,7 +1049,7 @@ describe("TaskExecutor", () => {
     // Register failure hook to verify it's called
     lifecycleHooks.registerGlobalFailureHook({
       id: "global-failure",
-      fn: async ({ payload, error }) => {
+      fn: async ({ payload: _payload, error: _error }) => {
         executionOrder.push("failure");
       },
     });
@@ -1058,7 +1057,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, _params: RunFnParams<any>) => {
           executionOrder.push("run");
           return {
             output: "test-output",
@@ -1135,7 +1134,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, _params: RunFnParams<any>) => {
           executionOrder.push("run");
           return {
             output: "test-output",
@@ -1192,7 +1191,7 @@ describe("TaskExecutor", () => {
     // Register failure hook to verify it's called
     lifecycleHooks.registerGlobalFailureHook({
       id: "global-failure",
-      fn: async ({ error, init }) => {
+      fn: async ({ error, init: _init }) => {
         executionOrder.push("failure");
         expect(error).toBe(expectedError);
       },
@@ -1201,7 +1200,7 @@ describe("TaskExecutor", () => {
     // Register complete hook to verify it's called with error
     lifecycleHooks.registerGlobalCompleteHook({
       id: "global-complete",
-      fn: async ({ result, init }) => {
+      fn: async ({ result, init: _init }) => {
         executionOrder.push("complete");
         expect(result).toEqual({
           ok: false,
@@ -1213,7 +1212,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, _params: RunFnParams<any>) => {
           executionOrder.push("run");
           return {
             output: "test-output",
@@ -1303,7 +1302,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, _params: RunFnParams<any>) => {
           executionOrder.push("run");
           return {
             output: "test-output",
@@ -1349,7 +1348,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, _params: RunFnParams<any>) => {
           executionOrder.push("run");
           return {
             output: "test-output",
@@ -1455,7 +1454,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, params: RunFnParams<any>) => {
           executionOrder.push("run");
           return {
             output: "test-output",
@@ -1606,7 +1605,7 @@ describe("TaskExecutor", () => {
     // Register global wait hooks
     lifecycleHooks.registerGlobalWaitHook({
       id: "global-wait-1",
-      fn: async ({ payload, wait, init }) => {
+      fn: async ({ payload: _payload, wait, init }) => {
         executionOrder.push("global-wait-1");
         expect(wait).toEqual(waitData);
         expect(init).toEqual({ foo: "bar" });
@@ -1615,7 +1614,7 @@ describe("TaskExecutor", () => {
 
     lifecycleHooks.registerGlobalWaitHook({
       id: "global-wait-2",
-      fn: async ({ payload, wait, init }) => {
+      fn: async ({ payload: _payload, wait, init }) => {
         executionOrder.push("global-wait-2");
         expect(wait).toEqual(waitData);
         expect(init).toEqual({ foo: "bar" });
@@ -1625,7 +1624,7 @@ describe("TaskExecutor", () => {
     // Register task-specific wait hook
     lifecycleHooks.registerTaskWaitHook("test-task", {
       id: "task-wait",
-      fn: async ({ payload, wait, init }) => {
+      fn: async ({ payload: _payload, wait, init }) => {
         executionOrder.push("task-wait");
         expect(wait).toEqual(waitData);
         expect(init).toEqual({ foo: "bar" });
@@ -1635,7 +1634,7 @@ describe("TaskExecutor", () => {
     // Register global resume hooks
     lifecycleHooks.registerGlobalResumeHook({
       id: "global-resume-1",
-      fn: async ({ payload, wait, init }) => {
+      fn: async ({ payload: _payload, wait, init }) => {
         executionOrder.push("global-resume-1");
         expect(wait).toEqual(waitData);
         expect(init).toEqual({ foo: "bar" });
@@ -1644,7 +1643,7 @@ describe("TaskExecutor", () => {
 
     lifecycleHooks.registerGlobalResumeHook({
       id: "global-resume-2",
-      fn: async ({ payload, wait, init }) => {
+      fn: async ({ payload: _payload, wait, init }) => {
         executionOrder.push("global-resume-2");
         expect(wait).toEqual(waitData);
         expect(init).toEqual({ foo: "bar" });
@@ -1654,7 +1653,7 @@ describe("TaskExecutor", () => {
     // Register task-specific resume hook
     lifecycleHooks.registerTaskResumeHook("test-task", {
       id: "task-resume",
-      fn: async ({ payload, wait, init }) => {
+      fn: async ({ payload: _payload, wait, init }) => {
         executionOrder.push("task-resume");
         expect(wait).toEqual(waitData);
         expect(init).toEqual({ foo: "bar" });
@@ -1664,7 +1663,7 @@ describe("TaskExecutor", () => {
     const task = {
       id: "test-task",
       fns: {
-        run: async (payload: any, params: RunFnParams<any>) => {
+        run: async (_payload: any, _params: RunFnParams<any>) => {
           executionOrder.push("run-start");
 
           // Simulate a wait
@@ -1975,7 +1974,7 @@ function executeTask(
     },
   };
 
-  const worker: ServerBackgroundWorker = {
+  const _worker: ServerBackgroundWorker = {
     id: "test-background-worker-id",
     version: "1.0.0",
     contentHash: "test-content-hash",

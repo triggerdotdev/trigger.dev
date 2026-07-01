@@ -5,7 +5,7 @@ const ParamsSchema = z.object({
   projectRef: z.string(),
 });
 
-export async function loader({ params, request }: LoaderFunctionArgs) {
+export async function loader({ params, request: _request }: LoaderFunctionArgs) {
   const validatedParams = ParamsSchema.parse(params);
 
   return redirect(`/projects/${validatedParams.projectRef}`);

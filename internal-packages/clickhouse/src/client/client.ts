@@ -4,12 +4,11 @@ import {
   ClickHouseLogLevel,
   type ClickHouseSettings,
   createClient,
-  type ResultSet,
-  type Row,
   type BaseQueryParams,
   type InsertResult,
 } from "@clickhouse/client";
-import { recordSpanError, Span, startSpan, trace, Tracer } from "@internal/tracing";
+import type { Span, Tracer } from "@internal/tracing";
+import { recordSpanError, startSpan, trace } from "@internal/tracing";
 import { flattenAttributes, tryCatch, type Result } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { InsertError, QueryError } from "./errors.js";

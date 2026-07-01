@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod";
+import { parse } from "@conform-to/zod";
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { $replica } from "~/db.server";
@@ -31,10 +31,10 @@ export const action = dashboardAction(
   },
   async ({ request, user }) => {
     const formData = await request.formData();
-    const submission = parseWithZod(formData, { schema: revokeSchema });
+    const submission = parse(formData, { schema: revokeSchema });
 
-    if (submission.status !== "success") {
-      return json(submission.reply());
+    if (!submission.value || submission.intent !== "submit") {
+      return json(submission);
     }
 
     try {

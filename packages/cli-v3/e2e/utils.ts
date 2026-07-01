@@ -3,12 +3,12 @@ import * as nodePath from "node:path";
 import * as fs from "node:fs";
 import { logger } from "../src/utilities/logger.js";
 import { findUpMultiple, findUp } from "find-up";
-import { TaskRunExecutionResult, WorkerManifest } from "@trigger.dev/core/v3/schemas";
+import type { TaskRunExecutionResult, WorkerManifest } from "@trigger.dev/core/v3/schemas";
 import { TaskRunProcess } from "../src/executions/taskRunProcess.js";
 import { createTestHttpServer } from "@epic-web/test-server/http";
-import { TestCase, TestCaseRun } from "./fixtures.js";
+import type { TestCase, TestCaseRun } from "./fixtures.js";
 import { access } from "node:fs/promises";
-import { MachinePreset } from "@trigger.dev/core/v3";
+import type { MachinePreset } from "@trigger.dev/core/v3";
 
 export type PackageManager = "npm" | "pnpm" | "yarn";
 
@@ -160,7 +160,7 @@ export async function runTsc(
   // Ensure the tsconfig file exists
   try {
     await access(tsconfigPath);
-  } catch (error) {
+  } catch (_error) {
     throw new Error(`TSConfig file not found: ${tsconfigPath}`);
   }
 
@@ -238,7 +238,7 @@ export type ExecuteTaskTraceEvent = {
 
 export async function executeTestCaseRun({
   run,
-  testCase,
+  testCase: _testCase,
   destination,
   workerManifest,
   contentHash,
@@ -269,7 +269,7 @@ export async function executeTestCaseRun({
         // TODO: Implement logs endpoint
         return Response.json({});
       });
-      router.post("/v1/chat/completions", async ({ req }) => {
+      router.post("/v1/chat/completions", async ({ req: _req }) => {
         return Response.json({
           id: "chatcmpl-7XYZ123ABC456DEF789GHI",
           object: "chat.completion",

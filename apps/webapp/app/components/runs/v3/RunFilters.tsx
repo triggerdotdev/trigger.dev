@@ -15,7 +15,7 @@ import { IconRotateClockwise2, IconToggleLeft } from "@tabler/icons-react";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { matchSorter } from "match-sorter";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { BugIcon } from "~/assets/icons/BugIcon";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
@@ -956,7 +956,7 @@ function AppliedBulkActionsFilter({ bulkActions }: Pick<RunFiltersProps, "bulkAc
     return null;
   }
 
-  const action = bulkActions.find((action) => action.id === bulkId);
+  const _action = bulkActions.find((action) => action.id === bulkId);
 
   return (
     <FilterMenuProvider>
@@ -1075,7 +1075,7 @@ function TagsDropdown({
         )}
         <SelectList>
           {filtered.length > 0
-            ? filtered.map((tag, index) => (
+            ? filtered.map((tag, _index) => (
                 <SelectItem key={tag} value={tag}>
                   {tag}
                 </SelectItem>

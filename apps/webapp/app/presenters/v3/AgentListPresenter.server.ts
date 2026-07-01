@@ -28,7 +28,7 @@ export class AgentListPresenter {
 
   public async call({
     organizationId,
-    projectId,
+    projectId: _projectId,
     environmentId,
     environmentType,
     currentWorker: preloadedCurrentWorker,

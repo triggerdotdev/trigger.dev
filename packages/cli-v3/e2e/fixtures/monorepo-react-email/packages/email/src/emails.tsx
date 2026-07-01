@@ -1,7 +1,7 @@
 import { Button, Html } from "@react-email/components";
 import { render } from "@react-email/render";
 
-function ExampleEmail(props: {}) {
+function ExampleEmail(_props: {}) {
   return (
     <Html>
       <Button

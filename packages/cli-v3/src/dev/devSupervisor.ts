@@ -10,26 +10,27 @@ import {
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as awaitTimeout } from "node:timers/promises";
-import {
+import type {
   BuildManifest,
   CreateBackgroundWorkerRequestBody,
   DevConfigResponseBody,
-  SemanticInternalAttributes,
   WorkerManifest,
 } from "@trigger.dev/core/v3";
-import { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { CliApiClient } from "../apiClient.js";
-import { DevCommandOptions } from "../commands/dev.js";
+
+import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
+import type { CliApiClient } from "../apiClient.js";
+import type { DevCommandOptions } from "../commands/dev.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { logger } from "../utilities/logger.js";
 import { resolveSourceFiles } from "../utilities/sourceFiles.js";
 import { BackgroundWorker } from "./backgroundWorker.js";
 import { copySkillFolders } from "../build/bundleSkills.js";
-import { WorkerRuntime } from "./workerRuntime.js";
+import type { WorkerRuntime } from "./workerRuntime.js";
 import { cliLink, prettyError } from "../utilities/cliOutput.js";
 import { DevRunController } from "../entryPoints/dev-run-controller.js";
-import { io, Socket } from "socket.io-client";
-import {
+import type { Socket } from "socket.io-client";
+import { io } from "socket.io-client";
+import type {
   WorkerClientToServerEvents,
   WorkerServerToClientEvents,
 } from "@trigger.dev/core/v3/workers";
@@ -557,10 +558,10 @@ class DevSupervisor implements WorkerRuntime {
               });
             }
           },
-          onSubscribeToRunNotifications: async (run, snapshot) => {
+          onSubscribeToRunNotifications: async (_run, _snapshot) => {
             this.#subscribeToRunNotifications();
           },
-          onUnsubscribeFromRunNotifications: async (run, snapshot) => {
+          onUnsubscribeFromRunNotifications: async (run, _snapshot) => {
             this.#unsubscribeFromRunNotifications(run.friendlyId);
           },
         });
@@ -593,17 +594,17 @@ class DevSupervisor implements WorkerRuntime {
       const eventSource = this.options.client.dev.presenceConnection();
 
       // Regular "ping" messages
-      eventSource.addEventListener("presence", (event: any) => {
+      eventSource.addEventListener("presence", (_event: any) => {
         // logger.debug(`Presence ping received`, { event });
       });
 
       // Connection was lost and successfully reconnected
-      eventSource.addEventListener("reconnect", (event: any) => {
+      eventSource.addEventListener("reconnect", (_event: any) => {
         logger.debug("[DevSupervisor] Presence connection restored");
       });
 
       // Handle messages that might have been missed during disconnection
-      eventSource.addEventListener("missed_events", (event: any) => {
+      eventSource.addEventListener("missed_events", (_event: any) => {
         logger.debug("[DevSupervisor] Missed some presence events during disconnection");
       });
 
@@ -726,7 +727,7 @@ class DevSupervisor implements WorkerRuntime {
       }
     });
 
-    const interval = setInterval(() => {
+    const _interval = setInterval(() => {
       logger.debug("[DevSupervisor] Socket connections", {
         connections: Array.from(this.socketConnections),
       });
@@ -890,7 +891,7 @@ function generateValidationIssueFooter(issue: ValidationIssue) {
 
 function generateValidationIssueMessage(
   issue: ValidationIssue,
-  manifest: WorkerManifest,
+  _manifest: WorkerManifest,
   buildManifest: BuildManifest
 ) {
   switch (issue.type) {

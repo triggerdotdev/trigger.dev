@@ -155,7 +155,7 @@ export function InputNumberStepper({
           }
           onChange?.(e);
         }}
-        onBlur={(e) => {
+        onBlur={(_e) => {
           // If blur is caused by clicking our step buttons, we prevent pointerdown
           // so blur shouldn't fire. This is for safety in case of keyboard focus move.
           if (round) commitRoundedFromInput();

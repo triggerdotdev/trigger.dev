@@ -81,7 +81,7 @@ export function parseNaturalLanguageDuration(duration: string): Date | undefined
 export function safeParseNaturalLanguageDuration(duration: string): Date | undefined {
   try {
     return parseNaturalLanguageDuration(duration);
-  } catch (error) {
+  } catch (_error) {
     return undefined;
   }
 }
@@ -160,7 +160,7 @@ export function parseNaturalLanguageDurationAgo(duration: string): Date | undefi
 export function safeParseNaturalLanguageDurationAgo(duration: string): Date | undefined {
   try {
     return parseNaturalLanguageDurationAgo(duration);
-  } catch (error) {
+  } catch (_error) {
     return undefined;
   }
 }
@@ -180,7 +180,7 @@ export function stringifyDuration(seconds: number): string | undefined {
 
   // Filter the units having non-zero values and join them
   const result: string = Object.entries(units)
-    .filter(([unit, val]) => val != 0)
+    .filter(([_unit, val]) => val != 0)
     .map(([unit, val]) => `${val}${unit}`)
     .join("");
 

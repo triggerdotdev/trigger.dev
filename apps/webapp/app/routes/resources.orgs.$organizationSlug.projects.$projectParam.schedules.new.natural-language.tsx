@@ -1,5 +1,6 @@
 import { useFetcher } from "@remix-run/react";
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";

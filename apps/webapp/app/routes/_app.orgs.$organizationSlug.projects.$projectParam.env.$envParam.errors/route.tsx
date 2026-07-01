@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod";
+import { parse } from "@conform-to/zod";
 import { Outlet, useNavigate } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { useCallback } from "react";
@@ -79,10 +79,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const formData = await request.formData();
-  const submission = parseWithZod(formData, { schema: ErrorAlertsFormSchema });
+  const submission = parse(formData, { schema: ErrorAlertsFormSchema });
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
+  if (!submission.value) {
+    return json(submission);
   }
 
   const { emails, webhooks, slackChannel, slackIntegrationId } = submission.value;

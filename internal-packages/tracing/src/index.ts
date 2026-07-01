@@ -1,9 +1,17 @@
 import {
-  Meter,
+  SpanStatusCode,
+  trace,
+  context,
+  propagation,
+  SpanKind,
+  metrics,
+  ValueType,
+  ROOT_CONTEXT,
+  type Meter,
   type Span,
   type SpanOptions,
-  SpanStatusCode,
   type Tracer,
+  type Context,
 } from "@opentelemetry/api";
 import { type Logger, SeverityNumber } from "@opentelemetry/api-logs";
 import { flattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes";
@@ -25,16 +33,6 @@ export type {
   ObservableResult,
 } from "@opentelemetry/api";
 
-import {
-  trace,
-  context,
-  propagation,
-  SpanKind,
-  metrics,
-  ValueType,
-  ROOT_CONTEXT,
-} from "@opentelemetry/api";
-import type { Context } from "@opentelemetry/api";
 export {
   trace,
   context,

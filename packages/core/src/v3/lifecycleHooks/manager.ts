@@ -1,4 +1,4 @@
-import {
+import type {
   AnyOnInitHookFunction,
   AnyOnStartHookFunction,
   LifecycleHooksManager,
@@ -489,7 +489,7 @@ export class StandardLifecycleHooksManager implements LifecycleHooksManager {
 }
 
 export class NoopLifecycleHooksManager implements LifecycleHooksManager {
-  registerOnCancelHookListener(listener: () => Promise<void>): void {
+  registerOnCancelHookListener(_listener: () => Promise<void>): void {
     // Noop
   }
 
@@ -497,16 +497,16 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
     // Noop
   }
 
-  registerGlobalCancelHook(hook: RegisterHookFunctionParams<AnyOnCancelHookFunction>): void {}
+  registerGlobalCancelHook(_hook: RegisterHookFunctionParams<AnyOnCancelHookFunction>): void {}
 
   registerTaskCancelHook(
-    taskId: string,
-    hook: RegisterHookFunctionParams<AnyOnCancelHookFunction>
+    _taskId: string,
+    _hook: RegisterHookFunctionParams<AnyOnCancelHookFunction>
   ): void {
     // Noop
   }
 
-  getTaskCancelHook(taskId: string): AnyOnCancelHookFunction | undefined {
+  getTaskCancelHook(_taskId: string): AnyOnCancelHookFunction | undefined {
     return undefined;
   }
 
@@ -514,34 +514,34 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
     return [];
   }
 
-  registerOnWaitHookListener(listener: (wait: TaskWait) => Promise<void>): void {
+  registerOnWaitHookListener(_listener: (wait: TaskWait) => Promise<void>): void {
     // Noop
   }
 
-  async callOnWaitHookListeners(wait: TaskWait): Promise<void> {
+  async callOnWaitHookListeners(_wait: TaskWait): Promise<void> {
     // Noop
   }
 
-  registerOnResumeHookListener(listener: (wait: TaskWait) => Promise<void>): void {
+  registerOnResumeHookListener(_listener: (wait: TaskWait) => Promise<void>): void {
     // Noop
   }
 
-  async callOnResumeHookListeners(wait: TaskWait): Promise<void> {
+  async callOnResumeHookListeners(_wait: TaskWait): Promise<void> {
     // Noop
   }
 
-  registerGlobalInitHook(hook: RegisterHookFunctionParams<AnyOnInitHookFunction>): void {
+  registerGlobalInitHook(_hook: RegisterHookFunctionParams<AnyOnInitHookFunction>): void {
     // Noop
   }
 
   registerTaskInitHook(
-    taskId: string,
-    hook: RegisterHookFunctionParams<AnyOnInitHookFunction>
+    _taskId: string,
+    _hook: RegisterHookFunctionParams<AnyOnInitHookFunction>
   ): void {
     // Noop
   }
 
-  getTaskInitHook(taskId: string): AnyOnInitHookFunction | undefined {
+  getTaskInitHook(_taskId: string): AnyOnInitHookFunction | undefined {
     return undefined;
   }
 
@@ -549,18 +549,18 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
     return [];
   }
 
-  registerGlobalStartHook(hook: RegisterHookFunctionParams<AnyOnStartHookFunction>): void {
+  registerGlobalStartHook(_hook: RegisterHookFunctionParams<AnyOnStartHookFunction>): void {
     // Noop
   }
 
   registerTaskStartHook(
-    taskId: string,
-    hook: RegisterHookFunctionParams<AnyOnStartHookFunction>
+    _taskId: string,
+    _hook: RegisterHookFunctionParams<AnyOnStartHookFunction>
   ): void {
     // Noop
   }
 
-  getTaskStartHook(taskId: string): AnyOnStartHookFunction | undefined {
+  getTaskStartHook(_taskId: string): AnyOnStartHookFunction | undefined {
     return undefined;
   }
 
@@ -584,18 +584,18 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
     return [];
   }
 
-  registerGlobalFailureHook(hook: RegisterHookFunctionParams<AnyOnFailureHookFunction>): void {
+  registerGlobalFailureHook(_hook: RegisterHookFunctionParams<AnyOnFailureHookFunction>): void {
     // Noop
   }
 
   registerTaskFailureHook(
-    taskId: string,
-    hook: RegisterHookFunctionParams<AnyOnFailureHookFunction>
+    _taskId: string,
+    _hook: RegisterHookFunctionParams<AnyOnFailureHookFunction>
   ): void {
     // Noop
   }
 
-  getTaskFailureHook(taskId: string): AnyOnFailureHookFunction | undefined {
+  getTaskFailureHook(_taskId: string): AnyOnFailureHookFunction | undefined {
     return undefined;
   }
 
@@ -603,18 +603,18 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
     return [];
   }
 
-  registerGlobalSuccessHook(hook: RegisterHookFunctionParams<AnyOnSuccessHookFunction>): void {
+  registerGlobalSuccessHook(_hook: RegisterHookFunctionParams<AnyOnSuccessHookFunction>): void {
     // Noop
   }
 
   registerTaskSuccessHook(
-    taskId: string,
-    hook: RegisterHookFunctionParams<AnyOnSuccessHookFunction>
+    _taskId: string,
+    _hook: RegisterHookFunctionParams<AnyOnSuccessHookFunction>
   ): void {
     // Noop
   }
 
-  getTaskSuccessHook(taskId: string): AnyOnSuccessHookFunction | undefined {
+  getTaskSuccessHook(_taskId: string): AnyOnSuccessHookFunction | undefined {
     return undefined;
   }
 
@@ -622,18 +622,18 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
     return [];
   }
 
-  registerGlobalCompleteHook(hook: RegisterHookFunctionParams<AnyOnCompleteHookFunction>): void {
+  registerGlobalCompleteHook(_hook: RegisterHookFunctionParams<AnyOnCompleteHookFunction>): void {
     // Noop
   }
 
   registerTaskCompleteHook(
-    taskId: string,
-    hook: RegisterHookFunctionParams<AnyOnCompleteHookFunction>
+    _taskId: string,
+    _hook: RegisterHookFunctionParams<AnyOnCompleteHookFunction>
   ): void {
     // Noop
   }
 
-  getTaskCompleteHook(taskId: string): AnyOnCompleteHookFunction | undefined {
+  getTaskCompleteHook(_taskId: string): AnyOnCompleteHookFunction | undefined {
     return undefined;
   }
 
@@ -641,18 +641,18 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
     return [];
   }
 
-  registerGlobalWaitHook(hook: RegisterHookFunctionParams<AnyOnWaitHookFunction>): void {
+  registerGlobalWaitHook(_hook: RegisterHookFunctionParams<AnyOnWaitHookFunction>): void {
     // Noop
   }
 
   registerTaskWaitHook(
-    taskId: string,
-    hook: RegisterHookFunctionParams<AnyOnWaitHookFunction>
+    _taskId: string,
+    _hook: RegisterHookFunctionParams<AnyOnWaitHookFunction>
   ): void {
     // Noop
   }
 
-  getTaskWaitHook(taskId: string): AnyOnWaitHookFunction | undefined {
+  getTaskWaitHook(_taskId: string): AnyOnWaitHookFunction | undefined {
     return undefined;
   }
 
@@ -660,18 +660,18 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
     return [];
   }
 
-  registerGlobalResumeHook(hook: RegisterHookFunctionParams<AnyOnResumeHookFunction>): void {
+  registerGlobalResumeHook(_hook: RegisterHookFunctionParams<AnyOnResumeHookFunction>): void {
     // Noop
   }
 
   registerTaskResumeHook(
-    taskId: string,
-    hook: RegisterHookFunctionParams<AnyOnResumeHookFunction>
+    _taskId: string,
+    _hook: RegisterHookFunctionParams<AnyOnResumeHookFunction>
   ): void {
     // Noop
   }
 
-  getTaskResumeHook(taskId: string): AnyOnResumeHookFunction | undefined {
+  getTaskResumeHook(_taskId: string): AnyOnResumeHookFunction | undefined {
     return undefined;
   }
 
@@ -711,18 +711,18 @@ export class NoopLifecycleHooksManager implements LifecycleHooksManager {
     return [];
   }
 
-  registerGlobalCleanupHook(hook: RegisterHookFunctionParams<AnyOnCleanupHookFunction>): void {
+  registerGlobalCleanupHook(_hook: RegisterHookFunctionParams<AnyOnCleanupHookFunction>): void {
     // Noop
   }
 
   registerTaskCleanupHook(
-    taskId: string,
-    hook: RegisterHookFunctionParams<AnyOnCleanupHookFunction>
+    _taskId: string,
+    _hook: RegisterHookFunctionParams<AnyOnCleanupHookFunction>
   ): void {
     // Noop
   }
 
-  getTaskCleanupHook(taskId: string): AnyOnCleanupHookFunction | undefined {
+  getTaskCleanupHook(_taskId: string): AnyOnCleanupHookFunction | undefined {
     return undefined;
   }
 

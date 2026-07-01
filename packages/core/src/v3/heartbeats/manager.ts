@@ -1,6 +1,6 @@
 import { tryCatch } from "../tryCatch.js";
-import { HeartbeatsManager } from "./types.js";
-import { setInterval, setImmediate, setTimeout } from "node:timers/promises";
+import type { HeartbeatsManager } from "./types.js";
+import { setInterval, setTimeout } from "node:timers/promises";
 
 export class StandardHeartbeatsManager implements HeartbeatsManager {
   private listener: ((id: string) => Promise<void>) | undefined = undefined;
@@ -34,7 +34,7 @@ export class StandardHeartbeatsManager implements HeartbeatsManager {
     this.lastHeartbeatYieldTime = Date.now();
 
     // Ignore errors as we expect them to be thrown when the heartbeat is stopped
-    this.startHeartbeatLoop(id, this.currentAbortController.signal).catch((error) => {});
+    this.startHeartbeatLoop(id, this.currentAbortController.signal).catch((_error) => {});
   }
 
   private async startHeartbeatLoop(id: string, signal: AbortSignal) {
@@ -51,7 +51,7 @@ export class StandardHeartbeatsManager implements HeartbeatsManager {
           }
         }
       }
-    } catch (error) {
+    } catch (_error) {
       // Ignore errors as we expect them to be thrown when the heartbeat is stopped
       // And since we tryCatch inside the loop, we don't need to handle any other errors here
     }

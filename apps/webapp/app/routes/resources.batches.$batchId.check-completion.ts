@@ -1,5 +1,6 @@
-import { parseWithZod } from "@conform-to/zod";
-import { ActionFunction, json } from "@remix-run/node";
+import { parse } from "@conform-to/zod";
+import type { ActionFunction } from "@remix-run/node";
+import { json } from "@remix-run/node";
 import { assertExhaustive } from "@trigger.dev/core/utils";
 import { z } from "zod";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
@@ -18,10 +19,10 @@ export const action: ActionFunction = async ({ request, params }) => {
   const { batchId } = ParamSchema.parse(params);
 
   const formData = await request.formData();
-  const submission = parseWithZod(formData, { schema: checkCompletionSchema });
+  const submission = parse(formData, { schema: checkCompletionSchema });
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
+  if (!submission.value) {
+    return json(submission);
   }
 
   try {

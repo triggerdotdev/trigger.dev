@@ -1,4 +1,4 @@
-import { EventBusEventArgs } from "@internal/run-engine";
+import type { EventBusEventArgs } from "@internal/run-engine";
 import { createAdapter } from "@socket.io/redis-adapter";
 import {
   ClientToSharedQueueMessages,
@@ -17,7 +17,8 @@ import type {
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
 import { defaultReconnectOnError } from "@internal/redis";
 import { Redis } from "ioredis";
-import { Namespace, Server, Socket } from "socket.io";
+import type { Namespace, Socket } from "socket.io";
+import { Server } from "socket.io";
 import { env } from "~/env.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import { authenticateApiRequestWithFailure } from "~/services/apiAuth.server";
@@ -337,7 +338,7 @@ function createCoordinatorNamespace(io: Server) {
         }
       },
     },
-    onConnection: async (socket, handler, sender, logger) => {
+    onConnection: async (socket, _handler, _sender, _logger) => {
       if (socket.data.supportsDynamicConfig) {
         socket.emit("DYNAMIC_CONFIG", {
           version: "v1",
@@ -426,7 +427,7 @@ function createSharedQueueConsumerNamespace(io: Server) {
     authToken: env.PROVIDER_SECRET,
     clientMessages: ClientToSharedQueueMessages,
     serverMessages: SharedQueueToClientMessages,
-    onConnection: async (socket, handler, sender, logger) => {
+    onConnection: async (socket, _handler, _sender, logger) => {
       // v3 (engine V1) shutdown: don't start the MarQS shared-queue consumer, so no
       // deployed V1 runs are dequeued. This namespace is V1-only; v4 dequeues through
       // the run-engine worker path. This is the code-level equivalent of taking the

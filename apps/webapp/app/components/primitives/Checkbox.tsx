@@ -72,7 +72,7 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
       name,
       value,
       variant = "simple",
-      type,
+      type: _type,
       label,
       description,
       defaultChecked,
@@ -118,7 +118,7 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
           (isDisabled || props.readOnly) && isDisabledClassName,
           className
         )}
-        onClick={(e) => {
+        onClick={(_e) => {
           //returning false is not setting the state to false, it stops the event from bubbling up
           if (isDisabled || props.readOnly === true) return false;
           setIsChecked((c) => !c);
@@ -130,7 +130,7 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
           type="checkbox"
           value={value}
           checked={isChecked}
-          onChange={(e) => {
+          onChange={(_e) => {
             //returning false is not setting the state to false, it stops the event from bubbling up
             if (isDisabled || props.readOnly === true) return false;
             setIsChecked(!isChecked);
@@ -179,7 +179,7 @@ export const CheckboxWithLabel = React.forwardRef<HTMLInputElement, CheckboxProp
 type SimpleCheckboxProps = Omit<React.ComponentProps<"input">, "type">;
 
 export const Checkbox = forwardRef<HTMLInputElement, SimpleCheckboxProps>(
-  ({ className, ...props }: SimpleCheckboxProps, ref) => {
+  ({ className: _className, ...props }: SimpleCheckboxProps, ref) => {
     return (
       <input
         type="checkbox"

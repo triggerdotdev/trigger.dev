@@ -7,9 +7,8 @@ import {
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { EVENT_STORE_TYPES, getConfiguredEventRepository } from "~/v3/eventRepository/index.server";
 
-import parseDuration from "parse-duration";
 import { type Direction } from "~/components/ListPagination";
-import { timeFilterFromTo, timeFilters } from "~/components/runs/v3/SharedFilters";
+import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getTaskIdentifiers } from "~/models/task.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";

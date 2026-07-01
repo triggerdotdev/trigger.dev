@@ -458,7 +458,7 @@ export default function AdminNotificationsRoute() {
             ) : (
               notifications.map((n) => {
                 const status = getNotificationStatus(n);
-                const isActive = status === "active";
+                const _isActive = status === "active";
                 return (
                   <TableRow key={n.id} className="group/row">
                     <TableCell>

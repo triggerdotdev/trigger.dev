@@ -1,5 +1,5 @@
-import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { conform, list, requestIntent, useFieldList, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import {
   ArrowUpCircleIcon,
   EnvelopeIcon,
@@ -176,10 +176,10 @@ export const action = dashboardAction(
     const { organizationSlug } = params;
 
     const formData = await request.formData();
-    const submission = parseWithZod(formData, { schema });
+    const submission = parse(formData, { schema });
 
-    if (submission.status !== "success") {
-      return json(submission.reply());
+    if (!submission.value || submission.intent !== "submit") {
+      return json(submission);
     }
 
     // Resolve the RBAC role choice. NO_RBAC_ROLE / undefined / unknown
@@ -287,21 +287,20 @@ export default function Page() {
   const defaultRoleId = showRolePicker ? offerable[offerable.length - 1].id : NO_RBAC_ROLE;
   const [selectedRoleId, setSelectedRoleId] = useState(defaultRoleId);
 
-  const [form, fields] = useForm<z.infer<typeof schema>>({
+  const [form, { emails }] = useForm({
     id: "invite-members",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema });
+      return parse(formData, { schema });
     },
     defaultValue: {
       emails: [""],
     },
   });
-  const { emails } = fields;
 
   const fieldValues = useRef<string[]>([""]);
-  const emailFields = emails.getFieldList();
+  const emailFields = useFieldList(form.ref, emails);
 
   return (
     <MainCenteredContainer className="max-w-[26rem] rounded-lg border border-grid-bright bg-background-dimmed p-5 shadow-lg">
@@ -360,14 +359,14 @@ export default function Page() {
               </Paragraph>
             </InfoPanel>
           ))}
-        <Form method="post" {...getFormProps(form)}>
+        <Form method="post" {...form.props}>
           <Fieldset>
             <InputGroup>
               <Label htmlFor={emails.id}>Email addresses</Label>
               {emailFields.map((email, index) => (
                 <Fragment key={email.key}>
                   <Input
-                    {...getInputProps(email, { type: "email" })}
+                    {...conform.input(email, { type: "email" })}
                     placeholder={index === 0 ? "Enter an email address" : "Add another email"}
                     icon={EnvelopeIcon}
                     autoFocus={index === 0}
@@ -379,11 +378,11 @@ export default function Page() {
                         emailFields.length === fieldValues.current.length &&
                         fieldValues.current.every((v) => v !== "")
                       ) {
-                        form.insert({ name: emails.name });
+                        requestIntent(form.ref.current ?? undefined, list.append(emails.name));
                       }
                     }}
                   />
-                  <FormError id={email.errorId}>{email.errors}</FormError>
+                  <FormError id={email.errorId}>{email.error}</FormError>
                 </Fragment>
               ))}
             </InputGroup>

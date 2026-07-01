@@ -1,28 +1,30 @@
-import {
+import type {
   CompleteRunAttemptResult,
   DequeuedMessage,
-  IntervalService,
-  isManualOutOfMemoryError,
-  isOOMRunError,
   LogLevel,
   RunExecutionData,
-  SuspendedProcessError,
   TaskRunExecution,
   TaskRunExecutionMetrics,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
 } from "@trigger.dev/core/v3";
+import {
+  IntervalService,
+  isManualOutOfMemoryError,
+  isOOMRunError,
+  SuspendedProcessError,
+} from "@trigger.dev/core/v3";
 import { type WorkloadRunAttemptStartResponseBody } from "@trigger.dev/core/v3/workers";
 import { setTimeout as sleep } from "timers/promises";
-import { CliApiClient } from "../apiClient.js";
+import type { CliApiClient } from "../apiClient.js";
 import { TaskRunProcess } from "../executions/taskRunProcess.js";
 import { assertExhaustive } from "../utilities/assertExhaustive.js";
 import { logger } from "../utilities/logger.js";
 import { sanitizeEnvVars } from "../utilities/sanitizeEnvVars.js";
 import { join } from "node:path";
-import { BackgroundWorker } from "../dev/backgroundWorker.js";
+import type { BackgroundWorker } from "../dev/backgroundWorker.js";
 import { eventBus } from "../utilities/eventBus.js";
-import { TaskRunProcessPool } from "../dev/taskRunProcessPool.js";
+import type { TaskRunProcessPool } from "../dev/taskRunProcessPool.js";
 
 type DevRunControllerOptions = {
   runFriendlyId: string;
@@ -464,7 +466,7 @@ export class DevRunController {
     runFriendlyId,
     snapshotFriendlyId,
     dequeuedAt,
-    isWarmStart = false,
+    isWarmStart: _isWarmStart = false,
   }: {
     runFriendlyId: string;
     snapshotFriendlyId: string;
@@ -583,7 +585,7 @@ export class DevRunController {
 
   private async executeRun({
     run,
-    snapshot,
+    snapshot: _snapshot,
     execution,
     envVars,
     metrics,
@@ -631,7 +633,7 @@ export class DevRunController {
 
     taskRunProcess.unsafeDetachEvtHandlers();
 
-    taskRunProcess.onTaskRunHeartbeat.attach(async (runId) => {
+    taskRunProcess.onTaskRunHeartbeat.attach(async (_runId) => {
       if (!this.runFriendlyId || !this.snapshotFriendlyId) {
         logger.debug("[DevRunController] Skipping heartbeat, no run ID or snapshot ID");
         return;

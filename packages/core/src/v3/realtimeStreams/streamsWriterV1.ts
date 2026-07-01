@@ -2,7 +2,7 @@ import { request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";
 import { URL } from "node:url";
 import { randomBytes } from "node:crypto";
-import { StreamsWriter, StreamWriteResult } from "./types.js";
+import type { StreamsWriter, StreamWriteResult } from "./types.js";
 
 export type StreamsWriterV1Options<T> = {
   baseUrl: string;
@@ -108,8 +108,8 @@ export class StreamsWriterV1<T> implements StreamsWriter {
       });
 
       req.on("error", async (error) => {
-        const errorCode = "code" in error ? error.code : undefined;
-        const errorMsg = error instanceof Error ? error.message : String(error);
+        const _errorCode = "code" in error ? error.code : undefined;
+        const _errorMsg = error instanceof Error ? error.message : String(error);
 
         // Check if this is a retryable connection error
         if (this.isRetryableError(error)) {
@@ -354,7 +354,7 @@ export class StreamsWriterV1<T> implements StreamsWriter {
   }
 
   private async queryServerLastChunkIndex(attempt: number = 0): Promise<number> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, _reject) => {
       const url = new URL(this.buildUrl());
       const maxHeadRetries = 3; // Separate retry limit for HEAD requests
 
@@ -466,5 +466,5 @@ async function* streamToAsyncIterator<T>(stream: ReadableStream<T>): AsyncIterab
 function safeReleaseLock(reader: ReadableStreamDefaultReader<any>) {
   try {
     reader.releaseLock();
-  } catch (error) {}
+  } catch (_error) {}
 }

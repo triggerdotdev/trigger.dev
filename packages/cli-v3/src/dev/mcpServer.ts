@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { z } from "zod";
 import { logger } from "../utilities/logger.js";
-import { CliApiClient } from "../apiClient.js";
+import type { CliApiClient } from "../apiClient.js";
 import { ApiClient, RunStatus } from "@trigger.dev/core/v3";
 import { eventBus } from "../utilities/eventBus.js";
 

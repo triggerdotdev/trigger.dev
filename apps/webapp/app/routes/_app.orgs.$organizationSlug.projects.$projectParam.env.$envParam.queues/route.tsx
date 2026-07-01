@@ -2,13 +2,12 @@ import {
   AdjustmentsHorizontalIcon,
   ArrowUpCircleIcon,
   BookOpenIcon,
-  ChatBubbleLeftEllipsisIcon,
   PauseIcon,
   PlayIcon,
   RectangleStackIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useNavigation, useSearchParams, type MetaFunction } from "@remix-run/react";
+import { Form, useNavigation, type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import type { QueueItem } from "@trigger.dev/core/v3/schemas";
@@ -16,12 +15,12 @@ import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
-import { TaskIconSmall } from "~/assets/icons/TaskIcon";
+
 import upgradeForQueuesPath from "~/assets/images/queues-dashboard.png";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { QueuesHasNoTasks } from "~/components/BlankStatePanels";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
-import { Feedback } from "~/components/Feedback";
+
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Badge } from "~/components/primitives/Badge";

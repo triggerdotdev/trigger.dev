@@ -57,7 +57,7 @@ const { action, loader } = createActionApiRoute(
       },
     },
   },
-  async ({ authentication, params, body, resource: session }) => {
+  async ({ authentication, params: _params, body, resource: session }) => {
     if (!session) {
       // Unreachable — `findResource` 404s before this runs. Type narrow.
       return json({ error: "Session not found" }, { status: 404 });

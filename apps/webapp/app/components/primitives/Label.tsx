@@ -1,6 +1,6 @@
 import * as React from "react";
 import { cn } from "~/utils/cn";
-import { InfoIconTooltip, SimpleTooltip } from "./Tooltip";
+import { InfoIconTooltip } from "./Tooltip";
 
 const variants = {
   small: {

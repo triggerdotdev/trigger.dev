@@ -200,7 +200,7 @@ export async function findEnvironmentByApiKey(
  */
 export async function findEnvironmentByPublicApiKey(
   apiKey: string,
-  branchName: string | undefined
+  _branchName: string | undefined
 ): Promise<AuthenticatedEnvironment | null> {
   const environment = await $replica.runtimeEnvironment.findFirst({
     where: {

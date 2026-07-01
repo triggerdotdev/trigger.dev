@@ -100,7 +100,11 @@ export function HasNoTasksDev() {
   );
 }
 
-export function HasNoTasksDeployed({ environment }: { environment: MinimumEnvironment }) {
+export function HasNoTasksDeployed({
+  environment: _environment,
+}: {
+  environment: MinimumEnvironment;
+}) {
   return <DeploymentOnboardingSteps />;
 }
 

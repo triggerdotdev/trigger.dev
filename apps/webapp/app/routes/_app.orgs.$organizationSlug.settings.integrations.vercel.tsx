@@ -5,7 +5,7 @@ import { Form, useActionData, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Button } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import {
   Dialog,
   DialogContent,
@@ -32,11 +32,9 @@ import { $transaction, prisma } from "~/db.server";
 import { requireOrganization } from "~/services/org.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
-import { OrganizationParamsSchema } from "~/utils/pathBuilder";
+import { OrganizationParamsSchema, v3ProjectSettingsIntegrationsPath } from "~/utils/pathBuilder";
 import { logger } from "~/services/logger.server";
 import { TrashIcon } from "@heroicons/react/20/solid";
-import { v3ProjectSettingsIntegrationsPath } from "~/utils/pathBuilder";
-import { LinkButton } from "~/components/primitives/Buttons";
 
 function formatDate(date: Date): string {
   return new Intl.DateTimeFormat("en-US", {

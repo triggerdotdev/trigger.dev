@@ -1,7 +1,8 @@
 // app/realtime/S2RealtimeStreams.ts
 import type { UnkeyCache } from "@internal/cache";
-import { StreamIngestor, StreamRecord, StreamResponder, StreamResponseOptions } from "./types";
-import { Logger, LogLevel } from "@trigger.dev/core/logger";
+import type { StreamIngestor, StreamRecord, StreamResponder, StreamResponseOptions } from "./types";
+import type { LogLevel } from "@trigger.dev/core/logger";
+import { Logger } from "@trigger.dev/core/logger";
 import { headerValue } from "@trigger.dev/core/v3";
 import { randomUUID } from "node:crypto";
 import { ServiceValidationError } from "~/v3/services/common.server";
@@ -183,11 +184,11 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   }
 
   ingestData(
-    stream: ReadableStream<Uint8Array>,
-    runId: string,
-    streamId: string,
-    clientId: string,
-    resumeFromChunk?: number
+    _stream: ReadableStream<Uint8Array>,
+    _runId: string,
+    _streamId: string,
+    _clientId: string,
+    _resumeFromChunk?: number
   ): Promise<Response> {
     throw new Error("S2 streams are written to S2 via the client, not from the server");
   }
@@ -224,7 +225,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
     this.logger.debug(`S2 append result`, { result });
   }
 
-  getLastChunkIndex(runId: string, streamId: string, clientId: string): Promise<number> {
+  getLastChunkIndex(_runId: string, _streamId: string, _clientId: string): Promise<number> {
     throw new Error("S2 streams are written to S2 via the client, not from the server");
   }
 
@@ -350,7 +351,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
   // ---------- Serve SSE from S2 ----------
 
   async streamResponse(
-    request: Request,
+    _request: Request,
     runId: string,
     streamId: string,
     signal: AbortSignal,
@@ -382,7 +383,7 @@ export class S2RealtimeStreams implements StreamResponder, StreamIngestor {
    * here and behaves like today (client sees wait=60 close, retries).
    */
   async streamResponseFromSessionStream(
-    request: Request,
+    _request: Request,
     friendlyId: string,
     io: "out" | "in",
     signal: AbortSignal,

@@ -14,7 +14,7 @@ describe.skipIf(!process.env.K8S_INTEGRATION_TESTS)("PodCleaner Integration Test
     // Create the test namespace, only if it doesn't exist
     try {
       await k8s.core.readNamespace({ name: namespace });
-    } catch (error) {
+    } catch (_error) {
       await k8s.core.createNamespace({
         body: {
           metadata: {
@@ -325,7 +325,7 @@ async function waitForPodDeletion({
         name: podName,
       });
       await setTimeout(waitMs);
-    } catch (error) {
+    } catch (_error) {
       // Pod was deleted
       return;
     }

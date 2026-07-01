@@ -2,7 +2,6 @@ import { RunsRepository } from "~/services/runsRepository/runsRepository.server"
 import { BasePresenter } from "./basePresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { type PrismaClient } from "@trigger.dev/database";
-import { timeFilters } from "~/components/runs/v3/SharedFilters";
 
 export type TagListOptions = {
   organizationId: string;

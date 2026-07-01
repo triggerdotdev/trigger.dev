@@ -719,7 +719,7 @@ function BlankState({
   const colSpan = showRegion ? 16 : 15;
   if (isLoading) return <TableBlankRow colSpan={colSpan}></TableBlankRow>;
 
-  const { tasks, from, to, ...otherFilters } = filters;
+  const { tasks: _tasks, from: _from, to: _to, ...otherFilters } = filters;
   const singleTaskFromFilters = filters.tasks.length === 1 ? filters.tasks[0] : null;
   const testPath = singleTaskFromFilters
     ? v3TestTaskPath(organization, project, environment, { taskIdentifier: singleTaskFromFilters })

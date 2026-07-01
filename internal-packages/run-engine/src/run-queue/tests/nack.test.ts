@@ -4,7 +4,7 @@ import { describe } from "node:test";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
-import { InputPayload } from "../types.js";
+import type { InputPayload } from "../types.js";
 import { setTimeout } from "node:timers/promises";
 import { Decimal } from "@trigger.dev/database";
 
@@ -261,7 +261,7 @@ describe("RunQueue.nackMessage", () => {
         });
 
         // Check the score of the message in the queue
-        const queueKey = queue.keys.queueKey(authenticatedEnvDev, messageDev.queue);
+        const _queueKey = queue.keys.queueKey(authenticatedEnvDev, messageDev.queue);
         const score = await queue.oldestMessageInQueue(authenticatedEnvDev, messageDev.queue);
         expect(typeof score).toBe("number");
         if (typeof score !== "number") {

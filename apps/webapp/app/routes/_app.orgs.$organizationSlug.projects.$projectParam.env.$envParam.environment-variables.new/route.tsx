@@ -1,11 +1,12 @@
 import {
-  type FieldMetadata,
-  type FormMetadata,
-  getFormProps,
-  getInputProps,
+  type FieldConfig,
+  list,
+  requestIntent,
+  useFieldList,
+  useFieldset,
   useForm,
 } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { parse } from "@conform-to/zod";
 import {
   LockClosedIcon,
   LockOpenIcon,
@@ -16,7 +17,7 @@ import {
 import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import dotenv from "dotenv";
-import { useCallback, useState } from "react";
+import { type RefObject, useCallback, useRef, useState } from "react";
 import { redirect } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
@@ -123,10 +124,10 @@ export const action = dashboardAction(
     }
 
     const formData = await request.formData();
-    const submission = parseWithZod(formData, { schema });
+    const submission = parse(formData, { schema });
 
-    if (submission.status !== "success") {
-      return json(submission.reply());
+    if (!submission.value) {
+      return json(submission);
     }
 
     // Enforce env-tier write:envvars for every targeted environment, so a role
@@ -140,15 +141,10 @@ export const action = dashboardAction(
       (env) => !ability.can("write", { type: "envvars", envType: env.type })
     );
     if (hasDeniedEnvironment) {
-      return json(
-        submission.reply({
-          fieldErrors: {
-            environmentIds: [
-              "You don't have permission to manage environment variables in one of the selected environments.",
-            ],
-          },
-        })
-      );
+      submission.error.environmentIds = [
+        "You don't have permission to manage environment variables in one of the selected environments.",
+      ];
+      return json(submission);
     }
 
     const project = await prisma.project.findUnique({
@@ -167,7 +163,8 @@ export const action = dashboardAction(
       },
     });
     if (!project) {
-      return json(submission.reply({ formErrors: ["Project not found"] }));
+      submission.error.key = ["Project not found"];
+      return json(submission);
     }
 
     const repository = new EnvironmentVariablesRepository(prisma);
@@ -180,20 +177,19 @@ export const action = dashboardAction(
     });
 
     if (!result.success) {
-      const fieldErrors: Record<string, string[]> = {};
       if (result.variableErrors) {
         for (const { key, error } of result.variableErrors) {
           const index = submission.value.variables.findIndex((v) => v.key === key);
 
           if (index !== -1) {
-            fieldErrors[`variables[${index}].key`] = [error];
+            submission.error[`variables[${index}].key`] = [error];
           }
         }
       } else {
-        fieldErrors.variables = [result.error];
+        submission.error.variables = [result.error];
       }
 
-      return json(submission.reply({ fieldErrors }));
+      return json(submission);
     }
 
     return redirect(
@@ -207,7 +203,7 @@ export const action = dashboardAction(
 );
 
 export default function Page() {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, _setIsOpen] = useState(true);
   const parentData = useTypedMatchesData<typeof environmentVariablesLoader>({
     id: environmentVariablesRouteId,
   });
@@ -238,19 +234,18 @@ export default function Page() {
 
   const isLoading = navigation.state !== "idle" && navigation.formMethod === "post";
 
-  const [form, fields] = useForm<z.infer<typeof schema>>({
+  const [form, { environmentIds, variables }] = useForm({
     id: "create-environment-variables",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema });
+      return parse(formData, { schema });
     },
     shouldRevalidate: "onSubmit",
     defaultValue: {
       variables: [{ key: "", value: "" }],
     },
   });
-  const { environmentIds, variables } = fields;
 
   const handleEnvironmentChange = (
     environmentId: string,
@@ -304,7 +299,7 @@ export default function Page() {
     >
       <DialogContent className="p-0 pt-2.5 md:max-w-2xl lg:max-w-3xl">
         <DialogHeader className="px-4">New environment variables</DialogHeader>
-        <Form method="post" {...getFormProps(form)}>
+        <Form method="post" {...form.props}>
           <Fieldset className="max-h-[70vh] overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
             <InputGroup fullWidth>
               <Label>Environments</Label>
@@ -400,7 +395,7 @@ export default function Page() {
                   </>
                 )}
               </div>
-              <FormError id={environmentIds.errorId}>{environmentIds.errors}</FormError>
+              <FormError id={environmentIds.errorId}>{environmentIds.error}</FormError>
               <Hint>
                 Dev environment variables specified here will be overridden by ones in your .env
                 file when running locally.
@@ -478,13 +473,13 @@ export default function Page() {
               <VariableFields
                 revealValues={revealAll}
                 formId={form.id}
-                form={form}
+                formRef={form.ref}
                 variablesFields={variables}
               />
-              <FormError id={variables.errorId}>{variables.errors}</FormError>
+              <FormError id={variables.errorId}>{variables.error}</FormError>
             </InputGroup>
 
-            <FormError>{form.errors}</FormError>
+            <FormError>{form.error}</FormError>
           </Fieldset>
           <FormButtons
             className="px-4 pb-4"
@@ -532,12 +527,12 @@ function VariableFields({
   revealValues,
   formId,
   variablesFields,
-  form,
+  formRef,
 }: {
   revealValues: boolean;
   formId?: string;
-  variablesFields: FieldMetadata<Variable[]>;
-  form: FormMetadata<any>;
+  variablesFields: FieldConfig<any>;
+  formRef: RefObject<HTMLFormElement>;
 }) {
   const {
     items,
@@ -566,13 +561,13 @@ function VariableFields({
     const [firstPair, ...rest] = keyValuePairs;
     update(index, firstPair);
 
-    for (const pair of rest) {
-      form.insert({ name: variablesFields.name });
+    for (const _pair of rest) {
+      requestIntent(formRef.current ?? undefined, list.append(variablesFields.name));
     }
     insertAfter(index, rest);
   }, []);
 
-  const fields = variablesFields.getFieldList();
+  const fields = useFieldList(formRef, variablesFields);
 
   return (
     <>
@@ -588,7 +583,10 @@ function VariableFields({
             onChange={(value) => update(index, value)}
             onPaste={(e) => handlePaste(index, e)}
             onDelete={() => {
-              form.remove({ name: variablesFields.name, index });
+              requestIntent(
+                formRef.current ?? undefined,
+                list.remove(variablesFields.name, { index })
+              );
               remove(index);
             }}
             showDeleteButton={items.length > 1}
@@ -606,7 +604,7 @@ function VariableFields({
           className="w-fit"
           type="button"
           onClick={() => {
-            form.insert({ name: variablesFields.name });
+            requestIntent(formRef.current ?? undefined, list.append(variablesFields.name));
             append([{ key: "", value: "" }]);
           }}
           LeadingIcon={PlusIcon}
@@ -637,13 +635,14 @@ function VariableField({
   onDelete: () => void;
   showDeleteButton: boolean;
   showValue: boolean;
-  config: FieldMetadata<Variable>;
+  config: FieldConfig<Variable>;
 }) {
-  const fields = config.getFieldset();
+  const ref = useRef<HTMLFieldSetElement>(null);
+  const fields = useFieldset(ref, config);
   const baseFieldName = `variables[${index}]`;
 
   return (
-    <fieldset>
+    <fieldset ref={ref}>
       <FieldLayout>
         <div className="space-y-2">
           <Input
@@ -655,7 +654,7 @@ function VariableField({
             autoFocus={index === 0}
             onPaste={onPaste}
           />
-          <FormError id={fields.key.errorId}>{fields.key.errors}</FormError>
+          <FormError id={fields.key.errorId}>{fields.key.error}</FormError>
         </div>
         <div className={cn("flex items-start gap-1")}>
           <div className="grow space-y-2">
@@ -667,7 +666,7 @@ function VariableField({
               value={value.value}
               onChange={(e) => onChange({ ...value, value: e.currentTarget.value })}
             />
-            <FormError id={fields.value.errorId}>{fields.value.errors}</FormError>
+            <FormError id={fields.value.errorId}>{fields.value.error}</FormError>
           </div>
           {showDeleteButton && (
             <Button

@@ -2,7 +2,7 @@ import { ArrowUpCircleIcon, PlusIcon, TrashIcon } from "@heroicons/react/20/soli
 import { DialogClose } from "@radix-ui/react-dialog";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
-import { IconChartHistogram, IconEdit, IconTypography } from "@tabler/icons-react";
+import { IconChartHistogram, IconEdit } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -185,7 +185,7 @@ export default function Page() {
     isAdmin,
     maxRows,
     possibleTasks,
-    widgetCount: initialWidgetCount,
+    widgetCount: _initialWidgetCount,
   } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
@@ -206,7 +206,7 @@ export default function Page() {
   const toast = useToast();
 
   const handleSyncError = useCallback(
-    (error: Error, action: string) => {
+    (_error: Error, action: string) => {
       const actionMessages: Record<string, string> = {
         add: "Failed to add widget",
         update: "Failed to update widget",

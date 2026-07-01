@@ -1,6 +1,6 @@
-import { TaskRunExecutionResult } from "@trigger.dev/core/v3";
+import type { TaskRunExecutionResult } from "@trigger.dev/core/v3";
 import { executionResultForTaskRun } from "~/models/taskRun.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { runStore } from "~/v3/runStore.server";
 import { BasePresenter } from "./basePresenter.server";
 
@@ -9,7 +9,7 @@ export class ApiRunResultPresenter extends BasePresenter {
     friendlyId: string,
     env: AuthenticatedEnvironment
   ): Promise<TaskRunExecutionResult | undefined> {
-    return this.traceWithEnv("call", env, async (span) => {
+    return this.traceWithEnv("call", env, async (_span) => {
       const taskRun = await runStore.findRun(
         {
           friendlyId,

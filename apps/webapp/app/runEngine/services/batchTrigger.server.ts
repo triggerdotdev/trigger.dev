@@ -63,7 +63,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
   public onBatchTaskRunCreated: Evt<BatchTaskRun> = new Evt();
 
   constructor(
-    batchProcessingStrategy?: BatchProcessingStrategy,
+    _batchProcessingStrategy?: BatchProcessingStrategy,
     protected readonly _prisma: PrismaClientOrTransaction = prisma
   ) {
     super({ prisma });
@@ -84,7 +84,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         "call()",
         environment,
         async (span) => {
-          const { id, friendlyId } = BatchId.generate();
+          const { id: _id, friendlyId } = BatchId.generate();
 
           span.setAttribute("batchId", friendlyId);
 
@@ -554,7 +554,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         if (run) {
           runFriendlyId = run.friendlyId;
         }
-      } catch (error) {
+      } catch (_error) {
         // Trigger failed - will try to create pre-failed run below
         runFriendlyId = null;
       }
@@ -708,7 +708,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     pathPrefix: string,
     environment: AuthenticatedEnvironment
   ) {
-    return await startActiveSpan("handlePayloadPacket()", async (span) => {
+    return await startActiveSpan("handlePayloadPacket()", async (_span) => {
       const packet = { data: JSON.stringify(payload), dataType: "application/json" };
 
       if (!packet.data) {

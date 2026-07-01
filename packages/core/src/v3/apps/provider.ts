@@ -4,8 +4,8 @@ import { SimpleLogger } from "./logger.js";
 import { isExecaChildProcess } from "./isExecaChildProcess.js";
 import { setTimeout } from "node:timers/promises";
 import { EXIT_CODE_ALREADY_HANDLED } from "./process.js";
-import { EnvironmentType } from "../schemas/schemas.js";
-import { MachinePreset } from "../schemas/common.js";
+import type { EnvironmentType } from "../schemas/schemas.js";
+import type { MachinePreset } from "../schemas/common.js";
 import {
   ProviderToPlatformMessages,
   PlatformToProviderMessages,
@@ -132,7 +132,7 @@ export class ProviderShell implements Provider {
       serverMessages: SharedQueueToClientMessages,
       authToken: PLATFORM_SECRET,
       handlers: {
-        SERVER_READY: async (message) => {
+        SERVER_READY: async (_message) => {
           // TODO: create new schema without worker requirement
           await sender.send("READY_FOR_TASKS", {
             backgroundWorkerId: "placeholder",
@@ -364,7 +364,7 @@ export class ProviderShell implements Provider {
       }
     });
 
-    httpServer.on("clientError", (err, socket) => {
+    httpServer.on("clientError", (_err, socket) => {
       socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
     });
 

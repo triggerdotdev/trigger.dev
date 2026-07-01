@@ -1,8 +1,8 @@
-import { ApiClient } from "../apiClient/index.js";
-import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
-import { AnyZodFetchOptions } from "../zodfetch.js";
+import type { ApiClient } from "../apiClient/index.js";
+import type { AsyncIterableStream } from "../streams/asyncIterableStream.js";
+import type { AnyZodFetchOptions } from "../zodfetch.js";
 import { StreamsWriterV2 } from "./streamsWriterV2.js";
-import { StreamsWriter, StreamWriteResult } from "./types.js";
+import type { StreamsWriter, StreamWriteResult } from "./types.js";
 
 export type InitializeSessionStreamResponseLike = {
   headers?: Record<string, string>;

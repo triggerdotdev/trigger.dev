@@ -1,5 +1,5 @@
-import { ActionFunctionArgs } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 
-export function action({ request }: ActionFunctionArgs) {
+export function action({ request: _request }: ActionFunctionArgs) {
   return new Response(null, { status: 200 });
 }

@@ -147,7 +147,7 @@ describe("ShutdownManager", { concurrent: false }, () => {
     const currentExit = mockExit.getMockImplementation();
 
     // Override with our sequence-tracking implementation
-    mockExit.mockImplementation((code?: number | string | null) => {
+    mockExit.mockImplementation((_code?: number | string | null) => {
       sequence.push("exit");
       return undefined as never;
     });

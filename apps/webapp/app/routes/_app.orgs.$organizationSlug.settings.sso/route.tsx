@@ -6,9 +6,9 @@ import {
   LockClosedIcon,
 } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
-import { redirect, type ActionFunctionArgs } from "@remix-run/server-runtime";
+import { redirect } from "@remix-run/server-runtime";
 import { useEffect, useState } from "react";
-import { useFetcher, useRevalidator } from "@remix-run/react";
+import { useFetcher } from "@remix-run/react";
 import { z } from "zod";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
@@ -41,7 +41,7 @@ import { throwPermissionDenied } from "~/utils/permissionDenied";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { v3BillingPath } from "~/utils/pathBuilder";
 
-export const meta: MetaFunction = () => [{ title: "Identity & Access | Trigger.dev" }];
+export const meta: MetaFunction = () => [{ title: "SSO settings | Trigger.dev" }];
 
 const Params = z.object({ organizationSlug: z.string() });
 
@@ -286,12 +286,10 @@ export default function Page() {
     draftJitRoleId !== initialJitRoleId;
 
   const [portalUrl, setPortalUrl] = useState<string | null>(null);
-  const [portalIntent, setPortalIntent] = useState<"sso" | "domain_verification" | null>(null);
   const [enforceModalOpen, setEnforceModalOpen] = useState(false);
   const portalFetcher = useFetcher<{ ok: boolean; url?: string; error?: string }>();
   const saveFetcher = useFetcher();
   const isSaving = saveFetcher.state !== "idle";
-  const revalidator = useRevalidator();
 
   useEffect(() => {
     if (portalFetcher.data?.ok && portalFetcher.data.url) {
@@ -299,33 +297,8 @@ export default function Page() {
     }
   }, [portalFetcher.data]);
 
-  // Poll for fresh domain/connection state only while setup is incomplete:
-  // the user is finishing steps in the admin portal (another tab) and we
-  // want the page to reflect them without a manual reload. This covers both
-  // pre-active states (no IdP org yet, and IdP org but no active connection).
-  // Once there's an active connection we stop — the ActiveConnectionState form
-  // holds local draft edits that a revalidation must not stomp. The upsell
-  // state is excluded by `isEntitled`.
-  const shouldPoll = isEntitled && !hasActive;
-  useEffect(() => {
-    if (!shouldPoll) return;
-    const id = setInterval(() => {
-      if (
-        revalidator.state !== "idle" ||
-        portalFetcher.state !== "idle" ||
-        saveFetcher.state !== "idle" ||
-        (typeof document !== "undefined" && document.visibilityState === "hidden")
-      ) {
-        return;
-      }
-      revalidator.revalidate();
-    }, 5000);
-    return () => clearInterval(id);
-  }, [shouldPoll, revalidator, portalFetcher.state, saveFetcher.state]);
-
   const openPortal = (intent: "sso" | "domain_verification") => {
     setPortalUrl(null);
-    setPortalIntent(intent);
     portalFetcher.submit({ action: "portal_link", intent }, { method: "POST" });
   };
 
@@ -344,14 +317,14 @@ export default function Page() {
   return (
     <PageContainer>
       <NavBar>
-        <PageTitle title="Identity & Access" />
+        <PageTitle title="SSO" />
       </NavBar>
       <PageBody scrollable={true}>
         <MainHorizontallyCenteredContainer className="max-w-3xl space-y-6">
           {!isEntitled ? (
             <EnterpriseUpsellState organizationSlug={organization.slug} />
           ) : !status.hasIdpOrg ? (
-            <NoIdpOrgState onOpenPortal={() => openPortal("domain_verification")} />
+            <NoIdpOrgState onOpenPortal={() => openPortal("sso")} />
           ) : !hasActive ? (
             <NoActiveConnectionState
               domains={status.domains}
@@ -369,7 +342,7 @@ export default function Page() {
               draftJitRoleId={draftJitRoleId}
               isDirty={isDirty}
               isSaving={isSaving}
-              onOpenPortal={openPortal}
+              onTogglePortal={() => openPortal("sso")}
               onToggleEnforced={(next) => {
                 // Going on→off is harmless; going off→on locks users out so
                 // we still require explicit confirmation. The modal updates
@@ -388,7 +361,7 @@ export default function Page() {
         </MainHorizontallyCenteredContainer>
       </PageBody>
 
-      <PortalLinkDialog url={portalUrl} intent={portalIntent} onClose={() => setPortalUrl(null)} />
+      <PortalLinkDialog url={portalUrl} onClose={() => setPortalUrl(null)} />
 
       <EnforceConfirmDialog
         open={enforceModalOpen}
@@ -438,14 +411,11 @@ function NoIdpOrgState({ onOpenPortal }: { onOpenPortal: () => void }) {
       <Header2>Configure SSO for your organization</Header2>
       <Paragraph variant="base">
         Single sign-on lets your IT admins manage who can access Trigger.dev through your identity
-        provider (Okta, Azure AD, Google Workspace, OneLogin, and more).
+        provider (Okta, Azure AD, Google Workspace, OneLogin, and more). The first click opens the
+        admin portal in a 5-minute single-use link.
       </Paragraph>
-      <Button
-        variant="tertiary/small"
-        onClick={onOpenPortal}
-        LeadingIcon={ArrowTopRightOnSquareIcon}
-      >
-        Start the process
+      <Button variant="primary/small" onClick={onOpenPortal} LeadingIcon={LockClosedIcon}>
+        Open admin portal
       </Button>
     </div>
   );
@@ -469,49 +439,51 @@ function NoActiveConnectionState({
 }) {
   const verifiedDomains = domains.filter((d) => d.state === "verified");
   const failedDomains = domains.filter((d) => d.state === "failed");
-  const hasVerifiedDomain = verifiedDomains.length > 0;
+  const pendingDomains = domains.filter((d) => d.state === "pending");
+  const hasUnresolved = failedDomains.length > 0 || pendingDomains.length > 0;
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <Header2>Domains</Header2>
-        <Paragraph variant="small" className="text-text-dimmed">
-          Verify the email domains your team signs in with. Once a domain is verified you can
-          connect your identity provider.
-        </Paragraph>
-        {failedDomains.length > 0 && (
-          <Callout variant="error">
-            {failedDomains.length === 1
-              ? `Domain verification failed for ${failedDomains[0].domain}. Re-check the DNS records in the admin portal and re-run verification.`
-              : `${failedDomains.length} domains failed verification. Re-check the DNS records in the admin portal and re-run verification.`}
-          </Callout>
-        )}
-        {domains.length > 0 && <DomainList domains={domains} />}
-        <Button
-          variant="tertiary/small"
-          onClick={onOpenDomain}
-          LeadingIcon={ArrowTopRightOnSquareIcon}
-        >
-          {domains.length > 0 ? "Verify another domain" : "Verify domain"}
-        </Button>
-      </div>
+    <div className="space-y-4">
+      {failedDomains.length > 0 && (
+        <Callout variant="error">
+          {failedDomains.length === 1
+            ? `Domain verification failed for ${failedDomains[0].domain}. Re-check the DNS records in the admin portal and re-run verification.`
+            : `${failedDomains.length} domains failed verification. Re-check the DNS records in the admin portal and re-run verification.`}
+        </Callout>
+      )}
+      {failedDomains.length === 0 && verifiedDomains.length > 0 && (
+        <Callout variant="success">
+          {verifiedDomains.length === 1
+            ? `Domain verified: ${verifiedDomains[0].domain}. Continue in the admin portal to finish setting up your identity provider connection.`
+            : `${verifiedDomains.length} domains verified. Continue in the admin portal to finish setting up your identity provider connection.`}
+        </Callout>
+      )}
+      {failedDomains.length === 0 && verifiedDomains.length === 0 && (
+        <Callout variant="warning">
+          Not yet configured. Continue in the admin portal to verify a domain and set up your
+          identity provider connection.
+        </Callout>
+      )}
 
-      {hasVerifiedDomain && (
+      {domains.length > 0 && (
         <div className="space-y-2">
-          <Header2>SSO</Header2>
-          <Paragraph variant="small" className="text-text-dimmed">
-            Connect your identity provider to finish setting up single sign-on for your verified
-            domains.
-          </Paragraph>
-          <Button
-            variant="tertiary/small"
-            onClick={onOpenSso}
-            LeadingIcon={ArrowTopRightOnSquareIcon}
-          >
-            Configure SSO
-          </Button>
+          <Header2>Domains</Header2>
+          <DomainList domains={domains} />
         </div>
       )}
+
+      <div className="flex flex-wrap gap-2">
+        <Button variant="primary/small" onClick={onOpenSso}>
+          Configure SSO
+        </Button>
+        <Button variant="tertiary/small" onClick={onOpenDomain}>
+          {failedDomains.length > 0
+            ? "Re-verify a domain"
+            : hasUnresolved
+              ? "Continue verifying a domain"
+              : "Verify another domain"}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -579,7 +551,7 @@ function ActiveConnectionState({
   draftJitRoleId,
   isDirty,
   isSaving,
-  onOpenPortal,
+  onTogglePortal,
   onToggleEnforced,
   onToggleJit,
   onChangeJitRole,
@@ -599,7 +571,7 @@ function ActiveConnectionState({
   draftJitRoleId: string;
   isDirty: boolean;
   isSaving: boolean;
-  onOpenPortal: (intent: "sso" | "domain_verification") => void;
+  onTogglePortal: () => void;
   onToggleEnforced: (next: boolean) => void;
   onToggleJit: (next: boolean) => void;
   onChangeJitRole: (roleId: string | null) => void;
@@ -622,13 +594,6 @@ function ActiveConnectionState({
             </Paragraph>
           </div>
         ))}
-        <Button
-          variant="tertiary/small"
-          onClick={() => onOpenPortal("sso")}
-          LeadingIcon={ArrowTopRightOnSquareIcon}
-        >
-          Manage SSO connection
-        </Button>
       </div>
 
       <div className="space-y-2">
@@ -640,13 +605,6 @@ function ActiveConnectionState({
         ) : (
           <DomainList domains={status.domains} />
         )}
-        <Button
-          variant="tertiary/small"
-          onClick={() => onOpenPortal("domain_verification")}
-          LeadingIcon={ArrowTopRightOnSquareIcon}
-        >
-          {status.domains.length > 0 ? "Verify another domain" : "Verify domain"}
-        </Button>
       </div>
 
       <div className="space-y-3">
@@ -709,7 +667,18 @@ function ActiveConnectionState({
             }
           </Select>
         </div>
-        <div className="flex justify-end pt-1">
+        <div className="flex items-center justify-between pt-1">
+          <LinkButton
+            to="#"
+            variant="tertiary/small"
+            LeadingIcon={ArrowTopRightOnSquareIcon}
+            onClick={(e) => {
+              e.preventDefault();
+              onTogglePortal();
+            }}
+          >
+            Open admin portal
+          </LinkButton>
           <Button variant="primary/small" disabled={!isDirty || isSaving} onClick={onSave}>
             {isSaving ? "Saving…" : "Save"}
           </Button>
@@ -719,27 +688,14 @@ function ActiveConnectionState({
   );
 }
 
-function PortalLinkDialog({
-  url,
-  intent,
-  onClose,
-}: {
-  url: string | null;
-  intent: "sso" | "domain_verification" | null;
-  onClose: () => void;
-}) {
-  const purpose =
-    intent === "domain_verification"
-      ? "This single-use link opens domain verification. Send it to whoever manages your DNS or identity provider so they can confirm your organization owns its email domains."
-      : intent === "sso"
-        ? "This single-use link opens identity-provider setup. Send it to whoever manages your identity provider so they can connect it to Trigger.dev."
-        : "This single-use link opens your organization's SSO setup.";
+function PortalLinkDialog({ url, onClose }: { url: string | null; onClose: () => void }) {
   return (
     <Dialog open={url !== null} onOpenChange={(open) => (open ? undefined : onClose())}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>Admin portal link</DialogHeader>
         <DialogDescription>
-          {purpose} The link expires 5 minutes after you open this dialog.
+          This link is active for 5 minutes — copy it and share it with your IT contact via whatever
+          channel you prefer.
         </DialogDescription>
         <div className="mt-4 break-all rounded-md border border-grid-bright bg-charcoal-800 p-3 font-mono text-xs">
           {url ?? ""}

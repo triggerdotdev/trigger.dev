@@ -1,6 +1,6 @@
 import type { CallToolResult, ServerNotification } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { ToolMeta } from "./types.js";
+import type { ToolMeta } from "./types.js";
 
 export function respondWithError(error: unknown): CallToolResult {
   return {
@@ -116,7 +116,7 @@ class ProgressTracker {
     return this.progress;
   }
 
-  async #sendNotification(progress: number, message: string) {
+  async #sendNotification(progress: number, _message: string) {
     if (!this.progressToken) {
       return;
     }

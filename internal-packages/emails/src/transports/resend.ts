@@ -1,4 +1,5 @@
-import { EmailError, MailMessage, MailTransport, PlainTextMailMessage } from "./index";
+import type { MailMessage, MailTransport, PlainTextMailMessage } from "./index";
+import { EmailError } from "./index";
 import { Resend } from "resend";
 
 export type ResendMailTransportOptions = {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseWithZod } from "@conform-to/zod";
+import { parse } from "@conform-to/zod";
 import { billingAlertsSchema } from "~/components/billing/BillingAlertsSection";
 import {
   billingLimitFormSchema,
@@ -187,7 +187,7 @@ describe("billing-limits form validation", () => {
     formData.append("alertLevels", "75");
     formData.append("alertLevels", "75");
 
-    const submission = parseWithZod(formData, { schema: billingAlertsSchema });
+    const submission = parse(formData, { schema: billingAlertsSchema });
     expect(submission.error?.alertLevels).toBeTruthy();
   });
 
@@ -198,7 +198,7 @@ describe("billing-limits form validation", () => {
     formData.append("alertLevels", "75");
     formData.append("alertLevels", "not-a-number");
 
-    const submission = parseWithZod(formData, { schema: billingAlertsSchema });
+    const submission = parse(formData, { schema: billingAlertsSchema });
     expect(submission.error?.["alertLevels[1]"]).toBeTruthy();
   });
 
@@ -209,7 +209,7 @@ describe("billing-limits form validation", () => {
     formData.set("amount", "100");
     formData.set("cancelInProgressRuns", "on");
 
-    const submission = parseWithZod(formData, { schema: billingLimitFormSchema });
+    const submission = parse(formData, { schema: billingLimitFormSchema });
     expect(submission.value).toEqual({
       mode: "custom",
       amount: 100,
@@ -222,7 +222,7 @@ describe("billing-limits form validation", () => {
     formData.set("mode", "none");
     formData.set("cancelInProgressRuns", "on");
 
-    const submission = parseWithZod(formData, { schema: billingLimitFormSchema });
+    const submission = parse(formData, { schema: billingLimitFormSchema });
     expect(submission.value?.mode).toBe("none");
     expect(submission.value?.cancelInProgressRuns).toBe(true);
   });
@@ -234,7 +234,7 @@ describe("billing-limits form validation", () => {
     formData.set("newAmount", "1500");
     formData.set("resumeMode", "queue");
 
-    const submission = parseWithZod(formData, { schema: billingLimitRecoveryFormSchema });
+    const submission = parse(formData, { schema: billingLimitRecoveryFormSchema });
     expect(submission.value).toEqual({
       action: "increase",
       newAmount: 1500,
@@ -247,7 +247,7 @@ describe("billing-limits form validation", () => {
     formData.set("action", "remove");
     formData.set("resumeMode", "new_only");
 
-    const submission = parseWithZod(formData, { schema: billingLimitRecoveryFormSchema });
+    const submission = parse(formData, { schema: billingLimitRecoveryFormSchema });
     expect(submission.value).toEqual({
       action: "remove",
       resumeMode: "new_only",
@@ -302,7 +302,7 @@ describe("isBillingLimitFormDirty", () => {
 
 describe("getBillingLimitFormLastSubmission", () => {
   it("drops amount errors when the selected mode is not custom", () => {
-    const submission = parseWithZod(
+    const submission = parse(
       (() => {
         const formData = new FormData();
         formData.set("mode", "custom");
@@ -310,7 +310,7 @@ describe("getBillingLimitFormLastSubmission", () => {
         return formData;
       })(),
       { schema: billingLimitFormSchema }
-    ).reply();
+    );
 
     expect(
       getBillingLimitFormLastSubmission(submission, "plan", true)?.error?.amount
@@ -318,7 +318,7 @@ describe("getBillingLimitFormLastSubmission", () => {
   });
 
   it("keeps amount errors while custom mode is selected", () => {
-    const submission = parseWithZod(
+    const submission = parse(
       (() => {
         const formData = new FormData();
         formData.set("mode", "custom");
@@ -326,7 +326,7 @@ describe("getBillingLimitFormLastSubmission", () => {
         return formData;
       })(),
       { schema: billingLimitFormSchema }
-    ).reply();
+    );
 
     expect(
       getBillingLimitFormLastSubmission(submission, "custom", true)?.error?.amount
@@ -334,7 +334,7 @@ describe("getBillingLimitFormLastSubmission", () => {
   });
 
   it("returns undefined when the form is clean", () => {
-    const submission = parseWithZod(
+    const submission = parse(
       (() => {
         const formData = new FormData();
         formData.set("mode", "custom");
@@ -342,7 +342,7 @@ describe("getBillingLimitFormLastSubmission", () => {
         return formData;
       })(),
       { schema: billingLimitFormSchema }
-    ).reply();
+    );
 
     expect(getBillingLimitFormLastSubmission(submission, "custom", false)).toBeUndefined();
   });

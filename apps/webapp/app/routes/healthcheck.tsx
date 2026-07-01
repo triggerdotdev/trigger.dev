@@ -3,7 +3,7 @@ import type { LoaderFunction } from "@remix-run/node";
 import { env } from "~/env.server";
 import { rbac } from "~/services/rbac.server";
 
-export const loader: LoaderFunction = async ({ request }) => {
+export const loader: LoaderFunction = async ({ request: _request }) => {
   try {
     // Resolve the lazy plugin controller so plugin-load failures surface
     // during readiness probes. With REQUIRE_PLUGINS=1, a failed plugin

@@ -448,7 +448,7 @@ export const TableCellMenu = forwardRef<
       visibleButtons,
       hiddenButtons,
       popoverContent,
-      children,
+      children: _children,
       isSelected,
     },
     ref

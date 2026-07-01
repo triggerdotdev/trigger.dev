@@ -10,7 +10,7 @@ export const loader = createSSELoader({
   timeout: env.DEV_PRESENCE_SSE_TIMEOUT,
   interval: env.DEV_PRESENCE_POLL_MS,
   debug: false,
-  handler: async ({ id, controller, debug, request, params }) => {
+  handler: async ({ id: _id, controller: _controller, debug: _debug, request, params }) => {
     const userId = await requireUserId(request);
     const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
 
@@ -65,7 +65,7 @@ export const loader = createSSELoader({
 
         send({ event: "time", data: new Date().toISOString() });
       },
-      iterator: async ({ send, date }) => {
+      iterator: async ({ send, date: _date }) => {
         await checkAndSendPresence(send);
       },
       cleanup: async ({ send }) => {

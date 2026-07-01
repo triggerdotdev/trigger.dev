@@ -1,5 +1,5 @@
 import { generateFriendlyId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
-import {
+import type {
   PrismaClient,
   TaskRunExecutionSnapshot,
   TaskRunExecutionStatus,
@@ -46,7 +46,7 @@ export async function createWaitpointsWithOutput(
   for (let i = 0; i < count; i += batchSize) {
     const batchCount = Math.min(batchSize, count - i);
     const batch = await Promise.all(
-      Array.from({ length: batchCount }).map(async (_, j) => {
+      Array.from({ length: batchCount }).map(async (_, _j) => {
         const waitpointIds = WaitpointId.generate();
         return prisma.waitpoint.create({
           data: {

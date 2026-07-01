@@ -14,7 +14,12 @@ export type TaskList = Awaited<ReturnType<TestPresenter["call"]>>;
 export type TaskListItem = NonNullable<TaskList["tasks"]>[0];
 
 export class TestPresenter extends BasePresenter {
-  public async call({ userId, projectId, environmentId, environmentType }: TaskListOptions) {
+  public async call({
+    userId: _userId,
+    projectId: _projectId,
+    environmentId,
+    environmentType,
+  }: TaskListOptions) {
     const isDev = environmentType === "DEVELOPMENT";
     const tasks = await this.#getTasks(environmentId, isDev);
 

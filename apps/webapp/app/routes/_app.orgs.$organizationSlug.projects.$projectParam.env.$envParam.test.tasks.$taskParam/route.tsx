@@ -1,5 +1,5 @@
-import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import {
   CheckCircleIcon,
   RectangleStackIcon,
@@ -160,10 +160,10 @@ export const action: ActionFunction = async ({ request, params }) => {
 
   switch (formAction) {
     case "create-template": {
-      const submission = parseWithZod(formData, { schema: RunTemplateData });
-      if (submission.status !== "success") {
+      const submission = parse(formData, { schema: RunTemplateData });
+      if (!submission.value) {
         return json({
-          ...submission.reply(),
+          ...submission,
           formAction,
         });
       }
@@ -173,7 +173,7 @@ export const action: ActionFunction = async ({ request, params }) => {
         const template = await templateService.call(environment, submission.value);
 
         return json({
-          ...submission.reply(),
+          ...submission,
           success: true,
           templateLabel: template.label,
           formAction,
@@ -184,11 +184,11 @@ export const action: ActionFunction = async ({ request, params }) => {
       }
     }
     case "delete-template": {
-      const submission = parseWithZod(formData, { schema: DeleteTaskRunTemplateData });
+      const submission = parse(formData, { schema: DeleteTaskRunTemplateData });
 
-      if (submission.status !== "success") {
+      if (!submission.value) {
         return json({
-          ...submission.reply(),
+          ...submission,
           formAction,
         });
       }
@@ -198,7 +198,7 @@ export const action: ActionFunction = async ({ request, params }) => {
         await deleteService.call(environment, submission.value.templateId);
 
         return json({
-          ...submission.reply(),
+          ...submission,
           success: true,
           formAction,
         });
@@ -209,11 +209,11 @@ export const action: ActionFunction = async ({ request, params }) => {
     }
     case "run-scheduled":
     case "run-standard": {
-      const submission = parseWithZod(formData, { schema: TestTaskData });
+      const submission = parse(formData, { schema: TestTaskData });
 
-      if (submission.status !== "success") {
+      if (!submission.value) {
         return json({
-          ...submission.reply(),
+          ...submission,
           formAction,
         });
       }
@@ -455,7 +455,7 @@ function StandardTaskForm({
   ] = useForm({
     id: "test-task",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onSubmit(event, { formData }) {
       event.preventDefault();
 
@@ -465,15 +465,15 @@ function StandardTaskForm({
       submit(formData, { method: "POST" });
     },
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema: TestTaskData });
+      return parse(formData, { schema: TestTaskData });
     },
   });
 
   return (
-    <Form className="flex h-full max-h-full flex-col" method="post" {...getFormProps(form)}>
-      <input {...getInputProps(taskIdentifier, { type: "hidden" })} value={task.taskIdentifier} />
-      <input {...getInputProps(environmentId, { type: "hidden" })} value={environment.id} />
-      <input {...getInputProps(triggerSource, { type: "hidden" })} value={"STANDARD"} />
+    <Form className="flex h-full max-h-full flex-col" method="post" {...form.props}>
+      <input {...conform.input(taskIdentifier, { type: "hidden" })} value={task.taskIdentifier} />
+      <input {...conform.input(environmentId, { type: "hidden" })} value={environment.id} />
+      <input {...conform.input(triggerSource, { type: "hidden" })} value={"STANDARD"} />
       <div className="flex items-center justify-between gap-1.5 border-b border-grid-bright p-2">
         <div className="flex items-center gap-1.5">
           <TaskTriggerSourceIcon source={"STANDARD"} />
@@ -578,7 +578,7 @@ function StandardTaskForm({
                     Machine
                   </Label>
                   <Select
-                    {...getSelectProps(machine)}
+                    {...conform.select(machine)}
                     variant="tertiary/small"
                     placeholder="Select machine type"
                     dropdownIcon
@@ -597,14 +597,14 @@ function StandardTaskForm({
                     ))}
                   </Select>
                   <Hint>Overrides the machine preset.</Hint>
-                  <FormError id={machine.errorId}>{machine.errors}</FormError>
+                  <FormError id={machine.errorId}>{machine.error}</FormError>
                 </InputGroup>
                 <InputGroup>
                   <Label htmlFor={version.id} variant="small">
                     Version
                   </Label>
                   <Select
-                    {...getSelectProps(version)}
+                    {...conform.select(version)}
                     defaultValue="latest"
                     variant="tertiary/small"
                     placeholder="Select version"
@@ -624,7 +624,7 @@ function StandardTaskForm({
                   ) : (
                     <Hint>Runs task on a specific version.</Hint>
                   )}
-                  <FormError id={version.errorId}>{version.errors}</FormError>
+                  <FormError id={version.errorId}>{version.error}</FormError>
                 </InputGroup>
                 {regionItems.length > 1 && (
                   <InputGroup>
@@ -636,8 +636,8 @@ function StandardTaskForm({
                         switching environments. The key forces a remount so it reinitializes
                         with the correct defaultValue. */}
                     <Select
-                      {...getSelectProps(region)}
                       key={`region-${environment.id}`}
+                      {...conform.select(region)}
                       variant="tertiary/small"
                       placeholder={isDev ? "–" : undefined}
                       dropdownIcon
@@ -666,7 +666,7 @@ function StandardTaskForm({
                     ) : (
                       <Hint>Overrides the region for this run.</Hint>
                     )}
-                    <FormError id={region.errorId}>{region.errors}</FormError>
+                    <FormError id={region.errorId}>{region.error}</FormError>
                   </InputGroup>
                 )}
                 <InputGroup>
@@ -675,7 +675,7 @@ function StandardTaskForm({
                   </Label>
                   {allowArbitraryQueues ? (
                     <Input
-                      {...getInputProps(queue, { type: "text" })}
+                      {...conform.input(queue, { type: "text" })}
                       variant="small"
                       value={queueValue ?? ""}
                       onChange={(e) => setQueueValue(e.target.value)}
@@ -721,7 +721,7 @@ function StandardTaskForm({
                     </Select>
                   )}
                   <Hint>Assign run to a specific queue.</Hint>
-                  <FormError id={queue.errorId}>{queue.errors}</FormError>
+                  <FormError id={queue.errorId}>{queue.error}</FormError>
                 </InputGroup>
                 <InputGroup>
                   <Label htmlFor={tags.id} variant="small">
@@ -735,14 +735,14 @@ function StandardTaskForm({
                     onTagsChange={setTagsValue}
                   />
                   <Hint>Add tags to easily filter runs.</Hint>
-                  <FormError id={tags.errorId}>{tags.errors}</FormError>
+                  <FormError id={tags.errorId}>{tags.error}</FormError>
                 </InputGroup>
                 <InputGroup>
                   <Label htmlFor={maxAttempts.id} variant="small">
                     Max attempts
                   </Label>
                   <Input
-                    {...getInputProps(maxAttempts, { type: "number" })}
+                    {...conform.input(maxAttempts, { type: "number" })}
                     className="[&::-webkit-inner-spin-button]:appearance-none"
                     variant="small"
                     min={1}
@@ -764,7 +764,7 @@ function StandardTaskForm({
                     }}
                   />
                   <Hint>Retries failed runs up to the specified number of attempts.</Hint>
-                  <FormError id={maxAttempts.errorId}>{maxAttempts.errors}</FormError>
+                  <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
                 </InputGroup>
                 <InputGroup>
                   <Label variant="small">Max duration</Label>
@@ -775,14 +775,14 @@ function StandardTaskForm({
                     onChange={setMaxDurationValue}
                   />
                   <Hint>Overrides the maximum compute time limit for the run.</Hint>
-                  <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.errors}</FormError>
+                  <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
                 </InputGroup>
                 <InputGroup>
                   <Label htmlFor={idempotencyKey.id} variant="small">
                     Idempotency key
                   </Label>
-                  <Input {...getInputProps(idempotencyKey, { type: "text" })} variant="small" />
-                  <FormError id={idempotencyKey.errorId}>{idempotencyKey.errors}</FormError>
+                  <Input {...conform.input(idempotencyKey, { type: "text" })} variant="small" />
+                  <FormError id={idempotencyKey.errorId}>{idempotencyKey.error}</FormError>
                   <Hint>
                     Specify an idempotency key to ensure that a task is only triggered once with the
                     same key.
@@ -796,7 +796,7 @@ function StandardTaskForm({
                   />
                   <Hint>Keys expire after 30 days by default.</Hint>
                   <FormError id={idempotencyKeyTTLSeconds.errorId}>
-                    {idempotencyKeyTTLSeconds.errors}
+                    {idempotencyKeyTTLSeconds.error}
                   </FormError>
                 </InputGroup>
                 <InputGroup>
@@ -804,7 +804,7 @@ function StandardTaskForm({
                     Concurrency key
                   </Label>
                   <Input
-                    {...getInputProps(concurrencyKey, { type: "text" })}
+                    {...conform.input(concurrencyKey, { type: "text" })}
                     variant="small"
                     value={concurrencyKeyValue ?? ""}
                     onChange={(e) => setConcurrencyKeyValue(e.target.value)}
@@ -812,19 +812,19 @@ function StandardTaskForm({
                   <Hint>
                     Limits concurrency by creating a separate queue for each value of the key.
                   </Hint>
-                  <FormError id={concurrencyKey.errorId}>{concurrencyKey.errors}</FormError>
+                  <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
                 </InputGroup>
                 <InputGroup>
                   <Label variant="small">Delay</Label>
                   <DurationPicker name={delaySeconds.name} id={delaySeconds.id} />
                   <Hint>Delays run by a specific duration.</Hint>
-                  <FormError id={delaySeconds.errorId}>{delaySeconds.errors}</FormError>
+                  <FormError id={delaySeconds.errorId}>{delaySeconds.error}</FormError>
                 </InputGroup>
                 <InputGroup>
                   <Label variant="small">Priority</Label>
                   <DurationPicker name={prioritySeconds.name} id={prioritySeconds.id} />
                   <Hint>Sets the priority of the run. Higher values mean higher priority.</Hint>
-                  <FormError id={prioritySeconds.errorId}>{prioritySeconds.errors}</FormError>
+                  <FormError id={prioritySeconds.errorId}>{prioritySeconds.error}</FormError>
                 </InputGroup>
                 <InputGroup>
                   <Label variant="small">TTL</Label>
@@ -835,9 +835,9 @@ function StandardTaskForm({
                     onChange={setTtlValue}
                   />
                   <Hint>Expires the run if it hasn't started within the TTL.</Hint>
-                  <FormError id={ttlSeconds.errorId}>{ttlSeconds.errors}</FormError>
+                  <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
                 </InputGroup>
-                <FormError>{form.errors}</FormError>
+                <FormError>{form.error}</FormError>
               </Fieldset>
             }
             aiContent={
@@ -1005,21 +1005,29 @@ function ScheduledTaskForm({
   ] = useForm({
     id: "test-task-scheduled",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema: TestTaskData });
+      return parse(formData, { schema: TestTaskData });
     },
   });
 
   return (
-    <Form
-      className="grid h-full max-h-full grid-rows-[1fr_auto]"
-      method="post"
-      {...getFormProps(form)}
-    >
-      <input {...getInputProps(triggerSource, { type: "hidden" })} value={"SCHEDULED"} />
-      <input {...getInputProps(taskIdentifier, { type: "hidden" })} value={task.taskIdentifier} />
-      <input {...getInputProps(environmentId, { type: "hidden" })} value={environment.id} />
+    <Form className="grid h-full max-h-full grid-rows-[1fr_auto]" method="post" {...form.props}>
+      <input
+        type="hidden"
+        {...conform.input(triggerSource, { type: "hidden" })}
+        value={"SCHEDULED"}
+      />
+      <input
+        type="hidden"
+        {...conform.input(taskIdentifier, { type: "hidden" })}
+        value={task.taskIdentifier}
+      />
+      <input
+        type="hidden"
+        {...conform.input(environmentId, { type: "hidden" })}
+        value={environment.id}
+      />
       {/* Main area: scrolling form with the toolbar floating on top-right in the same grid cell */}
       <div className="grid min-h-0 grid-cols-1 grid-rows-1 overflow-hidden">
         <div className="col-start-1 row-start-1 overflow-y-scroll scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600">
@@ -1034,7 +1042,8 @@ function ScheduledTaskForm({
                   Timestamp UTC
                 </Label>
                 <input
-                  {...getInputProps(timestamp, { type: "hidden" })}
+                  type="hidden"
+                  {...conform.input(timestamp, { type: "hidden" })}
                   value={timestampValue?.toISOString() ?? ""}
                 />
                 <DateField
@@ -1050,14 +1059,15 @@ function ScheduledTaskForm({
                   This is the timestamp of the CRON, it will come through to your run in the
                   payload.
                 </Hint>
-                <FormError id={timestamp.errorId}>{timestamp.errors}</FormError>
+                <FormError id={timestamp.errorId}>{timestamp.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={lastTimestamp.id} variant="small">
                   Last timestamp UTC
                 </Label>
                 <input
-                  {...getInputProps(lastTimestamp, { type: "hidden" })}
+                  type="hidden"
+                  {...conform.input(lastTimestamp, { type: "hidden" })}
                   value={lastTimestampValue?.toISOString() ?? ""}
                 />
                 <DateField
@@ -1074,14 +1084,14 @@ function ScheduledTaskForm({
                   This is the timestamp of the previous run. You can use this in your code to find
                   new data since the previous run.
                 </Hint>
-                <FormError id={lastTimestamp.errorId}>{lastTimestamp.errors}</FormError>
+                <FormError id={lastTimestamp.errorId}>{lastTimestamp.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={timezone.id} variant="small">
                   Timezone
                 </Label>
                 <Select
-                  {...getSelectProps(timezone)}
+                  {...conform.select(timezone)}
                   placeholder="Select a timezone"
                   defaultValue={timezoneValue}
                   value={timezoneValue}
@@ -1100,14 +1110,14 @@ function ScheduledTaskForm({
                   The Timestamp and Last timestamp are in UTC so this just changes the timezone
                   string that comes through in the payload.
                 </Hint>
-                <FormError id={timezone.errorId}>{timezone.errors}</FormError>
+                <FormError id={timezone.errorId}>{timezone.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={externalId.id} variant="small">
                   External ID
                 </Label>
                 <Input
-                  {...getInputProps(externalId, { type: "text" })}
+                  {...conform.input(externalId, { type: "text" })}
                   placeholder="Optionally specify your own ID, e.g. user id"
                   value={externalIdValue ?? ""}
                   onChange={(e) => setExternalIdValue(e.target.value)}
@@ -1118,7 +1128,7 @@ function ScheduledTaskForm({
                   the run function of your task.{" "}
                   <TextLink to={docsPath("v3/tasks-scheduled")}>Read the docs.</TextLink>
                 </Hint>
-                <FormError id={externalId.errorId}>{externalId.errors}</FormError>
+                <FormError id={externalId.errorId}>{externalId.error}</FormError>
               </InputGroup>
               <div className="w-full border-b border-grid-bright" />
               <Hint>
@@ -1130,7 +1140,7 @@ function ScheduledTaskForm({
                   Machine
                 </Label>
                 <Select
-                  {...getSelectProps(machine)}
+                  {...conform.select(machine)}
                   variant="tertiary/small"
                   placeholder="Select machine type"
                   dropdownIcon
@@ -1149,14 +1159,14 @@ function ScheduledTaskForm({
                   ))}
                 </Select>
                 <Hint>Overrides the machine preset.</Hint>
-                <FormError id={machine.errorId}>{machine.errors}</FormError>
+                <FormError id={machine.errorId}>{machine.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={version.id} variant="small">
                   Version
                 </Label>
                 <Select
-                  {...getSelectProps(version)}
+                  {...conform.select(version)}
                   defaultValue="latest"
                   variant="tertiary/small"
                   placeholder="Select version"
@@ -1174,7 +1184,7 @@ function ScheduledTaskForm({
                 ) : (
                   <Hint>Runs task on a specific version.</Hint>
                 )}
-                <FormError id={version.errorId}>{version.errors}</FormError>
+                <FormError id={version.errorId}>{version.error}</FormError>
               </InputGroup>
               {regionItems.length > 1 && (
                 <InputGroup>
@@ -1186,8 +1196,8 @@ function ScheduledTaskForm({
                   switching environments. The key forces a remount so it reinitializes
                   with the correct defaultValue. */}
                   <Select
-                    {...getSelectProps(region)}
                     key={`region-${environment.id}`}
+                    {...conform.select(region)}
                     variant="tertiary/small"
                     placeholder={isDev ? "–" : undefined}
                     dropdownIcon
@@ -1216,7 +1226,7 @@ function ScheduledTaskForm({
                   ) : (
                     <Hint>Overrides the region for this run.</Hint>
                   )}
-                  <FormError id={region.errorId}>{region.errors}</FormError>
+                  <FormError id={region.errorId}>{region.error}</FormError>
                 </InputGroup>
               )}
               <InputGroup>
@@ -1225,7 +1235,7 @@ function ScheduledTaskForm({
                 </Label>
                 {allowArbitraryQueues ? (
                   <Input
-                    {...getInputProps(queue, { type: "text" })}
+                    {...conform.input(queue, { type: "text" })}
                     variant="small"
                     value={queueValue ?? ""}
                     onChange={(e) => setQueueValue(e.target.value)}
@@ -1271,7 +1281,7 @@ function ScheduledTaskForm({
                   </Select>
                 )}
                 <Hint>Assign run to a specific queue.</Hint>
-                <FormError id={queue.errorId}>{queue.errors}</FormError>
+                <FormError id={queue.errorId}>{queue.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={tags.id} variant="small">
@@ -1285,14 +1295,14 @@ function ScheduledTaskForm({
                   onTagsChange={setTagsValue}
                 />
                 <Hint>Add tags to easily filter runs.</Hint>
-                <FormError id={tags.errorId}>{tags.errors}</FormError>
+                <FormError id={tags.errorId}>{tags.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={maxAttempts.id} variant="small">
                   Max attempts
                 </Label>
                 <Input
-                  {...getInputProps(maxAttempts, { type: "number" })}
+                  {...conform.input(maxAttempts, { type: "number" })}
                   className="[&::-webkit-inner-spin-button]:appearance-none"
                   variant="small"
                   min={1}
@@ -1314,7 +1324,7 @@ function ScheduledTaskForm({
                   }}
                 />
                 <Hint>Retries failed runs up to the specified number of attempts.</Hint>
-                <FormError id={maxAttempts.errorId}>{maxAttempts.errors}</FormError>
+                <FormError id={maxAttempts.errorId}>{maxAttempts.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={maxDurationSeconds.id} variant="small">
@@ -1327,14 +1337,14 @@ function ScheduledTaskForm({
                   onChange={setMaxDurationValue}
                 />
                 <Hint>Overrides the maximum compute time limit for the run.</Hint>
-                <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.errors}</FormError>
+                <FormError id={maxDurationSeconds.errorId}>{maxDurationSeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={idempotencyKey.id} variant="small">
                   Idempotency key
                 </Label>
-                <Input {...getInputProps(idempotencyKey, { type: "text" })} variant="small" />
-                <FormError id={idempotencyKey.errorId}>{idempotencyKey.errors}</FormError>
+                <Input {...conform.input(idempotencyKey, { type: "text" })} variant="small" />
+                <FormError id={idempotencyKey.errorId}>{idempotencyKey.error}</FormError>
                 <Hint>
                   Specify an idempotency key to ensure that a task is only triggered once with the
                   same key.
@@ -1350,7 +1360,7 @@ function ScheduledTaskForm({
                 />
                 <Hint>Keys expire after 30 days by default.</Hint>
                 <FormError id={idempotencyKeyTTLSeconds.errorId}>
-                  {idempotencyKeyTTLSeconds.errors}
+                  {idempotencyKeyTTLSeconds.error}
                 </FormError>
               </InputGroup>
               <InputGroup>
@@ -1358,7 +1368,7 @@ function ScheduledTaskForm({
                   Concurrency key
                 </Label>
                 <Input
-                  {...getInputProps(concurrencyKey, { type: "text" })}
+                  {...conform.input(concurrencyKey, { type: "text" })}
                   variant="small"
                   value={concurrencyKeyValue ?? ""}
                   onChange={(e) => setConcurrencyKeyValue(e.target.value)}
@@ -1366,7 +1376,7 @@ function ScheduledTaskForm({
                 <Hint>
                   Limits concurrency by creating a separate queue for each value of the key.
                 </Hint>
-                <FormError id={concurrencyKey.errorId}>{concurrencyKey.errors}</FormError>
+                <FormError id={concurrencyKey.errorId}>{concurrencyKey.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={prioritySeconds.id} variant="small">
@@ -1374,7 +1384,7 @@ function ScheduledTaskForm({
                 </Label>
                 <DurationPicker name={prioritySeconds.name} id={prioritySeconds.id} />
                 <Hint>Sets the priority of the run. Higher values mean higher priority.</Hint>
-                <FormError id={prioritySeconds.errorId}>{prioritySeconds.errors}</FormError>
+                <FormError id={prioritySeconds.errorId}>{prioritySeconds.error}</FormError>
               </InputGroup>
               <InputGroup>
                 <Label htmlFor={ttlSeconds.id} variant="small">
@@ -1387,7 +1397,7 @@ function ScheduledTaskForm({
                   onChange={setTtlValue}
                 />
                 <Hint>Expires the run if it hasn't started within the TTL.</Hint>
-                <FormError id={ttlSeconds.errorId}>{ttlSeconds.errors}</FormError>
+                <FormError id={ttlSeconds.errorId}>{ttlSeconds.error}</FormError>
               </InputGroup>
             </Fieldset>
           </div>
@@ -1566,7 +1576,7 @@ function RunTemplatesPopover({
   const [deleteForm, { templateId }] = useForm({
     id: "delete-template",
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema: DeleteTaskRunTemplateData });
+      return parse(formData, { schema: DeleteTaskRunTemplateData });
     },
   });
 
@@ -1682,9 +1692,9 @@ function RunTemplatesPopover({
             >
               Cancel
             </Button>
-            <Form method="post" {...getFormProps(deleteForm)}>
+            <Form method="post" {...deleteForm.props}>
               <input
-                {...getInputProps(templateId, { type: "hidden" })}
+                {...conform.input(templateId, { type: "hidden" })}
                 value={templateIdToDelete || ""}
               />
               <Button
@@ -1777,7 +1787,7 @@ function CreateTemplateModal({
     },
   ] = useForm({
     id: "save-template",
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onSubmit(event, { formData }) {
       event.preventDefault();
 
@@ -1787,7 +1797,7 @@ function CreateTemplateModal({
       submit(formData, { method: "POST" });
     },
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema: RunTemplateData });
+      return parse(formData, { schema: RunTemplateData });
     },
     shouldRevalidate: "onInput",
   });
@@ -1805,62 +1815,62 @@ function CreateTemplateModal({
       <DialogContent>
         <DialogHeader>Create run template</DialogHeader>
         <div className="mt-2 flex flex-col gap-4">
-          <Form method="post" {...getFormProps(form)} className="w-full">
+          <Form method="post" {...form.props} className="w-full">
             <input
-              {...getInputProps(taskIdentifier, { type: "hidden" })}
+              {...conform.input(taskIdentifier, { type: "hidden" })}
               value={rawTestTaskFormData.taskIdentifier}
             />
             <input
-              {...getInputProps(environmentId, { type: "hidden" })}
+              {...conform.input(environmentId, { type: "hidden" })}
               value={rawTestTaskFormData.environmentId}
             />
             <input
-              {...getInputProps(triggerSource, { type: "hidden" })}
+              {...conform.input(triggerSource, { type: "hidden" })}
               value={rawTestTaskFormData.triggerSource}
             />
             <input
-              {...getInputProps(delaySeconds, { type: "hidden" })}
+              {...conform.input(delaySeconds, { type: "hidden" })}
               value={rawTestTaskFormData.delaySeconds}
             />
             <input
-              {...getInputProps(ttlSeconds, { type: "hidden" })}
+              {...conform.input(ttlSeconds, { type: "hidden" })}
               value={rawTestTaskFormData.ttlSeconds}
             />
             <input
-              {...getInputProps(queue, { type: "hidden" })}
+              {...conform.input(queue, { type: "hidden" })}
               value={rawTestTaskFormData.queue}
             />
             <input
-              {...getInputProps(concurrencyKey, { type: "hidden" })}
+              {...conform.input(concurrencyKey, { type: "hidden" })}
               value={rawTestTaskFormData.concurrencyKey}
             />
             <input
-              {...getInputProps(maxAttempts, { type: "hidden" })}
+              {...conform.input(maxAttempts, { type: "hidden" })}
               value={rawTestTaskFormData.maxAttempts}
             />
             <input
-              {...getInputProps(maxDurationSeconds, { type: "hidden" })}
+              {...conform.input(maxDurationSeconds, { type: "hidden" })}
               value={rawTestTaskFormData.maxDurationSeconds}
             />
-            <input {...getInputProps(tags, { type: "hidden" })} value={rawTestTaskFormData.tags} />
+            <input {...conform.input(tags, { type: "hidden" })} value={rawTestTaskFormData.tags} />
             <input
-              {...getInputProps(machine, { type: "hidden" })}
+              {...conform.input(machine, { type: "hidden" })}
               value={rawTestTaskFormData.machine}
             />
             <input
-              {...getInputProps(externalId, { type: "hidden" })}
+              {...conform.input(externalId, { type: "hidden" })}
               value={rawTestTaskFormData.externalId}
             />
             <input
-              {...getInputProps(timestamp, { type: "hidden" })}
+              {...conform.input(timestamp, { type: "hidden" })}
               value={rawTestTaskFormData.timestamp}
             />
             <input
-              {...getInputProps(lastTimestamp, { type: "hidden" })}
+              {...conform.input(lastTimestamp, { type: "hidden" })}
               value={rawTestTaskFormData.lastTimestamp}
             />
             <input
-              {...getInputProps(timezone, { type: "hidden" })}
+              {...conform.input(timezone, { type: "hidden" })}
               value={rawTestTaskFormData.timezone}
             />
             <Paragraph className="mb-3">
@@ -1871,13 +1881,13 @@ function CreateTemplateModal({
               <InputGroup className="max-w-full">
                 <Label htmlFor={label.id}>Template label</Label>
                 <Input
-                  {...getInputProps(label, { type: "text" })}
+                  {...conform.input(label)}
                   placeholder="Enter a name for this template"
                   maxLength={42}
                 />
-                <FormError id={label.errorId}>{label.errors}</FormError>
+                <FormError id={label.errorId}>{label.error}</FormError>
               </InputGroup>
-              <FormError>{form.errors}</FormError>
+              <FormError>{form.error}</FormError>
               <FormButtons
                 confirmButton={
                   <Button

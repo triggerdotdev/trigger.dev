@@ -1,5 +1,5 @@
-import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import {
   BookOpenIcon,
   InformationCircleIcon,
@@ -77,7 +77,6 @@ import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/enviro
 import {
   DeleteEnvironmentVariableValue,
   EditEnvironmentVariableValue,
-  EnvironmentVariable,
 } from "~/v3/environmentVariables/repository";
 import { UserAvatar } from "~/components/UserProfilePhoto";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
@@ -222,10 +221,10 @@ export const action = dashboardAction(
     }
 
     const formData = await request.formData();
-    const submission = parseWithZod(formData, { schema });
+    const submission = parse(formData, { schema });
 
-    if (submission.status !== "success") {
-      return json(submission.reply());
+    if (!submission.value) {
+      return json(submission);
     }
 
     // Enforce env-tier write:envvars on the targeted environment, so a role
@@ -240,13 +239,10 @@ export const action = dashboardAction(
             })
           )?.type;
     if (targetEnvType && !ability.can("write", { type: "envvars", envType: targetEnvType })) {
-      return json(
-        submission.reply({
-          formErrors: [
-            "You don't have permission to manage environment variables in this environment.",
-          ],
-        })
-      );
+      submission.error.key = [
+        "You don't have permission to manage environment variables in this environment.",
+      ];
+      return json(submission);
     }
 
     const project = await prisma.project.findUnique({
@@ -265,7 +261,8 @@ export const action = dashboardAction(
       },
     });
     if (!project) {
-      return json(submission.reply({ formErrors: ["Project not found"] }));
+      submission.error.key = ["Project not found"];
+      return json(submission);
     }
 
     switch (submission.value.action) {
@@ -280,17 +277,19 @@ export const action = dashboardAction(
         });
 
         if (!result.success) {
-          return json(submission.reply({ formErrors: [result.error] }));
+          submission.error.key = [result.error];
+          return json(submission);
         }
 
-        return json({ ...submission.reply(), success: true });
+        return json({ ...submission, success: true });
       }
       case "delete": {
         const repository = new EnvironmentVariablesRepository(prisma);
         const result = await repository.deleteValue(project.id, submission.value);
 
         if (!result.success) {
-          return json(submission.reply({ formErrors: [result.error] }));
+          submission.error.key = [result.error];
+          return json(submission);
         }
 
         // Clean up syncEnvVarsMapping if Vercel integration exists (best-effort)
@@ -334,7 +333,8 @@ export const action = dashboardAction(
         const integration = await vercelService.getVercelProjectIntegration(project.id);
 
         if (!integration) {
-          return json(submission.reply({ formErrors: ["Vercel integration not found"] }));
+          submission.error.key = ["Vercel integration not found"];
+          return json(submission);
         }
 
         // Update the sync mapping for the specific env var and environment
@@ -767,7 +767,7 @@ function EnvironmentVariablesVirtualTableBody({
 
 function EditEnvironmentVariablePanel({
   variable,
-  revealAll,
+  revealAll: _revealAll,
 }: {
   variable: EnvironmentVariableWithSetValues;
   revealAll: boolean;
@@ -788,9 +788,9 @@ function EditEnvironmentVariablePanel({
   const [form, { id, environmentId, value }] = useForm({
     id: `edit-environment-variable-${variable.id}-${variable.environment.id}`,
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema });
+      return parse(formData, { schema });
     },
     shouldRevalidate: "onSubmit",
   });
@@ -807,15 +807,15 @@ function EditEnvironmentVariablePanel({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>Edit environment variable</DialogHeader>
-        <fetcher.Form method="post" {...getFormProps(form)}>
+        <fetcher.Form method="post" {...form.props}>
           <input type="hidden" name="action" value="edit" />
-          <input {...getInputProps(id, { type: "hidden" })} value={variable.id} />
+          <input {...conform.input(id, { type: "hidden" })} value={variable.id} />
           <input
-            {...getInputProps(environmentId, { type: "hidden" })}
+            {...conform.input(environmentId, { type: "hidden" })}
             value={variable.environment.id}
           />
-          <FormError id={id.errorId}>{id.errors}</FormError>
-          <FormError id={environmentId.errorId}>{environmentId.errors}</FormError>
+          <FormError id={id.errorId}>{id.error}</FormError>
+          <FormError id={environmentId.errorId}>{environmentId.error}</FormError>
           <Fieldset>
             <InputGroup fullWidth className="mt-2 gap-0">
               <Label>Key</Label>
@@ -830,15 +830,15 @@ function EditEnvironmentVariablePanel({
             <InputGroup fullWidth>
               <Label>Value</Label>
               <Input
-                {...getInputProps(value, { type: "text" })}
+                {...conform.input(value, { type: "text" })}
                 placeholder={variable.isSecret ? "Set new secret value" : "Not set"}
                 defaultValue={variable.value}
                 type={"text"}
               />
-              <FormError id={value.errorId}>{value.errors}</FormError>
+              <FormError id={value.errorId}>{value.error}</FormError>
             </InputGroup>
 
-            <FormError>{form.errors}</FormError>
+            <FormError>{form.error}</FormError>
 
             <FormButtons
               confirmButton={
@@ -872,18 +872,18 @@ function DeleteEnvironmentVariableButton({
     navigation.formMethod === "post" &&
     navigation.formData?.get("action") === "delete";
 
-  const [form] = useForm({
+  const [form, { id: _id }] = useForm({
     id: "delete-environment-variable",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema });
+      return parse(formData, { schema });
     },
     shouldRevalidate: "onSubmit",
   });
 
   return (
-    <Form method="post" {...getFormProps(form)}>
+    <Form method="post" {...form.props}>
       <input type="hidden" name="id" value={variable.id} />
       <input type="hidden" name="key" value={variable.key} />
       <input type="hidden" name="environmentId" value={variable.environment.id} />

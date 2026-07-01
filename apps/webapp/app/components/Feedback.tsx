@@ -1,11 +1,5 @@
-import {
-  getFormProps,
-  getSelectProps,
-  getInputProps,
-  getTextareaProps,
-  useForm,
-} from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import { InformationCircleIcon, ArrowUpCircleIcon } from "@heroicons/react/20/solid";
 import { EnvelopeIcon, ShieldCheckIcon } from "@heroicons/react/24/solid";
 import { Form, useActionData, useLocation, useNavigation, useSearchParams } from "@remix-run/react";
@@ -40,11 +34,11 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
   const navigation = useNavigation();
   const [type, setType] = useState<FeedbackType>(defaultValue);
 
-  const [form, fields] = useForm({
+  const [form, { path, feedbackType, message }] = useForm({
     id: "accept-invite",
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema });
+      return parse(formData, { schema });
     },
     shouldRevalidate: "onInput",
   });
@@ -53,11 +47,12 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
     if (
       navigation.formAction === "/resources/feedback" &&
       navigation.state === "loading" &&
-      Object.keys(form.allErrors).length === 0
+      form.error === undefined &&
+      form.errors.length === 0
     ) {
       setOpen(false);
     }
-  }, [navigation.formAction, navigation.state, form.allErrors]);
+  }, [navigation, form]);
 
   // Handle URL param functionality
   useEffect(() => {
@@ -95,17 +90,9 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
             type === "concurrency" ||
             type === "hipaa"
           ) && <hr className="border-grid-dimmed" />}
-          <Form
-            method="post"
-            action="/resources/feedback"
-            {...getFormProps(form)}
-            className="w-full"
-          >
+          <Form method="post" action="/resources/feedback" {...form.props} className="w-full">
             <Fieldset className="max-w-full gap-y-3">
-              <input
-                value={location.pathname}
-                {...getInputProps(fields.path, { type: "hidden" })}
-              />
+              <input value={location.pathname} {...conform.input(path, { type: "hidden" })} />
               <InputGroup className="max-w-full">
                 {type === "feature" && (
                   <InfoPanel
@@ -162,7 +149,7 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
                   </InfoPanel>
                 )}
                 <Select
-                  {...getSelectProps(fields.feedbackType)}
+                  {...conform.select(feedbackType)}
                   variant="tertiary/medium"
                   value={type}
                   defaultValue={type}
@@ -177,14 +164,14 @@ export function Feedback({ button, defaultValue = "bug", onOpenChange }: Feedbac
                     </SelectItem>
                   ))}
                 </Select>
-                <FormError id={fields.feedbackType.errorId}>{fields.feedbackType.errors}</FormError>
+                <FormError id={feedbackType.errorId}>{feedbackType.error}</FormError>
               </InputGroup>
               <InputGroup className="max-w-full">
                 <Label>Message</Label>
-                <TextArea {...getTextareaProps(fields.message)} />
-                <FormError id={fields.message.errorId}>{fields.message.errors}</FormError>
+                <TextArea {...conform.textarea(message)} />
+                <FormError id={message.errorId}>{message.error}</FormError>
               </InputGroup>
-              <FormError>{form.errors}</FormError>
+              <FormError>{form.error}</FormError>
               <FormButtons
                 confirmButton={
                   <Button type="submit" variant="primary/medium">

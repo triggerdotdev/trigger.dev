@@ -3,7 +3,7 @@ import { autocompletion, startCompletion } from "@codemirror/autocomplete";
 import { linter, lintGutter } from "@codemirror/lint";
 import { EditorView, keymap } from "@codemirror/view";
 import type { ViewUpdate } from "@codemirror/view";
-import { CheckIcon, ClipboardIcon, SparklesIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { CheckIcon, ClipboardIcon, TrashIcon } from "@heroicons/react/20/solid";
 import {
   type ReactCodeMirrorProps,
   type UseCodeMirror,

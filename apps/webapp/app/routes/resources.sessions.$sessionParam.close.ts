@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod";
+import { parse } from "@conform-to/zod";
 import { type ActionFunction, json } from "@remix-run/node";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
@@ -22,10 +22,10 @@ export const action: ActionFunction = async ({ request, params }) => {
   const { sessionParam } = ParamSchema.parse(params);
 
   const formData = await request.formData();
-  const submission = parseWithZod(formData, { schema: closeSessionSchema });
+  const submission = parse(formData, { schema: closeSessionSchema });
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
+  if (!submission.value) {
+    return json(submission);
   }
 
   const { redirectUrl, environmentId, reason } = submission.value;
@@ -45,13 +45,15 @@ export const action: ActionFunction = async ({ request, params }) => {
     });
 
     if (!environment) {
-      return json(submission.reply({ fieldErrors: { environmentId: ["Environment not found"] } }));
+      submission.error = { environmentId: ["Environment not found"] };
+      return json(submission);
     }
 
     const session = await resolveSessionByIdOrExternalId($replica, environment.id, sessionParam);
 
     if (!session) {
-      return json(submission.reply({ fieldErrors: { sessionParam: ["Session not found"] } }));
+      submission.error = { sessionParam: ["Session not found"] };
+      return json(submission);
     }
 
     if (session.closedAt) {

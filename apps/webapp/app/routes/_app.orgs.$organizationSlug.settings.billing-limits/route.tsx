@@ -1,4 +1,4 @@
-import { parseWithZod } from "@conform-to/zod";
+import { parse } from "@conform-to/zod";
 import type { MetaFunction } from "@remix-run/react";
 import { json, redirect } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
@@ -233,9 +233,9 @@ export const action = dashboardAction(
     const intent = formData.get("intent");
 
     if (intent === "billing-alerts") {
-      const submission = parseWithZod(formData, { schema: billingAlertsSchema });
-      if (submission.status !== "success") {
-        return json({ formIntent: "billing-alerts", submission: submission.reply() });
+      const submission = parse(formData, { schema: billingAlertsSchema });
+      if (!submission.value || submission.intent !== "submit") {
+        return json({ formIntent: "billing-alerts", submission });
       }
 
       const [billingLimitError, billingLimit] = await tryCatch(getBillingLimit(organization.id));
@@ -322,9 +322,9 @@ export const action = dashboardAction(
     }
 
     if (intent === "billing-limit") {
-      const submission = parseWithZod(formData, { schema: billingLimitFormSchema });
-      if (submission.status !== "success") {
-        return json({ formIntent: "billing-limit", submission: submission.reply() });
+      const submission = parse(formData, { schema: billingLimitFormSchema });
+      if (!submission.value || submission.intent !== "submit") {
+        return json({ formIntent: "billing-limit", submission });
       }
 
       const [billingLimitError, billingLimit] = await tryCatch(getBillingLimit(organization.id));
@@ -446,9 +446,9 @@ export const action = dashboardAction(
     }
 
     if (intent === "billing-limit-resolve") {
-      const submission = parseWithZod(formData, { schema: billingLimitRecoveryFormSchema });
-      if (submission.status !== "success") {
-        return json({ formIntent: "billing-limit-resolve", submission: submission.reply() });
+      const submission = parse(formData, { schema: billingLimitRecoveryFormSchema });
+      if (!submission.value || submission.intent !== "submit") {
+        return json({ formIntent: "billing-limit-resolve", submission });
       }
 
       const [billingLimitError, billingLimit] = await tryCatch(getBillingLimit(organization.id));

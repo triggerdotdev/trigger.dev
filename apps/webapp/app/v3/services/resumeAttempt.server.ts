@@ -1,4 +1,4 @@
-import {
+import type {
   CoordinatorToPlatformMessages,
   TaskRunExecution,
   TaskRunExecutionResult,
@@ -9,8 +9,8 @@ import { marqs } from "~/v3/marqs/index.server";
 import { socketIo } from "../handleSocketIo.server";
 import { sharedQueueTasks } from "../marqs/sharedQueueConsumer.server";
 import { BaseService } from "./baseService.server";
-import { Prisma, TaskRunAttempt } from "@trigger.dev/database";
-import { FINAL_ATTEMPT_STATUSES, FINAL_RUN_STATUSES, isFinalRunStatus } from "../taskStatus";
+import type { Prisma, TaskRunAttempt } from "@trigger.dev/database";
+import { FINAL_ATTEMPT_STATUSES, isFinalRunStatus } from "../taskStatus";
 
 export class ResumeAttemptService extends BaseService {
   private _logger = logger;

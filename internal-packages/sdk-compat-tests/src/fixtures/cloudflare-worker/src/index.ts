@@ -17,7 +17,7 @@ const myTask = task({
 });
 
 export default {
-  async fetch(request: Request, env: unknown, ctx: ExecutionContext): Promise<Response> {
+  async fetch(_request: Request, _env: unknown, _ctx: ExecutionContext): Promise<Response> {
     // Validate SDK imports work
     const checks = {
       taskDefined: typeof task === "function",

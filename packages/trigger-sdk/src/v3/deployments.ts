@@ -3,13 +3,9 @@ import type {
   RetrieveCurrentDeploymentResponseBody,
   ApiDeploymentListOptions,
   ApiDeploymentListResponseItem,
-} from "@trigger.dev/core/v3";
-import {
-  apiClientManager,
   CursorPagePromise,
-  isRequestOptions,
-  mergeRequestOptions,
 } from "@trigger.dev/core/v3";
+import { apiClientManager, isRequestOptions } from "@trigger.dev/core/v3";
 
 export type { RetrieveCurrentDeploymentResponseBody, ApiDeploymentListResponseItem };
 

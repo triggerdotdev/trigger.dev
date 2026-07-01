@@ -11,7 +11,7 @@ vi.setConfig({ testTimeout: 30_000 }); // 30 seconds timeout
 describe("UpdateMetadataService.call", () => {
   containerTest(
     "should apply operations to update the run metadata",
-    async ({ prisma, redisOptions }) => {
+    async ({ prisma, redisOptions: _redisOptions }) => {
       const service = new UpdateMetadataService({
         prisma,
         runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
@@ -111,7 +111,7 @@ describe("UpdateMetadataService.call", () => {
 
   containerTest(
     "should throw a MetadataTooLargeError when metadata is too large and not apply the operations",
-    async ({ prisma, redisOptions }) => {
+    async ({ prisma, redisOptions: _redisOptions }) => {
       const service = new UpdateMetadataService({
         prisma,
         runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
@@ -280,7 +280,7 @@ describe("UpdateMetadataService.call", () => {
 
   containerTest(
     "should apply buffered operations to update the parent run metadata",
-    async ({ prisma, redisOptions }) => {
+    async ({ prisma, redisOptions: _redisOptions }) => {
       const service = new UpdateMetadataService({
         prisma,
         runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
@@ -396,7 +396,7 @@ describe("UpdateMetadataService.call", () => {
 
   containerTest(
     "should handle applying buffered operations to update the root run metadata when the root run metadata is too large",
-    async ({ prisma, redisOptions }) => {
+    async ({ prisma, redisOptions: _redisOptions }) => {
       const service = new UpdateMetadataService({
         prisma,
         runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
@@ -589,7 +589,7 @@ describe("UpdateMetadataService.call", () => {
 
   containerTest(
     "should handle applying buffered operations to update the parent run metadata when the parent run metadata is too large",
-    async ({ prisma, redisOptions }) => {
+    async ({ prisma, redisOptions: _redisOptions }) => {
       const service = new UpdateMetadataService({
         prisma,
         runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
@@ -786,7 +786,7 @@ describe("UpdateMetadataService.call", () => {
 
   containerTest(
     "should handle optimistic locking conflicts for buffered operations",
-    async ({ prisma, redisOptions }) => {
+    async ({ prisma, redisOptions: _redisOptions }) => {
       let onAfterReadCallCount = 0;
 
       const service = new UpdateMetadataService({
@@ -797,7 +797,7 @@ describe("UpdateMetadataService.call", () => {
         flushLoggingEnabled: true,
         maximumSize: 1024 * 1024 * 1, // 1MB
         logLevel: "debug",
-        onAfterRead: async (runId, metadataVersion) => {
+        onAfterRead: async (runId, _metadataVersion) => {
           onAfterReadCallCount++;
           // Simulate concurrent update after first read
           if (onAfterReadCallCount === 1) {
@@ -895,7 +895,7 @@ describe("UpdateMetadataService.call", () => {
 
   containerTest(
     "should handle optimistic locking conflicts for immediate operations",
-    async ({ prisma, redisOptions }) => {
+    async ({ prisma, redisOptions: _redisOptions }) => {
       let onAfterReadCallCount = 0;
 
       const service = new UpdateMetadataService({
@@ -906,7 +906,7 @@ describe("UpdateMetadataService.call", () => {
         flushLoggingEnabled: true,
         maximumSize: 1024 * 1024 * 1, // 1MB
         logLevel: "debug",
-        onAfterRead: async (runId, metadataVersion) => {
+        onAfterRead: async (runId, _metadataVersion) => {
           onAfterReadCallCount++;
           // Simulate concurrent update after each read (up to 3 times)
           if (onAfterReadCallCount <= 3) {
@@ -1009,7 +1009,7 @@ describe("UpdateMetadataService.call", () => {
 
   containerTest(
     "should cull set operations keeping only the latest value for each key",
-    async ({ prisma, redisOptions }) => {
+    async ({ prisma, redisOptions: _redisOptions }) => {
       const service = new UpdateMetadataService({
         prisma,
         runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
@@ -1140,7 +1140,7 @@ describe("UpdateMetadataService.call", () => {
 
   containerTest(
     "should not update run metadata if completed more than 1 hour ago",
-    async ({ prisma, redisOptions }) => {
+    async ({ prisma, redisOptions: _redisOptions }) => {
       const service = new UpdateMetadataService({
         prisma,
         runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),
@@ -1216,7 +1216,7 @@ describe("UpdateMetadataService.call", () => {
 
   containerTest(
     "should allow updating run metadata if completed within 1 hour",
-    async ({ prisma, redisOptions }) => {
+    async ({ prisma, redisOptions: _redisOptions }) => {
       const service = new UpdateMetadataService({
         prisma,
         runStore: new PostgresRunStore({ prisma, readOnlyPrisma: prisma }),

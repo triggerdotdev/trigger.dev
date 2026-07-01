@@ -3,7 +3,7 @@ import { telemetry } from "./telemetry.server";
 
 export async function postAuthentication({
   user,
-  loginMethod,
+  loginMethod: _loginMethod,
   isNewUser,
 }: {
   user: User;

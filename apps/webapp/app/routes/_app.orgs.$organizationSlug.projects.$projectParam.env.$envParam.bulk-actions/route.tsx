@@ -103,7 +103,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { bulkActions, currentPage, totalPages, totalCount } = useTypedLoaderData<typeof loader>();
+  const {
+    bulkActions,
+    currentPage,
+    totalPages,
+    totalCount: _totalCount,
+  } = useTypedLoaderData<typeof loader>();
   const organization = useOrganization();
   const project = useProject();
   const environment = useEnvironment();

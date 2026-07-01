@@ -43,7 +43,7 @@ export class RoundRobinScheduler extends BaseScheduler {
 
   async selectQueues(
     masterQueueShard: string,
-    consumerId: string,
+    _consumerId: string,
     context: SchedulerContext
   ): Promise<TenantQueues[]> {
     const now = Date.now();

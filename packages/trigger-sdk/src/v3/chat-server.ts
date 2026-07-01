@@ -55,10 +55,10 @@
  */
 
 import {
-  ApiClient,
   SessionStreamInstance,
   TRIGGER_CONTROL_SUBTYPE,
   apiClientManager,
+  type ApiClient,
   type ApiClientConfiguration,
   type SessionTriggerConfig,
 } from "@trigger.dev/core/v3";

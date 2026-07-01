@@ -3,7 +3,7 @@ import {
   BulkActionNotificationType,
   BulkActionStatus,
   BulkActionType,
-  Prisma,
+  type Prisma,
   type PrismaClient,
   type TaskRunStatus,
 } from "@trigger.dev/database";

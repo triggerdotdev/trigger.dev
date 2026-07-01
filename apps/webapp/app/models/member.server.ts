@@ -511,7 +511,7 @@ export async function declineInvite({
   user: { id: string; email: string };
   inviteId: string;
 }) {
-  return await prisma.$transaction(async (tx) => {
+  return await prisma.$transaction(async (_tx) => {
     //1. delete invite
     const declinedInvite = await prisma.orgMemberInvite.delete({
       where: {

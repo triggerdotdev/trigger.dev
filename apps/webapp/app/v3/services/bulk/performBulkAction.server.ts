@@ -1,5 +1,5 @@
 import assertNever from "assert-never";
-import { PrismaClientOrTransaction } from "~/db.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
 import { workerQueue } from "~/services/worker.server";
 import { BaseService } from "../baseService.server";
 import { CancelTaskRunService } from "../cancelTaskRun.server";
@@ -80,7 +80,7 @@ export class PerformBulkActionService extends BaseService {
     }
   }
 
-  public async enqueueBulkActionItem(bulkActionItemId: string, groupId: string) {
+  public async enqueueBulkActionItem(bulkActionItemId: string, _groupId: string) {
     await workerQueue.enqueue(
       "v3.performBulkActionItem",
       {

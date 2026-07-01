@@ -11,7 +11,8 @@ vi.mock("./logger.server", () => ({
   },
 }));
 
-import express, { Express } from "express";
+import type { Express } from "express";
+import express from "express";
 import request from "supertest";
 import { authorizationRateLimitMiddleware } from "../app/services/authorizationRateLimitMiddleware.server.js";
 
@@ -40,7 +41,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
     });
 
     app.use(rateLimitMiddleware);
-    app.get("/api/test", (req, res) => {
+    app.get("/api/test", (_req, res) => {
       res.status(200).json({ message: "Success" });
     });
 
@@ -67,7 +68,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
     });
 
     app.use(rateLimitMiddleware);
-    app.get("/api/test", (req, res) => {
+    app.get("/api/test", (_req, res) => {
       res.status(200).json({ message: "Success" });
     });
 
@@ -91,7 +92,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
     });
 
     app.use(rateLimitMiddleware);
-    app.get("/api/test", (req, res) => {
+    app.get("/api/test", (_req, res) => {
       res.status(200).json({ message: "Success" });
     });
 
@@ -120,7 +121,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
     });
 
     app.use(rateLimitMiddleware);
-    app.get("/api/whitelist", (req, res) => {
+    app.get("/api/whitelist", (_req, res) => {
       res.status(200).json({ message: "Whitelisted" });
     });
 
@@ -160,7 +161,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
       });
 
       app.use(rateLimitMiddleware);
-      app.get("/api/test", (req, res) => {
+      app.get("/api/test", (_req, res) => {
         res.status(200).json({ message: "Success" });
       });
 
@@ -198,7 +199,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
       });
 
       app.use(rateLimitMiddleware);
-      app.get("/api/test", (req, res) => res.status(200).json({ message: "Success" }));
+      app.get("/api/test", (_req, res) => res.status(200).json({ message: "Success" }));
 
       const makeRequest = () =>
         request(app).get("/api/test").set("Authorization", "Bearer test-token");
@@ -234,7 +235,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
       });
 
       app.use(rateLimitMiddleware);
-      app.get("/api/test", (req, res) => res.status(200).json({ message: "Success" }));
+      app.get("/api/test", (_req, res) => res.status(200).json({ message: "Success" }));
 
       const makeRequest = () =>
         request(app).get("/api/test").set("Authorization", "Bearer test-token");
@@ -279,7 +280,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
       });
 
       app.use(rateLimitMiddleware);
-      app.get("/api/test", (req, res) => res.status(200).json({ message: "Success" }));
+      app.get("/api/test", (_req, res) => res.status(200).json({ message: "Success" }));
 
       const makeRequest = () =>
         request(app).get("/api/test").set("Authorization", "Bearer test-token");
@@ -320,7 +321,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
       });
 
       app.use(rateLimitMiddleware);
-      app.get("/api/test", (req, res) => res.status(200).json({ message: "Success" }));
+      app.get("/api/test", (_req, res) => res.status(200).json({ message: "Success" }));
 
       const makeRequest = () =>
         request(app).get("/api/test").set("Authorization", "Bearer test-token");
@@ -385,7 +386,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS)("authorizationRateLimitMiddleware", 
       });
 
       app.use(rateLimitMiddleware);
-      app.get("/api/test", (req, res) => res.status(200).json({ message: "Success" }));
+      app.get("/api/test", (_req, res) => res.status(200).json({ message: "Success" }));
 
       const makeRequest = () =>
         request(app).get("/api/test").set("Authorization", "Bearer premium-token");

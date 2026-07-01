@@ -1,17 +1,15 @@
 import { ClockIcon } from "@heroicons/react/20/solid";
-import type { SpanEvent } from "@trigger.dev/core/v3";
-import {
-  formatDuration,
-  millisecondsToNanoseconds,
-  nanosecondsToMilliseconds,
-} from "@trigger.dev/core/v3/utils/durations";
-import { Fragment, ReactNode, useState } from "react";
+
+import { formatDuration, nanosecondsToMilliseconds } from "@trigger.dev/core/v3/utils/durations";
+import type { ReactNode } from "react";
+import { Fragment } from "react";
 import { cn } from "~/utils/cn";
 import { DateTime, DateTimeAccurate } from "../primitives/DateTime";
 import { LiveTimer } from "../runs/v3/LiveTimer";
 import tileBgPath from "~/assets/images/error-banner-tile@2x.png";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/Tooltip";
-import { getHelpTextForEvent, TimelineSpanEvent } from "~/utils/timelineSpanEvents";
+import type { TimelineSpanEvent } from "~/utils/timelineSpanEvents";
+import { getHelpTextForEvent } from "~/utils/timelineSpanEvents";
 
 // Types for the RunTimeline component
 export type TimelineEventState = "complete" | "error" | "inprogress" | "delayed";

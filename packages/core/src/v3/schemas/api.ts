@@ -699,7 +699,13 @@ export const InitializeDeploymentRequestBody = InitializeDeploymentRequestBodyFu
     if (data.isNativeBuild) {
       return { ...data, isNativeBuild: true as const };
     }
-    const { skipPromotion, artifactKey, configFilePath, skipEnqueue, ...rest } = data;
+    const {
+      skipPromotion: _skipPromotion,
+      artifactKey: _artifactKey,
+      configFilePath: _configFilePath,
+      skipEnqueue: _skipEnqueue,
+      ...rest
+    } = data;
     return { ...rest, isNativeBuild: false as const };
   }
 );
@@ -1832,7 +1838,7 @@ export function isWaitpointOutputTimeout(output: string): boolean {
   try {
     const json = JSON.parse(output);
     return json.code === WAITPOINT_TIMEOUT_ERROR_CODE;
-  } catch (e) {
+  } catch (_e) {
     return false;
   }
 }

@@ -1,6 +1,6 @@
-import { ActionFunctionArgs } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 
-export async function action({ request }: ActionFunctionArgs) {
+export async function action({ request: _request }: ActionFunctionArgs) {
   if (process.env.NODE_ENV === "production") {
     return new Response("Not found", { status: 404 });
   }

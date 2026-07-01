@@ -44,7 +44,11 @@ export function BulkActionFilterSummary({
         </Paragraph>
       );
     case "filter": {
-      const { label, valueLabel, rangeType } = timeFilterRenderValues({
+      const {
+        label,
+        valueLabel,
+        rangeType: _rangeType,
+      } = timeFilterRenderValues({
         from: filters.from ? dateFromString(`${filters.from}`) : undefined,
         to: filters.to ? dateFromString(`${filters.to}`) : undefined,
         period: filters.period,

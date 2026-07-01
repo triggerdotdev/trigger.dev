@@ -1,5 +1,5 @@
-import { ArrowPathIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
-import { Link } from "@remix-run/react";
+import { ArrowPathIcon } from "@heroicons/react/20/solid";
+
 import { useEffect, useRef, useState } from "react";
 import { cn } from "~/utils/cn";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -13,7 +13,7 @@ import { DateTimeAccurate } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
 import { Spinner } from "../primitives/Spinner";
 import { LogLevel } from "./LogLevel";
-import { TruncatedCopyableValue } from "../primitives/TruncatedCopyableValue";
+
 import { LogLevelTooltipInfo } from "~/components/LogLevelTooltipInfo";
 import {
   Table,
@@ -65,7 +65,7 @@ export function LogsTable({
   isLoadingMore = false,
   hasMore = false,
   onLoadMore,
-  onCheckForMore,
+  onCheckForMore: _onCheckForMore,
   selectedLogId,
   onLogSelect,
 }: LogsTableProps) {

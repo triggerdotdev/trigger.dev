@@ -1,8 +1,6 @@
-import {
-  AsyncIterableStream,
-  createAsyncIterableStreamFromAsyncIterable,
-} from "../streams/asyncIterableStream.js";
-import {
+import type { AsyncIterableStream } from "../streams/asyncIterableStream.js";
+import { createAsyncIterableStreamFromAsyncIterable } from "../streams/asyncIterableStream.js";
+import type {
   RealtimeStreamOperationOptions,
   RealtimeStreamInstance,
   RealtimeStreamsManager,
@@ -10,9 +8,9 @@ import {
 
 export class NoopRealtimeStreamsManager implements RealtimeStreamsManager {
   public pipe<T>(
-    key: string,
+    _key: string,
     source: AsyncIterable<T> | ReadableStream<T>,
-    options?: RealtimeStreamOperationOptions
+    _options?: RealtimeStreamOperationOptions
   ): RealtimeStreamInstance<T> {
     return {
       wait: () => Promise.resolve({}),
@@ -23,8 +21,8 @@ export class NoopRealtimeStreamsManager implements RealtimeStreamsManager {
   }
 
   public async append<TPart extends BodyInit>(
-    key: string,
-    part: TPart,
-    options?: RealtimeStreamOperationOptions
+    _key: string,
+    _part: TPart,
+    _options?: RealtimeStreamOperationOptions
   ): Promise<void> {}
 }

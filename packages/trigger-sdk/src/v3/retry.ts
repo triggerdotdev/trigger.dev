@@ -1,4 +1,5 @@
-import { Attributes, Span, SpanStatusCode, context, trace } from "@opentelemetry/api";
+import type { Attributes, Span } from "@opentelemetry/api";
+import { SpanStatusCode, context, trace } from "@opentelemetry/api";
 import {
   SEMATTRS_HTTP_HOST,
   SEMATTRS_HTTP_METHOD,
@@ -7,11 +8,13 @@ import {
   SEMATTRS_HTTP_STATUS_CODE,
   SEMATTRS_HTTP_URL,
 } from "@opentelemetry/semantic-conventions";
-import {
+import type {
   FetchRetryByStatusOptions,
   FetchRetryOptions,
   FetchRetryStrategy,
   RetryOptions,
+} from "@trigger.dev/core/v3";
+import {
   SemanticInternalAttributes,
   accessoryAttributes,
   calculateNextRetryDelay,
@@ -20,7 +23,6 @@ import {
   defaultRetryOptions,
   eventFilterMatches,
   flattenAttributes,
-  runtime,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 import { wait } from "./wait.js";
@@ -38,7 +40,7 @@ function onThrow<T>(
 
   return tracer.startActiveSpan(
     `retry.onThrow()`,
-    async (span) => {
+    async (_span) => {
       let attempt = 1;
 
       while (attempt <= opts.maxAttempts) {
@@ -156,7 +158,7 @@ async function retryFetch(
 ): Promise<Response> {
   return tracer.startActiveSpan(
     "retry.fetch()",
-    async (span) => {
+    async (_span) => {
       let attempt = 1;
 
       while (true) {
@@ -529,7 +531,7 @@ const createAttributesFromHeaders = (headers: Headers): Attributes => {
 const safeJsonParse = (json: string): unknown => {
   try {
     return JSON.parse(json);
-  } catch (e) {
+  } catch (_e) {
     return null;
   }
 };

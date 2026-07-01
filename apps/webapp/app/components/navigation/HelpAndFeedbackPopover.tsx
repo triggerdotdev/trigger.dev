@@ -1,4 +1,4 @@
-import { ArrowUpRightIcon, CalendarDaysIcon } from "@heroicons/react/20/solid";
+import { ArrowUpRightIcon } from "@heroicons/react/20/solid";
 import { BookIcon } from "~/assets/icons/BookIcon";
 import { BulbIcon } from "~/assets/icons/BulbIcon";
 import { EnvelopeIcon } from "~/assets/icons/EnvelopeIcon";
@@ -6,7 +6,7 @@ import { RadarPulseIcon } from "~/assets/icons/RadarPulseIcon";
 import { StarIcon } from "~/assets/icons/StarIcon";
 import { QuestionMarkIcon } from "~/assets/icons/QuestionMarkIcon";
 import { cn } from "~/utils/cn";
-import { DiscordIcon, SlackIcon } from "@trigger.dev/companyicons";
+
 import { Fragment, useState } from "react";
 import { useRecentChangelogs } from "~/routes/resources.platform-changelogs";
 import { motion } from "framer-motion";
@@ -14,18 +14,15 @@ import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { Feedback } from "../Feedback";
 import { Shortcuts } from "../Shortcuts";
-import { StepContentContainer } from "../StepContentContainer";
+
 import { Button } from "../primitives/Buttons";
-import { ClipboardField } from "../primitives/ClipboardField";
-import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
-import { Icon } from "../primitives/Icon";
+
 import { Paragraph } from "../primitives/Paragraph";
 import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
 import { SimpleTooltip } from "../primitives/Tooltip";
 import { ShortcutKey } from "../primitives/ShortcutKey";
-import { StepNumber } from "../primitives/StepNumber";
+
 import { SideMenuItem } from "./SideMenuItem";
-import { Badge } from "../primitives/Badge";
 
 export function HelpAndFeedback({
   disableShortcut = false,
@@ -39,7 +36,7 @@ export function HelpAndFeedback({
   projectId?: string;
 }) {
   const [isHelpMenuOpen, setHelpMenuOpen] = useState(false);
-  const currentPlan = useCurrentPlan();
+  const _currentPlan = useCurrentPlan();
   const { changelogs } = useRecentChangelogs(organizationId, projectId);
 
   useShortcutKeys({

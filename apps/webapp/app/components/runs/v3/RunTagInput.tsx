@@ -95,7 +95,7 @@ export function RunTagInput({
       {tags.length > 0 && (
         <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
           <AnimatePresence mode="popLayout">
-            {tags.map((tag, i) => (
+            {tags.map((tag, _i) => (
               <motion.div
                 key={tag}
                 initial={{

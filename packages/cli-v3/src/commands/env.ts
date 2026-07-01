@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import type { Command } from "commander";
 import { z } from "zod";
 import { printInitialBanner } from "../utilities/initialBanner.js";
 import {
@@ -12,7 +12,7 @@ import chalk from "chalk";
 import Table from "cli-table3";
 import { logger } from "../utilities/logger.js";
 import { login } from "./login.js";
-import { getProjectClient, upsertBranch } from "../utilities/session.js";
+import { getProjectClient } from "../utilities/session.js";
 import { loadConfig } from "../config.js";
 import { spinner } from "../utilities/windows.js";
 import { writeFile } from "node:fs/promises";

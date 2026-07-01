@@ -6,7 +6,7 @@ import { setTimeout } from "node:timers/promises";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
-import { InputPayload } from "../types.js";
+import type { InputPayload } from "../types.js";
 import { Decimal } from "@trigger.dev/database";
 
 const testOptions = {
@@ -84,7 +84,7 @@ describe("RunQueue Concurrency Sweeper", () => {
           scanJitterInMs: 5,
           processMarkedSchedule: "* * * * * *", // Every second
           processMarkedJitterInMs: 5,
-          callback: async (runIds) => {
+          callback: async (_runIds) => {
             if (!enableConcurrencySweeper) {
               return [];
             }

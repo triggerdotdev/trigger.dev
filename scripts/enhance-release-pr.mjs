@@ -255,7 +255,7 @@ function renderEntry(text) {
   return `- ${text.replace(/\n/g, "\n  ")}`;
 }
 
-function formatPrBody({ version, packageEntries, serverEntries, rawBody }) {
+function formatPrBody({ version: _version, packageEntries, serverEntries, rawBody }) {
   const lines = [];
 
   const features = packageEntries.filter((e) => e.type === "feature");

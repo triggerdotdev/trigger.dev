@@ -1,27 +1,34 @@
-import { createRedisClient, Redis } from "@internal/redis";
-import { type Counter, getMeter, Meter, startSpan, trace, Tracer } from "@internal/tracing";
-import { Logger } from "@trigger.dev/core/logger";
+import type { Redis } from "@internal/redis";
+import { createRedisClient } from "@internal/redis";
 import {
+  getMeter,
+  startSpan,
+  trace,
+  type Meter,
+  type Tracer,
+  type Counter,
+} from "@internal/tracing";
+import { Logger } from "@trigger.dev/core/logger";
+import type {
   CheckpointInput,
   CompleteRunAttemptResult,
   CreateCheckpointResult,
   DequeuedMessage,
   ExecutionResult,
-  formatDurationMilliseconds,
   RunExecutionData,
   StartRunAttemptResult,
   TaskRunContext,
   TaskRunExecutionResult,
   TaskRunInternalError,
 } from "@trigger.dev/core/v3";
-import { TaskRunError } from "@trigger.dev/core/v3/schemas";
+import { formatDurationMilliseconds } from "@trigger.dev/core/v3";
+import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import {
   parseNaturalLanguageDurationInMs,
   RunId,
   WaitpointId,
 } from "@trigger.dev/core/v3/isomorphic";
-import {
-  Prisma,
+import type {
   PrismaClient,
   PrismaClientOrTransaction,
   PrismaReplicaClient,
@@ -30,6 +37,7 @@ import {
   TaskRunExecutionSnapshot,
   Waitpoint,
 } from "@trigger.dev/database";
+import { Prisma } from "@trigger.dev/database";
 import { Worker } from "@trigger.dev/redis-worker";
 import { assertNever } from "assert-never";
 import { EventEmitter } from "node:events";
@@ -37,7 +45,6 @@ import { setInterval, setTimeout } from "node:timers/promises";
 import { BatchQueue } from "../batch-queue/index.js";
 import type {
   BatchItem,
-  CompleteBatchResult,
   InitializeBatchOptions,
   ProcessBatchItemCallback,
   BatchCompletionCallback,
@@ -45,7 +52,7 @@ import type {
 import { FairQueueSelectionStrategy } from "../run-queue/fairQueueSelectionStrategy.js";
 import { RunQueue } from "../run-queue/index.js";
 import { RunQueueFullKeyProducer } from "../run-queue/keyProducer.js";
-import { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared/index.js";
+import type { AuthenticatedEnvironment, MinimalAuthenticatedEnvironment } from "../shared/index.js";
 import { BillingCache } from "./billingCache.js";
 import {
   ExecutionSnapshotNotFoundError,
@@ -53,7 +60,7 @@ import {
   RunDuplicateIdempotencyKeyError,
   RunOneTimeUseTokenError,
 } from "./errors.js";
-import { EventBus, EventBusEvents } from "./eventBus.js";
+import type { EventBus, EventBusEvents } from "./eventBus.js";
 import { RunLocker } from "./locking.js";
 import { getFinalRunStatuses } from "./statuses.js";
 import { BatchSystem } from "./systems/batchSystem.js";
@@ -72,11 +79,12 @@ import { PendingVersionSystem } from "./systems/pendingVersionSystem.js";
 import { RaceSimulationSystem } from "./systems/raceSimulationSystem.js";
 import { RunAttemptSystem } from "./systems/runAttemptSystem.js";
 import { NoopPendingVersionRunIdLookup } from "./services/pendingVersionLookup.js";
-import { SystemResources } from "./systems/systems.js";
-import { PostgresRunStore, RunStore } from "@internal/run-store";
+import type { SystemResources } from "./systems/systems.js";
+import type { RunStore } from "@internal/run-store";
+import { PostgresRunStore } from "@internal/run-store";
 import { TtlSystem } from "./systems/ttlSystem.js";
 import { WaitpointSystem } from "./systems/waitpointSystem.js";
-import {
+import type {
   EngineWorker,
   HeartbeatTimeouts,
   ReportableQueue,
@@ -2173,7 +2181,7 @@ export class RunEngine {
 
       // Close the debounce system Redis connection
       await this.debounceSystem.quit();
-    } catch (error) {
+    } catch (_error) {
       // And should always throw
     }
   }
@@ -2866,7 +2874,7 @@ type EnvInputs = {
 };
 
 function analyzeEnvironment(inputs: EnvInputs) {
-  const { envCurrent, envLimit, envLimitWithBurst, burstFactor } = inputs;
+  const { envCurrent, envLimit: _envLimit, envLimitWithBurst, burstFactor: _burstFactor } = inputs;
 
   const reasons: string[] = [];
   const envAvailableCapacity = Math.max(0, envLimitWithBurst - envCurrent);

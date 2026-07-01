@@ -1,20 +1,20 @@
 import { timeoutError, tryCatch } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
-import {
-  Prisma,
+import type {
   PrismaClientOrTransaction,
-  TaskQueue,
   TaskRun,
   TaskRunExecutionSnapshot,
   TaskRunExecutionStatus,
   Waitpoint,
 } from "@trigger.dev/database";
+import { Prisma } from "@trigger.dev/database";
 import { assertNever } from "assert-never";
 import { nanoid } from "nanoid";
 import { sendNotificationToWorker } from "../eventBus.js";
-import { EnqueueSystem } from "./enqueueSystem.js";
-import { ExecutionSnapshotSystem, getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
-import { SystemResources } from "./systems.js";
+import type { EnqueueSystem } from "./enqueueSystem.js";
+import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
+import { getLatestExecutionSnapshot } from "./executionSnapshotSystem.js";
+import type { SystemResources } from "./systems.js";
 import { isFinalRunStatus } from "../statuses.js";
 
 export type WaitpointSystemOptions = {

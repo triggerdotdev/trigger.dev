@@ -1,4 +1,4 @@
-import { Context } from "@opentelemetry/api";
+import type { Context } from "@opentelemetry/api";
 
 export interface TraceContextManager {
   getTraceContext(): Record<string, unknown>;

@@ -30,7 +30,6 @@ import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import {
-  ComboBox,
   SelectItem,
   SelectList,
   SelectPopover,

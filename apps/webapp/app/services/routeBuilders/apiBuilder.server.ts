@@ -1,22 +1,20 @@
-import { z } from "zod";
-import { ApiAuthenticationResultSuccess } from "../apiAuth.server";
-import { ActionFunctionArgs, json, LoaderFunctionArgs } from "@remix-run/server-runtime";
+import type { z } from "zod";
+import type { ApiAuthenticationResultSuccess } from "../apiAuth.server";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { fromZodError } from "zod-validation-error";
 import { apiCors } from "~/utils/apiCors";
 import { logger } from "../logger.server";
 import { rbac } from "../rbac.server";
 import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
 import { isUserActorToken } from "@trigger.dev/rbac";
-import {
-  PersonalAccessTokenAuthenticationResult,
-  updateLastAccessedAtIfStale,
-} from "../personalAccessToken.server";
+import type { PersonalAccessTokenAuthenticationResult } from "../personalAccessToken.server";
+import { updateLastAccessedAtIfStale } from "../personalAccessToken.server";
 import { safeJsonParse } from "~/utils/json";
-import {
-  AuthenticatedWorkerInstance,
-  WorkerGroupTokenService,
-} from "~/v3/services/worker/workerGroupTokenService.server";
-import { API_VERSIONS, getApiVersion } from "~/api/versions";
+import type { AuthenticatedWorkerInstance } from "~/v3/services/worker/workerGroupTokenService.server";
+import { WorkerGroupTokenService } from "~/v3/services/worker/workerGroupTokenService.server";
+import type { API_VERSIONS } from "~/api/versions";
+import { getApiVersion } from "~/api/versions";
 import { WORKER_HEADERS } from "@trigger.dev/core/v3/runEngineWorker";
 import { ServiceValidationError } from "~/v3/services/common.server";
 import { EngineServiceValidationError } from "@internal/run-engine";
@@ -751,7 +749,7 @@ export function createActionApiRoute<
     maxContentLength,
   } = options;
 
-  async function loader({ request, params }: LoaderFunctionArgs) {
+  async function loader({ request, params: _params }: LoaderFunctionArgs) {
     if (corsStrategy !== "none" && request.method.toUpperCase() === "OPTIONS") {
       return apiCors(request, json({}));
     }

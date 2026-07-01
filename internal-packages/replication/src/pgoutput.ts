@@ -1,5 +1,5 @@
 // NOTE: This file requires ES2020 or higher for BigInt literals (used in BinaryReader.readTime)
-import { Client } from "pg";
+
 import { types } from "pg";
 
 export interface PgoutputOptions {

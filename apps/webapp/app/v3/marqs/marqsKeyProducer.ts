@@ -1,4 +1,4 @@
-import { MarQSKeyProducer, MarQSKeyProducerEnv, QueueDescriptor } from "./types";
+import type { MarQSKeyProducer, MarQSKeyProducerEnv, QueueDescriptor } from "./types";
 
 const constants = {
   SHARED_QUEUE: "sharedQueue",

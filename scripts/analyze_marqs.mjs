@@ -8,7 +8,6 @@ if (!filename) {
 }
 
 import fs from "fs/promises";
-import util from "util";
 
 (async () => {
   try {

@@ -266,10 +266,10 @@ function SpanBody({
   runParam?: string;
   closePanel?: () => void;
 }) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const { value, replace } = useSearchParams();
+  const _organization = useOrganization();
+  const _project = useProject();
+  const _environment = useEnvironment();
+  const { value, replace: _replace } = useSearchParams();
   let tab = value("tab");
 
   if (tab === "context") {
@@ -327,7 +327,7 @@ function SpanBody({
   );
 }
 
-function formatSpanDuration(nanoseconds: number): string {
+function _formatSpanDuration(nanoseconds: number): string {
   const ms = nanoseconds / 1_000_000;
   if (ms < 1000) return `${Math.round(ms)}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
@@ -371,7 +371,7 @@ function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
 function RunBody({
   run,
   runParam,
-  spanId,
+  spanId: _spanId,
   closePanel,
 }: {
   run: SpanRun;
@@ -1275,7 +1275,7 @@ function RunError({ error }: { error: TaskRunError }) {
   }
 }
 
-function CollapsibleProperties({ code }: { code: string }) {
+function _CollapsibleProperties({ code }: { code: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="border-t border-grid-bright pt-2">

@@ -13,7 +13,6 @@ import {
   normalizeBillingAlertsFromApi,
   percentageAlertLevelsToUiThresholds,
   previewDollarAmountForPercent,
-  resetAlertsPayloadForLimitMode,
   shouldClearAlertsOnLimitChange,
   shouldResetAlertsOnLimitChange,
   storedAlertsToThresholds,

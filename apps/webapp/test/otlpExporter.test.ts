@@ -9,7 +9,6 @@ import {
   TaskEventLevel,
   TaskEventStatus,
 } from "@trigger.dev/database";
-import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
 
 describe("OTLPExporter", () => {
   describe("enrichCreatableEvents", () => {

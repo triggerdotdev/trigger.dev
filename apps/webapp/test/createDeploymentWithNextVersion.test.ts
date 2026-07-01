@@ -1,5 +1,5 @@
 import { containerTest } from "@internal/testcontainers";
-import { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient } from "@trigger.dev/database";
 import { describe, expect, vi } from "vitest";
 import {
   createDeploymentWithNextVersion,

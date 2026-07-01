@@ -36,7 +36,7 @@ import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
 import { QueuesIcon } from "~/assets/icons/QueuesIcon";
 import { SlidersIcon } from "~/assets/icons/SlidersIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
+
 import { TasksIcon } from "~/assets/icons/TasksIcon";
 import { BellIcon } from "~/assets/icons/BellIcon";
 import { UsageIcon } from "~/assets/icons/UsageIcon";
@@ -117,7 +117,7 @@ import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { TreeConnectorBranch, TreeConnectorEnd } from "./TreeConnectors";
+
 import { type SideMenuSectionId } from "./sideMenuTypes";
 
 /** Get the collapsed state for a specific side menu section from user preferences */
@@ -815,7 +815,7 @@ function ProjectSelector({
   project,
   organization,
   organizations,
-  user,
+  user: _user,
   isCollapsed = false,
 }: {
   project: SideMenuProject;

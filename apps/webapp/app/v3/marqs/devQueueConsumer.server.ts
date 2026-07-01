@@ -1,5 +1,6 @@
-import { Context, ROOT_CONTEXT, Span, SpanKind, context, trace } from "@opentelemetry/api";
-import {
+import type { Context, Span } from "@opentelemetry/api";
+import { ROOT_CONTEXT, SpanKind, context, trace } from "@opentelemetry/api";
+import type {
   V3TaskRunExecution,
   TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionResult,
@@ -7,14 +8,15 @@ import {
   serverWebsocketMessages,
 } from "@trigger.dev/core/v3";
 import { getMaxDuration } from "@trigger.dev/core/v3/isomorphic";
-import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
-import { BackgroundWorker, BackgroundWorkerTask } from "@trigger.dev/database";
+import type { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
+import type { BackgroundWorker, BackgroundWorkerTask } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { createNewSession, disconnectSession } from "~/models/runtimeEnvironment.server";
 import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.server";
-import { RedisClient, createRedisClient } from "~/redis.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { RedisClient } from "~/redis.server";
+import { createRedisClient } from "~/redis.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { resolveVariablesForEnvironment } from "../environmentVariables/environmentVariablesRepository.server";
@@ -22,7 +24,8 @@ import { FailedTaskRunService } from "../failedTaskRun.server";
 import { CancelDevSessionRunsService } from "../services/cancelDevSessionRuns.server";
 import { CompleteAttemptService } from "../services/completeAttempt.server";
 import { attributesFromAuthenticatedEnv, tracer } from "../tracer.server";
-import { DevSubscriber, devPubSub } from "./devPubSub.server";
+import type { DevSubscriber } from "./devPubSub.server";
+import { devPubSub } from "./devPubSub.server";
 
 const MessageBody = z.discriminatedUnion("type", [
   z.object({
@@ -136,7 +139,7 @@ export class DevQueueConsumer {
   }
 
   public async taskAttemptCompleted(
-    workerId: string,
+    _workerId: string,
     completion: TaskRunExecutionResult,
     execution: V3TaskRunExecution
   ) {
@@ -160,7 +163,7 @@ export class DevQueueConsumer {
     }
   }
 
-  public async taskRunFailed(workerId: string, completion: TaskRunFailedExecutionResult) {
+  public async taskRunFailed(_workerId: string, completion: TaskRunFailedExecutionResult) {
     this._taskFailures++;
 
     logger.debug("[DevQueueConsumer] taskRunFailed()", { completion, env: this.env.id });
@@ -175,7 +178,7 @@ export class DevQueueConsumer {
   /**
    * @deprecated Use `taskRunHeartbeat` instead
    */
-  public async taskHeartbeat(workerId: string, id: string) {
+  public async taskHeartbeat(_workerId: string, id: string) {
     logger.debug("[DevQueueConsumer] taskHeartbeat()", { id });
 
     const taskRunAttempt = await prisma.taskRunAttempt.findFirst({
@@ -189,7 +192,7 @@ export class DevQueueConsumer {
     await marqs?.heartbeatMessage(taskRunAttempt.taskRunId);
   }
 
-  public async taskRunHeartbeat(workerId: string, id: string) {
+  public async taskRunHeartbeat(_workerId: string, id: string) {
     logger.debug("[DevQueueConsumer] taskRunHeartbeat()", { id });
 
     await marqs?.heartbeatMessage(id);

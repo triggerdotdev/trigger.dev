@@ -1,10 +1,9 @@
-import { ParserRuleContext } from "antlr4ts/ParserRuleContext";
-import { Token } from "antlr4ts/Token";
-import { ErrorNode } from "antlr4ts/tree/ErrorNode";
-import { ParseTree } from "antlr4ts/tree/ParseTree";
-import { TerminalNode } from "antlr4ts/tree/TerminalNode";
-import {
-  AliasContext,
+import type { ParserRuleContext } from "antlr4ts/ParserRuleContext";
+import type { Token } from "antlr4ts/Token";
+import type { ErrorNode } from "antlr4ts/tree/ErrorNode";
+import type { ParseTree } from "antlr4ts/tree/ParseTree";
+import type { TerminalNode } from "antlr4ts/tree/TerminalNode";
+import type {
   BlockContext,
   CatchBlockContext,
   ColumnExprAliasContext,
@@ -122,20 +121,18 @@ import {
   WithExprListContext,
   WithExprSubqueryContext,
 } from "../grammar/TSQLParser.js";
-import { TSQLParserVisitor } from "../grammar/TSQLParserVisitor.js";
-import {
+import { AliasContext } from "../grammar/TSQLParser.js";
+import type { TSQLParserVisitor } from "../grammar/TSQLParserVisitor.js";
+import type {
   Alias,
   And,
   ArithmeticOperation,
-  ArithmeticOperationOp,
   ArrayAccess,
   Array as ArrayExpression,
-  AST,
   BetweenExpr,
   Block,
   Call,
   CompareOperation,
-  CompareOperationOp,
   Constant,
   CTE,
   Declaration,
@@ -180,6 +177,7 @@ import {
   WindowFrameExpr,
   WindowFunction,
 } from "./ast";
+import { ArithmeticOperationOp, CompareOperationOp } from "./ast";
 import { RESERVED_KEYWORDS } from "./constants";
 import { BaseTSQLError, NotImplementedError, SyntaxError } from "./errors";
 import { parseStringLiteralText } from "./parse_string";
@@ -377,7 +375,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return results.length === 1 ? results[0] : results;
   }
 
-  visitTerminal(node: TerminalNode): any {
+  visitTerminal(_node: TerminalNode): any {
     // Terminal nodes are leaf nodes (tokens) in the parse tree
     // Typically not needed for AST conversion, but required by interface
     return null;
@@ -398,8 +396,8 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
   }
 
   // Program and declarations
-  visitProgram(ctx: ProgramContext): Program {
-    const declarations: Declaration[] = [];
+  visitProgram(_ctx: ProgramContext): Program {
+    const _declarations: Declaration[] = [];
     // Implement based on your parser context structure
     throw new NotImplementedError("visitProgram not implemented");
   }
@@ -559,12 +557,12 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
     return ctx.identifier().map((ident: any) => this.visitIdentifier(ident));
   }
 
-  visitEmptyStmt(ctx: EmptyStmtContext): ExprStatement {
+  visitEmptyStmt(_ctx: EmptyStmtContext): ExprStatement {
     return { expr: undefined };
   }
 
-  visitBlock(ctx: BlockContext): Block {
-    const declarations: Declaration[] = [];
+  visitBlock(_ctx: BlockContext): Block {
+    const _declarations: Declaration[] = [];
     // Implement based on your parser structure
     throw new NotImplementedError("visitBlock not implemented");
   }

@@ -797,7 +797,7 @@ export function docsPath(path: string) {
   return `${docsRoot()}/${path}`;
 }
 
-export function docsTroubleshootingPath(path: string) {
+export function docsTroubleshootingPath(_path: string) {
   return `${docsRoot()}/v3/troubleshooting`;
 }
 

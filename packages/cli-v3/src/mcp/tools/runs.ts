@@ -1,4 +1,4 @@
-import { AnyRunShape } from "@trigger.dev/core/v3";
+import type { AnyRunShape } from "@trigger.dev/core/v3";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

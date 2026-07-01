@@ -18,13 +18,13 @@ import { RunEngine } from "@internal/run-engine";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "@internal/run-engine/tests";
 import { assertNonNullable, containerTest } from "@internal/testcontainers";
 import { trace } from "@opentelemetry/api";
-import { IOPacket } from "@trigger.dev/core/v3";
-import { TaskRun } from "@trigger.dev/database";
+import type { IOPacket } from "@trigger.dev/core/v3";
+import type { TaskRun } from "@trigger.dev/database";
 import { Redis } from "ioredis";
 import { IdempotencyKeyConcern } from "~/runEngine/concerns/idempotencyKeys.server";
 import { DefaultQueueManager } from "~/runEngine/concerns/queues.server";
 import { NoopTaskMetadataCache, RedisTaskMetadataCache } from "~/services/taskMetadataCache.server";
-import {
+import type {
   EntitlementValidationParams,
   MaxAttemptsValidationParams,
   ParentRunValidationParams,
@@ -54,16 +54,16 @@ class MockPayloadProcessor implements PayloadProcessor {
 }
 
 class MockTriggerTaskValidator implements TriggerTaskValidator {
-  validateTags(params: TagValidationParams): ValidationResult {
+  validateTags(_params: TagValidationParams): ValidationResult {
     return { ok: true };
   }
-  validateEntitlement(params: EntitlementValidationParams): Promise<ValidationResult> {
+  validateEntitlement(_params: EntitlementValidationParams): Promise<ValidationResult> {
     return Promise.resolve({ ok: true });
   }
-  validateMaxAttempts(params: MaxAttemptsValidationParams): ValidationResult {
+  validateMaxAttempts(_params: MaxAttemptsValidationParams): ValidationResult {
     return { ok: true };
   }
-  validateParentRun(params: ParentRunValidationParams): ValidationResult {
+  validateParentRun(_params: ParentRunValidationParams): ValidationResult {
     return { ok: true };
   }
 }
@@ -83,8 +83,8 @@ class MockTraceEventConcern implements TraceEventConcern {
   public traceRunEnteredAt: number | undefined;
 
   async traceRun<T>(
-    request: TriggerTaskRequest,
-    parentStore: string | undefined,
+    _request: TriggerTaskRequest,
+    _parentStore: string | undefined,
     callback: (span: TracedEventSpan, store: string) => Promise<T>
   ): Promise<T> {
     this.traceRunEnteredAt = Date.now();
@@ -103,9 +103,9 @@ class MockTraceEventConcern implements TraceEventConcern {
   }
 
   async traceIdempotentRun<T>(
-    request: TriggerTaskRequest,
-    parentStore: string | undefined,
-    options: {
+    _request: TriggerTaskRequest,
+    _parentStore: string | undefined,
+    _options: {
       existingRun: TaskRun;
       idempotencyKey: string;
       incomplete: boolean;
@@ -128,9 +128,9 @@ class MockTraceEventConcern implements TraceEventConcern {
   }
 
   async traceDebouncedRun<T>(
-    request: TriggerTaskRequest,
-    parentStore: string | undefined,
-    options: {
+    _request: TriggerTaskRequest,
+    _parentStore: string | undefined,
+    _options: {
       existingRun: TaskRun;
       debounceKey: string;
       incomplete: boolean;
@@ -168,7 +168,7 @@ class MockTriggerRacepointSystem implements TriggerRacepointSystem {
     return Promise.resolve();
   }
 
-  registerRacepoint(racepoint: TriggerRacepoints, id: string): TriggerRacepoint {
+  registerRacepoint(_racepoint: TriggerRacepoints, id: string): TriggerRacepoint {
     const { promise, resolve } = promiseWithResolvers<void>();
     this.racepoints[id] = { promise, resolve };
 

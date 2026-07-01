@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { Metadata } from "./overrides.js";
+import type { Metadata } from "./overrides.js";
 import { z } from "zod";
-import { EnvObject } from "std-env";
+import type { EnvObject } from "std-env";
 
 const DateEnv = z
   .string()
@@ -240,7 +240,7 @@ export class RunnerEnv {
 
     // Filter out undefined values
     return Object.fromEntries(
-      Object.entries($env).filter(([key, value]) => value !== undefined)
+      Object.entries($env).filter(([_key, value]) => value !== undefined)
     ) as Record<string, string>;
   }
 }

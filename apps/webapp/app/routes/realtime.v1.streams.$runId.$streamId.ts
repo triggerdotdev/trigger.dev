@@ -4,7 +4,7 @@ import { $replica } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { getRealtimeStreamInstance } from "~/services/realtime/v1StreamsGlobal.server";
 import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+
 import { runStore } from "~/v3/runStore.server";
 
 const ParamsSchema = z.object({

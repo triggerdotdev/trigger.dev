@@ -1,4 +1,5 @@
-import { Reducer, useReducer } from "react";
+import type { Reducer } from "react";
+import { useReducer } from "react";
 
 export type ListState<T> = {
   items: T[];
@@ -15,7 +16,7 @@ type UpdateAction<T> = {
   item: T;
 };
 
-type DeleteAction<T> = {
+type DeleteAction<_T> = {
   type: "delete";
   index: number;
 };

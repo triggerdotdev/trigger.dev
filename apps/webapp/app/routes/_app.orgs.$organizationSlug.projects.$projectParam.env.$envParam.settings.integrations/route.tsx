@@ -1,6 +1,6 @@
-import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
-import { Form, useActionData, useNavigation } from "@remix-run/react";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
+import { Form, useActionData, useNavigation, useSearchParams } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import { typedjson, useTypedLoaderData, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
@@ -30,7 +30,6 @@ import { ProjectSettingsPresenter } from "~/services/projectSettingsPresenter.se
 import { logger } from "~/services/logger.server";
 import { EnvironmentParamSchema, v3BillingPath, vercelResourcePath } from "~/utils/pathBuilder";
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { useSearchParams } from "@remix-run/react";
 import { type BuildSettings } from "~/v3/buildSettings";
 import { GitHubSettingsPanel } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
 import {
@@ -152,10 +151,10 @@ export const action = dashboardAction(
     const { organizationSlug, projectParam } = params;
 
     const formData = await request.formData();
-    const submission = parseWithZod(formData, { schema: UpdateBuildSettingsFormSchema });
+    const submission = parse(formData, { schema: UpdateBuildSettingsFormSchema });
 
-    if (submission.status !== "success") {
-      return json(submission.reply());
+    if (!submission.value || submission.intent !== "submit") {
+      return json(submission);
     }
 
     const projectSettingsService = new ProjectSettingsService();
@@ -445,10 +444,10 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
 
   const [buildSettingsForm, fields] = useForm({
     id: "update-build-settings",
-    lastResult: lastSubmission,
+    lastSubmission: lastSubmission,
     shouldRevalidate: "onSubmit",
     onValidate({ formData }) {
-      return parseWithZod(formData, {
+      return parse(formData, {
         schema: UpdateBuildSettingsFormSchema,
       });
     },
@@ -459,12 +458,12 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
     (navigation.state === "submitting" || navigation.state === "loading");
 
   return (
-    <Form method="post" {...getFormProps(buildSettingsForm)}>
+    <Form method="post" {...buildSettingsForm.props}>
       <Fieldset>
         <InputGroup fullWidth>
           <Label htmlFor={fields.triggerConfigFilePath.id}>Trigger config file</Label>
           <Input
-            {...getInputProps(fields.triggerConfigFilePath, { type: "text" })}
+            {...conform.input(fields.triggerConfigFilePath, { type: "text" })}
             defaultValue={buildSettings?.triggerConfigFilePath || ""}
             placeholder="trigger.config.ts"
             onChange={(e) => {
@@ -478,14 +477,14 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
             Path to your Trigger configuration file, relative to the root directory of your repo.
           </Hint>
           <FormError id={fields.triggerConfigFilePath.errorId}>
-            {fields.triggerConfigFilePath.errors}
+            {fields.triggerConfigFilePath.error}
           </FormError>
         </InputGroup>
 
         <InputGroup fullWidth>
           <Label htmlFor={fields.installCommand.id}>Install command</Label>
           <Input
-            {...getInputProps(fields.installCommand, { type: "text" })}
+            {...conform.input(fields.installCommand, { type: "text" })}
             defaultValue={buildSettings?.installCommand || ""}
             placeholder="e.g., `npm install`, `pnpm install`, or `bun install`"
             onChange={(e) => {
@@ -499,14 +498,12 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
             Command to install your project dependencies. This will be run from the root directory
             of your repo. Auto-detected by default.
           </Hint>
-          <FormError id={fields.installCommand.errorId}>
-            {fields.installCommand.errors?.join(", ")}
-          </FormError>
+          <FormError id={fields.installCommand.errorId}>{fields.installCommand.error}</FormError>
         </InputGroup>
         <InputGroup fullWidth>
           <Label htmlFor={fields.preBuildCommand.id}>Pre-build command</Label>
           <Input
-            {...getInputProps(fields.preBuildCommand, { type: "text" })}
+            {...conform.input(fields.preBuildCommand, { type: "text" })}
             defaultValue={buildSettings?.preBuildCommand || ""}
             placeholder="e.g., `npm run prisma:generate`"
             onChange={(e) => {
@@ -520,14 +517,13 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
             Any command that needs to run before we build and deploy your project. This will be run
             from the root directory of your repo.
           </Hint>
-          <FormError id={fields.preBuildCommand.errorId}>
-            {fields.preBuildCommand.errors?.join(", ")}
-          </FormError>
+          <FormError id={fields.preBuildCommand.errorId}>{fields.preBuildCommand.error}</FormError>
         </InputGroup>
         <div className="border-t border-grid-dimmed pt-4">
           <InputGroup>
             <CheckboxWithLabel
-              {...getInputProps(fields.useNativeBuildServer, { type: "checkbox" })}
+              id={fields.useNativeBuildServer.id}
+              {...conform.input(fields.useNativeBuildServer, { type: "checkbox" })}
               label="Use native build server"
               variant="simple/small"
               defaultChecked={buildSettings?.useNativeBuildServer || false}
@@ -543,11 +539,11 @@ function BuildSettingsForm({ buildSettings }: { buildSettings: BuildSettings }) 
               default in the future. Version 4.2.0 or newer is required.
             </Hint>
             <FormError id={fields.useNativeBuildServer.errorId}>
-              {fields.useNativeBuildServer.errors}
+              {fields.useNativeBuildServer.error}
             </FormError>
           </InputGroup>
         </div>
-        <FormError>{buildSettingsForm.errors}</FormError>
+        <FormError>{buildSettingsForm.error}</FormError>
         <FormButtons
           confirmButton={
             <Button

@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
-import { useContext } from "react";
-import { createContext } from "react";
+import { useContext, createContext } from "react";
 
 export type OperatingSystemPlatform = "mac" | "windows";
 

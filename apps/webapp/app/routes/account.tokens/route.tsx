@@ -1,5 +1,5 @@
-import { getFormProps, getInputProps, useForm } from "@conform-to/react";
-import { parseWithZod } from "@conform-to/zod";
+import { conform, useForm } from "@conform-to/react";
+import { parse } from "@conform-to/zod";
 import { BookOpenIcon, ShieldCheckIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { ShieldExclamationIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
@@ -109,7 +109,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
 
   try {
-    const [personalAccessTokens, { roles, userRoleId, orgId }] = await Promise.all([
+    const [personalAccessTokens, { roles, userRoleId, orgId: _orgId }] = await Promise.all([
       getValidPersonalAccessTokens(userId),
       loadSystemRolesForUser(userId),
     ]);
@@ -185,10 +185,10 @@ const CreateTokenSchema = z.discriminatedUnion("action", [
 export const action: ActionFunction = async ({ request }) => {
   const userId = await requireUserId(request);
   const formData = await request.formData();
-  const submission = parseWithZod(formData, { schema: CreateTokenSchema });
+  const submission = parse(formData, { schema: CreateTokenSchema });
 
-  if (submission.status !== "success") {
-    return json(submission.reply());
+  if (!submission.value) {
+    return json(submission);
   }
 
   switch (submission.value.action) {
@@ -217,7 +217,7 @@ export const action: ActionFunction = async ({ request }) => {
           roleId: submittedRoleId,
         });
 
-        return json({ ...submission.reply(), payload: { token: tokenResult } });
+        return json({ ...submission, payload: { token: tokenResult } });
       } catch (error: any) {
         return json({ errors: { body: error.message } }, { status: 400 });
       }
@@ -343,9 +343,9 @@ function CreatePersonalAccessToken({
   const [form, { tokenName }] = useForm({
     id: "create-personal-access-token",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema: CreateTokenSchema });
+      return parse(formData, { schema: CreateTokenSchema });
     },
   });
 
@@ -379,14 +379,14 @@ function CreatePersonalAccessToken({
           />
         </div>
       ) : (
-        <fetcher.Form method="post" {...getFormProps(form)}>
+        <fetcher.Form method="post" {...form.props}>
           <input type="hidden" name="action" value="create" />
           {showRolePicker && <input type="hidden" name="roleId" value={selectedRoleId} />}
           <Fieldset className="mt-3">
             <InputGroup>
               <Label htmlFor={tokenName.id}>Name</Label>
               <Input
-                {...getInputProps(tokenName, { type: "text" })}
+                {...conform.input(tokenName, { type: "text" })}
                 placeholder="Name your Personal Access Token"
                 defaultValue=""
                 icon={ShieldCheckIcon}
@@ -396,7 +396,7 @@ function CreatePersonalAccessToken({
                 This will help you to identify your token. Tokens called "cli" are automatically
                 generated when you login with our CLI.
               </Hint>
-              <FormError id={tokenName.errorId}>{tokenName.errors}</FormError>
+              <FormError id={tokenName.errorId}>{tokenName.error}</FormError>
             </InputGroup>
 
             {showRolePicker && (
@@ -449,12 +449,12 @@ function CreatePersonalAccessToken({
 function RevokePersonalAccessToken({ token }: { token: ObfuscatedPersonalAccessToken }) {
   const lastSubmission = useActionData();
 
-  const [form, fields] = useForm({
+  const [form, { tokenId: _tokenId }] = useForm({
     id: "revoke-personal-access-token",
     // TODO: type this
-    lastResult: lastSubmission as any,
+    lastSubmission: lastSubmission as any,
     onValidate({ formData }) {
-      return parseWithZod(formData, { schema: CreateTokenSchema });
+      return parse(formData, { schema: CreateTokenSchema });
     },
   });
 
@@ -476,7 +476,7 @@ function RevokePersonalAccessToken({ token }: { token: ObfuscatedPersonalAccessT
               </Paragraph>
               <FormButtons
                 confirmButton={
-                  <Form method="post" {...getFormProps(form)}>
+                  <Form method="post" {...form.props}>
                     <input type="hidden" name="action" value="revoke" />
                     <input type="hidden" name="tokenId" value={token.id} />
                     <Button type="submit" variant="danger/medium">

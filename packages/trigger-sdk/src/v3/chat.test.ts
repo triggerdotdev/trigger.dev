@@ -138,7 +138,7 @@ function createSessionResponseBody(options?: {
   });
 }
 
-function defaultSessionCreateResponse(options?: {
+function _defaultSessionCreateResponse(options?: {
   sessionId?: string;
   externalId?: string;
   publicAccessToken?: string;
@@ -641,7 +641,11 @@ describe("TriggerChatTransport", () => {
       const fetchCalls: Array<{ url: string; endpoint: string; chatId: string }> = [];
 
       const customFetch = vi.fn(
-        async (url: string, init: RequestInit, ctx: { endpoint: "in" | "out"; chatId: string }) => {
+        async (
+          url: string,
+          _init: RequestInit,
+          ctx: { endpoint: "in" | "out"; chatId: string }
+        ) => {
           fetchCalls.push({ url, endpoint: ctx.endpoint, chatId: ctx.chatId });
           if (isSessionStreamAppendUrl(url)) return defaultAppendResponse();
           if (isSessionOutSubscribeUrl(url)) return defaultSseResponse();

@@ -387,7 +387,7 @@ describe("Task Runs V2", () => {
         null, // is_warm_start
       ];
 
-      const [insertError, insertResult] = await insert([taskRun]);
+      const [_insertError, _insertResult] = await insert([taskRun]);
 
       const queryBuilder = getTaskRunsQueryBuilder(client)();
       queryBuilder.where("environment_id = {environmentId: String}", {

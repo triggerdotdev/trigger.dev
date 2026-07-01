@@ -20,8 +20,8 @@ import {
 } from "graphile-worker";
 import omit from "lodash.omit";
 import { z } from "zod";
-import { Logger } from "@trigger.dev/core/logger";
-import {
+import type { Logger } from "@trigger.dev/core/logger";
+import type {
   PrismaClient,
   PrismaClientOrTransaction,
   PrismaReplicaClient,
@@ -215,15 +215,15 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
       throw new Error("Failed to initialize graphile worker queue");
     }
 
-    this.#runner?.events.on("pool:create", ({ workerPool }) => {
+    this.#runner?.events.on("pool:create", ({ workerPool: _workerPool }) => {
       this.#logDebug("pool:create");
     });
 
-    this.#runner?.events.on("pool:listen:connecting", ({ workerPool, attempts }) => {
+    this.#runner?.events.on("pool:listen:connecting", ({ workerPool: _workerPool, attempts }) => {
       this.#logDebug("pool:create", { attempts });
     });
 
-    this.#runner?.events.on("pool:listen:success", async ({ workerPool, client }) => {
+    this.#runner?.events.on("pool:listen:success", async ({ workerPool: _workerPool, client }) => {
       this.#logDebug("pool:listen:success");
 
       // hijack client instance to listen and react to incoming NOTIFY events
@@ -801,7 +801,7 @@ export class ZodWorker<TMessageCatalog extends MessageCatalogSchema> {
     }
   }
 
-  async #handleReporter(rawPayload: unknown, helpers: JobHelpers): Promise<void> {
+  async #handleReporter(rawPayload: unknown, _helpers: JobHelpers): Promise<void> {
     if (!this.#reporter) {
       return;
     }

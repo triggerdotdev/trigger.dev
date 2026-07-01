@@ -886,7 +886,7 @@ function HeaderCellContent({
   children,
   onFilterClick,
   showFilters,
-  hasActiveFilter,
+  hasActiveFilter: _hasActiveFilter,
   sortDirection,
   onSortClick,
   canSort,

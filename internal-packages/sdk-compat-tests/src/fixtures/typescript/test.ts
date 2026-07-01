@@ -5,23 +5,9 @@
  * It tests type inference, generics, and type-only imports.
  */
 
-import {
-  task,
-  logger,
-  schedules,
-  runs,
-  configure,
-  queue,
-  retry,
-  wait,
-  metadata,
-  tags,
-  type Context,
-  type RetryOptions,
-} from "@trigger.dev/sdk";
+import { task, queue, type RetryOptions } from "@trigger.dev/sdk";
 
 // Type-only import test
-import type { ApiClientConfiguration } from "@trigger.dev/sdk";
 
 // Test typed task with payload
 interface MyPayload {
@@ -38,7 +24,7 @@ const typedTask = task({
   id: "typescript-test-task",
   run: async (payload: MyPayload, { ctx }): Promise<MyOutput> => {
     // Verify context type
-    const runId: string = ctx.run.id;
+    const _runId: string = ctx.run.id;
 
     return {
       processed: true,
@@ -52,13 +38,13 @@ type TaskPayload = Parameters<typeof typedTask.trigger>[0];
 type _PayloadCheck = TaskPayload extends MyPayload ? true : never;
 
 // Test queue definition
-const myQueue = queue({
+const _myQueue = queue({
   name: "test-queue",
   concurrencyLimit: 10,
 });
 
 // Test retry options type
-const retryOpts: RetryOptions = {
+const _retryOpts: RetryOptions = {
   maxAttempts: 3,
   factor: 2,
   minTimeoutInMs: 1000,

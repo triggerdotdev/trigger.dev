@@ -60,7 +60,7 @@ export class ArtifactsService extends BaseService {
     }));
   }
 
-  private createPresignedPost(key: string, sizeLimit: number, contentLength?: number) {
+  private createPresignedPost(key: string, sizeLimit: number, _contentLength?: number) {
     if (!this.bucket) {
       return errAsync({
         type: "artifacts_bucket_not_configured" as const,

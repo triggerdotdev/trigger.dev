@@ -8,7 +8,7 @@ import { Evt } from "evt";
 import { randomUUID } from "node:crypto";
 import type { CloseEvent, ErrorEvent, MessageEvent } from "ws";
 import { WebSocket } from "ws";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { DevQueueConsumer } from "./marqs/devQueueConsumer.server";
 
@@ -67,7 +67,7 @@ export class AuthenticatedSocketConnection {
       });
     });
 
-    ws.on("pong", (data) => {
+    ws.on("pong", (_data) => {
       // logger.debug("[AuthenticatedSocketConnection] Received pong", {
       //   id: this.id,
       //   envId: this.authenticatedEnv.id,

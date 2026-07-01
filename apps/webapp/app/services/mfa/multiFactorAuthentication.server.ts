@@ -1,4 +1,4 @@
-import { SecretReference, User, type PrismaClient } from "@trigger.dev/database";
+import { type SecretReference, type User, type PrismaClient } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 import { createRandomStringGenerator } from "@better-auth/utils/random";
@@ -257,7 +257,7 @@ export class MultiFactorAuthenticationService {
     return false;
   }
 
-  async #verifyTotpCode(user: User, secretReference: SecretReference, totpCode: string) {
+  async #verifyTotpCode(_user: User, secretReference: SecretReference, totpCode: string) {
     const secretStore = getSecretStore(secretReference.provider);
     const secretResult = await secretStore.getSecret(SecretSchema, secretReference.key);
 

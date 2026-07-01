@@ -1,6 +1,6 @@
 import { intro, log, outro, select } from "@clack/prompts";
 import { recordSpanException } from "@trigger.dev/core/v3/workers";
-import { Command } from "commander";
+import type { Command } from "commander";
 import open from "open";
 import pRetry, { AbortError } from "p-retry";
 import { z } from "zod";
@@ -24,7 +24,7 @@ import {
   awaitAndDisplayPlatformNotification,
   fetchPlatformNotification,
 } from "../utilities/platformNotifications.js";
-import { LoginResult } from "../utilities/session.js";
+import type { LoginResult } from "../utilities/session.js";
 import { whoAmI } from "./whoami.js";
 import { logger } from "../utilities/logger.js";
 import { spinner } from "../utilities/windows.js";

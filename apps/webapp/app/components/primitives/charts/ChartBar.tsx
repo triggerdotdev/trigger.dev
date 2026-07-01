@@ -101,7 +101,7 @@ export function ChartBarRenderer({
     config,
     data,
     dataKey,
-    dataKeys,
+    dataKeys: _dataKeys,
     visibleSeries,
     state,
     highlight,
@@ -313,7 +313,7 @@ export function ChartBarRenderer({
             }
             activeBar={false}
             fillOpacity={dimmed ? 0.2 : 1}
-            onClick={(data, index, e) => handleBarClick(data, e)}
+            onClick={(data, _index, e) => handleBarClick(data, e)}
             onMouseEnter={(entry, index) => {
               if (entry.tooltipPayload?.[0]) {
                 const { dataKey: hoveredKey } = entry.tooltipPayload[0];

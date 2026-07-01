@@ -97,6 +97,7 @@ class SsoFallbackController implements SsoController {
   beginAuthorization(_params: {
     email: string;
     redirectTo: string;
+    // eslint-disable-next-line typescript/consistent-type-imports
     flow: import("@trigger.dev/plugins").SsoFlow;
   }): ResultAsync<{ url: string }, SsoBeginError> {
     return errAsync("feature_disabled" as const);
@@ -106,6 +107,7 @@ class SsoFallbackController implements SsoController {
     {
       profile: SsoProfile;
       redirectTo: string;
+      // eslint-disable-next-line typescript/consistent-type-imports
       flow: import("@trigger.dev/plugins").SsoFlow;
     },
     SsoCompleteError

@@ -1,7 +1,7 @@
-import { BuildManifest } from "@trigger.dev/core/v3";
-import { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { CliApiClient } from "../apiClient.js";
-import { DevCommandOptions } from "../commands/dev.js";
+import type { BuildManifest } from "@trigger.dev/core/v3";
+import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
+import type { CliApiClient } from "../apiClient.js";
+import type { DevCommandOptions } from "../commands/dev.js";
 import type { Metafile } from "esbuild";
 
 export interface WorkerRuntime {

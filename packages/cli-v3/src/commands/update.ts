@@ -1,9 +1,14 @@
 import { confirm, intro, isCancel, log, outro } from "@clack/prompts";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { detectPackageManager, installDependencies } from "nypm";
 import { dirname, join, resolve } from "path";
-import { PackageJson, readPackageJSON, type ResolveOptions, resolvePackageJSON } from "pkg-types";
-import { z } from "zod";
+import {
+  readPackageJSON,
+  resolvePackageJSON,
+  type PackageJson,
+  type ResolveOptions,
+} from "pkg-types";
+import type { z } from "zod";
 import { CommonCommandOptions, OutroCommandError, wrapCommandAction } from "../cli/common.js";
 import { chalkError, prettyError, prettyWarning } from "../utilities/cliOutput.js";
 import { removeFile, writeJSONFilePreserveOrder } from "../utilities/fileSystem.js";
@@ -49,7 +54,7 @@ export async function updateCommand(dir: string, options: UpdateCommandOptions) 
 
 export async function updateTriggerPackages(
   dir: string,
-  options: UpdateCommandOptions,
+  _options: UpdateCommandOptions,
   embedded?: boolean,
   requireUpdate?: boolean
 ): Promise<boolean> {
@@ -251,7 +256,7 @@ export async function updateTriggerPackages(
   const packageJsonBackupPath = `${packageJsonPath}.bak`;
   await writeJSONFilePreserveOrder(packageJsonBackupPath, readonlyPackageJson, true);
 
-  const exitHandler = async (sig: any) => {
+  const exitHandler = async (_sig: any) => {
     log.warn(
       `You may have to manually roll back any package.json changes. Backup written to ${packageJsonBackupPath}`
     );
@@ -393,7 +398,7 @@ function mutatePackageJsonWithUpdatedPackages(
   depsToUpdate: Dependency[],
   targetVersion: string
 ) {
-  for (const { type, name, version } of depsToUpdate) {
+  for (const { type, name, version: _version } of depsToUpdate) {
     if (!packageJson[type]) {
       throw new Error(
         `No ${type} entry found in package.json. Please try to upgrade manually instead.`

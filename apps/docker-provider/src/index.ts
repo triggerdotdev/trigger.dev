@@ -1,16 +1,14 @@
 import { $, type ExecaChildProcess, execa } from "execa";
-import {
-  ProviderShell,
+import type {
   TaskOperations,
   TaskOperationsCreateOptions,
   TaskOperationsIndexOptions,
   TaskOperationsRestoreOptions,
 } from "@trigger.dev/core/v3/apps";
-import { SimpleLogger } from "@trigger.dev/core/v3/apps";
-import { isExecaChildProcess } from "@trigger.dev/core/v3/apps";
+import { ProviderShell, SimpleLogger, isExecaChildProcess } from "@trigger.dev/core/v3/apps";
 import { testDockerCheckpoint } from "@trigger.dev/core/v3/serverOnly";
 import { setTimeout } from "node:timers/promises";
-import { PostStartCauses, PreStopCauses } from "@trigger.dev/core/v3";
+import type { PostStartCauses, PreStopCauses } from "@trigger.dev/core/v3";
 
 const MACHINE_NAME = process.env.MACHINE_NAME || "local";
 const COORDINATOR_PORT = process.env.COORDINATOR_PORT || 8020;
@@ -192,7 +190,7 @@ class DockerTaskOperations implements TaskOperations {
     logger.log("noop: delete");
   }
 
-  async get(opts: { runId: string }) {
+  async get(_opts: { runId: string }) {
     await this.init();
 
     logger.log("noop: get");

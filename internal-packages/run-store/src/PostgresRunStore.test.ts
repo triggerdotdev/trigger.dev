@@ -147,6 +147,7 @@ describe("PostgresRunStore", () => {
           isTest: false,
           taskEventStore: "taskEvent",
           depth: 0,
+          // eslint-disable-next-line typescript/consistent-type-imports
           error: error as unknown as import("@trigger.dev/database").Prisma.InputJsonValue,
           completedAt: cancelledAt,
           updatedAt: cancelledAt,
@@ -215,6 +216,7 @@ describe("PostgresRunStore", () => {
           queue: "task/my-task",
           isTest: false,
           completedAt,
+          // eslint-disable-next-line typescript/consistent-type-imports
           error: error as unknown as import("@trigger.dev/database").Prisma.InputJsonObject,
           depth: 0,
           taskEventStore: "taskEvent",

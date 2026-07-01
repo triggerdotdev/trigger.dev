@@ -1,6 +1,6 @@
 import { log, outro } from "@clack/prompts";
-import { Command } from "commander";
-import { z } from "zod";
+import type { Command } from "commander";
+import type { z } from "zod";
 import { CommonCommandOptions, handleTelemetry, wrapCommandAction } from "../cli/common.js";
 import { chalkGrey } from "../utilities/cliOutput.js";
 import { readAuthConfigFile } from "../utilities/configFiles.js";
@@ -38,7 +38,7 @@ export async function listProfilesCommand(options: unknown) {
   });
 }
 
-export async function listProfiles(options: ListProfilesOptions) {
+export async function listProfiles(_options: ListProfilesOptions) {
   const authConfig = readAuthConfigFile();
 
   if (!authConfig) {
