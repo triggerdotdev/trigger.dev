@@ -159,7 +159,7 @@ export class RunStreamPresenter {
             try {
               // Send an actual message so the client refreshes
               throttledSend({ send, event: "message", data: new Date().toISOString() });
-            } catch (error) {
+            } catch (_error) {
               // If we can't send a ping, the connection is likely dead
               return false;
             }

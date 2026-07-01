@@ -101,7 +101,7 @@ export class TaskRunProcess {
 
     try {
       await this.#cancel();
-    } catch (err) {}
+    } catch (_err) {}
 
     await this.#gracefullyTerminate(this.options.gracefulTerminationTimeoutInMs);
   }

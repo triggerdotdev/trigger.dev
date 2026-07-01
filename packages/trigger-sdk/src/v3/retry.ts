@@ -531,7 +531,7 @@ const createAttributesFromHeaders = (headers: Headers): Attributes => {
 const safeJsonParse = (json: string): unknown => {
   try {
     return JSON.parse(json);
-  } catch (e) {
+  } catch (_e) {
     return null;
   }
 };

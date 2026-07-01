@@ -1026,7 +1026,7 @@ function isQemuRegistered() {
     // Check a single QEMU handler
     const binfmt = readFileSync("/proc/sys/fs/binfmt_misc/qemu-aarch64", "utf8");
     return binfmt.includes("enabled");
-  } catch (e) {
+  } catch (_e) {
     return false;
   }
 }

@@ -296,7 +296,7 @@ async function _initCommand(dir: string, options: InitCommandOptions) {
 
         return;
       }
-    } catch (e) {
+    } catch (_e) {
       // continue
     }
   }
@@ -824,7 +824,7 @@ async function tryResolveTsConfig(cwd: string) {
   try {
     const tsconfigPath = await resolveTSConfig(cwd);
     return tsconfigPath;
-  } catch (e) {
+  } catch (_e) {
     return;
   }
 }

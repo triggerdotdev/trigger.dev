@@ -658,7 +658,7 @@ describe("RunQueue", () => {
       try {
         await queue.quit();
         await redis.quit();
-      } catch (e) {}
+      } catch (_e) {}
     }
   });
 
@@ -895,7 +895,7 @@ describe("RunQueue", () => {
       try {
         await queue.quit();
         await redis.quit();
-      } catch (e) {}
+      } catch (_e) {}
     }
   });
 
@@ -956,7 +956,7 @@ describe("RunQueue", () => {
       try {
         await queue.quit();
         await redis.quit();
-      } catch (e) {}
+      } catch (_e) {}
     }
   });
 
@@ -1056,7 +1056,7 @@ describe("RunQueue", () => {
       try {
         await queue.quit();
         await redis.quit();
-      } catch (e) {}
+      } catch (_e) {}
     }
   });
 });

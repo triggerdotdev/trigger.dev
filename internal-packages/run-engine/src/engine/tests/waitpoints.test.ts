@@ -1286,7 +1286,7 @@ describe("RunEngine Waitpoints", () => {
             snapshotId: "invalid-id",
           });
           expect(sinceInvalid).toBeNull();
-        } catch (e) {
+        } catch (_e) {
           threw = true;
         }
         // should never throw

@@ -27,7 +27,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
     //redirect them to the most appropriate project
     return redirect(v3EnvironmentPath(organization, project, environment));
-  } catch (e) {
+  } catch (_e) {
     const organization = await prisma.organization.findFirst({
       where: {
         members: {

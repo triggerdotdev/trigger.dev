@@ -5171,7 +5171,7 @@ end
 function safeJsonParse(rawMessage: string): unknown {
   try {
     return JSON.parse(rawMessage);
-  } catch (e) {
+  } catch (_e) {
     return undefined;
   }
 }

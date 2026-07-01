@@ -188,7 +188,7 @@ class TestFairQueueHelper {
           };
 
           await this.messageHandler(ctx);
-        } catch (error) {
+        } catch (_error) {
           if (this.abortController.signal.aborted) break;
         }
       }

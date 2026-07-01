@@ -159,7 +159,7 @@ function tryParseJSON(
     }
 
     return { ok: false, value };
-  } catch (e) {
+  } catch (_e) {
     return { ok: false, value };
   }
 }

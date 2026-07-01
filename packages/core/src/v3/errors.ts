@@ -239,7 +239,7 @@ export function parseError(error: unknown): TaskRunError {
       type: "CUSTOM_ERROR",
       raw: JSON.stringify(error),
     };
-  } catch (e) {
+  } catch (_e) {
     return {
       type: "CUSTOM_ERROR",
       raw: String(error),

@@ -554,7 +554,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
         if (run) {
           runFriendlyId = run.friendlyId;
         }
-      } catch (error) {
+      } catch (_error) {
         // Trigger failed - will try to create pre-failed run below
         runFriendlyId = null;
       }

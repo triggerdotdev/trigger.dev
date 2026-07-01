@@ -606,7 +606,7 @@ function safeParseUrl(url: unknown): URL | undefined {
 
   try {
     return new URL(url);
-  } catch (e) {
+  } catch (_e) {
     return undefined;
   }
 }

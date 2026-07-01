@@ -51,7 +51,7 @@ export function schemaToJsonSchema(
       return {
         jsonSchema,
       };
-    } catch (error) {
+    } catch (_error) {
       // If toJsonSchema fails, continue to other checks
     }
   }

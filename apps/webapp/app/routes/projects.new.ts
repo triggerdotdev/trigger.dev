@@ -16,7 +16,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const { organization } = await presenter.call({ user: user });
     //redirect them to the most appropriate project
     return redirect(`${newProjectPath(organization)}${url.search}`);
-  } catch (e) {
+  } catch (_e) {
     const invites = await getUsersInvites({ email: user.email });
 
     if (invites.length > 0) {

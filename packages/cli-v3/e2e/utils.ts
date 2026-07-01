@@ -160,7 +160,7 @@ export async function runTsc(
   // Ensure the tsconfig file exists
   try {
     await access(tsconfigPath);
-  } catch (error) {
+  } catch (_error) {
     throw new Error(`TSConfig file not found: ${tsconfigPath}`);
   }
 

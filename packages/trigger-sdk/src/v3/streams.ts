@@ -596,7 +596,7 @@ function writerInternal<TPart>(key: string, options: WriterStreamOptions<TPart>)
   function safeEnqueue(data: TPart) {
     try {
       controller.enqueue(data);
-    } catch (error) {
+    } catch (_error) {
       // suppress errors when the stream has been closed
     }
   }
@@ -645,7 +645,7 @@ function writerInternal<TPart>(key: string, options: WriterStreamOptions<TPart>)
   waitForStreams.finally(() => {
     try {
       controller.close();
-    } catch (error) {
+    } catch (_error) {
       // suppress errors when the stream has been closed
     }
   });

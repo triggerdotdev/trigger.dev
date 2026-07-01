@@ -38,7 +38,7 @@ try {
     logLevel: process.env.LOG,
     packageManager: process.env.PM,
   });
-} catch (e) {
+} catch (_e) {
   options = {
     logLevel: "log",
   };
@@ -73,7 +73,7 @@ describe.concurrent("buildWorker", async () => {
           path.resolve(path.join(workspaceDir, "yarn.lock")),
           path.resolve(path.join(workspaceDir, "yarn.lock.copy"))
         );
-      } catch (e) {
+      } catch (_e) {
         await rename(
           path.resolve(path.join(workspaceDir, "yarn.lock.copy")),
           path.resolve(path.join(workspaceDir, "yarn.lock"))

@@ -79,7 +79,7 @@ async function isDirty(directory: string): Promise<boolean> {
 async function parseGitConfig(configPath: string) {
   try {
     return ini.parse(await fs.readFile(configPath, "utf8"));
-  } catch (err: unknown) {
+  } catch (_err: unknown) {
     return;
   }
 }

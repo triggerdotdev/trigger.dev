@@ -127,7 +127,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
               request,
               "Waitpoint timed out"
             );
-          } catch (e) {
+          } catch (_e) {
             return redirectWithErrorMessage(
               submission.value.failureRedirect,
               request,
@@ -185,7 +185,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             request,
             "Waitpoint completed"
           );
-        } catch (e) {
+        } catch (_e) {
           return redirectWithErrorMessage(
             submission.value.failureRedirect,
             request,

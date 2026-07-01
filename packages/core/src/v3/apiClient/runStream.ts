@@ -871,7 +871,7 @@ function apiStatusFromRunStatus(status: string): RunStatus {
 function safeParseJSON(data: string): unknown {
   try {
     return JSON.parse(data);
-  } catch (error) {
+  } catch (_error) {
     return data;
   }
 }

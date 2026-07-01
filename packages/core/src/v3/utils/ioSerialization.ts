@@ -265,7 +265,7 @@ export async function resolvePresignedPacketUrl(
     };
 
     return await parsePacket(packet);
-  } catch (error) {
+  } catch (_error) {
     return;
   }
 }
@@ -333,7 +333,7 @@ export async function createPacketAttributes(
         };
 
         return result;
-      } catch (e) {
+      } catch (_e) {
         return;
       }
 

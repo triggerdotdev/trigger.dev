@@ -299,7 +299,7 @@ async function _doZodFetchWithRetries<TResponseBodySchema extends z.ZodTypeAny>(
 async function safeJsonFromResponse(response: Response): Promise<any> {
   try {
     return await response.clone().json();
-  } catch (error) {
+  } catch (_error) {
     return;
   }
 }
@@ -380,7 +380,7 @@ function shouldRetry(
 function safeJsonParse(text: string): any {
   try {
     return JSON.parse(text);
-  } catch (e) {
+  } catch (_e) {
     return undefined;
   }
 }
@@ -410,7 +410,7 @@ function requestInitWithCache(requestInit?: RequestInit): RequestInit {
     const _ = new Request("http://localhost", withCache);
 
     return withCache;
-  } catch (error) {
+  } catch (_error) {
     return requestInit ?? {};
   }
 }

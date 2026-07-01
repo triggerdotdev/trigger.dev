@@ -313,7 +313,7 @@ export class WorkerGroupTokenService extends WithRunEngine {
             });
 
             return existingWorkerInstance;
-          } catch (error) {
+          } catch (_error) {
             logger.error("[WorkerGroupTokenService] Failed to find worker instance", {
               workerGroup,
               workerInstance,

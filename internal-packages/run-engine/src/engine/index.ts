@@ -2151,7 +2151,7 @@ export class RunEngine {
 
       // Close the debounce system Redis connection
       await this.debounceSystem.quit();
-    } catch (error) {
+    } catch (_error) {
       // And should always throw
     }
   }

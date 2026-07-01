@@ -118,7 +118,7 @@ export function isPublicJWT(token: string): boolean {
 
     // Check for the pub: true claim
     return "pub" in payload && payload.pub === true;
-  } catch (error) {
+  } catch (_error) {
     // If there's any error in decoding or parsing, it's not a valid JWT
     return false;
   }
@@ -141,7 +141,7 @@ function extractJWTSub(token: string): string | undefined {
 
     // Check for the pub: true claim
     return "sub" in payload && typeof payload.sub === "string" ? payload.sub : undefined;
-  } catch (error) {
+  } catch (_error) {
     // If there's any error in decoding or parsing, it's not a valid JWT
     return;
   }
