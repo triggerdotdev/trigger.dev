@@ -242,7 +242,8 @@ describe("Task Runs V2", () => {
       // round-trips the mixed-type array back out as JSON regardless of the internal storage type.
       const query = client.query({
         name: "query-task-runs-mixed",
-        query: "SELECT run_id, output_text FROM trigger_dev.task_runs_v2 WHERE run_id = {run_id: String}",
+        query:
+          "SELECT run_id, output_text FROM trigger_dev.task_runs_v2 WHERE run_id = {run_id: String}",
         schema: z.object({
           run_id: z.string(),
           output_text: z.string(),
