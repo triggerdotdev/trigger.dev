@@ -1,20 +1,19 @@
 import type { OutputColumnMetadata } from "@internal/clickhouse";
-import { IconSortAscending, IconSortDescending } from "@tabler/icons-react";
-import { BarChart, CheckIcon, LineChart, Plus, XIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { IconSortAscending,IconSortDescending } from "@tabler/icons-react";
+import { BarChart,CheckIcon,LineChart,Plus,XIcon } from "lucide-react";
+import { useCallback,useEffect,useMemo,useRef,useState } from "react";
 import { cn } from "~/utils/cn";
-import { Paragraph } from "../primitives/Paragraph";
-import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
-import { Select, SelectItem } from "../primitives/Select";
-import { Switch } from "../primitives/Switch";
-import SegmentedControl from "../primitives/SegmentedControl";
-import { Button } from "../primitives/Buttons";
 import {
-  type AggregationType,
-  type ChartConfiguration,
-  type SortDirection,
+type AggregationType,
+type ChartConfiguration,
+type SortDirection,
 } from "../metrics/QueryWidget";
-import { CHART_COLORS_BY_HUE, getSeriesColor } from "./chartColors";
+import { Paragraph } from "../primitives/Paragraph";
+import { Popover,PopoverContent,PopoverTrigger } from "../primitives/Popover";
+import SegmentedControl from "../primitives/SegmentedControl";
+import { Select,SelectItem } from "../primitives/Select";
+import { Switch } from "../primitives/Switch";
+import { CHART_COLORS_BY_HUE,getSeriesColor } from "./chartColors";
 
 export const defaultChartConfig: ChartConfiguration = {
   chartType: "bar",

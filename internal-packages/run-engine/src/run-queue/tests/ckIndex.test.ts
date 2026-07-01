@@ -1,13 +1,12 @@
-import { assertNonNullable, redisTest } from "@internal/testcontainers";
+import { redisTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
+import { Decimal } from "@trigger.dev/database";
 import { describe } from "node:test";
-import { setTimeout } from "node:timers/promises";
 import { FairQueueSelectionStrategy } from "../fairQueueSelectionStrategy.js";
 import { RunQueue } from "../index.js";
 import { RunQueueFullKeyProducer } from "../keyProducer.js";
 import type { InputPayload } from "../types.js";
-import { Decimal } from "@trigger.dev/database";
 
 const testOptions = {
   name: "rq",

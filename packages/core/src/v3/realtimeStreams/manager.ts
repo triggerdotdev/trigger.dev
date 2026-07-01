@@ -1,14 +1,14 @@
 import type { ApiClient } from "../apiClient/index.js";
-import { ensureAsyncIterable, ensureReadableStream } from "../streams/asyncIterableStream.js";
-import type { AnyZodFetchOptions } from "../zodfetch.js";
+import { ensureReadableStream } from "../streams/asyncIterableStream.js";
 import { taskContext } from "../task-context-api.js";
-import type { CreateStreamResponseLike} from "./streamInstance.js";
+import type { AnyZodFetchOptions } from "../zodfetch.js";
+import type { CreateStreamResponseLike } from "./streamInstance.js";
 import { StreamInstance } from "./streamInstance.js";
 import type {
-  RealtimeStreamInstance,
-  RealtimeStreamOperationOptions,
-  RealtimeStreamsManager,
-  StreamWriteResult,
+RealtimeStreamInstance,
+RealtimeStreamOperationOptions,
+RealtimeStreamsManager,
+StreamWriteResult,
 } from "./types.js";
 
 export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
@@ -233,14 +233,3 @@ function getRunIdForOptions(options?: RealtimeStreamOperationOptions): string | 
   return taskContext.ctx?.run?.id;
 }
 
-type ParsedStreamResponse =
-  | {
-      version: "v1";
-    }
-  | {
-      version: "v2";
-      accessToken: string;
-      basin: string;
-      flushIntervalMs?: number;
-      maxRetries?: number;
-    };

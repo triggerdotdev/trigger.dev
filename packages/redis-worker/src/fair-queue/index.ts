@@ -1,49 +1,49 @@
-import { createRedisClient, type Redis } from "@internal/redis";
-import { SpanKind, type Span } from "@internal/tracing";
+import { createRedisClient,type Redis } from "@internal/redis";
+import { SpanKind,type Span } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { nanoid } from "nanoid";
 import { setInterval } from "node:timers/promises";
 import { type z } from "zod";
+import { isAbortError } from "../utils.js";
 import { ConcurrencyManager } from "./concurrency.js";
 import { MasterQueue } from "./masterQueue.js";
-import { TenantDispatch } from "./tenantDispatch.js";
-import { type RetryStrategy, ExponentialBackoffRetry } from "./retry.js";
-import { isAbortError } from "../utils.js";
+import { type RetryStrategy } from "./retry.js";
 import {
-  FairQueueTelemetry,
-  FairQueueAttributes,
-  MessagingAttributes,
-  BatchedSpanManager,
+BatchedSpanManager,
+FairQueueAttributes,
+FairQueueTelemetry,
+MessagingAttributes,
 } from "./telemetry.js";
+import { TenantDispatch } from "./tenantDispatch.js";
 import type {
-  DeadLetterMessage,
-  DispatchSchedulerContext,
-  EnqueueBatchOptions,
-  EnqueueOptions,
-  FairQueueKeyProducer,
-  FairQueueOptions,
-  FairScheduler,
-  QueueCooloffState,
-  QueueDescriptor,
-  SchedulerContext,
-  StoredMessage,
-  TenantQueues,
+DeadLetterMessage,
+DispatchSchedulerContext,
+EnqueueBatchOptions,
+EnqueueOptions,
+FairQueueKeyProducer,
+FairQueueOptions,
+FairScheduler,
+QueueCooloffState,
+QueueDescriptor,
+SchedulerContext,
+StoredMessage,
+TenantQueues,
 } from "./types.js";
 import { VisibilityManager } from "./visibility.js";
 import { WorkerQueueManager } from "./workerQueue.js";
 
 // Re-export all types and components
-export * from "./types.js";
+export * from "./concurrency.js";
 export * from "./keyProducer.js";
 export * from "./masterQueue.js";
-export * from "./concurrency.js";
-export * from "./visibility.js";
-export * from "./workerQueue.js";
+export * from "./retry.js";
 export * from "./scheduler.js";
 export * from "./schedulers/index.js";
-export * from "./retry.js";
 export * from "./telemetry.js";
 export * from "./tenantDispatch.js";
+export * from "./types.js";
+export * from "./visibility.js";
+export * from "./workerQueue.js";
 
 /**
  * FairQueue is the main orchestrator for fair queue message routing.

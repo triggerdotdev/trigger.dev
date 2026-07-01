@@ -7,21 +7,20 @@
 
 // Test main export
 import {
-  task,
-  logger,
-  schedules,
-  runs,
-  configure,
-  queue,
-  retry,
-  wait,
-  metadata,
-  tags,
+configure,
+logger,
+metadata,
+queue,
+retry,
+runs,
+schedules,
+tags,
+task,
+wait,
 } from "@trigger.dev/sdk";
 
 // Test /v3 subpath (legacy, but should still work)
-// eslint-disable-next-line import/no-duplicates
-import { task as taskV3 } from "@trigger.dev/sdk/v3";
+const { task: taskV3 } = await import("@trigger.dev/sdk/v3");
 
 // Validate exports are functions/objects
 const checks = [

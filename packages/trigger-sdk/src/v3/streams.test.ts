@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { streams } from "./streams.js";
-import { taskContext, realtimeStreams } from "@trigger.dev/core/v3";
 import type * as Core from "@trigger.dev/core/v3";
+import { realtimeStreams } from "@trigger.dev/core/v3";
+import { beforeEach,describe,expect,it,vi } from "vitest";
+import { streams } from "./streams.js";
 
 vi.mock("@trigger.dev/core/v3", async (importOriginal) => {
   const original = await importOriginal<typeof Core>();

@@ -1,16 +1,16 @@
 import type {
-  ComponentPropsWithoutRef,
-  ReactNode} from "react";
-import {
-  Component,
-  Fragment,
-  createContext,
-  useCallback,
-  useContext,
-  useRef,
-  useState,
+ComponentPropsWithoutRef,
+ReactNode
 } from "react";
-import { inverseLerp, lerp } from "~/utils/lerp";
+import {
+Fragment,
+createContext,
+useCallback,
+useContext,
+useRef,
+useState
+} from "react";
+import { inverseLerp,lerp } from "~/utils/lerp";
 
 interface MousePosition {
   x: number;

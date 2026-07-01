@@ -1,7 +1,7 @@
-import type { Context} from "@opentelemetry/api";
-import { context, propagation, trace, TraceFlags } from "@opentelemetry/api";
-import type { TraceContextManager } from "./types.js";
+import type { Context } from "@opentelemetry/api";
+import { context,propagation,trace } from "@opentelemetry/api";
 import { parseTraceParent } from "@opentelemetry/core";
+import type { TraceContextManager } from "./types.js";
 
 export class StandardTraceContextManager implements TraceContextManager {
   public traceContext: Record<string, unknown> = {};

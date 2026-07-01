@@ -1,17 +1,8 @@
-import { type TaskRunAttempt } from "@trigger.dev/database";
 import { eventStream } from "remix-utils/sse/server";
-import { type PrismaClient, prisma } from "~/db.server";
+import { type PrismaClient,prisma } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { logger } from "~/services/logger.server";
 import { projectPubSub } from "~/v3/services/projectPubSub.server";
-
-type RunWithAttempts = {
-  updatedAt: Date;
-  attempts: {
-    status: TaskRunAttempt["status"];
-    updatedAt: Date;
-  }[];
-};
 
 const pingInterval = 1000;
 

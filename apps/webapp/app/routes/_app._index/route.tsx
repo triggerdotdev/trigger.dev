@@ -1,14 +1,13 @@
-import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs,redirect } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { getUsersInvites } from "~/models/member.server";
 import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { requireUser } from "~/services/session.server";
 import {
-  invitesPath,
-  newOrganizationPath,
-  newProjectPath,
-  v3EnvironmentPath,
-  v3ProjectPath,
+invitesPath,
+newOrganizationPath,
+newProjectPath,
+v3EnvironmentPath
 } from "~/utils/pathBuilder";
 
 //this loader chooses the best project to redirect you to, ideally based on the cookie

@@ -1,16 +1,16 @@
 import type {
-  CoordinatorToPlatformMessages,
-  TaskRunExecution,
-  TaskRunExecutionResult,
+CoordinatorToPlatformMessages,
+TaskRunExecution,
+TaskRunExecutionResult,
 } from "@trigger.dev/core/v3";
 import type { InferSocketMessageSchema } from "@trigger.dev/core/v3/zodSocket";
+import type { Prisma,TaskRunAttempt } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { socketIo } from "../handleSocketIo.server";
 import { sharedQueueTasks } from "../marqs/sharedQueueConsumer.server";
+import { FINAL_ATTEMPT_STATUSES,isFinalRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
-import type { Prisma, TaskRunAttempt } from "@trigger.dev/database";
-import { FINAL_ATTEMPT_STATUSES, FINAL_RUN_STATUSES, isFinalRunStatus } from "../taskStatus";
 
 export class ResumeAttemptService extends BaseService {
   private _logger = logger;

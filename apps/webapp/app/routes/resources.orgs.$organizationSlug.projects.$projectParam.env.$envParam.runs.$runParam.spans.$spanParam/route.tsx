@@ -1,80 +1,80 @@
 import {
-  ArrowPathIcon,
-  BookOpenIcon,
-  CheckIcon,
-  ChevronUpIcon,
-  ClipboardDocumentIcon,
-  ClockIcon,
-  CloudArrowDownIcon,
-  EnvelopeIcon,
-  GlobeAltIcon,
-  KeyIcon,
-  QueueListIcon,
-  SignalIcon,
+ArrowPathIcon,
+BookOpenIcon,
+CheckIcon,
+ChevronUpIcon,
+ClipboardDocumentIcon,
+ClockIcon,
+CloudArrowDownIcon,
+EnvelopeIcon,
+GlobeAltIcon,
+KeyIcon,
+QueueListIcon,
+SignalIcon,
 } from "@heroicons/react/20/solid";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import {
-  formatDurationMilliseconds,
-  type TaskRunError,
-  taskRunErrorEnhancer,
+formatDurationMilliseconds,
+type TaskRunError,
+taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
 import { assertNever } from "assert-never";
-import { useEffect, useState } from "react";
-import { typedjson, useTypedFetcher } from "remix-typedjson";
+import { useEffect } from "react";
+import { typedjson,useTypedFetcher } from "remix-typedjson";
+import { toast } from "sonner";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
-import { RegionLabel } from "~/components/runs/v3/RegionLabel";
 import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Feedback } from "~/components/Feedback";
 import { MachineLabelCombo } from "~/components/MachineLabelCombo";
 import { MachineTooltipInfo } from "~/components/MachineTooltipInfo";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Button,LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { CopyTextLink } from "~/components/primitives/CopyTextLink";
-import { DateTime, DateTimeAccurate } from "~/components/primitives/DateTime";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { DateTime,DateTimeAccurate } from "~/components/primitives/DateTime";
+import { Header2,Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
-  Popover,
-  PopoverContent,
-  PopoverMenuItem,
-  PopoverTrigger,
+Popover,
+PopoverContent,
+PopoverMenuItem,
+PopoverTrigger,
 } from "~/components/primitives/Popover";
-import { ToastUI } from "~/components/primitives/Toast";
-import { toast } from "sonner";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
+Table,
+TableBody,
+TableCell,
+TableHeader,
+TableHeaderCell,
+TableRow,
 } from "~/components/primitives/Table";
-import { TabButton, TabContainer } from "~/components/primitives/Tabs";
-import { SessionStatusCombo } from "~/components/sessions/v1/SessionStatus";
+import { TabButton,TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
-import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
-import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/RunTimeline";
-import { SpanHorizontalTimeline } from "~/components/runs/v3/SpanHorizontalTimeline";
+import { ToastUI } from "~/components/primitives/Toast";
+import { InfoIconTooltip,SimpleTooltip } from "~/components/primitives/Tooltip";
+import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
+import { RunTimeline,RunTimelineEvent,SpanTimeline } from "~/components/run/RunTimeline";
+import { AIEmbedSpanDetails,AISpanDetails,AIToolCallSpanDetails } from "~/components/runs/v3/ai";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
+import { PromptSpanDetails } from "~/components/runs/v3/PromptSpanDetails";
+import { RegionLabel } from "~/components/runs/v3/RegionLabel";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { RunTag } from "~/components/runs/v3/RunTag";
-import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
-import { AISpanDetails, AIToolCallSpanDetails, AIEmbedSpanDetails } from "~/components/runs/v3/ai";
-import { PromptSpanDetails } from "~/components/runs/v3/PromptSpanDetails";
+import { SpanHorizontalTimeline } from "~/components/runs/v3/SpanHorizontalTimeline";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import {
-  descriptionForTaskRunStatus,
-  TaskRunStatusCombo,
+descriptionForTaskRunStatus,
+TaskRunStatusCombo,
 } from "~/components/runs/v3/TaskRunStatus";
 import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
+import { SessionStatusCombo } from "~/components/sessions/v1/SessionStatus";
 import { WarmStartCombo } from "~/components/WarmStarts";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -82,24 +82,24 @@ import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useHasAdminAccess } from "~/hooks/useUser";
 import { redirectWithErrorMessage } from "~/models/message.server";
-import { type Span, SpanPresenter, type SpanRun } from "~/presenters/v3/SpanPresenter.server";
+import { type Span,SpanPresenter,type SpanRun } from "~/presenters/v3/SpanPresenter.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
-  docsPath,
-  v3BatchPath,
-  v3SessionPath,
-  v3DeploymentVersionPath,
-  v3RunDownloadLogsPath,
-  v3RunIdempotencyKeyResetPath,
-  v3RunPath,
-  v3RunRedirectPath,
-  v3RunSpanPath,
-  v3RunsPath,
-  v3SchedulePath,
-  v3SpanParamsSchema,
+docsPath,
+v3BatchPath,
+v3DeploymentVersionPath,
+v3RunDownloadLogsPath,
+v3RunIdempotencyKeyResetPath,
+v3RunPath,
+v3RunRedirectPath,
+v3RunSpanPath,
+v3RunsPath,
+v3SchedulePath,
+v3SessionPath,
+v3SpanParamsSchema,
 } from "~/utils/pathBuilder";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
 import type { SpanOverride } from "~/v3/eventRepository/eventRepository.types";

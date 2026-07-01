@@ -3,15 +3,15 @@
 import { CheckIcon } from "@heroicons/react/20/solid";
 import { EllipsisVerticalIcon } from "@heroicons/react/24/solid";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
+import { Link } from "@remix-run/react";
 import * as React from "react";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
-import { Link } from "@remix-run/react";
 import * as useShortcutKeys from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
-import { type ButtonContentPropsType, Button, ButtonContent } from "./Buttons";
-import { Paragraph, type ParagraphVariant } from "./Paragraph";
-import { ShortcutKey } from "./ShortcutKey";
+import { ButtonContent,type ButtonContentPropsType } from "./Buttons";
 import { type RenderIcon } from "./Icon";
+import { Paragraph,type ParagraphVariant } from "./Paragraph";
+import { ShortcutKey } from "./ShortcutKey";
 
 const Popover = PopoverPrimitive.Root;
 const PopoverTrigger = PopoverPrimitive.Trigger;
@@ -308,15 +308,15 @@ function PopoverVerticalEllipseTrigger({
 }
 
 export {
-  Popover,
-  PopoverArrowTrigger,
-  PopoverContent,
-  PopoverCustomTrigger,
-  PopoverMenuItem,
-  PopoverSectionHeader,
-  PopoverSideMenuTrigger,
-  PopoverTrigger,
-  PopoverVerticalEllipseTrigger,
+Popover,
+PopoverArrowTrigger,
+PopoverContent,
+PopoverCustomTrigger,
+PopoverMenuItem,
+PopoverSectionHeader,
+PopoverSideMenuTrigger,
+PopoverTrigger,
+PopoverVerticalEllipseTrigger
 };
 
 export type { PopoverArrowTriggerVariant };

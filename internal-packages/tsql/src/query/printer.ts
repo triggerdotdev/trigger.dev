@@ -1,20 +1,18 @@
 // TypeScript port of posthog/hogql/printer.py
 // ClickHouse SQL printer with tenant isolation and schema validation
 
-import { type And, type Alias, type ArithmeticOperation, type Array as ASTArray, type ArrayAccess, type AST, type BetweenExpr, type Call, type CompareOperation, type Constant, type CTE, type Dict, type Expression, type Field, type JoinConstraint, type JoinExpr, type Lambda, type LimitByExpr, type Not, type Or, type OrderExpr, type Placeholder, type RatioExpr, type SampleExpr, type SelectQuery, type SelectSetQuery, type Tuple, type TupleAccess, type WindowExpr, type WindowFrameExpr, type WindowFunction, ArithmeticOperationOp, CompareOperationOp } from "./ast";
-import { escapeClickHouseIdentifier, escapeTSQLIdentifier, escapeClickHouseString } from "./escape";
-import { ImpossibleASTError, NotImplementedError, QueryError } from "./errors";
+import { type Alias,type And,type ArithmeticOperation,type ArrayAccess,type AST,type Array as ASTArray,type BetweenExpr,type Call,type CompareOperation,type Constant,type CTE,type Dict,type Expression,type Field,type JoinConstraint,type JoinExpr,type Lambda,type LimitByExpr,type Not,type Or,type OrderExpr,type Placeholder,type RatioExpr,type SampleExpr,type SelectQuery,type SelectSetQuery,type Tuple,type TupleAccess,type WindowExpr,type WindowFrameExpr,type WindowFunction,ArithmeticOperationOp,CompareOperationOp } from "./ast";
+import { ImpossibleASTError,NotImplementedError,QueryError } from "./errors";
+import { escapeClickHouseIdentifier } from "./escape";
 import {
-  TSQL_CLICKHOUSE_FUNCTIONS,
-  TSQL_AGGREGATIONS,
-  TSQL_COMPARISON_MAPPING,
-  findTSQLAggregation,
-  findTSQLFunction,
-  validateFunctionArgs,
+findTSQLAggregation,
+findTSQLFunction,
+TSQL_COMPARISON_MAPPING,
+validateFunctionArgs
 } from "./functions";
-import type { PrinterContext, WhereClauseCondition } from "./printer_context";
+import type { PrinterContext,WhereClauseCondition } from "./printer_context";
+import { type ClickHouseType,type ColumnFormatType,type ColumnSchema,type OutputColumnMetadata,type TableSchema,getInternalValue,getInternalValueFromMappingCaseInsensitive,hasFieldMapping,isVirtualColumn,validateTable } from "./schema";
 import { calculateTimeBucketInterval } from "./time_buckets";
-import { type TableSchema, type ColumnSchema, type OutputColumnMetadata, type ClickHouseType, findTable, validateTable, getInternalValue, isVirtualColumn, hasFieldMapping, getInternalValueFromMappingCaseInsensitive, type ColumnFormatType } from "./schema";
 
 /**
  * Result of printing an AST to ClickHouse SQL

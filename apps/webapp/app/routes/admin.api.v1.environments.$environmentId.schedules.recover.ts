@@ -1,5 +1,5 @@
-import type { ActionFunctionArgs} from "@remix-run/server-runtime";
-import { json, LoaderFunctionArgs } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";

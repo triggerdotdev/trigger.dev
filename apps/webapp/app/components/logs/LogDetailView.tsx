@@ -1,8 +1,8 @@
-import { XMarkIcon } from "@heroicons/react/20/solid";
 import type { TaskRunStatus } from "@trigger.dev/database";
-import { useEffect, useState } from "react";
+import { useEffect,useState } from "react";
 import { useTypedFetcher } from "remix-typedjson";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { ExitIcon } from "~/assets/icons/ExitIcon";
+import { Button,LinkButton } from "~/components/primitives/Buttons";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTimeAccurate } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
@@ -12,19 +12,16 @@ import { Spinner } from "~/components/primitives/Spinner";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
 import {
-  TaskRunStatusCombo,
-  descriptionForTaskRunStatus,
+TaskRunStatusCombo,
+descriptionForTaskRunStatus,
 } from "~/components/runs/v3/TaskRunStatus";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
 import type { loader as logDetailLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.logs.$logId";
-import { cn } from "~/utils/cn";
-import { getLevelColor } from "~/utils/logUtils";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { LogLevel } from "./LogLevel";
-import { ExitIcon } from "~/assets/icons/ExitIcon";
 type LogDetailViewProps = {
   logId: string;
   // If we have the log entry from the list, we can display it immediately

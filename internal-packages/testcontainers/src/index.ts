@@ -1,27 +1,27 @@
-import { type StartedPostgreSqlContainer, PostgreSqlContainer } from "@testcontainers/postgresql";
+import { type ClickHouseClient,createClient } from "@clickhouse/client";
+import { type StartedPostgreSqlContainer,PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { StartedRedisContainer } from "@testcontainers/redis";
 import { PrismaClient } from "@trigger.dev/database";
-import Redis, { type RedisOptions } from "ioredis";
-import { Network, type StartedNetwork } from "testcontainers";
-import { type TestContext, test } from "vitest";
-import {
-  createClickHouseContainer,
-  createElectricContainer,
-  createPostgresContainer,
-  createRedisContainer,
-  postgresUriWithDatabase,
-  pushDatabaseSchema,
-  useContainer,
-  withCiResourceLimits,
-  withContainerSetup,
-} from "./utils";
-import { getTaskMetadata, logCleanup, logSetup } from "./logs";
+import Redis,{ type RedisOptions } from "ioredis";
 import path from "path";
-import { type StartedClickHouseContainer, ClickHouseContainer, runClickhouseMigrations, truncateClickhouseTables } from "./clickhouse";
-import { type StartedMinIOContainer, MinIOContainer, type MinIOConnectionConfig } from "./minio";
-import { type ClickHouseClient, createClient } from "@clickhouse/client";
+import { type StartedNetwork,Network } from "testcontainers";
+import { type TestContext,test } from "vitest";
+import { type StartedClickHouseContainer,ClickHouseContainer,runClickhouseMigrations,truncateClickhouseTables } from "./clickhouse";
+import { getTaskMetadata,logCleanup,logSetup } from "./logs";
+import { type MinIOConnectionConfig,type StartedMinIOContainer,MinIOContainer } from "./minio";
+import {
+createClickHouseContainer,
+createElectricContainer,
+createPostgresContainer,
+createRedisContainer,
+postgresUriWithDatabase,
+pushDatabaseSchema,
+useContainer,
+withCiResourceLimits,
+withContainerSetup,
+} from "./utils";
 
-export { assertNonNullable, createPostgresContainer } from "./utils";
+export { assertNonNullable,createPostgresContainer } from "./utils";
 export { logCleanup };
 export type { MinIOConnectionConfig };
 
@@ -46,17 +46,11 @@ export type PostgresAndRedisContext = NetworkContext & PostgresContext & RedisCo
 export type ContainerWithElectricAndRedisContext = ContainerContext & ElectricContext;
 export type ContainerWithElectricContext = NetworkContext & PostgresContext & ElectricContext;
 
-type MinIOContext = NetworkContext & {
-  minioContainer: StartedMinIOContainer;
-  minioConfig: MinIOConnectionConfig;
-};
-
 export type {
-  StartedNetwork,
-  StartedPostgreSqlContainer,
-  StartedRedisContainer,
-  StartedClickHouseContainer,
-  StartedMinIOContainer,
+StartedClickHouseContainer,
+StartedMinIOContainer,StartedNetwork,
+StartedPostgreSqlContainer,
+StartedRedisContainer
 };
 
 type Use<T> = (value: T) => Promise<void>;

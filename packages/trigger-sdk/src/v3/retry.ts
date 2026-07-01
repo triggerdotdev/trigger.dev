@@ -1,28 +1,28 @@
-import type { Attributes, Span} from "@opentelemetry/api";
-import { SpanStatusCode, context, trace } from "@opentelemetry/api";
+import type { Attributes,Span } from "@opentelemetry/api";
+import { SpanStatusCode,context,trace } from "@opentelemetry/api";
 import {
-  SEMATTRS_HTTP_HOST,
-  SEMATTRS_HTTP_METHOD,
-  SEMATTRS_HTTP_RESPONSE_CONTENT_LENGTH,
-  SEMATTRS_HTTP_SCHEME,
-  SEMATTRS_HTTP_STATUS_CODE,
-  SEMATTRS_HTTP_URL,
+SEMATTRS_HTTP_HOST,
+SEMATTRS_HTTP_METHOD,
+SEMATTRS_HTTP_RESPONSE_CONTENT_LENGTH,
+SEMATTRS_HTTP_SCHEME,
+SEMATTRS_HTTP_STATUS_CODE,
+SEMATTRS_HTTP_URL,
 } from "@opentelemetry/semantic-conventions";
 import type {
-  FetchRetryByStatusOptions,
-  FetchRetryOptions,
-  FetchRetryStrategy,
-  RetryOptions} from "@trigger.dev/core/v3";
+FetchRetryByStatusOptions,
+FetchRetryOptions,
+FetchRetryStrategy,
+RetryOptions
+} from "@trigger.dev/core/v3";
 import {
-  SemanticInternalAttributes,
-  accessoryAttributes,
-  calculateNextRetryDelay,
-  calculateResetAt,
-  defaultFetchRetryOptions,
-  defaultRetryOptions,
-  eventFilterMatches,
-  flattenAttributes,
-  runtime,
+SemanticInternalAttributes,
+accessoryAttributes,
+calculateNextRetryDelay,
+calculateResetAt,
+defaultFetchRetryOptions,
+defaultRetryOptions,
+eventFilterMatches,
+flattenAttributes
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 import { wait } from "./wait.js";

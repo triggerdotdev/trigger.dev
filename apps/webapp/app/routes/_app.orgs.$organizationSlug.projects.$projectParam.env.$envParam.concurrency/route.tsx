@@ -1,81 +1,78 @@
-import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { getFormProps,getInputProps,useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import {
-  ArrowDownIcon,
-  EnvelopeIcon,
-  ExclamationTriangleIcon,
-  InformationCircleIcon,
-  PlusIcon,
+ArrowDownIcon,
+EnvelopeIcon,
+ExclamationTriangleIcon,
+InformationCircleIcon
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import {
-  Form,
-  useActionData,
-  useNavigate,
-  useNavigation,
-  useSearchParams,
-  type MetaFunction,
+Form,
+useActionData,
+useNavigation,
+useSearchParams,
+type MetaFunction
 } from "@remix-run/react";
-import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { json,type ActionFunctionArgs,type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
-import { useEffect, useState } from "react";
+import { useEffect,useState } from "react";
+import { typedjson,useTypedLoaderData } from "remix-typedjson";
 import simplur from "simplur";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { Feedback } from "~/components/Feedback";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { Feedback } from "~/components/Feedback";
 import {
-  MainHorizontallyCenteredContainer,
-  PageBody,
-  PageContainer,
+MainHorizontallyCenteredContainer,
+PageBody,
+PageContainer,
 } from "~/components/layout/AppLayout";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
+import { Button,LinkButton } from "~/components/primitives/Buttons";
+import { Dialog,DialogContent,DialogHeader,DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
-import { Header2, Header3 } from "~/components/primitives/Headers";
+import { Header2,Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { InputNumberStepper } from "~/components/primitives/InputNumberStepper";
 import { Label } from "~/components/primitives/Label";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar,PageAccessories,PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
+import { SpinnerWhite } from "~/components/primitives/Spinner";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableHeaderCell,
-  TableRow,
+Table,
+TableBody,
+TableCell,
+TableHeader,
+TableHeaderCell,
+TableRow,
 } from "~/components/primitives/Table";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useFeatures } from "~/hooks/useFeatures";
-import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useOrganization } from "~/hooks/useOrganizations";
-import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
+import { redirectWithErrorMessage,redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import {
-  ManageConcurrencyPresenter,
-  type ConcurrencyResult,
-  type EnvironmentWithConcurrency,
+ManageConcurrencyPresenter,
+type ConcurrencyResult,
+type EnvironmentWithConcurrency,
 } from "~/presenters/v3/ManageConcurrencyPresenter.server";
 import {
-  getCurrentPlan,
-  getPlans,
-  getSelfServePurchaseBlockReason,
+getCurrentPlan,
+getPlans,
+getSelfServePurchaseBlockReason,
 } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
-import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
-import { concurrencyPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
+import { cn } from "~/utils/cn";
+import { formatCurrency,formatNumber } from "~/utils/numberFormatter";
+import { concurrencyPath,EnvironmentParamSchema,v3BillingPath } from "~/utils/pathBuilder";
+import { AllocateConcurrencyService } from "~/v3/services/allocateConcurrency.server";
 import { SetConcurrencyAddOnService } from "~/v3/services/setConcurrencyAddOn.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { SpinnerWhite } from "~/components/primitives/Spinner";
-import { cn } from "~/utils/cn";
-import { logger } from "~/services/logger.server";
-import { AllocateConcurrencyService } from "~/v3/services/allocateConcurrency.server";
 
 export const meta: MetaFunction = () => {
   return [

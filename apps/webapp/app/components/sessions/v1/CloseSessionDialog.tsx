@@ -1,13 +1,11 @@
-import { XCircleIcon } from "@heroicons/react/24/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useNavigation } from "@remix-run/react";
+import { Form,useNavigation } from "@remix-run/react";
 import { Button } from "~/components/primitives/Buttons";
-import { DialogContent, DialogHeader } from "~/components/primitives/Dialog";
+import { DialogContent,DialogHeader } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { SpinnerWhite } from "~/components/primitives/Spinner";
 
 type CloseSessionDialogProps = {
   sessionParam: string;

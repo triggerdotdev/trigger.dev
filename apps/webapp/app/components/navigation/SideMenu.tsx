@@ -1,44 +1,43 @@
 import {
-  ArrowTopRightOnSquareIcon,
-  ChevronRightIcon,
-  ExclamationTriangleIcon,
-  PencilSquareIcon,
+ArrowTopRightOnSquareIcon,
+ChevronRightIcon,
+ExclamationTriangleIcon,
+PencilSquareIcon,
 } from "@heroicons/react/24/outline";
-import { Link, useFetcher, useNavigation } from "@remix-run/react";
-import { BugIcon } from "~/assets/icons/BugIcon";
-import { LayoutGroup, motion } from "framer-motion";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { Link,useFetcher,useNavigation } from "@remix-run/react";
+import { LayoutGroup,motion } from "framer-motion";
+import { type ReactNode,useCallback,useEffect,useRef,useState } from "react";
 import simplur from "simplur";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { AIPenIcon } from "~/assets/icons/AIPenIcon";
 import { ArrowLeftRightIcon } from "~/assets/icons/ArrowLeftRightIcon";
 import { ArrowRightSquareIcon } from "~/assets/icons/ArrowRightSquareIcon";
 import { AvatarCircleIcon } from "~/assets/icons/AvatarCircleIcon";
-import { HomeIcon } from "~/assets/icons/HomeIcon";
-import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { BatchesIcon } from "~/assets/icons/BatchesIcon";
+import { BellIcon } from "~/assets/icons/BellIcon";
 import { Box3DIcon } from "~/assets/icons/Box3DIcon";
+import { BugIcon } from "~/assets/icons/BugIcon";
 import { ChartBarIcon } from "~/assets/icons/ChartBarIcon";
+import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
+import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { DeploymentsIcon } from "~/assets/icons/DeploymentsIcon";
-import { FolderClosedIcon } from "~/assets/icons/FolderClosedIcon";
-import { FolderOpenIcon } from "~/assets/icons/FolderOpenIcon";
-import { IDIcon } from "~/assets/icons/IDIcon";
 import { DialIcon } from "~/assets/icons/DialIcon";
-import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
-import { IntegrationsIcon } from "~/assets/icons/IntegrationsIcon";
-import { KeyIcon } from "~/assets/icons/KeyIcon";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import { BranchEnvironmentIconSmall } from "~/assets/icons/EnvironmentIcons";
+import { FolderClosedIcon } from "~/assets/icons/FolderClosedIcon";
+import { FolderOpenIcon } from "~/assets/icons/FolderOpenIcon";
+import { GlobeLinesIcon } from "~/assets/icons/GlobeLinesIcon";
+import { HomeIcon } from "~/assets/icons/HomeIcon";
+import { IDIcon } from "~/assets/icons/IDIcon";
+import { IntegrationsIcon } from "~/assets/icons/IntegrationsIcon";
+import { KeyIcon } from "~/assets/icons/KeyIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { LogsIcon } from "~/assets/icons/LogsIcon";
 import { PlusIcon } from "~/assets/icons/PlusIcon";
-import { CodeSquareIcon } from "~/assets/icons/CodeSquareIcon";
 import { QueuesIcon } from "~/assets/icons/QueuesIcon";
-import { SlidersIcon } from "~/assets/icons/SlidersIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
-import { TaskIcon } from "~/assets/icons/TaskIcon";
+import { SlidersIcon } from "~/assets/icons/SlidersIcon";
 import { TasksIcon } from "~/assets/icons/TasksIcon";
-import { BellIcon } from "~/assets/icons/BellIcon";
 import { UsageIcon } from "~/assets/icons/UsageIcon";
 import { WaitpointTokenIcon } from "~/assets/icons/WaitpointTokenIcon";
 import { Avatar } from "~/components/primitives/Avatar";
@@ -52,72 +51,71 @@ import { useHasAdminAccess } from "~/hooks/useUser";
 import { type UserWithDashboardPreferences } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
-import { IncidentStatusPanel, useIncidentStatus } from "~/routes/resources.incidents";
-import { NotificationPanel } from "./NotificationPanel";
+import { IncidentStatusPanel,useIncidentStatus } from "~/routes/resources.incidents";
 import { cn } from "~/utils/cn";
 import {
-  accountPath,
-  adminPath,
-  branchesPath,
-  concurrencyPath,
-  limitsPath,
-  logoutPath,
-  newOrganizationPath,
-  newProjectPath,
-  organizationPath,
-  organizationSettingsPath,
-  organizationTeamPath,
-  queryPath,
-  regionsPath,
-  v3ApiKeysPath,
-  v3BatchesPath,
-  v3BillingPath,
-  v3DashboardsLandingPath,
-  v3BulkActionsPath,
-  v3DeploymentsPath,
-  v3EnvironmentPath,
-  v3EnvironmentVariablesPath,
-  v3ErrorsPath,
-  v3LogsPath,
-  v3PromptsPath,
-  v3ModelsPath,
-  v3ProjectAlertsPath,
-  v3ProjectPath,
-  v3ProjectSettingsGeneralPath,
-  v3ProjectSettingsIntegrationsPath,
-  v3QueuesPath,
-  v3RunsPath,
-  v3SessionsPath,
-  v3UsagePath,
-  v3WaitpointTokensPath,
+accountPath,
+adminPath,
+branchesPath,
+concurrencyPath,
+limitsPath,
+logoutPath,
+newOrganizationPath,
+newProjectPath,
+organizationPath,
+organizationSettingsPath,
+organizationTeamPath,
+queryPath,
+regionsPath,
+v3ApiKeysPath,
+v3BatchesPath,
+v3BillingPath,
+v3BulkActionsPath,
+v3DashboardsLandingPath,
+v3DeploymentsPath,
+v3EnvironmentPath,
+v3EnvironmentVariablesPath,
+v3ErrorsPath,
+v3LogsPath,
+v3ModelsPath,
+v3ProjectAlertsPath,
+v3ProjectPath,
+v3ProjectSettingsGeneralPath,
+v3ProjectSettingsIntegrationsPath,
+v3PromptsPath,
+v3QueuesPath,
+v3RunsPath,
+v3SessionsPath,
+v3UsagePath,
+v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
-import { AlphaBadge, NewBadge } from "../FeatureBadges";
 import { AskAI } from "../AskAI";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
-import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
+import { ConnectionIcon,DevPresencePanel,useDevPresence } from "../DevPresence";
+import { AlphaBadge,NewBadge } from "../FeatureBadges";
 import { ImpersonationBanner } from "../ImpersonationBanner";
-import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
-import { Dialog, DialogTrigger } from "../primitives/Dialog";
+import { Button,ButtonContent,LinkButton } from "../primitives/Buttons";
+import { Dialog,DialogTrigger } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
-import { Popover, PopoverContent, PopoverMenuItem, PopoverTrigger } from "../primitives/Popover";
+import { Popover,PopoverContent,PopoverMenuItem,PopoverTrigger } from "../primitives/Popover";
 import { ShortcutKey } from "../primitives/ShortcutKey";
 import { TextLink } from "../primitives/TextLink";
 import {
-  SimpleTooltip,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
+SimpleTooltip,
+Tooltip,
+TooltipContent,
+TooltipProvider,
+TooltipTrigger,
 } from "../primitives/Tooltip";
 import { ShortcutsAutoOpen } from "../Shortcuts";
 import { CreateDashboardButton } from "./DashboardDialogs";
 import { DashboardList } from "./DashboardList";
 import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
+import { NotificationPanel } from "./NotificationPanel";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
 import { SideMenuSection } from "./SideMenuSection";
-import { TreeConnectorBranch, TreeConnectorEnd } from "./TreeConnectors";
 import { type SideMenuSectionId } from "./sideMenuTypes";
 
 /** Get the collapsed state for a specific side menu section from user preferences */

@@ -1,7 +1,6 @@
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import type { GetProjectResponseBody} from "@trigger.dev/core/v3";
-import { GetProjectsResponseBody } from "@trigger.dev/core/v3";
+import type { GetProjectResponseBody } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";

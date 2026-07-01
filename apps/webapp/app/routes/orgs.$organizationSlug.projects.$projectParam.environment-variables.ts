@@ -1,8 +1,8 @@
-import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { redirect,type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { SelectBestEnvironmentPresenter } from "~/presenters/SelectBestEnvironmentPresenter.server";
 import { requireUser } from "~/services/session.server";
-import { ProjectParamSchema, v3ApiKeysPath, v3EnvironmentVariablesPath } from "~/utils/pathBuilder";
+import { ProjectParamSchema,v3EnvironmentVariablesPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);

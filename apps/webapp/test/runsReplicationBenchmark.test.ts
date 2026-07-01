@@ -1,13 +1,13 @@
 import { ClickHouse } from "@internal/clickhouse";
 import { replicationContainerTest } from "@internal/testcontainers";
 import { fork } from "node:child_process";
-import { performance, PerformanceObserver } from "node:perf_hooks";
-import { setTimeout } from "node:timers/promises";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
+import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
-import { createInMemoryTracing, createInMemoryMetrics } from "./utils/tracing";
 import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
+import { createInMemoryMetrics,createInMemoryTracing } from "./utils/tracing";
 
 // Extend test timeout for benchmarks
 vi.setConfig({ testTimeout: 300_000 }); // 5 minutes

@@ -1,6 +1,6 @@
+import { setInterval,setTimeout } from "node:timers/promises";
 import { tryCatch } from "../tryCatch.js";
 import type { HeartbeatsManager } from "./types.js";
-import { setInterval, setImmediate, setTimeout } from "node:timers/promises";
 
 export class StandardHeartbeatsManager implements HeartbeatsManager {
   private listener: ((id: string) => Promise<void>) | undefined = undefined;

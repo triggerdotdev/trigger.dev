@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { parseTSQLSelect, parseTSQLExpr, compileTSQL } from "../index.js";
-import { ClickHousePrinter, printToClickHouse, type PrintResult } from "./printer.js";
-import { createPrinterContext, PrinterContext } from "./printer_context.js";
-import { createSchemaRegistry, column, type TableSchema } from "./schema.js";
+import { describe,expect,it } from "vitest";
+import { compileTSQL,parseTSQLSelect } from "../index.js";
+import { QueryError } from "./errors.js";
+import { ClickHousePrinter,printToClickHouse,type PrintResult } from "./printer.js";
+import { createPrinterContext,PrinterContext } from "./printer_context.js";
+import { column,createSchemaRegistry,type TableSchema } from "./schema.js";
 import type { BucketThreshold } from "./time_buckets.js";
-import { QueryError, SyntaxError } from "./errors.js";
 
 /**
  * Test table schemas

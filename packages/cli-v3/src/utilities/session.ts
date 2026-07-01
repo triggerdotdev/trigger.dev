@@ -1,8 +1,7 @@
-import { recordSpanException } from "@trigger.dev/core/v3/workers";
+import type { GitMeta } from "@trigger.dev/core/v3";
 import { CliApiClient } from "../apiClient.js";
 import { readAuthConfigProfile } from "./configFiles.js";
 import { logger } from "./logger.js";
-import type { GitMeta } from "@trigger.dev/core/v3";
 
 export type LoginResultOk = {
   ok: true;

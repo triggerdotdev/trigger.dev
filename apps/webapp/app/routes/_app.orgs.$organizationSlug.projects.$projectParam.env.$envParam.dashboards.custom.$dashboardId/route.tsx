@@ -1,22 +1,23 @@
-import { ArrowUpCircleIcon, PlusIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { ArrowUpCircleIcon,PlusIcon,TrashIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
-import { Form, useNavigation } from "@remix-run/react";
-import { IconChartHistogram, IconEdit, IconTypography } from "@tabler/icons-react";
-import { useCallback, useEffect, useState } from "react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { type ActionFunctionArgs,type LoaderFunctionArgs } from "@remix-run/node";
+import { Form,useNavigation } from "@remix-run/react";
+import { IconChartHistogram,IconEdit } from "@tabler/icons-react";
+import { Type } from "lucide-react";
+import { useCallback,useEffect,useState } from "react";
+import { typedjson,useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { defaultChartConfig } from "~/components/code/ChartConfigPanel";
 import { Feedback } from "~/components/Feedback";
-import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { MainCenteredContainer,PageBody,PageContainer } from "~/components/layout/AppLayout";
+import { Button,LinkButton } from "~/components/primitives/Buttons";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTrigger,
+Dialog,
+DialogContent,
+DialogDescription,
+DialogFooter,
+DialogHeader,
+DialogTrigger,
 } from "~/components/primitives/Dialog";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Header3 } from "~/components/primitives/Headers";
@@ -24,22 +25,22 @@ import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar,PageAccessories,PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
-  Popover,
-  PopoverContent,
-  PopoverVerticalEllipseTrigger,
+Popover,
+PopoverContent,
+PopoverVerticalEllipseTrigger,
 } from "~/components/primitives/Popover";
-import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
+import { Sheet,SheetContent } from "~/components/primitives/SheetV3";
 import { useToast } from "~/components/primitives/Toast";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
-import { QueryEditor, type QueryEditorSaveData } from "~/components/query/QueryEditor";
+import { QueryEditor,type QueryEditorSaveData } from "~/components/query/QueryEditor";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { useDashboardEditor } from "~/hooks/useDashboardEditor";
 import { useEnvironment } from "~/hooks/useEnvironment";
-import { useOrganization, useWidgetLimitPerDashboard } from "~/hooks/useOrganizations";
+import { useOrganization,useWidgetLimitPerDashboard } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
@@ -47,16 +48,15 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { getTaskIdentifiers } from "~/models/task.server";
 import { MetricDashboardPresenter } from "~/presenters/v3/MetricDashboardPresenter.server";
 import { QueryPresenter } from "~/presenters/v3/QueryPresenter.server";
-import { requireUser, requireUserId } from "~/services/session.server";
+import { requireUser,requireUserId } from "~/services/session.server";
 import {
-  EnvironmentParamSchema,
-  queryPath,
-  v3BillingPath,
-  v3BuiltInDashboardPath,
+EnvironmentParamSchema,
+queryPath,
+v3BillingPath,
+v3BuiltInDashboardPath,
 } from "~/utils/pathBuilder";
 import { MetricDashboard } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboards.$dashboardKey/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { Type } from "lucide-react";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardId: z.string(),

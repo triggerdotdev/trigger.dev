@@ -1,47 +1,45 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import {
-  readFileSync,
-  writeFileSync,
-  renameSync,
-  unlinkSync,
-  existsSync,
-  mkdirSync,
-} from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { setTimeout as awaitTimeout } from "node:timers/promises";
+import { tryCatch } from "@trigger.dev/core/utils";
 import type {
-  BuildManifest,
-  CreateBackgroundWorkerRequestBody,
-  DevConfigResponseBody,
-  WorkerManifest} from "@trigger.dev/core/v3";
-import {
-  SemanticInternalAttributes
+BuildManifest,
+CreateBackgroundWorkerRequestBody,
+DevConfigResponseBody,
+WorkerManifest
 } from "@trigger.dev/core/v3";
 import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import type { CliApiClient } from "../apiClient.js";
-import type { DevCommandOptions } from "../commands/dev.js";
-import { eventBus } from "../utilities/eventBus.js";
-import { logger } from "../utilities/logger.js";
-import { resolveSourceFiles } from "../utilities/sourceFiles.js";
-import { BackgroundWorker } from "./backgroundWorker.js";
-import { copySkillFolders } from "../build/bundleSkills.js";
-import type { WorkerRuntime } from "./workerRuntime.js";
-import { cliLink, prettyError } from "../utilities/cliOutput.js";
-import { DevRunController } from "../entryPoints/dev-run-controller.js";
+import type {
+WorkerClientToServerEvents,
+WorkerServerToClientEvents,
+} from "@trigger.dev/core/v3/workers";
+import type { Metafile } from "esbuild";
+import { spawn,type ChildProcess } from "node:child_process";
+import {
+existsSync,
+mkdirSync,
+readFileSync,
+renameSync,
+unlinkSync,
+writeFileSync,
+} from "node:fs";
+import { join } from "node:path";
+import { setTimeout as awaitTimeout } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
+import pLimit from "p-limit";
 import type { Socket } from "socket.io-client";
 import { io } from "socket.io-client";
-import type {
-  WorkerClientToServerEvents,
-  WorkerServerToClientEvents,
-} from "@trigger.dev/core/v3/workers";
-import pLimit from "p-limit";
-import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
-import type { Metafile } from "esbuild";
-import { TaskRunProcessPool } from "./taskRunProcessPool.js";
-import { tryCatch } from "@trigger.dev/core/utils";
+import type { CliApiClient } from "../apiClient.js";
+import { copySkillFolders } from "../build/bundleSkills.js";
+import type { DevCommandOptions } from "../commands/dev.js";
+import { DevRunController } from "../entryPoints/dev-run-controller.js";
+import { cliLink,prettyError } from "../utilities/cliOutput.js";
 import { devBranchPathSegment } from "../utilities/devBranch.js";
+import { eventBus } from "../utilities/eventBus.js";
+import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
+import { logger } from "../utilities/logger.js";
+import { resolveSourceFiles } from "../utilities/sourceFiles.js";
 import { getTmpRoot } from "../utilities/tempDirectories.js";
+import { BackgroundWorker } from "./backgroundWorker.js";
+import { TaskRunProcessPool } from "./taskRunProcessPool.js";
+import type { WorkerRuntime } from "./workerRuntime.js";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;

@@ -1,12 +1,11 @@
-import type { PrismaClientOrTransaction} from "~/db.server";
-import { sqlDatabaseSchema } from "~/db.server";
+import type { DataPoint } from "regression";
+import { linear } from "regression";
+import type { PrismaClientOrTransaction } from "~/db.server";
 import { env } from "~/env.server";
-import { getUsage, getUsageSeries } from "~/services/platform.v3.server";
+import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
+import { getUsageSeries } from "~/services/platform.v3.server";
 import { createTimeSeriesData } from "~/utils/graphs";
 import { BasePresenter } from "./basePresenter.server";
-import type { DataPoint} from "regression";
-import { linear } from "regression";
-import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 
 type Options = {
   organizationId: string;

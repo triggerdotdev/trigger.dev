@@ -1,20 +1,19 @@
 import { randomUUID } from "crypto";
-import type {
-  GetSocketCallbackSchema,
-  GetSocketMessageSchema,
-  GetSocketMessagesWithCallback,
-  GetSocketMessagesWithoutCallback,
-  MessagesFromSocketCatalog,
-  SocketMessageHasCallback,
-  ZodSocketMessageCatalogSchema,
-} from "./zodSocket.js";
 import { z } from "zod";
-import { ZodSchemaParsedError } from "./zodMessageHandler.js";
-import { inspect } from "node:util";
 import type {
-  ExecutorToWorkerMessageCatalog,
-  WorkerToExecutorMessageCatalog,
+ExecutorToWorkerMessageCatalog,
+WorkerToExecutorMessageCatalog,
 } from "./schemas/messages.js";
+import { ZodSchemaParsedError } from "./zodMessageHandler.js";
+import type {
+GetSocketCallbackSchema,
+GetSocketMessageSchema,
+GetSocketMessagesWithCallback,
+GetSocketMessagesWithoutCallback,
+MessagesFromSocketCatalog,
+SocketMessageHasCallback,
+ZodSocketMessageCatalogSchema,
+} from "./zodSocket.js";
 
 interface ZodIpcMessageSender<TEmitCatalog extends ZodSocketMessageCatalogSchema> {
   send<K extends GetSocketMessagesWithoutCallback<TEmitCatalog>>(

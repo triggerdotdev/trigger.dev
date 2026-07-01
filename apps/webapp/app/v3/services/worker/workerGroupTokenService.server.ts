@@ -1,44 +1,46 @@
 import {
-  createCache,
-  createLRUMemoryStore,
-  DefaultStatefulContext,
-  Namespace,
+createCache,
+createLRUMemoryStore,
+DefaultStatefulContext,
+Namespace,
 } from "@internal/cache";
 import type {
-  CheckpointInput,
-  CompleteRunAttemptResult,
-  DequeuedMessage,
-  ExecutionResult,
-  MachinePreset,
-  StartRunAttemptResult,
-  TaskRunExecutionResult} from "@trigger.dev/core/v3";
+CheckpointInput,
+CompleteRunAttemptResult,
+DequeuedMessage,
+ExecutionResult,
+MachinePreset,
+StartRunAttemptResult,
+TaskRunExecutionResult
+} from "@trigger.dev/core/v3";
 import {
-  SemanticInternalAttributes
+SemanticInternalAttributes
 } from "@trigger.dev/core/v3";
 import { fromFriendlyId } from "@trigger.dev/core/v3/isomorphic";
-import { WORKER_HEADERS, type WorkerQueueClass } from "@trigger.dev/core/v3/workers";
+import { WORKER_HEADERS,type WorkerQueueClass } from "@trigger.dev/core/v3/workers";
 import type {
-  RuntimeEnvironment,
-  WorkerInstanceGroup} from "@trigger.dev/database";
-import {
-  Prisma,
-  WorkerInstanceGroupType,
+RuntimeEnvironment,
+WorkerInstanceGroup
 } from "@trigger.dev/database";
-import { createHash, timingSafeEqual } from "crypto";
+import {
+Prisma,
+WorkerInstanceGroupType,
+} from "@trigger.dev/database";
+import { createHash,timingSafeEqual } from "crypto";
 import { customAlphabet } from "nanoid";
 import { z } from "zod";
 import { env } from "~/env.server";
+import {
+isWorkerQueueDequeueDisabled,
+recordBlockedDequeue,
+} from "~/runEngine/concerns/dequeueGate.server";
+import { workerQueueForClass } from "~/runEngine/concerns/workerQueueSplit.server";
 import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { defaultMachine } from "~/services/platform.v3.server";
 import { singleton } from "~/utils/singleton";
 import { resolveVariablesForEnvironment } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { machinePresetFromName } from "~/v3/machinePresets.server";
-import { workerQueueForClass } from "~/runEngine/concerns/workerQueueSplit.server";
-import {
-  isWorkerQueueDequeueDisabled,
-  recordBlockedDequeue,
-} from "~/runEngine/concerns/dequeueGate.server";
 import type { WithRunEngineOptions } from "../baseService.server";
 import { WithRunEngine } from "../baseService.server";
 
@@ -338,10 +340,6 @@ export class WorkerGroupTokenService extends WithRunEngine {
 
 export const WorkerInstanceEnv = z.enum(["dev", "staging", "prod"]).default("prod");
 export type WorkerInstanceEnv = z.infer<typeof WorkerInstanceEnv>;
-
-type EnvironmentWithParent = RuntimeEnvironment & {
-  parentEnvironment?: RuntimeEnvironment | null;
-};
 
 export type AuthenticatedWorkerInstanceOptions = WithRunEngineOptions<{
   type: WorkerInstanceGroupType;

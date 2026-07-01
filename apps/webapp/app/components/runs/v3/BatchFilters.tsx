@@ -1,49 +1,46 @@
 import * as Ariakit from "@ariakit/react";
 import {
-  CalendarIcon,
-  CpuChipIcon,
-  Squares2X2Icon,
-  TrashIcon,
-  XMarkIcon,
+Squares2X2Icon,
+XMarkIcon
 } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
 import type { BatchTaskRunStatus } from "@trigger.dev/database";
-import { type ReactNode, useCallback, useRef, useState } from "react";
+import { type ReactNode,useRef } from "react";
 import { z } from "zod";
+import { StatusIcon } from "~/assets/icons/StatusIcon";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
-  SelectItem,
-  SelectList,
-  SelectPopover,
-  SelectProvider,
-  shortcutFromIndex,
+SelectItem,
+SelectList,
+SelectPopover,
+SelectProvider,
+shortcutFromIndex,
 } from "~/components/primitives/Select";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
+Tooltip,
+TooltipContent,
+TooltipProvider,
+TooltipTrigger,
 } from "~/components/primitives/Tooltip";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { Button } from "../../primitives/Buttons";
 import {
-  allBatchStatuses,
-  BatchStatusCombo,
-  batchStatusTitle,
-  descriptionForBatchStatus,
+allBatchStatuses,
+BatchStatusCombo,
+batchStatusTitle,
+descriptionForBatchStatus,
 } from "./BatchStatus";
 import {
-  TimeFilter,
-  appliedSummary,
-  FilterMenuProvider,
-  IdFilterDropdown,
-  type IdFilterDropdownProps,
+appliedSummary,
+FilterMenuProvider,
+IdFilterDropdown,
+type IdFilterDropdownProps,
+TimeFilter,
 } from "./SharedFilters";
-import { StatusIcon } from "~/assets/icons/StatusIcon";
 
 export const BatchStatus = z.enum(allBatchStatuses);
 

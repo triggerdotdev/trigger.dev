@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect,useState } from "react";
 
 export function useInitialDimensions(ref: React.RefObject<HTMLElement>) {
   const [dimensions, setDimensions] = useState<DOMRectReadOnly | null>(null);

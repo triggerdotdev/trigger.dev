@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { extractDomain, faviconUrl } from "~/utils/favicon";
+import { useEffect,useRef,useState } from "react";
+import { extractDomain,faviconUrl } from "~/utils/favicon";
 
 function resolve(input: string, size: number): string | null {
   const domain = extractDomain(input);

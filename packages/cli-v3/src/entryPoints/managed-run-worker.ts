@@ -1,16 +1,16 @@
 import type { Tracer } from "@opentelemetry/api";
 import type { Logger } from "@opentelemetry/api-logs";
-import { type AnyOnCatchErrorHookFunction, type AnyOnFailureHookFunction, type AnyOnInitHookFunction, type AnyOnStartHookFunction, type AnyOnSuccessHookFunction, type LogLevel, type TaskRunExecution, type TriggerConfig, type UsageMeasurement, apiClientManager, clock, ExecutorToWorkerMessageCatalog, type HandleErrorFunction, lifecycleHooks, localsAPI, logger, OTEL_LOG_ATTRIBUTE_COUNT_LIMIT, resourceCatalog, runMetadata, runtime, runTimelineMetrics, taskContext, TaskRunContext, TaskRunErrorCodes, timeout, waitUntil, WorkerManifest, WorkerToExecutorMessageCatalog, traceContext, heartbeats, realtimeStreams, inputStreams, sessionStreams, resetIdempotencyKeyCatalog } from "@trigger.dev/core/v3";
+import { promiseWithResolvers } from "@trigger.dev/core/utils";
+import { type AnyOnCatchErrorHookFunction,type AnyOnFailureHookFunction,type AnyOnInitHookFunction,type AnyOnStartHookFunction,type AnyOnSuccessHookFunction,type HandleErrorFunction,type LogLevel,type TaskRunExecution,type TriggerConfig,type UsageMeasurement,apiClientManager,clock,ExecutorToWorkerMessageCatalog,heartbeats,inputStreams,lifecycleHooks,localsAPI,logger,OTEL_LOG_ATTRIBUTE_COUNT_LIMIT,realtimeStreams,resourceCatalog,resetIdempotencyKeyCatalog,runMetadata,runtime,runTimelineMetrics,sessionStreams,taskContext,TaskRunContext,TaskRunErrorCodes,timeout,traceContext,waitUntil,WorkerManifest,WorkerToExecutorMessageCatalog } from "@trigger.dev/core/v3";
 import { TriggerTracer } from "@trigger.dev/core/v3/tracer";
-import { type TracingDiagnosticLogLevel, ConsoleInterceptor, DevUsageManager, DurableClock, getEnvVar, getNumberEnvVar, logLevels, SharedRuntimeManager, OtelTaskLogger, populateEnv, ProdUsageManager, NO_FILE_CONTEXT, StandardLifecycleHooksManager, StandardLocalsManager, StandardMetadataManager, StandardResourceCatalog, StandardRunTimelineMetricsManager, StandardWaitUntilManager, TaskExecutor, TracingSDK, usage, UsageTimeoutManager, StandardTraceContextManager, StandardHeartbeatsManager, StandardRealtimeStreamsManager, StandardInputStreamManager, StandardSessionStreamManager } from "@trigger.dev/core/v3/workers";
+import { type TracingDiagnosticLogLevel,ConsoleInterceptor,DevUsageManager,DurableClock,getEnvVar,getNumberEnvVar,logLevels,NO_FILE_CONTEXT,OtelTaskLogger,populateEnv,ProdUsageManager,SharedRuntimeManager,StandardHeartbeatsManager,StandardInputStreamManager,StandardLifecycleHooksManager,StandardLocalsManager,StandardMetadataManager,StandardRealtimeStreamsManager,StandardResourceCatalog,StandardRunTimelineMetricsManager,StandardSessionStreamManager,StandardTraceContextManager,StandardWaitUntilManager,TaskExecutor,TracingSDK,usage,UsageTimeoutManager } from "@trigger.dev/core/v3/workers";
 import { ZodIpcConnection } from "@trigger.dev/core/v3/zodIpc";
 import { readFile } from "node:fs/promises";
-import { setInterval, setTimeout } from "node:timers/promises";
+import { setTimeout } from "node:timers/promises";
 import sourceMapSupport from "source-map-support";
 import { env } from "std-env";
 import { normalizeImportPath } from "../utilities/normalizeImportPath.js";
 import { VERSION } from "../version.js";
-import { promiseWithResolvers } from "@trigger.dev/core/utils";
 
 sourceMapSupport.install({
   handleUncaughtExceptions: false,

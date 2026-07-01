@@ -1,30 +1,32 @@
-import { intro, outro, log } from "@clack/prompts";
-import { getBranch, parseDockerImageReference, prepareDeploymentError } from "@trigger.dev/core/v3";
+import { intro,log,outro } from "@clack/prompts";
+import { getBranch,prepareDeploymentError } from "@trigger.dev/core/v3";
 import type { InitializeDeploymentResponseBody } from "@trigger.dev/core/v3/schemas";
-import type { Command} from "commander";
+import type { Command } from "commander";
 import { Option as CommandOption } from "commander";
 import { resolve } from "node:path";
 import { z } from "zod";
 import type { CliApiClient } from "../../apiClient.js";
 import { buildWorker } from "../../build/buildWorker.js";
+import { resolveAlwaysExternal } from "../../build/externals.js";
 import {
-  CommonCommandOptions,
-  commonOptions,
-  handleTelemetry,
-  SkipLoggingError,
-  wrapCommandAction,
+CommonCommandOptions,
+commonOptions,
+handleTelemetry,
+SkipLoggingError,
+wrapCommandAction,
 } from "../../cli/common.js";
 import { loadConfig } from "../../config.js";
 import { buildImage } from "../../deploy/buildImage.js";
 import {
-  checkLogsForErrors,
-  checkLogsForWarnings,
-  printErrors,
-  printWarnings,
-  saveLogs,
+checkLogsForErrors,
+checkLogsForWarnings,
+printErrors,
+printWarnings,
+saveLogs,
 } from "../../deploy/logs.js";
-import { chalkError, cliLink, isLinksSupported, prettyError } from "../../utilities/cliOutput.js";
+import { chalkError,cliLink,isLinksSupported,prettyError } from "../../utilities/cliOutput.js";
 import { loadDotEnvVars } from "../../utilities/dotEnv.js";
+import { createGitMeta } from "../../utilities/gitMeta.js";
 import { printStandloneInitialBanner } from "../../utilities/initialBanner.js";
 import { logger } from "../../utilities/logger.js";
 import { getProjectClient } from "../../utilities/session.js";
@@ -32,8 +34,6 @@ import { getTmpDir } from "../../utilities/tempDirectories.js";
 import { spinner } from "../../utilities/windows.js";
 import { login } from "../login.js";
 import { updateTriggerPackages } from "../update.js";
-import { resolveAlwaysExternal } from "../../build/externals.js";
-import { createGitMeta } from "../../utilities/gitMeta.js";
 
 const WorkersBuildCommandOptions = CommonCommandOptions.extend({
   // docker build options
