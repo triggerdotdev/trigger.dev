@@ -7,7 +7,139 @@ export function generateFriendlyId(prefix: string, size?: number) {
   return `${prefix}_${idGenerator(size)}`;
 }
 
-export function generateInternalId() {
+// Injected by the server split-mode bootstrap. Default false =
+// today's behavior (cuid). Isomorphic file: never read process.env here.
+let ksuidMintEnabled = false;
+
+/** Server bootstrap calls this once with isSplitEnabled(). Off by default. */
+export function setKsuidMintEnabled(enabled: boolean): void {
+  ksuidMintEnabled = enabled;
+}
+
+/** Test/diagnostic read-back of the current mint mode. */
+export function isKsuidMintEnabled(): boolean {
+  return ksuidMintEnabled;
+}
+
+// KSUID epoch (2014-05-13T16:53:20Z) — seconds offset applied to the unix timestamp.
+const KSUID_EPOCH = 1_400_000_000;
+const KSUID_TIMESTAMP_BYTES = 4;
+export const KSUID_PAYLOAD_BYTES = 16;
+const KSUID_TOTAL_BYTES = KSUID_TIMESTAMP_BYTES + KSUID_PAYLOAD_BYTES;
+const KSUID_STRING_LENGTH = 27;
+const BASE62_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+/** Encode raw bytes as base62 (big-endian), left-padded to the given length. */
+function base62Encode(bytes: Uint8Array, length: number): string {
+  const digits = Array.from(bytes);
+  let result = "";
+
+  while (digits.length > 0) {
+    let remainder = 0;
+    const quotient: number[] = [];
+
+    for (let i = 0; i < digits.length; i++) {
+      const acc = (digits[i] ?? 0) + remainder * 256;
+      const q = Math.floor(acc / 62);
+      remainder = acc % 62;
+
+      if (quotient.length > 0 || q > 0) {
+        quotient.push(q);
+      }
+    }
+
+    result = BASE62_ALPHABET.charAt(remainder) + result;
+    digits.length = 0;
+    digits.push(...quotient);
+  }
+
+  return result.padStart(length, BASE62_ALPHABET.charAt(0));
+}
+
+/**
+ * 27-char, base62, time-ordered KSUID body (length-disjoint from the 25-char cuid): a 4-byte
+ * timestamp (seconds since the KSUID epoch) + a 16-byte payload; ids from different seconds
+ * sort in mint order. Payload defaults to CSPRNG entropy; callers may supply up to
+ * KSUID_PAYLOAD_BYTES metadata bytes (written first, remainder stays random for uniqueness).
+ */
+export function generateKsuidId(payload?: Uint8Array): string {
+  const bytes = new Uint8Array(KSUID_TOTAL_BYTES);
+
+  const timestamp = Math.floor(Date.now() / 1000) - KSUID_EPOCH;
+  bytes[0] = (timestamp >>> 24) & 0xff;
+  bytes[1] = (timestamp >>> 16) & 0xff;
+  bytes[2] = (timestamp >>> 8) & 0xff;
+  bytes[3] = timestamp & 0xff;
+
+  if (payload && payload.length > KSUID_PAYLOAD_BYTES) {
+    throw new Error(
+      `KSUID payload must be at most ${KSUID_PAYLOAD_BYTES} bytes (got ${payload.length})`
+    );
+  }
+  const reserved = payload?.length ?? 0;
+  if (payload && reserved > 0) {
+    bytes.set(payload, KSUID_TIMESTAMP_BYTES);
+  }
+  if (reserved < KSUID_PAYLOAD_BYTES) {
+    globalThis.crypto.getRandomValues(bytes.subarray(KSUID_TIMESTAMP_BYTES + reserved));
+  }
+
+  return base62Encode(bytes, KSUID_STRING_LENGTH);
+}
+
+/** Decoded parts of a KSUID body: its mint timestamp and 16-byte payload. */
+export interface DecodedKsuid {
+  timestampSeconds: number;
+  timestamp: Date;
+  payload: Uint8Array;
+}
+
+/**
+ * Decode a KSUID body (or a `prefix_<body>` friendly id) into its timestamp + 16-byte payload.
+ * The inverse of generateKsuidId's layout. Throws if the body is not 27 base62 chars.
+ */
+export function decodeKsuid(idOrFriendlyId: string): DecodedKsuid {
+  const underscore = idOrFriendlyId.indexOf("_");
+  const body = underscore === -1 ? idOrFriendlyId : idOrFriendlyId.slice(underscore + 1);
+  if (body.length !== KSUID_STRING_LENGTH) {
+    throw new Error(
+      `Not a KSUID body: expected ${KSUID_STRING_LENGTH} base62 chars, got ${body.length}`
+    );
+  }
+
+  let n = 0n;
+  for (const ch of body) {
+    const digit = BASE62_ALPHABET.indexOf(ch);
+    if (digit < 0) {
+      throw new Error(`Invalid base62 character in KSUID body: ${ch}`);
+    }
+    n = n * 62n + BigInt(digit);
+  }
+
+  const bytes = new Uint8Array(KSUID_TOTAL_BYTES);
+  for (let i = KSUID_TOTAL_BYTES - 1; i >= 0; i--) {
+    bytes[i] = Number(n & 0xffn);
+    n >>= 8n;
+  }
+
+  const timestampSeconds =
+    (bytes[0] ?? 0) * 0x1000000 +
+    (bytes[1] ?? 0) * 0x10000 +
+    (bytes[2] ?? 0) * 0x100 +
+    (bytes[3] ?? 0) +
+    KSUID_EPOCH;
+
+  return {
+    timestampSeconds,
+    timestamp: new Date(timestampSeconds * 1000),
+    payload: bytes.slice(KSUID_TIMESTAMP_BYTES),
+  };
+}
+
+export function generateInternalId(useKsuidWhenEnabled = false): string {
+  if (useKsuidWhenEnabled && ksuidMintEnabled) {
+    return generateKsuidId();
+  }
   return cuid();
 }
 
@@ -58,10 +190,13 @@ export function fromFriendlyId(friendlyId: string, expectedEntityName?: string):
 }
 
 export class IdUtil {
-  constructor(private entityName: string) {}
+  constructor(
+    private entityName: string,
+    private ksuidWhenEnabled = false
+  ) {}
 
   generate() {
-    const internalId = generateInternalId();
+    const internalId = generateInternalId(this.ksuidWhenEnabled);
 
     return {
       id: internalId,
@@ -90,9 +225,9 @@ export class IdUtil {
 export const BackgroundWorkerId = new IdUtil("worker");
 export const CheckpointId = new IdUtil("checkpoint");
 export const QueueId = new IdUtil("queue");
-export const RunId = new IdUtil("run");
+export const RunId = new IdUtil("run", true);
 export const SnapshotId = new IdUtil("snapshot");
-export const WaitpointId = new IdUtil("waitpoint");
+export const WaitpointId = new IdUtil("waitpoint", true);
 export const BatchId = new IdUtil("batch");
 export const BulkActionId = new IdUtil("bulk");
 export const AttemptId = new IdUtil("attempt");
