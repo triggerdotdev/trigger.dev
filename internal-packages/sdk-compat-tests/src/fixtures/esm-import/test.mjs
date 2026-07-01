@@ -20,7 +20,8 @@ wait,
 } from "@trigger.dev/sdk";
 
 // Test /v3 subpath (legacy, but should still work)
-const { task: taskV3 } = await import("@trigger.dev/sdk/v3");
+// oxlint-disable-next-line import/no-duplicates
+import { task as taskV3 } from "@trigger.dev/sdk/v3";
 
 // Validate exports are functions/objects
 const checks = [
