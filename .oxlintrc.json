@@ -11,7 +11,17 @@
     "internal-packages/tsql/src/grammar/"
   ],
   "rules": {
-    "no-unused-vars": "off",
+    "no-unused-vars": [
+      "error",
+      {
+        "args": "all",
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrors": "all",
+        "caughtErrorsIgnorePattern": "^_",
+        "destructuredArrayIgnorePattern": "^_"
+      }
+    ],
     "no-empty-pattern": "off",
     "no-control-regex": "off",
     "typescript/no-non-null-asserted-optional-chain": "off",
