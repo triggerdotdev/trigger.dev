@@ -61,6 +61,9 @@ export class ReplayTaskRunService extends BaseService {
     const payloadType = payloadPacket.dataType;
     const metadata = overrideOptions.metadata ?? (await this.getExistingMetadata(existingTaskRun));
     const tags = overrideOptions.tags ?? existingTaskRun.runTags;
+    const idempotencyKey = overrideOptions.bulkActionId
+      ? `bulk-replay:${overrideOptions.bulkActionId}:${existingTaskRun.id}`
+      : overrideOptions.idempotencyKey;
     // Only use the region from the existing run if V2 engine and neither environment is dev
     const ignoreRegion =
       existingTaskRun.engine === "V1" ||
@@ -100,7 +103,7 @@ export class ReplayTaskRunService extends BaseService {
               ? new Date(Date.now() + overrideOptions.delaySeconds * 1000)
               : undefined,
             ttl: overrideOptions.ttlSeconds,
-            idempotencyKey: overrideOptions.idempotencyKey,
+            idempotencyKey,
             idempotencyKeyTTL: overrideOptions.idempotencyKeyTTLSeconds
               ? `${overrideOptions.idempotencyKeyTTLSeconds}s`
               : undefined,
