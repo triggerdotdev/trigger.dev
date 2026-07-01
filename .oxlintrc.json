@@ -16,7 +16,7 @@
     "no-control-regex": "off",
     "typescript/no-non-null-asserted-optional-chain": "off",
     "no-unused-expressions": ["warn", { "allowShortCircuit": true, "allowTernary": true }],
-    "typescript/consistent-type-imports": "off",
+    "typescript/consistent-type-imports": "error",
     "import/no-duplicates": "error",
     "import/namespace": "off",
     "react-hooks/exhaustive-deps": "off",
