@@ -542,14 +542,6 @@ export class MarQS {
     );
   }
 
-  async #saveMessage(message: MessagePayload) {
-    logger.debug(`Saving message`, { message, service: this.name });
-
-    const messageKey = this.keys.messageKey(message.messageId);
-
-    await this.redis.set(messageKey, JSON.stringify(message));
-  }
-
   async #saveMessageIfExists(message: MessagePayload) {
     logger.debug(`Saving message if exists`, { message, service: this.name });
 

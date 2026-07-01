@@ -800,6 +800,7 @@ export class SessionInputChannel {
   async waitWithIdleTimeout<T = unknown>(
     options: InputStreamWaitWithIdleTimeoutOptions
   ): Promise<{ ok: true; output: T } | { ok: false; error?: Error }> {
+    // eslint-disable-next-line no-this-alias
     const self = this;
     const spanName =
       options.spanName ?? `sessions.open(${this.sessionId}).in.waitWithIdleTimeout()`;

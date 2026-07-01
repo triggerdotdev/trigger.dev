@@ -87,6 +87,7 @@ export class StreamInstance<T> implements StreamsWriter {
   }
 
   public get stream(): AsyncIterableStream<T> {
+    // eslint-disable-next-line no-this-alias
     const self = this;
 
     return new ReadableStream<T>({

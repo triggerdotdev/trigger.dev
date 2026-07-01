@@ -282,6 +282,7 @@ export class SSEStreamSubscription implements StreamSubscription {
   }
 
   async subscribe(): Promise<ReadableStream<SSEStreamPart>> {
+    // eslint-disable-next-line no-this-alias
     const self = this;
 
     return new ReadableStream({

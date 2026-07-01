@@ -165,14 +165,6 @@ export class PodCleaner {
     this.logger.log("Deleting failed runs: Done", { total, elapsedMs });
   }
 
-  async #deleteUnrecoverableRuns() {
-    await this.#deletePods({
-      namespace: this.namespace,
-      fieldSelector: "status.phase=?",
-      labelSelector: "app=task-run",
-    });
-  }
-
   async #deleteCompletedPrePulls() {
     this.logger.log("Deleting completed pre-pulls");
 
@@ -255,69 +247,5 @@ export class PodCleaner {
 
     this.enabled = false;
     this.logger.log("Shutting down..");
-  }
-
-  async #launchTests() {
-    const createPod = async (
-      container: k8s.V1Container,
-      name: string,
-      labels?: Record<string, string>
-    ) => {
-      this.logger.log("Creating pod:", name);
-
-      const pod = {
-        metadata: {
-          name,
-          labels,
-        },
-        spec: {
-          restartPolicy: "Never",
-          automountServiceAccountToken: false,
-          terminationGracePeriodSeconds: 1,
-          containers: [container],
-        },
-      } satisfies k8s.V1Pod;
-
-      await this.k8sClient.core
-        .createNamespacedPod(this.namespace, pod)
-        .catch(this.#handleK8sError.bind(this));
-    };
-
-    const createIdlePod = async (name: string, labels?: Record<string, string>) => {
-      const container = {
-        name,
-        image: "docker.io/library/busybox",
-        command: ["sh"],
-        args: ["-c", "sleep infinity"],
-      } satisfies k8s.V1Container;
-
-      await createPod(container, name, labels);
-    };
-
-    const createCompletedPod = async (name: string, labels?: Record<string, string>) => {
-      const container = {
-        name,
-        image: "docker.io/library/busybox",
-        command: ["sh"],
-        args: ["-c", "true"],
-      } satisfies k8s.V1Container;
-
-      await createPod(container, name, labels);
-    };
-
-    const createFailedPod = async (name: string, labels?: Record<string, string>) => {
-      const container = {
-        name,
-        image: "docker.io/library/busybox",
-        command: ["sh"],
-        args: ["-c", "false"],
-      } satisfies k8s.V1Container;
-
-      await createPod(container, name, labels);
-    };
-
-    await createIdlePod("test-idle-1", { app: "task-run" });
-    await createFailedPod("test-failed-1", { app: "task-run" });
-    await createCompletedPod("test-completed-1", { app: "task-run" });
   }
 }

@@ -79,6 +79,7 @@ export class StreamsWriterV1<T> implements StreamsWriter {
           this.highestBufferedIndex = chunkIndex;
           chunkIndex++;
         }
+        // eslint-disable-next-line no-useless-catch
       } catch (error) {
         throw error;
       }

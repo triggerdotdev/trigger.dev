@@ -183,7 +183,7 @@ describe("RunsReplicationService (part 3/7)", () => {
   replicationContainerTest(
     "should merge duplicate event+run.id combinations keeping the latest version",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
-      await prisma.$executeRawUnsafe(`ALTER TABLE public.\"TaskRun\" REPLICA IDENTITY FULL;`);
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
 
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),

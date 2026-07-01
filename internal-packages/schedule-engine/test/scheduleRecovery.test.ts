@@ -478,7 +478,7 @@ describe("Schedule Recovery", () => {
         // undefined. The Redis worker stores payloads as JSON, so the value
         // is a string when read back here — Zod re-coerces it to Date on
         // dequeue (workerCatalog uses `z.coerce.date()`).
-        const enqueuedLastScheduleTime = (job?.item as { lastScheduleTime?: string })
+        const enqueuedLastScheduleTime = (job!.item as { lastScheduleTime?: string })
           .lastScheduleTime;
         expect(enqueuedLastScheduleTime).toBeDefined();
         const derived = new Date(enqueuedLastScheduleTime!);
@@ -565,7 +565,7 @@ describe("Schedule Recovery", () => {
 
         const job = await engine.getJob(`scheduled-task-instance:${scheduleInstance.id}`);
         expect(job).not.toBeNull();
-        const enqueuedLastScheduleTime = (job?.item as { lastScheduleTime?: Date })
+        const enqueuedLastScheduleTime = (job!.item as { lastScheduleTime?: Date })
           .lastScheduleTime;
         // Brand-new schedule: cron's previous slot predates instance.createdAt,
         // so the function leaves lastScheduleTime undefined — the first fire

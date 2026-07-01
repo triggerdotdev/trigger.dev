@@ -198,6 +198,7 @@ export class DynamicFlushScheduler<T> {
       this.limiter(async () => {
         const itemCount = batch.length;
 
+        // eslint-disable-next-line no-this-alias
         const self = this;
 
         async function tryFlush(flushId: string, batchToFlush: T[], attempt: number = 1) {

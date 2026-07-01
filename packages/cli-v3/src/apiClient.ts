@@ -103,7 +103,6 @@ export class CliApiClient {
   ) {
     this.apiURL = apiURL.replace(/\/$/, "");
     this.engineURL = this.apiURL;
-    this.branch = branch;
     this.source = options?.source ?? "cli";
   }
 

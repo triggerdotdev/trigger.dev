@@ -58,6 +58,7 @@ async function parseSSEResponse(response: Response) {
     }
   }
 
+  // eslint-disable-next-line no-unreachable
   throw new Error("No data: event found");
 }
 

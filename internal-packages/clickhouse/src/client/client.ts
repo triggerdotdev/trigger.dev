@@ -527,6 +527,7 @@ export class ClickhouseClient implements ClickhouseReader, ClickhouseWriter {
     columns: Array<string | ColumnExpression>;
     settings?: ClickHouseSettings;
   }): ClickhouseQueryStreamFunction<TParams, TOut> {
+    // eslint-disable-next-line no-this-alias
     const self = this;
 
     return async function* (params, options) {

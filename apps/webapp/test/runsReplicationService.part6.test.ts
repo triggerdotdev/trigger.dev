@@ -14,7 +14,7 @@ describe("RunsReplicationService (part 6/7)", () => {
   replicationContainerTest(
     "should sort batch inserts according to table schema ordering for optimal performance",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
-      await prisma.$executeRawUnsafe(`ALTER TABLE public.\"TaskRun\" REPLICA IDENTITY FULL;`);
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
 
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),

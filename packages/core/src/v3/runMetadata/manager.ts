@@ -41,6 +41,7 @@ export class StandardMetadataManager implements RunMetadataManager {
 
   get parent(): RunMetadataUpdater {
     // Store a reference to 'this' to ensure proper context
+    // eslint-disable-next-line no-this-alias
     const self = this;
 
     // Create the updater object and store it in a local variable
@@ -123,6 +124,7 @@ export class StandardMetadataManager implements RunMetadataManager {
 
   get root(): RunMetadataUpdater {
     // Store a reference to 'this' to ensure proper context
+    // eslint-disable-next-line no-this-alias
     const self = this;
 
     // Create the updater object and store it in a local variable

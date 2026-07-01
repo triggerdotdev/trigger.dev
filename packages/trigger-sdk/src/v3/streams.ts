@@ -884,6 +884,7 @@ function input<TData>(opts: { id: string }): RealtimeDefinedInputStream<TData> {
       });
     },
     async waitWithIdleTimeout(options) {
+      // eslint-disable-next-line no-this-alias
       const self = this;
       const spanName = options.spanName ?? `inputStream.waitWithIdleTimeout()`;
 

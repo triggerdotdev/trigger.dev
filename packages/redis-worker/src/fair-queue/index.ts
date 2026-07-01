@@ -1597,42 +1597,6 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
     return false;
   }
 
-  #incrementCooloff(queueId: string): void {
-    // Safety check: if the cache is too large, just clear it
-    if (this.queueCooloffStates.size >= this.maxCooloffStatesSize) {
-      this.logger.warn("Cooloff states cache hit size cap, clearing all entries", {
-        size: this.queueCooloffStates.size,
-        cap: this.maxCooloffStatesSize,
-      });
-      this.queueCooloffStates.clear();
-    }
-
-    const state = this.queueCooloffStates.get(queueId) ?? {
-      tag: "normal" as const,
-      consecutiveFailures: 0,
-    };
-
-    if (state.tag === "normal") {
-      const newFailures = state.consecutiveFailures + 1;
-      if (newFailures >= this.cooloffThreshold) {
-        this.queueCooloffStates.set(queueId, {
-          tag: "cooloff",
-          expiresAt: Date.now() + this.cooloffPeriodMs,
-        });
-        this.logger.debug("Queue entered cooloff", {
-          queueId,
-          cooloffPeriodMs: this.cooloffPeriodMs,
-          consecutiveFailures: newFailures,
-        });
-      } else {
-        this.queueCooloffStates.set(queueId, {
-          tag: "normal",
-          consecutiveFailures: newFailures,
-        });
-      }
-    }
-  }
-
   #resetCooloff(queueId: string): void {
     this.queueCooloffStates.delete(queueId);
   }

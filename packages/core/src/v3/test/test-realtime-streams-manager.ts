@@ -28,6 +28,7 @@ export class TestRealtimeStreamsManager implements RealtimeStreamsManager {
     _options?: RealtimeStreamOperationOptions
   ): RealtimeStreamInstance<T> {
     const buffer = this.getBuffer(key);
+    // eslint-disable-next-line no-this-alias
     const self = this;
 
     // Eagerly drain the source in the background so chunks land in the

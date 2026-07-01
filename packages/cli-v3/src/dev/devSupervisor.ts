@@ -612,6 +612,7 @@ class DevSupervisor implements WorkerRuntime {
         logger.info("[DevSupervisor] Closing presence connection");
         eventSource.close();
       };
+      // eslint-disable-next-line no-useless-catch
     } catch (error) {
       throw error;
     }

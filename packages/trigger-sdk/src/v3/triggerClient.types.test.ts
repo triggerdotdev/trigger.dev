@@ -48,22 +48,22 @@ describe("TriggerClient surface — curated subsets", () => {
     type Keys = keyof typeof client.tasks;
     expectTypeOf<Keys>().toEqualTypeOf<"trigger" | "batchTrigger">();
     // @ts-expect-error — triggerAndWait is not on the instance surface.
-    client.tasks.triggerAndWait;
+    void client.tasks.triggerAndWait;
     // @ts-expect-error — batchTriggerAndWait is not on the instance surface.
-    client.tasks.batchTriggerAndWait;
+    void client.tasks.batchTriggerAndWait;
     // @ts-expect-error — triggerAndSubscribe requires a task context; not on the instance surface.
-    client.tasks.triggerAndSubscribe;
+    void client.tasks.triggerAndSubscribe;
     // @ts-expect-error — hooks like onStart are task-definition-time, not on the client.
-    client.tasks.onStart;
+    void client.tasks.onStart;
   });
 
   it("instance.batch drops the *AndWait variants that depend on the runtime", () => {
     type Keys = keyof typeof client.batch;
     expectTypeOf<Keys>().toEqualTypeOf<"trigger" | "triggerByTask" | "retrieve">();
     // @ts-expect-error
-    client.batch.triggerAndWait;
+    void client.batch.triggerAndWait;
     // @ts-expect-error
-    client.batch.triggerByTaskAndWait;
+    void client.batch.triggerByTaskAndWait;
     // The module-level export still has them — sanity check we didn't change that.
     expectTypeOf(batch).toHaveProperty("triggerAndWait");
   });
@@ -74,9 +74,9 @@ describe("TriggerClient surface — curated subsets", () => {
       "activate" | "create" | "deactivate" | "del" | "list" | "retrieve" | "update"
     >();
     // @ts-expect-error
-    client.schedules.task;
+    void client.schedules.task;
     // @ts-expect-error
-    client.schedules.timezones;
+    void client.schedules.timezones;
     // Module-level export still has them.
     expectTypeOf(schedules).toHaveProperty("task");
     expectTypeOf(schedules).toHaveProperty("timezones");
@@ -84,7 +84,7 @@ describe("TriggerClient surface — curated subsets", () => {
 
   it("instance.prompts drops `define`", () => {
     // @ts-expect-error
-    client.prompts.define;
+    void client.prompts.define;
     // Module-level export still has it.
     expectTypeOf(prompts).toHaveProperty("define");
   });
@@ -95,9 +95,9 @@ describe("TriggerClient surface — curated subsets", () => {
       "createPublicToken" | "createTriggerPublicToken" | "createBatchTriggerPublicToken"
     >();
     // @ts-expect-error — configure is global-only, not on the instance.
-    client.auth.configure;
+    void client.auth.configure;
     // @ts-expect-error — withAuth is global-only.
-    client.auth.withAuth;
+    void client.auth.withAuth;
     // Module-level export still has them.
     expectTypeOf(auth).toHaveProperty("configure");
     expectTypeOf(auth).toHaveProperty("withAuth");
