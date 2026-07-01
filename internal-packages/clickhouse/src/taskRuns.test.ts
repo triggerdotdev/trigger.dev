@@ -156,6 +156,110 @@ describe("Task Runs V2", () => {
     );
   });
 
+  clickhouseTest(
+    "should insert and read back JSON arrays with mixed element types",
+    async ({ clickhouseContainer }) => {
+      // Regression test for input_format_json_infer_array_of_dynamic_from_array_of_different_types.
+      // Arrays with mixed element types (e.g. [1, "hello", {...}, [...]]) must be inferred as
+      // Array(Dynamic) rather than deeply nested Tuple types, which otherwise blow up the binary
+      // type-complexity limit during background merges (ClickHouse Code 117).
+      const client = new ClickhouseClient({
+        name: "test",
+        url: clickhouseContainer.getConnectionUrl(),
+      });
+
+      const insert = insertTaskRunsCompactArrays(client, {
+        async_insert: 0, // turn off async insert for this test
+      });
+
+      const mixedArray = [1, "hello", { nested: "object" }, [1, 2, 3]];
+
+      const now = Date.now();
+      const taskRunData: TaskRunInsertArray = [
+        "env_mixed", // environment_id
+        "org_mixed", // organization_id
+        "project_mixed", // project_id
+        "run_mixed", // run_id
+        now, // updated_at
+        now, // created_at
+        "COMPLETED_SUCCESSFULLY", // status
+        "DEVELOPMENT", // environment_type
+        "friendly_mixed", // friendly_id
+        1, // attempt
+        "V2", // engine
+        "my-task", // task_identifier
+        "my-queue", // queue
+        "", // schedule_id
+        "", // batch_id
+        null, // completed_at
+        null, // started_at
+        null, // executed_at
+        null, // delay_until
+        null, // queued_at
+        null, // expired_at
+        0, // usage_duration_ms
+        0, // cost_in_cents
+        0, // base_cost_in_cents
+        { data: { items: mixedArray } }, // output
+        { data: null }, // error
+        "", // error_fingerprint
+        [], // tags
+        "", // task_version
+        "", // sdk_version
+        "", // cli_version
+        "", // machine_preset
+        "", // root_run_id
+        "", // parent_run_id
+        0, // depth
+        "span_mixed", // span_id
+        "trace_mixed", // trace_id
+        "", // idempotency_key
+        "", // idempotency_key_user
+        "", // idempotency_key_scope
+        "", // expiration_ttl
+        true, // is_test
+        "1", // _version
+        0, // _is_deleted
+        "", // concurrency_key
+        [], // bulk_action_group_ids
+        "", // worker_queue
+        "", // region
+        "", // plan_type
+        null, // max_duration_in_seconds
+        "", // trigger_source
+        "", // root_trigger_source
+        "", // task_kind
+        null, // is_warm_start
+      ];
+
+      const [insertError, insertResult] = await insert([taskRunData]);
+
+      expect(insertError).toBeNull();
+      expect(insertResult).toEqual(expect.objectContaining({ executed: true }));
+      expect(insertResult?.summary?.written_rows).toEqual("1");
+
+      // output_text is a materialized String column that extracts the `data` field, so it
+      // round-trips the mixed-type array back out as JSON regardless of the internal storage type.
+      const query = client.query({
+        name: "query-task-runs-mixed",
+        query: "SELECT run_id, output_text FROM trigger_dev.task_runs_v2 WHERE run_id = {run_id: String}",
+        schema: z.object({
+          run_id: z.string(),
+          output_text: z.string(),
+        }),
+        params: z.object({
+          run_id: z.string(),
+        }),
+      });
+
+      const [queryError, result] = await query({ run_id: "run_mixed" });
+
+      expect(queryError).toBeNull();
+      expect(result).toHaveLength(1);
+      expect(JSON.parse(result![0].output_text)).toEqual({ items: mixedArray });
+    }
+  );
+
   clickhouseTest("should deduplicate on the _version column", async ({ clickhouseContainer }) => {
     const client = new ClickhouseClient({
       name: "test",
