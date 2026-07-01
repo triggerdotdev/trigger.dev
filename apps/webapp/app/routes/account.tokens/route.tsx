@@ -109,7 +109,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
 
   try {
-    const [personalAccessTokens, { roles, userRoleId, orgId }] = await Promise.all([
+    const [personalAccessTokens, { roles, userRoleId, orgId: _orgId }] = await Promise.all([
       getValidPersonalAccessTokens(userId),
       loadSystemRolesForUser(userId),
     ]);
@@ -449,7 +449,7 @@ function CreatePersonalAccessToken({
 function RevokePersonalAccessToken({ token }: { token: ObfuscatedPersonalAccessToken }) {
   const lastSubmission = useActionData();
 
-  const [form, fields] = useForm({
+  const [form, _fields] = useForm({
     id: "revoke-personal-access-token",
     // TODO: type this
     lastResult: lastSubmission as any,

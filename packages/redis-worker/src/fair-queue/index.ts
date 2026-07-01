@@ -1466,7 +1466,7 @@ export class FairQueue<TPayloadSchema extends z.ZodTypeAny = z.ZodUnknown> {
 
     const dlqKey = this.keys.deadLetterQueueKey(storedMessage.tenantId);
     const dlqDataKey = this.keys.deadLetterQueueDataKey(storedMessage.tenantId);
-    const shardId = this.masterQueue.getShardForQueue(storedMessage.queueId);
+    const _shardId = this.masterQueue.getShardForQueue(storedMessage.queueId);
 
     const dlqMessage: DeadLetterMessage<z.infer<TPayloadSchema>> = {
       id: storedMessage.id,

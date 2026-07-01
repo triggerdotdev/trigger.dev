@@ -289,7 +289,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   disconnectStream(sessionId: string, io: SessionChannelIO): void {
     const key = keyFor(sessionId, io);
     const tail = this.tails.get(key);
-    const bufferedSize = this.buffer.get(key)?.length ?? 0;
+    const _bufferedSize = this.buffer.get(key)?.length ?? 0;
     // Mark as explicitly disconnected BEFORE we abort, so the tail's
     // `.finally` reconnect path sees the flag when it runs (which can be
     // synchronous in the AbortError catch). Cleared on the next explicit

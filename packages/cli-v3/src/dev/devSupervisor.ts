@@ -726,7 +726,7 @@ class DevSupervisor implements WorkerRuntime {
       }
     });
 
-    const interval = setInterval(() => {
+    const _interval = setInterval(() => {
       logger.debug("[DevSupervisor] Socket connections", {
         connections: Array.from(this.socketConnections),
       });

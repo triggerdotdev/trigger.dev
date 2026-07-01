@@ -733,7 +733,7 @@ function ConnectedVercelProjectForm({
     originalAutoPromote,
   ]);
 
-  const [configForm, fields] = useForm({
+  const [configForm, _fields] = useForm({
     id: "update-vercel-config",
     lastResult: lastSubmission,
     shouldRevalidate: "onSubmit",
@@ -789,7 +789,7 @@ function ConnectedVercelProjectForm({
       ? { stg: "Map a custom Vercel environment to Staging to enable this" }
       : undefined;
 
-  const formatSelectedEnvs = (
+  const _formatSelectedEnvs = (
     selected: EnvSlug[],
     availableSlugs: EnvSlug[] = availableEnvSlugs
   ): string => {
@@ -1098,9 +1098,9 @@ function VercelSettingsPanel({
   isLoadingVercelData?: boolean;
 }) {
   const fetcher = useTypedFetcher<typeof loader>();
-  const location = useLocation();
+  const _location = useLocation();
   const data = fetcher.data;
-  const [hasError, setHasError] = useState(false);
+  const [hasError, _setHasError] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
 
   useEffect(() => {

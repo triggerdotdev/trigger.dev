@@ -1392,7 +1392,7 @@ describe("RunEngine ttl", () => {
   );
 
   containerTest("expireRunsBatch handles non-existent runs", async ({ prisma, redisOptions }) => {
-    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const _authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
     const engine = new RunEngine({
       prisma,
@@ -1521,7 +1521,7 @@ describe("RunEngine ttl", () => {
 
         // Dequeue and start parent
         await setTimeout(500);
-        const dequeued = await engine.dequeueFromWorkerQueue({
+        const _dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
           workerQueue: "main",
         });
@@ -1611,7 +1611,7 @@ describe("RunEngine ttl", () => {
   );
 
   containerTest("expireRunsBatch handles empty array", async ({ prisma, redisOptions }) => {
-    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const _authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
     const engine = new RunEngine({
       prisma,

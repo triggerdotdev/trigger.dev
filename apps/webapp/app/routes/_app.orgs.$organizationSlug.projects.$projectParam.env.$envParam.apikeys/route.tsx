@@ -90,7 +90,7 @@ export const loader = dashboardLoader(
 
 export default function Page() {
   const { environment, hasVercelIntegration, canReadApiKeys } = useTypedLoaderData<typeof loader>();
-  const organization = useOrganization();
+  const _organization = useOrganization();
 
   if (!environment) {
     throw new Response(undefined, {

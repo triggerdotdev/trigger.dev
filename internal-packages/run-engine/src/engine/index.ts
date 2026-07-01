@@ -2844,7 +2844,7 @@ type EnvInputs = {
 };
 
 function analyzeEnvironment(inputs: EnvInputs) {
-  const { envCurrent, envLimit, envLimitWithBurst, burstFactor } = inputs;
+  const { envCurrent, envLimit: _envLimit, envLimitWithBurst, burstFactor: _burstFactor } = inputs;
 
   const reasons: string[] = [];
   const envAvailableCapacity = Math.max(0, envLimitWithBurst - envCurrent);

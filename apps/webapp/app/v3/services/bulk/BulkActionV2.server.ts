@@ -493,7 +493,7 @@ async function getFilters(
   filters.cursor = undefined;
   filters.direction = undefined;
 
-  const { period, from, to } = timeFilters({
+  const { period, from: _from, to: _to } = timeFilters({
     period: filters.period,
     from: filters.from,
     to: filters.to,

@@ -121,7 +121,7 @@ export const action = dashboardAction(
     }
 
     const service = new BulkActionService();
-    const [error, result] = await tryCatch(service.abort(bulkActionParam, environment.id));
+    const [error, _result] = await tryCatch(service.abort(bulkActionParam, environment.id));
 
     if (error) {
       logger.error("Failed to abort bulk action", {

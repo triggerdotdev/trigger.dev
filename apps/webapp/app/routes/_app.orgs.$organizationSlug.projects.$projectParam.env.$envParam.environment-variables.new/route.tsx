@@ -206,7 +206,7 @@ export const action = dashboardAction(
 );
 
 export default function Page() {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, _setIsOpen] = useState(true);
   const parentData = useTypedMatchesData<typeof environmentVariablesLoader>({
     id: environmentVariablesRouteId,
   });
@@ -565,7 +565,7 @@ function VariableFields({
     const [firstPair, ...rest] = keyValuePairs;
     update(index, firstPair);
 
-    for (const pair of rest) {
+    for (const _pair of rest) {
       form.insert({ name: variablesFields.name });
     }
     insertAfter(index, rest);

@@ -251,7 +251,7 @@ describe("SQL Injection Prevention", () => {
     });
 
     it("should handle null byte injection", () => {
-      const { sql, params } = compile("SELECT * FROM task_runs WHERE status = 'test\\0injection'");
+      const { sql: _sql, params } = compile("SELECT * FROM task_runs WHERE status = 'test\\0injection'");
 
       expect(Object.values(params).some((v) => typeof v === "string")).toBe(true);
     });
@@ -510,7 +510,7 @@ describe("Optional Tenant Filters", () => {
 
   describe("Cross-tenant security with optional filters", () => {
     it("should still prevent cross-org access with org-only filter", () => {
-      const { sql, params } = compile(
+      const { sql: _sql, params } = compile(
         "SELECT * FROM task_runs WHERE organization_id = 'org_other'",
         {
           enforcedWhereClause: {

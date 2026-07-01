@@ -395,7 +395,7 @@ function AIPromptWizard({ awsAccountIds }: { awsAccountIds: string[] }) {
   const validPorts = ports.filter((p) => p.port !== "");
   const regionLabel = AWS_REGIONS.find((r) => r.value === region)?.label ?? region;
 
-  const portsDescription =
+  const _portsDescription =
     validPorts.length > 0
       ? validPorts.map((p) => `${p.port} (${p.protocol})`).join(", ")
       : "5432 (TCP)";

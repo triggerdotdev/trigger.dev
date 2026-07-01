@@ -3363,7 +3363,7 @@ async function drainSteeringQueue(
         .map((p: any) => p.text)
         .join("") || ""
   );
-  const previewText =
+  const _previewText =
     messageTexts.length === 1 ? messageTexts[0]!.slice(0, 80) : `${queue.length} messages`;
 
   return tracer.startActiveSpan(
@@ -9429,7 +9429,7 @@ function createChatSession(
           const incomingForAccumulator: UIMessage[] = currentPayload.message
             ? [currentPayload.message]
             : [];
-          const messages = await accumulator.addIncoming(
+          const _messages = await accumulator.addIncoming(
             incomingForAccumulator,
             currentPayload.trigger,
             turn

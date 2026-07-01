@@ -122,7 +122,7 @@ export default function Page() {
   const { invites } = useTypedLoaderData<typeof loader>();
   const lastSubmission = useActionData();
 
-  const [form, fields] = useForm({
+  const [form, _fields] = useForm({
     id: "accept-invite",
     // TODO: type this
     lastResult: lastSubmission as any,

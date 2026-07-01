@@ -402,7 +402,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
 
   // Program and declarations
   visitProgram(ctx: ProgramContext): Program {
-    const declarations: Declaration[] = [];
+    const _declarations: Declaration[] = [];
     // Implement based on your parser context structure
     throw new NotImplementedError("visitProgram not implemented");
   }
@@ -567,7 +567,7 @@ export class TSQLParseTreeConverter implements TSQLParserVisitor<any> {
   }
 
   visitBlock(ctx: BlockContext): Block {
-    const declarations: Declaration[] = [];
+    const _declarations: Declaration[] = [];
     // Implement based on your parser structure
     throw new NotImplementedError("visitBlock not implemented");
   }

@@ -393,7 +393,7 @@ function mutatePackageJsonWithUpdatedPackages(
   depsToUpdate: Dependency[],
   targetVersion: string
 ) {
-  for (const { type, name, version } of depsToUpdate) {
+  for (const { type, name, version: _version } of depsToUpdate) {
     if (!packageJson[type]) {
       throw new Error(
         `No ${type} entry found in package.json. Please try to upgrade manually instead.`

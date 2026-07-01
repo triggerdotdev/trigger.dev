@@ -1448,7 +1448,7 @@ export class SharedQueueConsumer {
   async #markRunAsWaitingForDeploy(runId: string) {
     logger.debug("Marking run as waiting for deploy", { runId });
 
-    const run = await prisma.taskRun.update({
+    const _run = await prisma.taskRun.update({
       where: {
         id: runId,
       },

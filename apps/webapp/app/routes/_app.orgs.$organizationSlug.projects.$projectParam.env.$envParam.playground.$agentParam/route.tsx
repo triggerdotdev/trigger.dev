@@ -198,7 +198,7 @@ function PlaygroundChat() {
       ? (recentConversations.find((c) => c.chatId === activeConversation.chatId)?.id ?? null)
       : null
   );
-  const [chatId, setChatId] = useState(() => activeConversation?.chatId ?? crypto.randomUUID());
+  const [chatId, _setChatId] = useState(() => activeConversation?.chatId ?? crypto.randomUUID());
   const [clientDataJson, setClientDataJson] = useState(() =>
     activeConversation?.clientData ? JSON.stringify(activeConversation.clientData, null, 2) : "{}"
   );

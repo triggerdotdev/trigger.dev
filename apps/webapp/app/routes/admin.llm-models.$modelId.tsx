@@ -165,7 +165,7 @@ export const action = dashboardAction(
 export default function AdminLlmModelDetailRoute() {
   const { model } = useTypedLoaderData<typeof loader>();
   const actionData = useActionData<{ success?: boolean; error?: string; details?: unknown[] }>();
-  const navigate = useNavigate();
+  const _navigate = useNavigate();
 
   const [modelName, setModelName] = useState(model.modelName);
   const [matchPattern, setMatchPattern] = useState(model.matchPattern);
