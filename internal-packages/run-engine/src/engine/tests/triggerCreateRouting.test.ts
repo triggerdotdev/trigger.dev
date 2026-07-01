@@ -7,18 +7,14 @@ import {
   type CreateFailedRunInput,
   type CreateRunInput,
 } from "@internal/run-store";
-import { RunId, ownerEngine, setKsuidMintEnabled } from "@trigger.dev/core/v3/isomorphic";
+import { RunId, ownerEngine, generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
-import { afterEach, expect } from "vitest";
+import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import type { ControlPlaneResolver } from "../controlPlaneResolver.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
-
-// Never leak the ksuid mint flag across tests — the split/two-store and
-// residency-inheritance proofs flip it on to mint NEW-residency ids.
-afterEach(() => setKsuidMintEnabled(false));
 
 function baseEngineOptions(redisOptions: any) {
   return {
@@ -102,6 +98,10 @@ class CountingRunStore extends PostgresRunStore {
 
 function freshRunId() {
   return RunId.generate().friendlyId;
+}
+
+function freshKsuidRunId() {
+  return RunId.toFriendlyId(generateKsuidId());
 }
 
 const baseTriggerParams = (friendlyId: string, environment: any, taskIdentifier: string) => ({
@@ -408,8 +408,7 @@ describe("RunEngine trigger/create routing", () => {
         const taskIdentifier = "test-task";
         await setupBackgroundWorker(engine, environment, taskIdentifier);
 
-        setKsuidMintEnabled(true);
-        const friendlyId = freshRunId();
+        const friendlyId = freshKsuidRunId();
         // Sanity: this id classifies NEW so RoutingRunStore must pick newStore.
         expect(ownerEngine(friendlyId)).toBe("NEW");
 
@@ -429,8 +428,8 @@ describe("RunEngine trigger/create routing", () => {
   );
 
   // Test E: a child triggered with the parent's residency persists to the
-  // SAME store the parent was written to (routing-by-run-id). With the ksuid
-  // mint on, both parent and child mint NEW ids → both land on newStore.
+  // SAME store the parent was written to (routing-by-run-id). Both parent and
+  // child mint NEW (ksuid) ids → both land on newStore.
   containerTest(
     "Test E: child inherits the parent's residency store",
     async ({ prisma, redisOptions }) => {
@@ -453,9 +452,8 @@ describe("RunEngine trigger/create routing", () => {
         const childTask = "child-task";
         await setupBackgroundWorker(engine, environment, [parentTask, childTask]);
 
-        setKsuidMintEnabled(true);
         const parentRun = await engine.trigger(
-          baseTriggerParams(freshRunId(), environment, parentTask)
+          baseTriggerParams(freshKsuidRunId(), environment, parentTask)
         );
 
         await engine.dequeueFromWorkerQueue({ consumerId: "test", workerQueue: "main" });
@@ -466,7 +464,7 @@ describe("RunEngine trigger/create routing", () => {
         });
 
         const childRun = await engine.trigger({
-          ...baseTriggerParams(freshRunId(), environment, childTask),
+          ...baseTriggerParams(freshKsuidRunId(), environment, childTask),
           resumeParentOnCompletion: true,
           parentTaskRunId: parentRun.id,
           rootTaskRunId: parentRun.id,
