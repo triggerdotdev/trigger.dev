@@ -13,8 +13,52 @@ import type {
   BatchItem,
   InitializeBatchOptions,
 } from "../../batch-queue/types.js";
+import { type PrismaClient } from "@trigger.dev/database";
+import { type RedisOptions } from "ioredis";
 
 vi.setConfig({ testTimeout: 60_000 });
+
+function createBatchTestEngine(prisma: PrismaClient, redisOptions: RedisOptions) {
+  return new RunEngine({
+    prisma,
+    worker: {
+      redis: redisOptions,
+      workers: 1,
+      tasksPerWorker: 10,
+      pollIntervalMs: 20,
+    },
+    queue: {
+      redis: redisOptions,
+      masterQueueConsumersDisabled: true,
+      processWorkerQueueDebounceMs: 50,
+    },
+    runLock: {
+      redis: redisOptions,
+    },
+    machines: {
+      defaultMachine: "small-1x",
+      machines: {
+        "small-1x": {
+          name: "small-1x" as const,
+          cpu: 0.5,
+          memory: 0.5,
+          centsPerMs: 0.0001,
+        },
+      },
+      baseCostInCents: 0.0001,
+    },
+    batchQueue: {
+      redis: redisOptions,
+      consumerCount: 2,
+      consumerIntervalMs: 50,
+      drr: {
+        quantum: 10,
+        maxDeficit: 100,
+      },
+    },
+    tracer: trace.getTracer("test", "0.0.0"),
+  });
+}
 
 describe("RunEngine 2-Phase Batch API", () => {
   containerTest(
@@ -559,6 +603,436 @@ describe("RunEngine 2-Phase Batch API", () => {
           },
           { timeout: 15000 }
         );
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "2-phase batch: expireBatch aborts an unsealed batch and resumes the parent with an error",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 20,
+        },
+        queue: {
+          redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        batchQueue: {
+          redis: redisOptions,
+          consumerCount: 2,
+          consumerIntervalMs: 50,
+          drr: {
+            quantum: 10,
+            maxDeficit: 100,
+          },
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      // Phase 2 never runs for this batch, so neither callback should fire.
+      engine.setBatchProcessItemCallback(async () => {
+        return { success: true, runId: "should-not-be-called" };
+      });
+      engine.setBatchCompletionCallback(async () => {});
+
+      try {
+        const parentTask = "parent-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask]);
+
+        // Phase 1: create the batch record (PENDING, unsealed) — mirrors CreateBatchService
+        const { id: batchId, friendlyId: batchFriendlyId } = BatchId.generate();
+        await prisma.batchTaskRun.create({
+          data: {
+            id: batchId,
+            friendlyId: batchFriendlyId,
+            runtimeEnvironmentId: authenticatedEnvironment.id,
+            status: "PENDING",
+            runCount: 2,
+            expectedCount: 2,
+            sealed: false,
+            batchVersion: "runengine:v2",
+          },
+        });
+
+        // Trigger and start the parent attempt
+        const parentRun = await engine.trigger(
+          {
+            friendlyId: generateFriendlyId("run"),
+            environment: authenticatedEnvironment,
+            taskIdentifier: parentTask,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_parent",
+            spanId: "s_parent",
+            workerQueue: "main",
+            queue: `task/${parentTask}`,
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
+          consumerId: "test_12345",
+          workerQueue: "main",
+        });
+        expect(dequeued.length).toBe(1);
+
+        const initialExecutionData = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(initialExecutionData);
+        await engine.startRunAttempt({
+          runId: parentRun.id,
+          snapshotId: initialExecutionData.snapshot.id,
+        });
+
+        // Phase 1 continued: block the parent on the batch and initialize its metadata
+        await engine.blockRunWithCreatedBatch({
+          runId: parentRun.id,
+          batchId,
+          environmentId: authenticatedEnvironment.id,
+          projectId: authenticatedEnvironment.projectId,
+          organizationId: authenticatedEnvironment.organizationId,
+        });
+
+        await engine.initializeBatch({
+          batchId,
+          friendlyId: batchFriendlyId,
+          environmentId: authenticatedEnvironment.id,
+          environmentType: authenticatedEnvironment.type,
+          organizationId: authenticatedEnvironment.organizationId,
+          projectId: authenticatedEnvironment.projectId,
+          runCount: 2,
+          parentRunId: parentRun.id,
+          resumeParentOnCompletion: true,
+        });
+
+        const afterBlocked = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(afterBlocked);
+        expect(afterBlocked.snapshot.executionStatus).toBe("EXECUTING_WITH_WAITPOINTS");
+
+        // Phase 2 never seals the batch. The seal-timeout reaper fires.
+        await engine.expireBatch({ batchId });
+
+        // The batch is terminally failed...
+        const abortedBatch = await prisma.batchTaskRun.findUnique({ where: { id: batchId } });
+        expect(abortedBatch?.status).toBe("ABORTED");
+        expect(abortedBatch?.completedAt).not.toBeNull();
+
+        // ...its waitpoint is completed with an error...
+        const waitpoint = await prisma.waitpoint.findFirst({
+          where: { completedByBatchId: batchId },
+        });
+        assertNonNullable(waitpoint);
+        expect(waitpoint.status).toBe("COMPLETED");
+        expect(waitpoint.outputIsError).toBe(true);
+
+        // ...and the parent is unblocked and resumes instead of hanging forever.
+        await vi.waitFor(
+          async () => {
+            const waitpoints = await prisma.taskRunWaitpoint.findMany({
+              where: { taskRunId: parentRun.id },
+            });
+            expect(waitpoints.length).toBe(0);
+          },
+          { timeout: 15000 }
+        );
+
+        const parentAfter = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(parentAfter);
+        expect(parentAfter.snapshot.executionStatus).toBe("EXECUTING");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "2-phase batch: a scheduled seal-timeout aborts an unsealed batch",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+
+      const engine = new RunEngine({
+        prisma,
+        worker: {
+          redis: redisOptions,
+          workers: 1,
+          tasksPerWorker: 10,
+          pollIntervalMs: 20,
+        },
+        queue: {
+          redis: redisOptions,
+          masterQueueConsumersDisabled: true,
+          processWorkerQueueDebounceMs: 50,
+        },
+        runLock: {
+          redis: redisOptions,
+        },
+        machines: {
+          defaultMachine: "small-1x",
+          machines: {
+            "small-1x": {
+              name: "small-1x" as const,
+              cpu: 0.5,
+              memory: 0.5,
+              centsPerMs: 0.0001,
+            },
+          },
+          baseCostInCents: 0.0001,
+        },
+        batchQueue: {
+          redis: redisOptions,
+          consumerCount: 2,
+          consumerIntervalMs: 50,
+          drr: {
+            quantum: 10,
+            maxDeficit: 100,
+          },
+        },
+        tracer: trace.getTracer("test", "0.0.0"),
+      });
+
+      engine.setBatchProcessItemCallback(async () => {
+        return { success: true, runId: "should-not-be-called" };
+      });
+      engine.setBatchCompletionCallback(async () => {});
+
+      try {
+        // Phase 1: create + initialize the batch, but never stream/seal it.
+        const { id: batchId, friendlyId: batchFriendlyId } = BatchId.generate();
+        await prisma.batchTaskRun.create({
+          data: {
+            id: batchId,
+            friendlyId: batchFriendlyId,
+            runtimeEnvironmentId: authenticatedEnvironment.id,
+            status: "PENDING",
+            runCount: 3,
+            expectedCount: 3,
+            sealed: false,
+            batchVersion: "runengine:v2",
+          },
+        });
+
+        await engine.initializeBatch({
+          batchId,
+          friendlyId: batchFriendlyId,
+          environmentId: authenticatedEnvironment.id,
+          environmentType: authenticatedEnvironment.type,
+          organizationId: authenticatedEnvironment.organizationId,
+          projectId: authenticatedEnvironment.projectId,
+          runCount: 3,
+        });
+
+        // Schedule the seal-timeout to fire immediately.
+        await engine.scheduleExpireBatch({ batchId, availableAt: new Date() });
+
+        // The worker picks up the job and aborts the unsealed batch.
+        await vi.waitFor(
+          async () => {
+            const batchRecord = await prisma.batchTaskRun.findUnique({ where: { id: batchId } });
+            expect(batchRecord?.status).toBe("ABORTED");
+          },
+          { timeout: 15000 }
+        );
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "2-phase batch: expireBatch does not abort a batch whose items were all processed",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = createBatchTestEngine(prisma, redisOptions);
+      engine.setBatchProcessItemCallback(async () => ({ success: true, runId: "x" }));
+      engine.setBatchCompletionCallback(async () => {});
+
+      try {
+        // The BatchQueue streamed and processed every item (the completion callback
+        // set processingCompletedAt) but the seal never landed. The runs exist and
+        // will resume the parent on their own, so the reaper must NOT abort this.
+        const { id: batchId, friendlyId } = BatchId.generate();
+        await prisma.batchTaskRun.create({
+          data: {
+            id: batchId,
+            friendlyId,
+            runtimeEnvironmentId: authenticatedEnvironment.id,
+            status: "PENDING",
+            runCount: 2,
+            expectedCount: 2,
+            sealed: false,
+            batchVersion: "runengine:v2",
+            processingCompletedAt: new Date(),
+          },
+        });
+
+        await engine.expireBatch({ batchId });
+
+        const batch = await prisma.batchTaskRun.findUnique({ where: { id: batchId } });
+        expect(batch?.status).toBe("PENDING");
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "2-phase batch: expireBatch resumes the parent even if a prior attempt already aborted the batch",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = createBatchTestEngine(prisma, redisOptions);
+      engine.setBatchProcessItemCallback(async () => ({ success: true, runId: "x" }));
+      engine.setBatchCompletionCallback(async () => {});
+
+      try {
+        const parentTask = "parent-task";
+        await setupBackgroundWorker(engine, authenticatedEnvironment, [parentTask]);
+
+        const { id: batchId, friendlyId } = BatchId.generate();
+        await prisma.batchTaskRun.create({
+          data: {
+            id: batchId,
+            friendlyId,
+            runtimeEnvironmentId: authenticatedEnvironment.id,
+            status: "PENDING",
+            runCount: 2,
+            expectedCount: 2,
+            sealed: false,
+            batchVersion: "runengine:v2",
+          },
+        });
+
+        const parentRun = await engine.trigger(
+          {
+            friendlyId: generateFriendlyId("run"),
+            environment: authenticatedEnvironment,
+            taskIdentifier: parentTask,
+            payload: "{}",
+            payloadType: "application/json",
+            context: {},
+            traceContext: {},
+            traceId: "t_parent",
+            spanId: "s_parent",
+            workerQueue: "main",
+            queue: `task/${parentTask}`,
+            isTest: false,
+            tags: [],
+          },
+          prisma
+        );
+
+        await setTimeout(500);
+        const dequeued = await engine.dequeueFromWorkerQueue({
+          consumerId: "test_12345",
+          workerQueue: "main",
+        });
+        expect(dequeued.length).toBe(1);
+
+        const initial = await engine.getRunExecutionData({ runId: parentRun.id });
+        assertNonNullable(initial);
+        await engine.startRunAttempt({ runId: parentRun.id, snapshotId: initial.snapshot.id });
+
+        await engine.blockRunWithCreatedBatch({
+          runId: parentRun.id,
+          batchId,
+          environmentId: authenticatedEnvironment.id,
+          projectId: authenticatedEnvironment.projectId,
+          organizationId: authenticatedEnvironment.organizationId,
+        });
+
+        // Simulate a prior expireBatch attempt that aborted the batch but crashed
+        // before resolving the parent's waitpoint.
+        await prisma.batchTaskRun.update({
+          where: { id: batchId },
+          data: { status: "ABORTED", completedAt: new Date() },
+        });
+
+        // The retry must still resolve the parent's waitpoint so it can't stay stuck.
+        await engine.expireBatch({ batchId });
+
+        const waitpoint = await prisma.waitpoint.findFirst({
+          where: { completedByBatchId: batchId },
+        });
+        assertNonNullable(waitpoint);
+        expect(waitpoint.status).toBe("COMPLETED");
+        expect(waitpoint.outputIsError).toBe(true);
+
+        await vi.waitFor(
+          async () => {
+            const wps = await prisma.taskRunWaitpoint.findMany({
+              where: { taskRunId: parentRun.id },
+            });
+            expect(wps.length).toBe(0);
+          },
+          { timeout: 15000 }
+        );
+      } finally {
+        await engine.quit();
+      }
+    }
+  );
+
+  containerTest(
+    "2-phase batch: tryCompleteBatch leaves an ABORTED batch terminal",
+    async ({ prisma, redisOptions }) => {
+      const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+      const engine = createBatchTestEngine(prisma, redisOptions);
+      engine.setBatchProcessItemCallback(async () => ({ success: true, runId: "x" }));
+      engine.setBatchCompletionCallback(async () => {});
+
+      try {
+        // An aborted batch is terminal: a later tryCompleteBatch (e.g. from a
+        // straggler child run finalizing) must not flip it back to COMPLETED.
+        const { id: batchId, friendlyId } = BatchId.generate();
+        await prisma.batchTaskRun.create({
+          data: {
+            id: batchId,
+            friendlyId,
+            runtimeEnvironmentId: authenticatedEnvironment.id,
+            status: "ABORTED",
+            runCount: 0,
+            expectedCount: 0,
+            sealed: false,
+            batchVersion: "runengine:v2",
+            completedAt: new Date(),
+          },
+        });
+
+        await engine.tryCompleteBatch({ batchId });
+
+        // Allow the debounced completion job to run (or correctly no-op).
+        await setTimeout(1500);
+
+        const batch = await prisma.batchTaskRun.findUnique({ where: { id: batchId } });
+        expect(batch?.status).toBe("ABORTED");
       } finally {
         await engine.quit();
       }

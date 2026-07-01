@@ -267,6 +267,9 @@ export class RunEngine {
         tryCompleteBatch: async ({ payload }) => {
           await this.batchSystem.performCompleteBatch({ batchId: payload.batchId });
         },
+        expireBatch: async ({ payload }) => {
+          await this.batchSystem.expireBatch({ batchId: payload.batchId });
+        },
         continueRunIfUnblocked: async ({ payload }) => {
           await this.waitpointSystem.continueRunIfUnblocked({
             runId: payload.runId,
@@ -1733,6 +1736,29 @@ export class RunEngine {
 
   async tryCompleteBatch({ batchId }: { batchId: string }): Promise<void> {
     return this.batchSystem.scheduleCompleteBatch({ batchId });
+  }
+
+  /**
+   * Terminally fail a batch whose Phase 2 item stream never sealed, resolving the
+   * parent's batchTriggerAndWait waitpoint with an error so the parent resumes
+   * instead of hanging forever.
+   */
+  async expireBatch({ batchId }: { batchId: string }): Promise<void> {
+    return this.batchSystem.expireBatch({ batchId });
+  }
+
+  /**
+   * Schedule the seal-timeout reaper for a batch. If the batch hasn't sealed by
+   * `availableAt`, {@link expireBatch} terminally fails it and resumes the parent.
+   */
+  async scheduleExpireBatch({
+    batchId,
+    availableAt,
+  }: {
+    batchId: string;
+    availableAt: Date;
+  }): Promise<void> {
+    return this.batchSystem.scheduleExpireBatch({ batchId, availableAt });
   }
 
   // ============================================================================

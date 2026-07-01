@@ -4,6 +4,7 @@ import { BatchId, RunId } from "@trigger.dev/core/v3/isomorphic";
 import { type BatchTaskRun, Prisma } from "@trigger.dev/database";
 import { Evt } from "evt";
 import { prisma, type PrismaClientOrTransaction } from "~/db.server";
+import { env } from "~/env.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ServiceValidationError, WithRunEngine } from "../../v3/services/baseService.server";
@@ -148,6 +149,21 @@ export class CreateBatchService extends WithRunEngine {
           };
 
           await this._engine.initializeBatch(initOptions);
+
+          // Guard the gap between creating the batch and sealing it: if the item
+          // stream never seals this batch, the reaper aborts it after the timeout
+          // and resumes any blocked parent with an error instead of leaving it
+          // suspended forever. If scheduling the reaper itself fails, abort the
+          // batch now so a blocked parent can't be stranded with nothing to free it.
+          try {
+            await this._engine.scheduleExpireBatch({
+              batchId: batch.id,
+              availableAt: new Date(Date.now() + env.BATCH_SEAL_TIMEOUT_MS),
+            });
+          } catch (scheduleError) {
+            await this._engine.expireBatch({ batchId: batch.id });
+            throw scheduleError;
+          }
 
           logger.info("Batch created", {
             batchId: friendlyId,
