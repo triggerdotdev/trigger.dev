@@ -3,7 +3,7 @@ import { chalkGreen, chalkError, chalkWarning, chalkTask, chalkPurple } from "./
 import chalk from "chalk";
 import type { Metafile } from "esbuild";
 import CLITable from "cli-table3";
-import { BackgroundWorker } from "../dev/backgroundWorker.js";
+import type { BackgroundWorker } from "../dev/backgroundWorker.js";
 
 export function analyzeWorker(
   worker: BackgroundWorker,
@@ -51,7 +51,7 @@ export function printBundleTree(
   const outputDefinesTaskIds = buildOutputDefinesTaskIdsMap(workerManifest, metafile);
 
   for (const item of data) {
-    const { filePath, taskIds, bundleSize, bundleChildren, timing } = item;
+    const { filePath, taskIds, bundleSize: _bundleSize, bundleChildren, timing } = item;
 
     // Print the root
     const displayPath = getDisplayPath(filePath, preservePath);

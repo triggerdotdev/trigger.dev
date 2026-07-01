@@ -9,7 +9,6 @@ import {
 import { authenticateApiRequestWithFailure } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
-import { engine } from "~/v3/runEngine.server";
 
 const ParamsSchema = z.object({
   batchId: z.string(),

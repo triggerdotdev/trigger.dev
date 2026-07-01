@@ -106,40 +106,6 @@ function hslToHex({ h, s, l }: HSLColor): string {
 
   return `#${toHex(r1)}${toHex(g1)}${toHex(b1)}`;
 }
-
-/** Convert a hex string to HSL (h: 0–360, s: 0–100, l: 0–100) */
-function hexToHsl(hex: string): HSLColor {
-  const r = parseInt(hex.slice(1, 3), 16) / 255;
-  const g = parseInt(hex.slice(3, 5), 16) / 255;
-  const b = parseInt(hex.slice(5, 7), 16) / 255;
-
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const delta = max - min;
-  const l = (max + min) / 2;
-
-  if (delta === 0) {
-    return { h: 0, s: 0, l: Math.round(l * 100) };
-  }
-
-  const s = delta / (1 - Math.abs(2 * l - 1));
-
-  let h: number;
-  if (max === r) {
-    h = 60 * (((g - b) / delta + 6) % 6);
-  } else if (max === g) {
-    h = 60 * ((b - r) / delta + 2);
-  } else {
-    h = 60 * ((r - g) / delta + 4);
-  }
-
-  return {
-    h: Math.round(h),
-    s: Math.round(s * 100),
-    l: Math.round(l * 100),
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Derived hex palette (for consumers that need plain hex strings)
 // ---------------------------------------------------------------------------

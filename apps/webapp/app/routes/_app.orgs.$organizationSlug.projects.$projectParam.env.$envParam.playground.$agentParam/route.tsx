@@ -1,23 +1,26 @@
+import type { UIMessage } from "@ai-sdk/react";
+import { useChat } from "@ai-sdk/react";
 import { BoltIcon, CheckIcon, StopIcon } from "@heroicons/react/20/solid";
 import { ClipboardIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { type MetaFunction } from "@remix-run/node";
 import { Link, useFetcher, useNavigate, useRouteLoaderData } from "@remix-run/react";
-import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useChat } from "@ai-sdk/react";
+import { generateJWT as internal_generateJWT, MachinePresetName } from "@trigger.dev/core/v3";
 import { TriggerChatTransport } from "@trigger.dev/sdk/chat";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { PlusIcon } from "~/assets/icons/PlusIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { JSONEditor } from "~/components/code/JSONEditor";
 import { Button } from "~/components/primitives/Buttons";
-import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import {
-  Popover,
-  PopoverContent,
-  PopoverMenuItem,
-  PopoverVerticalEllipseTrigger,
-} from "~/components/primitives/Popover";
+  ClientTabs,
+  ClientTabsContent,
+  ClientTabsList,
+  ClientTabsTrigger,
+} from "~/components/primitives/ClientTabs";
+import { DateTime } from "~/components/primitives/DateTime";
 import { DurationPicker } from "~/components/primitives/DurationPicker";
 import { Header3 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
@@ -25,41 +28,37 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Spinner } from "~/components/primitives/Spinner";
-import type { PlaygroundConversation } from "~/presenters/v3/PlaygroundPresenter.server";
-import { DateTime } from "~/components/primitives/DateTime";
-import { cn } from "~/utils/cn";
-import { JSONEditor } from "~/components/code/JSONEditor";
-import { ToolUseRow, AssistantResponse, ChatBubble } from "~/components/runs/v3/ai/AIChatMessages";
-import { MessageBubble } from "~/components/runs/v3/agent/AgentMessageView";
-import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
+import {
+  Popover,
+  PopoverContent,
+  PopoverMenuItem,
+  PopoverVerticalEllipseTrigger,
+} from "~/components/primitives/Popover";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
-import {
-  ClientTabs,
-  ClientTabsContent,
-  ClientTabsList,
-  ClientTabsTrigger,
-} from "~/components/primitives/ClientTabs";
+import { Select, SelectItem } from "~/components/primitives/Select";
+import { Spinner } from "~/components/primitives/Spinner";
+import { SimpleTooltip } from "~/components/primitives/Tooltip";
+import { MessageBubble } from "~/components/runs/v3/agent/AgentMessageView";
+import { RunTagInput } from "~/components/runs/v3/RunTagInput";
+import { env as serverEnv } from "~/env.server";
+import { useAutoScrollToBottom } from "~/hooks/useAutoScrollToBottom";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import type { PlaygroundConversation } from "~/presenters/v3/PlaygroundPresenter.server";
 import { playgroundPresenter } from "~/presenters/v3/PlaygroundPresenter.server";
-import { requireUserId } from "~/services/session.server";
-import { RunTagInput } from "~/components/runs/v3/RunTagInput";
-import { Select, SelectItem } from "~/components/primitives/Select";
-import { EnvironmentParamSchema } from "~/utils/pathBuilder";
-import { env as serverEnv } from "~/env.server";
-import { generateJWT as internal_generateJWT, MachinePresetName } from "@trigger.dev/core/v3";
-import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
-import { SchemaTabContent } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.test.tasks.$taskParam/SchemaTabContent";
 import { AIPayloadTabContent } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.test.tasks.$taskParam/AIPayloadTabContent";
-import type { UIMessage } from "@ai-sdk/react";
+import { SchemaTabContent } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.test.tasks.$taskParam/SchemaTabContent";
+import { extractJwtSigningSecretKey } from "~/services/realtime/jwtAuth.server";
+import { requireUserId } from "~/services/session.server";
+import { cn } from "~/utils/cn";
+import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [{ title: "Playground | Trigger.dev" }];
@@ -199,7 +198,7 @@ function PlaygroundChat() {
       ? (recentConversations.find((c) => c.chatId === activeConversation.chatId)?.id ?? null)
       : null
   );
-  const [chatId, setChatId] = useState(() => activeConversation?.chatId ?? crypto.randomUUID());
+  const [chatId, _setChatId] = useState(() => activeConversation?.chatId ?? crypto.randomUUID());
   const [clientDataJson, setClientDataJson] = useState(() =>
     activeConversation?.clientData ? JSON.stringify(activeConversation.clientData, null, 2) : "{}"
   );

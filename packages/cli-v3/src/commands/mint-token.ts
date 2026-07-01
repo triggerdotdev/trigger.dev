@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import type { Command } from "commander";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
 import {

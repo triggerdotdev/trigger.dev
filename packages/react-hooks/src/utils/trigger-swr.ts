@@ -1,6 +1,6 @@
 "use client";
 
-import { ApiRequestOptions } from "@trigger.dev/core/v3";
+import type { ApiRequestOptions } from "@trigger.dev/core/v3";
 
 // eslint-disable-next-line import/export
 export * from "swr";

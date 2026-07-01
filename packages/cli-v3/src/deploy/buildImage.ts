@@ -1,7 +1,7 @@
 import { logger } from "../utilities/logger.js";
 import { depot } from "@depot/cli";
 import { x } from "tinyexec";
-import { BuildManifest, BuildRuntime } from "@trigger.dev/core/v3/schemas";
+import type { BuildManifest, BuildRuntime } from "@trigger.dev/core/v3/schemas";
 import { networkInterfaces } from "os";
 import { join } from "path";
 import { safeReadJSONFile } from "../utilities/fileSystem.js";
@@ -11,7 +11,7 @@ import { isLinux } from "std-env";
 import { z } from "zod";
 import { assertExhaustive } from "../utilities/assertExhaustive.js";
 import { tryCatch } from "@trigger.dev/core";
-import { CliApiClient } from "../apiClient.js";
+import type { CliApiClient } from "../apiClient.js";
 
 export interface BuildImageOptions {
   // Common options
@@ -955,7 +955,7 @@ function normalizeApiUrlForBuild(apiUrl: string): string {
 function getHostIP() {
   const interfaces = networkInterfaces();
 
-  for (const [name, iface] of Object.entries(interfaces)) {
+  for (const [_name, iface] of Object.entries(interfaces)) {
     if (!iface) {
       continue;
     }
@@ -1026,7 +1026,7 @@ function isQemuRegistered() {
     // Check a single QEMU handler
     const binfmt = readFileSync("/proc/sys/fs/binfmt_misc/qemu-aarch64", "utf8");
     return binfmt.includes("enabled");
-  } catch (e) {
+  } catch (_e) {
     return false;
   }
 }

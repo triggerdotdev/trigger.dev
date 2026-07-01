@@ -7,7 +7,7 @@ import {
 } from "@heroicons/react/20/solid";
 import type { TaskRunAttemptStatus as TaskRunAttemptStatusType } from "@trigger.dev/database";
 import assertNever from "assert-never";
-import { HourglassIcon, SnowflakeIcon } from "lucide-react";
+import { HourglassIcon } from "lucide-react";
 import { Spinner } from "~/components/primitives/Spinner";
 import { TaskRunAttemptStatus } from "~/database-types";
 import { cn } from "~/utils/cn";

@@ -1,5 +1,12 @@
 import {
-  type ApiRequestOptions,
+  type AsyncIterableStream,
+  type WriterStreamOptions,
+  type PipeStreamOptions,
+  type PipeStreamResult,
+  type ReadStreamOptions,
+  type AppendStreamOptions,
+  type RealtimeDefinedStream,
+  type InferStreamType,
   realtimeStreams,
   inputStreams,
   taskContext,
@@ -8,28 +15,14 @@ import {
   accessoryAttributes,
   SemanticInternalAttributes,
   apiClientManager,
-  AsyncIterableStream,
-  WriterStreamOptions,
-  PipeStreamOptions,
-  PipeStreamResult,
-  ReadStreamOptions,
-  AppendStreamOptions,
-  RealtimeDefinedStream,
-  InferStreamType,
   ManualWaitpointPromise,
   WaitpointTimeoutError,
   runtime,
   logger,
   type RealtimeDefinedInputStream,
-  type InputStreamSubscription,
-  type InputStreamOnceOptions,
   InputStreamOncePromise,
   type InputStreamOnceResult,
-  type InputStreamWaitOptions,
-  type InputStreamWaitWithIdleTimeoutOptions,
-  type SendInputStreamOptions,
   type InferInputStreamType,
-  type StreamWriteResult,
 } from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { tracer } from "./tracer.js";
@@ -628,7 +621,7 @@ function writerInternal<TPart>(key: string, options: WriterStreamOptions<TPart>)
   function safeEnqueue(data: TPart) {
     try {
       controller.enqueue(data);
-    } catch (error) {
+    } catch (_error) {
       // suppress errors when the stream has been closed
     }
   }
@@ -677,7 +670,7 @@ function writerInternal<TPart>(key: string, options: WriterStreamOptions<TPart>)
   waitForStreams.finally(() => {
     try {
       controller.close();
-    } catch (error) {
+    } catch (_error) {
       // suppress errors when the stream has been closed
     }
   });

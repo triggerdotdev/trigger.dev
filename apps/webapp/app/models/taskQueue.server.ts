@@ -1,5 +1,5 @@
 import { QueueManifest } from "@trigger.dev/core/v3/schemas";
-import { TaskQueue } from "@trigger.dev/database";
+import type { TaskQueue } from "@trigger.dev/database";
 import { prisma } from "~/db.server";
 
 export async function findQueueInEnvironment(

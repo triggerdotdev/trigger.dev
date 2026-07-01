@@ -1,6 +1,6 @@
 import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { NoopRealtimeStreamsManager } from "./noopManager.js";
-import {
+import type {
   RealtimeStreamOperationOptions,
   RealtimeStreamInstance,
   RealtimeStreamsManager,

@@ -1,9 +1,5 @@
-import {
-  AbstractStartedContainer,
-  GenericContainer,
-  StartedTestContainer,
-  Wait,
-} from "testcontainers";
+import type { StartedTestContainer } from "testcontainers";
+import { AbstractStartedContainer, GenericContainer, Wait } from "testcontainers";
 import { x } from "tinyexec";
 
 const MINIO_PORT = 9000;

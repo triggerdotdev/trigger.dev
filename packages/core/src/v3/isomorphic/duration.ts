@@ -81,7 +81,7 @@ export function parseNaturalLanguageDuration(duration: string): Date | undefined
 export function safeParseNaturalLanguageDuration(duration: string): Date | undefined {
   try {
     return parseNaturalLanguageDuration(duration);
-  } catch (error) {
+  } catch (_error) {
     return undefined;
   }
 }
@@ -160,7 +160,7 @@ export function parseNaturalLanguageDurationAgo(duration: string): Date | undefi
 export function safeParseNaturalLanguageDurationAgo(duration: string): Date | undefined {
   try {
     return parseNaturalLanguageDurationAgo(duration);
-  } catch (error) {
+  } catch (_error) {
     return undefined;
   }
 }

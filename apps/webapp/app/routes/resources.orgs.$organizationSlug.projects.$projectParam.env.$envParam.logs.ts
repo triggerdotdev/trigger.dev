@@ -1,17 +1,17 @@
-import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/node";
-import { requireUser, requireUserId } from "~/services/session.server";
-import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { $replica } from "~/db.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
+  LogsListOptionsSchema,
   LogsListPresenter,
   type LogLevel,
-  LogsListOptionsSchema,
 } from "~/presenters/v3/LogsListPresenter.server";
-import { $replica } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { getCurrentPlan } from "~/services/platform.v3.server";
+import { requireUser } from "~/services/session.server";
+import { EnvironmentParamSchema } from "~/utils/pathBuilder";
 
 // Valid log levels for filtering
 const validLevels: LogLevel[] = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"];

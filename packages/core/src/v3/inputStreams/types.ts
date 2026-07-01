@@ -1,4 +1,4 @@
-import { InputStreamOnceOptions } from "../realtimeStreams/types.js";
+import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 
 export class InputStreamTimeoutError extends Error {
   constructor(

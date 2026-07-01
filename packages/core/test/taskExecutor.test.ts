@@ -1,15 +1,14 @@
 import { describe, expect, test } from "vitest";
 import { ApiError } from "../src/v3/apiClient/errors.js";
 import { ConsoleInterceptor } from "../src/v3/consoleInterceptor.js";
-import {
-  lifecycleHooks,
+import type {
   RetryOptions,
   RunFnParams,
   ServerBackgroundWorker,
   TaskMetadataWithFunctions,
-  TaskRunErrorCodes,
   TaskRunExecution,
 } from "../src/v3/index.js";
+import { lifecycleHooks, TaskRunErrorCodes } from "../src/v3/index.js";
 import { StandardLifecycleHooksManager } from "../src/v3/lifecycleHooks/manager.js";
 import { TracingSDK } from "../src/v3/otel/tracingSDK.js";
 import { TriggerTracer } from "../src/v3/tracer.js";
@@ -1975,7 +1974,7 @@ function executeTask(
     },
   };
 
-  const worker: ServerBackgroundWorker = {
+  const _worker: ServerBackgroundWorker = {
     id: "test-background-worker-id",
     version: "1.0.0",
     contentHash: "test-content-hash",

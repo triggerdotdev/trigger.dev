@@ -1,5 +1,5 @@
 import { getGlobal, registerGlobal } from "../utils/globals.js";
-import { MaybeDeferredPromise, WaitUntilManager } from "./types.js";
+import type { MaybeDeferredPromise, WaitUntilManager } from "./types.js";
 
 const API_NAME = "wait-until";
 

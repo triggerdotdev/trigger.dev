@@ -277,7 +277,7 @@ export class ResourceMonitor {
             rss,
             command: cmdline.replace(/\0/g, " ").trim(),
           };
-        } catch (error) {
+        } catch (_error) {
           return null;
         }
       })
@@ -457,7 +457,7 @@ export class ResourceMonitor {
             }
           : null,
       };
-    } catch (error) {
+    } catch (_error) {
       return {
         node: nodeMetrics,
         targetProcess: this.processName

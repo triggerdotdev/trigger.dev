@@ -334,7 +334,7 @@ export class Checkpointer {
 
       try {
         await setTimeout(delayMs, undefined, { signal });
-      } catch (error) {
+      } catch (_error) {
         this.#logger.log("Checkpoint canceled during initial delay", { runId });
         return { success: false, reason: "CANCELED" };
       }
@@ -364,7 +364,7 @@ export class Checkpointer {
 
           try {
             await setTimeout(delay.milliseconds, undefined, { signal });
-          } catch (error) {
+          } catch (_error) {
             this.#logger.log("Checkpoint canceled during retry delay", { runId });
             return { success: false, reason: "CANCELED" };
           }

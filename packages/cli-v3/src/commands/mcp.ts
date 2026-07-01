@@ -3,17 +3,17 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { VERSION } from "@trigger.dev/core";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { Command, Option as CommandOption } from "commander";
+import type { Command } from "commander";
 import { z } from "zod";
 import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
 import { CLOUD_API_URL } from "../consts.js";
+import { serverMetadata } from "../mcp/config.js";
 import { McpContext } from "../mcp/context.js";
 import { FileLogger } from "../mcp/logger.js";
 import { registerTools } from "../mcp/tools.js";
 import { printStandloneInitialBanner } from "../utilities/initialBanner.js";
 import { logger } from "../utilities/logger.js";
 import { installMcpServer } from "./install-mcp.js";
-import { serverMetadata } from "../mcp/config.js";
 import { initiateSkillsInstallWizard } from "./skills.js";
 
 const McpCommandOptions = CommonCommandOptions.extend({

@@ -1,16 +1,16 @@
 import {
+  type RunEngine,
   RunDuplicateIdempotencyKeyError,
-  RunEngine,
   RunOneTimeUseTokenError,
 } from "@internal/run-engine";
-import { Tracer } from "@opentelemetry/api";
+import type { Tracer } from "@opentelemetry/api";
 import { tryCatch } from "@trigger.dev/core/utils";
 import {
+  type TriggerTaskRequestBody,
   RunAnnotations,
   TaskRunError,
   taskRunErrorEnhancer,
   taskRunErrorToString,
-  TriggerTaskRequestBody,
   TriggerTraceContext,
 } from "@trigger.dev/core/v3";
 import {
@@ -30,7 +30,10 @@ import type {
   TriggerTaskServiceResult,
 } from "../../v3/services/triggerTask.server";
 import { clampMaxDuration } from "../../v3/utils/maxDuration";
-import { IdempotencyKeyConcern, type ClaimedIdempotency } from "../concerns/idempotencyKeys.server";
+import {
+  type IdempotencyKeyConcern,
+  type ClaimedIdempotency,
+} from "../concerns/idempotencyKeys.server";
 import {
   resolveScheduledQueueSplitEnabled,
   workerQueueForRun,
@@ -62,7 +65,6 @@ import {
   type MollifierGetBuffer,
 } from "~/v3/mollifier/mollifierBuffer.server";
 import { mollifyTrigger } from "~/v3/mollifier/mollifierMollify.server";
-import { type MollifierBuffer } from "@trigger.dev/redis-worker";
 import { QueueSizeLimitExceededError, ServiceValidationError } from "~/v3/services/common.server";
 import { runStore } from "~/v3/runStore.server";
 

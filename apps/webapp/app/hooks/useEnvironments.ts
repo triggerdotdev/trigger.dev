@@ -1,6 +1,6 @@
-import { UIMatch } from "@remix-run/react";
-import { MatchedProject, useOptionalProject } from "./useProject";
-import { useUser } from "./useUser";
+import type { UIMatch } from "@remix-run/react";
+import type { MatchedProject } from "./useProject";
+import { useOptionalProject } from "./useProject";
 
 export type ProjectJobEnvironment = MatchedProject["environments"][number];
 

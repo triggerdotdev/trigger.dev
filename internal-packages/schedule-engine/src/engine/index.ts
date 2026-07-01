@@ -1,14 +1,7 @@
-import {
-  Counter,
-  getMeter,
-  getTracer,
-  Histogram,
-  Meter,
-  startSpan,
-  Tracer,
-} from "@internal/tracing";
+import type { Counter, Histogram, Meter, Tracer } from "@internal/tracing";
+import { getMeter, getTracer, startSpan } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
-import { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient } from "@trigger.dev/database";
 import { Worker, type JobHandlerParams } from "@trigger.dev/redis-worker";
 import { calculateDistributedExecutionTime } from "./distributedScheduling.js";
 import {
@@ -16,7 +9,7 @@ import {
   nextScheduledTimestamps,
   previousScheduledTimestamp,
 } from "./scheduleCalculation.js";
-import {
+import type {
   RegisterScheduleInstanceParams,
   ScheduleEngineOptions,
   TriggerScheduledTaskCallback,

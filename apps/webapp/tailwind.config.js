@@ -2,7 +2,7 @@
 const colors = require("tailwindcss/colors");
 
 // V2
-const slate = {
+const _slate = {
   450: "#7E8FA6",
   500: "#6B7C95",
   550: "#586981",
@@ -15,7 +15,7 @@ const slate = {
   1000: "#0B1018",
 };
 
-const toxic = {
+const _toxic = {
   50: "#E3FFE6",
   100: "#C8FFCD",
   200: "#A9FFAB",
@@ -28,7 +28,7 @@ const toxic = {
   900: "#16CC28",
 };
 
-const acid = {
+const _acid = {
   50: "#F9FFD1",
   100: "#F6FFB6",
   200: "#F3FF99",
@@ -41,7 +41,7 @@ const acid = {
   900: "#9FB802",
 };
 
-const midnight = {
+const _midnight = {
   ...colors.slate,
   450: colors.slate[850],
   500: colors.slate[650],

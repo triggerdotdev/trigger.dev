@@ -1,7 +1,8 @@
 import { json } from "@remix-run/server-runtime";
 import { safeParseNaturalLanguageDurationAgo } from "@trigger.dev/core/v3/isomorphic";
 import { randomUUID } from "node:crypto";
-import { API_VERSIONS, CURRENT_API_VERSION } from "~/api/versions";
+import type { API_VERSIONS } from "~/api/versions";
+import { CURRENT_API_VERSION } from "~/api/versions";
 import {
   type CachedLimitProvider,
   type RealtimeEnvironment,

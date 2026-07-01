@@ -1,7 +1,8 @@
 import { CacheError } from "@unkey/cache";
 import type { Entry, Store } from "@unkey/cache/stores";
 import { Err, Ok, type Result } from "@unkey/error";
-import { createRedisClient, RedisClient, RedisWithClusterOptions } from "~/redis.server";
+import type { RedisClient, RedisWithClusterOptions } from "~/redis.server";
+import { createRedisClient } from "~/redis.server";
 
 export type RedisCacheStoreConfig = {
   connection: RedisWithClusterOptions;

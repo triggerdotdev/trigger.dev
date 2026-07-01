@@ -2,7 +2,8 @@ import { ArrowUpCircleIcon, PlusIcon, TrashIcon } from "@heroicons/react/20/soli
 import { DialogClose } from "@radix-ui/react-dialog";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
-import { IconChartHistogram, IconEdit, IconTypography } from "@tabler/icons-react";
+import { IconChartHistogram, IconEdit } from "@tabler/icons-react";
+import { Type } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
@@ -56,7 +57,6 @@ import {
 } from "~/utils/pathBuilder";
 import { MetricDashboard } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.dashboards.$dashboardKey/route";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { Type } from "lucide-react";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   dashboardId: z.string(),
@@ -185,7 +185,7 @@ export default function Page() {
     isAdmin,
     maxRows,
     possibleTasks,
-    widgetCount: initialWidgetCount,
+    widgetCount: _initialWidgetCount,
   } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();

@@ -6,6 +6,7 @@ vi.mock("~/db.server", () => ({
 }));
 
 import { mutateWithFallback } from "~/v3/mollifier/mutateWithFallback.server";
+import type * as DbServer from "~/db.server";
 import type { BufferEntry, MollifierBuffer, MutateSnapshotResult } from "@trigger.dev/redis-worker";
 import type { TaskRun } from "@trigger.dev/database";
 
@@ -105,8 +106,8 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation,
       synthesisedResponse,
-      prismaReplica: fakePrisma([row]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
+      prismaReplica: fakePrisma([row]) as unknown as typeof DbServer.$replica,
+      prismaWriter: fakePrisma([]) as unknown as typeof DbServer.prisma,
       getBuffer: () => bufferReturning("applied_to_snapshot"),
     });
 
@@ -121,8 +122,8 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation,
       synthesisedResponse: () => "snap",
-      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
+      prismaReplica: fakePrisma([null]) as unknown as typeof DbServer.$replica,
+      prismaWriter: fakePrisma([]) as unknown as typeof DbServer.prisma,
       getBuffer: () => bufferReturning("applied_to_snapshot"),
     });
     expect(result).toEqual({ kind: "snapshot", response: "snap" });
@@ -141,8 +142,8 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation: async () => "pg",
       synthesisedResponse: synthesised,
-      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
+      prismaReplica: fakePrisma([null]) as unknown as typeof DbServer.$replica,
+      prismaWriter: fakePrisma([]) as unknown as typeof DbServer.prisma,
       getBuffer: () => bufferReturning("applied_to_snapshot"),
     });
     expect(result).toEqual({ kind: "snapshot", response: "snap-with-entry" });
@@ -169,8 +170,8 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation,
       synthesisedResponse: () => "snap",
-      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: fakePrisma([row]) as unknown as typeof import("~/db.server").prisma,
+      prismaReplica: fakePrisma([null]) as unknown as typeof DbServer.$replica,
+      prismaWriter: fakePrisma([row]) as unknown as typeof DbServer.prisma,
       getBuffer: () => null,
     });
     expect(result).toEqual({ kind: "pg", response: "pg-recovered-no-buffer" });
@@ -182,8 +183,8 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation: async () => "pg",
       synthesisedResponse: () => "snap",
-      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: fakePrisma([null]) as unknown as typeof import("~/db.server").prisma,
+      prismaReplica: fakePrisma([null]) as unknown as typeof DbServer.$replica,
+      prismaWriter: fakePrisma([null]) as unknown as typeof DbServer.prisma,
       getBuffer: () => null,
     });
     expect(result).toEqual({ kind: "not_found" });
@@ -194,8 +195,8 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation: async () => "pg",
       synthesisedResponse: () => "snap",
-      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: fakePrisma([null]) as unknown as typeof import("~/db.server").prisma,
+      prismaReplica: fakePrisma([null]) as unknown as typeof DbServer.$replica,
+      prismaWriter: fakePrisma([null]) as unknown as typeof DbServer.prisma,
       getBuffer: () => bufferReturning("not_found"),
     });
     expect(result).toEqual({ kind: "not_found" });
@@ -208,8 +209,8 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation,
       synthesisedResponse: () => "snap",
-      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: fakePrisma([row]) as unknown as typeof import("~/db.server").prisma,
+      prismaReplica: fakePrisma([null]) as unknown as typeof DbServer.$replica,
+      prismaWriter: fakePrisma([row]) as unknown as typeof DbServer.prisma,
       getBuffer: () => bufferReturning("not_found"),
     });
     expect(result).toEqual({ kind: "pg", response: "pg-recovered" });
@@ -227,8 +228,8 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation,
       synthesisedResponse: () => "snap",
-      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
+      prismaReplica: fakePrisma([null]) as unknown as typeof DbServer.$replica,
+      prismaWriter: writer as unknown as typeof DbServer.prisma,
       getBuffer: () => buffer,
       sleep: async (ms) => {
         nowValue += ms;
@@ -256,8 +257,8 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation,
       synthesisedResponse: () => "snap",
-      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
+      prismaReplica: fakePrisma([null]) as unknown as typeof DbServer.$replica,
+      prismaWriter: writer as unknown as typeof DbServer.prisma,
       getBuffer: () => buffer,
       sleep: async (ms) => {
         nowValue += ms;
@@ -279,8 +280,8 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation: async () => "pg",
       synthesisedResponse: () => "snap",
-      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
+      prismaReplica: fakePrisma([null]) as unknown as typeof DbServer.$replica,
+      prismaWriter: writer as unknown as typeof DbServer.prisma,
       getBuffer: () => buffer,
       sleep: async (ms) => {
         nowValue += ms;
@@ -306,8 +307,8 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation,
       synthesisedResponse: () => "snap",
-      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
+      prismaReplica: fakePrisma([null]) as unknown as typeof DbServer.$replica,
+      prismaWriter: writer as unknown as typeof DbServer.prisma,
       getBuffer: () => buffer,
       sleep: async (ms) => {
         nowValue += ms;
@@ -331,8 +332,8 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation: async () => "pg",
       synthesisedResponse: () => "snap",
-      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
+      prismaReplica: fakePrisma([null]) as unknown as typeof DbServer.$replica,
+      prismaWriter: writer as unknown as typeof DbServer.prisma,
       getBuffer: () => buffer,
       sleep: async (ms) => {
         nowValue += ms;
@@ -356,8 +357,8 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation: async () => "pg",
       synthesisedResponse: () => "snap",
-      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: writer as unknown as typeof import("~/db.server").prisma,
+      prismaReplica: fakePrisma([null]) as unknown as typeof DbServer.$replica,
+      prismaWriter: writer as unknown as typeof DbServer.prisma,
       getBuffer: () => buffer,
       sleep: async (ms) => {
         nowValue += ms;
@@ -383,8 +384,8 @@ describe("mutateWithFallback", () => {
       pgMutation,
       synthesisedResponse,
       rejectedResponse: () => "too-many-tags",
-      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
+      prismaReplica: fakePrisma([null]) as unknown as typeof DbServer.$replica,
+      prismaWriter: fakePrisma([]) as unknown as typeof DbServer.prisma,
       getBuffer: () => bufferReturning("limit_exceeded"),
     });
     expect(result).toEqual({ kind: "rejected", response: "too-many-tags" });
@@ -398,8 +399,8 @@ describe("mutateWithFallback", () => {
         ...baseInput,
         pgMutation: async () => "pg",
         synthesisedResponse: () => "snap",
-        prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-        prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
+        prismaReplica: fakePrisma([null]) as unknown as typeof DbServer.$replica,
+        prismaWriter: fakePrisma([]) as unknown as typeof DbServer.prisma,
         getBuffer: () => bufferReturning("limit_exceeded"),
       })
     ).rejects.toThrow(/limit_exceeded/);
@@ -428,8 +429,8 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation,
       synthesisedResponse,
-      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
+      prismaReplica: fakePrisma([null]) as unknown as typeof DbServer.$replica,
+      prismaWriter: fakePrisma([]) as unknown as typeof DbServer.prisma,
       getBuffer: () => buffer,
     });
     expect(result).toEqual({ kind: "not_found" });
@@ -455,8 +456,8 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation: async () => "pg",
       synthesisedResponse: () => "snap",
-      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
+      prismaReplica: fakePrisma([null]) as unknown as typeof DbServer.$replica,
+      prismaWriter: fakePrisma([]) as unknown as typeof DbServer.prisma,
       getBuffer: () => buffer,
     });
     expect(result).toEqual({ kind: "not_found" });
@@ -468,8 +469,8 @@ describe("mutateWithFallback", () => {
       ...baseInput,
       pgMutation: async () => "pg",
       synthesisedResponse: () => "snap",
-      prismaReplica: fakePrisma([null]) as unknown as typeof import("~/db.server").$replica,
-      prismaWriter: fakePrisma([]) as unknown as typeof import("~/db.server").prisma,
+      prismaReplica: fakePrisma([null]) as unknown as typeof DbServer.$replica,
+      prismaWriter: fakePrisma([]) as unknown as typeof DbServer.prisma,
       getBuffer: () => null,
     });
     expect(result).toEqual({ kind: "not_found" });

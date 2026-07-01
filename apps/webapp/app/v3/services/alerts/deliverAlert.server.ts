@@ -7,12 +7,12 @@ import {
   type WebAPIRequestError,
 } from "@slack/web-api";
 import {
+  type RunStatus,
   createJsonErrorObject,
   type DeploymentFailedWebhook,
   type DeploymentSuccessWebhook,
   isOOMRunError,
   type RunFailedWebhook,
-  RunStatus,
   TaskRunError,
 } from "@trigger.dev/core/v3";
 import { type ProjectAlertChannelType, type ProjectAlertType } from "@trigger.dev/database";

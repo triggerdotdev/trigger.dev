@@ -1,23 +1,23 @@
-import { Command } from "commander";
+import { confirm, intro, isCancel, log, outro } from "@clack/prompts";
+import { tryCatch } from "@trigger.dev/core";
+import chalk from "chalk";
+import Table from "cli-table3";
+import type { Command } from "commander";
+import { writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { z } from "zod";
-import { printInitialBanner } from "../utilities/initialBanner.js";
 import {
   CommonCommandOptions,
   commonOptions,
   handleTelemetry,
   wrapCommandAction,
 } from "../cli/common.js";
-import { intro, outro, log, confirm, isCancel } from "@clack/prompts";
-import chalk from "chalk";
-import Table from "cli-table3";
-import { logger } from "../utilities/logger.js";
-import { login } from "./login.js";
-import { getProjectClient, upsertBranch } from "../utilities/session.js";
 import { loadConfig } from "../config.js";
+import { printInitialBanner } from "../utilities/initialBanner.js";
+import { logger } from "../utilities/logger.js";
+import { getProjectClient } from "../utilities/session.js";
 import { spinner } from "../utilities/windows.js";
-import { writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import { tryCatch } from "@trigger.dev/core";
+import { login } from "./login.js";
 
 const EnvListOptions = CommonCommandOptions.extend({
   config: z.string().optional(),

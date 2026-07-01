@@ -1,5 +1,5 @@
 import { setInterval } from "node:timers/promises";
-import { InitialUsageState, UsageManager, UsageMeasurement, UsageSample } from "./types.js";
+import type { InitialUsageState, UsageManager, UsageMeasurement, UsageSample } from "./types.js";
 import { UsageClient } from "./usageClient.js";
 
 export type ProdUsageManagerOptions = {

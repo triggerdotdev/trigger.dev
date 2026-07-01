@@ -1,6 +1,5 @@
-import { ListPreviewBranchesInput } from "../schemas.js";
 import { toolsMetadata } from "../config.js";
-import { ToolMeta } from "../types.js";
+import { ListPreviewBranchesInput } from "../schemas.js";
 import { respondWithError, toolHandler } from "../utils.js";
 
 export const listPreviewBranchesTool = {

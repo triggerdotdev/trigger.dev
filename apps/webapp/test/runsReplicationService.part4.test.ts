@@ -4,9 +4,8 @@ import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 import { TaskRunStatus } from "~/database-types";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
-import { createInMemoryTracing, createInMemoryMetrics } from "./utils/tracing";
 import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
-import superjson from "superjson";
+import { createInMemoryMetrics, createInMemoryTracing } from "./utils/tracing";
 
 vi.setConfig({ testTimeout: 60_000 });
 

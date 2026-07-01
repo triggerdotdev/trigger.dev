@@ -1,12 +1,5 @@
-import {
-  accessoryAttributes,
-  apiClientManager,
-  ApiPromise,
-  ApiRequestOptions,
-  mergeRequestOptions,
-  RetrieveBatchResponse,
-  RetrieveBatchV2Response,
-} from "@trigger.dev/core/v3";
+import type { ApiPromise, ApiRequestOptions, RetrieveBatchV2Response } from "@trigger.dev/core/v3";
+import { accessoryAttributes, apiClientManager, mergeRequestOptions } from "@trigger.dev/core/v3";
 import {
   batchTriggerAndWaitTasks,
   batchTriggerById,

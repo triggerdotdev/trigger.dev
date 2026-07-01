@@ -2,26 +2,24 @@ import {
   AdjustmentsHorizontalIcon,
   ArrowUpCircleIcon,
   BookOpenIcon,
-  ChatBubbleLeftEllipsisIcon,
   PauseIcon,
   PlayIcon,
   RectangleStackIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form, useNavigation, useSearchParams, type MetaFunction } from "@remix-run/react";
+import { Form, useNavigation, type MetaFunction } from "@remix-run/react";
 import { type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import type { QueueItem } from "@trigger.dev/core/v3/schemas";
+import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import { useEffect, useState } from "react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
+import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
-import { TaskIconSmall } from "~/assets/icons/TaskIcon";
 import upgradeForQueuesPath from "~/assets/images/queues-dashboard.png";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { QueuesHasNoTasks } from "~/components/BlankStatePanels";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
-import { Feedback } from "~/components/Feedback";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { BigNumber } from "~/components/metrics/BigNumber";
 import { Badge } from "~/components/primitives/Badge";
@@ -31,11 +29,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
-import { SearchInput } from "~/components/primitives/SearchInput";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { PaginationControls } from "~/components/primitives/Pagination";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { PopoverMenuItem } from "~/components/primitives/Popover";
+import { SearchInput } from "~/components/primitives/SearchInput";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
@@ -54,6 +52,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "~/components/primitives/Tooltip";
+import { QueueName } from "~/components/runs/v3/QueueName";
 import { env } from "~/env.server";
 import { useAutoRevalidate } from "~/hooks/useAutoRevalidate";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -79,8 +78,6 @@ import { concurrencySystem } from "~/v3/services/concurrencySystemInstance.serve
 import { PauseEnvironmentService } from "~/v3/services/pauseEnvironment.server";
 import { PauseQueueService } from "~/v3/services/pauseQueue.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { ConcurrencyIcon } from "~/assets/icons/ConcurrencyIcon";
-import { QueueName } from "~/components/runs/v3/QueueName";
 
 const SearchParamsSchema = z.object({
   query: z.string().optional(),

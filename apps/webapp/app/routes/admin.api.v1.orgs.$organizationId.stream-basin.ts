@@ -1,4 +1,5 @@
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";
 import { isValidDuration } from "~/services/realtime/duration.server";

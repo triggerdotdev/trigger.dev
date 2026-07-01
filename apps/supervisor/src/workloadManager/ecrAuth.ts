@@ -1,7 +1,7 @@
 import { ECRClient, GetAuthorizationTokenCommand } from "@aws-sdk/client-ecr";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import { tryCatch } from "@trigger.dev/core";
-import Docker from "dockerode";
+import type Docker from "dockerode";
 
 interface ECRTokenCache {
   token: string;

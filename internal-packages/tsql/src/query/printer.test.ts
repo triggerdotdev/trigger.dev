@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { parseTSQLSelect, parseTSQLExpr, compileTSQL } from "../index.js";
+import { describe, expect, it } from "vitest";
+import { compileTSQL, parseTSQLSelect } from "../index.js";
+import { QueryError } from "./errors.js";
 import { ClickHousePrinter, printToClickHouse, type PrintResult } from "./printer.js";
 import { createPrinterContext, PrinterContext } from "./printer_context.js";
-import { createSchemaRegistry, column, type TableSchema, type SchemaRegistry } from "./schema.js";
+import { column, createSchemaRegistry, type TableSchema } from "./schema.js";
 import type { BucketThreshold } from "./time_buckets.js";
-import { QueryError, SyntaxError } from "./errors.js";
 
 /**
  * Test table schemas
@@ -108,7 +108,7 @@ function printQuery(query: string, context?: PrinterContext) {
 describe("ClickHousePrinter", () => {
   describe("Basic SELECT statements", () => {
     it("should expand SELECT * to individual columns", () => {
-      const { sql, params, columns } = printQuery("SELECT * FROM task_runs");
+      const { sql, params: _params, columns } = printQuery("SELECT * FROM task_runs");
 
       // SELECT * should be expanded to individual columns
       expect(sql).toContain("SELECT ");
@@ -134,7 +134,7 @@ describe("ClickHousePrinter", () => {
     });
 
     it("should print SELECT with specific columns", () => {
-      const { sql, params } = printQuery("SELECT id, status, created_at FROM task_runs");
+      const { sql, params: _params } = printQuery("SELECT id, status, created_at FROM task_runs");
 
       expect(sql).toContain("SELECT id, status, created_at");
       expect(sql).toContain("FROM trigger_dev.task_runs_v2");
@@ -1381,7 +1381,9 @@ describe("ClickHousePrinter", () => {
     });
 
     it("should parameterize numeric values inline", () => {
-      const { sql, params } = printQuery("SELECT * FROM task_runs WHERE duration_ms > 1000");
+      const { sql, params: _params } = printQuery(
+        "SELECT * FROM task_runs WHERE duration_ms > 1000"
+      );
 
       // Numbers can be inlined safely
       expect(sql).toContain("1000");
@@ -1596,7 +1598,7 @@ describe("ClickHousePrinter", () => {
     });
 
     it("should include correct types in placeholders", () => {
-      const { sql, params } = printQuery("SELECT * FROM task_runs WHERE status = 'test'");
+      const { sql, params: _params } = printQuery("SELECT * FROM task_runs WHERE status = 'test'");
 
       // Should have String type in placeholder
       expect(sql).toMatch(/\{tsql_val_\d+: String\}/);
@@ -1650,7 +1652,7 @@ describe("Value mapping (valueMap)", () => {
 
   it("should transform user-friendly value to internal value in equality comparison", () => {
     const ctx = createValueMapContext();
-    const { sql, params } = printQuery("SELECT * FROM runs WHERE status = 'Completed'", ctx);
+    const { sql: _sql, params } = printQuery("SELECT * FROM runs WHERE status = 'Completed'", ctx);
 
     // The user-friendly value "Completed" should be transformed to "COMPLETED_SUCCESSFULLY"
     expect(Object.values(params)).toContain("COMPLETED_SUCCESSFULLY");
@@ -1659,7 +1661,7 @@ describe("Value mapping (valueMap)", () => {
 
   it("should transform user-friendly values in IN clause", () => {
     const ctx = createValueMapContext();
-    const { sql, params } = printQuery(
+    const { sql: _sql, params } = printQuery(
       "SELECT * FROM runs WHERE status IN ('Completed', 'Failed', 'Running')",
       ctx
     );
@@ -1695,7 +1697,7 @@ describe("Value mapping (valueMap)", () => {
 
   it("should transform values in NOT IN clause", () => {
     const ctx = createValueMapContext();
-    const { sql, params } = printQuery(
+    const { sql: _sql, params } = printQuery(
       "SELECT * FROM runs WHERE status NOT IN ('Pending', 'System failure')",
       ctx
     );
@@ -1887,7 +1889,7 @@ describe("WHERE transform (whereTransform)", () => {
 
   it("should work with GROUP BY and WHERE together", () => {
     const ctx = createPrefixedContext();
-    const { sql, params } = printQuery(
+    const { sql, params: _params } = printQuery(
       "SELECT batch_id, COUNT() as count FROM runs WHERE batch_id != NULL GROUP BY batch_id",
       ctx
     );
@@ -1903,13 +1905,15 @@ describe("WHERE transform (whereTransform)", () => {
 
 describe("Edge cases", () => {
   it("should handle empty string values", () => {
-    const { sql, params } = printQuery("SELECT * FROM task_runs WHERE status = ''");
+    const { sql: _sql, params } = printQuery("SELECT * FROM task_runs WHERE status = ''");
 
     expect(Object.values(params)).toContain("");
   });
 
   it("should handle special characters in strings", () => {
-    const { sql, params } = printQuery("SELECT * FROM task_runs WHERE status = 'test\nvalue'");
+    const { sql: _sql, params } = printQuery(
+      "SELECT * FROM task_runs WHERE status = 'test\nvalue'"
+    );
 
     // The string value should be parameterized
     expect(Object.keys(params).length).toBeGreaterThan(0);

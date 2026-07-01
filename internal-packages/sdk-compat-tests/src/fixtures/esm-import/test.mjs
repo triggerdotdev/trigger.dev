@@ -1,3 +1,4 @@
+// oxlint-disable import/no-duplicates
 /**
  * ESM Import Test Fixture
  *
@@ -7,19 +8,20 @@
 
 // Test main export
 import {
-  task,
-  logger,
-  schedules,
-  runs,
   configure,
+  logger,
+  metadata,
   queue,
   retry,
-  wait,
-  metadata,
+  runs,
+  schedules,
   tags,
+  task,
+  wait,
 } from "@trigger.dev/sdk";
 
 // Test /v3 subpath (legacy, but should still work)
+// oxlint-disable-next-line import/no-duplicates
 import { task as taskV3 } from "@trigger.dev/sdk/v3";
 
 // Validate exports are functions/objects

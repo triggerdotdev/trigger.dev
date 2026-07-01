@@ -107,49 +107,9 @@ function chatIdFromUrl(urlStr: string): string | undefined {
   return m?.[1];
 }
 
-const DEFAULT_RUN_ID = "run_default";
-const DEFAULT_SESSION_ID = "session_default";
-const DEFAULT_SESSION_PAT = "pat_session_default";
-
-function createSessionResponseBody(options?: {
-  sessionId?: string;
-  externalId?: string;
-  publicAccessToken?: string;
-  runId?: string;
-}): string {
-  const externalId = options?.externalId ?? null;
-  return JSON.stringify({
-    id: options?.sessionId ?? DEFAULT_SESSION_ID,
-    externalId,
-    type: "chat.agent",
-    taskIdentifier: "my-chat-task",
-    triggerConfig: { basePayload: { chatId: externalId ?? "" } },
-    currentRunId: options?.runId ?? DEFAULT_RUN_ID,
-    runId: options?.runId ?? DEFAULT_RUN_ID,
-    publicAccessToken: options?.publicAccessToken ?? DEFAULT_SESSION_PAT,
-    tags: [],
-    metadata: null,
-    closedAt: null,
-    closedReason: null,
-    expiresAt: null,
-    createdAt: new Date(0).toISOString(),
-    updatedAt: new Date(0).toISOString(),
-    isCached: false,
-  });
-}
-
-function defaultSessionCreateResponse(options?: {
-  sessionId?: string;
-  externalId?: string;
-  publicAccessToken?: string;
-  runId?: string;
-}): Response {
-  return new Response(createSessionResponseBody(options), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
-}
-
+const _DEFAULT_RUN_ID = "run_default";
+const _DEFAULT_SESSION_ID = "session_default";
+const _DEFAULT_SESSION_PAT = "pat_session_default";
 function defaultAppendResponse(): Response {
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,

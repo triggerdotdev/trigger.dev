@@ -8,15 +8,15 @@ import {
   useLocation,
   useNavigation,
 } from "@remix-run/react";
-import { ActionFunctionArgs, json } from "@remix-run/server-runtime";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
 import { parseExpression } from "cron-parser";
 import cronstrue from "cronstrue";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
+  EnvironmentCombo,
   environmentTextClassName,
   environmentTitle,
-  EnvironmentCombo,
 } from "~/components/environments/EnvironmentLabel";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
@@ -30,6 +30,7 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { Select, SelectItem } from "~/components/primitives/Select";
+import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
   TableBody,
@@ -39,26 +40,20 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TextLink } from "~/components/primitives/TextLink";
+import { TimezoneList } from "~/components/scheduled/timezones";
 import { prisma } from "~/db.server";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
-import { EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.server";
+import type { EditableScheduleElements } from "~/presenters/v3/EditSchedulePresenter.server";
+import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { cn } from "~/utils/cn";
-import {
-  EnvironmentParamSchema,
-  ProjectParamSchema,
-  docsPath,
-  v3EnvironmentPath,
-} from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, docsPath, v3EnvironmentPath } from "~/utils/pathBuilder";
 import { CronPattern, UpsertSchedule } from "~/v3/schedules";
 import { UpsertTaskScheduleService } from "~/v3/services/upsertTaskSchedule.server";
 import { AIGeneratedCronField } from "../resources.orgs.$organizationSlug.projects.$projectParam.schedules.new.natural-language";
-import { TimezoneList } from "~/components/scheduled/timezones";
-import { logger } from "~/services/logger.server";
-import { Spinner } from "~/components/primitives/Spinner";
-import { useEnvironment } from "~/hooks/useEnvironment";
 
 const cronFormat = `*    *    *    *    *
 ┬    ┬    ┬    ┬    ┬

@@ -15,7 +15,7 @@ import {
   setupQueue,
 } from "./utils/marqs.js";
 import { trace } from "@opentelemetry/api";
-import { EnvQueues } from "~/v3/marqs/types.js";
+import type { EnvQueues } from "~/v3/marqs/types.js";
 import { MARQS_RESUME_PRIORITY_TIMESTAMP_OFFSET } from "~/v3/marqs/constants.server.js";
 import { createRedisClient } from "@internal/redis";
 
@@ -258,7 +258,7 @@ describe("FairDequeuingStrategy", () => {
 
       const startDistribute2 = performance.now();
 
-      const result2 = await strategy.distributeFairQueuesFromParentQueue(
+      const _result2 = await strategy.distributeFairQueuesFromParentQueue(
         "parent-queue",
         "consumer-1"
       );
@@ -275,7 +275,7 @@ describe("FairDequeuingStrategy", () => {
 
       const startDistribute3 = performance.now();
 
-      const result3 = await strategy.distributeFairQueuesFromParentQueue(
+      const _result3 = await strategy.distributeFairQueuesFromParentQueue(
         "parent-queue",
         "consumer-1"
       );
@@ -420,13 +420,13 @@ describe("FairDequeuingStrategy", () => {
       expect(firstPositionStdDevEnvs).toBeLessThan(5); // Allow 5% standard deviation for envs
 
       // Verify that each org and env gets a fair chance at first position
-      for (const [orgId, stats] of Object.entries(orgStats)) {
+      for (const [_orgId, stats] of Object.entries(orgStats)) {
         const firstPositionPercentage = (stats.firstPosition / iterations) * 100;
         expect(firstPositionPercentage).toBeGreaterThan(expectedFirstPositionPercentage * 0.7); // Within 30% of expected
         expect(firstPositionPercentage).toBeLessThan(expectedFirstPositionPercentage * 1.3);
       }
 
-      for (const [envId, stats] of Object.entries(envStats)) {
+      for (const [_envId, stats] of Object.entries(envStats)) {
         const firstPositionPercentage = (stats.firstPosition / iterations) * 100;
         expect(firstPositionPercentage).toBeGreaterThan(expectedEnvFirstPositionPercentage * 0.7); // Within 30% of expected
         expect(firstPositionPercentage).toBeLessThan(expectedEnvFirstPositionPercentage * 1.3);

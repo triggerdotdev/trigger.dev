@@ -48,7 +48,7 @@ export function getTmpDir(
   const removeDir = () => {
     try {
       return fs.rmSync(tmpDir, { recursive: true, force: true });
-    } catch (e) {
+    } catch (_e) {
       // This sometimes fails on Windows with EBUSY
     }
   };
@@ -68,7 +68,7 @@ export function clearTmpDirs(projectRoot: string | undefined, branch?: string) {
 
   try {
     fs.rmSync(tmpRoot, { recursive: true, force: true });
-  } catch (e) {
+  } catch (_e) {
     // This sometimes fails on Windows with EBUSY
   }
 }
@@ -92,7 +92,7 @@ export function getStoreDir(
     onExit(() => {
       try {
         fs.rmSync(storeDir, { recursive: true, force: true });
-      } catch (e) {
+      } catch (_e) {
         // This sometimes fails on Windows with EBUSY
       }
     });

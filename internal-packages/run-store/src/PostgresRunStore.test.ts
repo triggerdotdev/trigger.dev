@@ -1,5 +1,5 @@
 import { postgresTest } from "@internal/testcontainers";
-import type { PrismaClient } from "@trigger.dev/database";
+import type { Prisma, PrismaClient } from "@trigger.dev/database";
 import { describe, expect } from "vitest";
 import { PostgresRunStore } from "./PostgresRunStore.js";
 import type { CreateCancelledRunInput, CreateFailedRunInput, CreateRunInput } from "./types.js";
@@ -147,7 +147,7 @@ describe("PostgresRunStore", () => {
           isTest: false,
           taskEventStore: "taskEvent",
           depth: 0,
-          error: error as unknown as import("@trigger.dev/database").Prisma.InputJsonValue,
+          error: error as unknown as Prisma.InputJsonValue,
           completedAt: cancelledAt,
           updatedAt: cancelledAt,
           attemptNumber: 0,
@@ -215,7 +215,7 @@ describe("PostgresRunStore", () => {
           queue: "task/my-task",
           isTest: false,
           completedAt,
-          error: error as unknown as import("@trigger.dev/database").Prisma.InputJsonObject,
+          error: error as unknown as Prisma.InputJsonObject,
           depth: 0,
           taskEventStore: "taskEvent",
         },

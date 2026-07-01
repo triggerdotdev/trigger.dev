@@ -1,6 +1,6 @@
-import { ClickHouseSettings } from "@clickhouse/client";
+import type { ClickHouseSettings } from "@clickhouse/client";
 import { z } from "zod";
-import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
+import type { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 
 export const TaskEventV1Input = z.object({
   environment_id: z.string(),

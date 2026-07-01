@@ -19,10 +19,10 @@ import {
   taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
 import { assertNever } from "assert-never";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
+import { toast } from "sonner";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
-import { RegionLabel } from "~/components/runs/v3/RegionLabel";
 import { AdminDebugRun } from "~/components/admin/debugRun";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
@@ -42,8 +42,6 @@ import {
   PopoverMenuItem,
   PopoverTrigger,
 } from "~/components/primitives/Popover";
-import { ToastUI } from "~/components/primitives/Toast";
-import { toast } from "sonner";
 import * as Property from "~/components/primitives/PropertyTable";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
@@ -55,18 +53,19 @@ import {
   TableRow,
 } from "~/components/primitives/Table";
 import { TabButton, TabContainer } from "~/components/primitives/Tabs";
-import { SessionStatusCombo } from "~/components/sessions/v1/SessionStatus";
 import { TextLink } from "~/components/primitives/TextLink";
+import { ToastUI } from "~/components/primitives/Toast";
 import { InfoIconTooltip, SimpleTooltip } from "~/components/primitives/Tooltip";
+import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { RunTimeline, RunTimelineEvent, SpanTimeline } from "~/components/run/RunTimeline";
-import { SpanHorizontalTimeline } from "~/components/runs/v3/SpanHorizontalTimeline";
+import { AIEmbedSpanDetails, AISpanDetails, AIToolCallSpanDetails } from "~/components/runs/v3/ai";
 import { PacketDisplay } from "~/components/runs/v3/PacketDisplay";
+import { PromptSpanDetails } from "~/components/runs/v3/PromptSpanDetails";
+import { RegionLabel } from "~/components/runs/v3/RegionLabel";
 import { RunIcon } from "~/components/runs/v3/RunIcon";
 import { RunTag } from "~/components/runs/v3/RunTag";
-import { TruncatedCopyableValue } from "~/components/primitives/TruncatedCopyableValue";
 import { SpanEvents } from "~/components/runs/v3/SpanEvents";
-import { AISpanDetails, AIToolCallSpanDetails, AIEmbedSpanDetails } from "~/components/runs/v3/ai";
-import { PromptSpanDetails } from "~/components/runs/v3/PromptSpanDetails";
+import { SpanHorizontalTimeline } from "~/components/runs/v3/SpanHorizontalTimeline";
 import { SpanTitle } from "~/components/runs/v3/SpanTitle";
 import { TaskRunAttemptStatusCombo } from "~/components/runs/v3/TaskRunAttemptStatus";
 import {
@@ -75,6 +74,7 @@ import {
 } from "~/components/runs/v3/TaskRunStatus";
 import { WaitpointDetailTable } from "~/components/runs/v3/WaitpointDetails";
 import { RuntimeIcon } from "~/components/RuntimeIcon";
+import { SessionStatusCombo } from "~/components/sessions/v1/SessionStatus";
 import { WarmStartCombo } from "~/components/WarmStarts";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -90,7 +90,6 @@ import { formatCurrencyAccurate } from "~/utils/numberFormatter";
 import {
   docsPath,
   v3BatchPath,
-  v3SessionPath,
   v3DeploymentVersionPath,
   v3RunDownloadLogsPath,
   v3RunIdempotencyKeyResetPath,
@@ -99,6 +98,7 @@ import {
   v3RunSpanPath,
   v3RunsPath,
   v3SchedulePath,
+  v3SessionPath,
   v3SpanParamsSchema,
 } from "~/utils/pathBuilder";
 import { createTimelineSpanEventsFromSpanEvents } from "~/utils/timelineSpanEvents";
@@ -266,10 +266,10 @@ function SpanBody({
   runParam?: string;
   closePanel?: () => void;
 }) {
-  const organization = useOrganization();
-  const project = useProject();
-  const environment = useEnvironment();
-  const { value, replace } = useSearchParams();
+  const _organization = useOrganization();
+  const _project = useProject();
+  const _environment = useEnvironment();
+  const { value, replace: _replace } = useSearchParams();
   let tab = value("tab");
 
   if (tab === "context") {
@@ -326,16 +326,6 @@ function SpanBody({
     </div>
   );
 }
-
-function formatSpanDuration(nanoseconds: number): string {
-  const ms = nanoseconds / 1_000_000;
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  const mins = Math.floor(ms / 60_000);
-  const secs = ((ms % 60_000) / 1000).toFixed(0);
-  return `${mins}m ${secs}s`;
-}
-
 function applySpanOverrides(span: Span, spanOverrides?: SpanOverride): Span {
   if (!spanOverrides) {
     return span;
@@ -1274,36 +1264,6 @@ function RunError({ error }: { error: TaskRunError }) {
     }
   }
 }
-
-function CollapsibleProperties({ code }: { code: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="border-t border-grid-bright pt-2">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-1 text-xs font-medium text-text-dimmed hover:text-text-bright"
-      >
-        <ChevronUpIcon
-          className={cn("size-3.5 transition-transform", open ? "rotate-180" : "rotate-90")}
-        />
-        Raw properties
-      </button>
-      {open && (
-        <div className="mt-1.5">
-          <CodeBlock
-            code={code}
-            maxLines={20}
-            showLineNumbers={false}
-            showCopyButton
-            showTextWrapping
-            showOpenInModal
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
 function SpanEntity({ span }: { span: Span }) {
   const isAdmin = useHasAdminAccess();
 

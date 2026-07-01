@@ -1,6 +1,6 @@
 import { BookOpenIcon, ChevronUpDownIcon, CpuChipIcon } from "@heroicons/react/20/solid";
 import { json, type MetaFunction } from "@remix-run/node";
-import { Outlet, useNavigate, useParams, useLoaderData } from "@remix-run/react";
+import { Outlet, useLoaderData, useNavigate, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
@@ -23,12 +23,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { playgroundPresenter } from "~/presenters/v3/PlaygroundPresenter.server";
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { requireUser } from "~/services/session.server";
-import {
-  docsPath,
-  EnvironmentParamSchema,
-  v3PlaygroundAgentPath,
-  v3PlaygroundPath,
-} from "~/utils/pathBuilder";
+import { docsPath, EnvironmentParamSchema, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [{ title: "Playground | Trigger.dev" }];

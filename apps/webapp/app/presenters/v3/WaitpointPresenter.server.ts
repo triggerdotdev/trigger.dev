@@ -68,10 +68,10 @@ export class WaitpointPresenter extends BasePresenter {
           ? await prettyPrintPacket(waitpoint.output, waitpoint.outputType ?? undefined)
           : undefined;
 
-    let isTimeout = false;
+    let _isTimeout = false;
     if (waitpoint.outputIsError && output) {
       if (isWaitpointOutputTimeout(output)) {
-        isTimeout = true;
+        _isTimeout = true;
       }
     }
 

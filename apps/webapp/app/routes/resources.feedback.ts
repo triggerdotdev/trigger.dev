@@ -6,7 +6,7 @@ import { redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
 import { sendToPlain } from "~/utils/plain.server";
 
-let client: PlainClient | undefined;
+let _client: PlainClient | undefined;
 
 export const feedbackTypes = {
   bug: {

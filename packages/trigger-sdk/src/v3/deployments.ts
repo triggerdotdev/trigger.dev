@@ -1,17 +1,13 @@
 import type {
-  ApiRequestOptions,
-  RetrieveCurrentDeploymentResponseBody,
   ApiDeploymentListOptions,
   ApiDeploymentListResponseItem,
-} from "@trigger.dev/core/v3";
-import {
-  apiClientManager,
+  ApiRequestOptions,
   CursorPagePromise,
-  isRequestOptions,
-  mergeRequestOptions,
+  RetrieveCurrentDeploymentResponseBody,
 } from "@trigger.dev/core/v3";
+import { apiClientManager, isRequestOptions } from "@trigger.dev/core/v3";
 
-export type { RetrieveCurrentDeploymentResponseBody, ApiDeploymentListResponseItem };
+export type { ApiDeploymentListResponseItem, RetrieveCurrentDeploymentResponseBody };
 
 export const deployments = {
   retrieveCurrent: retrieveCurrentDeployment,

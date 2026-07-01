@@ -1,4 +1,4 @@
-import { Prisma } from "@trigger.dev/database";
+import type { Prisma } from "@trigger.dev/database";
 import { logger } from "~/services/logger.server";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";

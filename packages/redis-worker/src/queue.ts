@@ -7,7 +7,7 @@ import {
 } from "@internal/redis";
 import { Logger } from "@trigger.dev/core/logger";
 import { nanoid } from "nanoid";
-import { z } from "zod";
+import type { z } from "zod";
 
 export interface MessageCatalogSchema {
   [key: string]: z.ZodFirstPartySchemaTypes | z.ZodDiscriminatedUnion<any, any>;

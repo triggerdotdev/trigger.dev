@@ -1,11 +1,12 @@
 import { dequal } from "dequal/lite";
-import { DeserializedJson } from "../../schemas/json.js";
-import { ApiClient } from "../apiClient/index.js";
+import type { DeserializedJson } from "../../schemas/json.js";
+import type { ApiClient } from "../apiClient/index.js";
 import { realtimeStreams } from "../realtime-streams-api.js";
-import { RunMetadataChangeOperation } from "../schemas/common.js";
-import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
-import { IOPacket, stringifyIO } from "../utils/ioSerialization.js";
-import { ApiRequestOptions } from "../zodfetch.js";
+import type { RunMetadataChangeOperation } from "../schemas/common.js";
+import type { AsyncIterableStream } from "../streams/asyncIterableStream.js";
+import type { IOPacket } from "../utils/ioSerialization.js";
+import { stringifyIO } from "../utils/ioSerialization.js";
+import type { ApiRequestOptions } from "../zodfetch.js";
 import { applyMetadataOperations, collapseOperations } from "./operations.js";
 import type { RunMetadataManager, RunMetadataUpdater } from "./types.js";
 

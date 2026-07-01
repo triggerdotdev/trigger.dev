@@ -1,15 +1,19 @@
 import { getFormProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import { CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
-import { Form, useActionData, useFetcher, useNavigation, useLocation } from "@remix-run/react";
+import { DialogClose } from "@radix-ui/react-dialog";
+import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { Result, fromPromise } from "neverthrow";
+import { useEffect, useRef, useState } from "react";
 import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
-import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
-import { DialogClose } from "@radix-ui/react-dialog";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { PermissionLink } from "~/components/primitives/PermissionLink";
+import { BuildSettingsFields } from "~/components/integrations/VercelBuildSettings";
+import { VercelLogo } from "~/components/integrations/VercelLogo";
+import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
+import { DateTime } from "~/components/primitives/DateTime";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -17,24 +21,27 @@ import { Hint } from "~/components/primitives/Hint";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { PermissionLink } from "~/components/primitives/PermissionLink";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
-import { DateTime } from "~/components/primitives/DateTime";
-import { VercelLogo } from "~/components/integrations/VercelLogo";
-import { BuildSettingsFields } from "~/components/integrations/VercelBuildSettings";
 import {
   redirectBackWithErrorMessage,
-  redirectWithSuccessMessage,
   redirectWithErrorMessage,
+  redirectWithSuccessMessage,
 } from "~/models/message.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
+import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
+import {
+  type VercelOnboardingData,
+  VercelSettingsPresenter,
+} from "~/presenters/v3/VercelSettingsPresenter.server";
 import { logger } from "~/services/logger.server";
-import { requireUserId } from "~/services/session.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
-import { sanitizeVercelNextUrl } from "~/v3/vercel/vercelUrls.server";
+import { requireUserId } from "~/services/session.server";
+import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import {
   EnvironmentParamSchema,
   v3ProjectSettingsIntegrationsPath,
@@ -42,22 +49,14 @@ import {
   vercelResourcePath,
 } from "~/utils/pathBuilder";
 import {
-  VercelSettingsPresenter,
-  type VercelOnboardingData,
-} from "~/presenters/v3/VercelSettingsPresenter.server";
-import { VercelIntegrationService } from "~/services/vercelIntegration.server";
-import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
-import {
-  type VercelProjectIntegrationData,
-  type SyncEnvVarsMapping,
   type EnvSlug,
+  type SyncEnvVarsMapping,
+  type VercelProjectIntegrationData,
   envSlugArrayField,
-  envTypeToSlug,
   getAvailableEnvSlugs,
   getAvailableEnvSlugsForBuildSettings,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
-import { Result, fromPromise } from "neverthrow";
-import { useEffect, useRef, useState } from "react";
+import { sanitizeVercelNextUrl } from "~/v3/vercel/vercelUrls.server";
 
 export type ConnectedVercelProject = {
   id: string;
@@ -734,7 +733,7 @@ function ConnectedVercelProjectForm({
     originalAutoPromote,
   ]);
 
-  const [configForm, fields] = useForm({
+  const [configForm, _fields] = useForm({
     id: "update-vercel-config",
     lastResult: lastSubmission,
     shouldRevalidate: "onSubmit",
@@ -790,7 +789,7 @@ function ConnectedVercelProjectForm({
       ? { stg: "Map a custom Vercel environment to Staging to enable this" }
       : undefined;
 
-  const formatSelectedEnvs = (
+  const _formatSelectedEnvs = (
     selected: EnvSlug[],
     availableSlugs: EnvSlug[] = availableEnvSlugs
   ): string => {
@@ -1099,9 +1098,9 @@ function VercelSettingsPanel({
   isLoadingVercelData?: boolean;
 }) {
   const fetcher = useTypedFetcher<typeof loader>();
-  const location = useLocation();
+  const _location = useLocation();
   const data = fetcher.data;
-  const [hasError, setHasError] = useState(false);
+  const [hasError, _setHasError] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
 
   useEffect(() => {
@@ -1218,4 +1217,4 @@ function VercelSettingsPanel({
 
 import { VercelOnboardingModal } from "~/components/integrations/VercelOnboardingModal";
 
-export { VercelSettingsPanel, VercelOnboardingModal };
+export { VercelOnboardingModal, VercelSettingsPanel };

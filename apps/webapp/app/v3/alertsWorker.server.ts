@@ -1,5 +1,5 @@
 import { Logger } from "@trigger.dev/core/logger";
-import { CronSchema, Worker as RedisWorker } from "@trigger.dev/redis-worker";
+import { Worker as RedisWorker } from "@trigger.dev/redis-worker";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";

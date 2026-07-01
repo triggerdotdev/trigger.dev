@@ -36,7 +36,7 @@ const taskRunsSchema: TableSchema = {
 /**
  * Test table schema with tenant columns (lookup table with tenant isolation)
  */
-const lookupTableSchema: TableSchema = {
+const _lookupTableSchema: TableSchema = {
   name: "lookup_table",
   clickhouseName: "trigger_dev.lookup_table",
   tenantColumns: {
@@ -641,7 +641,7 @@ describe("compileTSQL with enforcedWhereClause", () => {
 
     it("should handle Date values in enforced conditions", () => {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const { sql, params } = compileTSQL("SELECT id FROM task_runs", {
+      const { sql, params: _params } = compileTSQL("SELECT id FROM task_runs", {
         tableSchema: [taskRunsSchema],
         enforcedWhereClause: {
           organization_id: { op: "eq", value: "org_123" },

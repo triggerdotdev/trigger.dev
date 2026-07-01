@@ -1,4 +1,4 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { ApiClient } from "@trigger.dev/core/v3";
 import fs from "node:fs";
@@ -11,7 +11,7 @@ import {
   hasRootsCapability,
   hasSamplingCapability,
 } from "./capabilities.js";
-import { FileLogger } from "./logger.js";
+import type { FileLogger } from "./logger.js";
 import { fileURLToPath } from "node:url";
 
 const MCP_CONFIG_DIR = ".trigger";

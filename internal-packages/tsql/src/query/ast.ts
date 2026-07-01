@@ -3,13 +3,9 @@
 import type { TSQLContext } from "./context";
 import type {
   DatabaseField,
-  ExpressionField,
   FieldOrTable,
-  FieldTraverser,
   LazyJoin,
   LazyTable,
-  StringArrayDatabaseField,
-  StringJSONDatabaseField,
   Table,
   UnknownDatabaseField,
   VirtualTable,

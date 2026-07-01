@@ -1,22 +1,29 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import { CheckCircleIcon, LockClosedIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { DialogClose } from "@radix-ui/react-dialog";
 import {
   Form,
   useActionData,
-  useNavigation,
-  useNavigate,
-  useSearchParams,
   useLocation,
+  useNavigate,
+  useNavigation,
+  useSearchParams,
 } from "@remix-run/react";
 import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
-import { redirect, typedjson, useTypedFetcher } from "remix-typedjson";
+import { GitBranchIcon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
+import {
+  EnvironmentIcon,
+  environmentFullTitle,
+  environmentTextClassName,
+} from "~/components/environments/EnvironmentLabel";
 import { OctoKitty } from "~/components/GitHubLoginButton";
+import { Button } from "~/components/primitives/Buttons";
+import { DateTime } from "~/components/primitives/DateTime";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
-import { DialogClose } from "@radix-ui/react-dialog";
-import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { PermissionLink } from "~/components/primitives/PermissionLink";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -25,18 +32,12 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { PermissionLink } from "~/components/primitives/PermissionLink";
 import { Select, SelectItem } from "~/components/primitives/Select";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { TextLink } from "~/components/primitives/TextLink";
-import { DateTime } from "~/components/primitives/DateTime";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
-import {
-  EnvironmentIcon,
-  environmentFullTitle,
-  environmentTextClassName,
-} from "~/components/environments/EnvironmentLabel";
-import { GitBranchIcon } from "lucide-react";
 import {
   redirectBackWithErrorMessage,
   redirectBackWithSuccessMessage,
@@ -46,22 +47,21 @@ import {
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
-import { ProjectSettingsService } from "~/services/projectSettings.server";
+import { GitHubSettingsPresenter } from "~/presenters/v3/GitHubSettingsPresenter.server";
 import { logger } from "~/services/logger.server";
 import { triggerInitialDeployment } from "~/services/platform.v3.server";
-import { VercelIntegrationService } from "~/services/vercelIntegration.server";
-import { requireUserId } from "~/services/session.server";
+import { ProjectSettingsService } from "~/services/projectSettings.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
+import { requireUserId } from "~/services/session.server";
+import { VercelIntegrationService } from "~/services/vercelIntegration.server";
+import { cn } from "~/utils/cn";
 import {
-  githubAppInstallPath,
   EnvironmentParamSchema,
+  githubAppInstallPath,
   v3ProjectSettingsIntegrationsPath,
 } from "~/utils/pathBuilder";
-import { cn } from "~/utils/cn";
 import { type BranchTrackingConfig } from "~/v3/github";
-import { GitHubSettingsPresenter } from "~/presenters/v3/GitHubSettingsPresenter.server";
-import { useEffect, useState } from "react";
 
 // ============================================================================
 // Types

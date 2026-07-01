@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { singleton } from "~/utils/singleton";
-import { ZodPubSub, ZodSubscriber } from "../utils/zodPubSub.server";
+import type { ZodSubscriber } from "../utils/zodPubSub.server";
+import { ZodPubSub } from "../utils/zodPubSub.server";
 import { env } from "~/env.server";
 import { Gauge } from "prom-client";
 import { metricsRegister } from "~/metrics.server";

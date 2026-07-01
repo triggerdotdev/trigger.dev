@@ -1,6 +1,6 @@
 import { json, createCookieSessionStorage, type Session } from "@remix-run/node";
 import { redirect, typedjson } from "remix-typedjson";
-import { ButtonVariant } from "~/components/primitives/Buttons";
+import type { ButtonVariant } from "~/components/primitives/Buttons";
 import { env } from "~/env.server";
 import { type FeedbackType } from "~/routes/resources.feedback";
 

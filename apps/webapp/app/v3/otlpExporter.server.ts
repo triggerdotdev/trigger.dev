@@ -1,20 +1,23 @@
-import { trace, Tracer } from "@opentelemetry/api";
+import type { Tracer } from "@opentelemetry/api";
+import { trace } from "@opentelemetry/api";
 import { SemanticInternalAttributes } from "@trigger.dev/core/v3";
-import {
+import type {
   AnyValue,
   ExportLogsServiceRequest,
-  ExportLogsServiceResponse,
   ExportMetricsServiceRequest,
-  ExportMetricsServiceResponse,
   ExportTraceServiceRequest,
-  ExportTraceServiceResponse,
   KeyValue,
   ResourceLogs,
   ResourceMetrics,
   ResourceSpans,
-  SeverityNumber,
   Span,
   Span_Event,
+} from "@trigger.dev/otlp-importer";
+import {
+  ExportLogsServiceResponse,
+  ExportMetricsServiceResponse,
+  ExportTraceServiceResponse,
+  SeverityNumber,
   Span_SpanKind,
   Status_StatusCode,
 } from "@trigger.dev/otlp-importer";
@@ -801,20 +804,6 @@ function convertSelectedKeyValueItemsToMap(
 
   return result;
 }
-
-function detectPrimitiveValue(
-  attributes: Record<string, string | number | boolean | undefined> | undefined,
-  sentinel: string
-): Record<string, string | number | boolean | undefined> | string | number | boolean | undefined {
-  if (!attributes) return undefined;
-
-  if (typeof attributes[sentinel] !== "undefined") {
-    return attributes[sentinel];
-  }
-
-  return attributes;
-}
-
 function spanEventsToEventEvents(events: Span_Event[]): CreateEventInput["events"] {
   return events.map((event) => {
     return {
@@ -1002,10 +991,12 @@ function extractNumberAttribute(
   return isIntValue(attribute?.value) ? Number(attribute.value.intValue) : fallback;
 }
 
+// eslint-disable-next-line no-unused-vars
 function extractDoubleAttribute(
   attributes: KeyValue[],
   name: string | Array<string | undefined>
 ): number | undefined;
+// eslint-disable-next-line no-unused-vars
 function extractDoubleAttribute(
   attributes: KeyValue[],
   name: string | Array<string | undefined>,
@@ -1025,10 +1016,12 @@ function extractDoubleAttribute(
   return isDoubleValue(attribute?.value) ? Number(attribute.value.doubleValue) : fallback;
 }
 
+// eslint-disable-next-line no-unused-vars
 function extractBooleanAttribute(
   attributes: KeyValue[],
   name: string | Array<string | undefined>
 ): boolean | undefined;
+// eslint-disable-next-line no-unused-vars
 function extractBooleanAttribute(
   attributes: KeyValue[],
   name: string | Array<string | undefined>,

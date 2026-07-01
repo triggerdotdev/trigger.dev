@@ -3,9 +3,7 @@ import type {
   ApiRequestOptions,
   CreateEnvironmentVariableParams,
   EnvironmentVariableResponseBody,
-  EnvironmentVariableValue,
   EnvironmentVariableWithSecret,
-  EnvironmentVariables,
   ImportEnvironmentVariablesParams,
   UpdateEnvironmentVariableParams,
 } from "@trigger.dev/core/v3";

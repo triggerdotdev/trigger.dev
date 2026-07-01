@@ -29,7 +29,7 @@ export async function createLockFile(cwd: string, branch?: string) {
     try {
       logger.debug("Removing lockfile", { lockFilePath });
       return unlinkSync(lockFilePath);
-    } catch (e) {
+    } catch (_e) {
       // This sometimes fails on Windows with EBUSY
     }
   };

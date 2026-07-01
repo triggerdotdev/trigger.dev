@@ -55,7 +55,7 @@
  */
 
 import {
-  ApiClient,
+  type ApiClient,
   SessionStreamInstance,
   TRIGGER_CONTROL_SUBTYPE,
   apiClientManager,

@@ -1,14 +1,14 @@
-import { createRedisClient, Redis, type RedisOptions } from "@internal/redis";
+import { type Redis, createRedisClient, type RedisOptions } from "@internal/redis";
 import {
-  Attributes,
-  Histogram,
-  Meter,
+  type Attributes,
+  type Histogram,
+  type Meter,
+  type ObservableResult,
+  type Tracer,
   metrics,
-  ObservableResult,
   SpanKind,
   startSpan,
   trace,
-  Tracer,
   ValueType,
 } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
@@ -18,7 +18,7 @@ import { shutdownManager } from "@trigger.dev/core/v3/serverOnly";
 import { nanoid } from "nanoid";
 import pLimit from "p-limit";
 import { z } from "zod";
-import { AnyQueueItem, SimpleQueue } from "./queue.js";
+import { type AnyQueueItem, SimpleQueue } from "./queue.js";
 import { parseExpression } from "cron-parser";
 
 export const CronSchema = z.object({

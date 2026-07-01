@@ -11,12 +11,7 @@ import {
   WorkerQueueManager,
   FixedDelayRetry,
 } from "../index.js";
-import type {
-  FairQueueKeyProducer,
-  FairQueueOptions,
-  QueueDescriptor,
-  StoredMessage,
-} from "../types.js";
+import type { FairQueueKeyProducer, FairQueueOptions, QueueDescriptor } from "../types.js";
 import { createRedisClient, type RedisOptions } from "@internal/redis";
 
 const TestPayloadSchema = z.object({ id: z.number(), value: z.string() });
@@ -189,7 +184,7 @@ class TestFairQueueHelper {
           };
 
           await this.messageHandler(ctx);
-        } catch (error) {
+        } catch (_error) {
           if (this.abortController.signal.aborted) break;
         }
       }
@@ -390,7 +385,7 @@ describe("Race Condition Tests", () => {
 
         // Verify no duplicates
         expect(duplicateDetected).toBe(false);
-        for (const [msgId, count] of processedMessages) {
+        for (const [_msgId, count] of processedMessages) {
           expect(count).toBe(1);
         }
 
@@ -868,7 +863,7 @@ describe("Race Condition Tests", () => {
         await queue.stop();
 
         // Verify retry sequence for each message
-        for (const [msgId, attempts] of processedAttempts) {
+        for (const [_msgId, attempts] of processedAttempts) {
           expect(attempts).toContain(1);
           expect(attempts).toContain(2);
           expect(attempts).toContain(3);

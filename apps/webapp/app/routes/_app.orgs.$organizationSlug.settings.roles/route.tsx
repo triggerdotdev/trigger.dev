@@ -21,13 +21,12 @@ import {
   TableHeaderCell,
   TableRow,
 } from "~/components/primitives/Table";
-import { cn } from "~/utils/cn";
+import { TextLink } from "~/components/primitives/TextLink";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { rbac } from "~/services/rbac.server";
 import { dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
-import { useShowSelfServe } from "~/hooks/useShowSelfServe";
-import { TextLink } from "~/components/primitives/TextLink";
 
 export const meta: MetaFunction = () => {
   return [

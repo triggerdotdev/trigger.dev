@@ -56,9 +56,9 @@ export class ApiWaitpointPresenter extends BasePresenter {
         throw new ServiceValidationError("Waitpoint not found");
       }
 
-      let isTimeout = false;
+      let _isTimeout = false;
       if (waitpoint.outputIsError && waitpoint.output) {
-        isTimeout = true;
+        _isTimeout = true;
       }
 
       return {

@@ -11,13 +11,24 @@
     "internal-packages/tsql/src/grammar/"
   ],
   "rules": {
-    "no-unused-vars": "off",
+    "no-unused-vars": [
+      "error",
+      {
+        "args": "none",
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrors": "all",
+        "caughtErrorsIgnorePattern": "^_",
+        "destructuredArrayIgnorePattern": "^_",
+        "ignoreRestSiblings": true
+      }
+    ],
     "no-empty-pattern": "off",
     "no-control-regex": "off",
     "typescript/no-non-null-asserted-optional-chain": "off",
     "no-unused-expressions": ["warn", { "allowShortCircuit": true, "allowTernary": true }],
-    "typescript/consistent-type-imports": "off",
-    "import/no-duplicates": "off",
+    "typescript/consistent-type-imports": "error",
+    "import/no-duplicates": "error",
     "import/namespace": "off",
     "react-hooks/exhaustive-deps": "off",
     "react-hooks/rules-of-hooks": "off"

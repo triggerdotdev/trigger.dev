@@ -1,6 +1,6 @@
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { env } from "~/env.server";
-import { MarQS } from "./marqs/index.server";
+import type { MarQS } from "./marqs/index.server";
 
 export type QueueSizeGuardResult = {
   isWithinLimits: boolean;

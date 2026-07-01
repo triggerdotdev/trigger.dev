@@ -1,6 +1,6 @@
-import { CompletedWaitpoint, ExecutionResult, RunExecutionData } from "@trigger.dev/core/v3";
+import type { CompletedWaitpoint, ExecutionResult, RunExecutionData } from "@trigger.dev/core/v3";
 import { BatchId, RunId, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
-import {
+import type {
   Prisma,
   PrismaClientOrTransaction,
   RuntimeEnvironmentType,
@@ -11,8 +11,8 @@ import {
   Waitpoint,
 } from "@trigger.dev/database";
 import { ExecutionSnapshotNotFoundError } from "../errors.js";
-import { HeartbeatTimeouts } from "../types.js";
-import { SystemResources } from "./systems.js";
+import type { HeartbeatTimeouts } from "../types.js";
+import type { SystemResources } from "./systems.js";
 
 /** Chunk size for fetching waitpoints to avoid NAPI string conversion limits */
 const WAITPOINT_CHUNK_SIZE = 100;

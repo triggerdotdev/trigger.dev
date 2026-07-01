@@ -1,10 +1,13 @@
+import { SpanStatusCode } from "@opentelemetry/api";
 import type {
   ApiPromise,
   ApiRequestOptions,
   AsyncIterableStream,
   CloseSessionRequestBody,
-  CreatedSessionResponseBody,
+  ControlEvent,
   CreateSessionRequestBody,
+  CreatedSessionResponseBody,
+  InitializeSessionStreamResponseLike,
   InputStreamOnceOptions,
   InputStreamOnceResult,
   InputStreamWaitOptions,
@@ -14,11 +17,12 @@ import type {
   PipeStreamOptions,
   PipeStreamResult,
   RetrieveSessionResponseBody,
+  StreamWriteResult,
   UpdateSessionRequestBody,
   WriterStreamOptions,
+  CursorPagePromise,
 } from "@trigger.dev/core/v3";
 import {
-  CursorPagePromise,
   InputStreamOncePromise,
   ManualWaitpointPromise,
   SemanticInternalAttributes,
@@ -34,19 +38,13 @@ import {
   trimSessionStream,
   writeSessionControlRecord,
 } from "@trigger.dev/core/v3";
-import type {
-  ControlEvent,
-  InitializeSessionStreamResponseLike,
-  StreamWriteResult,
-} from "@trigger.dev/core/v3";
 import { conditionallyImportAndParsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
-import { SpanStatusCode } from "@opentelemetry/api";
 import { tracer } from "./tracer.js";
 
 export type {
-  CreatedSessionResponseBody,
-  CreateSessionRequestBody,
   CloseSessionRequestBody,
+  CreateSessionRequestBody,
+  CreatedSessionResponseBody,
   ListSessionsOptions,
   ListedSessionItem,
   RetrieveSessionResponseBody,

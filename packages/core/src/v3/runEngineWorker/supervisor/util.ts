@@ -1,6 +1,6 @@
 import { WORKER_HEADERS } from "../consts.js";
 import { createHeaders } from "../util.js";
-import { SupervisorClientCommonOptions } from "./types.js";
+import type { SupervisorClientCommonOptions } from "./types.js";
 
 export function getDefaultWorkerHeaders(
   options: SupervisorClientCommonOptions

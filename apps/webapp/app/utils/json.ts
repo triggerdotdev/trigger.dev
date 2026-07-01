@@ -1,4 +1,4 @@
-import { z } from "zod";
+import type { z } from "zod";
 
 export function safeJsonParse(json?: string): unknown {
   if (!json) {
@@ -7,7 +7,7 @@ export function safeJsonParse(json?: string): unknown {
 
   try {
     return JSON.parse(json);
-  } catch (e) {
+  } catch (_e) {
     return null;
   }
 }
@@ -62,5 +62,5 @@ export async function safeParseBodyFromResponse<T>(
     const parsedJson = schema.safeParse(unknownJson);
 
     return parsedJson;
-  } catch (error) {}
+  } catch (_error) {}
 }

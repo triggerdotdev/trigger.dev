@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { RuntimeEnvironmentType } from "@trigger.dev/database";
-import { Logger, LogLevel } from "@trigger.dev/core/logger";
-import { GlobalRateLimiter } from "@trigger.dev/redis-worker";
-import { Meter, Tracer } from "@internal/tracing";
-import { RedisOptions } from "@internal/redis";
+import type { Logger, LogLevel } from "@trigger.dev/core/logger";
+import type { GlobalRateLimiter } from "@trigger.dev/redis-worker";
+import type { Meter, Tracer } from "@internal/tracing";
+import type { RedisOptions } from "@internal/redis";
 
 // ============================================================================
 // Batch Item Schemas

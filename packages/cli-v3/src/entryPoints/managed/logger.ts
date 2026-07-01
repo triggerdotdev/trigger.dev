@@ -1,9 +1,9 @@
-import {
+import type {
   DebugLogPropertiesInput,
   WorkloadDebugLogRequestBody,
   WorkloadHttpClient,
 } from "@trigger.dev/core/v3/runEngineWorker";
-import { RunnerEnv } from "./env.js";
+import type { RunnerEnv } from "./env.js";
 import { flattenAttributes } from "@trigger.dev/core/v3";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 

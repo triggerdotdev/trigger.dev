@@ -1,4 +1,4 @@
-import { MachinePresetResources } from "../schemas/common.js";
+import type { MachinePresetResources } from "../schemas/common.js";
 
 /**
  * Returns a value to be used for `--max-old-space-size`. It is in MiB.

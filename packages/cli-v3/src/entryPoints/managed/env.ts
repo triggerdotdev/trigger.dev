@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { Metadata } from "./overrides.js";
+import type { Metadata } from "./overrides.js";
 import { z } from "zod";
-import { EnvObject } from "std-env";
+import type { EnvObject } from "std-env";
 
 const DateEnv = z
   .string()

@@ -1,12 +1,11 @@
 import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
-import { Form, useActionData, useNavigation } from "@remix-run/react";
+import { Form, useActionData, useNavigation, useSearchParams } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
-import { typedjson, useTypedLoaderData, useTypedFetcher } from "remix-typedjson";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { typedjson, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { MainHorizontallyCenteredContainer } from "~/components/layout/AppLayout";
-import { throwPermissionDenied } from "~/utils/permissionDenied";
-import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
 import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -18,28 +17,28 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
+import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
-import { useEnvironment } from "~/hooks/useEnvironment";
 import {
   redirectBackWithErrorMessage,
   redirectBackWithSuccessMessage,
 } from "~/models/message.server";
-import { ProjectSettingsService } from "~/services/projectSettings.server";
-import { ProjectSettingsPresenter } from "~/services/projectSettingsPresenter.server";
-import { logger } from "~/services/logger.server";
-import { EnvironmentParamSchema, v3BillingPath, vercelResourcePath } from "~/utils/pathBuilder";
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import { useSearchParams } from "@remix-run/react";
-import { type BuildSettings } from "~/v3/buildSettings";
-import { GitHubSettingsPanel } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
-import {
-  VercelSettingsPanel,
-  VercelOnboardingModal,
-} from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
-import type { loader as vercelLoader } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { OrgIntegrationRepository } from "~/models/orgIntegration.server";
+import { logger } from "~/services/logger.server";
+import { ProjectSettingsService } from "~/services/projectSettings.server";
+import { ProjectSettingsPresenter } from "~/services/projectSettingsPresenter.server";
+import { dashboardAction, dashboardLoader } from "~/services/routeBuilders/dashboardBuilder";
+import { EnvironmentParamSchema, v3BillingPath, vercelResourcePath } from "~/utils/pathBuilder";
+import { throwPermissionDenied } from "~/utils/permissionDenied";
+import { type BuildSettings } from "~/v3/buildSettings";
+import { GitHubSettingsPanel } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.github";
+import type { loader as vercelLoader } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
+import {
+  VercelOnboardingModal,
+  VercelSettingsPanel,
+} from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.vercel";
 
 export const loader = dashboardLoader(
   {

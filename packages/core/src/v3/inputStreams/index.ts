@@ -1,7 +1,7 @@
 import { getGlobal, registerGlobal } from "../utils/globals.js";
 import { NoopInputStreamManager } from "./noopManager.js";
-import { InputStreamManager, InputStreamOncePromise } from "./types.js";
-import { InputStreamOnceOptions } from "../realtimeStreams/types.js";
+import type { InputStreamManager, InputStreamOncePromise } from "./types.js";
+import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 
 const API_NAME = "input-streams";
 

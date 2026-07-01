@@ -5,13 +5,11 @@ import {
   EnvelopeIcon,
   ExclamationTriangleIcon,
   InformationCircleIcon,
-  PlusIcon,
 } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import {
   Form,
   useActionData,
-  useNavigate,
   useNavigation,
   useSearchParams,
   type MetaFunction,
@@ -19,12 +17,12 @@ import {
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core";
 import { useEffect, useState } from "react";
-import simplur from "simplur";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import simplur from "simplur";
 import { z } from "zod";
 import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
-import { Feedback } from "~/components/Feedback";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
+import { Feedback } from "~/components/Feedback";
 import {
   MainHorizontallyCenteredContainer,
   PageBody,
@@ -43,6 +41,7 @@ import { Label } from "~/components/primitives/Label";
 import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
+import { SpinnerWhite } from "~/components/primitives/Spinner";
 import {
   Table,
   TableBody,
@@ -53,8 +52,8 @@ import {
 } from "~/components/primitives/Table";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { useFeatures } from "~/hooks/useFeatures";
-import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { useOrganization } from "~/hooks/useOrganizations";
+import { useShowSelfServe } from "~/hooks/useShowSelfServe";
 import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { findProjectBySlug } from "~/models/project.server";
 import {
@@ -68,14 +67,12 @@ import {
   getSelfServePurchaseBlockReason,
 } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
+import { cn } from "~/utils/cn";
 import { formatCurrency, formatNumber } from "~/utils/numberFormatter";
 import { concurrencyPath, EnvironmentParamSchema, v3BillingPath } from "~/utils/pathBuilder";
+import { AllocateConcurrencyService } from "~/v3/services/allocateConcurrency.server";
 import { SetConcurrencyAddOnService } from "~/v3/services/setConcurrencyAddOn.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { SpinnerWhite } from "~/components/primitives/Spinner";
-import { cn } from "~/utils/cn";
-import { logger } from "~/services/logger.server";
-import { AllocateConcurrencyService } from "~/v3/services/allocateConcurrency.server";
 
 export const meta: MetaFunction = () => {
   return [
@@ -87,7 +84,11 @@ export const meta: MetaFunction = () => {
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { organizationSlug, projectParam, envParam } = EnvironmentParamSchema.parse(params);
+  const {
+    organizationSlug,
+    projectParam,
+    envParam: _envParam,
+  } = EnvironmentParamSchema.parse(params);
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
   if (!project) {

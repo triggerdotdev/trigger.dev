@@ -1,6 +1,8 @@
-import { Attributes, Context, trace, Tracer } from "@opentelemetry/api";
-import { ExportResult, ExportResultCode } from "@opentelemetry/core";
-import { LogRecordProcessor, SdkLogRecord } from "@opentelemetry/sdk-logs";
+import type { Attributes, Context, Tracer } from "@opentelemetry/api";
+import { trace } from "@opentelemetry/api";
+import type { ExportResult } from "@opentelemetry/core";
+import { ExportResultCode } from "@opentelemetry/core";
+import type { LogRecordProcessor, SdkLogRecord } from "@opentelemetry/sdk-logs";
 import type {
   AggregationOption,
   AggregationTemporality,
@@ -10,7 +12,7 @@ import type {
   ResourceMetrics,
   ScopeMetrics,
 } from "@opentelemetry/sdk-metrics";
-import { Span, SpanProcessor } from "@opentelemetry/sdk-trace-base";
+import type { Span, SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import { taskContext } from "../task-context-api.js";
 import { flattenAttributes } from "../utils/flattenAttributes.js";

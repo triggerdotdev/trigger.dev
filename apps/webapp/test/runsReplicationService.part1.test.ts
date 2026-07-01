@@ -1,12 +1,11 @@
 import { ClickHouse } from "@internal/clickhouse";
 import { replicationContainerTest } from "@internal/testcontainers";
 import { setTimeout } from "node:timers/promises";
-import { z } from "zod";
-import { TaskRunStatus } from "~/database-types";
-import { RunsReplicationService } from "~/services/runsReplicationService.server";
-import { createInMemoryTracing, createInMemoryMetrics } from "./utils/tracing";
-import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
 import superjson from "superjson";
+import { z } from "zod";
+import { RunsReplicationService } from "~/services/runsReplicationService.server";
+import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
+import { createInMemoryTracing } from "./utils/tracing";
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -156,7 +155,7 @@ describe("RunsReplicationService (part 1/7)", () => {
         logLevel: "warn",
       });
 
-      const { tracer, exporter } = createInMemoryTracing();
+      const { tracer, exporter: _exporter } = createInMemoryTracing();
 
       const runsReplicationService = new RunsReplicationService({
         clickhouseFactory: new TestReplicationClickhouseFactory(clickhouse),

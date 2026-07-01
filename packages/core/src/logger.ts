@@ -204,7 +204,7 @@ function bigIntReplacer(_key: string, value: unknown) {
 function safeJsonClone(obj: unknown) {
   try {
     return JSON.parse(JSON.stringify(obj, bigIntReplacer));
-  } catch (e) {
+  } catch (_e) {
     return;
   }
 }

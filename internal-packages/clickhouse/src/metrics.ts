@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ClickhouseWriter } from "./client/types.js";
+import type { ClickhouseWriter } from "./client/types.js";
 
 export const MetricsV1Input = z.object({
   organization_id: z.string(),

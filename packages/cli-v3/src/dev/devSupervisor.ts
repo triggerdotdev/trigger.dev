@@ -1,45 +1,45 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import {
-  readFileSync,
-  writeFileSync,
-  renameSync,
-  unlinkSync,
-  existsSync,
-  mkdirSync,
-} from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { setTimeout as awaitTimeout } from "node:timers/promises";
-import {
+import { tryCatch } from "@trigger.dev/core/utils";
+import type {
   BuildManifest,
   CreateBackgroundWorkerRequestBody,
   DevConfigResponseBody,
-  SemanticInternalAttributes,
   WorkerManifest,
 } from "@trigger.dev/core/v3";
-import { ResolvedConfig } from "@trigger.dev/core/v3/build";
-import { CliApiClient } from "../apiClient.js";
-import { DevCommandOptions } from "../commands/dev.js";
-import { eventBus } from "../utilities/eventBus.js";
-import { logger } from "../utilities/logger.js";
-import { resolveSourceFiles } from "../utilities/sourceFiles.js";
-import { BackgroundWorker } from "./backgroundWorker.js";
-import { copySkillFolders } from "../build/bundleSkills.js";
-import { WorkerRuntime } from "./workerRuntime.js";
-import { cliLink, prettyError } from "../utilities/cliOutput.js";
-import { DevRunController } from "../entryPoints/dev-run-controller.js";
-import { io, Socket } from "socket.io-client";
-import {
+import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
+import type {
   WorkerClientToServerEvents,
   WorkerServerToClientEvents,
 } from "@trigger.dev/core/v3/workers";
-import pLimit from "p-limit";
-import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
 import type { Metafile } from "esbuild";
-import { TaskRunProcessPool } from "./taskRunProcessPool.js";
-import { tryCatch } from "@trigger.dev/core/utils";
+import { spawn, type ChildProcess } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { join } from "node:path";
+import { setTimeout as awaitTimeout } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
+import pLimit from "p-limit";
+import type { Socket } from "socket.io-client";
+import { io } from "socket.io-client";
+import type { CliApiClient } from "../apiClient.js";
+import { copySkillFolders } from "../build/bundleSkills.js";
+import type { DevCommandOptions } from "../commands/dev.js";
+import { DevRunController } from "../entryPoints/dev-run-controller.js";
+import { cliLink, prettyError } from "../utilities/cliOutput.js";
 import { devBranchPathSegment } from "../utilities/devBranch.js";
+import { eventBus } from "../utilities/eventBus.js";
+import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";
+import { logger } from "../utilities/logger.js";
+import { resolveSourceFiles } from "../utilities/sourceFiles.js";
 import { getTmpRoot } from "../utilities/tempDirectories.js";
+import { BackgroundWorker } from "./backgroundWorker.js";
+import { TaskRunProcessPool } from "./taskRunProcessPool.js";
+import type { WorkerRuntime } from "./workerRuntime.js";
 
 export type WorkerRuntimeOptions = {
   name: string | undefined;
@@ -726,7 +726,7 @@ class DevSupervisor implements WorkerRuntime {
       }
     });
 
-    const interval = setInterval(() => {
+    const _interval = setInterval(() => {
       logger.debug("[DevSupervisor] Socket connections", {
         connections: Array.from(this.socketConnections),
       });

@@ -1,4 +1,4 @@
-import { type ActiveErrorsSinceQueryResult, type ClickHouse } from "@internal/clickhouse";
+import { type ActiveErrorsSinceQueryResult } from "@internal/clickhouse";
 import {
   type ErrorGroupState,
   type PrismaClientOrTransaction,

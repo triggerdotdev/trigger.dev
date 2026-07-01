@@ -1,7 +1,7 @@
 import {
+  type TaskTriggerSource,
   type PrismaClient,
   type PrismaClientOrTransaction,
-  TaskTriggerSource,
 } from "@trigger.dev/database";
 import { $replica, prisma } from "~/db.server";
 import { getAllTaskIdentifiers } from "~/models/task.server";

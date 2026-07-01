@@ -401,21 +401,6 @@ describe("API", () => {
   describe("Trigger task — single (api.v1.tasks.$taskId.trigger)", () => {
     const TASK_ID = "test-task";
     const path = `/api/v1/tasks/${TASK_ID}/trigger`;
-
-    async function seedAndRequest(
-      headers: Record<string, string>,
-      body: unknown = { payload: {} }
-    ) {
-      const server = getTestServer();
-      const seed = await seedTestEnvironment(server.prisma);
-      const res = await server.webapp.fetch(path, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify(body),
-      });
-      return { res, seed };
-    }
-
     it("missing auth: 401", async () => {
       const server = getTestServer();
       const res = await server.webapp.fetch(path, {

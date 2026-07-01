@@ -16,27 +16,6 @@ export const EVENT_STORE_TYPES = {
 } as const;
 
 export type EventStoreType = (typeof EVENT_STORE_TYPES)[keyof typeof EVENT_STORE_TYPES];
-
-/**
- * Resolve the event repository for a run's persisted `taskEventStore` value and org.
- * Postgres-backed runs use the Prisma `eventRepository`; ClickHouse-backed runs use
- * `clickhouseFactory.getEventRepositoryForOrganizationSync`.
- *
- * Intentionally NOT exported. Sync resolution can race the org data-stores
- * registry load and silently route writes to the default ClickHouse instead of
- * the org's configured override. Hot paths that genuinely cannot afford to await
- * (OTEL exporter, replication services) call `clickhouseFactory.getEvent…Sync`
- * directly and gate startup on `clickhouseFactory.isReady()`. Everything else
- * should use {@link getEventRepositoryForStore}, the async variant below.
- */
-function resolveEventRepositoryForStore(store: string, organizationId: string): IEventRepository {
-  if (store === EVENT_STORE_TYPES.CLICKHOUSE || store === EVENT_STORE_TYPES.CLICKHOUSE_V2) {
-    return clickhouseFactory.getEventRepositoryForOrganizationSync(store, organizationId)
-      .repository;
-  }
-  return eventRepository;
-}
-
 /**
  * Async variant of {@link resolveEventRepositoryForStore}. Awaits the factory's
  * registry readiness before returning the ClickHouse event repository; for

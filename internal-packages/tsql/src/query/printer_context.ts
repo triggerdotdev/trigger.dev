@@ -2,7 +2,7 @@
 // Adapted for ClickHouse client's {param: Type} syntax
 
 import { getClickHouseType } from "./escape";
-import { SchemaRegistry, FieldMappings } from "./schema";
+import type { SchemaRegistry, FieldMappings } from "./schema";
 
 /**
  * Settings that control query execution behavior

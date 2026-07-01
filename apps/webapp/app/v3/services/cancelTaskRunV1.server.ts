@@ -7,7 +7,7 @@ import { CANCELLABLE_ATTEMPT_STATUSES, isCancellableRunStatus } from "../taskSta
 import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";
 import { CancelTaskAttemptDependenciesService } from "./cancelTaskAttemptDependencies.server";
-import { CancelableTaskRun } from "./cancelTaskRun.server";
+import type { CancelableTaskRun } from "./cancelTaskRun.server";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 import { tryCatch } from "@trigger.dev/core/utils";
 import { getEventRepositoryForStore } from "../eventRepository/index.server";

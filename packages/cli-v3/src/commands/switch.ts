@@ -1,6 +1,6 @@
 import { intro, isCancel, log, outro, select } from "@clack/prompts";
-import { Command } from "commander";
-import { z } from "zod";
+import type { Command } from "commander";
+import type { z } from "zod";
 import {
   CommonCommandOptions,
   handleTelemetry,

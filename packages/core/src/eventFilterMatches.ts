@@ -1,4 +1,4 @@
-import { EventFilter } from "./schemas/eventFilter.js";
+import type { EventFilter } from "./schemas/eventFilter.js";
 
 // EventFilter is a recursive type, where the keys are strings and the values are an array of strings, numbers, booleans, or objects.
 // If the values of the array are strings, numbers, or booleans, than we are matching against the value of the payload.

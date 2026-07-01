@@ -1,23 +1,23 @@
-import { sql, StandardSQL } from "@codemirror/lang-sql";
 import { autocompletion, startCompletion } from "@codemirror/autocomplete";
+import { sql, StandardSQL } from "@codemirror/lang-sql";
 import { linter, lintGutter } from "@codemirror/lint";
-import { EditorView, keymap } from "@codemirror/view";
 import type { ViewUpdate } from "@codemirror/view";
-import { CheckIcon, ClipboardIcon, SparklesIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { EditorView, keymap } from "@codemirror/view";
+import { CheckIcon, ClipboardIcon, TrashIcon } from "@heroicons/react/20/solid";
+import type { TableSchema } from "@internal/tsql";
 import {
   type ReactCodeMirrorProps,
   type UseCodeMirror,
   useCodeMirror,
 } from "@uiw/react-codemirror";
-import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { format as formatSQL } from "sql-formatter";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";
 import { getEditorSetup } from "./codeMirrorSetup";
 import { darkTheme } from "./codeMirrorTheme";
 import { createTSQLCompletion } from "./tsql/tsqlCompletion";
 import { createTSQLLinter } from "./tsql/tsqlLinter";
-import type { TableSchema } from "@internal/tsql";
-import { format as formatSQL } from "sql-formatter";
 
 export interface TSQLEditorProps extends Omit<ReactCodeMirrorProps, "onBlur"> {
   /** Initial value for the editor */

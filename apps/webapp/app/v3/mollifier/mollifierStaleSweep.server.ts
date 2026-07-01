@@ -1,10 +1,7 @@
 import type { MollifierBuffer } from "@trigger.dev/redis-worker";
 import { logger as defaultLogger } from "~/services/logger.server";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
-import {
-  MollifierStaleSweepState,
-  type StaleSweepStateStore,
-} from "./mollifierStaleSweepState.server";
+import { type StaleSweepStateStore } from "./mollifierStaleSweepState.server";
 import {
   recordStaleEntry as defaultRecordStaleEntry,
   reportStaleEntrySnapshot as defaultReportStaleEntrySnapshot,

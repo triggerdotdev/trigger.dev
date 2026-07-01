@@ -1,5 +1,5 @@
-import { ClickHouse } from "@internal/clickhouse";
-import { PrismaClientOrTransaction } from "~/db.server";
+import type { ClickHouse } from "@internal/clickhouse";
+import type { PrismaClientOrTransaction } from "~/db.server";
 import { BasePresenter } from "./basePresenter.server";
 import { z } from "zod";
 

@@ -15,7 +15,7 @@ import { IconRotateClockwise2, IconToggleLeft } from "@tabler/icons-react";
 import { MachinePresetName } from "@trigger.dev/core/v3";
 import type { BulkActionType, TaskRunStatus, TaskTriggerSource } from "@trigger.dev/database";
 import { matchSorter } from "match-sorter";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { BugIcon } from "~/assets/icons/BugIcon";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
@@ -45,6 +45,7 @@ import {
   SelectTrigger,
   shortcutFromIndex,
 } from "~/components/primitives/Select";
+import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import {
@@ -58,22 +59,21 @@ import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
+import { useRegions } from "~/hooks/useRegions";
 import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
-import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { type loader as tagsLoader } from "~/routes/resources.environments.$envId.runs.tags";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";
-import { useRegions } from "~/hooks/useRegions";
-import { RegionLabel } from "./RegionLabel";
 import { type loader as versionsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.versions";
 import { Button } from "../../primitives/Buttons";
 import { AIFilterInput } from "./AIFilterInput";
 import { BulkActionTypeCombo } from "./BulkAction";
+import { RegionLabel } from "./RegionLabel";
 import {
-  IdFilterDropdown,
-  type IdFilterDropdownProps,
   appliedSummary,
   FilterMenuProvider,
+  IdFilterDropdown,
+  type IdFilterDropdownProps,
   TimeFilter,
   timeFilters,
 } from "./SharedFilters";
@@ -956,7 +956,7 @@ function AppliedBulkActionsFilter({ bulkActions }: Pick<RunFiltersProps, "bulkAc
     return null;
   }
 
-  const action = bulkActions.find((action) => action.id === bulkId);
+  const _action = bulkActions.find((action) => action.id === bulkId);
 
   return (
     <FilterMenuProvider>

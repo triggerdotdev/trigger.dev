@@ -1,4 +1,4 @@
-import { ReactElement } from "react";
+import type { ReactElement } from "react";
 
 import { z } from "zod";
 import AlertAttemptFailureEmail, { AlertAttemptEmailSchema } from "../emails/alert-attempt-failure";
@@ -14,7 +14,8 @@ import AlertDeploymentSuccessEmail, {
 import InviteEmail, { InviteEmailSchema } from "../emails/invite";
 import MagicLinkEmail from "../emails/magic-link";
 
-import { constructMailTransport, MailTransport, MailTransportOptions } from "./transports";
+import type { MailTransport, MailTransportOptions } from "./transports";
+import { constructMailTransport } from "./transports";
 import MfaEnabledEmail, { MfaEnabledEmailSchema } from "../emails/mfa-enabled";
 import MfaDisabledEmail, { MfaDisabledEmailSchema } from "../emails/mfa-disabled";
 import BulkActionCompletedEmail, {

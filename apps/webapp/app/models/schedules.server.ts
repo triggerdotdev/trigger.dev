@@ -1,4 +1,4 @@
-import { Prisma } from "~/db.server";
+import type { Prisma } from "~/db.server";
 
 export function scheduleUniqWhereClause(
   projectId: string,

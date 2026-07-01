@@ -3,7 +3,6 @@ import { describe, it, expect, vi } from "vitest";
 import { UncaughtExceptionError, UnexpectedExitError } from "@trigger.dev/core/v3/errors";
 import type {
   TaskRunExecution,
-  TaskRunExecutionPayload,
   WorkerManifest,
   ServerBackgroundWorker,
   MachinePresetResources,

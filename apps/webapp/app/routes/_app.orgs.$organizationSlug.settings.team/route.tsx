@@ -730,7 +730,7 @@ function LeaveTeamModal({
   const [open, setOpen] = useState(false);
   const lastSubmission = useActionData();
 
-  const [form, fields] = useForm({
+  const [form, _fields] = useForm({
     id: "remove-member",
     // TODO: type this
     lastResult: lastSubmission as any,

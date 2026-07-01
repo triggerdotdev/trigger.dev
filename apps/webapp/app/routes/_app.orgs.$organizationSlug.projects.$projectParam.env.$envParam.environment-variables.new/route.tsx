@@ -1,10 +1,4 @@
-import {
-  type FieldMetadata,
-  type FormMetadata,
-  getFormProps,
-  getInputProps,
-  useForm,
-} from "@conform-to/react";
+import { getFormProps, useForm, type FieldMetadata, type FormMetadata } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import {
   LockClosedIcon,
@@ -32,6 +26,7 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { Switch } from "~/components/primitives/Switch";
 import { TextLink } from "~/components/primitives/TextLink";
 import {
@@ -47,12 +42,12 @@ import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
-import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
-import { cn } from "~/utils/cn";
 import {
   environmentVariablesRouteId,
   type loader as environmentVariablesLoader,
 } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/route";
+import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
+import { cn } from "~/utils/cn";
 import {
   EnvironmentParamSchema,
   v3BillingPath,
@@ -60,7 +55,6 @@ import {
 } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";
-import { Select, SelectItem } from "~/components/primitives/Select";
 
 const Variable = z.object({
   key: EnvironmentVariableKey,
@@ -207,7 +201,7 @@ export const action = dashboardAction(
 );
 
 export default function Page() {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, _setIsOpen] = useState(true);
   const parentData = useTypedMatchesData<typeof environmentVariablesLoader>({
     id: environmentVariablesRouteId,
   });
@@ -566,7 +560,7 @@ function VariableFields({
     const [firstPair, ...rest] = keyValuePairs;
     update(index, firstPair);
 
-    for (const pair of rest) {
+    for (const _pair of rest) {
       form.insert({ name: variablesFields.name });
     }
     insertAfter(index, rest);

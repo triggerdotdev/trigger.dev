@@ -1,14 +1,14 @@
-import { FlushedRunMetadata, sanitizeError, TaskRunError } from "@trigger.dev/core/v3";
+import { type FlushedRunMetadata, type TaskRunError, sanitizeError } from "@trigger.dev/core/v3";
 import { type Prisma, type TaskRun } from "@trigger.dev/database";
 import { findQueueInEnvironment } from "~/models/taskQueue.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { updateMetadataService } from "~/services/metadata/updateMetadataInstance.server";
 import { marqs } from "~/v3/marqs/index.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
 import {
-  FINAL_ATTEMPT_STATUSES,
+  type FINAL_ATTEMPT_STATUSES,
   isFailedRunStatus,
   isFatalRunStatus,
   type FINAL_RUN_STATUSES,

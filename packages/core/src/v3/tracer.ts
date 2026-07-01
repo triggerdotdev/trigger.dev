@@ -1,16 +1,14 @@
 import {
-  Attributes,
-  Context,
-  SpanOptions,
-  SpanStatusCode,
-  TimeInput,
-  context,
-  propagation,
-  trace,
+  type Attributes,
+  type Context,
   type Span,
+  type SpanOptions,
+  type TimeInput,
   type Tracer,
+  context,
+  trace,
 } from "@opentelemetry/api";
-import { Logger, logs } from "@opentelemetry/api-logs";
+import { type Logger, logs } from "@opentelemetry/api-logs";
 import { clock } from "./clock-api.js";
 import { isCompleteTaskWithOutput } from "./errors.js";
 import { recordSpanException } from "./otel/utils.js";
@@ -175,7 +173,7 @@ export class TriggerTracer {
   startSpan(name: string, options?: SpanOptions, ctx?: Context) {
     const parentContext = ctx ?? context.active();
 
-    const attributes = options?.attributes ?? {};
+    const _attributes = options?.attributes ?? {};
 
     const span = this.tracer.startSpan(name, options, parentContext);
 

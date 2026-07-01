@@ -191,7 +191,7 @@ export default function Page() {
   const {
     branchableEnvironment,
     branches,
-    hasFilters,
+    hasFilters: _hasFilters,
     limits,
     currentPage,
     totalPages,
