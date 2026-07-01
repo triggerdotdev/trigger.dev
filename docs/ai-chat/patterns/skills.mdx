@@ -4,10 +4,6 @@ sidebarTitle: "Agent Skills"
 description: "Ship reusable capabilities (folders with SKILL.md + scripts) that a chat agent discovers and invokes on demand."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 Agent skills are reusable capabilities you ship as folders — a `SKILL.md` describing when and how to use them, plus optional scripts, references, and assets. The chat agent sees a short description of each skill in its system prompt, loads the full instructions on demand via a `loadSkill` tool, and invokes the bundled scripts via `bash` — all without you wiring anything up manually.
 
 Built on the [AI SDK cookbook pattern](https://ai-sdk.dev/cookbook/guides/agent-skills). Works with any provider (OpenAI, Anthropic, Gemini, etc.) — not tied to Anthropic's server-side skills.

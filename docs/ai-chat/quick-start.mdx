@@ -4,10 +4,6 @@ sidebarTitle: "Quick Start"
 description: "Get a working AI agent in 3 steps — define an agent, generate a token, and wire up the frontend."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 These steps assume you already have a Trigger.dev project with the SDK installed and the CLI authenticated — if you don't, follow [Manual setup](/manual-setup) (or `npx trigger.dev@latest init` in an existing project) first. You should be able to run `pnpm exec trigger dev` from your project root before continuing.
 
 The chat surface works with Vercel AI SDK **v5, v6, or v7**; install whichever major you want. On **v7**, also install `@ai-sdk/otel` so your model calls are traced (the SDK registers it for you). See [compatibility](/ai-chat/reference#compatibility) for the full matrix.

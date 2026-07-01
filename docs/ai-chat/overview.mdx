@@ -4,10 +4,6 @@ sidebarTitle: "Overview"
 description: "Durable multi-turn AI chats — one Trigger.dev task per conversation, surviving refreshes, deploys, and crashes."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 An AI chat isn't a request — it's a session. `chat.agent` runs every conversation as a single long-lived Trigger.dev task: you write the loop, it wakes up when a message arrives, freezes when none do, and the same in-memory state and on-disk workspace survive across page refreshes, deploys, idle gaps, and crashes. The substrate handles the parts most teams stitch together by hand — turn lifecycle, mid-stream resume, recovery from cancel/crash/OOM, HITL approvals, deploy upgrades — so your code is the loop you'd write anyway: messages in, `streamText` out.
 
 ## A minimal example

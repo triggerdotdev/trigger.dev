@@ -4,10 +4,6 @@ sidebarTitle: "chat.local"
 description: "Typed, run-scoped data accessible from hooks, run(), tools, and subtasks. Survives across turns, auto-cleared between runs, auto-hydrated into subtasks."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 Use `chat.local` to create typed, run-scoped data that persists across turns and is accessible from anywhere — the run function, tools, nested helpers. Each run gets its own isolated copy, and locals are automatically cleared between runs.
 
 Lifecycle hooks and **`run`** also receive **`ctx`** ([`TaskRunContext`](/ai-chat/reference#task-context-ctx)) — the same object as on a standard `task()` — for tags, metadata, and cleanup that needs the full run record.

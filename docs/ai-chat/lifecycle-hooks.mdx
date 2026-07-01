@@ -4,10 +4,6 @@ sidebarTitle: "Lifecycle hooks"
 description: "Hook into every stage of a chat agent's run: preload, turn start, turn complete, suspend, resume, and more."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 `chat.agent({ ... })` accepts a set of lifecycle hooks for persisting state, validating input, transforming messages, and reacting to suspension and resumption. They fire at well-defined points in the chat agent's lifetime.
 
 **Once per worker process (every fresh run boot):** `onBoot` → `onPreload` (preloaded runs only).
