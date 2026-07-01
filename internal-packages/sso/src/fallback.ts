@@ -97,7 +97,7 @@ class SsoFallbackController implements SsoController {
   beginAuthorization(_params: {
     email: string;
     redirectTo: string;
-    flow: import("@trigger.dev/plugins").SsoFlow;
+    flow: SsoFlow;
   }): ResultAsync<{ url: string }, SsoBeginError> {
     return errAsync("feature_disabled" as const);
   }
@@ -106,7 +106,7 @@ class SsoFallbackController implements SsoController {
     {
       profile: SsoProfile;
       redirectTo: string;
-      flow: import("@trigger.dev/plugins").SsoFlow;
+      flow: SsoFlow;
     },
     SsoCompleteError
   > {

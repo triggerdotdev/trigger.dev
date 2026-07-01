@@ -1,9 +1,9 @@
 import { describe, test, expect, beforeAll, afterAll } from "vitest";
 import type { PrismaClient } from "@trigger.dev/database";
 
-let DeliverErrorGroupAlertService: typeof import("../app/v3/services/alerts/deliverErrorGroupAlert.server.js").DeliverErrorGroupAlertService;
+let DeliverErrorGroupAlertService: typeof DeliverErrorGroupAlertService;
 let prisma: PrismaClient;
-let getSecretStore: typeof import("../app/services/secrets/secretStore.server.js").getSecretStore;
+let getSecretStore: typeof getSecretStore;
 
 type ErrorAlertPayload = {
   channelId: string;

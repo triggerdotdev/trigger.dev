@@ -4,7 +4,7 @@ import { createRequestHandler } from "@remix-run/express";
 import { broadcastDevReady, logDevReady } from "@remix-run/server-runtime";
 import compression from "compression";
 import type { Server as EngineServer } from "engine.io";
-import express from "express";
+import express, { type RequestHandler } from "express";
 import morgan from "morgan";
 import { nanoid } from "nanoid";
 import path from "path";
@@ -139,7 +139,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
     const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
     const engineRateLimiter: RateLimitMiddleware = build.entry.module.engineRateLimiter;
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
-    const tenantContextMiddleware: import("express").RequestHandler =
+    const tenantContextMiddleware: RequestHandler =
       build.entry.module.tenantContextMiddleware;
 
     app.use((req, res, next) => {
