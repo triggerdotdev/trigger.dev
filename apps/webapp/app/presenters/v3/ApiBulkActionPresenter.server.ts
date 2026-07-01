@@ -38,7 +38,8 @@ type BulkActionRow = Pick<
 
 export class ApiBulkActionPresenter extends BasePresenter {
   public async retrieve(environmentId: string, bulkActionId: string) {
-    const bulkAction = await this._replica.bulkActionGroup.findFirst({
+    // Read from primary so create -> retrieve/poll doesn't 404 on replica lag.
+    const bulkAction = await this._prisma.bulkActionGroup.findFirst({
       select: bulkActionSelect,
       where: {
         environmentId,

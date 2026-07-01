@@ -1,6 +1,6 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { $replica } from "~/db.server";
+import { prisma } from "~/db.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { BulkActionService } from "~/v3/services/bulk/BulkActionV2.server";
 
@@ -17,7 +17,8 @@ const { action } = createActionApiRoute(
       resource: () => ({ type: "runs" }),
     },
     findResource: async (params, auth) => {
-      return $replica.bulkActionGroup.findFirst({
+      // Read from primary so create -> abort doesn't 404 on replica lag.
+      return prisma.bulkActionGroup.findFirst({
         select: { id: true },
         where: {
           friendlyId: params.bulkActionId,
