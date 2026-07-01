@@ -3,6 +3,7 @@ import { Worker as RedisWorker } from "@trigger.dev/redis-worker";
 import { z } from "zod";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
+import { getRunsReplicationGlobal } from "~/services/runsReplicationGlobal.server";
 import { runsReplicationInstance } from "~/services/runsReplicationInstance.server";
 // Reference-hold the sessions-replication singleton so module evaluation runs
 // its initializer (creates the ClickHouse client, subscribes to the logical
@@ -62,14 +63,15 @@ function initializeWorker() {
     logger: new Logger("AdminWorker", env.ADMIN_WORKER_LOG_LEVEL),
     jobs: {
       "admin.backfillRunsToReplication": async ({ payload, id }) => {
-        if (!runsReplicationInstance) {
+        const replicationService = getRunsReplicationGlobal() ?? runsReplicationInstance;
+        if (!replicationService) {
           logger.error("Runs replication instance not found");
           return;
         }
 
         const service = new RunsBackfillerService({
           prisma: $replica,
-          runsReplicationInstance: runsReplicationInstance,
+          runsReplicationInstance: replicationService,
           tracer: tracer,
         });
 
