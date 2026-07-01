@@ -1,8 +1,8 @@
 diff --git a/dist/router.cjs.js b/dist/router.cjs.js
-index e634d45fee327b5f9ef63eee8dc1da39b07c79d4..ce1cf6c599e7efa82d51b63d26c0c92e82931083 100644
+index 6aa7db6fb5a7182afcdf17b16a3356abfa1e7945..95edbde228beff8dbd13fb2800302e31a932ef25 100644
 --- a/dist/router.cjs.js
 +++ b/dist/router.cjs.js
-@@ -746,6 +746,11 @@ function convertRoutesToDataRoutes(routes, mapRouteProperties, parentPath, manif
+@@ -783,6 +783,11 @@ function convertRoutesToDataRoutes(routes, mapRouteProperties, parentPath, manif
   *
   * @see https://reactrouter.com/v6/utils/match-routes
   */
@@ -14,7 +14,7 @@ index e634d45fee327b5f9ef63eee8dc1da39b07c79d4..ce1cf6c599e7efa82d51b63d26c0c92e
  function matchRoutes(routes, locationArg, basename) {
    if (basename === void 0) {
      basename = "/";
-@@ -758,17 +763,17 @@ function matchRoutesImpl(routes, locationArg, basename, allowPartial) {
+@@ -795,8 +800,13 @@ function matchRoutesImpl(routes, locationArg, basename, allowPartial) {
    if (pathname == null) {
      return null;
    }
@@ -28,20 +28,9 @@ index e634d45fee327b5f9ef63eee8dc1da39b07c79d4..ce1cf6c599e7efa82d51b63d26c0c92e
 +    __branchCache.set(routes, branches);
 +  }
    let matches = null;
-+  // decodePath(pathname) is loop-invariant — hoisted out (was recomputed per branch).
-+  let decoded = decodePath(pathname);
+   let decoded = decodePath(pathname);
    for (let i = 0; matches == null && i < branches.length; ++i) {
--    // Incoming pathnames are generally encoded from either window.location
--    // or from router.navigate, but we want to match against the unencoded
--    // paths in the route definitions.  Memory router locations won't be
--    // encoded here but there also shouldn't be anything to decode so this
--    // should be a safe operation.  This avoids needing matchRoutes to be
--    // history-aware.
--    let decoded = decodePath(pathname);
-     matches = matchRouteBranch(branches[i], decoded, allowPartial);
-   }
-   return matches;
-@@ -1078,6 +1083,12 @@ function compilePath(path, caseSensitive, end) {
+@@ -1115,6 +1125,12 @@ function compilePath(path, caseSensitive, end) {
    if (end === void 0) {
      end = true;
    }
@@ -54,7 +43,7 @@ index e634d45fee327b5f9ef63eee8dc1da39b07c79d4..ce1cf6c599e7efa82d51b63d26c0c92e
    warning(path === "*" || !path.endsWith("*") || path.endsWith("/*"), "Route path \"" + path + "\" will be treated as if it were " + ("\"" + path.replace(/\*$/, "/*") + "\" because the `*` character must ") + "always follow a `/` in the pattern. To get rid of this warning, " + ("please change the route path to \"" + path.replace(/\*$/, "/*") + "\"."));
    let params = [];
    let regexpSource = "^" + path.replace(/\/*\*?$/, "") // Ignore trailing / and /*, we'll handle it below
-@@ -1110,7 +1121,11 @@ function compilePath(path, caseSensitive, end) {
+@@ -1147,7 +1163,11 @@ function compilePath(path, caseSensitive, end) {
      regexpSource += "(?:(?=\\/|$))";
    } else ;
    let matcher = new RegExp(regexpSource, caseSensitive ? undefined : "i");
