@@ -30,10 +30,14 @@ vi.mock("~/db.server", async () => {
       }
     );
   const replicaProxy = lazyProxy(legacyReplicaHolder, "legacyReplicaHolder.client");
+  const newProxy = lazyProxy(newClientHolder, "newClientHolder.client");
   return {
     prisma: replicaProxy,
     $replica: replicaProxy,
-    runOpsNewPrisma: lazyProxy(newClientHolder, "newClientHolder.client"),
+    runOpsNewPrisma: newProxy,
+    runOpsNewReplica: newProxy,
+    runOpsLegacyPrisma: replicaProxy,
+    runOpsLegacyReplica: replicaProxy,
     sqlDatabaseSchema: Prisma.sql([`public`]),
   };
 });

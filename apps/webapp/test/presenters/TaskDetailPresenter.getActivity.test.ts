@@ -69,14 +69,13 @@ describe("TaskDetailPresenter.getActivity (ClickHouse-only)", () => {
         settings: { async_insert: 0, enable_json_type: 1, type_json_skip_duplicated_paths: 1 },
       });
 
-      // 6h window => 1h buckets => 6 buckets.
+      // 6h window => 300s (5-minute) buckets => 72 buckets (chooseBucketSeconds targets ~72).
       const from = new Date("2026-01-01T00:00:00Z");
       const to = new Date("2026-01-01T06:00:00Z");
+      const BUCKET_MS = 5 * 60 * 1000;
 
-      // Bucket 0 (00:00–01:00): 1 COMPLETED, 1 FAILED.
-      // Bucket 2 (02:00–03:00): 1 CANCELED, 1 RUNNING (EXECUTING), 1 unknown-status
-      //   (folds into RUNNING) => RUNNING total = 2.
-      // Plus a deleted row in bucket 0 that MUST be excluded.
+      // 00:30 bucket: 1 COMPLETED, 1 FAILED (+ 1 deleted, excluded).
+      // 02:30 bucket: 1 CANCELED, RUNNING = EXECUTING + unknown-status = 2.
       const bucket0 = new Date("2026-01-01T00:30:00Z").getTime();
       const bucket2 = new Date("2026-01-01T02:30:00Z").getTime();
 
@@ -116,8 +115,8 @@ describe("TaskDetailPresenter.getActivity (ClickHouse-only)", () => {
       // Stable legend, fixed group order.
       expect(activity.statuses).toEqual(["COMPLETED", "FAILED", "CANCELED", "RUNNING"]);
 
-      // 6 one-hour buckets, every bucket carries all four group keys.
-      expect(activity.data).toHaveLength(6);
+      // 72 five-minute buckets, every bucket carries all four group keys.
+      expect(activity.data).toHaveLength(72);
       for (const point of activity.data) {
         expect(typeof point.bucket).toBe("number");
         expect(point).toHaveProperty("COMPLETED");
@@ -126,21 +125,20 @@ describe("TaskDetailPresenter.getActivity (ClickHouse-only)", () => {
         expect(point).toHaveProperty("RUNNING");
       }
 
-      // Buckets are epoch MILLISECONDS aligned to the hour.
-      const expectedStart = Math.floor(from.getTime() / (60 * 60 * 1000)) * (60 * 60 * 1000);
+      // Buckets are epoch MILLISECONDS aligned to the 5-minute interval.
       const byBucket = new Map(activity.data.map((p) => [p.bucket, p]));
-      const p0 = byBucket.get(expectedStart)!;
-      const p2 = byBucket.get(expectedStart + 2 * 60 * 60 * 1000)!;
+      const p0 = byBucket.get(Math.floor(bucket0 / BUCKET_MS) * BUCKET_MS)!;
+      const p2 = byBucket.get(Math.floor(bucket2 / BUCKET_MS) * BUCKET_MS)!;
       expect(p0).toBeDefined();
       expect(p2).toBeDefined();
 
-      // Bucket 0: 1 COMPLETED, 1 FAILED, deleted row excluded.
+      // 00:30 bucket: 1 COMPLETED, 1 FAILED, deleted row excluded.
       expect(p0.COMPLETED).toBe(1);
       expect(p0.FAILED).toBe(1);
       expect(p0.CANCELED).toBe(0);
       expect(p0.RUNNING).toBe(0);
 
-      // Bucket 2: 1 CANCELED, RUNNING = EXECUTING (1) + unknown status (1) = 2.
+      // 02:30 bucket: 1 CANCELED, RUNNING = EXECUTING (1) + unknown status (1) = 2.
       expect(p2.COMPLETED).toBe(0);
       expect(p2.FAILED).toBe(0);
       expect(p2.CANCELED).toBe(1);

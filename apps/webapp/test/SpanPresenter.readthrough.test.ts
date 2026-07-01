@@ -17,7 +17,7 @@ vi.mock("~/db.server", () => ({
   $replica: {},
 }));
 
-const routingStoreRef: { current: unknown } = { current: undefined };
+const routingStoreRef = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock("~/v3/runStore.server", () => ({
   get runStore() {
     return routingStoreRef.current;
