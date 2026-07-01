@@ -14,7 +14,7 @@
     "no-unused-vars": [
       "error",
       {
-        "args": "all",
+        "args": "none",
         "argsIgnorePattern": "^_",
         "varsIgnorePattern": "^_",
         "caughtErrors": "all",
