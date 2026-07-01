@@ -1,3 +1,4 @@
+// oxlint-disable import/no-duplicates
 /**
  * ESM Import Test Fixture
  *
