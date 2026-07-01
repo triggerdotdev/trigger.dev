@@ -212,7 +212,7 @@ model Organization {
 
   runsEnabled Boolean @default(true)
 
-  v3Enabled Boolean @default(false)
+  isActivated Boolean @default(false) @map("v3Enabled")
 
   /// @deprecated
   v2Enabled      Boolean @default(false)

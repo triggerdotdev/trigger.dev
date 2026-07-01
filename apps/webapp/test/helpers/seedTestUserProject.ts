@@ -35,7 +35,7 @@ export async function seedTestUserProject(
     data: {
       title: `e2e-pat-org-${suffix}`,
       slug: `e2e-pat-org-${suffix}`,
-      v3Enabled: true,
+      isActivated: true,
       members: { create: { userId: user.id, role: "ADMIN" } },
     },
   });

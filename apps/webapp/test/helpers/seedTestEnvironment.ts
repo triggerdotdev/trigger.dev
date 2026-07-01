@@ -16,7 +16,7 @@ export async function seedTestEnvironment(prisma: PrismaClient) {
     data: {
       title: `e2e-test-org-${suffix}`,
       slug: `e2e-org-${suffix}`,
-      v3Enabled: true,
+      isActivated: true,
     },
   });
 

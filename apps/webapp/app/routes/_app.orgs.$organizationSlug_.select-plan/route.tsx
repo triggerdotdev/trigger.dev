@@ -43,7 +43,7 @@ export const loader = dashboardLoader(
       throw new Response(null, { status: 404, statusText: "Organization not found" });
     }
 
-    if (organization.v3Enabled) {
+    if (organization.isActivated) {
       return redirect(organizationPath({ slug: organizationSlug }));
     }
 
