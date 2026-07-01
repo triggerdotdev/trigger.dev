@@ -1,4 +1,4 @@
-import { describe, expect, afterEach, vi } from "vitest";
+import { describe, expect, vi } from "vitest";
 
 // Regression for the waitpoint-token completion route path: the route calls
 // engine.completeWaitpoint, which must consult the cross-seam residency guard
@@ -10,17 +10,12 @@ import { RunEngine } from "@internal/run-engine";
 import { setupAuthenticatedEnvironment } from "@internal/run-engine/tests";
 import { containerTest, heteroPostgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
-import { setKsuidMintEnabled, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
+import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { trace } from "@opentelemetry/api";
 
 vi.setConfig({ testTimeout: 60_000 });
 
 type CrossSeamGuard = ConstructorParameters<typeof RunEngine>[0]["crossSeamGuard"];
-
-afterEach(() => {
-  // Never let the ksuid mint mode leak into other webapp tests.
-  setKsuidMintEnabled(false);
-});
 
 function buildEngine(opts: {
   prisma: any;
@@ -64,8 +59,6 @@ describe("waitpoint-token complete route — cross-seam guard", () => {
   containerTest(
     "consults the guard first (RESUME_TOKEN), then completes (single-store)",
     async ({ prisma, redisOptions }) => {
-      setKsuidMintEnabled(true);
-
       const seen: Array<{ waitpointId: string; routeKind: string }> = [];
       const engine = buildEngine({
         prisma,
@@ -95,7 +88,6 @@ describe("waitpoint-token complete route — cross-seam guard", () => {
         // The guard was consulted first, with the right id + RESUME_TOKEN route kind.
         expect(seen).toEqual([{ waitpointId: waitpoint.id, routeKind: "RESUME_TOKEN" }]);
 
-        // The completion was then applied via delegation (single-store path).
         const after = await prisma.waitpoint.findFirst({ where: { id: waitpoint.id } });
         expect(after?.status).toBe("COMPLETED");
       } finally {
@@ -109,8 +101,6 @@ describe("waitpoint-token complete route — cross-seam guard", () => {
   containerTest(
     "propagates a guard throw and leaves the waitpoint PENDING (loud)",
     async ({ prisma, redisOptions }) => {
-      setKsuidMintEnabled(true);
-
       const engine = buildEngine({
         prisma,
         redisOptions,
@@ -195,8 +185,6 @@ describe("waitpoint-token complete route — no FK abort across the PG14<->17 bo
   heteroPostgresTest(
     "completes a run-ops waitpoint on each version store without tripping the absent control-plane Cascade FK",
     async ({ prisma14, prisma17 }) => {
-      setKsuidMintEnabled(true);
-
       const legacy = prisma14 as unknown as PrismaClient;
       const next = prisma17 as unknown as PrismaClient;
 

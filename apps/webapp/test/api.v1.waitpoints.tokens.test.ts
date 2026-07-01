@@ -1,30 +1,31 @@
-import { describe, expect, afterEach, vi } from "vitest";
+import { describe, expect, vi } from "vitest";
 
-// These tests exercise the store-routed engine create/get seam and the
-// residency-keyed id contract (the same id-shaping the create route's response
-// uses). They do NOT drive the route's HTTP action — only the engine create/get
-// seam behind it.
+// Store-routed engine create/get seam + the residency-keyed id contract behind
+// the create route (not its HTTP action). A standalone MANUAL token is cuid →
+// LEGACY; NEW residency is reached only by co-locating the token with a ksuid run.
 
 import { RunEngine } from "@internal/run-engine";
 import { setupAuthenticatedEnvironment } from "@internal/run-engine/tests";
-import { containerTest, heteroPostgresTest } from "@internal/testcontainers";
-import { PostgresRunStore } from "@internal/run-store";
+import {
+  containerTest,
+  heteroRunOpsPostgresTest,
+  network,
+  redisContainer,
+  redisOptions,
+} from "@internal/testcontainers";
+import { PostgresRunStore, RoutingRunStore, type CreateRunInput } from "@internal/run-store";
+import type { RunOpsPrismaClient } from "@internal/run-ops-database";
 import {
   WaitpointId,
-  setKsuidMintEnabled,
+  RunId,
+  generateKsuidId,
   ownerEngine,
-  KSUID_LENGTH,
+  CUID_LENGTH,
 } from "@trigger.dev/core/v3/isomorphic";
-import { Prisma } from "@trigger.dev/database";
+import { Prisma, type PrismaClient } from "@trigger.dev/database";
 import { trace } from "@opentelemetry/api";
-import { nanoid } from "nanoid";
 
 vi.setConfig({ testTimeout: 60_000 });
-
-afterEach(() => {
-  // Never let the ksuid mint mode leak into other webapp tests.
-  setKsuidMintEnabled(false);
-});
 
 function buildEngine(opts: {
   prisma: any;
@@ -63,12 +64,10 @@ function buildEngine(opts: {
 }
 
 describe("waitpoint-token create engine seam — residency-keyed id contract", () => {
-  // Test A: the create seam mints a KSUID WaitpointId on the run-ops engine.
+  // Test A: a standalone token (no owning run) mints a cuid WaitpointId and stays LEGACY.
   containerTest(
-    "create mints a KSUID WaitpointId on the run-ops engine",
+    "create mints a cuid WaitpointId for a standalone token (LEGACY)",
     async ({ prisma, redisOptions }) => {
-      setKsuidMintEnabled(true);
-
       const engine = buildEngine({ prisma, redisOptions });
 
       try {
@@ -80,12 +79,9 @@ describe("waitpoint-token create engine seam — residency-keyed id contract", (
           timeout: new Date(Date.now() + 60_000),
         });
 
-        // `WaitpointId.generate()` returns a bare (un-prefixed) internal id, so
-        // result.waitpoint.id is the raw 27-char ksuid body.
-        expect(result.waitpoint.id.length).toBe(KSUID_LENGTH);
+        expect(result.waitpoint.id.length).toBe(CUID_LENGTH);
         expect(result.waitpoint.type).toBe("MANUAL");
 
-        // The waitpoint row exists on the run-ops store (single-DB: the container prisma).
         const row = await prisma.waitpoint.findUnique({ where: { id: result.waitpoint.id } });
         expect(row).not.toBeNull();
         expect(row?.environmentId).toBe(env.id);
@@ -96,21 +92,17 @@ describe("waitpoint-token create engine seam — residency-keyed id contract", (
         expect(responseId).toBe("waitpoint_" + result.waitpoint.id);
         expect(WaitpointId.fromFriendlyId(responseId)).toBe(result.waitpoint.id);
 
-        // The id a client receives stays residency-classifiable to the owning
-        // store — the contract the completion route relies on to resolve the token.
-        expect(ownerEngine(WaitpointId.fromFriendlyId(responseId))).toBe("NEW");
+        expect(ownerEngine(WaitpointId.fromFriendlyId(responseId))).toBe("LEGACY");
       } finally {
         await engine.quit();
       }
     }
   );
 
-  // Test B: the token id classifies to the owning (new) run-ops store and resolves back.
+  // Test B: the standalone token id classifies LEGACY and resolves back.
   containerTest(
-    "token id classifies to the owning run-ops store and resolves back",
+    "token id classifies to the legacy store and resolves back",
     async ({ prisma, redisOptions }) => {
-      setKsuidMintEnabled(true);
-
       const engine = buildEngine({ prisma, redisOptions });
 
       try {
@@ -122,10 +114,8 @@ describe("waitpoint-token create engine seam — residency-keyed id contract", (
           timeout: new Date(Date.now() + 60_000),
         });
 
-        // A ksuid token id classifies to the NEW (run-ops) store.
-        expect(ownerEngine(result.waitpoint.id)).toBe("NEW");
+        expect(ownerEngine(result.waitpoint.id)).toBe("LEGACY");
 
-        // getWaitpoint resolves via this.runStore.findWaitpoint and returns the exact row.
         const resolved = await engine.getWaitpoint({
           waitpointId: result.waitpoint.id,
           environmentId: env.id,
@@ -144,8 +134,6 @@ describe("waitpoint-token create engine seam — residency-keyed id contract", (
   containerTest(
     "control-plane WaitpointTag write stays control-plane, not on the run-ops store",
     async ({ prisma, redisOptions }) => {
-      setKsuidMintEnabled(true);
-
       // A run-ops store that counts every waitpoint write that passes through it.
       // Overrides mirror the base PostgresRunStore generics so a base-signature
       // change can't silently detach the counter.
@@ -192,7 +180,7 @@ describe("waitpoint-token create engine seam — residency-keyed id contract", (
           tags: ["t1"],
           timeout: new Date(Date.now() + 60_000),
         });
-        expect(result.waitpoint.id.length).toBe(KSUID_LENGTH);
+        expect(result.waitpoint.id.length).toBe(CUID_LENGTH);
 
         // The tag landed on the control-plane client.
         const tagRow = await prisma.waitpointTag.findFirst({
@@ -210,49 +198,179 @@ describe("waitpoint-token create engine seam — residency-keyed id contract", (
       }
     }
   );
+});
 
-  // Test D: a minted KSUID waitpoint resolves only to its owning store across the
-  // PG14↔PG17 version boundary. Store-only — no Redis/engine needed.
-  heteroPostgresTest(
-    "minted WaitpointId resolves only to its owning run-ops store across the version boundary",
-    async ({ prisma14, prisma17 }) => {
-      setKsuidMintEnabled(true);
+const twoDbEngineTest = heteroRunOpsPostgresTest.extend<{
+  redisContainer: any;
+  redisOptions: any;
+}>({
+  network,
+  redisContainer,
+  redisOptions,
+});
 
-      const store17 = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
-      const store14 = new PostgresRunStore({ prisma: prisma14, readOnlyPrisma: prisma14 });
+async function seedControlPlaneEnv(prisma: PrismaClient, suffix: string) {
+  const organization = await prisma.organization.create({
+    data: { title: `Org ${suffix}`, slug: `org-${suffix}` },
+  });
+  const project = await prisma.project.create({
+    data: {
+      name: `Project ${suffix}`,
+      slug: `project-${suffix}`,
+      externalRef: `proj_${suffix}`,
+      organizationId: organization.id,
+    },
+  });
+  const environment = await prisma.runtimeEnvironment.create({
+    data: {
+      type: "PRODUCTION",
+      slug: `prod-${suffix}`,
+      projectId: project.id,
+      organizationId: organization.id,
+      apiKey: `tr_prod_${suffix}`,
+      pkApiKey: `pk_prod_${suffix}`,
+      shortcode: `short_${suffix}`,
+      maximumConcurrencyLimit: 10,
+    },
+  });
+  return { organization, project, environment };
+}
 
-      const env = await setupAuthenticatedEnvironment(prisma17, "PRODUCTION");
+function buildCreateRunInput(params: {
+  runId: string;
+  friendlyId: string;
+  organizationId: string;
+  projectId: string;
+  runtimeEnvironmentId: string;
+}): CreateRunInput {
+  return {
+    data: {
+      id: params.runId,
+      engine: "V2",
+      status: "EXECUTING",
+      friendlyId: params.friendlyId,
+      runtimeEnvironmentId: params.runtimeEnvironmentId,
+      environmentType: "PRODUCTION",
+      organizationId: params.organizationId,
+      projectId: params.projectId,
+      taskIdentifier: "parent-task",
+      payload: "{}",
+      payloadType: "application/json",
+      context: {},
+      traceContext: {},
+      traceId: `trace_${params.runId}`,
+      spanId: `span_${params.runId}`,
+      runTags: [],
+      queue: "task/parent-task",
+      isTest: false,
+      taskEventStore: "taskEvent",
+      depth: 0,
+      createdAt: new Date("2024-01-01T00:00:00.000Z"),
+    },
+    snapshot: {
+      engine: "V2",
+      executionStatus: "RUN_CREATED",
+      description: "Run was created",
+      runStatus: "PENDING",
+      environmentId: params.runtimeEnvironmentId,
+      environmentType: "PRODUCTION",
+      projectId: params.projectId,
+      organizationId: params.organizationId,
+    },
+  };
+}
 
-      const idempotencyKey = nanoid(24);
-      const generated = WaitpointId.generate();
+async function seedExecutingKsuidRun(
+  prisma14: PrismaClient,
+  router: RoutingRunStore,
+  runId: string,
+  suffix: string
+) {
+  const env = await seedControlPlaneEnv(prisma14, suffix);
 
-      const created = await store17.upsertWaitpoint({
-        where: {
-          environmentId_idempotencyKey: { environmentId: env.id, idempotencyKey },
-        },
-        create: {
-          ...generated,
-          type: "MANUAL",
-          idempotencyKey,
-          userProvidedIdempotencyKey: false,
-          environmentId: env.id,
+  await router.createRun(
+    buildCreateRunInput({
+      runId,
+      friendlyId: `run_${suffix}`,
+      organizationId: env.organization.id,
+      projectId: env.project.id,
+      runtimeEnvironmentId: env.environment.id,
+    })
+  );
+
+  const created = await router.findLatestExecutionSnapshot(runId);
+  await router.createExecutionSnapshot(
+    {
+      run: { id: runId, status: "EXECUTING", attemptNumber: 1 },
+      snapshot: { executionStatus: "EXECUTING", description: "run executing" },
+      previousSnapshotId: created!.id,
+      environmentId: env.environment.id,
+      environmentType: "PRODUCTION",
+      projectId: env.project.id,
+      organizationId: env.organization.id,
+    },
+    prisma14
+  );
+
+  return env;
+}
+
+function makeRouter(prisma14: PrismaClient, prisma17: RunOpsPrismaClient) {
+  const newStore = new PostgresRunStore({
+    prisma: prisma17 as never,
+    readOnlyPrisma: prisma17 as never,
+    schemaVariant: "dedicated",
+  });
+  const legacyStore = new PostgresRunStore({
+    prisma: prisma14,
+    readOnlyPrisma: prisma14,
+    schemaVariant: "legacy",
+  });
+  return new RoutingRunStore({ new: newStore, legacy: legacyStore });
+}
+
+describe("waitpoint-token create engine seam — NEW residency via a ksuid run across the version boundary", () => {
+  // Test D: NEW residency comes from co-locating the token with a ksuid run; the token
+  // resolves only on its owning (#new) store across the PG14<->PG17 boundary, never #legacy.
+  twoDbEngineTest(
+    "a ksuid run's token co-locates on #new and resolves only there, not on #legacy",
+    async ({ prisma14, prisma17, redisOptions }) => {
+      const p14 = prisma14 as unknown as PrismaClient;
+      const router = makeRouter(p14, prisma17);
+      const engine = buildEngine({ prisma: prisma14, redisOptions, store: router });
+
+      try {
+        // A NEW-classified run id (explicit ksuid), mirroring the trigger-routing helper.
+        const runId = RunId.toFriendlyId(generateKsuidId());
+        expect(ownerEngine(runId)).toBe("NEW");
+        const env = await seedExecutingKsuidRun(p14, router, runId, "wpnew");
+
+        const { waitpoint } = await engine.createManualWaitpoint({
+          runId,
+          environmentId: env.environment.id,
           projectId: env.project.id,
-        },
-        update: {},
-      });
+        });
 
-      const id = created.id;
-      expect(id.length).toBe(KSUID_LENGTH);
-      expect(ownerEngine(id)).toBe("NEW");
+        // The token is always cuid (Option B); its NEW residency comes from the run.
+        expect(waitpoint.id.length).toBe(CUID_LENGTH);
+        expect(ownerEngine(waitpoint.id)).toBe("LEGACY");
 
-      // Byte-identical id resolves on the PG17 run-ops home.
-      const found17 = await store17.findWaitpoint({ where: { id } }, prisma17);
-      expect(found17).not.toBeNull();
-      expect(found17?.id).toBe(id);
+        // Co-location: the token lives on #new next to its run, not on #legacy.
+        const onNew = await prisma17.waitpoint.findUnique({ where: { id: waitpoint.id } });
+        const onLegacy = await p14.waitpoint.findUnique({ where: { id: waitpoint.id } });
+        expect(onNew).not.toBeNull();
+        expect(onLegacy).toBeNull();
 
-      // Residency invariant: the same id does NOT resolve on the PG14 legacy store.
-      const found14 = await store14.findWaitpoint({ where: { id } }, prisma14);
-      expect(found14).toBeNull();
+        const resolved = await engine.getWaitpoint({
+          waitpointId: waitpoint.id,
+          environmentId: env.environment.id,
+          projectId: env.project.id,
+        });
+        expect(resolved?.id).toBe(waitpoint.id);
+        expect(await p14.waitpoint.findUnique({ where: { id: waitpoint.id } })).toBeNull();
+      } finally {
+        await engine.quit();
+      }
     }
   );
 });
