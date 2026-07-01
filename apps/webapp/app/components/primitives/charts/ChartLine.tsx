@@ -1,23 +1,20 @@
 import {
-Area,
-AreaChart,
-CartesianGrid,
-Line,
-LineChart,
-XAxis,
-YAxis,
-type XAxisProps,
-type YAxisProps,
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  XAxis,
+  YAxis,
+  type XAxisProps,
+  type YAxisProps,
 } from "recharts";
-import {
-ChartTooltip,
-ChartTooltipContent,
-} from "~/components/primitives/charts/Chart";
+import { ChartTooltip, ChartTooltipContent } from "~/components/primitives/charts/Chart";
 import { CHART_MARGIN } from "./ChartBar";
 import { useChartContext } from "./ChartContext";
-import { ChartLineInvalid,ChartLineLoading,ChartLineNoData } from "./ChartLoading";
+import { ChartLineInvalid, ChartLineLoading, ChartLineNoData } from "./ChartLoading";
 import { useHasNoData } from "./ChartRoot";
-import { defaultYAxisTickFormatter,useYAxisWidth } from "./useYAxisWidth";
+import { defaultYAxisTickFormatter, useYAxisWidth } from "./useYAxisWidth";
 // Legend is now rendered by ChartRoot outside the chart container
 
 type CurveType =

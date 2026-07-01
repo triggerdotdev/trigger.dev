@@ -1,17 +1,17 @@
-import { getFormProps,getInputProps,getSelectProps,useForm } from "@conform-to/react";
+import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import { RectangleStackIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form,useActionData,useNavigation,useParams,useSubmit } from "@remix-run/react";
+import { Form, useActionData, useNavigation, useParams, useSubmit } from "@remix-run/react";
 import { MachinePresetName } from "@trigger.dev/core/v3";
-import { useCallback,useEffect,useMemo,useRef,useState } from "react";
-import { type UseDataFunctionReturn,useTypedFetcher } from "remix-typedjson";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type UseDataFunctionReturn, useTypedFetcher } from "remix-typedjson";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { EnvironmentCombo } from "~/components/environments/EnvironmentLabel";
 import { Badge } from "~/components/primitives/Badge";
 import { Button } from "~/components/primitives/Buttons";
-import { DialogContent,DialogHeader } from "~/components/primitives/Dialog";
+import { DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { DurationPicker } from "~/components/primitives/DurationPicker";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormError } from "~/components/primitives/FormError";
@@ -21,13 +21,13 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
-ResizableHandle,
-ResizablePanel,
-ResizablePanelGroup,
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
-import { Select,SelectItem } from "~/components/primitives/Select";
-import { Spinner,SpinnerWhite } from "~/components/primitives/Spinner";
-import { TabButton,TabContainer } from "~/components/primitives/Tabs";
+import { Select, SelectItem } from "~/components/primitives/Select";
+import { Spinner, SpinnerWhite } from "~/components/primitives/Spinner";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import { type loader as queuesLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.queues";

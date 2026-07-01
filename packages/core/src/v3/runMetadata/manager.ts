@@ -4,7 +4,7 @@ import type { ApiClient } from "../apiClient/index.js";
 import { realtimeStreams } from "../realtime-streams-api.js";
 import type { RunMetadataChangeOperation } from "../schemas/common.js";
 import type { AsyncIterableStream } from "../streams/asyncIterableStream.js";
-import type { IOPacket} from "../utils/ioSerialization.js";
+import type { IOPacket } from "../utils/ioSerialization.js";
 import { stringifyIO } from "../utils/ioSerialization.js";
 import type { ApiRequestOptions } from "../zodfetch.js";
 import { applyMetadataOperations, collapseOperations } from "./operations.js";

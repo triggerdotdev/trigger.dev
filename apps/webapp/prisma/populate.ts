@@ -5,13 +5,8 @@
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { prisma } from "../app/db.server";
 import { createHash } from "crypto";
-import type {
-  BackgroundWorker,
-  BackgroundWorkerTask} from "@trigger.dev/database";
-import {
-  RuntimeEnvironmentType,
-  WorkerInstanceGroupType,
-} from "@trigger.dev/database";
+import type { BackgroundWorker, BackgroundWorkerTask } from "@trigger.dev/database";
+import { RuntimeEnvironmentType, WorkerInstanceGroupType } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 
 async function populate() {

@@ -8,16 +8,16 @@
 
 // Test main export
 import {
-configure,
-logger,
-metadata,
-queue,
-retry,
-runs,
-schedules,
-tags,
-task,
-wait,
+  configure,
+  logger,
+  metadata,
+  queue,
+  retry,
+  runs,
+  schedules,
+  tags,
+  task,
+  wait,
 } from "@trigger.dev/sdk";
 
 // Test /v3 subpath (legacy, but should still work)

@@ -1,4 +1,4 @@
-import type { LoaderFunctionArgs} from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { WorkerInstanceGroupType } from "@trigger.dev/database";
 import { prisma } from "~/db.server";

@@ -1,4 +1,4 @@
-import { ClickHouse,getTaskRunField } from "@internal/clickhouse";
+import { ClickHouse, getTaskRunField } from "@internal/clickhouse";
 import { replicationContainerTest } from "@internal/testcontainers";
 import { readFile } from "node:fs/promises";
 import { setTimeout } from "node:timers/promises";

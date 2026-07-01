@@ -19,7 +19,7 @@ import {
 } from "./utils/prismaErrors";
 import { singleton } from "./utils/singleton";
 import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
-import type { Span} from "@opentelemetry/api";
+import type { Span } from "@opentelemetry/api";
 import { context, trace } from "@opentelemetry/api";
 import { queryPerformanceMonitor } from "./utils/queryPerformanceMonitor.server";
 

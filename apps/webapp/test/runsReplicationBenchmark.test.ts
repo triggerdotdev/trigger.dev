@@ -7,7 +7,7 @@ import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
 import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
-import { createInMemoryMetrics,createInMemoryTracing } from "./utils/tracing";
+import { createInMemoryMetrics, createInMemoryTracing } from "./utils/tracing";
 
 // Extend test timeout for benchmarks
 vi.setConfig({ testTimeout: 300_000 }); // 5 minutes

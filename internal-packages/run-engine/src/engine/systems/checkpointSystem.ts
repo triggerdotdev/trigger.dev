@@ -1,13 +1,16 @@
-import type { CheckpointInput, CreateCheckpointResult, ExecutionResult } from "@trigger.dev/core/v3";
+import type {
+  CheckpointInput,
+  CreateCheckpointResult,
+  ExecutionResult,
+} from "@trigger.dev/core/v3";
 import { CheckpointId } from "@trigger.dev/core/v3/isomorphic";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import { sendNotificationToWorker } from "../eventBus.js";
 import { isCheckpointable, isPendingExecuting } from "../statuses.js";
-import type {
-  ExecutionSnapshotSystem} from "./executionSnapshotSystem.js";
+import type { ExecutionSnapshotSystem } from "./executionSnapshotSystem.js";
 import {
   getLatestExecutionSnapshot,
-  executionResultFromSnapshot
+  executionResultFromSnapshot,
 } from "./executionSnapshotSystem.js";
 import type { SystemResources } from "./systems.js";
 import { ServiceValidationError } from "../errors.js";

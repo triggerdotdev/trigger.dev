@@ -289,7 +289,9 @@ describe("calculateNextScheduledTimestampFromNow - Fuzzy Testing", () => {
       const schedule = frequentSchedules[Math.floor(Math.random() * frequentSchedules.length)];
 
       // Generate very old timestamps that would cause many iterations without optimization
-      const _veryOldTimestamp = new Date(Date.now() - Math.random() * 5 * 365 * 24 * 60 * 60 * 1000);
+      const _veryOldTimestamp = new Date(
+        Date.now() - Math.random() * 5 * 365 * 24 * 60 * 60 * 1000
+      );
 
       const startTime = performance.now();
       const nextRun = calculateNextScheduledTimestampFromNow(schedule, null);

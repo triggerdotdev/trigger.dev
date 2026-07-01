@@ -1,6 +1,4 @@
-import type {
-  TaskRunError,
-  TaskRunExecutionRetry} from "@trigger.dev/core/v3";
+import type { TaskRunError, TaskRunExecutionRetry } from "@trigger.dev/core/v3";
 import {
   calculateNextRetryDelay,
   isOOMRunError,
@@ -8,7 +6,7 @@ import {
   sanitizeError,
   shouldLookupRetrySettings,
   shouldRetryError,
-  taskRunErrorEnhancer
+  taskRunErrorEnhancer,
 } from "@trigger.dev/core/v3";
 import type { PrismaClientOrTransaction } from "@trigger.dev/database";
 import type { RunStore } from "@internal/run-store";

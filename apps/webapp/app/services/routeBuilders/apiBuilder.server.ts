@@ -8,18 +8,12 @@ import { logger } from "../logger.server";
 import { rbac } from "../rbac.server";
 import type { RbacAbility, RbacResource } from "@trigger.dev/rbac";
 import { isUserActorToken } from "@trigger.dev/rbac";
-import type {
-  PersonalAccessTokenAuthenticationResult} from "../personalAccessToken.server";
-import {
-  updateLastAccessedAtIfStale,
-} from "../personalAccessToken.server";
+import type { PersonalAccessTokenAuthenticationResult } from "../personalAccessToken.server";
+import { updateLastAccessedAtIfStale } from "../personalAccessToken.server";
 import { safeJsonParse } from "~/utils/json";
-import type {
-  AuthenticatedWorkerInstance} from "~/v3/services/worker/workerGroupTokenService.server";
-import {
-  WorkerGroupTokenService,
-} from "~/v3/services/worker/workerGroupTokenService.server";
-import type { API_VERSIONS} from "~/api/versions";
+import type { AuthenticatedWorkerInstance } from "~/v3/services/worker/workerGroupTokenService.server";
+import { WorkerGroupTokenService } from "~/v3/services/worker/workerGroupTokenService.server";
+import type { API_VERSIONS } from "~/api/versions";
 import { getApiVersion } from "~/api/versions";
 import { WORKER_HEADERS } from "@trigger.dev/core/v3/runEngineWorker";
 import { ServiceValidationError } from "~/v3/services/common.server";

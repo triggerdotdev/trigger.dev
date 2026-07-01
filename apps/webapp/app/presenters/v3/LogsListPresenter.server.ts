@@ -1,11 +1,11 @@
 import {
-type ClickHouse,
-type LogsSearchListResult,
-type WhereCondition,
+  type ClickHouse,
+  type LogsSearchListResult,
+  type WhereCondition,
 } from "@internal/clickhouse";
 import { type PrismaClientOrTransaction } from "@trigger.dev/database";
 import { z } from "zod";
-import { EVENT_STORE_TYPES,getConfiguredEventRepository } from "~/v3/eventRepository/index.server";
+import { EVENT_STORE_TYPES, getConfiguredEventRepository } from "~/v3/eventRepository/index.server";
 
 import { type Direction } from "~/components/ListPagination";
 import { timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
@@ -13,10 +13,10 @@ import { env } from "~/env.server";
 import { findDisplayableEnvironment } from "~/models/runtimeEnvironment.server";
 import { getTaskIdentifiers } from "~/models/task.server";
 import { BasePresenter } from "~/presenters/v3/basePresenter.server";
-import { kindToLevel,type LogLevel,LogLevelSchema } from "~/utils/logUtils";
+import { kindToLevel, type LogLevel, LogLevelSchema } from "~/utils/logUtils";
 import {
-convertClickhouseDateTime64ToJsDate,
-convertDateToClickhouseDateTime,
+  convertClickhouseDateTime64ToJsDate,
+  convertDateToClickhouseDateTime,
 } from "~/v3/eventRepository/clickhouseEventRepository.server";
 import { ServiceValidationError } from "~/v3/services/baseService.server";
 

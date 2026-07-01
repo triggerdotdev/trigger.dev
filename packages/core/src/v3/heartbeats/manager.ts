@@ -1,4 +1,4 @@
-import { setInterval,setTimeout } from "node:timers/promises";
+import { setInterval, setTimeout } from "node:timers/promises";
 import { tryCatch } from "../tryCatch.js";
 import type { HeartbeatsManager } from "./types.js";
 

@@ -5,17 +5,8 @@ import type { Redis } from "@internal/redis";
 import type * as redlock from "redlock";
 import { tryCatch } from "@trigger.dev/core";
 import type { Logger } from "@trigger.dev/core/logger";
-import type {
-  Tracer,
-  Meter,
-  ObservableResult,
-  Attributes,
-  Histogram} from "@internal/tracing";
-import {
-  startSpan,
-  getMeter,
-  ValueType
-} from "@internal/tracing";
+import type { Tracer, Meter, ObservableResult, Attributes, Histogram } from "@internal/tracing";
+import { startSpan, getMeter, ValueType } from "@internal/tracing";
 import { ServiceValidationError } from "./errors.js";
 
 const SemanticAttributes = {

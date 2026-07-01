@@ -1,24 +1,24 @@
 import { tryCatch } from "@trigger.dev/core/utils";
 import type {
-BuildManifest,
-CreateBackgroundWorkerRequestBody,
-DevConfigResponseBody,
-WorkerManifest
+  BuildManifest,
+  CreateBackgroundWorkerRequestBody,
+  DevConfigResponseBody,
+  WorkerManifest,
 } from "@trigger.dev/core/v3";
 import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import type {
-WorkerClientToServerEvents,
-WorkerServerToClientEvents,
+  WorkerClientToServerEvents,
+  WorkerServerToClientEvents,
 } from "@trigger.dev/core/v3/workers";
 import type { Metafile } from "esbuild";
-import { spawn,type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import {
-existsSync,
-mkdirSync,
-readFileSync,
-renameSync,
-unlinkSync,
-writeFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as awaitTimeout } from "node:timers/promises";
@@ -30,7 +30,7 @@ import type { CliApiClient } from "../apiClient.js";
 import { copySkillFolders } from "../build/bundleSkills.js";
 import type { DevCommandOptions } from "../commands/dev.js";
 import { DevRunController } from "../entryPoints/dev-run-controller.js";
-import { cliLink,prettyError } from "../utilities/cliOutput.js";
+import { cliLink, prettyError } from "../utilities/cliOutput.js";
 import { devBranchPathSegment } from "../utilities/devBranch.js";
 import { eventBus } from "../utilities/eventBus.js";
 import { resolveLocalEnvVars } from "../utilities/localEnvVars.js";

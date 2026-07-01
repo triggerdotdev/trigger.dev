@@ -1,5 +1,5 @@
 import { eventStream } from "remix-utils/sse/server";
-import { type PrismaClient,prisma } from "~/db.server";
+import { type PrismaClient, prisma } from "~/db.server";
 import { getRequestAbortSignal } from "~/services/httpAsyncStorage.server";
 import { logger } from "~/services/logger.server";
 import { projectPubSub } from "~/v3/services/projectPubSub.server";

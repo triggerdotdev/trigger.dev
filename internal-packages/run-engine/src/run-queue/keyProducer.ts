@@ -1,4 +1,9 @@
-import { type RunQueueKeyProducerEnvironment, type EnvDescriptor, type QueueDescriptor, type RunQueueKeyProducer } from "./types.js";
+import {
+  type RunQueueKeyProducerEnvironment,
+  type EnvDescriptor,
+  type QueueDescriptor,
+  type RunQueueKeyProducer,
+} from "./types.js";
 import { jumpHash } from "@trigger.dev/core/v3/serverOnly";
 
 const constants = {

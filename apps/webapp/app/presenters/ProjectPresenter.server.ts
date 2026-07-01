@@ -1,4 +1,4 @@
-import type { PrismaClient} from "~/db.server";
+import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { Project } from "~/models/project.server";
 import { displayableEnvironment } from "~/models/runtimeEnvironment.server";

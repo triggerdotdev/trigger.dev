@@ -1,9 +1,9 @@
-import type { Informer,V1Pod } from "@kubernetes/client-node";
-import { LogLevel,SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
-import type {Registry } from "prom-client";
-import { Counter,Histogram } from "prom-client";
+import type { Informer, V1Pod } from "@kubernetes/client-node";
+import { LogLevel, SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
+import type { Registry } from "prom-client";
+import { Counter, Histogram } from "prom-client";
 import { setTimeout } from "timers/promises";
-import type {K8sApi } from "../clients/kubernetes.js";
+import type { K8sApi } from "../clients/kubernetes.js";
 import { createK8sApi } from "../clients/kubernetes.js";
 import { register } from "../metrics.js";
 

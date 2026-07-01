@@ -1,24 +1,24 @@
 import {
-type MachinePreset,
-prettyPrintPacket,
-RunAnnotations,
-SemanticInternalAttributes,
-type TaskRunContext,
-TaskRunError,
-TriggerTraceContext,
-type V3TaskRunContext,
+  type MachinePreset,
+  prettyPrintPacket,
+  RunAnnotations,
+  SemanticInternalAttributes,
+  type TaskRunContext,
+  TaskRunError,
+  TriggerTraceContext,
+  type V3TaskRunContext,
 } from "@trigger.dev/core/v3";
 
-import { AttemptId,getMaxDuration,parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
+import { AttemptId, getMaxDuration, parseTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import {
-extractIdempotencyKeyScope,
-getUserProvidedIdempotencyKey,
+  extractIdempotencyKeyScope,
+  getUserProvidedIdempotencyKey,
 } from "@trigger.dev/core/v3/serverOnly";
 import {
-extractAIEmbedData,
-extractAISpanData,
-extractAISummarySpanData,
-extractAIToolCallData,
+  extractAIEmbedData,
+  extractAISpanData,
+  extractAISummarySpanData,
+  extractAIToolCallData,
 } from "~/components/runs/v3/ai";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { baseWorkerQueue } from "~/runEngine/concerns/workerQueueSplit.server";
@@ -32,8 +32,8 @@ import { findRunByIdWithMollifierFallback } from "~/v3/mollifier/readFallback.se
 import { buildSyntheticSpanRun } from "~/v3/mollifier/syntheticSpanRun.server";
 import { engine } from "~/v3/runEngine.server";
 import { runStore } from "~/v3/runStore.server";
-import { getTaskEventStoreTableForRun,type TaskEventStoreTable } from "~/v3/taskEventStore.server";
-import { isFailedRunStatus,isFinalRunStatus } from "~/v3/taskStatus";
+import { getTaskEventStoreTableForRun, type TaskEventStoreTable } from "~/v3/taskEventStore.server";
+import { isFailedRunStatus, isFinalRunStatus } from "~/v3/taskStatus";
 import { BasePresenter } from "./basePresenter.server";
 import { WaitpointPresenter } from "./WaitpointPresenter.server";
 

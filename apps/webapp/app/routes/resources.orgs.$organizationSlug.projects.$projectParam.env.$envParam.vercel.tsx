@@ -1,19 +1,19 @@
-import { getFormProps,useForm } from "@conform-to/react";
+import { getFormProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
-import { CheckCircleIcon,ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import { CheckCircleIcon, ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
-import { Form,useActionData,useLocation,useNavigation } from "@remix-run/react";
-import { type LoaderFunctionArgs,json } from "@remix-run/server-runtime";
-import { Result,fromPromise } from "neverthrow";
-import { useEffect,useRef,useState } from "react";
-import { typedjson,useTypedFetcher } from "remix-typedjson";
+import { Form, useActionData, useLocation, useNavigation } from "@remix-run/react";
+import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
+import { Result, fromPromise } from "neverthrow";
+import { useEffect, useRef, useState } from "react";
+import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
 import { BuildSettingsFields } from "~/components/integrations/VercelBuildSettings";
 import { VercelLogo } from "~/components/integrations/VercelLogo";
 import { Button } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Dialog,DialogContent,DialogHeader,DialogTrigger } from "~/components/primitives/Dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -22,20 +22,20 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { PermissionLink } from "~/components/primitives/PermissionLink";
-import { Select,SelectItem } from "~/components/primitives/Select";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import {
-redirectBackWithErrorMessage,
-redirectWithErrorMessage,
-redirectWithSuccessMessage,
+  redirectBackWithErrorMessage,
+  redirectWithErrorMessage,
+  redirectWithSuccessMessage,
 } from "~/models/message.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { VercelIntegrationRepository } from "~/models/vercelIntegration.server";
 import {
-type VercelOnboardingData,
-VercelSettingsPresenter,
+  type VercelOnboardingData,
+  VercelSettingsPresenter,
 } from "~/presenters/v3/VercelSettingsPresenter.server";
 import { logger } from "~/services/logger.server";
 import { rbac } from "~/services/rbac.server";
@@ -43,18 +43,18 @@ import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { requireUserId } from "~/services/session.server";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import {
-EnvironmentParamSchema,
-v3ProjectSettingsIntegrationsPath,
-vercelAppInstallPath,
-vercelResourcePath,
+  EnvironmentParamSchema,
+  v3ProjectSettingsIntegrationsPath,
+  vercelAppInstallPath,
+  vercelResourcePath,
 } from "~/utils/pathBuilder";
 import {
-type EnvSlug,
-type SyncEnvVarsMapping,
-type VercelProjectIntegrationData,
-envSlugArrayField,
-getAvailableEnvSlugs,
-getAvailableEnvSlugsForBuildSettings
+  type EnvSlug,
+  type SyncEnvVarsMapping,
+  type VercelProjectIntegrationData,
+  envSlugArrayField,
+  getAvailableEnvSlugs,
+  getAvailableEnvSlugsForBuildSettings,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { sanitizeVercelNextUrl } from "~/v3/vercel/vercelUrls.server";
 
@@ -1217,4 +1217,4 @@ function VercelSettingsPanel({
 
 import { VercelOnboardingModal } from "~/components/integrations/VercelOnboardingModal";
 
-export { VercelOnboardingModal,VercelSettingsPanel };
+export { VercelOnboardingModal, VercelSettingsPanel };

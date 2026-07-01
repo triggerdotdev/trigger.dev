@@ -1,8 +1,5 @@
-import type {
-  SessionListSearchFilters} from "~/components/sessions/v1/SessionFilters";
-import {
-  getSessionFiltersFromSearchParams
-} from "~/components/sessions/v1/SessionFilters";
+import type { SessionListSearchFilters } from "~/components/sessions/v1/SessionFilters";
+import { getSessionFiltersFromSearchParams } from "~/components/sessions/v1/SessionFilters";
 import { type SessionStatus } from "~/services/sessionsRepository/sessionsRepository.server";
 
 export type SessionFiltersFromRequest = SessionListSearchFilters & {

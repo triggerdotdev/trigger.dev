@@ -1,5 +1,5 @@
 import type { Attributes, Span, SpanOptions } from "@opentelemetry/api";
-import type { Logger} from "@opentelemetry/api-logs";
+import type { Logger } from "@opentelemetry/api-logs";
 import { SeverityNumber } from "@opentelemetry/api-logs";
 import { iconStringForSeverity } from "../icons.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";

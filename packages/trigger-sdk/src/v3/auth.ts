@@ -1,4 +1,9 @@
-import { type RealtimeRunSkipColumns, type ApiClientConfiguration, apiClientManager, generateJWT as internal_generateJWT } from "@trigger.dev/core/v3";
+import {
+  type RealtimeRunSkipColumns,
+  type ApiClientConfiguration,
+  apiClientManager,
+  generateJWT as internal_generateJWT,
+} from "@trigger.dev/core/v3";
 import "@trigger.dev/core/v3/sdk-scope-storage";
 
 /**

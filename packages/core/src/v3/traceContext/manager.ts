@@ -1,5 +1,5 @@
 import type { Context } from "@opentelemetry/api";
-import { context,propagation,trace } from "@opentelemetry/api";
+import { context, propagation, trace } from "@opentelemetry/api";
 import { parseTraceParent } from "@opentelemetry/core";
 import type { TraceContextManager } from "./types.js";
 

@@ -3,10 +3,9 @@ import { ZodMessageSender } from "./zodMessageHandler.js";
 import type {
   ZodMessageCatalogToSocketIoEvents,
   ZodSocketMessageCatalogSchema,
-  ZodSocketMessageHandlers} from "./zodSocket.js";
-import {
-  ZodSocketMessageHandler
+  ZodSocketMessageHandlers,
 } from "./zodSocket.js";
+import { ZodSocketMessageHandler } from "./zodSocket.js";
 // @ts-ignore
 import type { DefaultEventsMap, EventsMap } from "socket.io/dist/typed-events";
 import type { z } from "zod";

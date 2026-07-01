@@ -1,6 +1,6 @@
 import type { Attributes, Context, Tracer } from "@opentelemetry/api";
 import { trace } from "@opentelemetry/api";
-import type { ExportResult} from "@opentelemetry/core";
+import type { ExportResult } from "@opentelemetry/core";
 import { ExportResultCode } from "@opentelemetry/core";
 import type { LogRecordProcessor, SdkLogRecord } from "@opentelemetry/sdk-logs";
 import type {

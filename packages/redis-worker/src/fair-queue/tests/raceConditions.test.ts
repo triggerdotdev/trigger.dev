@@ -11,11 +11,7 @@ import {
   WorkerQueueManager,
   FixedDelayRetry,
 } from "../index.js";
-import type {
-  FairQueueKeyProducer,
-  FairQueueOptions,
-  QueueDescriptor,
-} from "../types.js";
+import type { FairQueueKeyProducer, FairQueueOptions, QueueDescriptor } from "../types.js";
 import { createRedisClient, type RedisOptions } from "@internal/redis";
 
 const TestPayloadSchema = z.object({ id: z.number(), value: z.string() });

@@ -10,7 +10,7 @@ import type {
   RealtimeRunSkipColumns,
 } from "@trigger.dev/core/v3";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import type { KeyedMutator} from "../utils/trigger-swr.js";
+import type { KeyedMutator } from "../utils/trigger-swr.js";
 import { useSWR } from "../utils/trigger-swr.js";
 import type { UseApiClientOptions } from "./useApiClient.js";
 import { useApiClient } from "./useApiClient.js";

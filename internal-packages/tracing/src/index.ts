@@ -1,15 +1,60 @@
-import { type Meter, context, metrics, propagation, ROOT_CONTEXT, SpanKind, SpanStatusCode, trace, ValueType, type Attributes, type Context, type Counter, type Gauge, type Histogram, type Meter as MeterType, type MetricOptions, type ObservableCounter, type ObservableGauge, type ObservableResult, type ObservableUpDownCounter, type Span, type SpanOptions, type Tracer, type UpDownCounter } from "@opentelemetry/api";
-import { type Logger,SeverityNumber } from "@opentelemetry/api-logs";
+import {
+  type Meter,
+  context,
+  metrics,
+  propagation,
+  ROOT_CONTEXT,
+  SpanKind,
+  SpanStatusCode,
+  trace,
+  ValueType,
+  type Attributes,
+  type Context,
+  type Counter,
+  type Gauge,
+  type Histogram,
+  type Meter as MeterType,
+  type MetricOptions,
+  type ObservableCounter,
+  type ObservableGauge,
+  type ObservableResult,
+  type ObservableUpDownCounter,
+  type Span,
+  type SpanOptions,
+  type Tracer,
+  type UpDownCounter,
+} from "@opentelemetry/api";
+import { type Logger, SeverityNumber } from "@opentelemetry/api-logs";
 import { flattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes";
 
 export * from "@opentelemetry/semantic-conventions";
 
 export type {
-Attributes,Counter,Gauge,
-Histogram,MeterType as Meter,MetricOptions,ObservableCounter,ObservableGauge,ObservableResult,ObservableUpDownCounter,Span,SpanOptions,Tracer,UpDownCounter
+  Attributes,
+  Counter,
+  Gauge,
+  Histogram,
+  MeterType as Meter,
+  MetricOptions,
+  ObservableCounter,
+  ObservableGauge,
+  ObservableResult,
+  ObservableUpDownCounter,
+  Span,
+  SpanOptions,
+  Tracer,
+  UpDownCounter,
 };
 export {
-context,metrics,propagation,ROOT_CONTEXT,SpanKind,SpanStatusCode,trace,ValueType,type Context
+  context,
+  metrics,
+  propagation,
+  ROOT_CONTEXT,
+  SpanKind,
+  SpanStatusCode,
+  trace,
+  ValueType,
+  type Context,
 };
 
 export function getTracer(name: string): Tracer {

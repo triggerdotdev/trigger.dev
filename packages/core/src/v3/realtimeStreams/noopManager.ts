@@ -1,8 +1,5 @@
-import type {
-  AsyncIterableStream} from "../streams/asyncIterableStream.js";
-import {
-  createAsyncIterableStreamFromAsyncIterable,
-} from "../streams/asyncIterableStream.js";
+import type { AsyncIterableStream } from "../streams/asyncIterableStream.js";
+import { createAsyncIterableStreamFromAsyncIterable } from "../streams/asyncIterableStream.js";
 import type {
   RealtimeStreamOperationOptions,
   RealtimeStreamInstance,

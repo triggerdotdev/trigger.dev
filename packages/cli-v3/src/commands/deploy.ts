@@ -5,11 +5,10 @@ import type {
   InitializeDeploymentResponseBody,
   GitMeta,
   DeploymentFinalizedEvent,
-  DeploymentTriggeredVia} from "@trigger.dev/core/v3/schemas";
-import {
-  DeploymentEventFromString
+  DeploymentTriggeredVia,
 } from "@trigger.dev/core/v3/schemas";
-import type { Command} from "commander";
+import { DeploymentEventFromString } from "@trigger.dev/core/v3/schemas";
+import type { Command } from "commander";
 import { Option as CommandOption } from "commander";
 import { join, relative, resolve } from "node:path";
 import { isCI } from "std-env";

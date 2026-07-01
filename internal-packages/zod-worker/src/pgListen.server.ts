@@ -1,7 +1,7 @@
 import type { Logger } from "@trigger.dev/core/logger";
 import type { PoolClient } from "pg";
 import type { z } from "zod";
-import type { NotificationCatalog, NotificationChannel} from "./types";
+import type { NotificationCatalog, NotificationChannel } from "./types";
 import { notificationCatalog } from "./types";
 
 export class PgListenService {

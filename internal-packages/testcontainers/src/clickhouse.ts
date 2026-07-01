@@ -1,13 +1,8 @@
 import type { ClickHouseClient } from "@clickhouse/client";
 import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import type {
-  StartedTestContainer} from "testcontainers";
-import {
-  AbstractStartedContainer,
-  GenericContainer,
-  Wait,
-} from "testcontainers";
+import type { StartedTestContainer } from "testcontainers";
+import { AbstractStartedContainer, GenericContainer, Wait } from "testcontainers";
 
 const CLICKHOUSE_PORT = 9000;
 const CLICKHOUSE_HTTP_PORT = 8123;

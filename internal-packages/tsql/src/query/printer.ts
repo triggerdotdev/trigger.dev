@@ -1,17 +1,62 @@
 // TypeScript port of posthog/hogql/printer.py
 // ClickHouse SQL printer with tenant isolation and schema validation
 
-import { type Alias,type And,type ArithmeticOperation,type ArrayAccess,type AST,type Array as ASTArray,type BetweenExpr,type Call,type CompareOperation,type Constant,type CTE,type Dict,type Expression,type Field,type JoinConstraint,type JoinExpr,type Lambda,type LimitByExpr,type Not,type Or,type OrderExpr,type Placeholder,type RatioExpr,type SampleExpr,type SelectQuery,type SelectSetQuery,type Tuple,type TupleAccess,type WindowExpr,type WindowFrameExpr,type WindowFunction,ArithmeticOperationOp,CompareOperationOp } from "./ast";
-import { ImpossibleASTError,NotImplementedError,QueryError } from "./errors";
+import {
+  type Alias,
+  type And,
+  type ArithmeticOperation,
+  type ArrayAccess,
+  type AST,
+  type Array as ASTArray,
+  type BetweenExpr,
+  type Call,
+  type CompareOperation,
+  type Constant,
+  type CTE,
+  type Dict,
+  type Expression,
+  type Field,
+  type JoinConstraint,
+  type JoinExpr,
+  type Lambda,
+  type LimitByExpr,
+  type Not,
+  type Or,
+  type OrderExpr,
+  type Placeholder,
+  type RatioExpr,
+  type SampleExpr,
+  type SelectQuery,
+  type SelectSetQuery,
+  type Tuple,
+  type TupleAccess,
+  type WindowExpr,
+  type WindowFrameExpr,
+  type WindowFunction,
+  ArithmeticOperationOp,
+  CompareOperationOp,
+} from "./ast";
+import { ImpossibleASTError, NotImplementedError, QueryError } from "./errors";
 import { escapeClickHouseIdentifier } from "./escape";
 import {
-findTSQLAggregation,
-findTSQLFunction,
-TSQL_COMPARISON_MAPPING,
-validateFunctionArgs
+  findTSQLAggregation,
+  findTSQLFunction,
+  TSQL_COMPARISON_MAPPING,
+  validateFunctionArgs,
 } from "./functions";
-import type { PrinterContext,WhereClauseCondition } from "./printer_context";
-import { type ClickHouseType,type ColumnFormatType,type ColumnSchema,type OutputColumnMetadata,type TableSchema,getInternalValue,getInternalValueFromMappingCaseInsensitive,hasFieldMapping,isVirtualColumn,validateTable } from "./schema";
+import type { PrinterContext, WhereClauseCondition } from "./printer_context";
+import {
+  type ClickHouseType,
+  type ColumnFormatType,
+  type ColumnSchema,
+  type OutputColumnMetadata,
+  type TableSchema,
+  getInternalValue,
+  getInternalValueFromMappingCaseInsensitive,
+  hasFieldMapping,
+  isVirtualColumn,
+  validateTable,
+} from "./schema";
 import { calculateTimeBucketInterval } from "./time_buckets";
 
 /**

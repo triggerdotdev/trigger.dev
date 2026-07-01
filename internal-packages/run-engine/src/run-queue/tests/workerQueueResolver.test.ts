@@ -1,8 +1,8 @@
 import { Logger } from "@trigger.dev/core/logger";
 import { RuntimeEnvironmentType } from "@trigger.dev/core/v3";
-import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
-import type { OutputPayloadV1,OutputPayloadV2 } from "../types.js";
-import { WorkerQueueResolver,type WorkerQueueOverrides } from "../workerQueueResolver.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { OutputPayloadV1, OutputPayloadV2 } from "../types.js";
+import { WorkerQueueResolver, type WorkerQueueOverrides } from "../workerQueueResolver.js";
 
 vi.setConfig({ testTimeout: 5_000 });
 

@@ -230,28 +230,36 @@ describe("SQL Injection Prevention", () => {
     });
 
     it("should handle quote escape attempts", () => {
-      const { sql: _sql, params } = compile("SELECT * FROM task_runs WHERE status = 'test''injection'");
+      const { sql: _sql, params } = compile(
+        "SELECT * FROM task_runs WHERE status = 'test''injection'"
+      );
 
       // Should be safely parameterized
       expect(Object.values(params).some((v) => typeof v === "string")).toBe(true);
     });
 
     it("should handle backslash escape attempts", () => {
-      const { sql, params: _params } = compile("SELECT * FROM task_runs WHERE status = 'test\\'injection'");
+      const { sql, params: _params } = compile(
+        "SELECT * FROM task_runs WHERE status = 'test\\'injection'"
+      );
 
       // Should be safely parameterized
       expect(sql).not.toContain("injection'");
     });
 
     it("should handle unicode characters in strings", () => {
-      const { sql: _sql, params } = compile("SELECT * FROM task_runs WHERE status = 'test™injection'");
+      const { sql: _sql, params } = compile(
+        "SELECT * FROM task_runs WHERE status = 'test™injection'"
+      );
 
       // Should be safely parameterized
       expect(Object.values(params).some((v) => typeof v === "string")).toBe(true);
     });
 
     it("should handle null byte injection", () => {
-      const { sql: _sql, params } = compile("SELECT * FROM task_runs WHERE status = 'test\\0injection'");
+      const { sql: _sql, params } = compile(
+        "SELECT * FROM task_runs WHERE status = 'test\\0injection'"
+      );
 
       expect(Object.values(params).some((v) => typeof v === "string")).toBe(true);
     });

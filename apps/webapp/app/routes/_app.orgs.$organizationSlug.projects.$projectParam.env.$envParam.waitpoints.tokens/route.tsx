@@ -105,8 +105,14 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 };
 
 export default function Page() {
-  const { success: _success, tokens, pagination, hasFilters, hasAnyTokens, filters } =
-    useTypedLoaderData<typeof loader>();
+  const {
+    success: _success,
+    tokens,
+    pagination,
+    hasFilters,
+    hasAnyTokens,
+    filters,
+  } = useTypedLoaderData<typeof loader>();
 
   const organization = useOrganization();
   const project = useProject();

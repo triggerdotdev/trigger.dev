@@ -1,8 +1,4 @@
-import {
-ArrowDownTrayIcon,
-CalendarIcon,
-PencilSquareIcon
-} from "@heroicons/react/20/solid";
+import { ArrowDownTrayIcon, CalendarIcon, PencilSquareIcon } from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { useFetcher } from "@remix-run/react";
@@ -10,57 +6,57 @@ import { IconChartHistogram } from "@tabler/icons-react";
 import { formatDurationNanoseconds } from "@trigger.dev/core/v3";
 import { Clipboard } from "lucide-react";
 import {
-forwardRef,
-useCallback,
-useEffect,
-useImperativeHandle,
-useRef,
-useState,
-type ReactNode,
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
 import { useTypedFetcher } from "remix-typedjson";
 import simplur from "simplur";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
-import { ChartConfigPanel,defaultChartConfig } from "~/components/code/ChartConfigPanel";
-import { autoFormatSQL,TSQLEditor } from "~/components/code/TSQLEditor";
-import { PageBody,PageContainer } from "~/components/layout/AppLayout";
+import { ChartConfigPanel, defaultChartConfig } from "~/components/code/ChartConfigPanel";
+import { autoFormatSQL, TSQLEditor } from "~/components/code/TSQLEditor";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import {
-QueryWidget,
-type BigNumberConfiguration,
-type ChartConfiguration,
-type QueryWidgetConfig,
-type QueryWidgetData,
+  QueryWidget,
+  type BigNumberConfiguration,
+  type ChartConfiguration,
+  type QueryWidgetConfig,
+  type QueryWidgetData,
 } from "~/components/metrics/QueryWidget";
 import { SaveToDashboardDialog } from "~/components/metrics/SaveToDashboardDialog";
 import { ScopeFilter } from "~/components/metrics/ScopeFilter";
-import { Button,LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Callout } from "~/components/primitives/Callout";
 import {
-ClientTabs,
-ClientTabsContent,
-ClientTabsList,
-ClientTabsTrigger,
+  ClientTabs,
+  ClientTabsContent,
+  ClientTabsList,
+  ClientTabsTrigger,
 } from "~/components/primitives/ClientTabs";
-import { Dialog,DialogContent,DialogFooter,DialogHeader } from "~/components/primitives/Dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader } from "~/components/primitives/Dialog";
 import { Header3 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
-import { NavBar,PageAccessories,PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
-Popover,
-PopoverArrowTrigger,
-PopoverContent,
-PopoverMenuItem,
+  Popover,
+  PopoverArrowTrigger,
+  PopoverContent,
+  PopoverMenuItem,
 } from "~/components/primitives/Popover";
 import {
-ResizableHandle,
-ResizablePanel,
-ResizablePanelGroup,
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
-import { Select,SelectItem } from "~/components/primitives/Select";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { Spinner } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
@@ -74,7 +70,7 @@ import { QueryHistoryPopover } from "~/routes/_app.orgs.$organizationSlug.projec
 import type { AITimeFilter } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query/types";
 import type { action as titleAction } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.query.ai-title";
 import type { QueryScope } from "~/services/queryService.server";
-import { downloadFile,rowsToCSV,rowsToJSON } from "~/utils/dataExport";
+import { downloadFile, rowsToCSV, rowsToJSON } from "~/utils/dataExport";
 import { organizationBillingPath } from "~/utils/pathBuilder";
 import { querySchemas } from "~/v3/querySchemas";
 

@@ -291,7 +291,15 @@ export type UsePendingMessagesReturn = {
 export function usePendingMessages<TUIMessage extends UIMessage = UIMessage>(
   options: UsePendingMessagesOptions<TUIMessage>
 ): UsePendingMessagesReturn {
-  const { transport, chatId, status, messages, setMessages: _setMessages, sendMessage, metadata } = options;
+  const {
+    transport,
+    chatId,
+    status,
+    messages,
+    setMessages: _setMessages,
+    sendMessage,
+    metadata,
+  } = options;
 
   // Internal state: track messages with their mode
   type InternalMessage = TUIMessage & { _mode: "steering" | "queued" };

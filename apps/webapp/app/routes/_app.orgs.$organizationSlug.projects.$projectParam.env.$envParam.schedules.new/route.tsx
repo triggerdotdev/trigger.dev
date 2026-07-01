@@ -8,7 +8,11 @@ import { UpsertScheduleForm } from "../resources.orgs.$organizationSlug.projects
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const userId = await requireUserId(request);
-  const { projectParam, envParam, organizationSlug: _organizationSlug } = EnvironmentParamSchema.parse(params);
+  const {
+    projectParam,
+    envParam,
+    organizationSlug: _organizationSlug,
+  } = EnvironmentParamSchema.parse(params);
 
   const presenter = new EditSchedulePresenter();
   const result = await presenter.call({

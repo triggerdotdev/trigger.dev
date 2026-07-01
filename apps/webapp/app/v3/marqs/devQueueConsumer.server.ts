@@ -1,4 +1,4 @@
-import type { Context, Span} from "@opentelemetry/api";
+import type { Context, Span } from "@opentelemetry/api";
 import { ROOT_CONTEXT, SpanKind, context, trace } from "@opentelemetry/api";
 import type {
   V3TaskRunExecution,
@@ -14,7 +14,7 @@ import { z } from "zod";
 import { prisma } from "~/db.server";
 import { createNewSession, disconnectSession } from "~/models/runtimeEnvironment.server";
 import { findQueueInEnvironment, sanitizeQueueName } from "~/models/taskQueue.server";
-import type { RedisClient} from "~/redis.server";
+import type { RedisClient } from "~/redis.server";
 import { createRedisClient } from "~/redis.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
@@ -24,7 +24,7 @@ import { FailedTaskRunService } from "../failedTaskRun.server";
 import { CancelDevSessionRunsService } from "../services/cancelDevSessionRuns.server";
 import { CompleteAttemptService } from "../services/completeAttempt.server";
 import { attributesFromAuthenticatedEnv, tracer } from "../tracer.server";
-import type { DevSubscriber} from "./devPubSub.server";
+import type { DevSubscriber } from "./devPubSub.server";
 import { devPubSub } from "./devPubSub.server";
 
 const MessageBody = z.discriminatedUnion("type", [

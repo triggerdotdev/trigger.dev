@@ -7,26 +7,26 @@
 
 import type { ClickHouseSettings } from "@clickhouse/client";
 import {
-compileTSQL,
-type OutputColumnMetadata,
-sanitizeErrorMessage,
-transformResults,
-type FieldMappings,
-type QuerySettings,
-type TableSchema,
-type TimeRange,
-type WhereClauseCondition,
+  compileTSQL,
+  type OutputColumnMetadata,
+  sanitizeErrorMessage,
+  transformResults,
+  type FieldMappings,
+  type QuerySettings,
+  type TableSchema,
+  type TimeRange,
+  type WhereClauseCondition,
 } from "@internal/tsql";
 import { Logger } from "@trigger.dev/core/logger";
 import { z } from "zod";
 import { QueryError } from "./errors.js";
-import type { ClickhouseReader,QueryStats } from "./types.js";
+import type { ClickhouseReader, QueryStats } from "./types.js";
 
 const logger = new Logger("tsql", "info");
 
 export type { QueryStats };
 
-export type { FieldMappings,QuerySettings,TableSchema,TimeRange,WhereClauseCondition };
+export type { FieldMappings, QuerySettings, TableSchema, TimeRange, WhereClauseCondition };
 
 /**
  * Options for executing a TSQL query

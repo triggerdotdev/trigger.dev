@@ -1,4 +1,4 @@
-import type { ActionFunctionArgs} from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { ExportLogsServiceRequest, ExportLogsServiceResponse } from "@trigger.dev/otlp-importer";
 import { otlpExporter } from "~/v3/otlpExporter.server";

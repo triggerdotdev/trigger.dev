@@ -1,5 +1,5 @@
 import type { Logger } from "@trigger.dev/core/logger";
-import type { ZodMessageCatalogSchema} from "@trigger.dev/core/v3/zodMessageHandler";
+import type { ZodMessageCatalogSchema } from "@trigger.dev/core/v3/zodMessageHandler";
 import { ZodMessageHandler } from "@trigger.dev/core/v3/zodMessageHandler";
 import { Evt } from "evt";
 import type { z } from "zod";

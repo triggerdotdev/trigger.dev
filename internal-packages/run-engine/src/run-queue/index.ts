@@ -11,7 +11,8 @@ import type {
   ObservableResult,
   Span,
   SpanOptions,
-  Tracer} from "@internal/tracing";
+  Tracer,
+} from "@internal/tracing";
 import {
   context,
   getMeter,
@@ -33,20 +34,16 @@ import { nanoid } from "nanoid";
 import type { Readable } from "node:stream";
 import { setInterval, setTimeout } from "node:timers/promises";
 import { z } from "zod";
-import type {
-  MinimalAuthenticatedEnvironment} from "../shared/index.js";
-import {
-  attributesFromAuthenticatedEnv
-} from "../shared/index.js";
+import type { MinimalAuthenticatedEnvironment } from "../shared/index.js";
+import { attributesFromAuthenticatedEnv } from "../shared/index.js";
 import type {
   InputPayload,
   OutputPayloadV2,
   RunQueueKeyProducer,
   RunQueueKeyProducerEnvironment,
-  RunQueueSelectionStrategy} from "./types.js";
-import {
-  OutputPayload
+  RunQueueSelectionStrategy,
 } from "./types.js";
+import { OutputPayload } from "./types.js";
 import { WorkerQueueResolver } from "./workerQueueResolver.js";
 
 const SemanticAttributes = {

@@ -6,7 +6,11 @@ import EventEmitter from "node:events";
 import { type ClientConfig, type Connection, Client } from "pg";
 import Redlock, { type Lock } from "redlock";
 import { LogicalReplicationClientError } from "./errors.js";
-import { type PgoutputMessage, getPgoutputStartReplicationSQL, PgoutputParser } from "./pgoutput.js";
+import {
+  type PgoutputMessage,
+  getPgoutputStartReplicationSQL,
+  PgoutputParser,
+} from "./pgoutput.js";
 
 export interface LogicalReplicationClientOptions {
   /**

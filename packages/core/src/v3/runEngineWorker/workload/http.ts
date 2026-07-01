@@ -3,7 +3,8 @@ import type {
   WorkloadHeartbeatRequestBody,
   WorkloadRunAttemptCompleteRequestBody,
   WorkloadRunAttemptStartRequestBody,
-  WorkloadDebugLogRequestBody} from "./schemas.js";
+  WorkloadDebugLogRequestBody,
+} from "./schemas.js";
 import {
   WorkloadHeartbeatResponseBody,
   WorkloadRunAttemptCompleteResponseBody,

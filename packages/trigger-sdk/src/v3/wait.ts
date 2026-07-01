@@ -11,7 +11,8 @@ import type {
   WaitpointListTokenItem,
   WaitpointRetrieveTokenResponse,
   WaitpointTokenStatus,
-  WaitpointTokenTypedResult} from "@trigger.dev/core/v3";
+  WaitpointTokenTypedResult,
+} from "@trigger.dev/core/v3";
 import {
   accessoryAttributes,
   apiClientManager,

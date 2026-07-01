@@ -1,4 +1,4 @@
-import type { PrismaClient, PrismaReplicaClient} from "~/db.server";
+import type { PrismaClient, PrismaReplicaClient } from "~/db.server";
 import { $replica, prisma } from "~/db.server";
 import type { Project } from "~/models/project.server";
 import type { User } from "~/models/user.server";

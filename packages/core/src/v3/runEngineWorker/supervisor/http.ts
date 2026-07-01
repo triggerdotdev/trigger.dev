@@ -7,7 +7,8 @@ import type {
   WorkerApiRunAttemptStartRequestBody,
   WorkerApiRunHeartbeatRequestBody,
   WorkerApiDebugLogBody,
-  WorkerApiSuspendRunRequestBody} from "./schemas.js";
+  WorkerApiSuspendRunRequestBody,
+} from "./schemas.js";
 import {
   WorkerApiConnectResponseBody,
   WorkerApiContinueRunExecutionRequestBody,

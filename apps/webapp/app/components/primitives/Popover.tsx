@@ -8,9 +8,9 @@ import * as React from "react";
 import { DropdownIcon } from "~/assets/icons/DropdownIcon";
 import * as useShortcutKeys from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
-import { ButtonContent,type ButtonContentPropsType } from "./Buttons";
+import { ButtonContent, type ButtonContentPropsType } from "./Buttons";
 import { type RenderIcon } from "./Icon";
-import { Paragraph,type ParagraphVariant } from "./Paragraph";
+import { Paragraph, type ParagraphVariant } from "./Paragraph";
 import { ShortcutKey } from "./ShortcutKey";
 
 const Popover = PopoverPrimitive.Root;
@@ -308,15 +308,15 @@ function PopoverVerticalEllipseTrigger({
 }
 
 export {
-Popover,
-PopoverArrowTrigger,
-PopoverContent,
-PopoverCustomTrigger,
-PopoverMenuItem,
-PopoverSectionHeader,
-PopoverSideMenuTrigger,
-PopoverTrigger,
-PopoverVerticalEllipseTrigger
+  Popover,
+  PopoverArrowTrigger,
+  PopoverContent,
+  PopoverCustomTrigger,
+  PopoverMenuItem,
+  PopoverSectionHeader,
+  PopoverSideMenuTrigger,
+  PopoverTrigger,
+  PopoverVerticalEllipseTrigger,
 };
 
 export type { PopoverArrowTriggerVariant };

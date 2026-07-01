@@ -1,6 +1,6 @@
 import { Logger } from "@trigger.dev/core/logger";
 import type { MollifierBuffer } from "./buffer.js";
-import type { BufferEntry} from "./schemas.js";
+import type { BufferEntry } from "./schemas.js";
 import { deserialiseSnapshot } from "./schemas.js";
 
 export type MollifierDrainerHandler<TPayload> = (input: {

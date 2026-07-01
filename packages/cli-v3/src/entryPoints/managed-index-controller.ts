@@ -1,10 +1,5 @@
-import type {
-CreateBackgroundWorkerRequestBody
-} from "@trigger.dev/core/v3";
-import {
-BuildManifest,
-serializeIndexingError,
-} from "@trigger.dev/core/v3";
+import type { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
+import { BuildManifest, serializeIndexingError } from "@trigger.dev/core/v3";
 import { execOptionsForRuntime } from "@trigger.dev/core/v3/build";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";

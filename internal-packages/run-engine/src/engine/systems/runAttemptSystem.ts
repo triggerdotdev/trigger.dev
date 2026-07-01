@@ -1,11 +1,10 @@
-import type {
-  UnkeyCache} from "@internal/cache";
+import type { UnkeyCache } from "@internal/cache";
 import {
   createCache,
   createLRUMemoryStore,
   DefaultStatefulContext,
   Namespace,
-  RedisCacheStore
+  RedisCacheStore,
 } from "@internal/cache";
 import type { RedisOptions } from "@internal/redis";
 import { startSpan } from "@internal/tracing";
@@ -26,11 +25,9 @@ import type {
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunInternalError,
-  TaskRunSuccessfulExecutionResult} from "@trigger.dev/core/v3/schemas";
-import {
-  FlushedRunMetadata,
-  GitMeta
+  TaskRunSuccessfulExecutionResult,
 } from "@trigger.dev/core/v3/schemas";
+import { FlushedRunMetadata, GitMeta } from "@trigger.dev/core/v3/schemas";
 import {
   extractIdempotencyKeyScope,
   getUserProvidedIdempotencyKey,
@@ -39,10 +36,9 @@ import { parsePacket } from "@trigger.dev/core/v3/utils/ioSerialization";
 import type {
   PrismaClientOrTransaction,
   RuntimeEnvironmentType,
-  TaskRun} from "@trigger.dev/database";
-import {
-  $transaction
+  TaskRun,
 } from "@trigger.dev/database";
+import { $transaction } from "@trigger.dev/database";
 import { MAX_TASK_RUN_ATTEMPTS } from "../consts.js";
 import { runStatusFromError, ServiceValidationError } from "../errors.js";
 import { sendNotificationToWorker } from "../eventBus.js";
@@ -59,7 +55,8 @@ import type { BatchSystem } from "./batchSystem.js";
 import type { DelayedRunSystem } from "./delayedRunSystem.js";
 import type {
   EnhancedExecutionSnapshot,
-  ExecutionSnapshotSystem} from "./executionSnapshotSystem.js";
+  ExecutionSnapshotSystem,
+} from "./executionSnapshotSystem.js";
 import {
   executionResultFromSnapshot,
   getLatestExecutionSnapshot,

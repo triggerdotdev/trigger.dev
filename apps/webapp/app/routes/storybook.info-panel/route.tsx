@@ -1,12 +1,12 @@
 import {
-BellAlertIcon,
-BookOpenIcon,
-ClockIcon,
-InformationCircleIcon,
-PlusIcon,
-RocketLaunchIcon,
-ServerStackIcon,
-Squares2X2Icon
+  BellAlertIcon,
+  BookOpenIcon,
+  ClockIcon,
+  InformationCircleIcon,
+  PlusIcon,
+  RocketLaunchIcon,
+  ServerStackIcon,
+  Squares2X2Icon,
 } from "@heroicons/react/20/solid";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { LinkButton } from "~/components/primitives/Buttons";

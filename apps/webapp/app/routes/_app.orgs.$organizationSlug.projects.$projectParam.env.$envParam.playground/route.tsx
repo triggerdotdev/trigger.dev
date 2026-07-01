@@ -1,19 +1,19 @@
-import { BookOpenIcon,ChevronUpDownIcon,CpuChipIcon } from "@heroicons/react/20/solid";
-import { json,type MetaFunction } from "@remix-run/node";
-import { Outlet,useLoaderData,useNavigate,useParams } from "@remix-run/react";
+import { BookOpenIcon, ChevronUpDownIcon, CpuChipIcon } from "@heroicons/react/20/solid";
+import { json, type MetaFunction } from "@remix-run/node";
+import { Outlet, useLoaderData, useNavigate, useParams } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { InlineCode } from "~/components/code/InlineCode";
-import { MainCenteredContainer,PageBody,PageContainer } from "~/components/layout/AppLayout";
+import { MainCenteredContainer, PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
-import { NavBar,PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Select,SelectItem } from "~/components/primitives/Select";
-import { Table,TableBody,TableCell,TableRow } from "~/components/primitives/Table";
+import { Select, SelectItem } from "~/components/primitives/Select";
+import { Table, TableBody, TableCell, TableRow } from "~/components/primitives/Table";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
@@ -23,11 +23,7 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { playgroundPresenter } from "~/presenters/v3/PlaygroundPresenter.server";
 import { RegionsPresenter } from "~/presenters/v3/RegionsPresenter.server";
 import { requireUser } from "~/services/session.server";
-import {
-docsPath,
-EnvironmentParamSchema,
-v3PlaygroundAgentPath
-} from "~/utils/pathBuilder";
+import { docsPath, EnvironmentParamSchema, v3PlaygroundAgentPath } from "~/utils/pathBuilder";
 
 export const meta: MetaFunction = () => {
   return [{ title: "Playground | Trigger.dev" }];

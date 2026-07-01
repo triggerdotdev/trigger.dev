@@ -1,12 +1,12 @@
 import {
-ArrowTopRightOnSquareIcon,
-ChevronRightIcon,
-ExclamationTriangleIcon,
-PencilSquareIcon,
+  ArrowTopRightOnSquareIcon,
+  ChevronRightIcon,
+  ExclamationTriangleIcon,
+  PencilSquareIcon,
 } from "@heroicons/react/24/outline";
-import { Link,useFetcher,useNavigation } from "@remix-run/react";
-import { LayoutGroup,motion } from "framer-motion";
-import { type ReactNode,useCallback,useEffect,useRef,useState } from "react";
+import { Link, useFetcher, useNavigation } from "@remix-run/react";
+import { LayoutGroup, motion } from "framer-motion";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
 import { AIChatIcon } from "~/assets/icons/AIChatIcon";
 import { AIPenIcon } from "~/assets/icons/AIPenIcon";
@@ -51,61 +51,61 @@ import { useHasAdminAccess } from "~/hooks/useUser";
 import { type UserWithDashboardPreferences } from "~/models/user.server";
 import { useCurrentPlan } from "~/routes/_app.orgs.$organizationSlug/route";
 import { type FeedbackType } from "~/routes/resources.feedback";
-import { IncidentStatusPanel,useIncidentStatus } from "~/routes/resources.incidents";
+import { IncidentStatusPanel, useIncidentStatus } from "~/routes/resources.incidents";
 import { cn } from "~/utils/cn";
 import {
-accountPath,
-adminPath,
-branchesPath,
-concurrencyPath,
-limitsPath,
-logoutPath,
-newOrganizationPath,
-newProjectPath,
-organizationPath,
-organizationSettingsPath,
-organizationTeamPath,
-queryPath,
-regionsPath,
-v3ApiKeysPath,
-v3BatchesPath,
-v3BillingPath,
-v3BulkActionsPath,
-v3DashboardsLandingPath,
-v3DeploymentsPath,
-v3EnvironmentPath,
-v3EnvironmentVariablesPath,
-v3ErrorsPath,
-v3LogsPath,
-v3ModelsPath,
-v3ProjectAlertsPath,
-v3ProjectPath,
-v3ProjectSettingsGeneralPath,
-v3ProjectSettingsIntegrationsPath,
-v3PromptsPath,
-v3QueuesPath,
-v3RunsPath,
-v3SessionsPath,
-v3UsagePath,
-v3WaitpointTokensPath,
+  accountPath,
+  adminPath,
+  branchesPath,
+  concurrencyPath,
+  limitsPath,
+  logoutPath,
+  newOrganizationPath,
+  newProjectPath,
+  organizationPath,
+  organizationSettingsPath,
+  organizationTeamPath,
+  queryPath,
+  regionsPath,
+  v3ApiKeysPath,
+  v3BatchesPath,
+  v3BillingPath,
+  v3BulkActionsPath,
+  v3DashboardsLandingPath,
+  v3DeploymentsPath,
+  v3EnvironmentPath,
+  v3EnvironmentVariablesPath,
+  v3ErrorsPath,
+  v3LogsPath,
+  v3ModelsPath,
+  v3ProjectAlertsPath,
+  v3ProjectPath,
+  v3ProjectSettingsGeneralPath,
+  v3ProjectSettingsIntegrationsPath,
+  v3PromptsPath,
+  v3QueuesPath,
+  v3RunsPath,
+  v3SessionsPath,
+  v3UsagePath,
+  v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
 import { AskAI } from "../AskAI";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
-import { ConnectionIcon,DevPresencePanel,useDevPresence } from "../DevPresence";
-import { AlphaBadge,NewBadge } from "../FeatureBadges";
+import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
+import { AlphaBadge, NewBadge } from "../FeatureBadges";
 import { ImpersonationBanner } from "../ImpersonationBanner";
-import { Button,ButtonContent,LinkButton } from "../primitives/Buttons";
-import { Dialog,DialogTrigger } from "../primitives/Dialog";
+import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
+import { Dialog, DialogTrigger } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
-import { Popover,PopoverContent,PopoverMenuItem,PopoverTrigger } from "../primitives/Popover";
+import { Popover, PopoverContent, PopoverMenuItem, PopoverTrigger } from "../primitives/Popover";
 import { ShortcutKey } from "../primitives/ShortcutKey";
 import { TextLink } from "../primitives/TextLink";
 import {
-SimpleTooltip,
-Tooltip,
-TooltipContent,
-TooltipProvider,
-TooltipTrigger,
+  SimpleTooltip,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "../primitives/Tooltip";
 import { ShortcutsAutoOpen } from "../Shortcuts";
 import { CreateDashboardButton } from "./DashboardDialogs";

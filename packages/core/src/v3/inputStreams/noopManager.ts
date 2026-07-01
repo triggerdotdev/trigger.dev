@@ -1,4 +1,4 @@
-import type { InputStreamManager} from "./types.js";
+import type { InputStreamManager } from "./types.js";
 import { InputStreamOncePromise } from "./types.js";
 import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 

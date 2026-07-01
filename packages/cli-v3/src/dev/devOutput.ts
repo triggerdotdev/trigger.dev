@@ -7,7 +7,7 @@ import {
   TaskIndexingImportError,
   TaskMetadataParseError,
 } from "@trigger.dev/core/v3/errors";
-import type { TaskRunError} from "@trigger.dev/core/v3/schemas";
+import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import { TaskRunErrorCodes } from "@trigger.dev/core/v3/schemas";
 import type { DevCommandOptions } from "../commands/dev.js";
 import {

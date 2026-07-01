@@ -1,13 +1,13 @@
 import {
-RuntimeEnvironmentType,
-TaskEventKind,
-TaskEventLevel,
-TaskEventStatus,
+  RuntimeEnvironmentType,
+  TaskEventKind,
+  TaskEventLevel,
+  TaskEventStatus,
 } from "@trigger.dev/database";
-import { afterEach,beforeEach,describe,expect,it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-enrichCreatableEvents,
-setLlmPricingRegistry,
+  enrichCreatableEvents,
+  setLlmPricingRegistry,
 } from "../app/v3/utils/enrichCreatableEvents.server.js";
 
 describe("OTLPExporter", () => {

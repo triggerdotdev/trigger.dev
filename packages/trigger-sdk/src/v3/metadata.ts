@@ -1,5 +1,11 @@
 import type { DeserializedJson } from "@trigger.dev/core";
-import { type ApiRequestOptions, mergeRequestOptions, runMetadata, type RunMetadataUpdater, type AsyncIterableStream } from "@trigger.dev/core/v3";
+import {
+  type ApiRequestOptions,
+  mergeRequestOptions,
+  runMetadata,
+  type RunMetadataUpdater,
+  type AsyncIterableStream,
+} from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 import { streams } from "./streams.js";
 

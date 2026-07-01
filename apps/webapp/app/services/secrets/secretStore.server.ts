@@ -1,4 +1,4 @@
-import type { PrismaClientOrTransaction} from "~/db.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
 import { prisma } from "~/db.server";
 import { z } from "zod";
 import { env } from "~/env.server";

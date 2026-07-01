@@ -1,18 +1,10 @@
-import type { VirtualItem, Virtualizer} from "@tanstack/react-virtual";
+import type { VirtualItem, Virtualizer } from "@tanstack/react-virtual";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { motion } from "framer-motion";
-import type {
-  MutableRefObject,
-  RefObject} from "react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-} from "react";
+import type { MutableRefObject, RefObject } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { cn } from "~/utils/cn";
-import type { NodeState, NodesState} from "./reducer";
+import type { NodeState, NodesState } from "./reducer";
 import { reducer } from "./reducer";
 import { concreteStateFromInput, selectedIdFromState } from "./utils";
 

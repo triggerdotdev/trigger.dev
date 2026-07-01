@@ -2,7 +2,7 @@ import { ArrowsPointingOutIcon } from "@heroicons/react/20/solid";
 import { Clipboard, ClipboardCheck } from "lucide-react";
 import type { Language, PrismTheme } from "prism-react-renderer";
 import { Highlight, Prism } from "prism-react-renderer";
-import type { ReactNode} from "react";
+import type { ReactNode } from "react";
 import { forwardRef, useCallback, useEffect, useState } from "react";
 import { TextWrapIcon } from "~/assets/icons/TextWrapIcon";
 import { cn } from "~/utils/cn";

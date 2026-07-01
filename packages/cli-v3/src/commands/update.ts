@@ -2,7 +2,12 @@ import { confirm, intro, isCancel, log, outro } from "@clack/prompts";
 import type { Command } from "commander";
 import { detectPackageManager, installDependencies } from "nypm";
 import { dirname, join, resolve } from "path";
-import { type PackageJson, readPackageJSON, type ResolveOptions, resolvePackageJSON } from "pkg-types";
+import {
+  type PackageJson,
+  readPackageJSON,
+  type ResolveOptions,
+  resolvePackageJSON,
+} from "pkg-types";
 import type { z } from "zod";
 import { CommonCommandOptions, OutroCommandError, wrapCommandAction } from "../cli/common.js";
 import { chalkError, prettyError, prettyWarning } from "../utilities/cliOutput.js";

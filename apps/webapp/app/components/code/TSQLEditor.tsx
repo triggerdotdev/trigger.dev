@@ -1,16 +1,16 @@
-import { autocompletion,startCompletion } from "@codemirror/autocomplete";
-import { sql,StandardSQL } from "@codemirror/lang-sql";
-import { linter,lintGutter } from "@codemirror/lint";
+import { autocompletion, startCompletion } from "@codemirror/autocomplete";
+import { sql, StandardSQL } from "@codemirror/lang-sql";
+import { linter, lintGutter } from "@codemirror/lint";
 import type { ViewUpdate } from "@codemirror/view";
-import { EditorView,keymap } from "@codemirror/view";
-import { CheckIcon,ClipboardIcon,TrashIcon } from "@heroicons/react/20/solid";
+import { EditorView, keymap } from "@codemirror/view";
+import { CheckIcon, ClipboardIcon, TrashIcon } from "@heroicons/react/20/solid";
 import type { TableSchema } from "@internal/tsql";
 import {
-type ReactCodeMirrorProps,
-type UseCodeMirror,
-useCodeMirror,
+  type ReactCodeMirrorProps,
+  type UseCodeMirror,
+  useCodeMirror,
 } from "@uiw/react-codemirror";
-import { useCallback,useEffect,useMemo,useRef,useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format as formatSQL } from "sql-formatter";
 import { cn } from "~/utils/cn";
 import { Button } from "../primitives/Buttons";

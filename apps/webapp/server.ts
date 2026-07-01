@@ -139,8 +139,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
     const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
     const engineRateLimiter: RateLimitMiddleware = build.entry.module.engineRateLimiter;
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
-    const tenantContextMiddleware: RequestHandler =
-      build.entry.module.tenantContextMiddleware;
+    const tenantContextMiddleware: RequestHandler = build.entry.module.tenantContextMiddleware;
 
     app.use((req, res, next) => {
       // helpful headers:

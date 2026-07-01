@@ -1,4 +1,4 @@
-import { createElement,type ReactNode } from "react";
+import { createElement, type ReactNode } from "react";
 import { z } from "zod";
 
 export const LogLevelSchema = z.enum(["TRACE", "DEBUG", "INFO", "WARN", "ERROR"]);

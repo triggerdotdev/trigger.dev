@@ -1,32 +1,32 @@
 import type {
-ClickHouse,
-LlmMetricsV1Input,
-MetricsV1Input,
-TaskEventDetailedSummaryV1Result,
-TaskEventDetailsV1Result,
-TaskEventSummaryV1Result,
-TaskEventV1Input,
-TaskEventV2Input,
+  ClickHouse,
+  LlmMetricsV1Input,
+  MetricsV1Input,
+  TaskEventDetailedSummaryV1Result,
+  TaskEventDetailsV1Result,
+  TaskEventSummaryV1Result,
+  TaskEventV1Input,
+  TaskEventV2Input,
 } from "@internal/clickhouse";
-import type { Attributes,Tracer } from "@internal/tracing";
-import { startSpan,trace } from "@internal/tracing";
+import type { Attributes, Tracer } from "@internal/tracing";
+import { startSpan, trace } from "@internal/tracing";
 
 import { createJsonErrorObject } from "@trigger.dev/core/v3/errors";
 import { serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import type {
-AttemptFailedSpanEvent,
-CancellationSpanEvent,
-ExceptionSpanEvent,
-OtherSpanEvent,
-SpanEvents,
-TaskEventStyle,
-TaskRunError
+  AttemptFailedSpanEvent,
+  CancellationSpanEvent,
+  ExceptionSpanEvent,
+  OtherSpanEvent,
+  SpanEvents,
+  TaskEventStyle,
+  TaskRunError,
 } from "@trigger.dev/core/v3/schemas";
 import {
-isAttemptFailedSpanEvent,
-isCancellationSpanEvent,
-isExceptionSpanEvent,
-PRIMARY_VARIANT
+  isAttemptFailedSpanEvent,
+  isCancellationSpanEvent,
+  isExceptionSpanEvent,
+  PRIMARY_VARIANT,
 } from "@trigger.dev/core/v3/schemas";
 import { SemanticInternalAttributes } from "@trigger.dev/core/v3/semanticInternalAttributes";
 import { unflattenAttributes } from "@trigger.dev/core/v3/utils/flattenAttributes";
@@ -36,39 +36,39 @@ import { DynamicFlushScheduler } from "../dynamicFlushScheduler.server";
 import { tracePubSub } from "../services/tracePubSub.server";
 import type { TaskEventStoreTable } from "../taskEventStore.server";
 import {
-calculateDurationFromStart,
-calculateDurationFromStartJsDate,
-convertDateToNanoseconds,
-createExceptionPropertiesFromError,
-extractContextFromCarrier,
-generateDeterministicSpanId,
-generateSpanId,
-generateTraceId,
-getNowInNanoseconds,
-parseEventsField,
-removePrivateProperties
+  calculateDurationFromStart,
+  calculateDurationFromStartJsDate,
+  convertDateToNanoseconds,
+  createExceptionPropertiesFromError,
+  extractContextFromCarrier,
+  generateDeterministicSpanId,
+  generateSpanId,
+  generateTraceId,
+  getNowInNanoseconds,
+  parseEventsField,
+  removePrivateProperties,
 } from "./common.server";
 import type {
-CompleteableTaskRun,
-CreateEventInput,
-EventBuilder,
-IEventRepository,
-RunPreparedEvent,
-SpanDetail,
-SpanDetailedSummary,
-SpanOverride,
-SpanSummary,
-SpanSummaryCommon,
-StreamedTraceEvent,
-TraceAttributes,
-TraceDetailedSummary,
-TraceEventOptions,
-TraceSummary,
+  CompleteableTaskRun,
+  CreateEventInput,
+  EventBuilder,
+  IEventRepository,
+  RunPreparedEvent,
+  SpanDetail,
+  SpanDetailedSummary,
+  SpanOverride,
+  SpanSummary,
+  SpanSummaryCommon,
+  StreamedTraceEvent,
+  TraceAttributes,
+  TraceDetailedSummary,
+  TraceEventOptions,
+  TraceSummary,
 } from "./eventRepository.types";
 import {
-isClickHouseJsonParseError,
-parseRowNumberFromError,
-sanitizeRows,
+  isClickHouseJsonParseError,
+  parseRowNumberFromError,
+  sanitizeRows,
 } from "./sanitizeRowsOnParseError.server";
 
 export type ClickhouseEventRepositoryConfig = {

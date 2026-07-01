@@ -1,29 +1,29 @@
-import { getFormProps,getInputProps,useForm } from "@conform-to/react";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
-import { CheckCircleIcon,LockClosedIcon,PlusIcon } from "@heroicons/react/20/solid";
+import { CheckCircleIcon, LockClosedIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { DialogClose } from "@radix-ui/react-dialog";
 import {
-Form,
-useActionData,
-useLocation,
-useNavigate,
-useNavigation,
-useSearchParams,
+  Form,
+  useActionData,
+  useLocation,
+  useNavigate,
+  useNavigation,
+  useSearchParams,
 } from "@remix-run/react";
-import { type LoaderFunctionArgs,json } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs, json } from "@remix-run/server-runtime";
 import { GitBranchIcon } from "lucide-react";
-import { useEffect,useState } from "react";
-import { typedjson,useTypedFetcher } from "remix-typedjson";
+import { useEffect, useState } from "react";
+import { typedjson, useTypedFetcher } from "remix-typedjson";
 import { z } from "zod";
 import {
-EnvironmentIcon,
-environmentFullTitle,
-environmentTextClassName,
+  EnvironmentIcon,
+  environmentFullTitle,
+  environmentTextClassName,
 } from "~/components/environments/EnvironmentLabel";
 import { OctoKitty } from "~/components/GitHubLoginButton";
 import { Button } from "~/components/primitives/Buttons";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Dialog,DialogContent,DialogHeader,DialogTrigger } from "~/components/primitives/Dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -33,16 +33,16 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { PermissionLink } from "~/components/primitives/PermissionLink";
-import { Select,SelectItem } from "~/components/primitives/Select";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { SpinnerWhite } from "~/components/primitives/Spinner";
 import { Switch } from "~/components/primitives/Switch";
 import { TextLink } from "~/components/primitives/TextLink";
 import { InfoIconTooltip } from "~/components/primitives/Tooltip";
 import {
-redirectBackWithErrorMessage,
-redirectBackWithSuccessMessage,
-redirectWithErrorMessage,
-redirectWithSuccessMessage,
+  redirectBackWithErrorMessage,
+  redirectBackWithSuccessMessage,
+  redirectWithErrorMessage,
+  redirectWithSuccessMessage,
 } from "~/models/message.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { findProjectBySlug } from "~/models/project.server";
@@ -57,9 +57,9 @@ import { requireUserId } from "~/services/session.server";
 import { VercelIntegrationService } from "~/services/vercelIntegration.server";
 import { cn } from "~/utils/cn";
 import {
-EnvironmentParamSchema,
-githubAppInstallPath,
-v3ProjectSettingsIntegrationsPath,
+  EnvironmentParamSchema,
+  githubAppInstallPath,
+  v3ProjectSettingsIntegrationsPath,
 } from "~/utils/pathBuilder";
 import { type BranchTrackingConfig } from "~/v3/github";
 

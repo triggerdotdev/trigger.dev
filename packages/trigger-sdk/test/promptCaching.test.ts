@@ -2,9 +2,9 @@
 import { mockChatAgent } from "../src/v3/test/index.js";
 
 import type { LanguageModelV3StreamPart } from "@ai-sdk/provider";
-import { simulateReadableStream,streamText } from "ai";
+import { simulateReadableStream, streamText } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
-import { describe,expect,it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { chat } from "../src/v3/ai.js";
 
 function userMessage(text: string, id?: string) {

@@ -1,4 +1,4 @@
-import type { ActionFunctionArgs} from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { ImportEnvironmentVariablesRequestBody } from "@trigger.dev/core/v3";
 import { parse } from "dotenv";

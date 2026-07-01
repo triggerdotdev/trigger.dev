@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import type { ScheduleObject} from "@trigger.dev/core/v3";
+import type { ScheduleObject } from "@trigger.dev/core/v3";
 import { UpdateScheduleOptions } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { Prisma, prisma } from "~/db.server";

@@ -1,4 +1,4 @@
-import type { ActionFunctionArgs} from "@remix-run/server-runtime";
+import type { ActionFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { FailDeploymentRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";

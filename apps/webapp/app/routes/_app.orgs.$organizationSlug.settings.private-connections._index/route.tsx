@@ -1,35 +1,35 @@
 import {
-BookOpenIcon,
-ClipboardDocumentIcon,
-PlusIcon,
-TrashIcon,
+  BookOpenIcon,
+  ClipboardDocumentIcon,
+  PlusIcon,
+  TrashIcon,
 } from "@heroicons/react/20/solid";
-import { Form,useRevalidator,type MetaFunction } from "@remix-run/react";
-import { json,type ActionFunctionArgs,type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { Form, useRevalidator, type MetaFunction } from "@remix-run/react";
+import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
 import type { PrivateLinkConnectionStatus } from "@trigger.dev/platform";
-import { useMemo,useState } from "react";
-import { redirect,typedjson,useTypedLoaderData } from "remix-typedjson";
+import { useMemo, useState } from "react";
+import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
-MainHorizontallyCenteredContainer,
-PageBody,
-PageContainer,
+  MainHorizontallyCenteredContainer,
+  PageBody,
+  PageContainer,
 } from "~/components/layout/AppLayout";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { Header2 } from "~/components/primitives/Headers";
-import { NavBar,PageAccessories,PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { prisma } from "~/db.server";
 import { useInterval } from "~/hooks/useInterval";
-import { redirectWithErrorMessage,redirectWithSuccessMessage } from "~/models/message.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
-import { deletePrivateLink,getPrivateLinks } from "~/services/platform.v3.server";
+import { deletePrivateLink, getPrivateLinks } from "~/services/platform.v3.server";
 import { requireUserId } from "~/services/session.server";
 import {
-docsPath,
-OrganizationParamsSchema,
-organizationPath,
-v3PrivateConnectionsPath,
+  docsPath,
+  OrganizationParamsSchema,
+  organizationPath,
+  v3PrivateConnectionsPath,
 } from "~/utils/pathBuilder";
 import { canAccessPrivateConnections } from "~/v3/canAccessPrivateConnections.server";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";

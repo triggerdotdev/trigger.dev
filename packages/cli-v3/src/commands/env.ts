@@ -1,4 +1,4 @@
-import { confirm,intro,isCancel,log,outro } from "@clack/prompts";
+import { confirm, intro, isCancel, log, outro } from "@clack/prompts";
 import { tryCatch } from "@trigger.dev/core";
 import chalk from "chalk";
 import Table from "cli-table3";
@@ -7,10 +7,10 @@ import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 import {
-CommonCommandOptions,
-commonOptions,
-handleTelemetry,
-wrapCommandAction,
+  CommonCommandOptions,
+  commonOptions,
+  handleTelemetry,
+  wrapCommandAction,
 } from "../cli/common.js";
 import { loadConfig } from "../config.js";
 import { printInitialBanner } from "../utilities/initialBanner.js";

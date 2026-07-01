@@ -2,12 +2,12 @@ import { resolveSync as esmResolve } from "mlly";
 import { fileURLToPath } from "node:url";
 import stripAnsi from "strip-ansi";
 import { x } from "tinyexec";
-import { getPackageJson,tryResolveTriggerPackageVersion } from "../../commands/update.js";
+import { getPackageJson, tryResolveTriggerPackageVersion } from "../../commands/update.js";
 import { VERSION } from "../../version.js";
 import { toolsMetadata } from "../config.js";
 import type { McpContext } from "../context.js";
-import { DeployInput,ListDeploysInput } from "../schemas.js";
-import { respondWithError,toolHandler } from "../utils.js";
+import { DeployInput, ListDeploysInput } from "../schemas.js";
+import { respondWithError, toolHandler } from "../utils.js";
 
 export const deployTool = {
   name: toolsMetadata.deploy.name,

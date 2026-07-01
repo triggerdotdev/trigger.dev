@@ -7,7 +7,7 @@ import { tryCatch } from "@trigger.dev/core";
 import Redis from "ioredis";
 import path from "path";
 import { isDebug } from "std-env";
-import type { StartedNetwork, StartedTestContainer} from "testcontainers";
+import type { StartedNetwork, StartedTestContainer } from "testcontainers";
 import { GenericContainer, Wait } from "testcontainers";
 import { x } from "tinyexec";
 import type { TestContext } from "vitest";

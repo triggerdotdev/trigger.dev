@@ -8,7 +8,7 @@ import { z } from "zod";
 import { env } from "~/env.server";
 import type { RedisWithClusterOptions } from "~/redis.server";
 import { logger } from "./logger.server";
-import type { Duration, Limiter} from "./rateLimiter.server";
+import type { Duration, Limiter } from "./rateLimiter.server";
 import { createRedisRateLimitClient, RateLimiter } from "./rateLimiter.server";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
 

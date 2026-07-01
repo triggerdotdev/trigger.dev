@@ -1,12 +1,12 @@
 import { containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
-import type { DequeuedMessage} from "@trigger.dev/core/v3";
-import {TaskRunErrorCodes } from "@trigger.dev/core/v3";
+import type { DequeuedMessage } from "@trigger.dev/core/v3";
+import { TaskRunErrorCodes } from "@trigger.dev/core/v3";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { setTimeout } from "node:timers/promises";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
-import { setupAuthenticatedEnvironment,setupBackgroundWorker } from "./setup.js";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 

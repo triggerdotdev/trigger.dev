@@ -1,8 +1,8 @@
 import { ArrowPathIcon } from "@heroicons/react/20/solid";
-import { useEffect,useRef,useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { LogLevelTooltipInfo } from "~/components/LogLevelTooltipInfo";
-import { Button,LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -14,15 +14,15 @@ import { DateTimeAccurate } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
 import { Spinner } from "../primitives/Spinner";
 import {
-Table,
-TableBlankRow,
-TableBody,
-TableCell,
-TableCellMenu,
-TableHeader,
-TableHeaderCell,
-TableRow,
-type TableVariant,
+  Table,
+  TableBlankRow,
+  TableBody,
+  TableCell,
+  TableCellMenu,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
+  type TableVariant,
 } from "../primitives/Table";
 import { LogLevel } from "./LogLevel";
 

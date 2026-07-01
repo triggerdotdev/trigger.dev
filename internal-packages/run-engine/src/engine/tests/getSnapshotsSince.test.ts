@@ -2,13 +2,11 @@ import { containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { setTimeout } from "node:timers/promises";
-import { describe,expect } from "vitest";
+import { describe, expect } from "vitest";
 import { RunEngine } from "../index.js";
-import { copySnapshotsToReplica,createTestMetricsMeter } from "./helpers/replicaTestHelpers.js";
-import {
-setupTestScenario
-} from "./helpers/snapshotTestHelpers.js";
-import { setupAuthenticatedEnvironment,setupBackgroundWorker } from "./setup.js";
+import { copySnapshotsToReplica, createTestMetricsMeter } from "./helpers/replicaTestHelpers.js";
+import { setupTestScenario } from "./helpers/snapshotTestHelpers.js";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 120_000 });
 

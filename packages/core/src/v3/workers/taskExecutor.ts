@@ -1,4 +1,4 @@
-import type { Context} from "@opentelemetry/api";
+import type { Context } from "@opentelemetry/api";
 import { context, SpanKind } from "@opentelemetry/api";
 import { promiseWithResolvers } from "../../utils.js";
 import type { ApiError, RateLimitError } from "../apiClient/errors.js";
@@ -37,12 +37,9 @@ import type {
   TaskRunContext,
   TaskRunExecution,
   TaskRunExecutionResult,
-  TaskRunExecutionRetry} from "../schemas/index.js";
-import {
-  COLD_VARIANT,
-  TaskRunErrorCodes,
-  WARM_VARIANT,
+  TaskRunExecutionRetry,
 } from "../schemas/index.js";
+import { COLD_VARIANT, TaskRunErrorCodes, WARM_VARIANT } from "../schemas/index.js";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import type { TriggerTracer } from "../tracer.js";
 import { tryCatch } from "../tryCatch.js";

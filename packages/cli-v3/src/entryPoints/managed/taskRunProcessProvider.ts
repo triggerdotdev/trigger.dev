@@ -1,4 +1,4 @@
-import type { WorkerManifest} from "@trigger.dev/core/v3";
+import type { WorkerManifest } from "@trigger.dev/core/v3";
 import { generateFriendlyId } from "@trigger.dev/core/v3";
 import { TaskRunProcess } from "../../executions/taskRunProcess.js";
 import type { RunnerEnv } from "./env.js";

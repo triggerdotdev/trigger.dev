@@ -1,11 +1,6 @@
 import type { ApiClient } from "../apiClient/index.js";
-import type {
-  InputStreamManager,
-  InputStreamOnceResult} from "./types.js";
-import {
-  InputStreamOncePromise,
-  InputStreamTimeoutError,
-} from "./types.js";
+import type { InputStreamManager, InputStreamOnceResult } from "./types.js";
+import { InputStreamOncePromise, InputStreamTimeoutError } from "./types.js";
 import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 import { computeReconnectDelayMs } from "../utils/reconnectBackoff.js";
 

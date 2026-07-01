@@ -1,13 +1,5 @@
-import type {
-  Counter,
-  Histogram,
-  Meter,
-  Tracer} from "@internal/tracing";
-import {
-  getMeter,
-  getTracer,
-  startSpan
-} from "@internal/tracing";
+import type { Counter, Histogram, Meter, Tracer } from "@internal/tracing";
+import { getMeter, getTracer, startSpan } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import type { PrismaClient } from "@trigger.dev/database";
 import { Worker, type JobHandlerParams } from "@trigger.dev/redis-worker";

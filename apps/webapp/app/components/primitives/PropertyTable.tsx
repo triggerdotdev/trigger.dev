@@ -23,6 +23,8 @@ function PropertyValue({ children, className }: ChildrenClassName) {
 }
 
 export {
-PropertyItem as Item,
-PropertyLabel as Label,PropertyTable as Table,PropertyValue as Value
+  PropertyItem as Item,
+  PropertyLabel as Label,
+  PropertyTable as Table,
+  PropertyValue as Value,
 };

@@ -1,6 +1,10 @@
 import * as k8s from "@kubernetes/client-node";
-import { TaskRunErrorCodes,type Prettify,type TaskRunInternalError } from "@trigger.dev/core/v3";
-import { EXIT_CODE_ALREADY_HANDLED,EXIT_CODE_CHILD_NONZERO,SimpleLogger } from "@trigger.dev/core/v3/apps";
+import { TaskRunErrorCodes, type Prettify, type TaskRunInternalError } from "@trigger.dev/core/v3";
+import {
+  EXIT_CODE_ALREADY_HANDLED,
+  EXIT_CODE_CHILD_NONZERO,
+  SimpleLogger,
+} from "@trigger.dev/core/v3/apps";
 import PQueue from "p-queue";
 import { setTimeout } from "timers/promises";
 

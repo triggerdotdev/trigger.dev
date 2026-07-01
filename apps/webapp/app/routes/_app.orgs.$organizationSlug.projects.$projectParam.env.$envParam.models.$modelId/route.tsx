@@ -2,10 +2,10 @@ import { ArrowsRightLeftIcon } from "@heroicons/react/20/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { useState } from "react";
-import { typedjson,useTypedLoaderData } from "remix-typedjson";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { InlineCode } from "~/components/code/InlineCode";
-import { PageBody,PageContainer } from "~/components/layout/AppLayout";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import type { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 import { Badge } from "~/components/primitives/Badge";
 import { LinkButton } from "~/components/primitives/Buttons";
@@ -13,9 +13,9 @@ import { Callout } from "~/components/primitives/Callout";
 import { Header2 } from "~/components/primitives/Headers";
 import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
-import { NavBar,PageAccessories,PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import * as Property from "~/components/primitives/PropertyTable";
-import { TabButton,TabContainer } from "~/components/primitives/Tabs";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
@@ -26,13 +26,13 @@ import { MetricWidget } from "~/routes/resources.metric";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUserId } from "~/services/session.server";
 import {
-formatFeature,
-formatModelCost,
-formatModelPrice,
-formatProviderName,
-formatTokenCount,
+  formatFeature,
+  formatModelCost,
+  formatModelPrice,
+  formatProviderName,
+  formatTokenCount,
 } from "~/utils/modelFormatters";
-import { EnvironmentParamSchema,v3ModelComparePath,v3ModelsPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3ModelComparePath, v3ModelsPath } from "~/utils/pathBuilder";
 
 const ParamSchema = EnvironmentParamSchema.extend({
   modelId: z.string(),

@@ -1,4 +1,4 @@
-import type { ActionFunctionArgs, LoaderFunctionArgs} from "@remix-run/server-runtime";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { CreateEnvironmentVariableRequestBody } from "@trigger.dev/core/v3";
 import { z } from "zod";

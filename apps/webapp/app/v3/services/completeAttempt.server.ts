@@ -6,7 +6,8 @@ import type {
   TaskRunExecutionRetry,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
-  V3TaskRunExecution} from "@trigger.dev/core/v3";
+  V3TaskRunExecution,
+} from "@trigger.dev/core/v3";
 import {
   TaskRunContext,
   TaskRunErrorCodes,
@@ -26,7 +27,7 @@ import { marqs } from "~/v3/marqs/index.server";
 import { FailedTaskRunRetryHelper } from "../failedTaskRun.server";
 import { socketIo } from "../handleSocketIo.server";
 import { createExceptionPropertiesFromError } from "../eventRepository/common.server";
-import type { FAILED_RUN_STATUSES} from "../taskStatus";
+import type { FAILED_RUN_STATUSES } from "../taskStatus";
 import { isFinalAttemptStatus, isFinalRunStatus } from "../taskStatus";
 import { BaseService } from "./baseService.server";
 import { CancelAttemptService } from "./cancelAttempt.server";

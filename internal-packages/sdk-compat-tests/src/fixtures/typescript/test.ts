@@ -5,11 +5,7 @@
  * It tests type inference, generics, and type-only imports.
  */
 
-import {
-queue,
-task,
-type RetryOptions
-} from "@trigger.dev/sdk";
+import { queue, task, type RetryOptions } from "@trigger.dev/sdk";
 
 // Type-only import test
 

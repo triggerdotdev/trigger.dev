@@ -1,4 +1,4 @@
-import { ClickHouse,getPayloadField,getTaskRunField } from "@internal/clickhouse";
+import { ClickHouse, getPayloadField, getTaskRunField } from "@internal/clickhouse";
 import { replicationContainerTest } from "@internal/testcontainers";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";

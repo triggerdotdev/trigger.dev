@@ -1,11 +1,11 @@
-import { intro,outro } from "@clack/prompts";
+import { intro, outro } from "@clack/prompts";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { VERSION } from "@trigger.dev/core";
 import { tryCatch } from "@trigger.dev/core/utils";
 import type { Command } from "commander";
 import { z } from "zod";
-import { CommonCommandOptions,commonOptions,wrapCommandAction } from "../cli/common.js";
+import { CommonCommandOptions, commonOptions, wrapCommandAction } from "../cli/common.js";
 import { CLOUD_API_URL } from "../consts.js";
 import { serverMetadata } from "../mcp/config.js";
 import { McpContext } from "../mcp/context.js";

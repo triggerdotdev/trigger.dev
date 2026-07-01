@@ -8,12 +8,12 @@ import { createRedisClient } from "~/redis.server";
 import { longPollingFetch } from "~/utils/longPollingFetch";
 import { logger } from "./logger.server";
 import { jumpHash } from "@trigger.dev/core/v3/serverOnly";
-import type { Cache} from "@unkey/cache";
+import type { Cache } from "@unkey/cache";
 import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { createLRUMemoryStore } from "@internal/cache";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
 import { env } from "~/env.server";
-import type { API_VERSIONS} from "~/api/versions";
+import type { API_VERSIONS } from "~/api/versions";
 import { CURRENT_API_VERSION } from "~/api/versions";
 
 export interface CachedLimitProvider {

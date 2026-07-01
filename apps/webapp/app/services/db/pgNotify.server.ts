@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { PrismaClient} from "~/db.server";
+import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import type { NotificationCatalog, NotificationChannel } from "./types";

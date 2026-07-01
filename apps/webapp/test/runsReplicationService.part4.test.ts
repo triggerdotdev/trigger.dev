@@ -5,7 +5,7 @@ import { z } from "zod";
 import { TaskRunStatus } from "~/database-types";
 import { RunsReplicationService } from "~/services/runsReplicationService.server";
 import { TestReplicationClickhouseFactory } from "./utils/testReplicationClickhouseFactory";
-import { createInMemoryMetrics,createInMemoryTracing } from "./utils/tracing";
+import { createInMemoryMetrics, createInMemoryTracing } from "./utils/tracing";
 
 vi.setConfig({ testTimeout: 60_000 });
 

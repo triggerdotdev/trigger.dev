@@ -2,7 +2,7 @@ import type { Logger } from "@trigger.dev/core/logger";
 import type { Redis } from "ioredis";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import type { MarQS} from "./index.server";
+import type { MarQS } from "./index.server";
 import { marqs as marqsv3 } from "./index.server";
 import { env } from "~/env.server";
 

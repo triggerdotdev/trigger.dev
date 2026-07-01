@@ -1,5 +1,5 @@
-import { createRedisClient,type Redis } from "@internal/redis";
-import { SpanKind,type Span } from "@internal/tracing";
+import { createRedisClient, type Redis } from "@internal/redis";
+import { SpanKind, type Span } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { nanoid } from "nanoid";
 import { setInterval } from "node:timers/promises";
@@ -9,25 +9,25 @@ import { ConcurrencyManager } from "./concurrency.js";
 import { MasterQueue } from "./masterQueue.js";
 import { type RetryStrategy } from "./retry.js";
 import {
-BatchedSpanManager,
-FairQueueAttributes,
-FairQueueTelemetry,
-MessagingAttributes,
+  BatchedSpanManager,
+  FairQueueAttributes,
+  FairQueueTelemetry,
+  MessagingAttributes,
 } from "./telemetry.js";
 import { TenantDispatch } from "./tenantDispatch.js";
 import type {
-DeadLetterMessage,
-DispatchSchedulerContext,
-EnqueueBatchOptions,
-EnqueueOptions,
-FairQueueKeyProducer,
-FairQueueOptions,
-FairScheduler,
-QueueCooloffState,
-QueueDescriptor,
-SchedulerContext,
-StoredMessage,
-TenantQueues,
+  DeadLetterMessage,
+  DispatchSchedulerContext,
+  EnqueueBatchOptions,
+  EnqueueOptions,
+  FairQueueKeyProducer,
+  FairQueueOptions,
+  FairScheduler,
+  QueueCooloffState,
+  QueueDescriptor,
+  SchedulerContext,
+  StoredMessage,
+  TenantQueues,
 } from "./types.js";
 import { VisibilityManager } from "./visibility.js";
 import { WorkerQueueManager } from "./workerQueue.js";

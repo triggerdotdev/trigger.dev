@@ -11,7 +11,8 @@ import type {
   ResourceMetrics,
   ResourceSpans,
   Span,
-  Span_Event} from "@trigger.dev/otlp-importer";
+  Span_Event,
+} from "@trigger.dev/otlp-importer";
 import {
   ExportLogsServiceResponse,
   ExportMetricsServiceResponse,

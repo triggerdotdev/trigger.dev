@@ -1,15 +1,15 @@
 import {
-CreditCardIcon,
-ExclamationCircleIcon,
-ExclamationTriangleIcon,
-InformationCircleIcon,
-LightBulbIcon,
+  CreditCardIcon,
+  ExclamationCircleIcon,
+  ExclamationTriangleIcon,
+  InformationCircleIcon,
+  LightBulbIcon,
 } from "@heroicons/react/20/solid";
 import {
-ArrowTopRightOnSquareIcon,
-BookOpenIcon,
-CheckCircleIcon,
-ChevronRightIcon
+  ArrowTopRightOnSquareIcon,
+  BookOpenIcon,
+  CheckCircleIcon,
+  ChevronRightIcon,
 } from "@heroicons/react/24/solid";
 import { Link } from "@remix-run/react";
 import { cn } from "~/utils/cn";

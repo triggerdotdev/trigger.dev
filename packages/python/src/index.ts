@@ -1,5 +1,4 @@
-import type {
-  AsyncIterableStream} from "@trigger.dev/core/v3";
+import type { AsyncIterableStream } from "@trigger.dev/core/v3";
 import {
   createAsyncIterableStreamFromAsyncIterable,
   SemanticInternalAttributes,

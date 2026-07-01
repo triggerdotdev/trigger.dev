@@ -109,7 +109,8 @@ function chatIdFromUrl(urlStr: string): string | undefined {
 
 const _DEFAULT_RUN_ID = "run_default";
 const _DEFAULT_SESSION_ID = "session_default";
-const _DEFAULT_SESSION_PAT = "pat_session_default";function defaultAppendResponse(): Response {
+const _DEFAULT_SESSION_PAT = "pat_session_default";
+function defaultAppendResponse(): Response {
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,
     headers: { "content-type": "application/json" },

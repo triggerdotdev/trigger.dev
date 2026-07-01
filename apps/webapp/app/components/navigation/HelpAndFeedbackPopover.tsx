@@ -1,6 +1,6 @@
 import { ArrowUpRightIcon } from "@heroicons/react/20/solid";
 import { motion } from "framer-motion";
-import { Fragment,useState } from "react";
+import { Fragment, useState } from "react";
 import { BookIcon } from "~/assets/icons/BookIcon";
 import { BulbIcon } from "~/assets/icons/BulbIcon";
 import { EnvelopeIcon } from "~/assets/icons/EnvelopeIcon";
@@ -15,7 +15,7 @@ import { Feedback } from "../Feedback";
 import { Shortcuts } from "../Shortcuts";
 import { Button } from "../primitives/Buttons";
 import { Paragraph } from "../primitives/Paragraph";
-import { Popover,PopoverContent,PopoverTrigger } from "../primitives/Popover";
+import { Popover, PopoverContent, PopoverTrigger } from "../primitives/Popover";
 import { ShortcutKey } from "../primitives/ShortcutKey";
 import { SimpleTooltip } from "../primitives/Tooltip";
 import { SideMenuItem } from "./SideMenuItem";

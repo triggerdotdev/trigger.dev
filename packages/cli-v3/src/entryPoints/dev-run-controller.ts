@@ -6,12 +6,13 @@ import type {
   TaskRunExecution,
   TaskRunExecutionMetrics,
   TaskRunExecutionResult,
-  TaskRunFailedExecutionResult} from "@trigger.dev/core/v3";
+  TaskRunFailedExecutionResult,
+} from "@trigger.dev/core/v3";
 import {
   IntervalService,
   isManualOutOfMemoryError,
   isOOMRunError,
-  SuspendedProcessError
+  SuspendedProcessError,
 } from "@trigger.dev/core/v3";
 import { type WorkloadRunAttemptStartResponseBody } from "@trigger.dev/core/v3/workers";
 import { setTimeout as sleep } from "timers/promises";

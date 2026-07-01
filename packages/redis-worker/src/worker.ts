@@ -1,5 +1,16 @@
 import { type Redis, createRedisClient, type RedisOptions } from "@internal/redis";
-import { type Attributes, type Histogram, type Meter, type ObservableResult, type Tracer, metrics, SpanKind, startSpan, trace, ValueType } from "@internal/tracing";
+import {
+  type Attributes,
+  type Histogram,
+  type Meter,
+  type ObservableResult,
+  type Tracer,
+  metrics,
+  SpanKind,
+  startSpan,
+  trace,
+  ValueType,
+} from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
 import { calculateNextRetryDelay } from "@trigger.dev/core/v3";
 import { type RetryOptions } from "@trigger.dev/core/v3/schemas";

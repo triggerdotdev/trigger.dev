@@ -1,38 +1,37 @@
 import type {
-BackgroundWorkerMetadata,
-BackgroundWorkerSourceFileMetadata,
-CreateBackgroundWorkerRequestBody,
-PromptResource,
-QueueManifest,
-TaskResource} from "@trigger.dev/core/v3";
-import {
-tryCatch,
+  BackgroundWorkerMetadata,
+  BackgroundWorkerSourceFileMetadata,
+  CreateBackgroundWorkerRequestBody,
+  PromptResource,
+  QueueManifest,
+  TaskResource,
 } from "@trigger.dev/core/v3";
-import { BackgroundWorkerId,stringifyDuration } from "@trigger.dev/core/v3/isomorphic";
-import type { BackgroundWorker,TaskQueue,TaskQueueType } from "@trigger.dev/database";
+import { tryCatch } from "@trigger.dev/core/v3";
+import { BackgroundWorkerId, stringifyDuration } from "@trigger.dev/core/v3/isomorphic";
+import type { BackgroundWorker, TaskQueue, TaskQueueType } from "@trigger.dev/database";
 import cronstrue from "cronstrue";
-import type {PrismaClientOrTransaction } from "~/db.server";
-import { $transaction,Prisma } from "~/db.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
+import { $transaction, Prisma } from "~/db.server";
 import { sanitizeQueueName } from "~/models/taskQueue.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { syncTaskIdentifiers } from "~/services/taskIdentifierRegistry.server";
 import {
-type TaskMetadataCache,
-type TaskMetadataEntry,
+  type TaskMetadataCache,
+  type TaskMetadataEntry,
 } from "~/services/taskMetadataCache.server";
 import { taskMetadataCacheInstance } from "~/services/taskMetadataCacheInstance.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { engine } from "../runEngine.server";
 import {
-removeQueueConcurrencyLimits,
-updateEnvConcurrencyLimits,
-updateQueueConcurrencyLimits,
+  removeQueueConcurrencyLimits,
+  updateEnvConcurrencyLimits,
+  updateQueueConcurrencyLimits,
 } from "../runQueue.server";
 import { scheduleEngine } from "../scheduleEngine.server";
 import { calculateNextBuildVersion } from "../utils/calculateNextBuildVersion";
 import { clampMaxDuration } from "../utils/maxDuration";
-import { BaseService,ServiceValidationError } from "./baseService.server";
+import { BaseService, ServiceValidationError } from "./baseService.server";
 import { CheckScheduleService } from "./checkSchedule.server";
 import { projectPubSub } from "./projectPubSub.server";
 

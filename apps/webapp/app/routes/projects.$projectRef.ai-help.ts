@@ -1,4 +1,4 @@
-import { type LoaderFunctionArgs,redirect } from "@remix-run/server-runtime";
+import { type LoaderFunctionArgs, redirect } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";

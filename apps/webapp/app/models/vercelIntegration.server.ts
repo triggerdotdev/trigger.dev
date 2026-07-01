@@ -16,7 +16,8 @@ import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import type {
   SyncEnvVarsMapping,
-  TriggerEnvironmentType} from "~/v3/vercel/vercelProjectIntegrationSchema";
+  TriggerEnvironmentType,
+} from "~/v3/vercel/vercelProjectIntegrationSchema";
 import {
   shouldSyncEnvVar,
   envTypeToVercelTarget,

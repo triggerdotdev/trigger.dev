@@ -1,13 +1,13 @@
 import { Header1 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
-CopyableTableCell,
-Table,
-TableBody,
-TableCell,
-TableHeader,
-TableHeaderCell,
-TableRow,
+  CopyableTableCell,
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
 } from "~/components/primitives/Table";
 
 export default function Story() {

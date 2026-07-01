@@ -1,6 +1,6 @@
-import type { Span} from "@opentelemetry/api";
+import type { Span } from "@opentelemetry/api";
 import { SpanKind } from "@opentelemetry/api";
-import type { PrismaClientOrTransaction} from "~/db.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
 import { $replica, prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { attributesFromAuthenticatedEnv, tracer } from "../../v3/tracer.server";

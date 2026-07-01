@@ -1,16 +1,13 @@
-import type { PostStartCauses,PreStopCauses } from "@trigger.dev/core/v3";
+import type { PostStartCauses, PreStopCauses } from "@trigger.dev/core/v3";
 import type {
-TaskOperations,
-TaskOperationsCreateOptions,
-TaskOperationsIndexOptions,
-TaskOperationsRestoreOptions} from "@trigger.dev/core/v3/apps";
-import {
-ProviderShell,
-SimpleLogger,
-isExecaChildProcess,
+  TaskOperations,
+  TaskOperationsCreateOptions,
+  TaskOperationsIndexOptions,
+  TaskOperationsRestoreOptions,
 } from "@trigger.dev/core/v3/apps";
+import { ProviderShell, SimpleLogger, isExecaChildProcess } from "@trigger.dev/core/v3/apps";
 import { testDockerCheckpoint } from "@trigger.dev/core/v3/serverOnly";
-import { $,type ExecaChildProcess,execa } from "execa";
+import { $, type ExecaChildProcess, execa } from "execa";
 import { setTimeout } from "node:timers/promises";
 
 const MACHINE_NAME = process.env.MACHINE_NAME || "local";

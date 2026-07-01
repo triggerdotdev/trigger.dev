@@ -1,11 +1,9 @@
 import type {
   IOPacket,
   RunMetadataChangeOperation,
-  UpdateMetadataRequestBody} from "@trigger.dev/core/v3";
-import {
-  applyMetadataOperations,
-  parsePacket
+  UpdateMetadataRequestBody,
 } from "@trigger.dev/core/v3";
+import { applyMetadataOperations, parsePacket } from "@trigger.dev/core/v3";
 import type { PrismaClientOrTransaction } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { handleMetadataPacket, MetadataTooLargeError } from "~/utils/packets";

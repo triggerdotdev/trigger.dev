@@ -1,10 +1,10 @@
 import { ManualCheckpointMetadata } from "@trigger.dev/core/v3";
 import type {
-Checkpoint,
-CheckpointRestoreEvent,
-CheckpointRestoreEventType,
+  Checkpoint,
+  CheckpointRestoreEvent,
+  CheckpointRestoreEventType,
 } from "@trigger.dev/database";
-import { isTaskRunAttemptStatus,isTaskRunStatus } from "~/database-types";
+import { isTaskRunAttemptStatus, isTaskRunStatus } from "~/database-types";
 import { logger } from "~/services/logger.server";
 import { safeJsonParse } from "~/utils/json";
 import { BaseService } from "./baseService.server";

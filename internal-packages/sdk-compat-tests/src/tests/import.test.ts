@@ -5,10 +5,10 @@
  * different module systems (ESM and CJS).
  */
 
-import { execa,type Options as ExecaOptions } from "execa";
-import { dirname,resolve } from "path";
+import { execa, type Options as ExecaOptions } from "execa";
+import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
-import { describe,expect,it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = resolve(__dirname, "../fixtures");

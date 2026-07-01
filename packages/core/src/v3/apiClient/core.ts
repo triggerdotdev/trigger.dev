@@ -1,27 +1,24 @@
 import { z } from "zod";
-import { fromZodError,ValidationError } from "zod-validation-error";
+import { fromZodError, ValidationError } from "zod-validation-error";
 import type { RetryOptions } from "../schemas/index.js";
 import { calculateNextRetryDelay } from "../utils/retries.js";
-import { ApiConnectionError,ApiError,ApiSchemaValidationError } from "./errors.js";
+import { ApiConnectionError, ApiError, ApiSchemaValidationError } from "./errors.js";
 
-import type { Attributes,Span } from "@opentelemetry/api";
-import { context,propagation } from "@opentelemetry/api";
+import type { Attributes, Span } from "@opentelemetry/api";
+import { context, propagation } from "@opentelemetry/api";
 import { suppressTracing } from "@opentelemetry/core";
-import { EventSource,type ErrorEvent } from "eventsource";
+import { EventSource, type ErrorEvent } from "eventsource";
 import { SemanticInternalAttributes } from "../semanticInternalAttributes.js";
 import type { TriggerTracer } from "../tracer.js";
 import { randomUUID } from "../utils/crypto.js";
 import { accessoryAttributes } from "../utils/styleAttributes.js";
 import type {
-CursorPageParams,
-CursorPageResponse,
-OffsetLimitPageParams,
-OffsetLimitPageResponse
+  CursorPageParams,
+  CursorPageResponse,
+  OffsetLimitPageParams,
+  OffsetLimitPageResponse,
 } from "./pagination.js";
-import {
-CursorPage,
-OffsetLimitPage
-} from "./pagination.js";
+import { CursorPage, OffsetLimitPage } from "./pagination.js";
 
 export const defaultRetryOptions = {
   maxAttempts: 3,

@@ -1,15 +1,11 @@
 import type { Registry } from "prom-client";
 import { SimpleStructuredLogger } from "../../utils/structuredLogger.js";
 import { ConsumerPoolMetrics } from "./consumerPoolMetrics.js";
-import type { QueueConsumer,RunQueueConsumerOptions } from "./queueConsumer.js";
+import type { QueueConsumer, RunQueueConsumerOptions } from "./queueConsumer.js";
 import { RunQueueConsumer } from "./queueConsumer.js";
 import { QueueMetricsProcessor } from "./queueMetricsProcessor.js";
-import type {
-ScalingStrategyKind
-} from "./scalingStrategies.js";
-import {
-ScalingStrategy
-} from "./scalingStrategies.js";
+import type { ScalingStrategyKind } from "./scalingStrategies.js";
+import { ScalingStrategy } from "./scalingStrategies.js";
 
 export type QueueConsumerFactory = (opts: RunQueueConsumerOptions) => QueueConsumer;
 

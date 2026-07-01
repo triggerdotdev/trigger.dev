@@ -1,10 +1,8 @@
-import type {
-  IOPacket,
-  TriggerTaskRequestBody} from "@trigger.dev/core/v3";
+import type { IOPacket, TriggerTaskRequestBody } from "@trigger.dev/core/v3";
 import {
   packetRequiresOffloading,
   taskRunErrorEnhancer,
-  taskRunErrorToString
+  taskRunErrorToString,
 } from "@trigger.dev/core/v3";
 import {
   parseNaturalLanguageDuration,
@@ -36,13 +34,8 @@ import { BaseService, ServiceValidationError } from "./baseService.server";
 import { EnqueueDelayedRunService } from "./enqueueDelayedRun.server";
 import { enqueueRun } from "./enqueueRun.server";
 import { ExpireEnqueuedRunService } from "./expireEnqueuedRun.server";
-import type {
-  TriggerTaskServiceOptions,
-  TriggerTaskServiceResult} from "./triggerTask.server";
-import {
-  MAX_ATTEMPTS,
-  OutOfEntitlementError
-} from "./triggerTask.server";
+import type { TriggerTaskServiceOptions, TriggerTaskServiceResult } from "./triggerTask.server";
+import { MAX_ATTEMPTS, OutOfEntitlementError } from "./triggerTask.server";
 
 // This is here for backwords compatibility for v3 users
 const QueueOptions = z.object({

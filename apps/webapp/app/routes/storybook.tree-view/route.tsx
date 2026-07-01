@@ -7,7 +7,7 @@ import {
 import { useRef, useState } from "react";
 import { Button } from "~/components/primitives/Buttons";
 import { Input } from "~/components/primitives/Input";
-import type { Tree} from "~/components/primitives/TreeView/TreeView";
+import type { Tree } from "~/components/primitives/TreeView/TreeView";
 import { TreeView, flattenTree, useTree } from "~/components/primitives/TreeView/TreeView";
 import { cn } from "~/utils/cn";
 

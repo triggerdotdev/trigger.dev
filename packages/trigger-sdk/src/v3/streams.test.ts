@@ -1,6 +1,6 @@
 import type * as Core from "@trigger.dev/core/v3";
 import { realtimeStreams } from "@trigger.dev/core/v3";
-import { beforeEach,describe,expect,it,vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { streams } from "./streams.js";
 
 vi.mock("@trigger.dev/core/v3", async (importOriginal) => {

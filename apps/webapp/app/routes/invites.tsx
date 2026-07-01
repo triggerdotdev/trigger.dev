@@ -1,13 +1,13 @@
-import { getFormProps,useForm } from "@conform-to/react";
+import { getFormProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import { EnvelopeIcon } from "@heroicons/react/20/solid";
-import { type ActionFunction,type LoaderFunctionArgs,json,redirect } from "@remix-run/node";
-import { Form,useActionData } from "@remix-run/react";
-import { typedjson,useTypedLoaderData } from "remix-typedjson";
+import { type ActionFunction, type LoaderFunctionArgs, json, redirect } from "@remix-run/node";
+import { Form, useActionData } from "@remix-run/react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import simplur from "simplur";
 import { z } from "zod";
 import { BackgroundWrapper } from "~/components/BackgroundWrapper";
-import { AppContainer,MainCenteredContainer } from "~/components/layout/AppLayout";
+import { AppContainer, MainCenteredContainer } from "~/components/layout/AppLayout";
 import { Button } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormError } from "~/components/primitives/FormError";
@@ -16,15 +16,15 @@ import { Header2 } from "~/components/primitives/Headers";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
-acceptInvite,
-declineInvite,
-ENV_SETUP_INCOMPLETE,
-getUsersInvites,
-isAcceptInviteFormError,
+  acceptInvite,
+  declineInvite,
+  ENV_SETUP_INCOMPLETE,
+  getUsersInvites,
+  isAcceptInviteFormError,
 } from "~/models/member.server";
-import { redirectWithErrorMessage,redirectWithSuccessMessage } from "~/models/message.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
-import { invitesPath,rootPath } from "~/utils/pathBuilder";
+import { invitesPath, rootPath } from "~/utils/pathBuilder";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await requireUser(request);

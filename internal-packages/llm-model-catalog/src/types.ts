@@ -1,4 +1,3 @@
-
 export type PricingCondition = {
   usageDetailPattern: string;
   operator: "gt" | "gte" | "lt" | "lte" | "eq" | "neq";

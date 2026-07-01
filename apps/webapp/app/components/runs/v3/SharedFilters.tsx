@@ -1,16 +1,16 @@
 import * as Ariakit from "@ariakit/react";
 import {
-endOfDay,
-endOfMonth,
-endOfWeek,
-startOfDay,
-startOfMonth,
-startOfWeek,
-subDays,
-subWeeks,
+  endOfDay,
+  endOfMonth,
+  endOfWeek,
+  startOfDay,
+  startOfMonth,
+  startOfWeek,
+  subDays,
+  subWeeks,
 } from "date-fns";
 import parse from "parse-duration";
-import { type ReactNode,startTransition,useCallback,useEffect,useRef,useState } from "react";
+import { type ReactNode, startTransition, useCallback, useEffect, useRef, useState } from "react";
 import simplur from "simplur";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Callout } from "~/components/primitives/Callout";
@@ -21,14 +21,14 @@ import { Input } from "~/components/primitives/Input";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioButtonCircle } from "~/components/primitives/RadioButton";
-import { ComboboxProvider,SelectPopover,SelectProvider } from "~/components/primitives/Select";
+import { ComboboxProvider, SelectPopover, SelectProvider } from "~/components/primitives/Select";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { useOptionalOrganization } from "~/hooks/useOrganizations";
 import { useSearchParams } from "~/hooks/useSearchParam";
-import { type ShortcutDefinition,useShortcutKeys } from "~/hooks/useShortcutKeys";
+import { type ShortcutDefinition, useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { cn } from "~/utils/cn";
 import { organizationBillingPath } from "~/utils/pathBuilder";
-import { Button,LinkButton } from "../../primitives/Buttons";
+import { Button, LinkButton } from "../../primitives/Buttons";
 import { filterIcon } from "./RunFilters";
 
 export function FilterMenuProvider({

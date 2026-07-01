@@ -1,9 +1,9 @@
 import {
-CheckCircleIcon,
-ClockIcon,
-NoSymbolIcon,
-RectangleStackIcon,
-XCircleIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  NoSymbolIcon,
+  RectangleStackIcon,
+  XCircleIcon,
 } from "@heroicons/react/20/solid";
 import type { TaskRunAttemptStatus as TaskRunAttemptStatusType } from "@trigger.dev/database";
 import assertNever from "assert-never";

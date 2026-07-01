@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { prettyPrintPacket,TaskRunError } from "@trigger.dev/core/v3";
+import { prettyPrintPacket, TaskRunError } from "@trigger.dev/core/v3";
 import type { UseDataFunctionReturn } from "remix-typedjson";
 import { typedjson } from "remix-typedjson";
 import { RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
@@ -8,7 +8,7 @@ import { requireUserId } from "~/services/session.server";
 import { v3RunParamsSchema } from "~/utils/pathBuilder";
 import { machinePresetFromRun } from "~/v3/machinePresets.server";
 import { runStore } from "~/v3/runStore.server";
-import { FINAL_ATTEMPT_STATUSES,isFinalRunStatus } from "~/v3/taskStatus";
+import { FINAL_ATTEMPT_STATUSES, isFinalRunStatus } from "~/v3/taskStatus";
 
 export type RunInspectorData = UseDataFunctionReturn<typeof loader>;
 

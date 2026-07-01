@@ -5,10 +5,10 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import { CliApiClient } from "../apiClient.js";
 import {
-CommonCommandOptions,
-commonOptions,
-handleTelemetry,
-wrapCommandAction,
+  CommonCommandOptions,
+  commonOptions,
+  handleTelemetry,
+  wrapCommandAction,
 } from "../cli/common.js";
 import { loadConfig } from "../config.js";
 import { createGitMeta } from "../utilities/gitMeta.js";

@@ -5,10 +5,10 @@ import type { AnyZodFetchOptions } from "../zodfetch.js";
 import type { CreateStreamResponseLike } from "./streamInstance.js";
 import { StreamInstance } from "./streamInstance.js";
 import type {
-RealtimeStreamInstance,
-RealtimeStreamOperationOptions,
-RealtimeStreamsManager,
-StreamWriteResult,
+  RealtimeStreamInstance,
+  RealtimeStreamOperationOptions,
+  RealtimeStreamsManager,
+  StreamWriteResult,
 } from "./types.js";
 
 export class StandardRealtimeStreamsManager implements RealtimeStreamsManager {
@@ -232,4 +232,3 @@ function getRunIdForOptions(options?: RealtimeStreamOperationOptions): string | 
 
   return taskContext.ctx?.run?.id;
 }
-

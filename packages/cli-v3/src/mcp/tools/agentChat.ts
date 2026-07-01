@@ -1,6 +1,5 @@
 import { z } from "zod";
-import type {
-  ApiClient} from "@trigger.dev/core/v3";
+import type { ApiClient } from "@trigger.dev/core/v3";
 import {
   controlSubtype,
   SSEStreamSubscription,
@@ -275,7 +274,11 @@ export const sendAgentMessageTool = {
     }
 
     // Subscribe to the response stream and collect the full text
-    const { text: _text, toolCalls: _toolCalls, assistantMessage } = await collectAgentResponse(session);
+    const {
+      text: _text,
+      toolCalls: _toolCalls,
+      assistantMessage,
+    } = await collectAgentResponse(session);
 
     // Track the assistant response for continuation payloads
     session.messages.push(assistantMessage);

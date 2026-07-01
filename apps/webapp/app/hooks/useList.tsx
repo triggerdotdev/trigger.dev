@@ -1,4 +1,4 @@
-import type { Reducer} from "react";
+import type { Reducer } from "react";
 import { useReducer } from "react";
 
 export type ListState<T> = {

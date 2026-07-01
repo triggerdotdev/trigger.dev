@@ -1,30 +1,30 @@
 import * as Ariakit from "@ariakit/react";
-import { FingerPrintIcon,TagIcon,XMarkIcon } from "@heroicons/react/20/solid";
-import { Form,useFetcher } from "@remix-run/react";
-import { WaitpointTokenStatus,waitpointTokenStatuses } from "@trigger.dev/core/v3";
+import { FingerPrintIcon, TagIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { Form, useFetcher } from "@remix-run/react";
+import { WaitpointTokenStatus, waitpointTokenStatuses } from "@trigger.dev/core/v3";
 import { ListChecks } from "lucide-react";
 import { matchSorter } from "match-sorter";
-import { type ReactNode,useEffect,useMemo,useRef } from "react";
+import { type ReactNode, useEffect, useMemo, useRef } from "react";
 import { z } from "zod";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Button } from "~/components/primitives/Buttons";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
-ComboBox,
-SelectItem,
-SelectList,
-SelectPopover,
-SelectProvider,
-shortcutFromIndex,
+  ComboBox,
+  SelectItem,
+  SelectList,
+  SelectPopover,
+  SelectProvider,
+  shortcutFromIndex,
 } from "~/components/primitives/Select";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
-Tooltip,
-TooltipContent,
-TooltipProvider,
-TooltipTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "~/components/primitives/Tooltip";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
@@ -34,13 +34,13 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { type loader as tagsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.tags";
 import {
-appliedSummary,
-FilterMenuProvider,
-IdFilterDropdown,
-type IdFilterDropdownProps,
-TimeFilter,
+  appliedSummary,
+  FilterMenuProvider,
+  IdFilterDropdown,
+  type IdFilterDropdownProps,
+  TimeFilter,
 } from "./SharedFilters";
-import { WaitpointStatusCombo,waitpointStatusTitle } from "./WaitpointStatus";
+import { WaitpointStatusCombo, waitpointStatusTitle } from "./WaitpointStatus";
 
 export const WaitpointSearchParamsSchema = z.object({
   id: z.string().optional(),

@@ -1,5 +1,5 @@
-import { Outlet,useLoaderData } from "@remix-run/react";
-import { redirect,type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { Outlet, useLoaderData } from "@remix-run/react";
+import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { RouteErrorDisplay } from "~/components/ErrorDisplay";
 import { DashboardAgent } from "~/components/dashboard-agent/DashboardAgent";
 import { prisma } from "~/db.server";
@@ -7,7 +7,7 @@ import { updateCurrentProjectEnvironmentId } from "~/services/dashboardPreferenc
 import { logger } from "~/services/logger.server";
 import { requireUser } from "~/services/session.server";
 import { tenantContext } from "~/services/tenantContext.server";
-import { EnvironmentParamSchema,v3ProjectPath } from "~/utils/pathBuilder";
+import { EnvironmentParamSchema, v3ProjectPath } from "~/utils/pathBuilder";
 import { canAccessDashboardAgent } from "~/v3/canAccessDashboardAgent.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {

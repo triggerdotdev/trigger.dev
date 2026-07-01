@@ -1,6 +1,6 @@
 import { toolsMetadata } from "../config.js";
 import { ListPreviewBranchesInput } from "../schemas.js";
-import { respondWithError,toolHandler } from "../utils.js";
+import { respondWithError, toolHandler } from "../utils.js";
 
 export const listPreviewBranchesTool = {
   name: toolsMetadata.list_preview_branches.name,

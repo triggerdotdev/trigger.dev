@@ -1,4 +1,4 @@
-import { validateJWT,type ValidationResult } from "@trigger.dev/core/v3/jwt";
+import { validateJWT, type ValidationResult } from "@trigger.dev/core/v3/jwt";
 import { $replica } from "~/db.server";
 import { findEnvironmentById } from "~/models/runtimeEnvironment.server";
 import type { AuthenticatedEnvironment } from "../apiAuth.server";

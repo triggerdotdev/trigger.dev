@@ -1,9 +1,9 @@
-import { parseJSONC,parseTOML,stringifyJSONC,stringifyTOML } from "confbox";
+import { parseJSONC, parseTOML, stringifyJSONC, stringifyTOML } from "confbox";
 import fsSync from "fs";
 import fsModule from "fs/promises";
 import stringify from "json-stable-stringify";
 import fs from "node:fs";
-import { homedir,tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import pathModule from "node:path";
 
 // Creates a file at the given path, if the directory doesn't exist it will be created

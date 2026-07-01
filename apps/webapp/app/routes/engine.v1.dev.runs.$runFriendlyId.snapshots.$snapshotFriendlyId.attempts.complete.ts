@@ -1,11 +1,8 @@
 import type { TypedResponse } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
 import { RunId, SnapshotId } from "@trigger.dev/core/v3/isomorphic";
-import type {
-  WorkerApiRunAttemptCompleteResponseBody} from "@trigger.dev/core/v3/workers";
-import {
-  WorkerApiRunAttemptCompleteRequestBody
-} from "@trigger.dev/core/v3/workers";
+import type { WorkerApiRunAttemptCompleteResponseBody } from "@trigger.dev/core/v3/workers";
+import { WorkerApiRunAttemptCompleteRequestBody } from "@trigger.dev/core/v3/workers";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";

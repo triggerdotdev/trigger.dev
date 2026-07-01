@@ -1,6 +1,6 @@
-import type { UIMatch} from "@remix-run/react";
+import type { UIMatch } from "@remix-run/react";
 import { useMatches } from "@remix-run/react";
-import type { RemixSerializedType, UseDataFunctionReturn} from "remix-typedjson";
+import type { RemixSerializedType, UseDataFunctionReturn } from "remix-typedjson";
 import { deserializeRemix } from "remix-typedjson";
 
 type AppData = any;

@@ -1,28 +1,23 @@
-import {
-getFormProps,
-useForm,
-type FieldMetadata,
-type FormMetadata
-} from "@conform-to/react";
+import { getFormProps, useForm, type FieldMetadata, type FormMetadata } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import {
-LockClosedIcon,
-LockOpenIcon,
-NoSymbolIcon,
-PlusIcon,
-XMarkIcon,
+  LockClosedIcon,
+  LockOpenIcon,
+  NoSymbolIcon,
+  PlusIcon,
+  XMarkIcon,
 } from "@heroicons/react/20/solid";
-import { Form,useActionData,useNavigate,useNavigation } from "@remix-run/react";
+import { Form, useActionData, useNavigate, useNavigation } from "@remix-run/react";
 import { json } from "@remix-run/server-runtime";
 import dotenv from "dotenv";
-import { useCallback,useState } from "react";
+import { useCallback, useState } from "react";
 import { redirect } from "remix-typedjson";
 import invariant from "tiny-invariant";
 import { z } from "zod";
-import { EnvironmentLabel,environmentFullTitle } from "~/components/environments/EnvironmentLabel";
-import { Button,LinkButton } from "~/components/primitives/Buttons";
+import { EnvironmentLabel, environmentFullTitle } from "~/components/environments/EnvironmentLabel";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
-import { Dialog,DialogContent,DialogHeader } from "~/components/primitives/Dialog";
+import { Dialog, DialogContent, DialogHeader } from "~/components/primitives/Dialog";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormButtons } from "~/components/primitives/FormButtons";
 import { FormError } from "~/components/primitives/FormError";
@@ -31,14 +26,14 @@ import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
-import { Select,SelectItem } from "~/components/primitives/Select";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { Switch } from "~/components/primitives/Switch";
 import { TextLink } from "~/components/primitives/TextLink";
 import {
-Tooltip,
-TooltipContent,
-TooltipProvider,
-TooltipTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "~/components/primitives/Tooltip";
 import { prisma } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
@@ -48,15 +43,15 @@ import { useProject } from "~/hooks/useProject";
 import { useTypedMatchesData } from "~/hooks/useTypedMatchData";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import {
-environmentVariablesRouteId,
-type loader as environmentVariablesLoader,
+  environmentVariablesRouteId,
+  type loader as environmentVariablesLoader,
 } from "~/routes/_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.environment-variables/route";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { cn } from "~/utils/cn";
 import {
-EnvironmentParamSchema,
-v3BillingPath,
-v3EnvironmentVariablesPath,
+  EnvironmentParamSchema,
+  v3BillingPath,
+  v3EnvironmentVariablesPath,
 } from "~/utils/pathBuilder";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 import { EnvironmentVariableKey } from "~/v3/environmentVariables/repository";

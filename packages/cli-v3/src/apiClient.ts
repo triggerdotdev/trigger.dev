@@ -12,7 +12,8 @@ import type {
   UpsertBranchRequestBody,
   WorkersCreateRequestBody,
   CreateProjectRequestBody,
-  GetJWTRequestBody} from "@trigger.dev/core/v3";
+  GetJWTRequestBody,
+} from "@trigger.dev/core/v3";
 import {
   CreateAuthorizationCodeResponseSchema,
   CreateArtifactResponseBody,
@@ -47,14 +48,15 @@ import {
 import type {
   WorkloadDebugLogRequestBody,
   WorkloadHeartbeatRequestBody,
-  WorkloadRunAttemptCompleteRequestBody} from "@trigger.dev/core/v3/workers";
+  WorkloadRunAttemptCompleteRequestBody,
+} from "@trigger.dev/core/v3/workers";
 import {
   WorkloadHeartbeatResponseBody,
   WorkloadRunAttemptCompleteResponseBody,
   WorkloadRunAttemptStartResponseBody,
   WorkloadRunLatestSnapshotResponseBody,
 } from "@trigger.dev/core/v3/workers";
-import type { ApiResult} from "@trigger.dev/core/v3/zodfetch";
+import type { ApiResult } from "@trigger.dev/core/v3/zodfetch";
 import { wrapZodFetch, zodfetchSSE } from "@trigger.dev/core/v3/zodfetch";
 import { EventSource } from "eventsource";
 import { z } from "zod";

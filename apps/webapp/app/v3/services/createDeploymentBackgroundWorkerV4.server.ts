@@ -1,4 +1,4 @@
-import type { CreateBackgroundWorkerRequestBody} from "@trigger.dev/core/v3";
+import type { CreateBackgroundWorkerRequestBody } from "@trigger.dev/core/v3";
 import { logger, tryCatch } from "@trigger.dev/core/v3";
 import type {
   BackgroundWorker,

@@ -1,10 +1,6 @@
 import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
-import type {
-  InputStreamOnceResult} from "../inputStreams/types.js";
-import {
-  InputStreamOncePromise,
-  InputStreamTimeoutError,
-} from "../inputStreams/types.js";
+import type { InputStreamOnceResult } from "../inputStreams/types.js";
+import { InputStreamOncePromise, InputStreamTimeoutError } from "../inputStreams/types.js";
 
 /**
  * Re-export the run-scoped input stream once-promise machinery so callers

@@ -1,33 +1,33 @@
 import { BookOpenIcon } from "@heroicons/react/24/solid";
 import { type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { Suspense,useMemo,useState } from "react";
-import { TypedAwait,typeddefer,useTypedLoaderData } from "remix-typedjson";
+import { Suspense, useMemo, useState } from "react";
+import { TypedAwait, typeddefer, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { PageBody } from "~/components/layout/AppLayout";
-import { DirectionSchema,ListPagination } from "~/components/ListPagination";
+import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { LinkButton } from "~/components/primitives/Buttons";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
 import { ChartCard } from "~/components/primitives/charts/ChartCard";
-import { Chart,type ChartConfig } from "~/components/primitives/charts/ChartCompound";
+import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
 import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
 import { statusColor } from "~/components/primitives/charts/statusColors";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
-import { NavBar,PageAccessories,PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageAccessories, PageTitle } from "~/components/primitives/PageHeader";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
-ResizableHandle,
-ResizablePanel,
-ResizablePanelGroup,
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
 import { Spinner } from "~/components/primitives/Spinner";
-import { TabButton,TabContainer } from "~/components/primitives/Tabs";
-import { TimeFilter,timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
 import { SessionsTable } from "~/components/sessions/v1/SessionsTable";
 import { $replica } from "~/db.server";
@@ -38,19 +38,19 @@ import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
-AgentDetailPresenter,
-type AgentActivity,
-type AgentDetail,
+  AgentDetailPresenter,
+  type AgentActivity,
+  type AgentDetail,
 } from "~/presenters/v3/AgentDetailPresenter.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { SessionListPresenter } from "~/presenters/v3/SessionListPresenter.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUser } from "~/services/session.server";
 import {
-docsPath,
-EnvironmentParamSchema,
-v3EnvironmentPath,
-v3PlaygroundAgentPath,
+  docsPath,
+  EnvironmentParamSchema,
+  v3EnvironmentPath,
+  v3PlaygroundAgentPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
 

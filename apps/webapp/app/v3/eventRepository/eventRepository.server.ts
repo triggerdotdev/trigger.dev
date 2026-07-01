@@ -9,7 +9,8 @@ import type {
   SpanEvent,
   SpanEvents,
   TaskEventStyle,
-  TaskRunError} from "@trigger.dev/core/v3";
+  TaskRunError,
+} from "@trigger.dev/core/v3";
 import {
   correctErrorStackTrace,
   flattenAttributes,
@@ -21,7 +22,7 @@ import {
 } from "@trigger.dev/core/v3";
 import { serializeTraceparent } from "@trigger.dev/core/v3/isomorphic";
 import type { MetricsV1Input } from "@internal/clickhouse";
-import type { TaskEvent} from "@trigger.dev/database";
+import type { TaskEvent } from "@trigger.dev/database";
 import { Prisma, TaskEventKind } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 import { Gauge } from "prom-client";

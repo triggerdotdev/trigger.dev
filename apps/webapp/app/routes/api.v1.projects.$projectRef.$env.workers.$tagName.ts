@@ -1,14 +1,14 @@
-import { json,type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { type GetWorkerByTagResponse } from "@trigger.dev/core/v3/schemas";
-import { isUserActorToken,verifyUserActorToken } from "@trigger.dev/rbac";
+import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
 import { z } from "zod";
 import { $replica } from "~/db.server";
 import { env as $env } from "~/env.server";
 import {
-authenticatedEnvironmentForAuthentication,
-authenticateRequest,
-branchNameFromRequest,
-type AuthenticationResult,
+  authenticatedEnvironmentForAuthentication,
+  authenticateRequest,
+  branchNameFromRequest,
+  type AuthenticationResult,
 } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { v3RunsPath } from "~/utils/pathBuilder";

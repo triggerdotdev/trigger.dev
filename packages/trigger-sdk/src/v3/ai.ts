@@ -1,39 +1,76 @@
-import { type AnyTask, type Task, accessoryAttributes, type ChatSnapshotV1, type ApiClientConfiguration, apiClientManager, type AppendStreamOptions, controlSubtype, generateJWT, getSchemaParseFn, headerValue, type inferSchemaIn, type inferSchemaOut, InputStreamOncePromise, type InputStreamOnceResult, isSchemaZodEsque, logger, type MachinePresetName, ManualWaitpointPromise, OutOfMemoryError, type PipeStreamOptions, type RealtimeDefinedInputStream, type RealtimeDefinedStream, resourceCatalog, type SessionTriggerConfig, SemanticInternalAttributes, SESSION_IN_EVENT_ID_HEADER, sessionStreams, taskContext, type TaskIdentifier, type TaskOptions, type TaskRunContext, type TaskSchema, type TaskWithSchema, TRIGGER_CONTROL_SUBTYPE, type StreamWriteResult } from "@trigger.dev/core/v3";
+import {
+  type AnyTask,
+  type Task,
+  accessoryAttributes,
+  type ChatSnapshotV1,
+  type ApiClientConfiguration,
+  apiClientManager,
+  type AppendStreamOptions,
+  controlSubtype,
+  generateJWT,
+  getSchemaParseFn,
+  headerValue,
+  type inferSchemaIn,
+  type inferSchemaOut,
+  InputStreamOncePromise,
+  type InputStreamOnceResult,
+  isSchemaZodEsque,
+  logger,
+  type MachinePresetName,
+  ManualWaitpointPromise,
+  OutOfMemoryError,
+  type PipeStreamOptions,
+  type RealtimeDefinedInputStream,
+  type RealtimeDefinedStream,
+  resourceCatalog,
+  type SessionTriggerConfig,
+  SemanticInternalAttributes,
+  SESSION_IN_EVENT_ID_HEADER,
+  sessionStreams,
+  taskContext,
+  type TaskIdentifier,
+  type TaskOptions,
+  type TaskRunContext,
+  type TaskSchema,
+  type TaskWithSchema,
+  TRIGGER_CONTROL_SUBTYPE,
+  type StreamWriteResult,
+} from "@trigger.dev/core/v3";
 import type {
-FinishReason,
-LanguageModelUsage,
-ModelMessage,
-ProviderMetadata,
-Tool,
-ToolSet,
-UIMessage,
-UIMessageChunk,
-UIMessageStreamOptions,
-JSONSchema7,
-Schema,
+  FinishReason,
+  LanguageModelUsage,
+  ModelMessage,
+  ProviderMetadata,
+  Tool,
+  ToolSet,
+  UIMessage,
+  UIMessageChunk,
+  UIMessageStreamOptions,
+  JSONSchema7,
+  Schema,
 } from "ai";
 // Runtime VALUES go through the ESM/CJS shim so the CJS build can `require`
 // ESM-only `ai@7` (see ../imports/ai-runtime.ts).
-import { type Attributes,trace } from "@opentelemetry/api";
+import { type Attributes, trace } from "@opentelemetry/api";
 import {
-tool as aiTool,
-convertToModelMessages,
-dynamicTool,
-generateId as generateMessageId,
-getToolName,
-isToolUIPart,
-jsonSchema,
-readUIMessageStream,
-zodSchema,
+  tool as aiTool,
+  convertToModelMessages,
+  dynamicTool,
+  generateId as generateMessageId,
+  getToolName,
+  isToolUIPart,
+  jsonSchema,
+  readUIMessageStream,
+  zodSchema,
 } from "../imports/ai-runtime.js";
 import {
-type ChatInputChunk,
-type ChatTaskWirePayload,
-type InferChatClientData,
-type InferChatUIMessage,
-type InferChatUIMessageFromTools,
-PENDING_MESSAGE_INJECTED_TYPE,
-upsertIncomingMessage,
+  type ChatInputChunk,
+  type ChatTaskWirePayload,
+  type InferChatClientData,
+  type InferChatUIMessage,
+  type InferChatUIMessageFromTools,
+  PENDING_MESSAGE_INJECTED_TYPE,
+  upsertIncomingMessage,
 } from "./ai-shared.js";
 import { auth } from "./auth.js";
 import { locals } from "./locals.js";
@@ -61,13 +98,13 @@ type ToolCallOptions = {
 // that wants those primitives imports `./ai-shared.js` directly and
 // never touches `ai.ts`'s module graph, so the `node:*` builtins
 // pulled in transitively here never reach a client chunk.
-import { readFileInSkill,runBashInSkill } from "./agentSkillsRuntime.js";
+import { readFileInSkill, runBashInSkill } from "./agentSkillsRuntime.js";
 import { ensureAiSdkTelemetry } from "./aiAutoTelemetry.js";
 import {
-type SessionHandle,
-type SessionPipeStreamOptions,
-sessions,
-type SessionSubscribeOptions
+  type SessionHandle,
+  type SessionPipeStreamOptions,
+  sessions,
+  type SessionSubscribeOptions,
 } from "./sessions.js";
 import { createTask } from "./shared.js";
 import { markChatAgentRunForStreamsWarning } from "./streams.js";
@@ -245,7 +282,7 @@ async function seedSessionInResumeCursorForCustomLoop(
  *
  * @internal
  */
-export type { ChatSnapshotV1,ChatInputChunk,ChatTaskWirePayload };
+export type { ChatSnapshotV1, ChatInputChunk, ChatTaskWirePayload };
 
 /**
  * Test-only override hook — `mockChatAgent` installs a fake to return
@@ -2723,12 +2760,8 @@ export type PendingMessagesOptions<TUIM extends UIMessage = UIMessage> = {
 // React hooks (`@trigger.dev/sdk/chat/react`) can import it without
 // dragging `ai.ts` into the browser graph. Re-exported here so
 // `@trigger.dev/sdk/ai` consumers still see it.
-export { PENDING_MESSAGE_INJECTED_TYPE,upsertIncomingMessage };
-export type {
-InferChatClientData,
-InferChatUIMessage,
-InferChatUIMessageFromTools
-};
+export { PENDING_MESSAGE_INJECTED_TYPE, upsertIncomingMessage };
+export type { InferChatClientData, InferChatUIMessage, InferChatUIMessageFromTools };
 
 /** @internal */
 type SteeringQueueEntry = { uiMessage: UIMessage; modelMessages: ModelMessage[] };

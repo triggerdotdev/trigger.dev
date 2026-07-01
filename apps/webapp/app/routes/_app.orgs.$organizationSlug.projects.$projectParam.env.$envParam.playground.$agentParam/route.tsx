@@ -1,24 +1,24 @@
 import type { UIMessage } from "@ai-sdk/react";
 import { useChat } from "@ai-sdk/react";
-import { BoltIcon,CheckIcon,StopIcon } from "@heroicons/react/20/solid";
-import { ClipboardIcon,TrashIcon } from "@heroicons/react/24/outline";
+import { BoltIcon, CheckIcon, StopIcon } from "@heroicons/react/20/solid";
+import { ClipboardIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { type MetaFunction } from "@remix-run/node";
-import { Link,useFetcher,useNavigate,useRouteLoaderData } from "@remix-run/react";
+import { Link, useFetcher, useNavigate, useRouteLoaderData } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { generateJWT as internal_generateJWT,MachinePresetName } from "@trigger.dev/core/v3";
+import { generateJWT as internal_generateJWT, MachinePresetName } from "@trigger.dev/core/v3";
 import { TriggerChatTransport } from "@trigger.dev/sdk/chat";
-import { useCallback,useEffect,useRef,useState } from "react";
-import { typedjson,useTypedLoaderData } from "remix-typedjson";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import { CubeSparkleIcon } from "~/assets/icons/CubeSparkleIcon";
 import { PlusIcon } from "~/assets/icons/PlusIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
 import { JSONEditor } from "~/components/code/JSONEditor";
 import { Button } from "~/components/primitives/Buttons";
 import {
-ClientTabs,
-ClientTabsContent,
-ClientTabsList,
-ClientTabsTrigger,
+  ClientTabs,
+  ClientTabsContent,
+  ClientTabsList,
+  ClientTabsTrigger,
 } from "~/components/primitives/ClientTabs";
 import { DateTime } from "~/components/primitives/DateTime";
 import { DurationPicker } from "~/components/primitives/DurationPicker";
@@ -29,17 +29,17 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Label } from "~/components/primitives/Label";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
-Popover,
-PopoverContent,
-PopoverMenuItem,
-PopoverVerticalEllipseTrigger,
+  Popover,
+  PopoverContent,
+  PopoverMenuItem,
+  PopoverVerticalEllipseTrigger,
 } from "~/components/primitives/Popover";
 import {
-ResizableHandle,
-ResizablePanel,
-ResizablePanelGroup,
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
-import { Select,SelectItem } from "~/components/primitives/Select";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { Spinner } from "~/components/primitives/Spinner";
 import { SimpleTooltip } from "~/components/primitives/Tooltip";
 import { MessageBubble } from "~/components/runs/v3/agent/AgentMessageView";

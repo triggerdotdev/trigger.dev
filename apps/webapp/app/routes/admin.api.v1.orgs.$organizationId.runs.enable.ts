@@ -1,7 +1,5 @@
-import { type ActionFunctionArgs,json } from "@remix-run/server-runtime";
-import {
-EnvironmentPauseSource,
-} from "@trigger.dev/database";
+import { type ActionFunctionArgs, json } from "@remix-run/server-runtime";
+import { EnvironmentPauseSource } from "@trigger.dev/database";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { requireAdminApiRequest } from "~/services/personalAccessToken.server";

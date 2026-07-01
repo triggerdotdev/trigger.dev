@@ -1,4 +1,7 @@
-import type { BillingLimitResult,ResolveBillingLimitRequest } from "~/services/billingLimit.schemas";
+import type {
+  BillingLimitResult,
+  ResolveBillingLimitRequest,
+} from "~/services/billingLimit.schemas";
 
 export function isEnforcementActive(billingLimit: BillingLimitResult): boolean {
   return (

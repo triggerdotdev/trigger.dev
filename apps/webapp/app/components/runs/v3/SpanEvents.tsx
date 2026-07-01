@@ -1,9 +1,9 @@
 import { EnvelopeIcon } from "@heroicons/react/20/solid";
 import {
-exceptionEventEnhancer,
-isExceptionSpanEvent,
-type ExceptionEventProperties,
-type SpanEvent as OtelSpanEvent,
+  exceptionEventEnhancer,
+  isExceptionSpanEvent,
+  type ExceptionEventProperties,
+  type SpanEvent as OtelSpanEvent,
 } from "@trigger.dev/core/v3";
 import { CodeBlock } from "~/components/code/CodeBlock";
 import { Feedback } from "~/components/Feedback";

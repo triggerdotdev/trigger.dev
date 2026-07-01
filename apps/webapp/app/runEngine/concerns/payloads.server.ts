@@ -1,4 +1,4 @@
-import type { IOPacket} from "@trigger.dev/core/v3";
+import type { IOPacket } from "@trigger.dev/core/v3";
 import { packetRequiresOffloading, tryCatch } from "@trigger.dev/core/v3";
 import type { PayloadProcessor, TriggerTaskRequest } from "../types";
 import { env } from "~/env.server";

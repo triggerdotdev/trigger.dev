@@ -1,4 +1,4 @@
-import type { TaskRunError} from "@trigger.dev/core/v3/schemas";
+import type { TaskRunError } from "@trigger.dev/core/v3/schemas";
 import { TaskRunErrorCodes } from "@trigger.dev/core/v3/schemas";
 import type { TaskRun } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";

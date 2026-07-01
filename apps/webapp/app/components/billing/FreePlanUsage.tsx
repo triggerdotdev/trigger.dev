@@ -1,6 +1,6 @@
 import { ArrowUpCircleIcon } from "@heroicons/react/24/outline";
 import { Link } from "@remix-run/react";
-import { motion,useMotionValue,useTransform } from "framer-motion";
+import { motion, useMotionValue, useTransform } from "framer-motion";
 import { cn } from "~/utils/cn";
 
 export function FreePlanUsage({ to, percentage }: { to: string; percentage: number }) {

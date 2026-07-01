@@ -4,12 +4,13 @@ import type {
   ListQueueOptions,
   OffsetLimitPagePromise,
   QueueItem,
-  RetrieveQueueParam} from "@trigger.dev/core/v3";
+  RetrieveQueueParam,
+} from "@trigger.dev/core/v3";
 import {
   accessoryAttributes,
   apiClientManager,
   flattenAttributes,
-  mergeRequestOptions
+  mergeRequestOptions,
 } from "@trigger.dev/core/v3";
 import { tracer } from "./tracer.js";
 

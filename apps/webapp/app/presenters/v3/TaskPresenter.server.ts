@@ -1,5 +1,5 @@
 import type { BackgroundWorkerTask } from "@trigger.dev/database";
-import type { PrismaClient} from "~/db.server";
+import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { Project } from "~/models/project.server";
 import type { User } from "~/models/user.server";

@@ -1,12 +1,10 @@
 import type { MollifierBuffer } from "@trigger.dev/redis-worker";
 import { logger as defaultLogger } from "~/services/logger.server";
 import { getMollifierBuffer } from "./mollifierBuffer.server";
+import { type StaleSweepStateStore } from "./mollifierStaleSweepState.server";
 import {
-type StaleSweepStateStore
-} from "./mollifierStaleSweepState.server";
-import {
-recordStaleEntry as defaultRecordStaleEntry,
-reportStaleEntrySnapshot as defaultReportStaleEntrySnapshot,
+  recordStaleEntry as defaultRecordStaleEntry,
+  reportStaleEntrySnapshot as defaultReportStaleEntrySnapshot,
 } from "./mollifierTelemetry.server";
 
 // One pass of the sweep scans a bounded slice of orgs from the buffer's

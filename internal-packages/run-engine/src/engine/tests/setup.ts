@@ -9,10 +9,9 @@ import type {
   Prisma,
   PrismaClient,
   RunEngineVersion,
-  RuntimeEnvironmentType} from "@trigger.dev/database";
-import {
-  Decimal
+  RuntimeEnvironmentType,
 } from "@trigger.dev/database";
+import { Decimal } from "@trigger.dev/database";
 import type { RunEngine } from "../index.js";
 
 export type AuthenticatedEnvironment = Prisma.RuntimeEnvironmentGetPayload<{

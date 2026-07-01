@@ -1,9 +1,9 @@
-import type { Prisma,Project } from "@trigger.dev/database";
-import { customAlphabet,nanoid } from "nanoid";
+import type { Prisma, Project } from "@trigger.dev/database";
+import { customAlphabet, nanoid } from "nanoid";
 import slug from "slug";
-import { $replica,prisma } from "~/db.server";
+import { $replica, prisma } from "~/db.server";
 import { projectCreated } from "~/services/projectCreated.server";
-import { type Organization,createEnvironment } from "./organization.server";
+import { type Organization, createEnvironment } from "./organization.server";
 export type { Project } from "@trigger.dev/database";
 
 const externalRefGenerator = customAlphabet("abcdefghijklmnopqrstuvwxyz", 20);

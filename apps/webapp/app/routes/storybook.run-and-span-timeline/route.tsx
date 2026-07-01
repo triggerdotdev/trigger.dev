@@ -1,12 +1,6 @@
 import { Header2 } from "~/components/primitives/Headers";
-import type {
-SpanTimelineProps,
-TimelineSpanRun
-} from "~/components/run/RunTimeline";
-import {
-RunTimeline,
-SpanTimeline
-} from "~/components/run/RunTimeline";
+import type { SpanTimelineProps, TimelineSpanRun } from "~/components/run/RunTimeline";
+import { RunTimeline, SpanTimeline } from "~/components/run/RunTimeline";
 
 const spanTimelines = [
   {

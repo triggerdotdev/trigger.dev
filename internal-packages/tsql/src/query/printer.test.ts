@@ -1,9 +1,9 @@
-import { describe,expect,it } from "vitest";
-import { compileTSQL,parseTSQLSelect } from "../index.js";
+import { describe, expect, it } from "vitest";
+import { compileTSQL, parseTSQLSelect } from "../index.js";
 import { QueryError } from "./errors.js";
-import { ClickHousePrinter,printToClickHouse,type PrintResult } from "./printer.js";
-import { createPrinterContext,PrinterContext } from "./printer_context.js";
-import { column,createSchemaRegistry,type TableSchema } from "./schema.js";
+import { ClickHousePrinter, printToClickHouse, type PrintResult } from "./printer.js";
+import { createPrinterContext, PrinterContext } from "./printer_context.js";
+import { column, createSchemaRegistry, type TableSchema } from "./schema.js";
 import type { BucketThreshold } from "./time_buckets.js";
 
 /**
@@ -1381,7 +1381,9 @@ describe("ClickHousePrinter", () => {
     });
 
     it("should parameterize numeric values inline", () => {
-      const { sql, params: _params } = printQuery("SELECT * FROM task_runs WHERE duration_ms > 1000");
+      const { sql, params: _params } = printQuery(
+        "SELECT * FROM task_runs WHERE duration_ms > 1000"
+      );
 
       // Numbers can be inlined safely
       expect(sql).toContain("1000");
@@ -1909,7 +1911,9 @@ describe("Edge cases", () => {
   });
 
   it("should handle special characters in strings", () => {
-    const { sql: _sql, params } = printQuery("SELECT * FROM task_runs WHERE status = 'test\nvalue'");
+    const { sql: _sql, params } = printQuery(
+      "SELECT * FROM task_runs WHERE status = 'test\nvalue'"
+    );
 
     // The string value should be parameterized
     expect(Object.keys(params).length).toBeGreaterThan(0);

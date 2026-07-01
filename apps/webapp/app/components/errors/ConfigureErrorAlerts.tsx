@@ -1,28 +1,28 @@
-import { getFormProps,getInputProps,useForm } from "@conform-to/react";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
 import {
-EnvelopeIcon,
-GlobeAltIcon,
-HashtagIcon,
-LockClosedIcon,
-XMarkIcon,
+  EnvelopeIcon,
+  GlobeAltIcon,
+  HashtagIcon,
+  LockClosedIcon,
+  XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { BellAlertIcon } from "@heroicons/react/24/solid";
-import { useFetcher,useNavigate } from "@remix-run/react";
+import { useFetcher, useNavigate } from "@remix-run/react";
 import { SlackIcon } from "@trigger.dev/companyicons";
-import { Fragment,useEffect,useRef,useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { InlineCode } from "~/components/code/InlineCode";
-import { Button,LinkButton } from "~/components/primitives/Buttons";
-import { Callout,variantClasses } from "~/components/primitives/Callout";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Callout, variantClasses } from "~/components/primitives/Callout";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormError } from "~/components/primitives/FormError";
-import { Header2,Header3 } from "~/components/primitives/Headers";
+import { Header2, Header3 } from "~/components/primitives/Headers";
 import { Hint } from "~/components/primitives/Hint";
 import { Input } from "~/components/primitives/Input";
 import { InputGroup } from "~/components/primitives/InputGroup";
-import { Select,SelectItem } from "~/components/primitives/Select";
+import { Select, SelectItem } from "~/components/primitives/Select";
 import { TextLink } from "~/components/primitives/TextLink";
 import { useToast } from "~/components/primitives/Toast";
 import { UnorderedList } from "~/components/primitives/UnorderedList";

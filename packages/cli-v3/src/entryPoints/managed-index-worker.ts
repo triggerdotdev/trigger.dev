@@ -1,5 +1,17 @@
-import { type TriggerConfig, BuildManifest, type HandleErrorFunction, indexerToWorkerMessages, resourceCatalog, type PromptManifest, type TaskManifest } from "@trigger.dev/core/v3";
-import { type TracingDiagnosticLogLevel, StandardResourceCatalog, TracingSDK } from "@trigger.dev/core/v3/workers";
+import {
+  type TriggerConfig,
+  BuildManifest,
+  type HandleErrorFunction,
+  indexerToWorkerMessages,
+  resourceCatalog,
+  type PromptManifest,
+  type TaskManifest,
+} from "@trigger.dev/core/v3";
+import {
+  type TracingDiagnosticLogLevel,
+  StandardResourceCatalog,
+  TracingSDK,
+} from "@trigger.dev/core/v3/workers";
 import { sendMessageInCatalog, ZodSchemaParsedError } from "@trigger.dev/core/v3/zodMessageHandler";
 import { readFile } from "node:fs/promises";
 import sourceMapSupport from "source-map-support";

@@ -10,11 +10,9 @@ import type {
   TaskOperationsCreateOptions,
   TaskOperationsIndexOptions,
   TaskOperationsPrePullDeploymentOptions,
-  TaskOperationsRestoreOptions} from "@trigger.dev/core/v3/apps";
-import {
-  ProviderShell,
-  SimpleLogger
+  TaskOperationsRestoreOptions,
 } from "@trigger.dev/core/v3/apps";
+import { ProviderShell, SimpleLogger } from "@trigger.dev/core/v3/apps";
 import { PodCleaner } from "./podCleaner";
 import { TaskMonitor } from "./taskMonitor";
 import { UptimeHeartbeat } from "./uptimeHeartbeat";

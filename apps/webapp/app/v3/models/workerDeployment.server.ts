@@ -9,7 +9,7 @@ import {
   CURRENT_DEPLOYMENT_LABEL,
   CURRENT_UNMANAGED_DEPLOYMENT_LABEL,
 } from "@trigger.dev/core/v3/isomorphic";
-import type { Prisma} from "~/db.server";
+import type { Prisma } from "~/db.server";
 import { prisma } from "~/db.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 

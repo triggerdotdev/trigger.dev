@@ -4,7 +4,8 @@ import type {
   DeletedScheduleObject,
   InitOutput,
   OffsetLimitPagePromise,
-  ScheduleObject} from "@trigger.dev/core/v3";
+  ScheduleObject,
+} from "@trigger.dev/core/v3";
 import {
   TimezonesResult,
   accessoryAttributes,
@@ -13,7 +14,7 @@ import {
   resourceCatalog,
 } from "@trigger.dev/core/v3";
 import { zodfetch } from "@trigger.dev/core/v3/zodfetch";
-import type { Task, TaskOptions} from "../shared.js";
+import type { Task, TaskOptions } from "../shared.js";
 import { createTask } from "../shared.js";
 import type * as SchedulesAPI from "./api.js";
 import { tracer } from "../tracer.js";

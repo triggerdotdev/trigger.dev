@@ -1,15 +1,6 @@
 import { type RedisOptions } from "@internal/redis";
-import type {
-  Span,
-  SpanOptions,
-  Tracer} from "@opentelemetry/api";
-import {
-  context,
-  propagation,
-  SpanKind,
-  SpanStatusCode,
-  trace
-} from "@opentelemetry/api";
+import type { Span, SpanOptions, Tracer } from "@opentelemetry/api";
+import { context, propagation, SpanKind, SpanStatusCode, trace } from "@opentelemetry/api";
 import {
   SEMATTRS_MESSAGE_ID,
   SEMATTRS_MESSAGING_OPERATION,
@@ -46,10 +37,9 @@ import type {
   MarQSKeyProducerEnv,
   MarQSPriorityLevel,
   MessageQueueSubscriber,
-  VisibilityTimeoutStrategy} from "./types";
-import {
-  MessagePayload
+  VisibilityTimeoutStrategy,
 } from "./types";
+import { MessagePayload } from "./types";
 import { V3LegacyRunEngineWorkerVisibilityTimeout } from "./v3VisibilityTimeout.server";
 
 const KEY_PREFIX = "marqs:";

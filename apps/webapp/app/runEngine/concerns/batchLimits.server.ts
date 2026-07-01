@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { env } from "~/env.server";
 import {
-createLimiterFromConfig,
-RateLimiterConfig,
+  createLimiterFromConfig,
+  RateLimiterConfig,
 } from "~/services/authorizationRateLimitMiddleware.server";
 import type { Duration } from "~/services/rateLimiter.server";
-import { createRedisRateLimitClient,RateLimiter } from "~/services/rateLimiter.server";
+import { createRedisRateLimitClient, RateLimiter } from "~/services/rateLimiter.server";
 import { singleton } from "~/utils/singleton";
 
 const BatchLimitsConfig = z.object({

@@ -1,5 +1,5 @@
 import * as k8s from "@kubernetes/client-node";
-import type { Informer,KubernetesObject,ListPromise } from "@kubernetes/client-node";
+import type { Informer, KubernetesObject, ListPromise } from "@kubernetes/client-node";
 import { assertExhaustive } from "@trigger.dev/core/utils";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
 import * as https from "node:https";

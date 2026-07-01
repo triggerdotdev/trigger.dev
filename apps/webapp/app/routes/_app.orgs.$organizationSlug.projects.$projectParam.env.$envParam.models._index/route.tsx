@@ -1,78 +1,78 @@
 import * as Ariakit from "@ariakit/react";
 import {
-AdjustmentsHorizontalIcon,
-ArrowTopRightOnSquareIcon,
-CheckIcon,
-CubeIcon,
-XMarkIcon,
+  AdjustmentsHorizontalIcon,
+  ArrowTopRightOnSquareIcon,
+  CheckIcon,
+  CubeIcon,
+  XMarkIcon,
 } from "@heroicons/react/20/solid";
 import {
-Form,
-type MetaFunction,
-type ShouldRevalidateFunctionArgs,
-useFetcher,
+  Form,
+  type MetaFunction,
+  type ShouldRevalidateFunctionArgs,
+  useFetcher,
 } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
-import { AnimatePresence,motion } from "framer-motion";
-import { useEffect,useMemo,useRef,useState } from "react";
-import { typedjson,useTypedLoaderData } from "remix-typedjson";
+import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { typedjson, useTypedLoaderData } from "remix-typedjson";
 import {
-AnthropicIcon,
-AzureIcon,
-CerebrasIcon,
-DeepseekIcon,
-GeminiIcon,
-LlamaIcon,
-MistralIcon,
-OpenAIIcon,
-PerplexityIcon,
-XAIIcon,
+  AnthropicIcon,
+  AzureIcon,
+  CerebrasIcon,
+  DeepseekIcon,
+  GeminiIcon,
+  LlamaIcon,
+  MistralIcon,
+  OpenAIIcon,
+  PerplexityIcon,
+  XAIIcon,
 } from "~/assets/icons/AiProviderIcons";
 import { ExitIcon } from "~/assets/icons/ExitIcon";
 import { InlineCode } from "~/components/code/InlineCode";
-import { PageBody,PageContainer } from "~/components/layout/AppLayout";
+import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import type { QueryWidgetConfig } from "~/components/metrics/QueryWidget";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Badge } from "~/components/primitives/Badge";
-import { Button,LinkButton } from "~/components/primitives/Buttons";
+import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Checkbox } from "~/components/primitives/Checkbox";
 import { DateTime } from "~/components/primitives/DateTime";
-import { Dialog,DialogContent,DialogHeader,DialogTitle } from "~/components/primitives/Dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "~/components/primitives/Dialog";
 import { Header2 } from "~/components/primitives/Headers";
-import { NavBar,PageTitle } from "~/components/primitives/PageHeader";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
 import * as Property from "~/components/primitives/PropertyTable";
 import {
-collapsibleHandleClassName,
-RESIZABLE_PANEL_ANIMATION,
-ResizableHandle,
-ResizablePanel,
-ResizablePanelGroup,
-useFrozenValue,
+  collapsibleHandleClassName,
+  RESIZABLE_PANEL_ANIMATION,
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+  useFrozenValue,
 } from "~/components/primitives/Resizable";
 import { SearchInput } from "~/components/primitives/SearchInput";
 import {
-SelectItem,
-SelectList,
-SelectPopover,
-SelectProvider,
+  SelectItem,
+  SelectList,
+  SelectPopover,
+  SelectProvider,
 } from "~/components/primitives/Select";
 import { ShortcutKey } from "~/components/primitives/ShortcutKey";
 import { Switch } from "~/components/primitives/Switch";
 import {
-Table,
-TableBody,
-TableCell,
-TableHeader,
-TableHeaderCell,
-TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableHeaderCell,
+  TableRow,
 } from "~/components/primitives/Table";
-import { TabButton,TabContainer } from "~/components/primitives/Tabs";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
 import { UsageSparkline } from "~/components/primitives/UsageSparkline";
 import {
-appliedSummary,
-TimeFilter,
-type TimeFilterApplyValues,
-timeFilterFromTo,
+  appliedSummary,
+  TimeFilter,
+  type TimeFilterApplyValues,
+  timeFilterFromTo,
 } from "~/components/runs/v3/SharedFilters";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOptimisticLocation } from "~/hooks/useOptimisticLocation";
@@ -83,27 +83,27 @@ import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import {
-type ModelCatalogItem,
-type ModelComparisonItem,
-ModelRegistryPresenter,
-type PopularModel,
-type ProjectModelUsageItem,
+  type ModelCatalogItem,
+  type ModelComparisonItem,
+  ModelRegistryPresenter,
+  type PopularModel,
+  type ProjectModelUsageItem,
 } from "~/presenters/v3/ModelRegistryPresenter.server";
 import { MetricWidget } from "~/routes/resources.metric";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { requireUserId } from "~/services/session.server";
 import {
-formatFeature,
-formatModelCost,
-formatModelPrice,
-formatProviderName,
-formatTokenCount,
+  formatFeature,
+  formatModelCost,
+  formatModelPrice,
+  formatProviderName,
+  formatTokenCount,
 } from "~/utils/modelFormatters";
 import { formatNumberCompact } from "~/utils/numberFormatter";
 import {
-EnvironmentParamSchema,
-v3BuiltInDashboardPath,
-v3ModelComparePath,
+  EnvironmentParamSchema,
+  v3BuiltInDashboardPath,
+  v3ModelComparePath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
 

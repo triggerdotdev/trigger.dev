@@ -2,7 +2,8 @@ import type {
   AttemptStatus,
   RunStatus,
   SerializedError,
-  TriggerFunction} from "@trigger.dev/core/v3";
+  TriggerFunction,
+} from "@trigger.dev/core/v3";
 import {
   TaskRunError,
   conditionallyImportPacket,

@@ -14,7 +14,8 @@ import type {
   VercelIntegrationConfig,
   SyncEnvVarsMapping,
   TriggerEnvironmentType,
-  EnvSlug} from "~/v3/vercel/vercelProjectIntegrationSchema";
+  EnvSlug,
+} from "~/v3/vercel/vercelProjectIntegrationSchema";
 import {
   VercelProjectIntegrationDataSchema,
   envTypeToSlug,

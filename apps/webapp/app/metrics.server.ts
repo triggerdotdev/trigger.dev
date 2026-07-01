@@ -1,4 +1,4 @@
-import type { OpenMetricsContentType} from "prom-client";
+import type { OpenMetricsContentType } from "prom-client";
 import { Registry, collectDefaultMetrics, register } from "prom-client";
 import { singleton } from "./utils/singleton";
 import { env } from "./env.server";

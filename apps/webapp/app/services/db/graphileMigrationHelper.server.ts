@@ -1,5 +1,5 @@
 import { runMigrations } from "graphile-worker";
-import type { PrismaClient} from "~/db.server";
+import type { PrismaClient } from "~/db.server";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";

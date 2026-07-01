@@ -1,24 +1,41 @@
 import { SnapshotCallbackPayloadSchema } from "@internal/compute";
-import { type CheckpointClient,HttpServer } from "@trigger.dev/core/v3/serverOnly";
+import { type CheckpointClient, HttpServer } from "@trigger.dev/core/v3/serverOnly";
 import { SimpleStructuredLogger } from "@trigger.dev/core/v3/utils/structuredLogger";
-import { type WorkloadRunSnapshotsSinceResponseBody, type SupervisorHttpClient, WORKLOAD_HEADERS, type WorkloadClientSocketData, type WorkloadClientToServerEvents, type WorkloadContinueRunExecutionResponseBody, WorkloadDebugLogRequestBody, type WorkloadDequeueFromVersionResponseBody, WorkloadHeartbeatRequestBody, type WorkloadHeartbeatResponseBody, WorkloadRunAttemptCompleteRequestBody, type WorkloadRunAttemptCompleteResponseBody, WorkloadRunAttemptStartRequestBody, type WorkloadRunAttemptStartResponseBody, type WorkloadServerToClientEvents, type WorkloadSuspendRunResponseBody } from "@trigger.dev/core/v3/workers";
+import {
+  type WorkloadRunSnapshotsSinceResponseBody,
+  type SupervisorHttpClient,
+  WORKLOAD_HEADERS,
+  type WorkloadClientSocketData,
+  type WorkloadClientToServerEvents,
+  type WorkloadContinueRunExecutionResponseBody,
+  WorkloadDebugLogRequestBody,
+  type WorkloadDequeueFromVersionResponseBody,
+  WorkloadHeartbeatRequestBody,
+  type WorkloadHeartbeatResponseBody,
+  WorkloadRunAttemptCompleteRequestBody,
+  type WorkloadRunAttemptCompleteResponseBody,
+  WorkloadRunAttemptStartRequestBody,
+  type WorkloadRunAttemptStartResponseBody,
+  type WorkloadServerToClientEvents,
+  type WorkloadSuspendRunResponseBody,
+} from "@trigger.dev/core/v3/workers";
 import EventEmitter from "node:events";
-import type { IncomingMessage,ServerResponse } from "node:http";
-import { type Namespace,Server,type Socket } from "socket.io";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { type Namespace, Server, type Socket } from "socket.io";
 import { z } from "zod";
 import { env } from "../env.js";
 import { register } from "../metrics.js";
 import {
-ComputeSnapshotService,
-type RunTraceContext,
+  ComputeSnapshotService,
+  type RunTraceContext,
 } from "../services/computeSnapshotService.js";
 import type { OtlpTraceService } from "../services/otlpTraceService.js";
 import {
-emitOneShot,
-runWideEvent,
-setMeta,
-type State,
-type WideEventOptions,
+  emitOneShot,
+  runWideEvent,
+  setMeta,
+  type State,
+  type WideEventOptions,
 } from "../wideEvents/index.js";
 import type { ComputeWorkloadManager } from "../workloadManager/compute.js";
 

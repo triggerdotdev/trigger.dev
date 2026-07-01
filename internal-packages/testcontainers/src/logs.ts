@@ -1,6 +1,6 @@
 import { env, isCI } from "std-env";
 import type { TestContext } from "vitest";
-import type { DockerDiagnostics} from "./docker";
+import type { DockerDiagnostics } from "./docker";
 import { getDockerDiagnostics } from "./docker";
 import type { StartedTestContainer } from "testcontainers";
 
