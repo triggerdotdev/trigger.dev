@@ -136,7 +136,7 @@ User API call -> Webapp routes -> Services -> RunEngine -> Redis Queue -> Superv
 - **internal-packages/redis**: Redis client creation utilities (ioredis)
 - **internal-packages/testcontainers**: Test helpers for Redis/PostgreSQL containers
 - **internal-packages/schedule-engine**: Durable cron scheduling
-- **internal-packages/zodworker**: Graphile-worker wrapper (DEPRECATED - use redis-worker)
+- **internal-packages/zod-worker**: Graphile-worker wrapper (DEPRECATED - use redis-worker)
 
 ### Legacy V1 Engine Code
 
@@ -226,7 +226,7 @@ skills:
 - task: "Using agentcrumbs for debug tracing, adding crumbs, trails, markers, querying traces, or stripping debug code before merge"
   load: "node_modules/agentcrumbs/skills/agentcrumbs/SKILL.md"
 - task: "Setting up agentcrumbs in the project, initializing namespace catalog, running crumbs init"
-load: "node_modules/agentcrumbs/skills/agentcrumbs/init/SKILL.md"
+  load: "node_modules/agentcrumbs/skills/agentcrumbs/init/SKILL.md"
 <!-- intent-skills:end -->
 
 ## agentcrumbs
