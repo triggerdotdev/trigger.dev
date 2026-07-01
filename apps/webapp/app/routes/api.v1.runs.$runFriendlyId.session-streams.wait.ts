@@ -99,8 +99,10 @@ const { action, loader } = createActionApiRoute(
         }
       }
 
-      // Step 1: Create the waitpoint.
+      // Step 1: Create the waitpoint. Co-locate it with the owning run (run-ops split) so a ksuid
+      // run's session-stream waitpoint lands on the run's DB and its block edge resolves.
       const result = await engine.createManualWaitpoint({
+        runId: run.id,
         environmentId: authentication.environment.id,
         projectId: authentication.environment.projectId,
         idempotencyKey: body.idempotencyKey,

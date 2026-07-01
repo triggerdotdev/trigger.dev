@@ -45,7 +45,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   try {
-    const presenter = new WaitpointPresenter();
+    const presenter = new WaitpointPresenter(undefined, undefined, {});
     const result = await presenter.call({
       friendlyId: waitpointParam,
       environmentId: environment.id,

@@ -31,7 +31,7 @@ export const loader = createLoaderApiRoute(
     },
   },
   async ({ searchParams, authentication, request, apiVersion }) => {
-    // Pick the Electric proxy or the native backend per org (defaults to Electric); both implement streamRuns.
+    // Resolve the native realtime client; it implements streamRuns.
     const client = await resolveRealtimeStreamClient(authentication.environment);
 
     return client.streamRuns(

@@ -4,6 +4,7 @@ import { prisma } from "~/db.server";
 import { requireUserId } from "~/services/session.server";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { runStore } from "~/v3/runStore.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -40,8 +41,10 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       friendlyId: validatedParams.runParam,
     },
     {
-      include: {
-        runtimeEnvironment: true,
+      select: {
+        friendlyId: true,
+        spanId: true,
+        runtimeEnvironmentId: true,
       },
     },
     prisma
@@ -51,16 +54,16 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response("Not found", { status: 404 });
   }
 
+  const environment = await controlPlaneResolver.resolveAuthenticatedEnv(run.runtimeEnvironmentId);
+
+  if (!environment) {
+    throw new Response("Not found", { status: 404 });
+  }
+
   // Redirect to the project's runs page
   return redirect(
-    v3RunSpanPath(
-      { slug: project.organization.slug },
-      { slug: project.slug },
-      run.runtimeEnvironment,
-      run,
-      {
-        spanId: run.spanId,
-      }
-    )
+    v3RunSpanPath({ slug: project.organization.slug }, { slug: project.slug }, environment, run, {
+      spanId: run.spanId,
+    })
   );
 }

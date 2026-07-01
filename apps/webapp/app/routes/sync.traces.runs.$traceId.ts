@@ -6,6 +6,7 @@ import { logger } from "~/services/logger.server";
 import { getUserId } from "~/services/session.server";
 import { longPollingFetch } from "~/utils/longPollingFetch";
 import { runStore } from "~/v3/runStore.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 
 const Params = z.object({
   traceId: z.string(),
@@ -28,11 +29,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       },
       {
         select: {
-          project: {
-            select: {
-              organizationId: true,
-            },
-          },
+          runtimeEnvironmentId: true,
         },
       },
       $replica
@@ -42,9 +39,15 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
       return new Response("No run found", { status: 404 });
     }
 
+    const resolvedEnv = await controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
+
+    if (!resolvedEnv) {
+      return new Response("No run found", { status: 404 });
+    }
+
     const member = await $replica.orgMember.findFirst({
       where: {
-        organizationId: run.project.organizationId,
+        organizationId: resolvedEnv.organizationId,
         userId,
       },
     });

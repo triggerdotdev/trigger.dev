@@ -49,6 +49,13 @@ import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { type BatchList, BatchListPresenter } from "~/presenters/v3/BatchListPresenter.server";
 import { requireUserId } from "~/services/session.server";
 import {
+  $replica,
+  runOpsNewReplicaClient,
+  runOpsLegacyReplica,
+  runOpsSplitReadEnabled,
+  type PrismaClientOrTransaction,
+} from "~/db.server";
+import {
   docsPath,
   EnvironmentParamSchema,
   v3BatchPath,
@@ -90,7 +97,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   };
   const filters = BatchListFilters.parse(s);
 
-  const presenter = new BatchListPresenter();
+  const presenter = new BatchListPresenter(undefined, undefined, {
+    runOpsNew: runOpsNewReplicaClient as unknown as PrismaClientOrTransaction,
+    runOpsLegacyReplica: runOpsLegacyReplica as unknown as PrismaClientOrTransaction,
+    controlPlaneReplica: $replica as unknown as PrismaClientOrTransaction,
+    splitEnabled: runOpsSplitReadEnabled,
+  });
   const list = await presenter.call({
     userId,
     projectId: project.id,

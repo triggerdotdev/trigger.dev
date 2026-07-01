@@ -6,11 +6,12 @@ import {
 } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
-import { $replica } from "~/db.server";
+import type { PrismaReplicaClient } from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
+import { readThroughRun } from "~/v3/runOpsMigration/readThrough.server";
 import { engine } from "~/v3/runEngine.server";
 
 const { action, loader } = createActionApiRoute(
@@ -33,12 +34,26 @@ const { action, loader } = createActionApiRoute(
 
     try {
       //check permissions
-      const waitpoint = await $replica.waitpoint.findFirst({
-        where: {
-          id: waitpointId,
-          environmentId: authentication.environment.id,
-        },
+      // Read through the split-aware run-ops read-through (passthrough in single-DB).
+      const findWaitpoint = (client: PrismaReplicaClient) =>
+        client.waitpoint.findFirst({
+          where: {
+            id: waitpointId,
+            environmentId: authentication.environment.id,
+          },
+        });
+
+      const waitpointResult = await readThroughRun({
+        runId: waitpointId,
+        environmentId: authentication.environment.id,
+        readNew: (client) => findWaitpoint(client),
+        readLegacy: (replica) => findWaitpoint(replica),
       });
+
+      const waitpoint =
+        waitpointResult.source === "new" || waitpointResult.source === "legacy-replica"
+          ? waitpointResult.value
+          : null;
 
       if (!waitpoint) {
         throw json({ error: "Waitpoint not found" }, { status: 404 });

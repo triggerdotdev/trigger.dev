@@ -2,6 +2,7 @@ import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { prisma } from "~/db.server";
 import { env } from "~/env.server";
 import { runStore } from "~/v3/runStore.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { requireUser } from "~/services/session.server";
 import { v3RunParamsSchema, v3RunPath } from "~/utils/pathBuilder";
 import { createGzip } from "zlib";
@@ -27,19 +28,11 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const showDebug = url.searchParams.get("showDebug") === "true" && user.admin;
   const filename = `${parsedParams.runParam}.${format.extension}`;
 
-  const run = await runStore.findRun(
-    {
-      friendlyId: parsedParams.runParam,
-      project: {
-        organization: {
-          members: {
-            some: {
-              userId: user.id,
-            },
-          },
-        },
-      },
-    },
+  // Run-ops read keyed by friendlyId only (routes to the owning DB by residency). Org
+  // membership is a control-plane concern resolved separately below — joining it here is a
+  // cross-DB join that returns nothing once the run lives in run-ops.
+  let run = await runStore.findRun(
+    { friendlyId: parsedParams.runParam },
     {
       select: {
         friendlyId: true,
@@ -50,20 +43,28 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
         completedAt: true,
         taskEventStore: true,
         taskIdentifier: true,
-        project: { select: { slug: true, organization: { select: { slug: true } } } },
-        runtimeEnvironment: { select: { slug: true } },
       },
-    },
-    prisma
+    }
   );
 
+  // Authorize on the control-plane DB: the user must be a member of the run's org. A
+  // non-member is treated as not-found (matching the old scoped where) and falls through
+  // to the buffer fallback below.
+  if (run?.organizationId) {
+    const member = await prisma.orgMember.findFirst({
+      where: { userId: user.id, organizationId: run.organizationId },
+      select: { id: true },
+    });
+    if (!member) {
+      run = null;
+    }
+  }
+
   if (!run || !run.organizationId) {
-    // Buffered run? It hasn't executed, so there's no trace to stream — but a
-    // 404 is wrong: the run does exist, the customer's "Download trace" button
-    // on the run-detail page generates this exact URL, and a 404 reads as "your
-    // run vanished" rather than "no trace yet". Verify the entry exists in the
-    // buffer (with the user as a member of the entry's org), and if so stream a
-    // single informational line instead of a 0-byte mystery.
+    // Buffered run? It hasn't executed, so there's no trace — but a 404 is wrong:
+    // the run does exist and reads as "your run vanished". If the buffer entry
+    // exists (and the user is a member of its org), stream one informational line
+    // instead of a 0-byte mystery.
     const buffer = getMollifierBuffer();
     if (buffer) {
       const entry = await buffer.getEntry(parsedParams.runParam);
@@ -80,6 +81,12 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
         }
       }
     }
+    return new Response("Not found", { status: 404 });
+  }
+
+  const environment = await controlPlaneResolver.resolveAuthenticatedEnv(run.runtimeEnvironmentId);
+
+  if (!environment) {
     return new Response("Not found", { status: 404 });
   }
 
@@ -103,9 +110,9 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     traceId: run.traceId,
     taskIdentifier: run.taskIdentifier,
     runUrl: `${env.APP_ORIGIN}${v3RunPath(
-      run.project.organization,
-      run.project,
-      run.runtimeEnvironment,
+      environment.organization,
+      environment.project,
+      environment,
       { friendlyId: run.friendlyId }
     )}`,
   };

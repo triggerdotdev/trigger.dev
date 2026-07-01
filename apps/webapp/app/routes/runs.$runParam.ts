@@ -1,7 +1,8 @@
 import { redirect, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { prisma } from "~/db.server";
+import { $replica } from "~/db.server";
 import { runStore } from "~/v3/runStore.server";
+import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { requireUser } from "~/services/session.server";
 import { rootPath, v3RunPath } from "~/utils/pathBuilder";
@@ -18,40 +19,46 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   const run = await runStore.findRun(
     {
       friendlyId: runParam,
-      project: {
-        organization: {
-          members: {
-            some: {
-              userId: user.id,
-            },
-          },
-        },
-      },
     },
     {
       select: {
         spanId: true,
-        runtimeEnvironment: {
-          select: {
-            slug: true,
-          },
-        },
-        project: {
-          select: {
-            slug: true,
-            organization: {
-              select: {
-                slug: true,
-              },
-            },
-          },
-        },
+        projectId: true,
+        runtimeEnvironmentId: true,
       },
-    },
-    prisma
+    }
   );
 
   if (!run) {
+    return redirectWithErrorMessage(
+      rootPath(),
+      request,
+      "Run either doesn't exist or you don't have permission to view it",
+      {
+        ephemeral: false,
+      }
+    );
+  }
+
+  const authorizedProject = await $replica.project.findFirst({
+    where: { id: run.projectId, organization: { members: { some: { userId: user.id } } } },
+    select: { id: true },
+  });
+
+  if (!authorizedProject) {
+    return redirectWithErrorMessage(
+      rootPath(),
+      request,
+      "Run either doesn't exist or you don't have permission to view it",
+      {
+        ephemeral: false,
+      }
+    );
+  }
+
+  const environment = await controlPlaneResolver.resolveAuthenticatedEnv(run.runtimeEnvironmentId);
+
+  if (!environment) {
     return redirectWithErrorMessage(
       rootPath(),
       request,
@@ -71,9 +78,9 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
   }
 
   const path = v3RunPath(
-    { slug: run.project.organization.slug },
-    { slug: run.project.slug },
-    { slug: run.runtimeEnvironment.slug },
+    { slug: environment.organization.slug },
+    { slug: environment.project.slug },
+    { slug: environment.slug },
     { friendlyId: runParam },
     searchParams
   );
