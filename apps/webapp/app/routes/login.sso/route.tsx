@@ -1,7 +1,10 @@
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { ArrowLeftIcon } from "@heroicons/react/20/solid";
 import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
 import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -58,6 +61,16 @@ const ERROR_MESSAGES: Record<string, string> = {
   missing_code: "We couldn't complete sign-in. Try again.",
 };
 
+// Client-side validation for the enterprise email field. The form posts
+// cross-route to /auth/sso, so there's no same-route action result to hydrate
+// from — conform validates the format in the browser and renders the styled
+// inline error before submit. Server-side errors keep flowing via ?error=.
+const ssoEmailSchema = z.object({
+  email: z
+    .string({ required_error: "Enter your enterprise email address" })
+    .email("Enter a valid email address"),
+});
+
 export const meta: MetaFunction = () => [
   { title: "Sign in with SSO – Trigger.dev" },
   { name: "viewport", content: "width=device-width,initial-scale=1" },
@@ -98,9 +111,19 @@ export default function LoginSsoPage() {
   const content = CONTENT[reason];
   const emailReadOnly = reason === "oauth_blocked";
 
+  const [form, fields] = useForm({
+    id: "login-sso",
+    defaultValue: { email },
+    onValidate({ formData }) {
+      return parseWithZod(formData, { schema: ssoEmailSchema });
+    },
+    shouldValidate: "onBlur",
+    shouldRevalidate: "onInput",
+  });
+
   return (
     <LoginPageLayout>
-      <Form method="post" action="/auth/sso">
+      <Form method="post" action="/auth/sso" {...getFormProps(form)}>
         <input type="hidden" name="redirectTo" value={redirectTo} />
         <input type="hidden" name="flow" value="user_initiated" />
         <div className="flex flex-col items-center justify-center">
@@ -113,16 +136,14 @@ export default function LoginSsoPage() {
           <Fieldset className="flex w-full flex-col items-center gap-y-2">
             <InputGroup>
               <Input
-                type="email"
-                name="email"
+                {...getInputProps(fields.email, { type: "email" })}
                 spellCheck={false}
                 placeholder="Enterprise email address"
                 variant="large"
-                required
                 autoFocus={!emailReadOnly}
-                defaultValue={email}
                 readOnly={emailReadOnly}
               />
+              <FormError id={fields.email.errorId}>{fields.email.errors}</FormError>
             </InputGroup>
 
             <Button

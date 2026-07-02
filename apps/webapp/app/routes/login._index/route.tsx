@@ -1,9 +1,12 @@
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { EnvelopeIcon, LockClosedIcon } from "@heroicons/react/20/solid";
 import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
 import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import { motion, useReducedMotion } from "framer-motion";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
+import { z } from "zod";
 import { GoogleLogo } from "~/assets/logos/GoogleLogo";
 import { LoginPageLayout } from "~/components/LoginPageLayout";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
@@ -26,6 +29,16 @@ import { flags as getGlobalFlags } from "~/v3/featureFlags.server";
 import { requestUrl } from "~/utils/requestUrl.server";
 import { SSO_SESSION_EXPIRED_REASON } from "~/utils/ssoSession";
 import { cn } from "~/utils/cn";
+
+// Client-side email validation for the inline magic-link form. Mirrors
+// /login/sso: the form posts cross-route to /login/magic, so conform runs
+// format validation in the browser and renders the styled inline error.
+// Server-side errors still surface via the session-backed authError below.
+const emailSchema = z.object({
+  email: z
+    .string({ required_error: "Enter your email address" })
+    .email("Enter a valid email address"),
+});
 
 function LastUsedBadge({ className }: { className?: string }) {
   const shouldReduceMotion = useReducedMotion();
@@ -154,6 +167,15 @@ export default function LoginPage() {
     navigation.formAction === "/login/magic" &&
     navigation.formData?.get("action") === "send";
 
+  const [emailForm, emailFields] = useForm({
+    id: "login-email",
+    onValidate({ formData }) {
+      return parseWithZod(formData, { schema: emailSchema });
+    },
+    shouldValidate: "onBlur",
+    shouldRevalidate: "onInput",
+  });
+
   return (
     <LoginPageLayout>
       <div className="flex w-full flex-col items-center">
@@ -239,19 +261,25 @@ export default function LoginPage() {
                 <div className="w-full">
                   {/* Posts to the /login/magic action so all magic-link logic
                       (rate limiting, SSO auto-discovery, send) stays in one place. */}
-                  <Form action="/login/magic" method="post" className="w-full">
+                  <Form
+                    action="/login/magic"
+                    method="post"
+                    className="w-full"
+                    {...getFormProps(emailForm)}
+                  >
                     <input type="hidden" name="action" value="send" />
                     <div className="flex w-full flex-col items-center gap-y-2">
                       <InputGroup fullWidth>
                         <Input
-                          type="email"
-                          name="email"
+                          {...getInputProps(emailFields.email, { type: "email" })}
                           spellCheck={false}
                           placeholder="Email Address"
                           variant="large"
-                          required
                           data-action="email address"
                         />
+                        <FormError id={emailFields.email.errorId}>
+                          {emailFields.email.errors}
+                        </FormError>
                       </InputGroup>
                       <div className="relative w-full">
                         {data.lastAuthMethod === "email" && <LastUsedBadge />}

@@ -10,4 +10,5 @@ logic. `/login/magic` becomes confirmation-only and redirects to `/login`
 otherwise, so the inline form is the single source of truth and old links
 don't 404. `/login/sso` gets refreshed copy, an "Enterprise email address"
 placeholder, and an "Ask about SSO" link. The Documentation link is removed
-from the shared login layout.
+from the shared login layout. Both email fields validate inline with the
+standard styled form error instead of the browser's native tooltip.
