@@ -1294,9 +1294,9 @@ describe("run-ops split — store-level behavior against the REAL dedicated sche
   );
 
   // ===========================================================================================
-  // `getWaitpoint`'s WAITPOINT_GROUP_A relations
+  // `getWaitpoint`'s WAITPOINT_DEDICATED relations
   // ({ blockingTaskRuns, connectedRuns, completedExecutionSnapshots }) are hydrated by the dedicated
-  // store on its OWN client only (PostgresRunStore.findWaitpoint → WAITPOINT_GROUP_A
+  // store on its OWN client only (PostgresRunStore.findWaitpoint → WAITPOINT_DEDICATED
   // hydrators, all keyed by `waitpointId` on the store's single client). But a
   // waitpoint's blocking edge, run connection and completing snapshot all CO-LOCATE WITH THE RUN
   // (blockRunWithWaitpointEdges routes by runId; the CompletedWaitpoint + WaitpointRunConnection

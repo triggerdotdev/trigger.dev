@@ -140,7 +140,7 @@ function applyProjection<T extends Record<string, unknown> | null>(
  * to their sub-projection. Both `select` and `include` are handled: with `select` the parent
  * scalars must be explicitly kept, with `include` they come back by default.
  */
-function stripGroupARelations(
+function stripDedicatedRelations(
   args: { select?: any; include?: any },
   spec: DedicatedRelationSpec
 ): { stripped: { select?: any; include?: any }; requested: Record<string, SubProjection> } {
@@ -307,7 +307,7 @@ const hydrateEdgeTaskRun: DedicatedRelationHydrator = async (client, parent, pro
   return applyProjection(run, projection);
 };
 
-const TASK_RUN_GROUP_A: DedicatedRelationSpec = {
+const TASK_RUN_DEDICATED: DedicatedRelationSpec = {
   associatedWaitpoint: hydrateAssociatedWaitpoint,
   connectedWaitpoints: hydrateConnectedWaitpoints,
 };
@@ -315,16 +315,16 @@ const TASK_RUN_GROUP_A: DedicatedRelationSpec = {
 // Dedicated-schema relations on the TaskRunWaitpoint (block edge) model. The dedicated subset has only the
 // scalar `waitpointId`/`taskRunId`, so a caller `select`/`include` naming these relations must be
 // stripped and hydrated.
-const TASK_RUN_WAITPOINT_GROUP_A: DedicatedRelationSpec = {
+const TASK_RUN_WAITPOINT_DEDICATED: DedicatedRelationSpec = {
   waitpoint: hydrateEdgeWaitpoint,
   taskRun: hydrateEdgeTaskRun,
 };
 
-const SNAPSHOT_GROUP_A: DedicatedRelationSpec = {
+const SNAPSHOT_DEDICATED: DedicatedRelationSpec = {
   completedWaitpoints: hydrateCompletedWaitpoints,
 };
 
-const WAITPOINT_GROUP_A: DedicatedRelationSpec = {
+const WAITPOINT_DEDICATED: DedicatedRelationSpec = {
   blockingTaskRuns: hydrateBlockingTaskRuns,
   connectedRuns: hydrateConnectedRuns,
   completedExecutionSnapshots: hydrateCompletedExecutionSnapshots,
@@ -1170,7 +1170,7 @@ export class PostgresRunStore implements RunStore {
     }
 
     const { where, orderBy, take, skip, cursor, ...projection } = args;
-    const { stripped, requested } = stripGroupARelations(projection, TASK_RUN_GROUP_A);
+    const { stripped, requested } = stripDedicatedRelations(projection, TASK_RUN_DEDICATED);
     const rows = (await (prisma as RunOpsCapableClient).taskRun.findMany({
       where,
       orderBy,
@@ -1180,11 +1180,11 @@ export class PostgresRunStore implements RunStore {
       ...stripped,
     })) as Record<string, unknown>[];
     for (const row of rows) {
-      await this.#hydrateGroupARelations(
+      await this.#hydrateDedicatedRelations(
         prisma as RunOpsCapableClient,
         row,
         requested,
-        TASK_RUN_GROUP_A
+        TASK_RUN_DEDICATED
       );
     }
     return rows;
@@ -1272,7 +1272,7 @@ export class PostgresRunStore implements RunStore {
           ...stripped,
         }),
       projection,
-      SNAPSHOT_GROUP_A
+      SNAPSHOT_DEDICATED
     ) as Promise<Prisma.TaskRunExecutionSnapshotGetPayload<T> | null>;
   }
 
@@ -1289,7 +1289,7 @@ export class PostgresRunStore implements RunStore {
     }
 
     const { where, orderBy, take, skip, cursor, ...projection } = args as Record<string, any>;
-    const { stripped, requested } = stripGroupARelations(projection, SNAPSHOT_GROUP_A);
+    const { stripped, requested } = stripDedicatedRelations(projection, SNAPSHOT_DEDICATED);
     const rows = (await (prisma as RunOpsCapableClient).taskRunExecutionSnapshot.findMany({
       where,
       orderBy,
@@ -1299,11 +1299,11 @@ export class PostgresRunStore implements RunStore {
       ...stripped,
     })) as Record<string, unknown>[];
     for (const row of rows) {
-      await this.#hydrateGroupARelations(
+      await this.#hydrateDedicatedRelations(
         prisma as RunOpsCapableClient,
         row,
         requested,
-        SNAPSHOT_GROUP_A
+        SNAPSHOT_DEDICATED
       );
     }
     return rows as Prisma.TaskRunExecutionSnapshotGetPayload<T>[];
@@ -1624,7 +1624,7 @@ export class PostgresRunStore implements RunStore {
           ...stripped,
         }),
       projection,
-      WAITPOINT_GROUP_A
+      WAITPOINT_DEDICATED
     ) as Promise<Prisma.WaitpointGetPayload<T> | null>;
   }
 
@@ -1639,7 +1639,7 @@ export class PostgresRunStore implements RunStore {
     }
 
     const { where, orderBy, take, skip, cursor, ...projection } = args as Record<string, any>;
-    const { stripped, requested } = stripGroupARelations(projection, WAITPOINT_GROUP_A);
+    const { stripped, requested } = stripDedicatedRelations(projection, WAITPOINT_DEDICATED);
     const rows = (await (prisma as RunOpsCapableClient).waitpoint.findMany({
       where,
       orderBy,
@@ -1649,11 +1649,11 @@ export class PostgresRunStore implements RunStore {
       ...stripped,
     })) as Record<string, unknown>[];
     for (const row of rows) {
-      await this.#hydrateGroupARelations(
+      await this.#hydrateDedicatedRelations(
         prisma as RunOpsCapableClient,
         row,
         requested,
-        WAITPOINT_GROUP_A
+        WAITPOINT_DEDICATED
       );
     }
     return rows as Prisma.WaitpointGetPayload<T>[];
@@ -1701,7 +1701,7 @@ export class PostgresRunStore implements RunStore {
     // straight-through would throw a Prisma validation error), run the scalar findMany, then hydrate
     // from the edge's own client. A cross-DB token is missed here and re-resolved by the router.
     const { where, orderBy, take, skip, cursor, ...projection } = args as Record<string, any>;
-    const { stripped, requested } = stripGroupARelations(projection, TASK_RUN_WAITPOINT_GROUP_A);
+    const { stripped, requested } = stripDedicatedRelations(projection, TASK_RUN_WAITPOINT_DEDICATED);
     // Keep the scalar ids the hydrators key off through a narrowed select.
     if (stripped.select) {
       stripped.select.waitpointId = true;
@@ -1716,11 +1716,11 @@ export class PostgresRunStore implements RunStore {
       ...stripped,
     })) as Record<string, unknown>[];
     for (const row of rows) {
-      await this.#hydrateGroupARelations(
+      await this.#hydrateDedicatedRelations(
         prisma as RunOpsCapableClient,
         row,
         requested,
-        TASK_RUN_WAITPOINT_GROUP_A
+        TASK_RUN_WAITPOINT_DEDICATED
       );
     }
     return rows as Prisma.TaskRunWaitpointGetPayload<T>[];
@@ -1872,7 +1872,7 @@ export class PostgresRunStore implements RunStore {
       prisma,
       (stripped) => prisma.taskRun.update({ where, data, ...stripped }),
       args,
-      TASK_RUN_GROUP_A
+      TASK_RUN_DEDICATED
     );
   }
 
@@ -1891,7 +1891,7 @@ export class PostgresRunStore implements RunStore {
       prisma as RunOpsCapableClient,
       (stripped) => delegate[method]({ where, ...stripped }),
       args,
-      TASK_RUN_GROUP_A
+      TASK_RUN_DEDICATED
     );
   }
 
@@ -1908,17 +1908,17 @@ export class PostgresRunStore implements RunStore {
     args: { select?: any; include?: any },
     spec: DedicatedRelationSpec
   ): Promise<any> {
-    const { stripped, requested } = stripGroupARelations(args, spec);
+    const { stripped, requested } = stripDedicatedRelations(args, spec);
     const row = await runQuery(stripped);
     if (!row) {
       return row;
     }
-    await this.#hydrateGroupARelations(client, row, requested, spec);
+    await this.#hydrateDedicatedRelations(client, row, requested, spec);
     return row;
   }
 
   // Hydrate each requested dedicated-schema relation key onto `row` in place, honoring the caller's sub-select.
-  async #hydrateGroupARelations(
+  async #hydrateDedicatedRelations(
     client: RunOpsCapableClient,
     row: Record<string, unknown>,
     requested: Record<string, SubProjection>,
