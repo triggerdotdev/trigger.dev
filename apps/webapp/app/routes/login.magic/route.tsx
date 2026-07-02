@@ -75,6 +75,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
   // error isn't consumed here before /login can display it.
   const url = new URL(request.url);
   const sanitized = sanitizeRedirectPath(url.searchParams.get("redirectTo"));
+  // The submitted address is carried on the success redirect so the
+  // confirmation can name it. Validate before echoing it back.
+  const emailParam = url.searchParams.get("email");
+  const email = emailParam && z.string().email().safeParse(emailParam).success ? emailParam : null;
   if (!session.has("triggerdotdev:magiclink")) {
     // Throw (not return) so the redirect doesn't widen the loader's return
     // type — otherwise useTypedLoaderData sees TypedResponse<never> in the
@@ -109,6 +113,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     {
       magicLinkSent: session.has("triggerdotdev:magiclink"),
       magicLinkError,
+      email,
     },
     {
       headers,
@@ -210,7 +215,7 @@ export async function action({ request }: ActionFunctionArgs) {
       }
 
       return authenticator.authenticate("email-link", request, {
-        successRedirect: "/login/magic",
+        successRedirect: `/login/magic?email=${encodeURIComponent(email)}`,
         failureRedirect: "/login/magic",
       });
     }
@@ -221,7 +226,9 @@ export async function action({ request }: ActionFunctionArgs) {
       const session = await getUserSession(request);
       session.unset("triggerdotdev:magiclink");
 
-      return redirect("/login/magic", {
+      // The email form now lives on /login, so send "Re-enter email" straight
+      // there rather than bouncing through this route's loader redirect.
+      return redirect("/login", {
         headers: {
           "Set-Cookie": await commitSession(session),
         },
@@ -231,7 +238,7 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function LoginMagicLinkPage() {
-  const { magicLinkSent, magicLinkError } = useTypedLoaderData<typeof loader>();
+  const { magicLinkSent, magicLinkError, email } = useTypedLoaderData<typeof loader>();
   const navigate = useNavigation();
 
   const isLoading =
@@ -250,9 +257,15 @@ export default function LoginMagicLinkPage() {
               </Header1>
               <Fieldset className="flex w-full flex-col items-center gap-y-2">
                 <InboxArrowDownIcon className="mb-4 h-12 w-12 text-indigo-500" />
-                <Paragraph className="mb-6 text-center">
-                  We sent you an email which contains a magic link that will log you in to your
-                  account.
+                <Paragraph className="mb-6 text-center [text-wrap:balance]">
+                  {email ? (
+                    <>
+                      We emailed a magic link to <span className="text-text-bright">{email}</span>{" "}
+                      to log you in to your account.
+                    </>
+                  ) : (
+                    "We emailed you a magic link to log you in to your account."
+                  )}
                 </Paragraph>
                 <FormButtons
                   cancelButton={

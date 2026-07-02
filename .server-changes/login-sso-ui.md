@@ -11,4 +11,6 @@ otherwise, so the inline form is the single source of truth and old links
 don't 404. `/login/sso` gets refreshed copy, an "Enterprise email address"
 placeholder, and an "Ask about SSO" link. The Documentation link is removed
 from the shared login layout. Both email fields validate inline with the
-standard styled form error instead of the browser's native tooltip.
+standard styled form error instead of the browser's native tooltip. The
+"magic link sent" confirmation names the address the link was sent to, and its
+"Re-enter email" action returns to `/login`.
