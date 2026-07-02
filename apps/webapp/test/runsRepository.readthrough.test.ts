@@ -118,12 +118,6 @@ async function createRun(
   });
 }
 
-const neverCalled =
-  (label: string) =>
-  async (id: string): Promise<never> => {
-    throw new Error(`${label} must not be invoked (called with ${id})`);
-  };
-
 describe("RunsRepository read-through id-set hydrate (PG14 legacy + PG17 new)", () => {
   // --- DoD line + e2e #6: split fan-out across new + legacy-replica with known-migrated filter ---
   replicationContainerTest(
@@ -177,8 +171,6 @@ describe("RunsRepository read-through id-set hydrate (PG14 legacy + PG17 new)", 
             splitEnabled: true,
             newClient: prismaNew,
             legacyReplica: prisma,
-            // legacy-only ids are NOT known-migrated -> the legacy replica IS probed for them.
-            isKnownMigrated: async () => false,
           },
         });
 
@@ -212,81 +204,9 @@ describe("RunsRepository read-through id-set hydrate (PG14 legacy + PG17 new)", 
     }
   );
 
-  // --- Known-migrated filter avoids re-probing legacy ---
+  // --- Passthrough (single-DB): one plain store read, legacy never touched ---
   replicationContainerTest(
-    "a known-migrated id missing from the new probe is NOT re-probed against the legacy replica",
-    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma, network }) => {
-      const { clickhouse } = await setupClickhouseReplication({
-        prisma,
-        databaseUrl: postgresContainer.getConnectionUri(),
-        clickhouseUrl: clickhouseContainer.getConnectionUrl(),
-        redisOptions,
-      });
-
-      const { url: newUrl } = await createPostgresContainer(network, {
-        imageTag: "docker.io/postgres:17",
-      });
-      const prismaNew = new PrismaClient({ datasources: { db: { url: newUrl } } });
-
-      try {
-        const ctx = await seedParents(prisma, "migfilter");
-        await mirrorParents(prismaNew, ctx, "migfilter");
-
-        // Seed the run on the LEGACY/source DB (so CH has the id) but withhold it from NEW,
-        // simulating replication lag where the new probe misses a freshly-migrated row.
-        const migrated = await createRun(prisma, ctx, { friendlyId: "run_migrated" });
-
-        await setTimeout(1500);
-
-        // legacyReplica hydrate must NEVER run for this id because isKnownMigrated is true.
-        const legacySpyPrisma = new Proxy(prisma, {
-          get(target, prop) {
-            if (prop === "taskRun") {
-              return new Proxy((target as any).taskRun, {
-                get(trTarget, trProp) {
-                  if (trProp === "findMany") {
-                    return async () => {
-                      throw new Error("legacy replica hydrate must not be invoked for migrated id");
-                    };
-                  }
-                  return (trTarget as any)[trProp];
-                },
-              });
-            }
-            return (target as any)[prop];
-          },
-        }) as unknown as PrismaClient;
-
-        const runsRepository = new RunsRepository({
-          prisma,
-          clickhouse,
-          runStore: new PostgresRunStore({ prisma: prismaNew, readOnlyPrisma: prismaNew }),
-          readThrough: {
-            splitEnabled: true,
-            newClient: prismaNew,
-            legacyReplica: legacySpyPrisma,
-            isKnownMigrated: async (id) => id === migrated.id,
-          },
-        });
-
-        const { runs } = await runsRepository.listRuns({
-          page: { size: 10 },
-          projectId: ctx.projectId,
-          environmentId: ctx.environmentId,
-          organizationId: ctx.organizationId,
-        });
-
-        // Not on NEW, known-migrated -> served from neither => not-found (filtered).
-        expect(runs).toHaveLength(0);
-      } finally {
-        await prismaNew.$disconnect();
-      }
-    }
-  );
-
-  // --- Passthrough (single-DB): one plain store read, legacy + isKnownMigrated never touched ---
-  replicationContainerTest(
-    "single-DB passthrough hydrates from one store read and never touches the legacy/known-migrated boundaries",
+    "single-DB passthrough hydrates from one store read and never touches the legacy boundary",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
         prisma,
@@ -300,15 +220,13 @@ describe("RunsRepository read-through id-set hydrate (PG14 legacy + PG17 new)", 
 
       await setTimeout(1500);
 
-      // No readThrough (splitEnabled defaults false). Inject throwing boundaries to prove the
-      // split branch is never entered.
+      // splitEnabled false → the split branch is never entered (one plain store read).
       const runsRepository = new RunsRepository({
         prisma,
         clickhouse,
         readThrough: {
           splitEnabled: false,
           legacyReplica: prisma,
-          isKnownMigrated: neverCalled("isKnownMigrated"),
         },
       });
 
@@ -412,7 +330,6 @@ describe("RunsRepository read-through id-set hydrate (PG14 legacy + PG17 new)", 
             splitEnabled: true,
             newClient: prismaNew,
             legacyReplica: prisma,
-            isKnownMigrated: async () => false,
           },
         });
 

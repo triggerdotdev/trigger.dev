@@ -45,7 +45,6 @@ describe("TriggerFailedTaskService — failed run residency", () => {
         engine,
         // Read the parent through the same store the engine wrote it to.
         runStore: engine.runStore,
-        isKnownMigrated: async () => false,
       });
 
       const friendlyId = await service.call({
@@ -101,7 +100,6 @@ describe("TriggerFailedTaskService — failed run residency", () => {
         engine,
         // Read the parent through the same store the engine wrote it to.
         runStore: engine.runStore,
-        isKnownMigrated: async () => false,
       });
 
       const friendlyId = await service.call({
@@ -160,7 +158,6 @@ describe("TriggerFailedTaskService — failed run residency", () => {
         engine,
         // Read the parent through the same store the engine wrote it to.
         runStore: engine.runStore,
-        isKnownMigrated: async () => false,
       });
 
       const friendlyId = await service.call({
@@ -172,55 +169,6 @@ describe("TriggerFailedTaskService — failed run residency", () => {
       });
 
       expect(classifyKind(friendlyId!)).toBe("cuid");
-
-      await engine.quit();
-    }
-  );
-
-  containerTest(
-    "failed child of a migrated LEGACY parent mints ksuid (call)",
-    async ({ prisma, redisOptions }) => {
-      const engine = makeEngine(prisma, redisOptions);
-      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const taskIdentifier = "failed-residency-task";
-      await setupBackgroundWorker(engine, environment, taskIdentifier);
-
-      const parentFriendlyId = RunId.generate().friendlyId;
-      expect(classifyKind(parentFriendlyId)).toBe("cuid");
-      await engine.trigger(
-        {
-          friendlyId: parentFriendlyId,
-          environment,
-          taskIdentifier,
-          payload: "{}",
-          payloadType: "application/json",
-          traceId: "00000000000000000000000000000000",
-          spanId: "0000000000000000",
-          workerQueue: "main",
-          queue: `task/${taskIdentifier}`,
-          isTest: false,
-          tags: [],
-        } as any,
-        prisma
-      );
-
-      const service = new TriggerFailedTaskService({
-        prisma,
-        engine,
-        // Read the parent through the same store the engine wrote it to.
-        runStore: engine.runStore,
-        isKnownMigrated: async (id: string) => id === parentFriendlyId,
-      });
-
-      const friendlyId = await service.call({
-        taskId: taskIdentifier,
-        environment,
-        payload: { test: "child" },
-        errorMessage: "boom",
-        parentRunId: parentFriendlyId,
-      });
-
-      expect(classifyKind(friendlyId!)).toBe("ksuid");
 
       await engine.quit();
     }
@@ -257,7 +205,6 @@ describe("TriggerFailedTaskService — failed run residency", () => {
         engine,
         // Read the parent through the same store the engine wrote it to.
         runStore: engine.runStore,
-        isKnownMigrated: async () => false,
       });
 
       const friendlyId = await service.callWithoutTraceEvents({
@@ -290,7 +237,6 @@ describe("TriggerFailedTaskService — failed run residency", () => {
         engine,
         // Read the parent through the same store the engine wrote it to.
         runStore: engine.runStore,
-        isKnownMigrated: async () => false,
       });
 
       // A well-formed ksuid parent friendlyId that was NEVER triggered → no row.

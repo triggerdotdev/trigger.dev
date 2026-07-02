@@ -9,8 +9,6 @@ import type {
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
-import { isKnownMigrated as defaultIsKnownMigrated } from "~/v3/runOpsMigration/knownMigratedFilter.server";
-import { isSplitEnabled as defaultIsSplitEnabled } from "~/v3/runOpsMigration/splitMode.server";
 import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedMintKind.server";
 import { getEventRepository } from "~/v3/eventRepository/index.server";
 import { runStore as defaultRunStore } from "~/v3/runStore.server";
@@ -63,12 +61,6 @@ export class TriggerFailedTaskService {
   private readonly prisma: PrismaClientOrTransaction;
   private readonly replicaPrisma: PrismaClientOrTransaction;
   private readonly engine: RunEngine;
-  // Reports whether a run that is legacy by id-shape has already been moved to
-  // the new store. Injected for tests; defaults to the live resolver.
-  private readonly isKnownMigrated: (runId: string) => Promise<boolean>;
-  // Injected so the migrated-marker read stays off the hot path when split is off
-  // (same guard as RunEngineTriggerTaskService); defaults to the live resolver.
-  private readonly isSplitEnabled: () => Promise<boolean>;
   // Resolves the parent run for depth/root/parent linkage. Defaults to the shared
   // singleton (in production the same store the engine writes through). Injected in
   // tests so the read resolves on the same store the engine wrote to.
@@ -78,15 +70,11 @@ export class TriggerFailedTaskService {
     prisma: PrismaClientOrTransaction;
     engine: RunEngine;
     replicaPrisma?: PrismaClientOrTransaction;
-    isKnownMigrated?: (runId: string) => Promise<boolean>;
-    isSplitEnabled?: () => Promise<boolean>;
     runStore?: RunStore;
   }) {
     this.prisma = opts.prisma;
     this.replicaPrisma = opts.replicaPrisma ?? opts.prisma;
     this.engine = opts.engine;
-    this.isKnownMigrated = opts.isKnownMigrated ?? defaultIsKnownMigrated;
-    this.isSplitEnabled = opts.isSplitEnabled ?? defaultIsSplitEnabled;
     this.runStore = opts.runStore ?? defaultRunStore;
   }
 
@@ -101,10 +89,7 @@ export class TriggerFailedTaskService {
     parentRunFriendlyId?: string;
   }): Promise<string> {
     const mintKind = args.parentRunFriendlyId
-      ? await resolveInheritedMintKind(args.parentRunFriendlyId, {
-          isSplitEnabled: this.isSplitEnabled,
-          isKnownMigrated: this.isKnownMigrated,
-        })
+      ? resolveInheritedMintKind(args.parentRunFriendlyId)
       : await resolveRunIdMintKind({
           organizationId: args.organizationId,
           id: args.environmentId,

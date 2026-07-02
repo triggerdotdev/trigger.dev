@@ -133,7 +133,6 @@ describe("BulkActionService member hydration across the seam (PG14 legacy + PG17
           splitEnabled: true,
           newClient: prisma17 as unknown as PrismaReplicaClient,
           legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          isKnownMigrated: async () => false,
         },
       });
 
@@ -162,7 +161,6 @@ describe("BulkActionService member hydration across the seam (PG14 legacy + PG17
           splitEnabled: true,
           newClient: prisma17 as unknown as PrismaReplicaClient,
           legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          isKnownMigrated: async () => false,
         },
       });
 
@@ -176,37 +174,7 @@ describe("BulkActionService member hydration across the seam (PG14 legacy + PG17
   );
 
   heteroPostgresTest(
-    "known-migrated member is served from new and the legacy replica is never queried for it",
-    async ({ prisma14, prisma17 }) => {
-      // A legacy-classified id that lives on new (read hits it). Even with isKnownMigrated=true,
-      // because new HITS, legacy is never probed.
-      const migratedRunId = legacyId("e");
-      const newCtx = await seedEnv(prisma17 as unknown as PrismaClient, "migrated-new");
-      await seedRun(prisma17 as unknown as PrismaClient, newCtx, migratedRunId);
-
-      const throwingLegacy = vi.fn(() => {
-        throw new Error("legacy replica must never be queried for a known-migrated member");
-      });
-
-      const runs = await hydrateRunsAcrossSeam({
-        runIds: [migratedRunId],
-        readNew: cancelReadNew,
-        readLegacyReplica: throwingLegacy as never,
-        deps: {
-          splitEnabled: true,
-          newClient: prisma17 as unknown as PrismaReplicaClient,
-          legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          isKnownMigrated: async () => true,
-        },
-      });
-
-      expect(runs.map((r) => r.id)).toEqual([migratedRunId]);
-      expect(throwingLegacy).not.toHaveBeenCalled();
-    }
-  );
-
-  heteroPostgresTest(
-    "single-DB passthrough hydrates all members from one client; legacy + filter never invoked",
+    "single-DB passthrough hydrates all members from one client; legacy never invoked",
     async ({ prisma14, prisma17 }) => {
       // In single-DB mode the service passes its _replica as newClient. Seed everything there.
       const idA = newId("f");
@@ -218,9 +186,6 @@ describe("BulkActionService member hydration across the seam (PG14 legacy + PG17
       const throwingLegacy = vi.fn(() => {
         throw new Error("legacy replica must never run in single-DB mode");
       });
-      const throwingFilter = vi.fn(async () => {
-        throw new Error("isKnownMigrated must never run in single-DB mode");
-      });
 
       const runs = await hydrateRunsAcrossSeam({
         runIds: [idA, idB],
@@ -230,13 +195,11 @@ describe("BulkActionService member hydration across the seam (PG14 legacy + PG17
           splitEnabled: false,
           newClient: prisma17 as unknown as PrismaReplicaClient,
           legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          isKnownMigrated: throwingFilter,
         },
       });
 
       expect(runs.map((r) => r.id).sort()).toEqual([idA, idB].sort());
       expect(throwingLegacy).not.toHaveBeenCalled();
-      expect(throwingFilter).not.toHaveBeenCalled();
     }
   );
 });

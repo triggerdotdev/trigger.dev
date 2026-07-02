@@ -25,8 +25,6 @@ import { logger } from "~/services/logger.server";
 import { getEntitlement } from "~/services/platform.v3.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
 import { resolveRunIdMintKind, type RunIdMintKind } from "~/v3/engineVersion.server";
-import { isKnownMigrated as defaultIsKnownMigrated } from "~/v3/runOpsMigration/knownMigratedFilter.server";
-import { isSplitEnabled as defaultIsSplitEnabled } from "~/v3/runOpsMigration/splitMode.server";
 import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedMintKind.server";
 import { mintBatchFriendlyId } from "~/v3/runOpsMigration/mintBatchFriendlyId.server";
 import { batchTriggerWorker } from "../batchTriggerWorker.server";
@@ -112,20 +110,13 @@ export class BatchTriggerV3Service extends BaseService {
     asyncBatchProcessSizeThreshold: number = ASYNC_BATCH_PROCESS_SIZE_THRESHOLD,
     protected readonly _prisma: PrismaClientOrTransaction = prisma,
     protected readonly runStore: RunStore = defaultRunStore,
-    // Injected so tests drive the migrated-parent branch without the split-store
-    // infrastructure; defaults to the live resolver (same pattern as
-    // RunEngineTriggerTaskService).
-    private readonly isKnownMigrated: (runId: string) => Promise<boolean> = defaultIsKnownMigrated,
     // Injected so tests force the env-default branch deterministically; defaults
     // to the live per-env mint resolver.
     private readonly resolveMintKind: (environment: {
       organizationId: string;
       id: string;
       orgFeatureFlags?: unknown;
-    }) => Promise<RunIdMintKind> = resolveRunIdMintKind,
-    // Injected so the migrated-marker read stays off the hot path when split is off
-    // (same guard as RunEngineTriggerTaskService); defaults to the live resolver.
-    private readonly isSplitEnabled: () => Promise<boolean> = defaultIsSplitEnabled
+    }) => Promise<RunIdMintKind> = resolveRunIdMintKind
   ) {
     super(_prisma);
 
@@ -354,19 +345,15 @@ export class BatchTriggerV3Service extends BaseService {
 
   // Mint a child run's friendlyId so it lands in the SAME physical store as its
   // residency anchor. The caller passes the batch's friendlyId, so a ksuid
-  // anchor (or a cuid-shaped one already migrated to the new store) yields a ksuid
-  // (NEW) child and a cuid anchor yields a cuid (LEGACY) child. With no anchor it
-  // falls back to the env's cutover setting. Mirrors
-  // RunEngineTriggerTaskService.mintRunFriendlyId.
+  // (NEW) anchor yields a ksuid (NEW) child and a cuid anchor yields a cuid
+  // (LEGACY) child. With no anchor it falls back to the env's cutover setting.
+  // Mirrors RunEngineTriggerTaskService.mintRunFriendlyId.
   private async mintChildFriendlyId(
     environment: AuthenticatedEnvironment,
     anchorFriendlyId?: string
   ): Promise<string> {
     const mintKind = anchorFriendlyId
-      ? await resolveInheritedMintKind(anchorFriendlyId, {
-          isSplitEnabled: this.isSplitEnabled,
-          isKnownMigrated: this.isKnownMigrated,
-        })
+      ? resolveInheritedMintKind(anchorFriendlyId)
       : await this.resolveMintKind({
           organizationId: environment.organizationId,
           id: environment.id,

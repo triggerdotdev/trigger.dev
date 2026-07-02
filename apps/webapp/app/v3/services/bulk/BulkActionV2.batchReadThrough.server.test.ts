@@ -1,9 +1,8 @@
 // Real PG14 (legacy replica) + PG17 (new) proof for the bulk batch read-through adapter.
 // We NEVER mock the DB: each closure runs a real `$queryRaw` against the passed container
 // (crossing the actual PG14↔PG17 boundary) then filters an in-memory seeded set by id —
-// mirroring readThrough.server.test.ts's `realRead`. The only injected fakes are the pure
-// boundaries the plan allows (`isKnownMigrated`) plus throwing spies asserting a store was
-// NEVER touched.
+// mirroring readThrough.server.test.ts's `realRead`. The only injected fakes are throwing
+// spies asserting a store was NEVER touched.
 import { heteroPostgresTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
 import type { PrismaReplicaClient } from "~/db.server";
@@ -51,7 +50,6 @@ describe("hydrateRunsAcrossSeam (PG14 legacy replica + PG17 new)", () => {
           splitEnabled: true,
           newClient: prisma17 as unknown as PrismaReplicaClient,
           legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          isKnownMigrated: async () => false,
         },
       });
 
@@ -64,39 +62,11 @@ describe("hydrateRunsAcrossSeam (PG14 legacy replica + PG17 new)", () => {
   );
 
   heteroPostgresTest(
-    "(b) known-migrated short-circuit: legacy-classified id missed by new is not probed and is omitted",
-    async ({ prisma14, prisma17 }) => {
-      const onNew = new Set<string>(); // new misses it
-      const throwingLegacy = vi.fn(async (): Promise<Row[]> => {
-        throw new Error("readLegacyReplica must never run for a known-migrated id");
-      });
-
-      const rows = await hydrateRunsAcrossSeam<Row>({
-        runIds: [LEGACY_RUN_ID],
-        readNew: (client, ids) => realReadFiltered(client, ids, onNew),
-        readLegacyReplica: throwingLegacy,
-        deps: {
-          splitEnabled: true,
-          newClient: prisma17 as unknown as PrismaReplicaClient,
-          legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          isKnownMigrated: async () => true,
-        },
-      });
-
-      expect(rows).toEqual([]);
-      expect(throwingLegacy).not.toHaveBeenCalled();
-    }
-  );
-
-  heteroPostgresTest(
-    "(c) passthrough: splitEnabled false reads only the single client; legacy + filter never touched",
+    "(c) passthrough: splitEnabled false reads only the single client; legacy never touched",
     async ({ prisma14, prisma17 }) => {
       const onNew = new Set([NEW_RUN_ID, LEGACY_RUN_ID]);
       const throwingLegacy = vi.fn(async (): Promise<Row[]> => {
         throw new Error("readLegacyReplica must never run in single-DB mode");
-      });
-      const throwingFilter = vi.fn(async (): Promise<boolean> => {
-        throw new Error("isKnownMigrated must never run in single-DB mode");
       });
       const readNew = vi.fn((client: PrismaReplicaClient, ids: string[]) =>
         realReadFiltered(client, ids, onNew)
@@ -111,7 +81,6 @@ describe("hydrateRunsAcrossSeam (PG14 legacy replica + PG17 new)", () => {
           // single collapsed store (use prisma17 here as the "new"/primary analog)
           newClient: prisma17 as unknown as PrismaReplicaClient,
           legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          isKnownMigrated: throwingFilter,
         },
       });
 
@@ -119,7 +88,6 @@ describe("hydrateRunsAcrossSeam (PG14 legacy replica + PG17 new)", () => {
       expect(ids).toEqual([LEGACY_RUN_ID, NEW_RUN_ID].sort());
       expect(readNew).toHaveBeenCalledTimes(1);
       expect(throwingLegacy).not.toHaveBeenCalled();
-      expect(throwingFilter).not.toHaveBeenCalled();
     }
   );
 });

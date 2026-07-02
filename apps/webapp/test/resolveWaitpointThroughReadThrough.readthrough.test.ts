@@ -17,10 +17,7 @@ function generateLegacyCuid() {
   return `c${suffix}`;
 }
 
-function recording(
-  client: PrismaClient | RunOpsPrismaClient,
-  opts: { forbidden?: boolean } = {}
-) {
+function recording(client: PrismaClient | RunOpsPrismaClient, opts: { forbidden?: boolean } = {}) {
   const calls: unknown[] = [];
   const waitpoint = {
     findFirst: (args: unknown) => {
@@ -109,7 +106,6 @@ describe("resolveWaitpointThroughReadThrough (hetero PG14 legacy + dedicated run
           splitEnabled: true,
           newClient: newClient.handle,
           legacyReplica: legacy.handle,
-          isKnownMigrated: async () => false,
         },
       });
 
@@ -145,7 +141,6 @@ describe("resolveWaitpointThroughReadThrough (hetero PG14 legacy + dedicated run
           splitEnabled: true,
           newClient: newClient.handle,
           legacyReplica: legacy.handle,
-          isKnownMigrated: async () => false,
         },
       });
 
@@ -156,30 +151,26 @@ describe("resolveWaitpointThroughReadThrough (hetero PG14 legacy + dedicated run
     }
   );
 
-  heteroRunOpsPostgresTest(
-    "not-found maps to null (no throw)",
-    async ({ prisma17, prisma14 }) => {
-      const id = generateLegacyCuid();
-      const { environment } = await seedOrgProjectEnv(prisma14, "nf");
+  heteroRunOpsPostgresTest("not-found maps to null (no throw)", async ({ prisma17, prisma14 }) => {
+    const id = generateLegacyCuid();
+    const { environment } = await seedOrgProjectEnv(prisma14, "nf");
 
-      const result = await resolveWaitpointThroughReadThrough({
-        waitpointId: id,
-        environmentId: environment.id,
-        read: read(id, environment.id),
-        deps: {
-          splitEnabled: true,
-          newClient: recording(prisma17).handle,
-          legacyReplica: recording(prisma14).handle,
-          isKnownMigrated: async () => false,
-        },
-      });
+    const result = await resolveWaitpointThroughReadThrough({
+      waitpointId: id,
+      environmentId: environment.id,
+      read: read(id, environment.id),
+      deps: {
+        splitEnabled: true,
+        newClient: recording(prisma17).handle,
+        legacyReplica: recording(prisma14).handle,
+      },
+    });
 
-      expect(result).toBeNull();
-    }
-  );
+    expect(result).toBeNull();
+  });
 
   postgresTest(
-    "passthrough (single-DB): one plain read; legacy + isKnownMigrated never invoked",
+    "passthrough (single-DB): one plain read; legacy never invoked",
     async ({ prisma }) => {
       const id = generateKsuidId();
       const { project, environment } = await seedOrgProjectEnv(prisma, "pt");
@@ -190,7 +181,6 @@ describe("resolveWaitpointThroughReadThrough (hetero PG14 legacy + dedicated run
 
       const single = recording(prisma);
       const legacy = recording(prisma, { forbidden: true });
-      let knownMigratedInvoked = false;
 
       const result = await resolveWaitpointThroughReadThrough({
         waitpointId: id,
@@ -199,10 +189,6 @@ describe("resolveWaitpointThroughReadThrough (hetero PG14 legacy + dedicated run
         deps: {
           newClient: single.handle,
           legacyReplica: legacy.handle,
-          isKnownMigrated: async () => {
-            knownMigratedInvoked = true;
-            return false;
-          },
         },
       });
 
@@ -210,7 +196,6 @@ describe("resolveWaitpointThroughReadThrough (hetero PG14 legacy + dedicated run
       expect(result!.id).toBe(seeded.id);
       expect(single.calls.length).toBe(1);
       expect(legacy.calls.length).toBe(0);
-      expect(knownMigratedInvoked).toBe(false);
     }
   );
 });

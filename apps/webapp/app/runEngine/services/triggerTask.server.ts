@@ -27,8 +27,6 @@ import { parseDelay } from "~/utils/delays";
 import { handleMetadataPacket } from "~/utils/packets";
 import { startSpan } from "~/v3/tracing.server";
 import { resolveRunIdMintKind } from "~/v3/engineVersion.server";
-import { isKnownMigrated as defaultIsKnownMigrated } from "~/v3/runOpsMigration/knownMigratedFilter.server";
-import { isSplitEnabled as defaultIsSplitEnabled } from "~/v3/runOpsMigration/splitMode.server";
 import { resolveInheritedMintKind } from "~/v3/runOpsMigration/resolveInheritedMintKind.server";
 import type {
   TriggerTaskServiceOptions,
@@ -98,14 +96,6 @@ export class RunEngineTriggerTaskService {
   private readonly evaluateGate: MollifierEvaluateGate;
   private readonly getMollifierBuffer: MollifierGetBuffer;
   private readonly isMollifierGloballyEnabled: () => boolean;
-  // Resolves whether a run that classifies as legacy-by-id-shape has already
-  // been moved to the new store. Injected so tests can drive the migrated-parent
-  // case without the split-store infrastructure; defaults to the live resolver.
-  private readonly isKnownMigrated: (runId: string) => Promise<boolean>;
-  // Gates whether the marker-aware inheritance branch runs. With split OFF the
-  // child residency is a pure id-shape check — zero I/O on the hot path,
-  // byte-identical to today. Injected so tests can drive split on/off.
-  private readonly isSplitEnabled: () => Promise<boolean>;
 
   constructor(opts: {
     prisma: PrismaClientOrTransaction;
@@ -121,8 +111,6 @@ export class RunEngineTriggerTaskService {
     evaluateGate?: MollifierEvaluateGate;
     getMollifierBuffer?: MollifierGetBuffer;
     isMollifierGloballyEnabled?: () => boolean;
-    isKnownMigrated?: (runId: string) => Promise<boolean>;
-    isSplitEnabled?: () => Promise<boolean>;
   }) {
     this.prisma = opts.prisma;
     this.engine = opts.engine;
@@ -138,8 +126,6 @@ export class RunEngineTriggerTaskService {
     this.getMollifierBuffer = opts.getMollifierBuffer ?? defaultGetMollifierBuffer;
     this.isMollifierGloballyEnabled =
       opts.isMollifierGloballyEnabled ?? (() => env.TRIGGER_MOLLIFIER_ENABLED === "1");
-    this.isKnownMigrated = opts.isKnownMigrated ?? defaultIsKnownMigrated;
-    this.isSplitEnabled = opts.isSplitEnabled ?? defaultIsSplitEnabled;
   }
 
   // Mint a new run's friendlyId. The id-kind decides which store the run is born
@@ -147,19 +133,15 @@ export class RunEngineTriggerTaskService {
   // must agree. Two cases:
   //
   //  - ROOT run (no parent): mint by the environment's cutover setting.
-  //  - CHILD run (has a parent): inherit the parent's CURRENT residency, so a
-  //    parent and child never split across stores. A parent that is legacy by
-  //    id-shape but has already been moved to the new store (reported by the
-  //    migrated check) yields a new-store (ksuid) child.
+  //  - CHILD run (has a parent): inherit the parent's residency by id-shape, so a
+  //    parent and child never split across stores (ksuid parent → ksuid child,
+  //    cuid parent → cuid child).
   private async mintRunFriendlyId(
     environment: AuthenticatedEnvironment,
     parentRunFriendlyId?: string
   ): Promise<string> {
     const mintKind = parentRunFriendlyId
-      ? await resolveInheritedMintKind(parentRunFriendlyId, {
-          isSplitEnabled: this.isSplitEnabled,
-          isKnownMigrated: this.isKnownMigrated,
-        })
+      ? resolveInheritedMintKind(parentRunFriendlyId)
       : await resolveRunIdMintKind({
           organizationId: environment.organizationId,
           id: environment.id,

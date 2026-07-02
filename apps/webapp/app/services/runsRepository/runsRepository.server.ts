@@ -32,7 +32,6 @@ export type RunsRepositoryOptions = {
     legacyReplica?: PrismaClientOrTransaction;
     // Resolved boot constant; when false the split branch is never entered.
     splitEnabled?: boolean;
-    isKnownMigrated?: (runId: string) => Promise<boolean>;
   };
 };
 

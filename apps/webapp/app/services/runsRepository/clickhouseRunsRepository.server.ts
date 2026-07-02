@@ -14,7 +14,6 @@ import parseDuration from "parse-duration";
 import { decodeRunsCursor, encodeRunsCursor } from "./runsCursor.server";
 import { runStore } from "~/v3/runStore.server";
 import { type PrismaClientOrTransaction } from "~/db.server";
-import { isKnownMigrated as defaultIsKnownMigrated } from "~/v3/runOpsMigration/knownMigratedFilter.server";
 
 type RunCursorRow = { runId: string; createdAt: number };
 
@@ -181,18 +180,13 @@ export class ClickHouseRunsRepository implements IRunsRepository {
     } else {
       const newClient = this.options.readThrough?.newClient ?? this.options.prisma;
       const legacyReplica = this.options.readThrough?.legacyReplica ?? this.options.prisma;
-      const isKnownMigrated = this.options.readThrough?.isKnownMigrated ?? defaultIsKnownMigrated;
 
       const newRows = await hydrate(newClient, runIds);
       const foundIds = new Set(newRows.map((r) => r.id));
       const missing = runIds.filter((id) => !foundIds.has(id));
 
-      const toProbeLegacy: string[] = [];
-      for (const id of missing) {
-        if (!(await isKnownMigrated(id))) {
-          toProbeLegacy.push(id);
-        }
-      }
+      // Any id not hydrated from the new store is probed on the legacy replica.
+      const toProbeLegacy = missing;
 
       const legacyRows = toProbeLegacy.length ? await hydrate(legacyReplica, toProbeLegacy) : [];
       rows = [...newRows, ...legacyRows];

@@ -1,13 +1,11 @@
 import type { PrismaReplicaClient } from "~/db.server";
 import { $replica } from "~/db.server";
 import { readThroughRun } from "~/v3/runOpsMigration/readThrough.server";
-import { isKnownMigrated as defaultIsKnownMigrated } from "~/v3/runOpsMigration/knownMigratedFilter.server";
 
 type ResolveWaitpointDeps = {
   newClient?: PrismaReplicaClient;
   legacyReplica?: PrismaReplicaClient;
   splitEnabled?: boolean;
-  isKnownMigrated?: (id: string) => Promise<boolean>;
   isPastRetention?: (id: string) => boolean;
 };
 
@@ -26,7 +24,6 @@ export async function resolveWaitpointThroughReadThrough<T>(opts: {
       splitEnabled: opts.deps?.splitEnabled,
       newClient: opts.deps?.newClient ?? $replica,
       legacyReplica: opts.deps?.legacyReplica ?? $replica,
-      isKnownMigrated: opts.deps?.isKnownMigrated ?? defaultIsKnownMigrated,
       isPastRetention: opts.deps?.isPastRetention,
     },
   });

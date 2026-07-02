@@ -5,16 +5,15 @@
  * per-id read-through ordering as SET reads:
  *
  *   1. single-DB passthrough (splitEnabled === false): ONE read against the collapsed
- *      store, no residency classification, no legacy probe, no known-migrated filter.
+ *      store, no residency classification, no legacy probe.
  *   2. split on: classify each id's residency via `ownerEngine`, read NEW for every id
  *      that could be on new (residency NEW *and* legacy-candidates — read-through is
- *      new-FIRST for legacy too), apply the known-migrated short-circuit only to
- *      legacy-candidates the new read missed, then probe the LEGACY READ REPLICA ONLY
- *      for whatever remains.
+ *      new-FIRST for legacy too), then probe the LEGACY READ REPLICA ONLY for the
+ *      legacy-candidates the new read missed.
  *
  * Like the per-id layer this NEVER touches a legacy primary/writer — there is no such
  * handle. An id is read from new OR legacy, never both: legacy is only probed for ids
- * new missed AND that are not known-migrated, so the returned set needs no dedupe.
+ * new missed, so the returned set needs no dedupe.
  */
 import type { PrismaReplicaClient } from "~/db.server";
 import {
@@ -22,7 +21,6 @@ import {
   runOpsNewReplica as defaultNewClient,
 } from "~/db.server";
 import { ownerEngine, UnclassifiableRunId } from "@trigger.dev/core/v3/isomorphic";
-import { isKnownMigrated as defaultIsKnownMigrated } from "~/v3/runOpsMigration/knownMigratedFilter.server";
 
 export type SeamReadDeps = {
   /**
@@ -30,7 +28,6 @@ export type SeamReadDeps = {
    * request via `isSplitEnabled()`; this adapter never awaits it itself.
    */
   splitEnabled: boolean;
-  isKnownMigrated?: (runId: string) => Promise<boolean>;
   newClient?: PrismaReplicaClient;
   legacyReplica?: PrismaReplicaClient;
   logger?: { warn: (m: string, meta?: unknown) => void };
@@ -48,9 +45,7 @@ function getId(row: unknown): string {
   return (row as { id: string }).id;
 }
 
-export async function hydrateRunsAcrossSeam<T>(
-  input: HydrateRunsAcrossSeamInput<T>
-): Promise<T[]> {
+export async function hydrateRunsAcrossSeam<T>(input: HydrateRunsAcrossSeamInput<T>): Promise<T[]> {
   const { runIds, deps } = input;
 
   if (runIds.length === 0) {
@@ -60,9 +55,8 @@ export async function hydrateRunsAcrossSeam<T>(
   const newClient = deps.newClient ?? defaultNewClient;
 
   // Passthrough: one plain read against the single collapsed store. No residency
-  // classification, no legacy probe, no known-migrated filter, no second connection.
-  // When the caller passes its own `_replica` as `newClient`, this is byte-identical to
-  // the pre-migration single-DB read.
+  // classification, no legacy probe, no second connection. When the caller passes its
+  // own `_replica` as `newClient`, this is byte-identical to the pre-migration single-DB read.
   if (deps.splitEnabled === false) {
     return input.readNew(newClient, runIds);
   }
@@ -98,13 +92,8 @@ export async function hydrateRunsAcrossSeam<T>(
   const newRows = await input.readNew(newClient, [...newIds, ...legacyCandidateIds]);
   const foundOnNew = new Set(newRows.map(getId));
 
-  // Legacy-candidates the new read missed: apply the known-migrated short-circuit. A
-  // known-migrated id lives on new but the read missed it (lag) — drop it, do NOT probe
-  // legacy. Run the checks concurrently, and only for these missed candidates.
-  const isMigrated = deps.isKnownMigrated ?? defaultIsKnownMigrated;
-  const missedCandidates = legacyCandidateIds.filter((id) => !foundOnNew.has(id));
-  const migratedFlags = await Promise.all(missedCandidates.map((id) => isMigrated(id)));
-  const legacyToProbe = missedCandidates.filter((_, i) => !migratedFlags[i]);
+  // Legacy-candidates the new read missed are probed on the legacy read replica.
+  const legacyToProbe = legacyCandidateIds.filter((id) => !foundOnNew.has(id));
 
   // Legacy READ REPLICA only — never a legacy writer/primary (no such handle exists).
   // A member absent from both DBs is simply not hydrated (matching today's `findMany`,

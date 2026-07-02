@@ -1,6 +1,6 @@
 // Real PG14 (legacy) + PG17 (new) proof for the dev-session-cancel TaskRun read.
-// The DB is never mocked: reads hit the two real containers. Only pure boundaries
-// (splitEnabled, isKnownMigrated) and recording client wrappers are injected.
+// The DB is never mocked: reads hit the two real containers. Only the pure
+// splitEnabled boundary and recording client wrappers are injected.
 import { heteroPostgresTest, postgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
@@ -96,7 +96,10 @@ describe("CancelDevSessionRunsService store routing (hetero)", () => {
       expect(id.length).toBe(27);
       const friendlyId = `run_${id}`;
 
-      const { project, organization, runtimeEnvironment } = await seedOrgProjectEnv(prisma17, "new");
+      const { project, organization, runtimeEnvironment } = await seedOrgProjectEnv(
+        prisma17,
+        "new"
+      );
       await seedRun(
         prisma17,
         { id, friendlyId },
@@ -117,7 +120,6 @@ describe("CancelDevSessionRunsService store routing (hetero)", () => {
             splitEnabled: true,
             newClient: newClient.handle,
             legacyReplica: legacy.handle,
-            isKnownMigrated: async () => false,
           },
         });
         await service.call({
@@ -140,7 +142,6 @@ describe("CancelDevSessionRunsService store routing (hetero)", () => {
             splitEnabled: true,
             newClient: newClient.handle,
             legacyReplica: legacy.handle,
-            isKnownMigrated: async () => false,
           },
         });
         await service.call({
@@ -183,7 +184,6 @@ describe("CancelDevSessionRunsService store routing (hetero)", () => {
           splitEnabled: true,
           newClient: newClient.handle,
           legacyReplica: legacy.handle,
-          isKnownMigrated: async () => false,
         },
       });
 
@@ -226,7 +226,10 @@ describe("CancelDevSessionRunsService passthrough (single-DB)", () => {
       // control-plane read runs on the same prisma.
       const service = new CancelDevSessionRunsService({
         prisma,
-        readThroughDeps: { splitEnabled: false, newClient: prisma as unknown as PrismaReplicaClient },
+        readThroughDeps: {
+          splitEnabled: false,
+          newClient: prisma as unknown as PrismaReplicaClient,
+        },
       });
 
       await service.call({

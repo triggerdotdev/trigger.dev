@@ -34,74 +34,42 @@ function fakeEnv(): AuthenticatedEnvironment {
   } as unknown as AuthenticatedEnvironment;
 }
 
-// Build the service with the two mint deps injected so the test drives both
-// inheritance branches without the split-store infrastructure. resolveRunIdMintKind
-// is forced to "cuid" (its production default when split is off / org not cut over),
-// proving the CHILD branch overrides the env default purely from the parent's id-shape.
-function buildService(isKnownMigrated: (id: string) => Promise<boolean>) {
-  return new BatchTriggerV3Service(
-    undefined,
-    undefined,
-    {} as any,
-    {} as any,
-    isKnownMigrated,
-    async () => "cuid"
-  );
+// Build the service with resolveMintKind forced to "cuid" (its production default
+// when split is off / org not cut over), proving the CHILD branch overrides the env
+// default purely from the parent's id-shape.
+function buildService() {
+  return new BatchTriggerV3Service(undefined, undefined, {} as any, {} as any, async () => "cuid");
 }
 
 describe("BatchTriggerV3Service child-residency inheritance", () => {
   it("a ksuid parent yields ksuid (NEW) child friendlyIds", async () => {
-    const service = buildService(async () => false);
+    const service = buildService();
     const parentFriendlyId = RunId.toFriendlyId(
       // 27-char ksuid internal id → NEW residency parent
       "a".repeat(KSUID_LEN)
     );
     expect(ownerEngine(RunId.fromFriendlyId(parentFriendlyId))).toBe("NEW");
 
-    const childFriendlyId = await (service as any).mintChildFriendlyId(
-      fakeEnv(),
-      parentFriendlyId
-    );
+    const childFriendlyId = await (service as any).mintChildFriendlyId(fakeEnv(), parentFriendlyId);
 
     expect(RunId.fromFriendlyId(childFriendlyId).length).toBe(KSUID_LEN);
     expect(ownerEngine(RunId.fromFriendlyId(childFriendlyId))).toBe("NEW");
   });
 
   it("a cuid parent yields cuid (LEGACY) child friendlyIds", async () => {
-    const service = buildService(async () => false);
+    const service = buildService();
     const parentFriendlyId = RunId.generate().friendlyId; // cuid (25) → LEGACY parent
     expect(ownerEngine(RunId.fromFriendlyId(parentFriendlyId))).toBe("LEGACY");
 
-    const childFriendlyId = await (service as any).mintChildFriendlyId(
-      fakeEnv(),
-      parentFriendlyId
-    );
+    const childFriendlyId = await (service as any).mintChildFriendlyId(fakeEnv(), parentFriendlyId);
 
     expect(RunId.fromFriendlyId(childFriendlyId).length).toBe(CUID_LEN);
     expect(ownerEngine(RunId.fromFriendlyId(childFriendlyId))).toBe("LEGACY");
   });
 
-  it("a cuid-shaped but migrated parent yields ksuid (NEW) children", async () => {
-    // Parent is legacy by id-shape but already swept to the NEW DB: the migrated
-    // check wins and children are born ksuid/NEW (mirrors triggerTask resolveInheritedMintKind).
-    const service = buildService(async () => true);
-    const parentFriendlyId = RunId.generate().friendlyId; // cuid shape
-
-    const childFriendlyId = await (service as any).mintChildFriendlyId(
-      fakeEnv(),
-      parentFriendlyId
-    );
-
-    expect(RunId.fromFriendlyId(childFriendlyId).length).toBe(KSUID_LEN);
-    expect(ownerEngine(RunId.fromFriendlyId(childFriendlyId))).toBe("NEW");
-  });
-
   it("a ROOT batch (no parentRunId) mints by the env setting (cuid default here)", async () => {
-    const service = buildService(async () => false);
-    const childFriendlyId = await (service as any).mintChildFriendlyId(
-      fakeEnv(),
-      undefined
-    );
+    const service = buildService();
+    const childFriendlyId = await (service as any).mintChildFriendlyId(fakeEnv(), undefined);
     expect(RunId.fromFriendlyId(childFriendlyId).length).toBe(CUID_LEN);
     expect(ownerEngine(RunId.fromFriendlyId(childFriendlyId))).toBe("LEGACY");
   });
@@ -111,14 +79,11 @@ describe("BatchTriggerV3Service child-residency inheritance", () => {
   // away from the batch's residency), a ksuid batch anchor yields ksuid children — so
   // batch + children stay co-resident and TaskRun.batchId never crosses the seam.
   it("a ksuid batch anchor yields ksuid children even when the env flag resolves cuid", async () => {
-    const service = buildService(async () => false); // resolveMintKind forced to "cuid"
+    const service = buildService(); // resolveMintKind forced to "cuid"
     const batchFriendlyId = BatchId.toFriendlyId(generateKsuidId()); // ksuid (NEW) batch
     expect(ownerEngine(batchFriendlyId)).toBe("NEW");
 
-    const childFriendlyId = await (service as any).mintChildFriendlyId(
-      fakeEnv(),
-      batchFriendlyId
-    );
+    const childFriendlyId = await (service as any).mintChildFriendlyId(fakeEnv(), batchFriendlyId);
 
     expect(RunId.fromFriendlyId(childFriendlyId).length).toBe(KSUID_LEN);
     expect(ownerEngine(RunId.fromFriendlyId(childFriendlyId))).toBe("NEW");
@@ -131,16 +96,12 @@ describe("BatchTriggerV3Service child-residency inheritance", () => {
       undefined,
       {} as any,
       {} as any,
-      async () => false,
       async () => "ksuid" // env flag flipped ON mid-batch
     );
     const batchFriendlyId = BatchId.generate().friendlyId; // cuid (LEGACY) batch
     expect(ownerEngine(batchFriendlyId)).toBe("LEGACY");
 
-    const childFriendlyId = await (service as any).mintChildFriendlyId(
-      fakeEnv(),
-      batchFriendlyId
-    );
+    const childFriendlyId = await (service as any).mintChildFriendlyId(fakeEnv(), batchFriendlyId);
 
     expect(RunId.fromFriendlyId(childFriendlyId).length).toBe(CUID_LEN);
     expect(ownerEngine(RunId.fromFriendlyId(childFriendlyId))).toBe("LEGACY");

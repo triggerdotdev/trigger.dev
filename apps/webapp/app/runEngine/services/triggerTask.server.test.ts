@@ -207,9 +207,6 @@ describe("RunEngineTriggerTaskService parent + locked-worker reads", () => {
           traceEventConcern: new MockTraceEventConcern(),
           tracer: trace.getTracer("test", "0.0.0"),
           metadataMaximumSize: 1024 * 1024 * 1,
-          // Keep the migrated-parent resolver from reaching the empty ~/db.server
-          // mock; mint-kind inheritance is not under test here.
-          isKnownMigrated: async () => false,
         });
 
         // Trigger a ROOT run first to create a real parent TaskRun.
@@ -312,7 +309,6 @@ describe("RunEngineTriggerTaskService parent + locked-worker reads", () => {
           traceEventConcern: new MockTraceEventConcern(),
           tracer: trace.getTracer("test", "0.0.0"),
           metadataMaximumSize: 1024 * 1024 * 1,
-          isKnownMigrated: async () => false,
         });
 
         // A real parent run in envA.
@@ -415,7 +411,6 @@ describe("RunEngineTriggerTaskService parent + locked-worker reads", () => {
           traceEventConcern: new MockTraceEventConcern(),
           tracer: trace.getTracer("test", "0.0.0"),
           metadataMaximumSize: 1024 * 1024 * 1,
-          isKnownMigrated: async () => false,
         });
 
         const result = await triggerTaskService.call({
@@ -533,7 +528,6 @@ describe("RunEngineTriggerTaskService parent + locked-worker reads", () => {
           traceEventConcern: new MockTraceEventConcern(),
           tracer: trace.getTracer("test", "0.0.0"),
           metadataMaximumSize: 1024 * 1024 * 1,
-          isKnownMigrated: async () => false,
         });
 
         // ROOT parent first (uses the unproxied prisma via a separate service so
@@ -552,7 +546,6 @@ describe("RunEngineTriggerTaskService parent + locked-worker reads", () => {
           traceEventConcern: new MockTraceEventConcern(),
           tracer: trace.getTracer("test", "0.0.0"),
           metadataMaximumSize: 1024 * 1024 * 1,
-          isKnownMigrated: async () => false,
         });
         const parentResult = await parentService.call({
           taskId: taskIdentifier,
@@ -655,7 +648,6 @@ describe("RunEngineTriggerTaskService parent + locked-worker reads", () => {
           traceEventConcern: new MockTraceEventConcern(),
           tracer: trace.getTracer("test", "0.0.0"),
           metadataMaximumSize: 1024 * 1024 * 1,
-          isKnownMigrated: async () => false,
         });
 
         const bogusVersion = "v-does-not-exist-0000";
@@ -757,7 +749,6 @@ describe("RunEngineTriggerTaskService parent + locked-worker reads", () => {
           traceEventConcern: new MockTraceEventConcern(),
           tracer: trace.getTracer("test", "0.0.0"),
           metadataMaximumSize: 1024 * 1024 * 1,
-          isKnownMigrated: async () => false,
         });
 
         // Trigger in envB locking to the shared version string.
@@ -799,12 +790,15 @@ describe("RunEngineTriggerTaskService parent + locked-worker reads", () => {
         prisma,
         payloadProcessor: new MockPayloadProcessor(),
         queueConcern: new DefaultQueueManager(prisma, engine),
-        idempotencyKeyConcern: new IdempotencyKeyConcern(prisma, engine, new MockTraceEventConcern()),
+        idempotencyKeyConcern: new IdempotencyKeyConcern(
+          prisma,
+          engine,
+          new MockTraceEventConcern()
+        ),
         validator,
         traceEventConcern: new MockTraceEventConcern(),
         tracer: trace.getTracer("test", "0.0.0"),
         metadataMaximumSize: 1024 * 1024 * 1,
-        isKnownMigrated: async () => false,
       });
 
       // Trigger with NO parentRunId.
