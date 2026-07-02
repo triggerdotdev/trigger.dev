@@ -93,19 +93,19 @@ export function decodeKsuid(idOrFriendlyId: string): DecodedKsuid {
     );
   }
 
-  let n = 0n;
+  let n = BigInt(0);
   for (const ch of body) {
     const digit = BASE62_ALPHABET.indexOf(ch);
     if (digit < 0) {
       throw new Error(`Invalid base62 character in KSUID body: ${ch}`);
     }
-    n = n * 62n + BigInt(digit);
+    n = n * BigInt(62) + BigInt(digit);
   }
 
   const bytes = new Uint8Array(KSUID_TOTAL_BYTES);
   for (let i = KSUID_TOTAL_BYTES - 1; i >= 0; i--) {
-    bytes[i] = Number(n & 0xffn);
-    n >>= 8n;
+    bytes[i] = Number(n & BigInt(0xff));
+    n >>= BigInt(8);
   }
 
   const timestampSeconds =
