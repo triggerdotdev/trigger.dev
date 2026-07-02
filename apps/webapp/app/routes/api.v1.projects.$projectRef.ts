@@ -6,6 +6,7 @@ import { prisma } from "~/db.server";
 import { DeleteProjectService } from "~/services/deleteProject.server";
 import { logger } from "~/services/logger.server";
 import { authenticateApiRequestWithPersonalAccessToken } from "~/services/personalAccessToken.server";
+import { ProjectSettingsService } from "~/services/projectSettings.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),
@@ -71,8 +72,13 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   return json(result);
 }
 
+const RenameProjectRequestBody = z.object({
+  name: z.string().min(1),
+});
+
 export async function action({ request, params }: ActionFunctionArgs) {
-  if (request.method.toUpperCase() !== "DELETE") {
+  const method = request.method.toUpperCase();
+  if (method !== "DELETE" && method !== "PATCH") {
     return json({ error: "Method Not Allowed" }, { status: 405 });
   }
 
@@ -90,8 +96,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const { projectRef } = parsedParams.data;
 
-  // Resolve id from ref scoped to membership; DeleteProjectService enforces
-  // membership again, but this maps a 404 (not member / unknown ref) cleanly.
+  // Resolve id from ref scoped to membership; the services enforce membership
+  // again, but this maps a 404 (not member / unknown ref) cleanly.
   const project = await prisma.project.findFirst({
     where: {
       externalRef: projectRef,
@@ -106,15 +112,32 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   try {
-    await new DeleteProjectService().call({
-      projectId: project.id,
-      userId: authenticationResult.userId,
-    });
+    if (method === "DELETE") {
+      await new DeleteProjectService().call({
+        projectId: project.id,
+        userId: authenticationResult.userId,
+      });
 
-    return json({ id: project.id });
+      return json({ id: project.id });
+    }
+
+    const body = RenameProjectRequestBody.safeParse(await request.json());
+
+    if (!body.success) {
+      return json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    const result = await new ProjectSettingsService().renameProject(project.id, body.data.name);
+
+    if (result.isErr()) {
+      logger.error("Failed to rename project", { error: result.error });
+      return json({ error: "Failed to rename project" }, { status: 400 });
+    }
+
+    return json({ id: result.value.id, name: result.value.name });
   } catch (error) {
     if (error instanceof Response) throw error;
-    logger.error("Failed to delete project", { error });
+    logger.error("Failed to update project", { error });
     return json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

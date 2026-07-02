@@ -1347,6 +1347,8 @@ export type ListBulkActionsResponseBody = z.infer<typeof ListBulkActionsResponse
 export const CreateEnvironmentVariableRequestBody = z.object({
   name: z.string(),
   value: z.string(),
+  // When omitted, the variable defaults to non-secret (the DB default is false).
+  isSecret: z.boolean().optional(),
 });
 
 export type CreateEnvironmentVariableRequestBody = z.infer<
