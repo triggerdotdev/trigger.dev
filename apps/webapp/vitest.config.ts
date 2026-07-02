@@ -23,10 +23,6 @@ export default defineConfig({
     exclude: ["test/**/*.e2e.test.ts", "test/**/*.e2e.full.test.ts"],
     globals: true,
     pool: "forks",
-    // Each fork boots its own testcontainer set (including the two-DB run-ops fixtures),
-    // so cap concurrency to keep per-runner container memory in check. Sharding still
-    // provides cross-runner parallelism.
-    poolOptions: { forks: { maxForks: 4, minForks: 1 } },
     setupFiles: ["./test/setup.ts"], // load apps/webapp/.env
   },
   // @ts-ignore
