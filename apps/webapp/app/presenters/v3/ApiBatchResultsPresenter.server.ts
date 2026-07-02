@@ -11,19 +11,22 @@ export class ApiBatchResultsPresenter extends BasePresenter {
     env: AuthenticatedEnvironment
   ): Promise<BatchTaskRunExecutionResult | undefined> {
     return this.traceWithEnv("call", env, async (span) => {
-      const batchRun = await this._prisma.batchTaskRun.findFirst({
-        where: {
-          friendlyId,
-          runtimeEnvironmentId: env.id,
-        },
-        include: {
-          items: {
-            select: {
-              taskRunId: true,
+      // Route through the store so a NEW-resident batch resolves under the run-ops split (the
+      // router probes NEW→LEGACY and drops this client hint) instead of 404ing on a control-plane read.
+      const batchRun = await runStore.findBatchTaskRunByFriendlyId(
+        friendlyId,
+        env.id,
+        {
+          include: {
+            items: {
+              select: {
+                taskRunId: true,
+              },
             },
           },
         },
-      });
+        this._prisma
+      );
 
       if (!batchRun) {
         return undefined;
