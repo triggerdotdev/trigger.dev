@@ -226,7 +226,7 @@ function spyClient(
 const desc = (a: string, b: string) => (a < b ? 1 : a > b ? -1 : 0);
 
 describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + PG17 new)", () => {
-  // --- Task 3 Step 1: byte-identical scan + identical ORDER-BY across PG14/PG17 ---
+  // Byte-identical scan + identical ORDER-BY across PG14/PG17.
   heteroPostgresTest(
     "raw paginated scan is byte-identical and identically ordered across PG14 and PG17 (both directions, with/without cursor)",
     async ({ prisma14, prisma17 }) => {
@@ -292,7 +292,7 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
     }
   );
 
-  // --- Task 3 Step 2: split scan merge serves new + legacy in one keyset-ordered page ---
+  // Split scan merge serves new + legacy in one keyset-ordered page.
   heteroPostgresTest(
     "split scan merges new (PG17) + legacy (PG14) rows under the keyset order; legacy read only when new does not fill the page",
     async ({ prisma14, prisma17 }) => {
@@ -338,7 +338,7 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
     }
   );
 
-  // --- Task 3 Step 3: project resolves on control-plane; no cross-seam join ---
+  // Project resolves on control-plane; no cross-seam join.
   heteroPostgresTest(
     "project resolves on the control-plane handle (PG14); BatchTaskRun scan reads run-ops only",
     async ({ prisma14, prisma17 }) => {
@@ -367,7 +367,7 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
     }
   );
 
-  // --- Task 3 Step 4: empty-state probe is dual-DB during the window ---
+  // Empty-state probe is dual-DB during the window.
   heteroPostgresTest(
     "empty-state probe reads new then legacy replica: true when legacy has a batch, false when both empty",
     async ({ prisma14, prisma17 }) => {
@@ -396,7 +396,7 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
     }
   );
 
-  // --- Task 3 Step 5: single-DB passthrough collapses to one handle ---
+  // Single-DB passthrough collapses to one handle.
   postgresTest(
     "passthrough (no readRoute): scan + probe + project all read the single handle; legacy closures never invoked",
     async ({ prisma }) => {
@@ -434,7 +434,6 @@ describe("BatchListPresenter run-ops read routing (PG14 control-plane/legacy + P
     }
   );
 
-  // RED before fix: $queryRaw across clients → P2010/42601 "$1". GREEN after: typed findMany.
   heteroRunOpsPostgresTest(
     "scan against dedicated RunOpsPrismaClient (splitEnabled): returns batches from new DB",
     async ({ prisma14, prisma17 }) => {

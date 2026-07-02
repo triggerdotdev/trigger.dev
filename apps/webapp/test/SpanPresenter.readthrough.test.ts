@@ -208,8 +208,8 @@ function asReplica(prisma: PrismaClient): PrismaClient {
 }
 
 describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
-  // --- Span detail resolves run + children through the run-ops store, region/schedule/session
-  //         on control-plane, no cross-DB join. ---
+  // Span detail resolves run + children through the run-ops store, region/schedule/session
+  // on control-plane, no cross-DB join.
   heteroPostgresTest(
     "findRun hydrates the run through the run-ops store (new-first) and the children-by-parentSpanId set; region/schedule/session resolve from the control-plane client",
     async ({ prisma14, prisma17 }) => {
@@ -297,7 +297,7 @@ describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
     }
   );
 
-  // --- Children set served by runStore.findRuns through the routing store ---
+  // Children set served by runStore.findRuns through the routing store.
   heteroPostgresTest(
     "triggeredRuns (children-by-parentSpanId) is served by runStore.findRuns with the presenter's exact select",
     async ({ prisma14, prisma17 }) => {
@@ -344,7 +344,7 @@ describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
     }
   );
 
-  // --- Old in-retention run served from the legacy replica, never the primary ---
+  // Old in-retention run served from the legacy replica, never the primary.
   heteroPostgresTest(
     "a legacy-residency run resolves through the store's LEGACY slot, which exposes only a replica handle",
     async ({ prisma14, prisma17 }) => {
@@ -377,7 +377,7 @@ describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
     }
   );
 
-  // --- A known-migrated run is not re-probed on legacy ---
+  // A known-migrated run is not re-probed on legacy.
   heteroPostgresTest(
     "a NEW-residency id is served by the NEW slot and the LEGACY slot is never invoked",
     async ({ prisma14, prisma17 }) => {
@@ -417,7 +417,7 @@ describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
     }
   );
 
-  // --- Passthrough (single-DB): NEW and LEGACY slots are the same store over one client ---
+  // Passthrough (single-DB): NEW and LEGACY slots are the same store over one client.
   heteroPostgresTest(
     "single-DB collapses both slots to one PostgresRunStore; the presenter resolves run + children + control-plane from the one client",
     async ({ prisma14 }) => {
@@ -484,7 +484,7 @@ describe("SpanPresenter run-ops/control-plane partition (legacy + new)", () => {
     }
   );
 
-  // --- Cross-seam tree shape: parent on LEGACY (in-retention), child on NEW (born-new) ---
+  // Cross-seam tree shape: parent on LEGACY (in-retention), child on NEW (born-new).
   heteroPostgresTest(
     "parent run on the legacy replica, child run on new — relations resolve across the seam, no cross-DB join",
     async ({ prisma14, prisma17 }) => {

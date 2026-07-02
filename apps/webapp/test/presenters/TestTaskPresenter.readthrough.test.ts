@@ -202,7 +202,7 @@ function throwingLegacyReplica(prisma: PrismaClient): PrismaClient {
 }
 
 describe("TestTaskPresenter recent-payloads read-through (PG14 legacy + PG17 new)", () => {
-  // --- DoD line + payloadType parity: split union of NEW + legacy-replica, JSON-only, createdAt desc ---
+  // payloadType parity: split union of NEW + legacy-replica, JSON-only, createdAt desc.
   replicationContainerTest(
     "split mode hydrates the 10-most-recent CH id-set as the union of NEW + legacy-replica rows, payloadType filtered, createdAt desc",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma, network }) => {
@@ -312,7 +312,7 @@ describe("TestTaskPresenter recent-payloads read-through (PG14 legacy + PG17 new
     }
   );
 
-  // --- Old in-retention run served from the legacy READ REPLICA only (no legacyWriter field exists) ---
+  // Old in-retention run served from the legacy READ REPLICA only (no legacyWriter field exists).
   replicationContainerTest(
     "an in-retention legacy-only run hydrates from the legacy replica handle",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma, network }) => {
@@ -369,7 +369,7 @@ describe("TestTaskPresenter recent-payloads read-through (PG14 legacy + PG17 new
     }
   );
 
-  // --- Passthrough (single-DB): one plain store read, the legacy replica never touched ---
+  // Passthrough (single-DB): one plain store read, the legacy replica never touched.
   replicationContainerTest(
     "single-DB passthrough hydrates from one store read and never touches the legacy replica",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
@@ -428,7 +428,7 @@ describe("TestTaskPresenter recent-payloads read-through (PG14 legacy + PG17 new
     }
   );
 
-  // --- SCHEDULED-source parity: same hydrate path, ScheduledRun mapping exercised ---
+  // SCHEDULED-source parity: same hydrate path, ScheduledRun mapping exercised.
   replicationContainerTest(
     "SCHEDULED task: split union parses to ScheduledRun shape identically to single-DB",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma, network }) => {

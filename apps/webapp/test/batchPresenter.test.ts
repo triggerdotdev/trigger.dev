@@ -137,7 +137,7 @@ function makeEnvResolver(controlPlane: PrismaClient) {
 }
 
 describe("BatchPresenter read-through (PG14 legacy + PG17 new)", () => {
-  // DoD: batch detail resolves on run-ops NEW (split on). Legacy replica is never probed.
+  // Batch detail resolves on run-ops NEW (split on). Legacy replica is never probed.
   heteroPostgresTest(
     "resolves a NEW-resident batch and never probes the legacy replica",
     async ({ prisma14, prisma17 }) => {
@@ -182,7 +182,7 @@ describe("BatchPresenter read-through (PG14 legacy + PG17 new)", () => {
     }
   );
 
-  // DoD: batch detail resolves on run-ops OLD/legacy READ REPLICA (split on, in-retention).
+  // Batch detail resolves on run-ops OLD/legacy READ REPLICA (split on, in-retention).
   // Cross-version round-trip: PG14 legacy -> presenter, JSON error payload byte-identical.
   heteroPostgresTest(
     "resolves a legacy-only batch via the legacy READ REPLICA, byte-identical",
@@ -239,7 +239,7 @@ describe("BatchPresenter read-through (PG14 legacy + PG17 new)", () => {
     }
   );
 
-  // DoD: post-termination / not-found yields the normal "Batch not found".
+  // Post-termination / not-found yields the normal "Batch not found".
   heteroPostgresTest(
     "throws the normal not-found when the batch is absent from both stores",
     async ({ prisma14, prisma17 }) => {
@@ -259,7 +259,7 @@ describe("BatchPresenter read-through (PG14 legacy + PG17 new)", () => {
     }
   );
 
-  // DoD: env decoupling parity for a DEVELOPMENT env (userName branch).
+  // Env decoupling parity for a DEVELOPMENT env (userName branch).
   heteroPostgresTest(
     "resolves the DEVELOPMENT env userName separately from the run-ops batch row",
     async ({ prisma14, prisma17 }) => {
@@ -287,7 +287,7 @@ describe("BatchPresenter read-through (PG14 legacy + PG17 new)", () => {
 });
 
 describe("BatchPresenter single-DB passthrough", () => {
-  // DoD passthrough line + self-host collapse: one plain read, legacy closure never invoked.
+  // Passthrough + self-host collapse: one plain read, legacy closure never invoked.
   containerTest(
     "single-DB resolves the batch with one plain read and never touches the legacy boundary",
     async ({ prisma }) => {

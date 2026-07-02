@@ -229,11 +229,11 @@ const callArgs = (ctx: SeedContext, friendlyId: string) => ({
 });
 
 describe("WaitpointPresenter dual-DB read-through (hetero PG14 + PG17, no connected runs)", () => {
-  // --- Task 4 Step 2 (read half) / Step 3: new-DB short-circuit. Waitpoint on NEW (PG17), legacy
+  // new-DB short-circuit. Waitpoint on NEW (PG17), legacy
   // wrapped so its waitpoint.findFirst throws if invoked. The lookup answers from NEW and must
-  // NEVER fall through to legacy. ---
+  // NEVER fall through to legacy.
   heteroPostgresTest(
-    "Step 3: waitpoint on the new DB resolves without touching the legacy replica",
+    "waitpoint on the new DB resolves without touching the legacy replica",
     async ({ prisma14, prisma17 }) => {
       const ctx = await seedParents(prisma17, "newonly");
       const seeded = await seedWaitpoint(prisma17, ctx, "waitpoint_newonly");
@@ -260,11 +260,11 @@ describe("WaitpointPresenter dual-DB read-through (hetero PG14 + PG17, no connec
     }
   );
 
-  // --- Task 4 Step 6 (read half): single-DB passthrough. No read-through deps -> exactly one plain
+  // single-DB passthrough. No read-through deps -> exactly one plain
   // findFirst against the single `_replica` handle; the split branch is structurally never entered
-  // (no second handle is injected). The connected-runs hydrate forwards `undefined` deps. ---
+  // (no second handle is injected). The connected-runs hydrate forwards `undefined` deps.
   heteroPostgresTest(
-    "Step 6: no read-through deps -> one plain findFirst on the single replica (passthrough)",
+    "no read-through deps -> one plain findFirst on the single replica (passthrough)",
     async ({ prisma14, prisma17 }) => {
       const ctx = await seedParents(prisma14, "passthrough");
       const seeded = await seedWaitpoint(prisma14, ctx, "waitpoint_passthrough", {
@@ -293,12 +293,12 @@ describe("WaitpointPresenter dual-DB read-through (hetero PG14 + PG17, no connec
 });
 
 describe("WaitpointPresenter connected-runs hydrate routed through read-through (PG14 + PG17 + CH)", () => {
-  // --- Task 4 Step 2 / DoD part B: waitpoint detail + connected runs resolve on run-ops NEW. The
+  // Waitpoint detail + connected runs resolve on run-ops NEW. The
   // waitpoint + its 2 connected runs live on the new (PG17) DB; CH gets the run id-set so the
   // threaded NextRunListPresenter hydrate returns them. Proves the read-through deps are forwarded
-  // so the connected-runs hydrate flows through the routed store. ---
+  // so the connected-runs hydrate flows through the routed store.
   replicationContainerTest(
-    "Step 2: waitpoint + 2 connected runs resolve on the new DB via the routed hydrate",
+    "waitpoint + 2 connected runs resolve on the new DB via the routed hydrate",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma, network }) => {
       // `prisma`/`postgresContainer` is the PG14 legacy + CH replication source. The new DB (PG17)
       // is created alongside; we seed the waitpoint + runs on it so CH replicates from PG14 — so we

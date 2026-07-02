@@ -130,7 +130,7 @@ function throwingTaskRunFindMany(prisma: PrismaClient): PrismaClient {
 }
 
 describe("ClickHouseRunListResolver (realtime run-list id-set, split-neutral)", () => {
-  // --- resolves the CH id-set with NO TaskRun PG hydrate ---
+  // resolves the CH id-set with NO TaskRun PG hydrate.
   replicationContainerTest(
     "resolves the ClickHouse id-set for run-ops rows without ever reading TaskRun in Postgres",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
@@ -168,7 +168,7 @@ describe("ClickHouseRunListResolver (realtime run-list id-set, split-neutral)", 
     }
   );
 
-  // --- CH filter is split-neutral (ids independent of PG residency) ---
+  // CH filter is split-neutral (ids independent of PG residency).
   replicationContainerTest(
     "returns the same id-set regardless of which Postgres the rows are hydrated from (CH-only path)",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma, network }) => {
@@ -223,7 +223,7 @@ describe("ClickHouseRunListResolver (realtime run-list id-set, split-neutral)", 
     }
   );
 
-  // --- single-DB passthrough; no legacy/known-migrated probe on this path ---
+  // single-DB passthrough; no legacy/known-migrated probe on this path.
   replicationContainerTest(
     "single-DB passthrough returns the CH id-set and never hydrates TaskRun",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
@@ -255,7 +255,7 @@ describe("ClickHouseRunListResolver (realtime run-list id-set, split-neutral)", 
     }
   );
 
-  // --- a far-future straggler's id surfaces from the CH id-set ---
+  // a far-future straggler's id surfaces from the CH id-set.
   replicationContainerTest(
     "surfaces a far-future delayed run's id from the CH id-set",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
@@ -299,7 +299,7 @@ describe("ClickHouseRunListResolver (realtime run-list id-set, split-neutral)", 
     }
   );
 
-  // --- tag match is contains-ALL (tagsMatch: "all" -> hasAll), authoritative ---
+  // tag match is contains-ALL (tagsMatch: "all" -> hasAll), authoritative.
   // The sibling runReader.server.ts JSDoc still calls RunListFilter.tags "Contains-ANY"; that is
   // stale. The resolver passes tagsMatch: "all" and the live CH repo maps
   // it to hasAll, so contains-ALL is the real behavior — assert that, not the JSDoc.
@@ -345,7 +345,7 @@ describe("ClickHouseRunListResolver (realtime run-list id-set, split-neutral)", 
     }
   );
 
-  // --- environment scoping: the CH filter excludes other environments ---
+  // environment scoping: the CH filter excludes other environments.
   // Doubles as a structural proof that an accidental hydrate would NOT change the id-set: rows on a
   // different env are not returned because CH filters by environment_id, not because PG was read.
   replicationContainerTest(

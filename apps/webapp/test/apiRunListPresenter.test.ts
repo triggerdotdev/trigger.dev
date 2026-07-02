@@ -188,7 +188,7 @@ async function createRun(
 }
 
 describe("ApiRunListPresenter public /runs list (PG14 legacy + PG17 new)", () => {
-  // Step 1 + Step 6 (e2e #6): public list serves run-ops rows through the routed store. The
+  // Public list serves run-ops rows through the routed store. The
   // forwarded readThroughDeps thread the dual-DB union into NextRunListPresenter; the public
   // payload (`{ data, pagination }`) must list the NEW ∪ legacy union, proving the public API
   // surfaces routed run-ops rows. The migrated/straggler rows (run_newA/run_newB) live on BOTH
@@ -281,7 +281,7 @@ describe("ApiRunListPresenter public /runs list (PG14 legacy + PG17 new)", () =>
     }
   );
 
-  // Step 2: genuinely-empty env returns { data: [], pagination } without error. Exercises the
+  // Genuinely-empty env returns { data: [], pagination } without error. Exercises the
   // empty-state probe beneath NextRunListPresenter (no rows on either DB; empty CH page).
   replicationContainerTest(
     "genuinely-empty env returns { data: [], pagination } without error",
@@ -326,7 +326,7 @@ describe("ApiRunListPresenter public /runs list (PG14 legacy + PG17 new)", () =>
     }
   );
 
-  // Step 3 / DoD "env scoping unchanged": the control-plane runtimeEnvironment.findMany lookup
+  // Env scoping unchanged: the control-plane runtimeEnvironment.findMany lookup
   // resolves the requested env via the `_replica` handle (NOT routed), with the 4th `environment`
   // arg omitted to force that branch. Result is scoped to the requested env only.
   replicationContainerTest(
@@ -370,7 +370,7 @@ describe("ApiRunListPresenter public /runs list (PG14 legacy + PG17 new)", () =>
     }
   );
 
-  // Step 4 / DoD "passthrough (single-DB)": two-arg-style construction (no readThroughDeps) ->
+  // Passthrough (single-DB): two-arg-style construction (no readThroughDeps) ->
   // NextRunListPresenter receives undefined deps -> byte-identical single-DB path. The public
   // { data, pagination } shape is unchanged.
   replicationContainerTest(

@@ -227,9 +227,9 @@ async function seedAttempt(
   });
 }
 
-// Seed a run plus a parent, a root, a child and one attempt — the tree the DoD
-// asserts round-trips. `seedTestRun.ts` only seeds a single root run, so the
-// tree + attempt rows are created inline here (per the plan's seeding note).
+// Seed a run plus a parent, a root, a child and one attempt — the tree that must
+// round-trip. `seedTestRun.ts` only seeds a single root run, so the tree + attempt
+// rows are created inline here.
 async function seedRunWithTree(
   prisma: PrismaClient,
   base: {

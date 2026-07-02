@@ -143,7 +143,7 @@ function rawScan(prisma: PrismaClient, environmentId: string, direction: "forwar
 }
 
 describe("WaitpointListPresenter read-route", () => {
-  // Task 3 Step 5 + Task 3 Step 7: single-DB short-circuits to one handle (passthrough).
+  // Single-DB short-circuits to one handle (passthrough).
   postgresTest("passthrough: single handle, legacy closures never touched", async ({ prisma }) => {
     setDbClient(prisma);
     const ctx = await seedParents(prisma, "passthrough");
@@ -198,7 +198,7 @@ describe("WaitpointListPresenter read-route", () => {
     expect(result2.success).toBe(true);
   });
 
-  // Task 3 Step 1: raw paginated scan byte-identical + identical ORDER-BY across PG14/PG17.
+  // Raw paginated scan byte-identical + identical ORDER-BY across PG14/PG17.
   heteroPostgresTest(
     "keyset scan byte-identical + identical ORDER-BY on PG14 and PG17",
     async ({ prisma14, prisma17 }) => {
@@ -249,7 +249,7 @@ describe("WaitpointListPresenter read-route", () => {
     }
   );
 
-  // Task 3 Step 2 + Step 4: split scan merges migrated (new/PG17) + abandoned (legacy/PG14) tokens
+  // Split scan merges migrated (new/PG17) + abandoned (legacy/PG14) tokens
   // in one keyset-ordered page; legacy READ REPLICA hit only when the new DB doesn't fill the page.
   // Structural: readRoute has no legacy-primary/writer field — only runOpsLegacyReplica.
   heteroPostgresTest(
@@ -337,7 +337,7 @@ describe("WaitpointListPresenter read-route", () => {
     }
   );
 
-  // Task 3 Step 3: empty-state probe is dual-DB during the window (no false-empty), and reads only
+  // Empty-state probe is dual-DB during the window (no false-empty), and reads only
   // _replica when split is off.
   heteroPostgresTest("empty-state probe is dual-DB during the window", async ({ prisma14, prisma17 }) => {
     setDbClient(prisma17);
@@ -395,7 +395,6 @@ describe("WaitpointListPresenter read-route", () => {
     }
   });
 
-  // RED before fix: $queryRaw across clients → P2010/42601 "$1". GREEN after: typed findMany.
   heteroRunOpsPostgresTest(
     "scan against dedicated RunOpsPrismaClient (splitEnabled): returns waitpoints from new DB",
     async ({ prisma14, prisma17 }) => {

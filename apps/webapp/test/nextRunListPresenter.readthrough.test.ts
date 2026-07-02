@@ -172,9 +172,9 @@ function throwingFindFirst(prisma: PrismaClient, label: string): PrismaClient {
 const callOptions = (ctx: SeedContext) => ({ projectId: ctx.projectId, pageSize: 10 });
 
 describe("NextRunListPresenter dual-DB empty-state probe + routed hydrate (legacy + new Postgres)", () => {
-  // --- no-false-empty. Runs ONLY on legacy, none on new. Empty CH page -> listRuns returns [].
+  // no-false-empty. Runs ONLY on legacy, none on new. Empty CH page -> listRuns returns [].
   // splitEnabled true. The probe misses NEW, falls through to the legacy replica and finds the
-  // row, so the dashboard must NOT show "no runs". ---
+  // row, so the dashboard must NOT show "no runs".
   replicationContainerTest(
     "no-false-empty: runs only on the legacy replica still report hasAnyRuns true",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma, network }) => {
@@ -217,10 +217,10 @@ describe("NextRunListPresenter dual-DB empty-state probe + routed hydrate (legac
     }
   );
 
-  // --- new-DB short-circuit. A run on NEW, legacy replica wrapped so its taskRun.findFirst
+  // new-DB short-circuit. A run on NEW, legacy replica wrapped so its taskRun.findFirst
   // throws. Empty CH page. The probe answers from NEW and must NEVER fall through to legacy. The
   // post-migration straggler is the same shape: present on NEW, absent from LEGACY, legacy never
-  // invoked. ---
+  // invoked.
   replicationContainerTest(
     "new-DB short-circuit: hasAnyRuns answered from the new DB without touching the legacy replica",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma, network }) => {
@@ -263,8 +263,8 @@ describe("NextRunListPresenter dual-DB empty-state probe + routed hydrate (legac
     }
   );
 
-  // --- genuinely empty. Nothing on either DB. Empty CH page. splitEnabled true. Both
-  // probes run and return null -> the true empty state is preserved. ---
+  // genuinely empty. Nothing on either DB. Empty CH page. splitEnabled true. Both
+  // probes run and return null -> the true empty state is preserved.
   replicationContainerTest(
     "genuinely empty: both DBs empty reports hasAnyRuns false",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma, network }) => {
@@ -301,11 +301,11 @@ describe("NextRunListPresenter dual-DB empty-state probe + routed hydrate (legac
     }
   );
 
-  // --- passthrough single-DB (two-arg ctor). One `prisma`, seed a run, empty CH page.
+  // passthrough single-DB (two-arg ctor). One `prisma`, seed a run, empty CH page.
   // splitEnabled defaults false -> exactly one plain findFirst against the single handle; the
   // split branch (new/legacy) is structurally never entered (no second handle is injected).
   // Also covers "served from the replica only" — the ctor exposes no legacy-writer field, so a
-  // no-primary-read guarantee is structural. ---
+  // no-primary-read guarantee is structural.
   replicationContainerTest(
     "passthrough single-DB: two-arg ctor finds the run via the single handle",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
@@ -332,7 +332,7 @@ describe("NextRunListPresenter dual-DB empty-state probe + routed hydrate (legac
     }
   );
 
-  // --- list hydrate flows through the routed store: split, non-empty CH id-set whose rows are
+  // list hydrate flows through the routed store: split, non-empty CH id-set whose rows are
   // split across NEW + the legacy replica. result.runs must be the union, id-desc ordered. This
   // proves the deps are threaded so the routed store is actually used.
   // We assert the rows that DO surface (the full union, since legacy is probed for any id that
@@ -340,7 +340,7 @@ describe("NextRunListPresenter dual-DB empty-state probe + routed hydrate (legac
   // The migrated runs (run_newA/run_newB) live on BOTH DBs with the same id + friendlyId but a
   // DISTINGUISHING taskIdentifier: "my-task" on legacy, "my-task-NEW" on new. #hydrateRunsByIds
   // takes NEW rows first and only probes legacy for ids NOT on NEW, so a migrated row can only
-  // carry "my-task-NEW" if it was served from the threaded newClient (new DB) — asserted below. ---
+  // carry "my-task-NEW" if it was served from the threaded newClient (new DB) — asserted below.
   replicationContainerTest(
     "list hydrate flows through the routed store: result.runs is the NEW + legacy union, id-desc",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma, network }) => {
