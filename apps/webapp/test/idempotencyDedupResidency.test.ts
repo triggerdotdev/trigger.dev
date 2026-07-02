@@ -4,7 +4,12 @@ import { generateKsuidId } from "@trigger.dev/core/v3/isomorphic";
 import { describe, expect, vi } from "vitest";
 
 // Stub so the runStore singleton doesn't eagerly connect at import.
-vi.mock("~/db.server", () => ({ prisma: {}, $replica: {}, runOpsNewPrisma: {}, runOpsLegacyPrisma: {} }));
+vi.mock("~/db.server", () => ({
+  prisma: {},
+  $replica: {},
+  runOpsNewPrisma: {},
+  runOpsLegacyPrisma: {},
+}));
 // Keep split off so resolveIdempotencyDedupClient returns this.prisma (the hetero fixture client).
 vi.mock("~/v3/runOpsMigration/splitMode.server", () => ({ isSplitEnabled: async () => false }));
 

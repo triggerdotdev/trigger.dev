@@ -397,4 +397,3 @@ export class ResumeBatchRunService extends BaseService {
     }
   }
 }
-

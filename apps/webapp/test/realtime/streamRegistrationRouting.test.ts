@@ -174,26 +174,26 @@ describe("realtime stream registration — run-ops store routed writes", () => {
     "completed run guard issues no push",
     { timeout: 60_000 },
     async ({ prisma17 }) => {
-    const store = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
+      const store = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
 
-    const runId = "run_routed_push_completed";
-    await seedRun(prisma17, {
-      runId,
-      slugSuffix: "completed17",
-      completedAt: new Date("2026-06-01T00:00:00.000Z"),
-    });
+      const runId = "run_routed_push_completed";
+      await seedRun(prisma17, {
+        runId,
+        slugSuffix: "completed17",
+        completedAt: new Date("2026-06-01T00:00:00.000Z"),
+      });
 
-    const streamId = "stream-late";
-    const result = await routedRegisterStream(store, prisma17, runId, streamId);
+      const streamId = "stream-late";
+      const result = await routedRegisterStream(store, prisma17, runId, streamId);
 
-    // The completedAt guard blocks the push (route returns 400).
-    expect(result.pushed).toBe(false);
+      // The completedAt guard blocks the push (route returns 400).
+      expect(result.pushed).toBe(false);
 
-    const row = await prisma17.taskRun.findFirst({
-      where: { id: runId },
-      select: { realtimeStreams: true },
-    });
-    expect(row?.realtimeStreams).toEqual([]);
+      const row = await prisma17.taskRun.findFirst({
+        where: { id: runId },
+        select: { realtimeStreams: true },
+      });
+      expect(row?.realtimeStreams).toEqual([]);
     }
   );
 

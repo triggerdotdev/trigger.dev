@@ -32,7 +32,10 @@ function makeService(legacyPrisma: PrismaClient) {
 }
 
 function makeEnv(opts: { id: string; organizationId: string }): AuthenticatedEnvironment {
-  return { id: opts.id, organizationId: opts.organizationId } as unknown as AuthenticatedEnvironment;
+  return {
+    id: opts.id,
+    organizationId: opts.organizationId,
+  } as unknown as AuthenticatedEnvironment;
 }
 
 async function seedOrgProjectEnv(prisma: PrismaClient, suffix: string) {

@@ -19,7 +19,12 @@ async function seedControlPlane(prisma: PrismaClient) {
     data: { title: `Org ${s}`, slug: `org-${s}`, streamBasinName: `basin-${s}` },
   });
   const project = await prisma.project.create({
-    data: { name: `P ${s}`, slug: `p-${s}`, externalRef: `proj_${s}`, organizationId: organization.id },
+    data: {
+      name: `P ${s}`,
+      slug: `p-${s}`,
+      externalRef: `proj_${s}`,
+      organizationId: organization.id,
+    },
   });
   const environment = await prisma.runtimeEnvironment.create({
     data: {

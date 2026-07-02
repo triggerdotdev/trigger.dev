@@ -9,7 +9,12 @@ import { describe, expect, vi } from "vitest";
 // exercised — the passed client runs the query. Mirrors the shipped
 // `mollifierClaimResolution` test: env-wiring mock only; the DB under test is
 // the real PG14 + PG17 hetero-fixture containers.
-vi.mock("~/db.server", () => ({ prisma: {}, $replica: {}, runOpsNewPrisma: {}, runOpsLegacyPrisma: {} }));
+vi.mock("~/db.server", () => ({
+  prisma: {},
+  $replica: {},
+  runOpsNewPrisma: {},
+  runOpsLegacyPrisma: {},
+}));
 // Keep split off so resolveIdempotencyDedupClient returns this.prisma (the hetero fixture client).
 vi.mock("~/v3/runOpsMigration/splitMode.server", () => ({ isSplitEnabled: async () => false }));
 
