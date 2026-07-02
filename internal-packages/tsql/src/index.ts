@@ -541,6 +541,12 @@ export interface CompileTSQLOptions {
    * ```
    */
   timeRange?: TimeRange;
+  /**
+   * Opt-in: emit rows for empty time buckets in a top-level time-bucketed query.
+   * Counters zero-fill, gauges (columns with `fillMode: "carry"`) carry forward.
+   * Off by default; output is unchanged when not set.
+   */
+  fillGaps?: boolean;
 }
 
 /**
@@ -599,6 +605,7 @@ export function compileTSQL(query: string, options: CompileTSQLOptions): PrintRe
     fieldMappings: options.fieldMappings,
     enforcedWhereClause,
     timeRange: options.timeRange,
+    fillGaps: options.fillGaps,
   });
 
   // 6. Print the AST to ClickHouse SQL (enforced conditions applied at printer level)

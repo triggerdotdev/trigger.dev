@@ -123,6 +123,12 @@ export interface ColumnSchema {
    */
   customRenderType?: string;
   /**
+   * Gap-fill behavior when the opt-in `fillGaps` feature emits rows for empty
+   * time buckets: `"carry"` = gauge (LOCF via INTERPOLATE), `"zero"` (default)
+   * = counter (missing buckets get 0).
+   */
+  fillMode?: "zero" | "carry";
+  /**
    * Example value for documentation purposes.
    *
    * Used in help/documentation UI to show users what values look like.

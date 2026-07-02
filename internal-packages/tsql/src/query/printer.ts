@@ -459,6 +459,25 @@ export class ClickHousePrinter {
       this.inProjectionContext = false;
     }
 
+    // Opt-in gap-fill: emit rows for empty time buckets via WITH FILL / INTERPOLATE.
+    // No-op unless enabled, top-level, and the query is fill-eligible.
+    let interpolateClause: string | null = null;
+    let groupedFillWrap: ((inner: string) => string) | null = null;
+    if (this.context.fillGaps && isTopLevelQuery) {
+      const fill = this.buildGapFill(node, orderBy, groupBy);
+      if (fill) {
+        orderBy = fill.orderBy;
+        if (fill.kind === "inline") {
+          interpolateClause = fill.interpolate;
+        } else {
+          // Grouped per-group LOCF: add the `present` sentinel to this (now inner) query
+          // and wrap the rendered SQL in the block-id + carry window layers below.
+          columns.push(fill.presentColumn);
+          groupedFillWrap = fill.wrap;
+        }
+      }
+    }
+
     // Process ARRAY JOIN
     let arrayJoin = "";
     if (node.array_join_op) {
@@ -487,6 +506,8 @@ export class ClickHousePrinter {
       having ? `HAVING${space}${having}` : null,
       windowClause ? `WINDOW${space}${windowClause}` : null,
       orderBy && orderBy.length > 0 ? `ORDER BY${space}${orderBy.join(comma)}` : null,
+      // INTERPOLATE must follow the full ORDER BY (including WITH FILL)
+      interpolateClause,
     ];
 
     // Process LIMIT
@@ -549,6 +570,11 @@ export class ClickHousePrinter {
       response = this.pretty ? `(${response.trim()})` : `(${response})`;
     }
 
+    // Grouped per-group gap fill wraps this query in the block-id + carry window layers.
+    if (groupedFillWrap) {
+      response = groupedFillWrap(response);
+    }
+
     // Restore saved contexts (for nested queries)
     this.selectAliases = savedAliases;
     this.queryHasGroupBy = savedQueryHasGroupBy;
@@ -557,6 +583,166 @@ export class ClickHousePrinter {
     this.internalOnlyColumns = savedInternalOnlyColumns;
 
     return response;
+  }
+
+  /**
+   * Build the gap-fill transformation (WITH FILL + optional INTERPOLATE) for a
+   * top-level time-bucketed query. Returns null when the query is not
+   * fill-eligible (correct-by-construction: emit nothing extra rather than risk
+   * wrong values).
+   *
+   * Eligibility: exactly one timeBucket() column in SELECT, and ORDER BY led by
+   * that timeBucket column. Carry (gauge) columns are LOCF'd via INTERPOLATE;
+   * counters zero-fill via WITH FILL's default. Grouped gauge queries are unsafe
+   * (INTERPOLATE bleeds across groups) and are skipped with a warning.
+   */
+  private buildGapFill(
+    node: SelectQuery,
+    orderBy: string[] | null,
+    groupBy: string[] | null
+  ):
+    | { kind: "inline"; orderBy: string[]; interpolate: string | null }
+    | { kind: "wrap"; orderBy: string[]; presentColumn: string; wrap: (inner: string) => string }
+    | null {
+    if (!orderBy || orderBy.length === 0 || !node.select || node.select.length === 0) {
+      return null;
+    }
+
+    const timeRange = this.context.timeRange;
+    if (!timeRange) {
+      return null;
+    }
+
+    // Need a time-constraint table to derive the bucket column + interval.
+    const tableWithConstraint = this.findTimeConstraintTable();
+    if (!tableWithConstraint) {
+      return null;
+    }
+    const { tableSchema, clickhouseColumnName } = tableWithConstraint;
+    const interval = calculateTimeBucketInterval(
+      timeRange.from,
+      timeRange.to,
+      tableSchema.timeBucketThresholds
+    );
+    const bucketSql = `toStartOfInterval(${escapeClickHouseIdentifier(clickhouseColumnName)}, INTERVAL ${interval.value} ${interval.unit})`;
+
+    // Find exactly one timeBucket() column in SELECT and its output alias.
+    let bucketAlias: string | null = null;
+    let bucketCount = 0;
+    for (const col of node.select) {
+      const inner = (col as Alias).expression_type === "alias" ? (col as Alias).expr : col;
+      if (
+        (inner as Call).expression_type === "call" &&
+        (inner as Call).name.toLowerCase() === "timebucket"
+      ) {
+        bucketCount++;
+        bucketAlias =
+          (col as Alias).expression_type === "alias" ? (col as Alias).alias : "timebucket";
+      }
+    }
+    if (bucketCount !== 1 || !bucketAlias) {
+      return null;
+    }
+
+    // ORDER BY must be led by the timeBucket column (alias or full expression).
+    // Don't fight a user ordering like `ORDER BY count DESC`.
+    const leadTerm = orderBy[0];
+    const leadExpr = leadTerm.replace(/\s+(ASC|DESC)\s*$/i, "").trim();
+    const matchesBucket = (expr: string): boolean =>
+      expr.toLowerCase() === bucketAlias!.toLowerCase() || expr === bucketSql;
+    if (!matchesBucket(leadExpr)) {
+      return null;
+    }
+
+    // Group dims = GROUP BY expressions that are NOT the timeBucket column.
+    const groupDims = (groupBy ?? []).filter((g) => !matchesBucket(g.trim()));
+
+    // Classify each SELECT output column. Carry (gauge) columns survive through
+    // aliases + value-preserving aggregates (see analyzeSelectColumn). A bare column
+    // that isn't the bucket is a GROUP BY dimension; everything else is a counter or
+    // derived value that zero-fills.
+    const carryAliases: string[] = [];
+    const dimNames: string[] = [];
+    const orderedOutputs: Array<{ name: string; carry: boolean }> = [];
+    for (const col of node.select) {
+      const { outputName, sourceColumn } = this.analyzeSelectColumn(col);
+      if (!outputName) continue;
+      const carry = sourceColumn?.fillMode === "carry";
+      orderedOutputs.push({ name: outputName, carry });
+      if (carry) carryAliases.push(outputName);
+      const inner = (col as Alias).expression_type === "alias" ? (col as Alias).expr : col;
+      if (!matchesBucket(outputName) && (inner as Field).expression_type === "field") {
+        dimNames.push(outputName);
+      }
+    }
+
+    // Snap FROM/TO to the bucket grid and parameterize the bounds.
+    const fromBound = this.context.addValue(timeRange.from);
+    const toBound = this.context.addValue(timeRange.to);
+    const withFill =
+      `WITH FILL FROM toStartOfInterval(${fromBound}, INTERVAL ${interval.value} ${interval.unit})` +
+      ` TO toStartOfInterval(${toBound}, INTERVAL ${interval.value} ${interval.unit})` +
+      ` STEP INTERVAL ${interval.value} ${interval.unit}`;
+
+    const esc = escapeClickHouseIdentifier;
+
+    // Single series: WITH FILL on the bucket + INTERPOLATE the carry columns (LOCF);
+    // counters omitted from INTERPOLATE so they zero-fill.
+    if (groupDims.length === 0) {
+      const newOrderBy = [...orderBy];
+      newOrderBy[0] = `${leadTerm} ${withFill}`;
+      const interpolate =
+        carryAliases.length > 0
+          ? `INTERPOLATE (${carryAliases.map((a) => `${esc(a)} AS ${esc(a)}`).join(", ")})`
+          : null;
+      return { kind: "inline", orderBy: newOrderBy, interpolate };
+    }
+
+    // Grouped, counters only: per-group zero-fill via WITH FILL ordered by the dims.
+    if (carryAliases.length === 0) {
+      return {
+        kind: "inline",
+        orderBy: [...groupDims, `${leadTerm} ${withFill}`],
+        interpolate: null,
+      };
+    }
+
+    // Grouped + gauge: per-group LOCF. INTERPOLATE bleeds across groups, so densify per
+    // group (WITH FILL + a `present` sentinel that is 0 on filled rows), assign a block id
+    // that increments at each real row, then carry the block's real value via window max.
+    // Only safe when every GROUP BY dim is a plain column we can PARTITION BY.
+    if (dimNames.length !== groupDims.length) {
+      this.context.addWarning(
+        "fill_skipped_grouped_gauge",
+        "fillGaps was skipped: per-group gap fill needs every GROUP BY dimension to be a plain column."
+      );
+      return null;
+    }
+
+    const userOrderBy = [...orderBy];
+    const presentCol = "__tsql_present";
+    const blockCol = "__tsql_block";
+    const partitionDims = dimNames.map(esc).join(", ");
+    const blockExpr =
+      `sum(${esc(presentCol)}) OVER (PARTITION BY ${partitionDims} ORDER BY ${esc(bucketAlias)}` +
+      ` ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS ${esc(blockCol)}`;
+    const finalColumns = orderedOutputs.map(({ name, carry }) =>
+      carry
+        ? `max(if(${esc(presentCol)} = 1, ${esc(name)}, NULL)) OVER (PARTITION BY ${partitionDims}, ${esc(
+            blockCol
+          )}) AS ${esc(name)}`
+        : esc(name)
+    );
+    const finalOrderBy = userOrderBy.length > 0 ? ` ORDER BY ${userOrderBy.join(", ")}` : "";
+    const wrap = (inner: string): string =>
+      `SELECT ${finalColumns.join(", ")} FROM (SELECT *, ${blockExpr} FROM (${inner.trim()}))${finalOrderBy}`;
+
+    return {
+      kind: "wrap",
+      orderBy: [...dimNames.map(esc), `${leadTerm} ${withFill}`],
+      presentColumn: `1 AS ${esc(presentCol)}`,
+      wrap,
+    };
   }
 
   /**
@@ -1014,11 +1200,12 @@ export class ClickHousePrinter {
         if ((firstArg as Field).expression_type === "field") {
           const field = firstArg as Field;
           const columnInfo = this.resolveFieldToColumn(field.chain);
-          // Only propagate customRenderType, not the full column schema
-          if (columnInfo.column?.customRenderType) {
+          // Propagate customRenderType and fillMode (gauge-ness), not the full column schema
+          if (columnInfo.column?.customRenderType || columnInfo.column?.fillMode) {
             sourceColumn = {
               type: inferredType,
               customRenderType: columnInfo.column.customRenderType,
+              fillMode: columnInfo.column.fillMode,
             };
           }
         }
