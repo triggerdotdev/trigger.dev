@@ -253,11 +253,13 @@ export default function LoginPage() {
             )}
             {!data.isVercelMarketplace && (
               <>
-                <div className="flex w-full items-center gap-3 py-1">
-                  <div className="h-px flex-1 bg-charcoal-700" />
-                  <span className="text-xs uppercase text-text-dimmed">or</span>
-                  <div className="h-px flex-1 bg-charcoal-700" />
-                </div>
+                {(data.showGithubAuth || data.showGoogleAuth || data.showSsoAuth) && (
+                  <div className="flex w-full items-center gap-3 py-1">
+                    <div className="h-px flex-1 bg-charcoal-700" />
+                    <span className="text-xs uppercase text-text-dimmed">or</span>
+                    <div className="h-px flex-1 bg-charcoal-700" />
+                  </div>
+                )}
                 <div className="w-full">
                   {/* Posts to the /login/magic action so all magic-link logic
                       (rate limiting, SSO auto-discovery, send) stays in one place. */}
