@@ -89,7 +89,7 @@ export function EnvironmentSelector({
             <span
               className={cn(
                 "overflow-hidden transition-all duration-200",
-                isCollapsed ? "max-w-0 opacity-0" : "max-w-[16px] opacity-100"
+                isCollapsed ? "max-w-0 opacity-0" : "max-w-[16px] opacity-0 group-hover:opacity-100"
               )}
             >
               <DropdownIcon className="size-4 min-w-4 text-text-dimmed transition group-hover:text-text-bright" />
@@ -111,7 +111,6 @@ export function EnvironmentSelector({
         align="start"
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
-        <PopoverSectionHeader title="Environments" />
         <div className="flex flex-col gap-1 p-1">
           {project.environments
             .filter((env) => env.parentEnvironmentId === null)

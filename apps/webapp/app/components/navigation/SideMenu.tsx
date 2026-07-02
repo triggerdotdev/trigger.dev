@@ -110,8 +110,10 @@ import {
 import { AlphaBadge, NewBadge } from "../FeatureBadges";
 import { AskAI } from "../AskAI";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
+import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { ImpersonationBanner } from "../ImpersonationBanner";
-import { ButtonContent, LinkButton } from "../primitives/Buttons";
+import { Button, ButtonContent, LinkButton } from "../primitives/Buttons";
+import { Dialog, DialogTrigger } from "../primitives/Dialog";
 import { Paragraph } from "../primitives/Paragraph";
 import { Badge } from "../primitives/Badge";
 import { Popover, PopoverContent, PopoverMenuItem, PopoverTrigger } from "../primitives/Popover";
@@ -126,7 +128,7 @@ import {
 import { ShortcutsAutoOpen } from "../Shortcuts";
 import { CreateDashboardButton } from "./DashboardDialogs";
 import { DashboardList } from "./DashboardList";
-import { EnvironmentSegmentedControl } from "./EnvironmentSegmentedControl";
+import { EnvironmentSelector } from "./EnvironmentSelector";
 import { HelpAndFeedback } from "./HelpAndFeedbackPopover";
 import { SideMenuHeader } from "./SideMenuHeader";
 import { SideMenuItem } from "./SideMenuItem";
@@ -191,6 +193,7 @@ export function SideMenu({
   }>({});
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentPlan = useCurrentPlan();
+  const { isConnected } = useDevPresence();
   const isFreeUser = currentPlan?.v3Subscription?.isPaying === false;
   const isAdmin = useHasAdminAccess();
   const { isManagedCloud } = useFeatures();
@@ -329,34 +332,67 @@ export function SideMenu({
             </CollapsibleElement>
           ) : null}
         </div>
-        <div className="border-b border-grid-bright px-1 pb-1 pt-2">
+        <div className="border-b border-grid-bright px-1 pb-1 pt-1">
           <div className="w-full space-y-1">
             <SideMenuHeader title={"Project"} isCollapsed={isCollapsed} collapsedTitle="Proj" />
             <div className="space-y-1">
               <ProjectSelector
                 organization={organization}
                 project={project}
+                environment={environment}
                 isCollapsed={isCollapsed}
                 className="w-full"
               />
-              <EnvironmentSegmentedControl
-                organization={organization}
-                project={project}
-                environment={environment}
-                isCollapsed={isCollapsed}
-              />
+              <div className="flex items-center">
+                <EnvironmentSelector
+                  organization={organization}
+                  project={project}
+                  environment={environment}
+                  isCollapsed={isCollapsed}
+                  className="min-w-0 flex-1"
+                />
+                {environment.type === "DEVELOPMENT" && project.engine === "V2" && (
+                  <CollapsibleElement isCollapsed={isCollapsed} className="shrink-0">
+                    <Dialog>
+                      <TooltipProvider disableHoverableContent={true}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="inline-flex">
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="minimal/small"
+                                  className="aspect-square h-7 p-1"
+                                  LeadingIcon={<ConnectionIcon isConnected={isConnected} />}
+                                />
+                              </DialogTrigger>
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className={"text-xs"}>
+                            {isConnected === undefined
+                              ? "Checking connection…"
+                              : isConnected
+                                ? "Your dev server is connected"
+                                : "Your dev server is not connected"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <DevPresencePanel isConnected={isConnected} />
+                    </Dialog>
+                  </CollapsibleElement>
+                )}
+              </div>
             </div>
           </div>
         </div>
         <div
           className={cn(
-            "min-h-0 overflow-y-auto pt-1",
+            "min-h-0 overflow-y-auto pt-2.5",
             isCollapsed
               ? "scrollbar-none"
-              : "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
+              : "scrollbar-gutter-stable scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
           )}
         >
-          <div className="mb-6 flex w-full flex-col gap-4 overflow-hidden px-1">
+          <div className="mb-6 flex w-full flex-col gap-4 overflow-hidden pl-2.5 pr-0">
             <div className="w-full space-y-0">
               <SideMenuItem
                 name="Tasks"
@@ -833,7 +869,7 @@ function OrgSelector({
             <span
               className={cn(
                 "overflow-hidden transition-all duration-200",
-                isCollapsed ? "max-w-0 opacity-0" : "max-w-[16px] opacity-100"
+                isCollapsed ? "max-w-0 opacity-0" : "max-w-[16px] opacity-0 group-hover:opacity-100"
               )}
             >
               <DropdownIcon className="size-4 min-w-4 text-text-dimmed transition group-hover:text-text-bright" />
@@ -969,11 +1005,13 @@ function OrgSelector({
 function ProjectSelector({
   project,
   organization,
+  environment,
   isCollapsed = false,
   className,
 }: {
   project: SideMenuProject;
   organization: MatchedOrganization;
+  environment: SideMenuEnvironment;
   isCollapsed?: boolean;
   className?: string;
 }) {
@@ -1013,7 +1051,7 @@ function ProjectSelector({
             <span
               className={cn(
                 "overflow-hidden transition-all duration-200",
-                isCollapsed ? "max-w-0 opacity-0" : "max-w-[16px] opacity-100"
+                isCollapsed ? "max-w-0 opacity-0" : "max-w-[16px] opacity-0 group-hover:opacity-100"
               )}
             >
               <DropdownIcon className="size-4 min-w-4 text-text-dimmed transition group-hover:text-text-bright" />
@@ -1036,6 +1074,22 @@ function ProjectSelector({
         style={{ maxHeight: `calc(var(--radix-popover-content-available-height) - 10vh)` }}
       >
         <div className="flex flex-col gap-1 p-1">
+          <PopoverMenuItem
+            to={newProjectPath(organization)}
+            title="New project"
+            icon={PlusIcon}
+            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+            className={SIDE_MENU_POPOVER_ITEM_LABEL}
+          />
+          <PopoverMenuItem
+            to={v3ProjectSettingsGeneralPath(organization, project, environment)}
+            title="Project settings"
+            icon={SlidersIcon}
+            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
+            className={SIDE_MENU_POPOVER_ITEM_LABEL}
+          />
+        </div>
+        <div className="flex flex-col gap-1 border-t border-charcoal-700 p-1">
           {organization.projects.map((p) => {
             const isSelected = p.id === project.id;
             return (
@@ -1054,13 +1108,6 @@ function ProjectSelector({
               />
             );
           })}
-          <PopoverMenuItem
-            to={newProjectPath(organization)}
-            title="New project"
-            icon={PlusIcon}
-            leadingIconClassName={SIDE_MENU_POPOVER_ITEM_ICON}
-            className={SIDE_MENU_POPOVER_ITEM_LABEL}
-          />
         </div>
       </PopoverContent>
     </Popover>
