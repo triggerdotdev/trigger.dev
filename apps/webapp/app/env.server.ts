@@ -106,6 +106,9 @@ const EnvironmentSchema = z
     // standard chat.agent SDK flow. When unset, the live agent is disabled — the
     // conversation store / History still work, no chat can start.
     DASHBOARD_AGENT_SECRET_KEY: z.string().optional(),
+    // Pins agent sessions to a specific deployed version (paired with
+    // --skip-promotion deploys); unset => the project env's current version.
+    DASHBOARD_AGENT_VERSION: z.string().optional(),
     // Global default for the `hasDashboardAgentAccess` flag. "0" (off) ships the
     // agent dark; flip to "1" to enable it for everyone at GA. Per-org overrides
     // (org featureFlags) win regardless.

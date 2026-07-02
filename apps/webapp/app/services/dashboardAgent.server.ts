@@ -57,13 +57,22 @@ export function isDashboardAgentConfigured(): boolean {
   return Boolean(env.DASHBOARD_AGENT_SECRET_KEY);
 }
 
+// Pins every agent session (and its continuation runs) to a deployed version
+// when DASHBOARD_AGENT_VERSION is set; unset runs on the env's current version.
+export function dashboardAgentTriggerConfig(): { lockToVersion: string } | undefined {
+  return env.DASHBOARD_AGENT_VERSION ? { lockToVersion: env.DASHBOARD_AGENT_VERSION } : undefined;
+}
+
 export async function startDashboardAgentSession(params: {
   chatId: string;
   clientData?: Record<string, unknown>;
 }): Promise<{ publicAccessToken: string }> {
   const config = dashboardAgentConfig();
   if (!config) throw new Error("DASHBOARD_AGENT_SECRET_KEY is not set");
-  const startSession = chat.createStartSessionAction(TASK_ID, { apiClient: config });
+  const startSession = chat.createStartSessionAction(TASK_ID, {
+    apiClient: config,
+    triggerConfig: dashboardAgentTriggerConfig(),
+  });
   return startSession({ chatId: params.chatId, clientData: params.clientData });
 }
 
