@@ -1,0 +1,74 @@
+import { describe, expect, it } from "vitest";
+import { createMetricsGaugeComputeLua } from "./lua.js";
+import { dedupTokenFromEntryIds } from "./idempotency.js";
+import { fnv1a32, shardFor } from "./hash.js";
+import { allStreamKeys, entryTimeMs, streamKey } from "./types.js";
+
+describe("shardFor", () => {
+  it("is deterministic and in range", () => {
+    expect(shardFor("queueA", 1)).toBe(0);
+    const s = shardFor("queueA", 4);
+    expect(s).toBeGreaterThanOrEqual(0);
+    expect(s).toBeLessThan(4);
+    expect(shardFor("queueA", 4)).toBe(s);
+    expect(fnv1a32("queueA")).toBe(fnv1a32("queueA"));
+  });
+});
+
+describe("dedupTokenFromEntryIds", () => {
+  it("is order-independent and set-sensitive", () => {
+    expect(dedupTokenFromEntryIds(["1-0", "2-0"])).toBe(dedupTokenFromEntryIds(["2-0", "1-0"]));
+    expect(dedupTokenFromEntryIds(["1-0"])).not.toBe(dedupTokenFromEntryIds(["2-0"]));
+    expect(dedupTokenFromEntryIds(["1-0"])).toMatch(/^[0-9a-f]{40}$/);
+  });
+});
+
+describe("stream keys", () => {
+  it("names and parses entry time", () => {
+    expect(streamKey({ name: "queue_metrics" }, 3)).toBe("queue_metrics:{3}");
+    expect(allStreamKeys({ name: "qm", shardCount: 2, consumerGroup: "cg" })).toEqual([
+      "qm:{0}",
+      "qm:{1}",
+    ]);
+    expect(entryTimeMs("1717000000000-5")).toBe(1717000000000);
+    expect(entryTimeMs("nope")).toBeNull();
+  });
+});
+
+describe("createMetricsGaugeComputeLua", () => {
+  it("assigns __qm_g inside a gated, pcall-wrapped block and never XADDs", () => {
+    const lua = createMetricsGaugeComputeLua({
+      enabledArg: "ARGV[#ARGV] == '1'",
+      queued: "redis.call('ZCARD', KEYS[2])",
+      running: "queueCurrent",
+      queueLimit: "queueLimit",
+      envQueued: "redis.call('ZCARD', KEYS[8])",
+      envRunning: "envCurrent",
+      envLimit: "envLimit",
+    });
+
+    expect(lua).toContain("if ARGV[#ARGV] == '1' then");
+    expect(lua).toContain("pcall(function()");
+    expect(lua).toContain("__qm_g = {__ql, __cc, __lim, __eql, __ec, __elim, __thr}");
+    expect(lua).toContain("if __cc >= __lim and __ql > 0 then __thr = 1 end");
+    // The whole point of the refactor: no Redis write happens in the run-queue script.
+    expect(lua).not.toContain("XADD");
+  });
+
+  it("honors a custom throttled expression and preamble", () => {
+    const lua = createMetricsGaugeComputeLua({
+      enabledArg: "true",
+      preamble: "local agg = 1",
+      queued: "0",
+      running: "0",
+      queueLimit: "0",
+      envQueued: "0",
+      envRunning: "0",
+      envLimit: "0",
+      throttledExpr: "false",
+    });
+    expect(lua).toContain("local agg = 1");
+    expect(lua).toContain("if false then __thr = 1 end");
+    expect(lua).not.toContain("XADD");
+  });
+});

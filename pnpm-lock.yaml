@@ -288,6 +288,9 @@ importers:
       '@internal/llm-model-catalog':
         specifier: workspace:*
         version: link:../../internal-packages/llm-model-catalog
+      '@internal/metrics-pipeline':
+        specifier: workspace:*
+        version: link:../../internal-packages/metrics-pipeline
       '@internal/redis':
         specifier: workspace:*
         version: link:../../internal-packages/redis
@@ -1076,6 +1079,25 @@ importers:
         specifier: 4.1.7
         version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.20.0)(@vitest/coverage-v8@4.1.7)(vite@6.4.2(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.46.1)(tsx@4.22.4)(yaml@2.9.0))
 
+  internal-packages/metrics-pipeline:
+    dependencies:
+      '@internal/redis':
+        specifier: workspace:*
+        version: link:../redis
+      '@internal/tracing':
+        specifier: workspace:*
+        version: link:../tracing
+      '@trigger.dev/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+    devDependencies:
+      '@internal/testcontainers':
+        specifier: workspace:*
+        version: link:../testcontainers
+      rimraf:
+        specifier: 6.0.1
+        version: 6.0.1
+
   internal-packages/otlp-importer:
     dependencies:
       long:
@@ -1156,6 +1178,9 @@ importers:
       '@internal/cache':
         specifier: workspace:*
         version: link:../cache
+      '@internal/metrics-pipeline':
+        specifier: workspace:*
+        version: link:../metrics-pipeline
       '@internal/redis':
         specifier: workspace:*
         version: link:../redis
