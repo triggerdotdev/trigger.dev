@@ -1,5 +1,3 @@
-import { createLRUMemoryStore } from "@internal/cache";
-import { metrics } from "@opentelemetry/api";
 import { MachinePresetName, tryCatch } from "@trigger.dev/core/v3";
 import type { RuntimeEnvironmentType } from "@trigger.dev/database";
 import {
@@ -8,7 +6,6 @@ import {
   machines as machinesFromPlatform,
   type BillingAlertsResult,
   type CreatePrivateLinkConnectionBody,
-  type CurrentPlan,
   type Limits,
   type MachineCode,
   type PrivateLinkConnection,
@@ -18,20 +15,16 @@ import {
   type UpdateBillingAlertsRequest,
   type UsageResult,
   type UsageSeriesParams,
+  type CurrentPlan,
 } from "@trigger.dev/platform";
-import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
-import { existsSync, readFileSync } from "node:fs";
-import { redirect } from "remix-typedjson";
-import { z } from "zod";
-import { $replica } from "~/db.server";
-import { env } from "~/env.server";
-import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import {
-  asPlatformSchema,
   BillingLimitResultSchema,
   BillingLimitsActiveResultSchema,
   BillingLimitsPendingResolvesResultSchema,
   EntitlementResultSchema,
+  ResolveBillingLimitRequestSchema,
+  UpdateBillingLimitRequestSchema,
+  asPlatformSchema,
   type BillingLimitResult,
   type BillingLimitsActiveResult,
   type BillingLimitsPendingResolvesResult,
@@ -39,10 +32,19 @@ import {
   type ResolveBillingLimitRequest,
   type UpdateBillingLimitRequest,
 } from "~/services/billingLimit.schemas";
+import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
+import { createLRUMemoryStore } from "@internal/cache";
+import { existsSync, readFileSync } from "node:fs";
+import { redirect } from "remix-typedjson";
+import { z } from "zod";
+import { env } from "~/env.server";
+import { redirectWithErrorMessage, redirectWithSuccessMessage } from "~/models/message.server";
 import { logger } from "~/services/logger.server";
 import { newProjectPath, organizationBillingPath } from "~/utils/pathBuilder";
 import { singleton } from "~/utils/singleton";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
+import { $replica } from "~/db.server";
+import { metrics } from "@opentelemetry/api";
 
 function initializeClient() {
   if (isCloud() && process.env.BILLING_API_URL && process.env.BILLING_API_KEY) {
@@ -82,6 +84,78 @@ function recordPlatformFailure(fn: string, kind: "caught" | "no_success") {
   platformClientFailuresCounter.add(1, { function: fn, kind });
 }
 
+export type ValidatedPromoCode = {
+  valid: boolean;
+  amountInCents?: number;
+  expiresAt?: string | null;
+};
+
+/**
+ * Validate a promo code (no org context). Returns `undefined` when billing
+ * isn't configured or the call fails, so callers fall back to treating the
+ * code as not-yet-validated rather than crashing the page.
+ */
+export async function validatePromoCode(code: string): Promise<ValidatedPromoCode | undefined> {
+  if (!client) {
+    return undefined;
+  }
+
+  const [error, result] = await tryCatch(client.validatePromoCode(code));
+  if (error) {
+    recordPlatformFailure("validatePromoCode", "caught");
+    logger.error("validatePromoCode threw", { error });
+    return undefined;
+  }
+  if (!result.success) {
+    recordPlatformFailure("validatePromoCode", "no_success");
+    return undefined;
+  }
+
+  return {
+    valid: result.valid,
+    amountInCents: result.amountInCents,
+    expiresAt: result.expiresAt,
+  };
+}
+
+export type AppliedPromoCode = {
+  applied: boolean;
+  amountInCents?: number;
+  reason?: string;
+};
+
+/**
+ * Apply a promo code to a newly created org. Returns `undefined` when billing
+ * isn't configured or the call fails — callers treat that as "not applied" and
+ * must never block org creation on it.
+ */
+export async function applyPromoCode(
+  orgId: string,
+  userId: string,
+  code: string
+): Promise<AppliedPromoCode | undefined> {
+  if (!client) {
+    return undefined;
+  }
+
+  const [error, result] = await tryCatch(client.applyPromoCode(orgId, { code, userId }));
+  if (error) {
+    recordPlatformFailure("applyPromoCode", "caught");
+    logger.error("applyPromoCode threw", { error });
+    return undefined;
+  }
+  if (!result.success) {
+    recordPlatformFailure("applyPromoCode", "no_success");
+    return undefined;
+  }
+
+  return {
+    applied: result.applied,
+    amountInCents: result.amountInCents,
+    reason: result.reason,
+  };
+}
+
 function initializePlatformCache() {
   const ctx = new DefaultStatefulContext();
   const memory = createLRUMemoryStore(1000);
@@ -115,6 +189,11 @@ function initializePlatformCache() {
       stale: 120_000, // total TTL — fresh 0-60s, stale-revalidate 60-120s
     }),
     billingLimit: new Namespace<BillingLimitResult>(ctx, {
+      stores: [memory, redisCacheStore],
+      fresh: 60_000,
+      stale: 120_000,
+    }),
+    promoCredits: new Namespace<PromoCreditsData | null>(ctx, {
       stores: [memory, redisCacheStore],
       fresh: 60_000,
       stale: 120_000,
@@ -273,7 +352,7 @@ export async function getCurrentPlan(orgId: string) {
     };
 
     return { ...result, usage };
-  } catch (_e) {
+  } catch (e) {
     recordPlatformFailure("getCurrentPlan", "caught");
     return undefined;
   }
@@ -314,7 +393,7 @@ export async function getLimits(orgId: string) {
     }
 
     return result.v3Subscription?.plan?.limits;
-  } catch (_e) {
+  } catch (e) {
     recordPlatformFailure("getLimits", "caught");
     return undefined;
   }
@@ -390,7 +469,7 @@ export async function customerPortalUrl(orgId: string, orgSlug: string) {
     return client.createPortalSession(orgId, {
       returnUrl: `${env.APP_ORIGIN}${organizationBillingPath({ slug: orgSlug })}`,
     });
-  } catch (_e) {
+  } catch (e) {
     recordPlatformFailure("customerPortalUrl", "caught");
     return undefined;
   }
@@ -406,7 +485,7 @@ export async function getPlans() {
       return undefined;
     }
     return result;
-  } catch (_e) {
+  } catch (e) {
     recordPlatformFailure("getPlans", "caught");
     return undefined;
   }
@@ -477,7 +556,7 @@ export async function setConcurrencyAddOn(organizationId: string, amount: number
       return undefined;
     }
     return result;
-  } catch (_e) {
+  } catch (e) {
     recordPlatformFailure("setConcurrencyAddOn", "caught");
     return undefined;
   }
@@ -493,7 +572,7 @@ export async function setSeatsAddOn(organizationId: string, amount: number) {
       return undefined;
     }
     return result;
-  } catch (_e) {
+  } catch (e) {
     recordPlatformFailure("setSeatsAddOn", "caught");
     return undefined;
   }
@@ -509,7 +588,7 @@ export async function setBranchesAddOn(organizationId: string, amount: number) {
       return undefined;
     }
     return result;
-  } catch (_e) {
+  } catch (e) {
     recordPlatformFailure("setBranchesAddOn", "caught");
     return undefined;
   }
@@ -525,7 +604,7 @@ export async function setSchedulesAddOn(organizationId: string, amount: number) 
       return undefined;
     }
     return result;
-  } catch (_e) {
+  } catch (e) {
     recordPlatformFailure("setSchedulesAddOn", "caught");
     return undefined;
   }
@@ -541,7 +620,7 @@ export async function getUsage(organizationId: string, { from, to }: { from: Dat
       return undefined;
     }
     return result;
-  } catch (_e) {
+  } catch (e) {
     recordPlatformFailure("getUsage", "caught");
     return undefined;
   }
@@ -564,7 +643,7 @@ export async function getCachedUsage(
     );
 
     return result.val;
-  } catch (_e) {
+  } catch (e) {
     recordPlatformFailure("getCachedUsage", "caught");
     return undefined;
   }
@@ -580,7 +659,7 @@ export async function getUsageSeries(organizationId: string, params: UsageSeries
       return undefined;
     }
     return result;
-  } catch (_e) {
+  } catch (e) {
     recordPlatformFailure("getUsageSeries", "caught");
     return undefined;
   }
@@ -604,7 +683,7 @@ export async function reportInvocationUsage(
       return undefined;
     }
     return result;
-  } catch (_e) {
+  } catch (e) {
     recordPlatformFailure("reportInvocationUsage", "caught");
     return undefined;
   }
@@ -643,7 +722,7 @@ export async function getEntitlement(
         return undefined;
       }
       return response;
-    } catch (_e) {
+    } catch (e) {
       recordPlatformFailure("getEntitlement", "caught");
       return undefined;
     }
@@ -655,6 +734,42 @@ export async function getEntitlement(
     };
   }
 
+  return result.val;
+}
+
+export type PromoCreditsData = {
+  grantedCents: number;
+  remainingCents: number;
+  expiresAt: string | null;
+};
+
+/**
+ * Remaining promo/credit-grant balance for an org, or null when it has none.
+ * Billing-side gating keeps this cheap for orgs without credits; the SWR cache
+ * keeps repeated dashboard loads off the network. Fails closed to null so the
+ * display is simply hidden on any error — never blocks the page.
+ */
+export async function getPromoCredits(organizationId: string): Promise<PromoCreditsData | null> {
+  if (!client) return null;
+
+  const result = await platformCache.promoCredits.swr(organizationId, async () => {
+    try {
+      const response = await client.promoCredits(organizationId);
+      if (!response.success) {
+        recordPlatformFailure("promoCredits", "no_success");
+        return null;
+      }
+      return response.promoCredits;
+    } catch (e) {
+      recordPlatformFailure("promoCredits", "caught");
+      logger.error("promoCredits threw", { error: e });
+      return null;
+    }
+  });
+
+  if (result.err || result.val === undefined) {
+    return null;
+  }
   return result.val;
 }
 
@@ -677,7 +792,7 @@ export async function getBillingLimit(
           return undefined;
         }
         return response;
-      } catch (_e) {
+      } catch (e) {
         recordPlatformFailure("getBillingLimit", "caught");
         return undefined;
       }
@@ -688,7 +803,7 @@ export async function getBillingLimit(
     }
 
     return result.val;
-  } catch (_e) {
+  } catch (e) {
     recordPlatformFailure("getBillingLimit", "caught");
     return undefined;
   }
@@ -762,7 +877,7 @@ export async function getActiveBillingLimits(): Promise<BillingLimitsActiveResul
       return undefined;
     }
     return response;
-  } catch (_e) {
+  } catch (e) {
     recordPlatformFailure("getActiveBillingLimits", "caught");
     return undefined;
   }
@@ -784,7 +899,7 @@ export async function getPendingBillingLimitResolves(): Promise<
       return undefined;
     }
     return response;
-  } catch (_e) {
+  } catch (e) {
     recordPlatformFailure("getPendingBillingLimitResolves", "caught");
     return undefined;
   }
@@ -980,8 +1095,8 @@ export type {
   BillingLimitConfig,
   BillingLimitPageData,
   BillingLimitResult,
-  BillingLimitsActiveResult,
   BillingLimitState,
+  BillingLimitsActiveResult,
   EntitlementResult,
   ResolveBillingLimitRequest,
   UpdateBillingLimitRequest,

@@ -36,7 +36,14 @@ const quotes: QuoteType[] = [
   },
 ];
 
-export function LoginPageLayout({ children }: { children: React.ReactNode }) {
+export function LoginPageLayout({
+  children,
+  rightContent,
+}: {
+  children: React.ReactNode;
+  /** Replaces the default testimonials panel on the right (e.g. a promo highlight). */
+  rightContent?: React.ReactNode;
+}) {
   const [randomQuote, setRandomQuote] = useState<QuoteType | null>(null);
   useEffect(() => {
     const randomIndex = Math.floor(Math.random() * quotes.length);
@@ -62,23 +69,27 @@ export function LoginPageLayout({ children }: { children: React.ReactNode }) {
         </div>
       </div>
       <div className="hidden grid-rows-[1fr_auto] pb-6 lg:grid">
-        <div className="flex h-full flex-col items-center justify-center px-16">
-          <Header3 className="relative text-center text-2xl font-normal leading-8 text-text-dimmed transition before:relative before:right-1 before:top-0 before:text-6xl before:text-charcoal-750 before:content-['❝'] lg-height:text-xl md-height:text-lg">
-            {randomQuote?.quote}
-          </Header3>
-          <Paragraph className="mt-4 text-text-dimmed/60">{randomQuote?.person}</Paragraph>
-        </div>
-        <div className="flex flex-col items-center gap-4 px-8">
-          <Paragraph>Trusted by developers at</Paragraph>
-          <div className="flex w-full flex-wrap items-center justify-center gap-x-6 gap-y-3 text-text-faint xl:justify-between xl:gap-0">
-            <LyftLogo className="w-11" />
-            <UnkeyLogo />
-            <MiddayLogo />
-            <AppsmithLogo />
-            <CalComLogo />
-            <TldrawLogo />
-          </div>
-        </div>
+        {rightContent ?? (
+          <>
+            <div className="flex h-full flex-col items-center justify-center px-16">
+              <Header3 className="relative text-center text-2xl font-normal leading-8 text-text-dimmed transition before:relative before:right-1 before:top-0 before:text-6xl before:text-charcoal-750 before:content-['❝'] lg-height:text-xl md-height:text-lg">
+                {randomQuote?.quote}
+              </Header3>
+              <Paragraph className="mt-4 text-text-dimmed/60">{randomQuote?.person}</Paragraph>
+            </div>
+            <div className="flex flex-col items-center gap-4 px-8">
+              <Paragraph>Trusted by developers at</Paragraph>
+              <div className="flex w-full flex-wrap items-center justify-center gap-x-6 gap-y-3 text-text-faint xl:justify-between xl:gap-0">
+                <LyftLogo className="w-11" />
+                <UnkeyLogo />
+                <MiddayLogo />
+                <AppsmithLogo />
+                <CalComLogo />
+                <TldrawLogo />
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </main>
   );

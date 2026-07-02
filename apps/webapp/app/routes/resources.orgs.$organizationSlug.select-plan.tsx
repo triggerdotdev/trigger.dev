@@ -34,7 +34,8 @@ import { prisma } from "~/db.server";
 import { redirectWithErrorMessage } from "~/models/message.server";
 import { resolveOrgIdFromSlug } from "~/models/organization.server";
 import { logger } from "~/services/logger.server";
-import { setPlan } from "~/services/platform.v3.server";
+import { applyPromoCode, setPlan } from "~/services/platform.v3.server";
+import { clearPromoCodeCookie, getPromoCodeFromCookie } from "~/services/promoCode.server";
 import { dashboardAction } from "~/services/routeBuilders/dashboardBuilder";
 import { engine } from "~/v3/runEngine.server";
 import { cn } from "~/utils/cn";
@@ -153,9 +154,24 @@ export const action = dashboardAction(
       }
     }
 
-    return await setPlan(organization, request, form.callerPath, payload, {
+    const result = await setPlan(organization, request, form.callerPath, payload, {
       invalidateBillingCache: engine.invalidateBillingCache.bind(engine),
     });
+
+    // Redeem a promo code carried from the /promo landing page now that selecting
+    // a plan has provisioned the org's usage entitlement (the grant target).
+    // Best-effort: it must never change the plan-selection outcome.
+    if (form.type === "free") {
+      const promoCode = await getPromoCodeFromCookie(request);
+      if (promoCode) {
+        const applied = await applyPromoCode(organization.id, user.id, promoCode);
+        if (applied?.applied) {
+          result.headers.append("Set-Cookie", await clearPromoCodeCookie());
+        }
+      }
+    }
+
+    return result;
   }
 );
 
