@@ -73,7 +73,6 @@ export default function ChoosePlanPage() {
                 subscription={v3Subscription}
                 organizationSlug={organizationSlug}
                 hasPromotedPlan
-                showGithubVerificationBadge
                 periodEnd={periodEnd}
               />
             </div>

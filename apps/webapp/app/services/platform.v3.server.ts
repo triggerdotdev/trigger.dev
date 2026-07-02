@@ -442,23 +442,12 @@ export async function setPlan(
   }
 
   switch (result.action) {
-    case "free_connect_required": {
-      return redirect(result.connectUrl);
-    }
+    case "free_connect_required":
     case "free_connected": {
-      if (result.accepted) {
-        // Invalidate billing cache since plan changed
-        opts?.invalidateBillingCache?.(organization.id);
-        platformCache.entitlement.remove(organization.id).catch(() => {});
-        return redirect(newProjectPath(organization, "You're on the Free plan."));
-      } else {
-        return redirectWithErrorMessage(
-          callerPath,
-          request,
-          "Free tier unlock failed, your GitHub account is too new.",
-          { ephemeral: false }
-        );
-      }
+      // Selecting Free provisions the plan directly, so any free result is a success.
+      opts?.invalidateBillingCache?.(organization.id);
+      platformCache.entitlement.remove(organization.id).catch(() => {});
+      return redirect(newProjectPath(organization, "You're on the Free plan."));
     }
     case "create_subscription_flow_start": {
       return redirect(result.checkoutUrl);
