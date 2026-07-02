@@ -1,5 +1,23 @@
 # @trigger.dev/redis-worker
 
+## 4.5.0
+
+### Patch Changes
+
+- Pipeline the per-entry `HGETALL` fetches in `MollifierBuffer.listEntriesForEnv`. The previous serial implementation issued one Redis round-trip per runId returned by `LRANGE`, which dominated stale-sweep wall-time at any meaningful backlog (at the sweep's default maxCount=1000, this is ~1000 RTTs per env per pass). Behaviour is unchanged — entries are still skipped when the entry hash has been torn down by a concurrent drainer ack/fail between the LRANGE and the HGETALL. ([#3752](https://github.com/triggerdotdev/trigger.dev/pull/3752))
+- Make mollifier buffer and drainer internals configurable. `MollifierBuffer` now accepts `ackGraceTtlSeconds`, `maxRetriesPerRequest`, `reconnectStepMs`, and `reconnectMaxMs` options, and `MollifierDrainer` accepts `maxBackoffMs` and `backoffFloorMs`. All default to their previous hardcoded values, so existing behaviour is unchanged. ([#3822](https://github.com/triggerdotdev/trigger.dev/pull/3822))
+- `MollifierDrainer` accepts a `drainBatchSize` option (default 1) that controls how many entries are popped per env per tick — in-flight handlers remain capped by the global `concurrency`. `MollifierBuffer` also gains `getDrainingCount()` / `listStaleDraining()`, backed by a new `mollifier:draining` ZSET maintained atomically with pop/ack/fail/requeue (observability-only). ([#3797](https://github.com/triggerdotdev/trigger.dev/pull/3797))
+- Add MollifierBuffer and MollifierDrainer primitives for trigger burst smoothing. ([#3614](https://github.com/triggerdotdev/trigger.dev/pull/3614))
+
+  MollifierBuffer (`accept`, `pop`, `ack`, `requeue`, `fail`, `evaluateTrip`) is a per-env FIFO over Redis with atomic Lua transitions for status tracking. `evaluateTrip` is a sliding-window trip evaluator the webapp gate uses to detect per-env trigger bursts.
+
+  MollifierDrainer pops entries through a polling loop with a user-supplied handler. The loop survives transient Redis errors via capped exponential backoff (up to 5s), and per-env pop failures don't poison the rest of the batch — one env's blip is logged and counted as failed for that tick. Rotation is two-level: orgs at the top, envs within each org. The buffer maintains `mollifier:orgs` and `mollifier:org-envs:${orgId}` atomically with per-env queues, so the drainer walks orgs → envs directly without an in-memory cache. The `maxOrgsPerTick` option (default 500) caps how many orgs are scheduled per tick; for each picked org, one env is popped (rotating round-robin within the org). An org with N envs gets the same per-tick scheduling slot as an org with 1 env, so tenant-level drainage throughput is determined by org count rather than env count.
+
+- Mollifier `mutateSnapshot` now enforces a tag cap: an `append_tags` patch carrying `maxTags` returns `"limit_exceeded"` (writing nothing) when the deduped tag count would exceed the limit, so a buffered run can't accumulate more tags via the tags API than the trigger validator allows at creation. ([#3756](https://github.com/triggerdotdev/trigger.dev/pull/3756))
+- Add a `redis_worker.queue.oldest_message_age` observable gauge (unit `ms`, labeled `worker_name`) reporting the age of the oldest overdue message in each queue. This is a generic queue-stall signal: it stays at 0 while a queue drains healthily and rises only when due work sits undrained (e.g. a blocked dequeue, a dead consumer, or backpressure), even when no items are being processed. Orphaned queue entries are resolved against the items hash so they don't report a phantom stall. Also exposes `SimpleQueue.oldestMessageAge()`. ([#4086](https://github.com/triggerdotdev/trigger.dev/pull/4086))
+- Updated dependencies:
+  - `@trigger.dev/core@4.5.0`
+
 ## 4.5.0-rc.7
 
 ### Patch Changes
