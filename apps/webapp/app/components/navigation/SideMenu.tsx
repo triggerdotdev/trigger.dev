@@ -30,6 +30,8 @@ import { HomeIcon } from "~/assets/icons/HomeIcon";
 import { IDIcon } from "~/assets/icons/IDIcon";
 import { IntegrationsIcon } from "~/assets/icons/IntegrationsIcon";
 import { KeyIcon } from "~/assets/icons/KeyIcon";
+import { LeftSideMenuCollapsedIcon } from "~/assets/icons/LeftSideMenuCollapsedIcon";
+import { LeftSideMenuIcon } from "~/assets/icons/LeftSideMenuIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { LogsIcon } from "~/assets/icons/LogsIcon";
 import { PlusIcon } from "~/assets/icons/PlusIcon";
@@ -105,7 +107,6 @@ import {
   v3UsagePath,
   v3WaitpointTokensPath,
 } from "~/utils/pathBuilder";
-import { AskAI } from "../AskAI";
 import { FreePlanUsage } from "../billing/FreePlanUsage";
 import { ConnectionIcon, DevPresencePanel, useDevPresence } from "../DevPresence";
 import { AlphaBadge, NewBadge } from "../FeatureBadges";
@@ -716,6 +717,7 @@ export function SideMenu({
               isCollapsed={isCollapsed}
               organizationId={organization.id}
               projectId={project.id}
+              onToggleCollapsed={handleToggleCollapsed}
             />
             {isFreeUser && (
               <CollapsibleHeight isCollapsed={isCollapsed}>
@@ -1346,10 +1348,12 @@ function HelpAndAI({
   isCollapsed,
   organizationId,
   projectId,
+  onToggleCollapsed,
 }: {
   isCollapsed: boolean;
   organizationId: string;
   projectId: string;
+  onToggleCollapsed: () => void;
 }) {
   return (
     <LayoutGroup>
@@ -1365,9 +1369,67 @@ function HelpAndAI({
           organizationId={organizationId}
           projectId={projectId}
         />
-        <AskAI isCollapsed={isCollapsed} />
+        <CollapseMenuButton isCollapsed={isCollapsed} onToggle={onToggleCollapsed} />
       </div>
     </LayoutGroup>
+  );
+}
+
+function CollapseMenuButton({
+  isCollapsed,
+  onToggle,
+}: {
+  isCollapsed: boolean;
+  onToggle: () => void;
+}) {
+  const [isHovering, setIsHovering] = useState(false);
+
+  return (
+    <div>
+      <TooltipProvider disableHoverableContent>
+        <Tooltip delayDuration={isCollapsed ? 0 : 500}>
+          <TooltipTrigger asChild>
+            <span
+              className={cn("inline-flex h-8", isCollapsed && "w-full")}
+              onMouseEnter={() => setIsHovering(true)}
+              onMouseLeave={() => setIsHovering(false)}
+            >
+              <Button
+                variant="small-menu-item"
+                aria-label={isCollapsed ? "Expand side menu" : "Collapse side menu"}
+                onClick={onToggle}
+                fullWidth={isCollapsed}
+                className={cn("h-full", isCollapsed && "justify-center")}
+              >
+                {isCollapsed ? (
+                  <LeftSideMenuCollapsedIcon
+                    className={cn(
+                      "size-5 transition-colors",
+                      isHovering ? "text-text-bright" : "text-text-dimmed"
+                    )}
+                  />
+                ) : (
+                  <LeftSideMenuIcon
+                    className={cn(
+                      "size-5 transition-colors",
+                      isHovering ? "text-text-bright" : "text-text-dimmed"
+                    )}
+                    hovered={isHovering}
+                  />
+                )}
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={8} className="flex items-center gap-2 text-xs">
+            {isCollapsed ? "Expand" : "Collapse"}
+            <span className="flex items-center">
+              <ShortcutKey shortcut={{ modifiers: ["mod"] }} variant="medium/bright" />
+              <ShortcutKey shortcut={{ key: "b" }} variant="medium/bright" />
+            </span>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </div>
   );
 }
 
