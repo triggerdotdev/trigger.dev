@@ -346,13 +346,154 @@ const WAITPOINT_DEDICATED: DedicatedRelationSpec = {
   completedExecutionSnapshots: hydrateCompletedExecutionSnapshots,
 };
 
+// Cross-generation Prisma error normalization.
+//
+// The store can be backed by the control-plane `@trigger.dev/database` client OR the
+// run-ops `@internal/run-ops-database` client. Each is a SEPARATELY generated client with
+// its own copy of the Prisma runtime, so each has its OWN `PrismaClientKnownRequestError`
+// class object (identical code, distinct module identity). A P2002 from the run-ops client
+// is therefore NOT `instanceof` the control-plane class — so the webapp's uniform
+// `error instanceof Prisma.PrismaClientKnownRequestError` P2002→422 conversion is skipped and
+// a raw 500 escapes. The store normalizes at its write boundary: any foreign
+// known-request-error is re-thrown as the control-plane class so every routed-write caller's
+// `instanceof` works regardless of which client raised it.
+
+// `instanceof` can't detect a foreign generation's class, so key on the runtime `name` the
+// Prisma runtime stamps on every generation plus a string `code` (the P-code).
+function isForeignPrismaKnownRequestError(
+  error: unknown
+): error is {
+  name: string;
+  message: string;
+  code: string;
+  meta?: unknown;
+  clientVersion?: string;
+} {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { name?: unknown }).name === "PrismaClientKnownRequestError" &&
+    typeof (error as { code?: unknown }).code === "string" &&
+    !(error instanceof Prisma.PrismaClientKnownRequestError)
+  );
+}
+
+// Native + non-known-request errors are returned unchanged (caller re-throws the result).
+function normalizeRunOpsError(error: unknown): unknown {
+  if (!isForeignPrismaKnownRequestError(error)) {
+    return error;
+  }
+  return new Prisma.PrismaClientKnownRequestError(error.message, {
+    code: error.code,
+    clientVersion: error.clientVersion ?? "unknown",
+    meta: error.meta as Record<string, unknown> | undefined,
+  });
+}
+
+// Only these Prisma-model delegates carry the create/update/upsert writes that raise P2002;
+// `$queryRaw`/`$executeRaw`/`$transaction` are left untouched (raw queries here never raise a
+// duplicate-key, and wrapping their tagged-template/callback contract would break it).
+const RUN_OPS_DELEGATE_KEYS: ReadonlySet<string> = new Set([
+  "taskRun",
+  "taskRunAttempt",
+  "taskRunExecutionSnapshot",
+  "taskRunWaitpoint",
+  "taskRunCheckpoint",
+  "checkpoint",
+  "checkpointRestoreEvent",
+  "taskRunDependency",
+  "waitpoint",
+  "completedWaitpoint",
+  "waitpointRunConnection",
+  "batchTaskRun",
+  "batchTaskRunItem",
+]);
+
+// Every method call on a delegate rewrites ONLY its rejection reason; success is untouched.
+function wrapDelegateForErrorNormalization<D extends object>(delegate: D): D {
+  return new Proxy(delegate, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value !== "function") {
+        return value;
+      }
+      return (...args: unknown[]) => {
+        let result: unknown;
+        try {
+          result = (value as (...a: unknown[]) => unknown).apply(target, args);
+        } catch (error) {
+          throw normalizeRunOpsError(error);
+        }
+        // Delegate methods return a thenable PrismaPromise; rewrite its rejection only.
+        if (result != null && typeof (result as { then?: unknown }).then === "function") {
+          return (result as Promise<unknown>).then(undefined, (error) => {
+            throw normalizeRunOpsError(error);
+          });
+        }
+        return result;
+      };
+    },
+  });
+}
+
+// Model delegates are wrapped; `$transaction` wraps its tx client so inner writes normalize
+// too; every other property (incl. `$queryRaw`/`$executeRaw`) passes through unchanged.
+export function wrapRunOpsClientForErrorNormalization<C extends RunOpsCapableClient>(client: C): C {
+  // Some tests inject a non-object fake (or nothing) as the client; only a real client can be
+  // proxied, and only a real client raises the foreign known-request-errors we normalize.
+  if (client == null || (typeof client !== "object" && typeof client !== "function")) {
+    return client;
+  }
+  const delegateCache = new Map<string, unknown>();
+  return new Proxy(client, {
+    get(target, prop, receiver) {
+      if (typeof prop === "string" && RUN_OPS_DELEGATE_KEYS.has(prop)) {
+        const cached = delegateCache.get(prop);
+        if (cached) {
+          return cached;
+        }
+        const delegate = Reflect.get(target, prop, receiver);
+        if (delegate == null || typeof delegate !== "object") {
+          return delegate;
+        }
+        const wrapped = wrapDelegateForErrorNormalization(delegate as object);
+        delegateCache.set(prop, wrapped);
+        return wrapped;
+      }
+
+      if (prop === "$transaction") {
+        const original = Reflect.get(target, prop, receiver);
+        if (typeof original !== "function") {
+          return original;
+        }
+        return (fnOrArray: unknown, ...rest: unknown[]) => {
+          // Interactive (callback) form: wrap the tx client so inner writes normalize too.
+          if (typeof fnOrArray === "function") {
+            const wrappedFn = (tx: RunOpsCapableClient) =>
+              (fnOrArray as (t: RunOpsCapableClient) => unknown)(
+                wrapRunOpsClientForErrorNormalization(tx)
+              );
+            return (original as (...a: unknown[]) => unknown).call(target, wrappedFn, ...rest);
+          }
+          return (original as (...a: unknown[]) => unknown).call(target, fnOrArray, ...rest);
+        };
+      }
+
+      return Reflect.get(target, prop, receiver);
+    },
+  }) as C;
+}
+
 /**
  * Typed write layer for the task-run row, backed by the `taskRun` Prisma model.
  *
  * Each method is a verbatim relocation of the Prisma statement that lives at a
  * specific call site today. Methods write through `(tx ?? this.prisma).taskRun`
- * so callers can opt into an existing transaction. Errors (including unique
- * constraint violations) propagate to the caller unchanged.
+ * so callers can opt into an existing transaction. Errors surface with unique
+ * constraint violations (P2002 etc.) normalized to the control-plane
+ * `Prisma.PrismaClientKnownRequestError` class (see `wrapRunOpsClientForErrorNormalization`),
+ * so `instanceof Prisma.PrismaClientKnownRequestError` works regardless of which
+ * generated client backs the store.
  */
 export class PostgresRunStore implements RunStore {
   private readonly prisma: RunOpsCapableClient;
@@ -360,8 +501,11 @@ export class PostgresRunStore implements RunStore {
   private readonly schemaVariant: RunStoreSchemaVariant;
 
   constructor(options: PostgresRunStoreOptions) {
-    this.prisma = options.prisma;
-    this.readOnlyPrisma = options.readOnlyPrisma;
+    // Normalize foreign (run-ops-generation) Prisma known-request-errors to the control-plane
+    // class at the write boundary so callers' `instanceof Prisma.PrismaClientKnownRequestError`
+    // (P2002→422) works regardless of which generated client backs the store.
+    this.prisma = wrapRunOpsClientForErrorNormalization(options.prisma);
+    this.readOnlyPrisma = wrapRunOpsClientForErrorNormalization(options.readOnlyPrisma);
     this.schemaVariant = options.schemaVariant ?? "legacy";
   }
 
