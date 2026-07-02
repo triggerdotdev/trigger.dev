@@ -43,6 +43,7 @@ describe("ownerEngine — residency classifier", () => {
   it("throws UnclassifiableRunId on malformed lengths (24, 26, 28, empty)", () => {
     for (const bad of ["", "x".repeat(24), "x".repeat(26), "x".repeat(28), "x".repeat(40)]) {
       expect(() => ownerEngine(bad)).toThrow(UnclassifiableRunId);
+      expect(isClassifiable(bad)).toBe(false);
     }
   });
 

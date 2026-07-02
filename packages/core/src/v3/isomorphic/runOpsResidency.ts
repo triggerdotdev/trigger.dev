@@ -1,3 +1,5 @@
+import { KSUID_STRING_LENGTH } from "./friendlyId.js";
+
 /** The two run-ops stores a run/waitpoint can reside in. */
 export type Residency = "LEGACY" | "NEW";
 
@@ -7,7 +9,7 @@ export type ResidencyKind = "cuid" | "ksuid";
 /** @bugsnag/cuid emits 25-char ids (cuid path, flag OFF). */
 export const CUID_LENGTH = 25;
 /** KSUID / nanoid-27 emits 27-char ids (ksuid path, flag ON). */
-export const KSUID_LENGTH = 27;
+export const KSUID_LENGTH = KSUID_STRING_LENGTH;
 
 /** Thrown when an id length matches neither the cuid nor the ksuid margin. */
 export class UnclassifiableRunId extends Error {

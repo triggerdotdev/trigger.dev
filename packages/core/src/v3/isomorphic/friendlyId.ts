@@ -12,8 +12,34 @@ const KSUID_EPOCH = 1_400_000_000;
 const KSUID_TIMESTAMP_BYTES = 4;
 export const KSUID_PAYLOAD_BYTES = 16;
 const KSUID_TOTAL_BYTES = KSUID_TIMESTAMP_BYTES + KSUID_PAYLOAD_BYTES;
-const KSUID_STRING_LENGTH = 27;
+export const KSUID_STRING_LENGTH = 27;
 const BASE62_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+// globalThis.crypto is absent on Node 18.20 (a supported engine) without a flag, so fall back to
+// node:crypto's webcrypto, loaded only when the global is missing to stay isomorphic.
+type RandomFiller = (array: Uint8Array) => void;
+
+function resolveGetRandomValues(): RandomFiller {
+  const globalCrypto = (globalThis as { crypto?: Crypto }).crypto;
+  if (globalCrypto?.getRandomValues) {
+    return (array) => globalCrypto.getRandomValues(array);
+  }
+  const webcrypto = loadNodeWebCrypto();
+  if (webcrypto?.getRandomValues) {
+    return (array) => webcrypto.getRandomValues(array);
+  }
+  throw new Error("No Web Crypto getRandomValues implementation available");
+}
+
+function loadNodeWebCrypto(): Crypto | undefined {
+  try {
+    return (typeof require === "function" ? require("node:crypto") : undefined)?.webcrypto;
+  } catch {
+    return undefined;
+  }
+}
+
+const getRandomValues: RandomFiller = resolveGetRandomValues();
 
 /** Encode raw bytes as base62 (big-endian), left-padded to the given length. */
 function base62Encode(bytes: Uint8Array, length: number): string {
@@ -67,18 +93,18 @@ export function generateKsuidId(payload?: Uint8Array): string {
     bytes.set(payload, KSUID_TIMESTAMP_BYTES);
   }
   if (reserved < KSUID_PAYLOAD_BYTES) {
-    globalThis.crypto.getRandomValues(bytes.subarray(KSUID_TIMESTAMP_BYTES + reserved));
+    getRandomValues(bytes.subarray(KSUID_TIMESTAMP_BYTES + reserved));
   }
 
   return base62Encode(bytes, KSUID_STRING_LENGTH);
 }
 
 /** Decoded parts of a KSUID body: its mint timestamp and 16-byte payload. */
-export interface DecodedKsuid {
+export type DecodedKsuid = {
   timestampSeconds: number;
   timestamp: Date;
   payload: Uint8Array;
-}
+};
 
 /**
  * Decode a KSUID body (or a `prefix_<body>` friendly id) into its timestamp + 16-byte payload.

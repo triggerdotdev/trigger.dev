@@ -50,16 +50,6 @@ describe("RunId + WaitpointId mint cuid by default; ksuid via generateKsuidId", 
 });
 
 describe("generateKsuidId is a genuine KSUID (decodable timestamp, time-ordered)", () => {
-  const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-  const KSUID_EPOCH = 1_400_000_000;
-
-  // Decode the 27-char base62 body back to the 4-byte timestamp prefix (unix seconds).
-  function decodeTimestamp(id: string): number {
-    let n = 0n;
-    for (const ch of id) n = n * 62n + BigInt(BASE62.indexOf(ch));
-    return Number(n >> 128n) + KSUID_EPOCH; // top 4 of the 20 bytes
-  }
-
   afterEach(() => vi.useRealTimers());
 
   it("is exactly 27 base62 chars", () => {
@@ -68,7 +58,7 @@ describe("generateKsuidId is a genuine KSUID (decodable timestamp, time-ordered)
 
   it("carries a decodable timestamp within a few seconds of now", () => {
     const before = Math.floor(Date.now() / 1000);
-    const ts = decodeTimestamp(generateKsuidId());
+    const { timestampSeconds: ts } = decodeKsuid(generateKsuidId());
     expect(ts).toBeGreaterThanOrEqual(before - 2);
     expect(ts).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 2);
   });
@@ -85,7 +75,7 @@ describe("generateKsuidId is a genuine KSUID (decodable timestamp, time-ordered)
 
   it("is unique across many mints in the same second", () => {
     const n = 1000;
-    expect(new Set(Array.from({ length: n }, generateKsuidId)).size).toBe(n);
+    expect(new Set(Array.from({ length: n }, () => generateKsuidId())).size).toBe(n);
   });
 });
 
