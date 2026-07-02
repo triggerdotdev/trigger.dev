@@ -52,7 +52,7 @@ describe("DequeueSystem recovery controlPlaneResolver (hetero cross-DB, dedicate
           engine: "V2",
           status: "PENDING",
           friendlyId: "run_friendly_recov",
-          // [TEST-NEWSEED] scalar control-plane FK ids — no control-plane row exists on the dedicated DB.
+          // scalar control-plane FK ids — no control-plane row exists on the dedicated DB.
           runtimeEnvironmentId: cp.environment.id,
           organizationId: cp.organization.id,
           projectId: cp.project.id,
