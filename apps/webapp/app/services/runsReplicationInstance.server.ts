@@ -138,6 +138,17 @@ function initializeRunsReplicationInstance() {
     pgConnectionUrl: DATABASE_URL,
     slotName: env.RUN_REPLICATION_SLOT_NAME,
     publicationName: env.RUN_REPLICATION_PUBLICATION_NAME,
+    // Explicit legacy source so the leader-lock key matches the id the status
+    // route probes from the registry below.
+    sources: [
+      {
+        id: "legacy",
+        pgConnectionUrl: DATABASE_URL,
+        slotName: env.RUN_REPLICATION_SLOT_NAME,
+        publicationName: env.RUN_REPLICATION_PUBLICATION_NAME,
+        originGeneration: env.RUN_REPLICATION_LEGACY_ORIGIN_GENERATION,
+      },
+    ],
   });
 
   // Register the live handle so the status route + lifecycle routes can find it.

@@ -1,6 +1,6 @@
 import { ClickHouse } from "@internal/clickhouse";
 import { createPostgresContainer, replicationContainerTest } from "@internal/testcontainers";
-import { PrismaClient } from "@trigger.dev/database";
+import { PrismaClient, type TaskRunStatus as TaskRunStatusType } from "@trigger.dev/database";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 import { TaskRunStatus } from "~/database-types";
@@ -96,7 +96,7 @@ describe("RunsReplicationService (part 8/8) - dual-source dedup", () => {
         const seedFkRows = async (
           client: PrismaClient,
           tag: string,
-          status: TaskRunStatus,
+          status: TaskRunStatusType,
           friendlyId: string
         ) => {
           await client.organization.create({
@@ -275,7 +275,7 @@ describe("RunsReplicationService (part 8/8) - dual-source dedup", () => {
         const seedFkRows = async (
           client: PrismaClient,
           tag: string,
-          status: TaskRunStatus,
+          status: TaskRunStatusType,
           friendlyId: string
         ) => {
           await client.organization.create({
@@ -444,7 +444,7 @@ describe("RunsReplicationService (part 8/8) - dual-source dedup", () => {
           client: PrismaClient,
           tag: string,
           runId: string,
-          status: TaskRunStatus
+          status: TaskRunStatusType
         ) => {
           const orgId = `org_${tag}_${suffix}`;
           const projectId = `proj_${tag}_${suffix}`;

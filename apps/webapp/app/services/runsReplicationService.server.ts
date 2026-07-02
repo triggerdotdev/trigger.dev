@@ -162,6 +162,7 @@ export class RunsReplicationService {
   private logger: Logger;
   private _isShuttingDown = false;
   private _isShutDownComplete = false;
+  private _shutdownStopInFlight = false;
   private _tracer: Tracer;
   private _meter: Meter;
   private _acknowledgeTimeoutMs: number;
@@ -631,11 +632,18 @@ export class RunsReplicationService {
 
     if (this._isShuttingDown) {
       // A global shutdown stops every source's client; mark complete once all
-      // have stopped. For a single source this is identical to the prior
-      // "stop the one client, then mark complete" behavior.
-      Promise.all(Array.from(this._sources.values()).map((r) => r.client.stop())).finally(() => {
-        this._isShutDownComplete = true;
-      });
+      // have stopped. Guard against re-firing per incoming transaction, and
+      // swallow client.stop() rejections so they don't surface as unhandled.
+      if (!this._shutdownStopInFlight) {
+        this._shutdownStopInFlight = true;
+        Promise.all(Array.from(this._sources.values()).map((r) => r.client.stop()))
+          .catch((error) => {
+            this.logger.error("Error stopping replication clients during shutdown", { error });
+          })
+          .finally(() => {
+            this._isShutDownComplete = true;
+          });
+      }
     }
 
     // If there are no events, do nothing
