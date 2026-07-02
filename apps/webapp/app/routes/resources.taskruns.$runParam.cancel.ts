@@ -1,4 +1,4 @@
-import { parse } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod";
 import { json } from "@remix-run/node";
 import { z } from "zod";
 import { $replica, prisma } from "~/db.server";
@@ -61,10 +61,10 @@ export const action = dashboardAction(
     const { runParam } = params;
 
     const formData = await request.formData();
-    const submission = parse(formData, { schema: cancelSchema });
+    const submission = parseWithZod(formData, { schema: cancelSchema });
 
-    if (!submission.value) {
-      return json(submission);
+    if (submission.status !== "success") {
+      return json(submission.reply());
     }
 
     try {
@@ -98,8 +98,7 @@ export const action = dashboardAction(
       const buffer = getMollifierBuffer();
       const entry = buffer ? await buffer.getEntry(runParam) : null;
       if (!entry) {
-        submission.error = { runParam: ["Run not found"] };
-        return json(submission);
+        return json(submission.reply({ fieldErrors: { runParam: ["Run not found"] } }));
       }
 
       // Tenancy: verify the requesting user is a member of the buffered
@@ -111,8 +110,7 @@ export const action = dashboardAction(
         select: { id: true },
       });
       if (!member) {
-        submission.error = { runParam: ["Run not found"] };
-        return json(submission);
+        return json(submission.reply({ fieldErrors: { runParam: ["Run not found"] } }));
       }
 
       const result = await buffer!.mutateSnapshot(runParam, {

@@ -1,5 +1,5 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, getSelectProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { Form, useActionData, useParams, type MetaFunction } from "@remix-run/react";
 import { json, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { tryCatch } from "@trigger.dev/core/utils";
@@ -67,7 +67,7 @@ export async function loader({ params, request }: LoaderFunctionArgs) {
     throw new Response(null, { status: 404, statusText: "Organization not found" });
   }
 
-  const [error, regions] = await tryCatch(getPrivateLinkRegions(organization.id));
+  const [_error, regions] = await tryCatch(getPrivateLinkRegions(organization.id));
 
   const awsAccountIds = env.PRIVATE_CONNECTIONS_AWS_ACCOUNT_IDS?.split(",").filter(Boolean) ?? [];
 
@@ -95,10 +95,10 @@ export const action: ActionFunction = async ({ request, params }) => {
   const { organizationSlug } = OrganizationParamsSchema.parse(params);
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema });
+  const submission = parseWithZod(formData, { schema });
 
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   const organization = await prisma.organization.findFirst({
@@ -395,7 +395,7 @@ function AIPromptWizard({ awsAccountIds }: { awsAccountIds: string[] }) {
   const validPorts = ports.filter((p) => p.port !== "");
   const regionLabel = AWS_REGIONS.find((r) => r.value === region)?.label ?? region;
 
-  const portsDescription =
+  const _portsDescription =
     validPorts.length > 0
       ? validPorts.map((p) => `${p.port} (${p.protocol})`).join(", ")
       : "5432 (TCP)";
@@ -538,9 +538,9 @@ export default function Page() {
 
   const [form, { name, endpointServiceName, targetRegion }] = useForm({
     id: "create-private-connection",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
   });
 
@@ -724,30 +724,30 @@ export default function Page() {
             {/* Connection form (always visible) */}
             <div className="rounded-lg border border-grid-dimmed p-4">
               <Header3 spacing>Connection Details</Header3>
-              <Form method="post" {...form.props}>
+              <Form method="post" {...getFormProps(form)}>
                 <Fieldset>
                   <InputGroup fullWidth>
                     <Label htmlFor={name.id} required>
                       Friendly name
                     </Label>
                     <Input
-                      {...conform.input(name, { type: "text" })}
+                      {...getInputProps(name, { type: "text" })}
                       placeholder="e.g., Production Database, Redis Cache"
                       fullWidth
                     />
-                    <FormError id={name.errorId}>{name.error}</FormError>
+                    <FormError id={name.errorId}>{name.errors}</FormError>
                   </InputGroup>
                   <InputGroup fullWidth>
                     <Label htmlFor={endpointServiceName.id} required>
                       VPC Endpoint Service name
                     </Label>
                     <Input
-                      {...conform.input(endpointServiceName, { type: "text" })}
+                      {...getInputProps(endpointServiceName, { type: "text" })}
                       placeholder="com.amazonaws.vpce.us-east-1.vpce-svc-0123456789abcdef0"
                       fullWidth
                     />
                     <FormError id={endpointServiceName.errorId}>
-                      {endpointServiceName.error}
+                      {endpointServiceName.errors}
                     </FormError>
                   </InputGroup>
                   <InputGroup fullWidth>
@@ -755,7 +755,7 @@ export default function Page() {
                       Target region
                     </Label>
                     <select
-                      {...conform.input(targetRegion)}
+                      {...getSelectProps(targetRegion)}
                       defaultValue={defaultRegion}
                       className="w-full rounded-md border border-charcoal-700 bg-charcoal-800 px-3 py-2 text-sm text-text-bright"
                     >
@@ -765,7 +765,7 @@ export default function Page() {
                         </option>
                       ))}
                     </select>
-                    <FormError id={targetRegion.errorId}>{targetRegion.error}</FormError>
+                    <FormError id={targetRegion.errorId}>{targetRegion.errors}</FormError>
                     {activeRegions.length > 0 && (
                       <Paragraph variant="extra-small" className="text-text-dimmed">
                         Your tasks have recently run in: {activeRegions.join(", ")}

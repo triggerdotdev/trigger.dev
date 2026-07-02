@@ -1,5 +1,4 @@
 import { type ReactNode } from "react";
-import { Paragraph } from "./Paragraph";
 import { cn } from "~/utils/cn";
 
 type ChildrenClassName = {
@@ -24,8 +23,8 @@ function PropertyValue({ children, className }: ChildrenClassName) {
 }
 
 export {
-  PropertyTable as Table,
   PropertyItem as Item,
   PropertyLabel as Label,
+  PropertyTable as Table,
   PropertyValue as Value,
 };

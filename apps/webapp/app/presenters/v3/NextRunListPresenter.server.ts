@@ -1,5 +1,5 @@
 import { type ClickHouse } from "@internal/clickhouse";
-import { MachinePresetName } from "@trigger.dev/core/v3";
+import type { MachinePresetName } from "@trigger.dev/core/v3";
 import { RunAnnotations } from "@trigger.dev/core/v3/schemas";
 import {
   type PrismaClient,

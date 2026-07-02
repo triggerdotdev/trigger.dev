@@ -1,4 +1,4 @@
-import { Body, Head, Html, Link, Preview, Section, Text } from "@react-email/components";
+import { Body, Head, Html, Link, Preview, Text } from "@react-email/components";
 import { Footer } from "./components/Footer";
 import { anchor, bullets, footerItalic, main, paragraphLight } from "./components/styles";
 

@@ -1,8 +1,8 @@
 import { SemanticInternalAttributes } from "@trigger.dev/core/v3/semanticInternalAttributes";
-import { TaskRun } from "@trigger.dev/database";
-import { IEventRepository } from "~/v3/eventRepository/eventRepository.types";
+import type { TaskRun } from "@trigger.dev/database";
+import type { IEventRepository } from "~/v3/eventRepository/eventRepository.types";
 import { getEventRepository } from "~/v3/eventRepository/index.server";
-import { TracedEventSpan, TraceEventConcern, TriggerTaskRequest } from "../types";
+import type { TracedEventSpan, TraceEventConcern, TriggerTaskRequest } from "../types";
 
 export class DefaultTraceEventsConcern implements TraceEventConcern {
   async #getEventRepository(

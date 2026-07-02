@@ -1,18 +1,18 @@
 import { json, type LoaderFunctionArgs } from "@remix-run/server-runtime";
+import { type GetWorkerByTagResponse } from "@trigger.dev/core/v3/schemas";
 import { isUserActorToken, verifyUserActorToken } from "@trigger.dev/rbac";
 import { z } from "zod";
-import { $replica, prisma } from "~/db.server";
-import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
-import { type GetWorkerByTagResponse } from "@trigger.dev/core/v3/schemas";
+import { $replica } from "~/db.server";
 import { env as $env } from "~/env.server";
-import { v3RunsPath } from "~/utils/pathBuilder";
 import {
-  type AuthenticationResult,
   authenticatedEnvironmentForAuthentication,
   authenticateRequest,
   branchNameFromRequest,
+  type AuthenticationResult,
 } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
+import { v3RunsPath } from "~/utils/pathBuilder";
+import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
 
 const ParamsSchema = z.object({
   projectRef: z.string(),

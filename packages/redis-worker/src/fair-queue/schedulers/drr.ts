@@ -1,4 +1,4 @@
-import { createRedisClient, type Redis, type RedisOptions } from "@internal/redis";
+import { createRedisClient, type Redis } from "@internal/redis";
 import { BaseScheduler } from "../scheduler.js";
 import type {
   DRRSchedulerConfig,

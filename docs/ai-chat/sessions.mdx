@@ -4,10 +4,6 @@ sidebarTitle: "Sessions"
 description: "A Session is a stateful execution of an agent, with two-way streaming and durable compute. A single Session can have multiple runs associated with it."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 **A Session is a stateful execution of an agent.** It includes two-way streaming and durable compute, and a single Session can have multiple runs associated with it.
 
 The **two-way streaming** is a pair of durable streams. The input stream (`.in`) carries incoming user messages to your task. The output stream (`.out`) carries everything the agent produces back to your clients: AI generation parts (text, reasoning, tool calls) and any custom data parts you write.

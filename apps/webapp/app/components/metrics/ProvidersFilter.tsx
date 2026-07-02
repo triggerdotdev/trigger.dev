@@ -20,7 +20,7 @@ interface ProvidersFilterProps {
 }
 
 export function ProvidersFilter({ possibleProviders }: ProvidersFilterProps) {
-  const { values, replace, del } = useSearchParams();
+  const { values, replace: _replace, del } = useSearchParams();
   const selectedProviders = values("providers");
 
   if (selectedProviders.length === 0 || selectedProviders.every((v) => v === "")) {

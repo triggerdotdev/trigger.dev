@@ -1,20 +1,12 @@
 import { containerTest } from "@internal/testcontainers";
 import { trace } from "@internal/tracing";
-import { expect, describe } from "vitest";
-import { RunEngine } from "../index.js";
-import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
-import { setTimeout } from "node:timers/promises";
-import {
-  generateTestScenarios,
-  type SnapshotTestScenario,
-} from "./helpers/executionStateMachine.js";
-import {
-  createWaitpointsWithOutput,
-  setupTestScenario,
-  generateLargeOutput,
-} from "./helpers/snapshotTestHelpers.js";
-import { copySnapshotsToReplica, createTestMetricsMeter } from "./helpers/replicaTestHelpers.js";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
+import { setTimeout } from "node:timers/promises";
+import { describe, expect } from "vitest";
+import { RunEngine } from "../index.js";
+import { copySnapshotsToReplica, createTestMetricsMeter } from "./helpers/replicaTestHelpers.js";
+import { setupTestScenario } from "./helpers/snapshotTestHelpers.js";
+import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 120_000 });
 
@@ -79,7 +71,7 @@ describe("RunEngine getSnapshotsSince", () => {
         );
 
         await setTimeout(500);
-        const dequeued = await engine.dequeueFromWorkerQueue({
+        const _dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_empty",
           workerQueue: "main",
         });
@@ -224,7 +216,7 @@ describe("RunEngine getSnapshotsSince", () => {
 
         // The latest snapshot should have completedWaitpoints if the waitpoint was completed.
         // Note: This depends on timing - the finishWaitpoint job needs to have processed.
-        const latest = result![result!.length - 1];
+        const _latest = result![result!.length - 1];
         // completedWaitpoints may be empty if the waitpoint hasn't been processed yet
         // This is acceptable as the test is primarily about snapshot ordering
 
@@ -351,7 +343,7 @@ describe("RunEngine getSnapshotsSince", () => {
         expect(result!.length).toBeGreaterThan(0);
 
         // Only the latest should have waitpoints
-        const latest = result![result!.length - 1];
+        const _latest = result![result!.length - 1];
 
         // Earlier snapshots must have empty completedWaitpoints
         for (let i = 0; i < result!.length - 1; i++) {

@@ -1,5 +1,5 @@
-import { conform, list, requestIntent, useFieldList, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm, type SubmissionResult } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { PlusIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { Form, useActionData, useSearchParams } from "@remix-run/react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
@@ -62,7 +62,7 @@ export type { BillingAlertsFormData } from "~/components/billing/billingAlertsFo
 
 type BillingAlertsActionData = {
   formIntent: "billing-alerts";
-  submission: ReturnType<typeof parse<typeof billingAlertsSchema>>;
+  submission: SubmissionResult;
 };
 
 type BillingAlertsSectionProps = {
@@ -168,12 +168,12 @@ export function BillingAlertsSection({
     !emailsMatchSaved(emailValues, savedEmails);
   const lastSubmission = isDirty ? alertsSubmission : undefined;
 
-  const [form, { emails, alertLevels }] = useForm({
+  const [form, { emails, alertLevels }] = useForm<z.infer<typeof billingAlertsSchema>>({
     id: "billing-alerts",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     shouldRevalidate: "onInput",
     onValidate({ formData }) {
-      return parse(formData, { schema: billingAlertsSchema });
+      return parseWithZod(formData, { schema: billingAlertsSchema });
     },
     defaultValue: {
       emails: emailValues,
@@ -181,7 +181,7 @@ export function BillingAlertsSection({
     },
   });
 
-  const emailFields = useFieldList(form.ref, emails);
+  const emailFields = emails.getFieldList();
 
   useEffect(() => {
     nextThresholdIdRef.current = savedThresholds.length;
@@ -222,7 +222,7 @@ export function BillingAlertsSection({
           <TextLink to={docsPath("how-to-reduce-your-spend")}>reduce your compute spend</TextLink>.
         </Paragraph>
       </div>
-      <Form method="post" {...form.props}>
+      <Form method="post" {...getFormProps(form)}>
         <input type="hidden" name="intent" value="billing-alerts" />
         <Fieldset>
           <AnimatedCallout
@@ -322,7 +322,7 @@ export function BillingAlertsSection({
               })}
             </div>
 
-            <FormError id={alertLevels.errorId}>{alertLevels.error}</FormError>
+            <FormError id={alertLevels.errorId}>{alertLevels.errors}</FormError>
 
             {canAddThreshold && (
               <Button
@@ -340,7 +340,7 @@ export function BillingAlertsSection({
           <InputGroup fullWidth className="mt-4">
             <Label htmlFor={emails.id}>Email addresses</Label>
             {emailFields.map((email, index) => {
-              const { defaultValue: _emailDefaultValue, ...emailInputProps } = conform.input(
+              const { defaultValue: _emailDefaultValue, ...emailInputProps } = getInputProps(
                 email,
                 { type: "email" }
               );
@@ -360,7 +360,7 @@ export function BillingAlertsSection({
                           emailFields.length === next.length &&
                           next.every((value) => value !== "")
                         ) {
-                          requestIntent(form.ref.current ?? undefined, list.append(emails.name));
+                          form.insert({ name: emails.name });
                           return [...next, ""];
                         }
                         return next;
@@ -368,7 +368,7 @@ export function BillingAlertsSection({
                     }}
                     fullWidth
                   />
-                  <FormError id={email.errorId}>{email.error}</FormError>
+                  <FormError id={email.errorId}>{email.errors}</FormError>
                 </Fragment>
               );
             })}

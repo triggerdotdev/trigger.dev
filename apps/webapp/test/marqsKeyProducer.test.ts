@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { MarQSShortKeyProducer } from "../app/v3/marqs/marqsKeyProducer.js";
-import { MarQSKeyProducerEnv } from "~/v3/marqs/types.js";
+import type { MarQSKeyProducerEnv } from "~/v3/marqs/types.js";
 
 describe("MarQSShortKeyProducer", () => {
   const prefix = "test:";

@@ -1,5 +1,11 @@
 import { randomUUID } from "crypto";
-import {
+import { z } from "zod";
+import type {
+  ExecutorToWorkerMessageCatalog,
+  WorkerToExecutorMessageCatalog,
+} from "./schemas/messages.js";
+import { ZodSchemaParsedError } from "./zodMessageHandler.js";
+import type {
   GetSocketCallbackSchema,
   GetSocketMessageSchema,
   GetSocketMessagesWithCallback,
@@ -8,13 +14,6 @@ import {
   SocketMessageHasCallback,
   ZodSocketMessageCatalogSchema,
 } from "./zodSocket.js";
-import { z } from "zod";
-import { ZodSchemaParsedError } from "./zodMessageHandler.js";
-import { inspect } from "node:util";
-import {
-  ExecutorToWorkerMessageCatalog,
-  WorkerToExecutorMessageCatalog,
-} from "./schemas/messages.js";
 
 interface ZodIpcMessageSender<TEmitCatalog extends ZodSocketMessageCatalogSchema> {
   send<K extends GetSocketMessagesWithoutCallback<TEmitCatalog>>(
@@ -306,7 +305,7 @@ export class ZodIpcConnection<
   ): Promise<z.infer<GetSocketCallbackSchema<TEmitCatalog, K>>> {
     const currentId = this.#messageCounter++;
 
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const defaultTimeoutInMs = 2000;
 
       // Timeout if the ACK takes too long to get back to us
@@ -337,7 +336,7 @@ export class ZodIpcConnection<
         return reject(`Failed to parse message payload: ${JSON.stringify(parsedPayload.error)}`);
       }
 
-      await this.#sendPacket({
+      this.#sendPacket({
         type: "EVENT",
         message: {
           type,
@@ -345,7 +344,7 @@ export class ZodIpcConnection<
           version: "v1",
         },
         id: currentId,
-      });
+      }).catch(reject);
     });
   }
 }

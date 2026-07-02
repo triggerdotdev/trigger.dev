@@ -1,9 +1,12 @@
 import * as k8s from "@kubernetes/client-node";
-import { SimpleLogger } from "@trigger.dev/core/v3/apps";
-import { EXIT_CODE_ALREADY_HANDLED, EXIT_CODE_CHILD_NONZERO } from "@trigger.dev/core/v3/apps";
-import { setTimeout } from "timers/promises";
-import PQueue from "p-queue";
 import { TaskRunErrorCodes, type Prettify, type TaskRunInternalError } from "@trigger.dev/core/v3";
+import {
+  EXIT_CODE_ALREADY_HANDLED,
+  EXIT_CODE_CHILD_NONZERO,
+  SimpleLogger,
+} from "@trigger.dev/core/v3/apps";
+import PQueue from "p-queue";
+import { setTimeout } from "timers/promises";
 
 type FailureDetails = Prettify<{
   exitCode: number;
@@ -378,82 +381,5 @@ export class TaskMonitor {
     await this.#taskInformer.stop();
 
     this.#printStats(true);
-  }
-
-  async #launchTests() {
-    const createPod = async (
-      container: k8s.V1Container,
-      name: string,
-      labels?: Record<string, string>
-    ) => {
-      this.#logger.log("Creating pod:", name);
-
-      const pod = {
-        metadata: {
-          name,
-          labels,
-        },
-        spec: {
-          restartPolicy: "Never",
-          automountServiceAccountToken: false,
-          terminationGracePeriodSeconds: 1,
-          containers: [container],
-        },
-      } satisfies k8s.V1Pod;
-
-      await this.#k8sClient.core
-        .createNamespacedPod(this.namespace, pod)
-        .catch(this.#handleK8sError.bind(this));
-    };
-
-    const createOomPod = async (name: string, labels?: Record<string, string>) => {
-      const container = {
-        name,
-        image: "polinux/stress",
-        resources: {
-          limits: {
-            memory: "100Mi",
-          },
-        },
-        command: ["stress"],
-        args: ["--vm", "1", "--vm-bytes", "150M", "--vm-hang", "1"],
-      } satisfies k8s.V1Container;
-
-      await createPod(container, name, labels);
-    };
-
-    const createNonZeroExitPod = async (name: string, labels?: Record<string, string>) => {
-      const container = {
-        name,
-        image: "docker.io/library/busybox",
-        command: ["sh"],
-        args: ["-c", "exit 1"],
-      } satisfies k8s.V1Container;
-
-      await createPod(container, name, labels);
-    };
-
-    const createOoDiskPod = async (name: string, labels?: Record<string, string>) => {
-      const container = {
-        name,
-        image: "docker.io/library/busybox",
-        command: ["sh"],
-        args: [
-          "-c",
-          "echo creating huge-file..; head -c 1000m /dev/zero > huge-file; ls -lh huge-file; sleep infinity",
-        ],
-        resources: {
-          limits: {
-            "ephemeral-storage": "500Mi",
-          },
-        },
-      } satisfies k8s.V1Container;
-
-      await createPod(container, name, labels);
-    };
-
-    await createNonZeroExitPod("non-zero-exit-task", { app: "task-run", run: "123" });
-    await createOomPod("oom-task", { app: "task-index", deployment: "456" });
-    await createOoDiskPod("ood-task", { app: "task-run", run: "abc" });
   }
 }

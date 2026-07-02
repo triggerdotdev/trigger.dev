@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { ClickhouseQueryFunction, ClickhouseReader, ColumnExpression } from "./types.js";
-import { ClickHouseSettings } from "@clickhouse/client";
+import type { ClickhouseQueryFunction, ClickhouseReader, ColumnExpression } from "./types.js";
+import type { ClickHouseSettings } from "@clickhouse/client";
 export type QueryParamValue = string | number | boolean | Array<string | number | boolean> | null;
 export type QueryParams = Record<string, QueryParamValue>;
 

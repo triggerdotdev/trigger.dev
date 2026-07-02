@@ -319,7 +319,7 @@ export function processGitMetadata(data: Prisma.JsonValue): GitMetaLinks | null 
       url.protocol = "https:";
       // Remove any trailing .git
       return url.toString().replace(/\.git$/, "");
-    } catch (e) {
+    } catch (_e) {
       // If URL parsing fails, try to clean it manually
       return parsed.data.remoteUrl
         .replace(/^git@github\.com:/, "https://github.com/")

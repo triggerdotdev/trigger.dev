@@ -1,7 +1,7 @@
 import type { ClickHouseSettings } from "@clickhouse/client";
 export type { ClickHouseSettings };
 import { ClickhouseClient } from "./client/client.js";
-import { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
+import type { ClickhouseReader, ClickhouseWriter } from "./client/types.js";
 import { NoopClient } from "./client/noop.js";
 import {
   insertTaskRunsCompactArrays,

@@ -1,22 +1,24 @@
-import { type MetaFunction, useFetcher, useRevalidator } from "@remix-run/react";
+import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { useFetcher, useRevalidator, type MetaFunction } from "@remix-run/react";
 import { type LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TypedAwait, typeddefer, useTypedFetcher, useTypedLoaderData } from "remix-typedjson";
 import { z } from "zod";
-import { BookOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { BeakerIcon } from "~/assets/icons/BeakerIcon";
 import { ClockIcon } from "~/assets/icons/ClockIcon";
 import { ListCheckedIcon } from "~/assets/icons/ListCheckedIcon";
 import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { InlineCode } from "~/components/code/InlineCode";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import { DirectionSchema, ListPagination } from "~/components/ListPagination";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
-import { ChartCard } from "~/components/primitives/charts/ChartCard";
-import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
-import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
-import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
 import { buildActivityTimeAxis } from "~/components/primitives/charts/activityTimeAxis";
+import { ChartCard } from "~/components/primitives/charts/ChartCard";
+import { Chart, type ChartConfig } from "~/components/primitives/charts/ChartCompound";
+import { ChartSyncProvider } from "~/components/primitives/charts/ChartSyncContext";
 import { statusColor } from "~/components/primitives/charts/statusColors";
+import { CopyableText } from "~/components/primitives/CopyableText";
+import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
 import {
   Dialog,
   DialogContent,
@@ -25,27 +27,18 @@ import {
   DialogHeader,
   DialogTrigger,
 } from "~/components/primitives/Dialog";
-import { ScheduleLimitActions } from "~/components/schedules/ScheduleLimitActions";
-import { SchedulesUsageBar } from "~/components/schedules/SchedulesUsageBar";
-import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
-import { InlineCode } from "~/components/code/InlineCode";
-import { CopyableText } from "~/components/primitives/CopyableText";
-import { PaginationControls } from "~/components/primitives/Pagination";
-import { TabButton, TabContainer } from "~/components/primitives/Tabs";
-import { useToast } from "~/components/primitives/Toast";
-import { DateTime, RelativeDateTime } from "~/components/primitives/DateTime";
 import { Header2 } from "~/components/primitives/Headers";
-import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
-import { Paragraph } from "~/components/primitives/Paragraph";
 import { InfoPanel } from "~/components/primitives/InfoPanel";
+import { NavBar, PageTitle } from "~/components/primitives/PageHeader";
+import { PaginationControls } from "~/components/primitives/Pagination";
+import { Paragraph } from "~/components/primitives/Paragraph";
 import * as Property from "~/components/primitives/PropertyTable";
-import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
-import { ScheduleInspector } from "~/components/schedules/ScheduleInspector";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "~/components/primitives/Resizable";
+import { Sheet, SheetContent } from "~/components/primitives/SheetV3";
 import { Spinner } from "~/components/primitives/Spinner";
 import {
   Table,
@@ -57,24 +50,26 @@ import {
   TableRow,
   type TableVariant,
 } from "~/components/primitives/Table";
+import { TabButton, TabContainer } from "~/components/primitives/Tabs";
+import { useToast } from "~/components/primitives/Toast";
 import { EnabledStatus } from "~/components/runs/v3/EnabledStatus";
 import type { TaskRunListSearchFilters } from "~/components/runs/v3/RunFilters";
 import { ScheduleTypeIcon, scheduleTypeName } from "~/components/runs/v3/ScheduleType";
 import { TimeFilter, timeFilterFromTo } from "~/components/runs/v3/SharedFilters";
 import { TaskRunsTable } from "~/components/runs/v3/TaskRunsTable";
+import { ScheduleInspector } from "~/components/schedules/ScheduleInspector";
+import { ScheduleLimitActions } from "~/components/schedules/ScheduleLimitActions";
+import { SchedulesUsageBar } from "~/components/schedules/SchedulesUsageBar";
 import { $replica } from "~/db.server";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import { useSearchParams } from "~/hooks/useSearchParam";
+import { useZoomToTimeFilter } from "~/hooks/useZoomToTimeFilter";
 import { findProjectBySlug } from "~/models/project.server";
 import { findEnvironmentBySlug } from "~/models/runtimeEnvironment.server";
 import { NextRunListPresenter } from "~/presenters/v3/NextRunListPresenter.server";
 import { ScheduleListPresenter } from "~/presenters/v3/ScheduleListPresenter.server";
-import type { loader as scheduleDetailLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.$scheduleParam/route";
-import type { loader as scheduleEditLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.edit.$scheduleParam/route";
-import type { loader as scheduleNewLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
-import { UpsertScheduleForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
 import {
   TaskDetailPresenter,
   type TaskActivity,
@@ -85,7 +80,6 @@ import { requireUser } from "~/services/session.server";
 import {
   docsPath,
   EnvironmentParamSchema,
-  v3BillingPath,
   v3CreateBulkActionPath,
   v3EditSchedulePath,
   v3EnvironmentPath,
@@ -96,6 +90,11 @@ import {
   v3TestTaskPath,
 } from "~/utils/pathBuilder";
 import { parseFiniteInt } from "~/utils/searchParams";
+import type { loader as scheduleDetailLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.$scheduleParam/route";
+import type { loader as scheduleEditLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.edit.$scheduleParam/route";
+import type { loader as scheduleNewLoader } from "../_app.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
+import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
+import { UpsertScheduleForm } from "../resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.schedules.new/route";
 
 export const meta: MetaFunction<typeof loader> = ({ data }) => {
   const slug = (data as { task?: TaskDetail | null } | undefined)?.task?.slug;

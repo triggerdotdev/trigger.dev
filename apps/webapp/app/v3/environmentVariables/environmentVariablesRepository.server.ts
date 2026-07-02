@@ -1,10 +1,12 @@
-import { Prisma, type PrismaClient, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import type { AuthenticatedEnvironment } from "@trigger.dev/core/v3/auth/environment";
+import { Prisma, type PrismaClient, type RuntimeEnvironmentType } from "@trigger.dev/database";
 import { z } from "zod";
 import { environmentFullTitle } from "~/components/environments/EnvironmentLabel";
 import { $replica, $transaction, prisma, type PrismaReplicaClient } from "~/db.server";
 import { env } from "~/env.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
+import { deduplicateVariableArray } from "../deduplicateVariableArray.server";
+import { removeBlacklistedVariables } from "../environmentVariableRules.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import {
   type CreateEnvironmentVariables,
@@ -19,9 +21,6 @@ import {
   type Repository,
   type Result,
 } from "./repository";
-import { removeBlacklistedVariables } from "../environmentVariableRules.server";
-import { deduplicateVariableArray } from "../deduplicateVariableArray.server";
-import { logger } from "~/services/logger.server";
 
 function secretKeyProjectPrefix(projectId: string) {
   return `environmentvariable:${projectId}:`;
@@ -136,7 +135,7 @@ export class EnvironmentVariablesRepository implements Repository {
 
     try {
       for (const variable of values) {
-        const result = await $transaction(this.prismaClient, "create env var", async (tx) => {
+        const _result = await $transaction(this.prismaClient, "create env var", async (tx) => {
           const environmentVariable = await tx.environmentVariable.upsert({
             where: {
               projectId_key: {
@@ -389,7 +388,7 @@ export class EnvironmentVariablesRepository implements Repository {
             },
           });
 
-          const variableValue = await tx.environmentVariableValue.create({
+          const _variableValue = await tx.environmentVariableValue.create({
             data: {
               variableId: environmentVariable.id,
               environmentId: value.environmentId,

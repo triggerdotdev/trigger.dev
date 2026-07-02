@@ -4,7 +4,7 @@ import { Form, useFetcher } from "@remix-run/react";
 import { WaitpointTokenStatus, waitpointTokenStatuses } from "@trigger.dev/core/v3";
 import { ListChecks } from "lucide-react";
 import { matchSorter } from "match-sorter";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef } from "react";
 import { z } from "zod";
 import { StatusIcon } from "~/assets/icons/StatusIcon";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
@@ -34,10 +34,10 @@ import { useSearchParams } from "~/hooks/useSearchParam";
 import { useShortcutKeys } from "~/hooks/useShortcutKeys";
 import { type loader as tagsLoader } from "~/routes/resources.orgs.$organizationSlug.projects.$projectParam.env.$envParam.waitpoints.tags";
 import {
-  IdFilterDropdown,
-  type IdFilterDropdownProps,
   appliedSummary,
   FilterMenuProvider,
+  IdFilterDropdown,
+  type IdFilterDropdownProps,
   TimeFilter,
 } from "./SharedFilters";
 import { WaitpointStatusCombo, waitpointStatusTitle } from "./WaitpointStatus";

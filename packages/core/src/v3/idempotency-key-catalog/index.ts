@@ -2,7 +2,7 @@ const API_NAME = "idempotency-key-catalog";
 
 import { getGlobal, registerGlobal } from "../utils/globals.js";
 import type { IdempotencyKeyCatalog, IdempotencyKeyOptions } from "./catalog.js";
-import { LRUIdempotencyKeyCatalog } from "./lruIdempotencyKeyCatalog.js";
+import { InMemoryIdempotencyKeyCatalog } from "./inMemoryIdempotencyKeyCatalog.js";
 
 export class IdempotencyKeyCatalogAPI {
   private static _instance?: IdempotencyKeyCatalogAPI;
@@ -24,11 +24,15 @@ export class IdempotencyKeyCatalogAPI {
     return this.#getCatalog().getKeyOptions(hash);
   }
 
+  public clear(): void {
+    this.#getCatalog().clear();
+  }
+
   #getCatalog(): IdempotencyKeyCatalog {
     let catalog = getGlobal(API_NAME);
     if (!catalog) {
-      // Auto-initialize with LRU catalog on first access
-      catalog = new LRUIdempotencyKeyCatalog();
+      // Auto-initialize on first access
+      catalog = new InMemoryIdempotencyKeyCatalog();
       registerGlobal(API_NAME, catalog, true);
     }
     return catalog;

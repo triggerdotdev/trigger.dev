@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { Server } from "socket.io";
+import type { WaitReason } from "@trigger.dev/core/v3";
 import {
   CoordinatorToPlatformMessages,
   CoordinatorToProdWorkerMessages,
@@ -7,7 +8,6 @@ import {
   PlatformToCoordinatorMessages,
   ProdWorkerSocketData,
   ProdWorkerToCoordinatorMessages,
-  WaitReason,
 } from "@trigger.dev/core/v3";
 import { ZodNamespace } from "@trigger.dev/core/v3/zodNamespace";
 import { ZodSocketConnection } from "@trigger.dev/core/v3/zodSocket";

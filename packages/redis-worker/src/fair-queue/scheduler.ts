@@ -1,4 +1,4 @@
-import type { FairScheduler, SchedulerContext, TenantQueues, QueueDescriptor } from "./types.js";
+import type { FairScheduler, SchedulerContext, TenantQueues } from "./types.js";
 
 /**
  * Re-export scheduler types for convenience.

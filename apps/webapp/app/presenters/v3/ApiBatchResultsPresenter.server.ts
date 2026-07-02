@@ -1,6 +1,7 @@
-import { BatchTaskRunExecutionResult } from "@trigger.dev/core/v3";
-import { executionResultForTaskRun, TaskRunWithAttempts } from "~/models/taskRun.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { BatchTaskRunExecutionResult } from "@trigger.dev/core/v3";
+import type { TaskRunWithAttempts } from "~/models/taskRun.server";
+import { executionResultForTaskRun } from "~/models/taskRun.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { runStore } from "~/v3/runStore.server";
 import { BasePresenter } from "./basePresenter.server";
 

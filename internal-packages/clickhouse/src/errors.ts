@@ -1,6 +1,6 @@
-import { ClickHouseSettings } from "@clickhouse/client";
+import type { ClickHouseSettings } from "@clickhouse/client";
 import { z } from "zod";
-import { ClickhouseReader } from "./client/types.js";
+import type { ClickhouseReader } from "./client/types.js";
 import { ClickhouseQueryBuilder } from "./client/queryBuilder.js";
 
 export const ErrorGroupsListQueryResult = z.object({

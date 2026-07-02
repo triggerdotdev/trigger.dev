@@ -1832,7 +1832,7 @@ export function isWaitpointOutputTimeout(output: string): boolean {
   try {
     const json = JSON.parse(output);
     return json.code === WAITPOINT_TIMEOUT_ERROR_CODE;
-  } catch (e) {
+  } catch (_e) {
     return false;
   }
 }

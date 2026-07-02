@@ -1,14 +1,5 @@
-import {
-  Component,
-  ComponentPropsWithoutRef,
-  Fragment,
-  ReactNode,
-  createContext,
-  useCallback,
-  useContext,
-  useRef,
-  useState,
-} from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import { Fragment, createContext, useCallback, useContext, useRef, useState } from "react";
 import { inverseLerp, lerp } from "~/utils/lerp";
 
 interface MousePosition {
@@ -68,11 +59,7 @@ function useTimeline() {
 }
 
 type TimelineMousePositionContextState = { x: number; y: number } | undefined;
-const TimelineMousePositionContext = createContext<TimelineMousePositionContextState>(undefined);
-function useTimelineMousePosition() {
-  return useContext(TimelineMousePositionContext);
-}
-
+const _TimelineMousePositionContext = createContext<TimelineMousePositionContextState>(undefined);
 export type RootProps = {
   /** If the timeline doesn't start at zero. Doesn't impact layout but gives you the times back */
   startMs?: number;

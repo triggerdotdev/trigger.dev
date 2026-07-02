@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { RequireKeys } from "../types/index.js";
+import type { RequireKeys } from "../types/index.js";
 import {
   MachineConfig,
   MachinePreset,

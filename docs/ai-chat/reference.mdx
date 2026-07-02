@@ -4,15 +4,11 @@ sidebarTitle: "API Reference"
 description: "Complete API reference for the AI Agents SDK — backend options, events, frontend transport, and hooks."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 ## Compatibility
 
 | Dependency | Supported | Notes |
 |---|---|---|
-| `@trigger.dev/sdk` | `>=4.5.0-rc.0` | The chat agent surface lives in this SDK release. Install with `@trigger.dev/sdk@rc`. |
+| `@trigger.dev/sdk` | `>=4.5.0` | The chat agent surface lives in this SDK release. Install with `@trigger.dev/sdk@latest`. |
 | `ai` (Vercel AI SDK) | `^5.0.0 \|\| ^6.0.0 \|\| >=7.0.0-canary <8` | Declared as a peer. v6 is what we develop against day to day; v5 and v7 work too (v7 is in canary/beta upstream). Your installed `ai` major drives the chat surface's types. |
 | `@ai-sdk/otel` | `1.x` (v7 only) | Optional. AI SDK 7 moved model-call span emission out of `ai` core into this adapter. Install it alongside `ai@7` and the SDK auto-registers it, so your model calls show up as spans in the run trace. Not needed on v5/v6, where `ai` core emits spans. See [AI SDK 7 telemetry](#ai-sdk-7-telemetry) below. |
 | `@ai-sdk/react` | matches your `ai` major | Pulled in by `useChat`. The transport works with whichever React hook ships in the same major as your `ai` version. |

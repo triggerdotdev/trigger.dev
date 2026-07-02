@@ -1,5 +1,4 @@
 import {
-  BeakerIcon,
   BellAlertIcon,
   BookOpenIcon,
   ClockIcon,
@@ -9,9 +8,9 @@ import {
   ServerStackIcon,
   Squares2X2Icon,
 } from "@heroicons/react/20/solid";
-import { InfoPanel } from "~/components/primitives/InfoPanel";
 import { TaskIcon } from "~/assets/icons/TaskIcon";
 import { LinkButton } from "~/components/primitives/Buttons";
+import { InfoPanel } from "~/components/primitives/InfoPanel";
 
 export default function Story() {
   return (

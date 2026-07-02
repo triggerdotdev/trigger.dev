@@ -4,8 +4,8 @@ import { SimpleLogger } from "./logger.js";
 import { isExecaChildProcess } from "./isExecaChildProcess.js";
 import { setTimeout } from "node:timers/promises";
 import { EXIT_CODE_ALREADY_HANDLED } from "./process.js";
-import { EnvironmentType } from "../schemas/schemas.js";
-import { MachinePreset } from "../schemas/common.js";
+import type { EnvironmentType } from "../schemas/schemas.js";
+import type { MachinePreset } from "../schemas/common.js";
 import {
   ProviderToPlatformMessages,
   PlatformToProviderMessages,

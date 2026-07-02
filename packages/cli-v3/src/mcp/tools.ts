@@ -1,4 +1,4 @@
-import { McpContext } from "./context.js";
+import type { McpContext } from "./context.js";
 import { deployTool, listDeploysTool } from "./tools/deploys.js";
 import { searchDocsTool } from "./tools/docs.js";
 import {

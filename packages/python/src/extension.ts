@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import assert from "node:assert";
 import { addAdditionalFilesToBuild } from "@trigger.dev/build/internal";
-import { BuildManifest } from "@trigger.dev/core/v3";
-import { BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
+import type { BuildManifest } from "@trigger.dev/core/v3";
+import type { BuildContext, BuildExtension } from "@trigger.dev/core/v3/build";
 
 export type PythonOptions = {
   requirements?: string[];

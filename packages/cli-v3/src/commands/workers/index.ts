@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import type { Command } from "commander";
 import { configureWorkersBuildCommand } from "./build.js";
 import { configureWorkersListCommand } from "./list.js";
 import { configureWorkersCreateCommand } from "./create.js";

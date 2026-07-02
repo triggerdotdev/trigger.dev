@@ -1,5 +1,5 @@
-import { TriggerTaskRequestBody } from "@trigger.dev/core/v3";
-import { RunEngineVersion, TaskRun } from "@trigger.dev/database";
+import type { TriggerTaskRequestBody } from "@trigger.dev/core/v3";
+import type { RunEngineVersion, TaskRun } from "@trigger.dev/database";
 import { env } from "~/env.server";
 import { IdempotencyKeyConcern } from "~/runEngine/concerns/idempotencyKeys.server";
 import { DefaultPayloadProcessor } from "~/runEngine/concerns/payloads.server";
@@ -7,7 +7,7 @@ import { DefaultQueueManager } from "~/runEngine/concerns/queues.server";
 import { DefaultTraceEventsConcern } from "~/runEngine/concerns/traceEvents.server";
 import { RunEngineTriggerTaskService } from "~/runEngine/services/triggerTask.server";
 import { DefaultTriggerTaskValidator } from "~/runEngine/validators/triggerTaskValidator";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { determineEngineVersion } from "../engineVersion.server";
 import { tracer } from "../tracer.server";
 import { isV3Disabled, V3_TRIGGER_DEPRECATION_MESSAGE } from "../engineDeprecation.server";

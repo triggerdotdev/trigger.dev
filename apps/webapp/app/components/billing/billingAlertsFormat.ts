@@ -230,15 +230,6 @@ export function isLegacyDollarAmountField(
 
   return rawAmount === planDollars || rawAmount === effectiveDollars;
 }
-
-function isAbsoluteDollarAlertLevels(levels: number[]): boolean {
-  if (levels.length === 0) {
-    return false;
-  }
-
-  return !usesFractionAlertLevelFormat(levels);
-}
-
 export function isAbsoluteSavedAlerts(alerts: BillingAlertsFormData): boolean {
   return getSavedAlertAmountCents(alerts) === ABSOLUTE_ALERT_BASE_CENTS;
 }

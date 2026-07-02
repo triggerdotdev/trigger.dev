@@ -5,12 +5,8 @@
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
 import { prisma } from "../app/db.server";
 import { createHash } from "crypto";
-import {
-  BackgroundWorker,
-  BackgroundWorkerTask,
-  RuntimeEnvironmentType,
-  WorkerInstanceGroupType,
-} from "@trigger.dev/database";
+import type { BackgroundWorker, BackgroundWorkerTask } from "@trigger.dev/database";
+import { RuntimeEnvironmentType, WorkerInstanceGroupType } from "@trigger.dev/database";
 import { nanoid } from "nanoid";
 
 async function populate() {
@@ -22,7 +18,7 @@ async function populate() {
 
   await generateRuns(project);
   await createWorkerGroup(project);
-  const { worker, tasks } = await createBackgroundWorker(project, getEnvTypeFromArg());
+  const { worker, tasks: _tasks } = await createBackgroundWorker(project, getEnvTypeFromArg());
   await createWorkerDeployment(project, worker, getEnvTypeFromArg());
 }
 

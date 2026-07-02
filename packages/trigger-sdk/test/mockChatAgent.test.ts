@@ -1974,11 +1974,11 @@ describe("mockChatAgent", () => {
       const model = new MockLanguageModelV3({
         doStream: async () => ({ stream: textStream("post-handover") }),
       });
-      let messagesAtChatStart: any[] = [];
+      let _messagesAtChatStart: any[] = [];
       const agent = chat.agent({
         id: "mockChatAgent.headstart.slim",
         onChatStart: async ({ messages }) => {
-          messagesAtChatStart = messages;
+          _messagesAtChatStart = messages;
         },
         run: async ({ messages, signal }) => streamText({ model, messages, abortSignal: signal }),
       });

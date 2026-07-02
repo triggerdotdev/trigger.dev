@@ -4,7 +4,8 @@ import { Button } from "../primitives/Buttons";
 import { Dialog, DialogContent, DialogHeader, DialogTrigger } from "../primitives/Dialog";
 import { Cog6ToothIcon } from "@heroicons/react/20/solid";
 import { type loader } from "~/routes/resources.taskruns.$runParam.debug";
-import { UseDataFunctionReturn, useTypedFetcher } from "remix-typedjson";
+import type { UseDataFunctionReturn } from "remix-typedjson";
+import { useTypedFetcher } from "remix-typedjson";
 import { useEffect } from "react";
 import { Spinner } from "../primitives/Spinner";
 import * as Property from "~/components/primitives/PropertyTable";
@@ -388,7 +389,7 @@ function DebugRunDataEngineV2({
         </Property.Value>
       </Property.Item>
       {keys.map((key) => (
-        <Property.Item>
+        <Property.Item key={key.key}>
           <Property.Label>{key.label}</Property.Label>
           <Property.Value className="flex items-center gap-2">
             <ClipboardField value={key.key} variant="tertiary/small" iconButton />

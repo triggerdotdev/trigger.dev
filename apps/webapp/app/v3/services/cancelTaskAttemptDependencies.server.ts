@@ -1,7 +1,6 @@
-import { PrismaClientOrTransaction } from "~/db.server";
+import { logger } from "~/services/logger.server";
 import { commonWorker } from "../commonWorker.server";
 import { BaseService } from "./baseService.server";
-import { logger } from "~/services/logger.server";
 import { CancelTaskRunService } from "./cancelTaskRun.server";
 
 export class CancelTaskAttemptDependenciesService extends BaseService {

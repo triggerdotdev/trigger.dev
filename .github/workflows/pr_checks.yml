@@ -15,7 +15,7 @@ permissions:
 jobs:
   changes:
     name: Detect changes
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     outputs:
       code: ${{ steps.code_filter.outputs.code }}
       typecheck_self: ${{ steps.filter.outputs.typecheck_self }}
@@ -48,6 +48,7 @@ jobs:
             typecheck_self:
               - '.github/workflows/pr_checks.yml'
               - '.github/workflows/typecheck.yml'
+              - '.github/workflows/code-quality.yml'
             webapp:
               - 'apps/webapp/**'
               - 'packages/**'
@@ -103,8 +104,6 @@ jobs:
               - 'turbo.json'
 
   code-quality:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
     uses: ./.github/workflows/code-quality.yml
 
   typecheck:
@@ -169,7 +168,7 @@ jobs:
       - e2e
       - sdk-compat
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: Verify all checks
         run: |

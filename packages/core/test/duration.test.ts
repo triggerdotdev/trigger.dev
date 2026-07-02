@@ -150,8 +150,8 @@ describe("safeParseNaturalLanguageDuration", () => {
 
   it("handles exceptions gracefully", () => {
     // Mock parseNaturalLanguageDuration to throw an error
-    const originalParse = parseNaturalLanguageDuration;
-    const mockParse = vi.fn().mockImplementation(() => {
+    const _originalParse = parseNaturalLanguageDuration;
+    const _mockParse = vi.fn().mockImplementation(() => {
       throw new Error("Test error");
     });
 

@@ -8,7 +8,6 @@ import {
 import {
   ArrowTopRightOnSquareIcon,
   BookOpenIcon,
-  ChartBarIcon,
   CheckCircleIcon,
   ChevronRightIcon,
 } from "@heroicons/react/24/solid";

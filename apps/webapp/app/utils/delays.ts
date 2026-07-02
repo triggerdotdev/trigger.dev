@@ -36,7 +36,7 @@ export async function parseDelay(value?: string | Date): Promise<Date | undefine
     }
 
     return date;
-  } catch (error) {
+  } catch (_error) {
     return parseNaturalLanguageDuration(value);
   }
 }

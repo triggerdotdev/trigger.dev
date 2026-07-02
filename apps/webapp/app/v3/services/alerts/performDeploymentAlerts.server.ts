@@ -1,4 +1,8 @@
-import { ProjectAlertChannel, ProjectAlertType, WorkerDeployment } from "@trigger.dev/database";
+import type {
+  ProjectAlertChannel,
+  ProjectAlertType,
+  WorkerDeployment,
+} from "@trigger.dev/database";
 import { alertsWorker } from "~/v3/alertsWorker.server";
 import { BaseService } from "../baseService.server";
 import { DeliverAlertService } from "./deliverAlert.server";

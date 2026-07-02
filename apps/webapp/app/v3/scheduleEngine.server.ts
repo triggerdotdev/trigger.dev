@@ -6,7 +6,7 @@ import { env } from "~/env.server";
 import { devPresence } from "~/presenters/v3/DevPresence.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
-import { TriggerTaskService } from "./services/triggerTask.server";
+import { OutOfEntitlementError, TriggerTaskService } from "./services/triggerTask.server";
 import { meter, tracer } from "./tracer.server";
 import { workerQueue } from "~/services/worker.server";
 import { ServiceValidationError } from "./services/common.server";
@@ -136,6 +136,11 @@ function createScheduleEngine() {
           errorMessage.includes("queue size limit for this environment has been reached")
         ) {
           errorType = "QUEUE_LIMIT";
+        } else if (error instanceof OutOfEntitlementError) {
+          // The org is out of entitlements. This is an expected outcome, not a
+          // system error, so the engine logs it as a warning rather than
+          // reporting it as an error.
+          errorType = "OUT_OF_ENTITLEMENTS";
         }
 
         return {

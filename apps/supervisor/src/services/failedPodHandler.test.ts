@@ -14,7 +14,7 @@ describe.skipIf(!process.env.K8S_INTEGRATION_TESTS)("FailedPodHandler Integratio
     // Create the test namespace if it doesn't exist
     try {
       await k8s.core.readNamespace({ name: namespace });
-    } catch (error) {
+    } catch (_error) {
       await k8s.core.createNamespace({
         body: {
           metadata: {

@@ -1,5 +1,5 @@
-import { Filter, FlatTree, FlatTreeItem } from "./TreeView";
-import { Changes, NodeState, NodesState, TreeState } from "./reducer";
+import type { Filter, FlatTree } from "./TreeView";
+import type { Changes, NodeState, NodesState, TreeState } from "./reducer";
 
 type PartialNodeState = Record<string, Partial<NodeState>>;
 
@@ -92,7 +92,7 @@ export function selectedIdFromState(state: NodesState): string | undefined {
   return selected?.[0];
 }
 
-export function applyFilterToState<TData>({
+export function applyFilterToState<_TData>({
   tree,
   nodes,
   filter,
@@ -223,11 +223,6 @@ export function lastVisibleNode(tree: FlatTree<any>, nodes: NodesState) {
     .reverse()
     .find((node) => nodes[node.id].visible === true);
 }
-
-function areSetsEqual<T>(a: Set<T>, b: Set<T>): boolean {
-  return a.size === b.size && [...a].every((value) => b.has(value));
-}
-
 function difference<T>(a: Set<T>, b: Set<T>): Set<T> {
   return new Set([...a].filter((x) => !b.has(x)));
 }
@@ -248,7 +243,7 @@ export function generateChanges(a: NodesState, b: NodesState): Changes {
   const collapsedIdsA = new Set(collapsedIdsFromState(a));
   const collapsedIdsB = new Set(collapsedIdsFromState(b));
 
-  const collapsedChanges = [...difference(collapsedIdsA, collapsedIdsB)];
+  const _collapsedChanges = [...difference(collapsedIdsA, collapsedIdsB)];
 
   return {
     selectedId: selectedIdA !== selectedIdB ? selectedIdB : undefined,

@@ -1,5 +1,5 @@
 import type { PrismaClient, RuntimeEnvironmentType } from "@trigger.dev/database";
-import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
+import type { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
 
 let idCounter = 0;
 

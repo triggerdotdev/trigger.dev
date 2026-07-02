@@ -3,7 +3,7 @@ import { trace } from "@internal/tracing";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "node:timers/promises";
-import { EventBusEventArgs } from "../eventBus.js";
+import type { EventBusEventArgs } from "../eventBus.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 
@@ -49,7 +49,7 @@ describe("RunEngine checkpoints", () => {
       const taskIdentifier = "test-task";
 
       // Create background worker
-      const backgroundWorker = await setupBackgroundWorker(
+      const _backgroundWorker = await setupBackgroundWorker(
         engine,
         authenticatedEnvironment,
         taskIdentifier
@@ -86,7 +86,7 @@ describe("RunEngine checkpoints", () => {
       assertNonNullable(dequeued[0]);
 
       // Create an attempt
-      const attemptResult = await engine.startRunAttempt({
+      const _attemptResult = await engine.startRunAttempt({
         runId: dequeued[0].run.id,
         snapshotId: dequeued[0].snapshot.id,
       });
@@ -225,7 +225,7 @@ describe("RunEngine checkpoints", () => {
       const taskIdentifier = "test-task";
 
       // Create background worker
-      const backgroundWorker = await setupBackgroundWorker(
+      const _backgroundWorker = await setupBackgroundWorker(
         engine,
         authenticatedEnvironment,
         taskIdentifier
@@ -313,7 +313,7 @@ describe("RunEngine checkpoints", () => {
 
     try {
       const taskIdentifier = "test-task";
-      const backgroundWorker = await setupBackgroundWorker(
+      const _backgroundWorker = await setupBackgroundWorker(
         engine,
         authenticatedEnvironment,
         taskIdentifier
@@ -350,7 +350,7 @@ describe("RunEngine checkpoints", () => {
       expect(dequeued1.length).toBe(1);
       assertNonNullable(dequeued1[0]);
 
-      const attemptResult1 = await engine.startRunAttempt({
+      const _attemptResult1 = await engine.startRunAttempt({
         runId: dequeued1[0].run.id,
         snapshotId: dequeued1[0].snapshot.id,
       });
@@ -400,7 +400,7 @@ describe("RunEngine checkpoints", () => {
       assertNonNullable(dequeued2[0]);
 
       // Continue execution from first checkpoint
-      const continueResult1 = await engine.continueRunExecution({
+      const _continueResult1 = await engine.continueRunExecution({
         runId: run.id,
         snapshotId: dequeued2[0].snapshot.id,
       });
@@ -518,7 +518,7 @@ describe("RunEngine checkpoints", () => {
         const taskIdentifier = "test-task";
 
         // Create background worker
-        const backgroundWorker = await setupBackgroundWorker(
+        const _backgroundWorker = await setupBackgroundWorker(
           engine,
           authenticatedEnvironment,
           taskIdentifier
@@ -556,7 +556,7 @@ describe("RunEngine checkpoints", () => {
         assertNonNullable(dequeued[0]);
 
         // Create an attempt
-        const attemptResult = await engine.startRunAttempt({
+        const _attemptResult = await engine.startRunAttempt({
           runId: dequeued[0].run.id,
           snapshotId: dequeued[0].snapshot.id,
         });
@@ -668,7 +668,7 @@ describe("RunEngine checkpoints", () => {
         const taskIdentifier = "test-task";
 
         // Create background worker
-        const backgroundWorker = await setupBackgroundWorker(
+        const _backgroundWorker = await setupBackgroundWorker(
           engine,
           authenticatedEnvironment,
           taskIdentifier
@@ -859,7 +859,7 @@ describe("RunEngine checkpoints", () => {
       //create an attempt
       const initialExecutionData = await engine.getRunExecutionData({ runId: parentRun.id });
       assertNonNullable(initialExecutionData);
-      const attemptResult = await engine.startRunAttempt({
+      const _attemptResult = await engine.startRunAttempt({
         runId: parentRun.id,
         snapshotId: initialExecutionData.snapshot.id,
       });

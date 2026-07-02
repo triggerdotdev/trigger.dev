@@ -1,9 +1,9 @@
-import { LoaderFunctionArgs } from "@remix-run/server-runtime";
+import type { LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { redirect } from "remix-typedjson";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { redirectWithSuccessMessage } from "~/models/message.server";
-import { newProjectPath, selectPlanPath, v3BillingPath } from "~/utils/pathBuilder";
+import { newProjectPath, v3BillingPath } from "~/utils/pathBuilder";
 
 const ParamsSchema = z.object({
   organizationId: z.string(),

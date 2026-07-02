@@ -6,7 +6,7 @@ import type {
 } from "@vercel/sdk/models/filterprojectenvsop";
 import type { GetV9ProjectsIdOrNameCustomEnvironmentsEnvironments } from "@vercel/sdk/models/getv9projectsidornamecustomenvironmentsop";
 import type { ResponseBodyProjects } from "@vercel/sdk/models/getprojectsop";
-import { Organization, OrganizationIntegration, SecretReference } from "@trigger.dev/database";
+import type { Organization, OrganizationIntegration, SecretReference } from "@trigger.dev/database";
 import { z } from "zod";
 import { ResultAsync, errAsync, okAsync } from "neverthrow";
 import { $transaction, prisma } from "~/db.server";
@@ -14,10 +14,12 @@ import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { getSecretStore } from "~/services/secrets/secretStore.server";
 import { generateFriendlyId } from "~/v3/friendlyIdentifiers";
-import {
+import type {
   SyncEnvVarsMapping,
-  shouldSyncEnvVar,
   TriggerEnvironmentType,
+} from "~/v3/vercel/vercelProjectIntegrationSchema";
+import {
+  shouldSyncEnvVar,
   envTypeToVercelTarget,
 } from "~/v3/vercel/vercelProjectIntegrationSchema";
 import { EnvironmentVariablesRepository } from "~/v3/environmentVariables/environmentVariablesRepository.server";
@@ -117,22 +119,6 @@ function isVercelApiErrorShape(error: unknown): error is VercelApiError {
     typeof (error as VercelApiError).authInvalid === "boolean"
   );
 }
-
-/**
- * Wrap a Vercel SDK call in ResultAsync with structured error logging.
- */
-function wrapVercelCall<T>(
-  promise: Promise<T>,
-  message: string,
-  context: Record<string, unknown>
-): ResultAsync<T, VercelApiError> {
-  return ResultAsync.fromPromise(promise, (error) => {
-    const apiError = toVercelApiError(error);
-    logger.error(message, { ...context, error, authInvalid: apiError.authInvalid });
-    return apiError;
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Schemas & token types
 // ---------------------------------------------------------------------------

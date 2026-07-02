@@ -26,7 +26,7 @@ export class CreateBulkActionService extends BaseService {
     const passedTooManyRuns = runIds.length > BULK_ACTION_RUN_LIMIT;
     runIds = runIds.slice(0, BULK_ACTION_RUN_LIMIT);
 
-    const items = await this._prisma.bulkActionItem.createMany({
+    const _items = await this._prisma.bulkActionItem.createMany({
       data: runIds.map((runId) => ({
         friendlyId: generateFriendlyId("bulkitem"),
         type: action,

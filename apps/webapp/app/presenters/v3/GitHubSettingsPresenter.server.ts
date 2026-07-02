@@ -1,5 +1,5 @@
 import { type PrismaClient } from "@trigger.dev/database";
-import { err, fromPromise, ok, ResultAsync } from "neverthrow";
+import { fromPromise, ok, ResultAsync } from "neverthrow";
 import { env } from "~/env.server";
 import { BranchTrackingConfigSchema } from "~/v3/github";
 import { BasePresenter } from "./basePresenter.server";

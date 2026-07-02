@@ -1,16 +1,18 @@
 import { SupervisorHttpClient } from "./http.js";
-import { PreDequeueFn, PreSkipFn, SupervisorClientCommonOptions } from "./types.js";
-import {
+import type { PreDequeueFn, PreSkipFn, SupervisorClientCommonOptions } from "./types.js";
+import type {
   WorkerApiDequeueResponseBody,
   WorkerApiHeartbeatRequestBody,
   WorkerQueueClass,
 } from "./schemas.js";
-import { RunQueueConsumerPool, ScalingOptions } from "./consumerPool.js";
-import { WorkerEvents } from "./events.js";
+import type { ScalingOptions } from "./consumerPool.js";
+import { RunQueueConsumerPool } from "./consumerPool.js";
+import type { WorkerEvents } from "./events.js";
 import EventEmitter from "events";
 import { VERSION } from "../../../version.js";
-import { io, Socket } from "socket.io-client";
-import { WorkerClientToServerEvents, WorkerServerToClientEvents } from "../types.js";
+import type { Socket } from "socket.io-client";
+import { io } from "socket.io-client";
+import type { WorkerClientToServerEvents, WorkerServerToClientEvents } from "../types.js";
 import { getDefaultWorkerHeaders } from "./util.js";
 import { IntervalService } from "../../utils/interval.js";
 import { SimpleStructuredLogger } from "../../utils/structuredLogger.js";

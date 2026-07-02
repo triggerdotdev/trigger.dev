@@ -1,31 +1,21 @@
-import {
-  Context,
-  ROOT_CONTEXT,
-  Span,
-  SpanKind,
-  SpanOptions,
-  SpanStatusCode,
-  context,
-  trace,
-} from "@opentelemetry/api";
-import {
+import type { Context, Span, SpanOptions } from "@opentelemetry/api";
+import { ROOT_CONTEXT, SpanKind, SpanStatusCode, context, trace } from "@opentelemetry/api";
+import type {
   AckCallbackResult,
   MachinePreset,
   V3ProdTaskRunExecution,
   V3ProdTaskRunExecutionPayload,
   TaskRunError,
-  TaskRunErrorCodes,
   TaskRunExecution,
   TaskRunExecutionLazyAttemptPayload,
   TaskRunExecutionResult,
   TaskRunFailedExecutionResult,
   TaskRunSuccessfulExecutionResult,
-  parsePacket,
   serverWebsocketMessages,
-  SemanticInternalAttributes,
 } from "@trigger.dev/core/v3";
-import { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
-import {
+import { TaskRunErrorCodes, parsePacket, SemanticInternalAttributes } from "@trigger.dev/core/v3";
+import type { ZodMessageSender } from "@trigger.dev/core/v3/zodMessageHandler";
+import type {
   BackgroundWorker,
   BackgroundWorkerTask,
   Prisma,
@@ -40,12 +30,12 @@ import { generateJWTTokenForEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { singleton } from "~/utils/singleton";
 import { marqs } from "~/v3/marqs/index.server";
+import type { RuntimeEnvironmentForEnvRepo } from "../environmentVariables/environmentVariablesRepository.server";
 import {
-  RuntimeEnvironmentForEnvRepo,
   RuntimeEnvironmentForEnvRepoPayload,
   resolveVariablesForEnvironment,
 } from "../environmentVariables/environmentVariablesRepository.server";
-import { EnvironmentVariable } from "../environmentVariables/repository";
+import type { EnvironmentVariable } from "../environmentVariables/repository";
 import { FailedTaskRunService } from "../failedTaskRun.server";
 import { generateFriendlyId } from "../friendlyIdentifiers";
 import { socketIo } from "../handleSocketIo.server";
@@ -66,7 +56,7 @@ import {
 } from "../taskStatus";
 import { tracer } from "../tracer.server";
 import { getMaxDuration } from "../utils/maxDuration";
-import { MessagePayload } from "./types";
+import type { MessagePayload } from "./types";
 
 const WithTraceContext = z.object({
   traceparent: z.string().optional(),
@@ -1445,7 +1435,7 @@ export class SharedQueueConsumer {
   async #markRunAsWaitingForDeploy(runId: string) {
     logger.debug("Marking run as waiting for deploy", { runId });
 
-    const run = await prisma.taskRun.update({
+    const _run = await prisma.taskRun.update({
       where: {
         id: runId,
       },

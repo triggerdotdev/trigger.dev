@@ -334,7 +334,7 @@ export class Checkpointer {
 
       try {
         await setTimeout(delayMs, undefined, { signal });
-      } catch (error) {
+      } catch (_error) {
         this.#logger.log("Checkpoint canceled during initial delay", { runId });
         return { success: false, reason: "CANCELED" };
       }
@@ -364,7 +364,7 @@ export class Checkpointer {
 
           try {
             await setTimeout(delay.milliseconds, undefined, { signal });
-          } catch (error) {
+          } catch (_error) {
             this.#logger.log("Checkpoint canceled during retry delay", { runId });
             return { success: false, reason: "CANCELED" };
           }
@@ -597,7 +597,8 @@ export class Checkpointer {
       if (signal.aborted) {
         this.#logger.error("Checkpoint canceled: Cleanup", { options });
 
-        // Overrides any prior return value
+        // Overrides any prior return value (intentional use of return-in-finally)
+        // eslint-disable-next-line no-unsafe-finally
         return { success: false, reason: "CANCELED" };
       }
     }

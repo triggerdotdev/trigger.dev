@@ -1,10 +1,10 @@
-import { ClickHouse } from "@internal/clickhouse";
+import type { ClickHouse } from "@internal/clickhouse";
 import { ScheduledTaskPayload, parsePacket, prettyPrintPacket } from "@trigger.dev/core/v3";
 import {
+  type PrismaClientOrTransaction,
   type RuntimeEnvironmentType,
   type TaskRunStatus,
   type TaskRunTemplate,
-  PrismaClientOrTransaction,
 } from "@trigger.dev/database";
 import { inferSchema } from "@jsonhero/schema-infer";
 import parse from "parse-duration";

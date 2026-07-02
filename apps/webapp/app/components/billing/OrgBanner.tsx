@@ -9,7 +9,7 @@ import {
   useOptionalOrganization,
   useOrganization,
   useBillingLimit,
-  useCanManageBilling,
+  useCanManageBillingLimits,
 } from "~/hooks/useOrganizations";
 import { useOptionalProject, useProject } from "~/hooks/useProject";
 import { useShowSelfServe } from "~/hooks/useShowSelfServe";
@@ -80,8 +80,8 @@ export function OrgBanner() {
 function LimitRejectedBanner() {
   const organization = useOrganization();
   const showSelfServe = useShowSelfServe();
-  const canManageBilling = useCanManageBilling();
-  const canResolve = showSelfServe && canManageBilling;
+  const canManageBillingLimits = useCanManageBillingLimits();
+  const canResolve = showSelfServe && canManageBillingLimits;
 
   return (
     <AnimatedOrgBannerBar
@@ -110,8 +110,8 @@ function LimitGraceBanner() {
   const organization = useOrganization();
   const billingLimit = useBillingLimit();
   const showSelfServe = useShowSelfServe();
-  const canManageBilling = useCanManageBilling();
-  const canResolve = showSelfServe && canManageBilling;
+  const canManageBillingLimits = useCanManageBillingLimits();
+  const canResolve = showSelfServe && canManageBillingLimits;
 
   const graceEndsAt =
     billingLimit?.isConfigured && billingLimit.limitState.status === "grace"
@@ -143,21 +143,21 @@ function LimitGraceBanner() {
 
 function NoLimitConfiguredBanner() {
   const organization = useOrganization();
-  const canManageBilling = useCanManageBilling();
+  const canManageBillingLimits = useCanManageBillingLimits();
 
   return (
     <AnimatedOrgBannerBar
       show
       variant="warning"
       action={
-        canManageBilling ? (
+        canManageBillingLimits ? (
           <LinkButton variant="tertiary/small" to={v3BillingLimitsPath(organization)}>
             Configure billing limit
           </LinkButton>
         ) : undefined
       }
     >
-      {canManageBilling
+      {canManageBillingLimits
         ? "Protect your organization from unexpected usage spikes."
         : "Billing limits are not configured for this organization. Contact an organization administrator to configure them."}
     </AnimatedOrgBannerBar>

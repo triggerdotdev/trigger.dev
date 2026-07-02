@@ -100,7 +100,7 @@ export class SetConcurrencyAddOnService extends BaseService {
           where: { id: organizationId },
         });
 
-        const [error, result] = await tryCatch(
+        const [error, _result] = await tryCatch(
           sendToPlain({
             userId,
             email: user.email,

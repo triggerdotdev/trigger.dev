@@ -34,7 +34,7 @@ const { action } = createActionApiRoute(
         throw json({ error: "Waitpoint not found" }, { status: 404 });
       }
 
-      const result = await engine.blockRunWithWaitpoint({
+      const _result = await engine.blockRunWithWaitpoint({
         runId,
         waitpoints: [waitpointId],
         projectId: authentication.environment.project.id,

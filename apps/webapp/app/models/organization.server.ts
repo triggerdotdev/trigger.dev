@@ -86,7 +86,7 @@ export async function createOrganization(
     );
   }
 
-  const features = featuresForUrl(new URL(env.APP_ORIGIN));
+  const _features = featuresForUrl(new URL(env.APP_ORIGIN));
 
   const organization = await prisma.organization.create({
     data: {
@@ -129,6 +129,8 @@ export async function createEnvironment({
   isBranchableEnvironment = false,
   member,
   prismaClient = prisma,
+  /** When set, skips billing lookup — caller must supply the limit for this org + type. */
+  maximumConcurrencyLimit,
 }: {
   organization: Pick<Organization, "id" | "maximumConcurrencyLimit">;
   project: Pick<Project, "id">;
@@ -136,13 +138,15 @@ export async function createEnvironment({
   isBranchableEnvironment?: boolean;
   member?: OrgMember;
   prismaClient?: PrismaClientOrTransaction;
+  maximumConcurrencyLimit?: number;
 }) {
   const slug = envSlug(type);
   const apiKey = createApiKeyForEnv(type);
   const pkApiKey = createPkApiKeyForEnv(type);
   const shortcode = createShortcode().join("-");
 
-  const limit = await getDefaultEnvironmentConcurrencyLimit(organization.id, type);
+  const limit =
+    maximumConcurrencyLimit ?? (await getDefaultEnvironmentConcurrencyLimit(organization.id, type));
   const billingPause = await getInitialEnvPauseStateForBillingLimit(organization.id, type);
 
   const environment = await prismaClient.runtimeEnvironment.create({

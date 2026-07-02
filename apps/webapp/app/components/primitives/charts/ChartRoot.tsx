@@ -206,7 +206,7 @@ function ChartRootInner({
  * Useful for rendering "no data" states.
  */
 export function useHasNoData(): boolean {
-  const { data, dataKey, dataKeys } = useChartContext();
+  const { data, dataKey: _dataKey, dataKeys } = useChartContext();
 
   return useMemo(() => {
     if (data.length === 0) return true;

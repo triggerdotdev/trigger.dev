@@ -101,7 +101,7 @@ export function ChartBarRenderer({
     config,
     data,
     dataKey,
-    dataKeys,
+    dataKeys: _dataKeys,
     visibleSeries,
     state,
     highlight,

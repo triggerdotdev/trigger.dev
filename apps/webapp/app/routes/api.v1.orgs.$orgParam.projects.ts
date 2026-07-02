@@ -1,11 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/server-runtime";
 import { json } from "@remix-run/server-runtime";
-import {
-  CreateProjectRequestBody,
-  GetProjectResponseBody,
-  GetProjectsResponseBody,
-  tryCatch,
-} from "@trigger.dev/core/v3";
+import type { GetProjectResponseBody, GetProjectsResponseBody } from "@trigger.dev/core/v3";
+import { CreateProjectRequestBody, tryCatch } from "@trigger.dev/core/v3";
 import { z } from "zod";
 import { prisma } from "~/db.server";
 import { createProject } from "~/models/project.server";

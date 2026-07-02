@@ -3,7 +3,7 @@ import { trace } from "@internal/tracing";
 import { generateFriendlyId } from "@trigger.dev/core/v3/isomorphic";
 import { expect } from "vitest";
 import { RunEngine } from "../index.js";
-import { EventBusEventArgs } from "../eventBus.js";
+import type { EventBusEventArgs } from "../eventBus.js";
 import { setupAuthenticatedEnvironment } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });

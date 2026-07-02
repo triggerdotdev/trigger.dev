@@ -4,10 +4,6 @@ sidebarTitle: "Frontend"
 description: "Transport setup, session management, client data, and frontend patterns for AI Chat."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 ## How the transport works
 
 Vanilla `useChat` expects an `api` URL — it POSTs the conversation to your own Next.js route handler, which terminates the stream. `useTriggerChatTransport` replaces that round-trip: instead of an `api` URL, you pass a custom [`ChatTransport`](https://ai-sdk.dev/docs/ai-sdk-ui/transport) that talks directly to the Trigger.dev cloud (or your self-hosted webapp) on behalf of `useChat`.

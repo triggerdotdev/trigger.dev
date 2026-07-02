@@ -1,4 +1,4 @@
-import { TaskRunExecutionStatus } from "@trigger.dev/database";
+import type { TaskRunExecutionStatus } from "@trigger.dev/database";
 
 /**
  * Defines valid execution status transitions for the Run Engine 2.0.

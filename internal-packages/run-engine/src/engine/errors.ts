@@ -1,6 +1,6 @@
 import { assertExhaustive } from "@trigger.dev/core";
-import { TaskRunError } from "@trigger.dev/core/v3";
-import { RuntimeEnvironmentType, TaskRunStatus } from "@trigger.dev/database";
+import type { TaskRunError } from "@trigger.dev/core/v3";
+import type { RuntimeEnvironmentType, TaskRunStatus } from "@trigger.dev/database";
 
 export function runStatusFromError(
   error: TaskRunError,

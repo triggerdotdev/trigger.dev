@@ -23,7 +23,7 @@ const LOOKBACK_OPTIONS = [
   { label: "30 days", value: 720 },
 ];
 
-const SearchParams = z.object({
+const _SearchParams = z.object({
   lookbackHours: z.coerce.number().optional(),
 });
 
@@ -48,7 +48,7 @@ export const loader = dashboardLoader(
 
 export default function AdminLlmModelsMissingRoute() {
   const { models, lookbackHours, error } = useTypedLoaderData<typeof loader>();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [_searchParams, _setSearchParams] = useSearchParams();
 
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col overflow-y-auto px-4 pb-4">

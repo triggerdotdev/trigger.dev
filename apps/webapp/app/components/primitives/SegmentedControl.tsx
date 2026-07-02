@@ -88,7 +88,7 @@ export default function SegmentedControl({
   onChange,
 }: SegmentedControlProps) {
   const variantStyle = variants[variant];
-  const isPrimary = variant.startsWith("primary");
+  const _isPrimary = variant.startsWith("primary");
 
   return (
     <div

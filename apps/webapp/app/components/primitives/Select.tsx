@@ -223,11 +223,9 @@ export function Select<TValue extends string | string[], TItem>({
           {typeof children === "function" ? (
             matches.length > 0 ? (
               isSection(matches) ? (
-                <SelectGroupedRenderer
-                  items={matches}
-                  children={children}
-                  enableItemShortcuts={enableItemShortcuts}
-                />
+                <SelectGroupedRenderer items={matches} enableItemShortcuts={enableItemShortcuts}>
+                  {children}
+                </SelectGroupedRenderer>
               ) : (
                 children(matches as ItemFromSection<TItem>[], {
                   shortcutsEnabled: enableItemShortcuts,

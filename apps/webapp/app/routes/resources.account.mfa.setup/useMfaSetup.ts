@@ -1,6 +1,6 @@
 import { useReducer, useEffect } from "react";
 import { useTypedFetcher } from "remix-typedjson";
-import { action } from "./route";
+import type { action } from "./route";
 
 export type MfaPhase = "idle" | "enabling" | "validating" | "showing-recovery" | "disabling";
 

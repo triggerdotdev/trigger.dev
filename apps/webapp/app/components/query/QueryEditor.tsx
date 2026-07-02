@@ -1,11 +1,4 @@
-import {
-  ArrowDownTrayIcon,
-  BookmarkIcon,
-  CalendarIcon,
-  ClipboardIcon,
-  PencilIcon,
-  PencilSquareIcon,
-} from "@heroicons/react/20/solid";
+import { ArrowDownTrayIcon, CalendarIcon, PencilSquareIcon } from "@heroicons/react/20/solid";
 import type { OutputColumnMetadata } from "@internal/clickhouse";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { useFetcher } from "@remix-run/react";
@@ -27,7 +20,6 @@ import simplur from "simplur";
 import { AISparkleIcon } from "~/assets/icons/AISparkleIcon";
 import { ChartConfigPanel, defaultChartConfig } from "~/components/code/ChartConfigPanel";
 import { autoFormatSQL, TSQLEditor } from "~/components/code/TSQLEditor";
-import { EnvironmentLabel } from "~/components/environments/EnvironmentLabel";
 import { PageBody, PageContainer } from "~/components/layout/AppLayout";
 import {
   QueryWidget,

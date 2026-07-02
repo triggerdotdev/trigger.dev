@@ -2,7 +2,7 @@ const API_NAME = "locals";
 
 import { getGlobal, registerGlobal, unregisterGlobal } from "../utils/globals.js";
 import { NoopLocalsManager } from "./manager.js";
-import { LocalsKey, type LocalsManager } from "./types.js";
+import { type LocalsKey, type LocalsManager } from "./types.js";
 
 const NOOP_LOCALS_MANAGER = new NoopLocalsManager();
 

@@ -1,15 +1,10 @@
 import * as Ariakit from "@ariakit/react";
-import {
-  CalendarIcon,
-  CpuChipIcon,
-  Squares2X2Icon,
-  TrashIcon,
-  XMarkIcon,
-} from "@heroicons/react/20/solid";
+import { Squares2X2Icon, XMarkIcon } from "@heroicons/react/20/solid";
 import { Form } from "@remix-run/react";
-import type { BatchTaskRunStatus, RuntimeEnvironment } from "@trigger.dev/database";
-import { type ReactNode, useCallback, useRef, useState } from "react";
+import type { BatchTaskRunStatus } from "@trigger.dev/database";
+import { type ReactNode, useRef } from "react";
 import { z } from "zod";
+import { StatusIcon } from "~/assets/icons/StatusIcon";
 import { AppliedFilter } from "~/components/primitives/AppliedFilter";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import {
@@ -37,13 +32,12 @@ import {
   descriptionForBatchStatus,
 } from "./BatchStatus";
 import {
-  TimeFilter,
   appliedSummary,
   FilterMenuProvider,
   IdFilterDropdown,
   type IdFilterDropdownProps,
+  TimeFilter,
 } from "./SharedFilters";
-import { StatusIcon } from "~/assets/icons/StatusIcon";
 
 export const BatchStatus = z.enum(allBatchStatuses);
 

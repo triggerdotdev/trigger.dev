@@ -1,6 +1,6 @@
 import { PostHog } from "posthog-node";
 import { env } from "~/env.server";
-import { MatchedOrganization } from "~/hooks/useOrganizations";
+import type { MatchedOrganization } from "~/hooks/useOrganizations";
 import type { Organization } from "~/models/organization.server";
 import type { Project } from "~/models/project.server";
 import type { User } from "~/models/user.server";

@@ -7,7 +7,7 @@ import { type Prisma, TaskRunStatus } from "@trigger.dev/database";
 import parseDuration from "parse-duration";
 import { z } from "zod";
 import { timeFilters } from "~/components/runs/v3/SharedFilters";
-import { type PrismaClient, type PrismaClientOrTransaction } from "~/db.server";
+import { type PrismaClientOrTransaction } from "~/db.server";
 import { startActiveSpan } from "~/v3/tracer.server";
 import { ClickHouseRunsRepository } from "./clickhouseRunsRepository.server";
 

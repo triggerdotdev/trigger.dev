@@ -1,4 +1,4 @@
-import { PrismaClientOrTransaction } from "~/db.server";
+import type { PrismaClientOrTransaction } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { commonWorker } from "../commonWorker.server";
 import { BaseService } from "./baseService.server";

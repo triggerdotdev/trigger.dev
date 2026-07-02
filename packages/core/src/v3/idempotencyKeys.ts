@@ -5,7 +5,7 @@ import type {
   IdempotencyKeyScope,
 } from "./idempotency-key-catalog/catalog.js";
 import { taskContext } from "./task-context-api.js";
-import { IdempotencyKey } from "./types/idempotencyKeys.js";
+import type { IdempotencyKey } from "./types/idempotencyKeys.js";
 import { digestSHA256 } from "./utils/crypto.js";
 import type { ZodFetchOptions } from "./apiClient/core.js";
 
@@ -36,6 +36,17 @@ export function getIdempotencyKeyOptions(
     return idempotencyKeyCatalog.getKeyOptions(idempotencyKey);
   }
   return undefined;
+}
+
+/**
+ * Clears the in-process idempotency key catalog.
+ *
+ * The catalog maps an idempotency-key hash back to its original key and scope so
+ * the SDK can attach that metadata when triggering. The worker calls this at each
+ * run boundary so the mapping does not accumulate across warm-start runs.
+ */
+export function resetIdempotencyKeyCatalog(): void {
+  idempotencyKeyCatalog.clear();
 }
 
 export function isIdempotencyKey(

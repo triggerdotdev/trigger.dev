@@ -1,5 +1,4 @@
 import { type BuiltInDashboard } from "./MetricDashboardPresenter.server";
-import { z } from "zod";
 
 const overviewDashboard: BuiltInDashboard = {
   key: "overview",

@@ -1,9 +1,11 @@
-import {
+import type {
   AttemptStatus,
   RunStatus,
   SerializedError,
-  TaskRunError,
   TriggerFunction,
+} from "@trigger.dev/core/v3";
+import {
+  TaskRunError,
   conditionallyImportPacket,
   createJsonErrorObject,
   logger,
@@ -11,12 +13,13 @@ import {
 import { parsePacketAsJson } from "@trigger.dev/core/v3/utils/ioSerialization";
 import { BatchId } from "@trigger.dev/core/v3/isomorphic";
 import { getUserProvidedIdempotencyKey } from "@trigger.dev/core/v3/serverOnly";
-import { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
+import type { Prisma, TaskRunAttemptStatus, TaskRunStatus } from "@trigger.dev/database";
 import assertNever from "assert-never";
-import { API_VERSIONS, CURRENT_API_VERSION, RunStatusUnspecifiedApiVersion } from "~/api/versions";
+import type { API_VERSIONS, RunStatusUnspecifiedApiVersion } from "~/api/versions";
+import { CURRENT_API_VERSION } from "~/api/versions";
 import { $replica, prisma } from "~/db.server";
 import { regionForDisplay } from "~/runEngine/concerns/workerQueueSplit.server";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import {
   findRunByIdWithMollifierFallback,
   type SyntheticRun,

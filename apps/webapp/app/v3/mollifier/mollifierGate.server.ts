@@ -6,7 +6,6 @@ import { createRealTripEvaluator } from "./mollifierTripEvaluator.server";
 import {
   recordDecision,
   type DecisionOutcome,
-  type DecisionReason,
   type RecordDecisionOptions,
 } from "./mollifierTelemetry.server";
 

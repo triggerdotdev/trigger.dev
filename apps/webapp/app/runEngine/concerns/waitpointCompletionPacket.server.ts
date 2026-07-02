@@ -32,7 +32,7 @@ export async function processWaitpointCompletionPacket(
     return packet;
   }
 
-  const { needsOffloading, size } = packetRequiresOffloading(
+  const { needsOffloading, size: _size } = packetRequiresOffloading(
     packet,
     env.TASK_PAYLOAD_OFFLOAD_THRESHOLD
   );

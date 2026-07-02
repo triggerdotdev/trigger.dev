@@ -1,6 +1,6 @@
-import { MarQSKeyProducer } from "~/v3/marqs/types";
+import type { MarQSKeyProducer } from "~/v3/marqs/types";
 import { MarQSShortKeyProducer } from "~/v3/marqs/marqsKeyProducer.js";
-import Redis from "ioredis";
+import type Redis from "ioredis";
 
 export function createKeyProducer(prefix: string): MarQSKeyProducer {
   return new MarQSShortKeyProducer(prefix);

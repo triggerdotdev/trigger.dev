@@ -1,8 +1,21 @@
-import { type Prisma, prisma } from "~/db.server";
+import type { Organization, OrgMember, Project } from "@trigger.dev/database";
+import { Prisma as PrismaNamespace, type Prisma, prisma } from "~/db.server";
 import { createEnvironment } from "./organization.server";
 import { customAlphabet } from "nanoid";
 import { logger } from "~/services/logger.server";
+import { getDefaultEnvironmentConcurrencyLimit } from "~/services/platform.v3.server";
 import { rbac } from "~/services/rbac.server";
+
+export const INVITE_NOT_FOUND = "Invite not found";
+export const ENV_SETUP_INCOMPLETE =
+  "You joined the organization, but we couldn't finish setting up your development environments. Please try accepting the invite again, or contact support if this persists.";
+
+export function isAcceptInviteFormError(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    (error.message === INVITE_NOT_FOUND || error.message === ENV_SETUP_INCOMPLETE)
+  );
+}
 
 const tokenValueLength = 40;
 const tokenGenerator = customAlphabet("123456789abcdefghijkmnopqrstuvwxyz", tokenValueLength);
@@ -177,101 +190,318 @@ export async function getUsersInvites({ email }: { email: string }) {
   });
 }
 
-export async function acceptInvite({
-  user,
-  inviteId,
+async function getProjectsMissingMemberDevelopmentEnvironments({
+  memberId,
+  organizationId,
+  projects,
 }: {
-  user: { id: string; email: string };
-  inviteId: string;
+  memberId: string;
+  organizationId: string;
+  projects: Pick<Project, "id">[];
 }) {
-  const result = await prisma.$transaction(async (tx) => {
-    // 1. Delete the invite and get the invite details
-    const invite = await tx.orgMemberInvite.delete({
-      where: {
-        id: inviteId,
-        email: user.email,
-      },
-      include: {
-        organization: {
-          include: {
-            projects: true,
-          },
-        },
-      },
-    });
+  if (projects.length === 0) {
+    return [];
+  }
 
-    // 2. Join the organization
-    const member = await tx.orgMember.create({
-      data: {
-        organizationId: invite.organizationId,
-        userId: user.id,
-        role: invite.role,
-      },
-    });
+  const existingEnvs = await prisma.runtimeEnvironment.findMany({
+    where: {
+      orgMemberId: memberId,
+      organizationId,
+      type: "DEVELOPMENT",
+      projectId: { in: projects.map((project) => project.id) },
+    },
+    select: { projectId: true },
+  });
+  const existingProjectIds = new Set(existingEnvs.map((env) => env.projectId));
 
-    // 3. Create an environment for each project
-    for (const project of invite.organization.projects) {
+  return projects.filter((project) => !existingProjectIds.has(project.id));
+}
+
+export async function provisionMemberDevelopmentEnvironments({
+  inviteId,
+  user,
+  member,
+  organization,
+  projects,
+  maximumConcurrencyLimit,
+}: {
+  inviteId: string;
+  user: { id: string; email: string };
+  member: OrgMember;
+  organization: Pick<Organization, "id" | "maximumConcurrencyLimit">;
+  projects: Pick<Project, "id">[];
+  maximumConcurrencyLimit: number;
+}) {
+  const projectsNeedingEnvs = await getProjectsMissingMemberDevelopmentEnvironments({
+    memberId: member.id,
+    organizationId: organization.id,
+    projects,
+  });
+  const projectIds = projects.map((project) => project.id);
+  const createdProjectIds: string[] = [];
+  let failedProjectId: string | undefined;
+  let failedProjectIndex: number | undefined;
+
+  try {
+    for (const [index, project] of projectsNeedingEnvs.entries()) {
+      failedProjectId = project.id;
+      failedProjectIndex = index;
+
       await createEnvironment({
-        organization: invite.organization,
+        organization,
         project,
         type: "DEVELOPMENT",
         // We set this true but no backfill (yet!?) so never used
         // for dev environments
         isBranchableEnvironment: true,
         member,
-        prismaClient: tx,
+        maximumConcurrencyLimit,
+      });
+
+      createdProjectIds.push(project.id);
+      failedProjectId = undefined;
+      failedProjectIndex = undefined;
+    }
+  } catch (error) {
+    logger.error("acceptInvite: development environment creation failed after membership created", {
+      inviteId,
+      userId: user.id,
+      organizationId: organization.id,
+      orgMemberId: member.id,
+      projectIds,
+      failedProjectId,
+      failedProjectIndex,
+      totalProjects: projectsNeedingEnvs.length,
+      createdProjectIds,
+      error:
+        error instanceof Error
+          ? { name: error.name, message: error.message, stack: error.stack }
+          : String(error),
+    });
+
+    throw new Error(ENV_SETUP_INCOMPLETE);
+  }
+}
+
+async function assignInviteRbacRole({
+  userId,
+  organizationId,
+  rbacRoleId,
+}: {
+  userId: string;
+  organizationId: string;
+  rbacRoleId: string;
+}) {
+  try {
+    const roleResult = await rbac.setUserRole({
+      userId,
+      organizationId,
+      roleId: rbacRoleId,
+    });
+    if (!roleResult.ok) {
+      logger.error("acceptInvite: skipped RBAC role assignment", {
+        organizationId,
+        userId,
+        rbacRoleId,
+        reason: roleResult.error,
       });
     }
+  } catch (error) {
+    logger.error("acceptInvite: RBAC role assignment threw", {
+      organizationId,
+      userId,
+      rbacRoleId,
+      error:
+        error instanceof Error
+          ? { name: error.name, message: error.message, stack: error.stack }
+          : String(error),
+    });
+  }
+}
 
-    // 4. Check for other invites
-    const remainingInvites = await tx.orgMemberInvite.findMany({
+async function tryRecoverIncompleteInviteAccept({
+  user,
+  organizationId,
+  inviteId,
+}: {
+  user: { id: string; email: string };
+  organizationId: string;
+  inviteId: string;
+}) {
+  const member = await prisma.orgMember.findFirst({
+    where: {
+      userId: user.id,
+      organizationId,
+      organization: { deletedAt: null },
+    },
+    include: {
+      organization: {
+        include: {
+          projects: { where: { deletedAt: null } },
+        },
+      },
+    },
+  });
+
+  if (!member) {
+    return null;
+  }
+
+  const missingProjects = await getProjectsMissingMemberDevelopmentEnvironments({
+    memberId: member.id,
+    organizationId,
+    projects: member.organization.projects,
+  });
+
+  if (missingProjects.length === 0) {
+    return null;
+  }
+
+  const maximumConcurrencyLimit = await getDefaultEnvironmentConcurrencyLimit(
+    organizationId,
+    "DEVELOPMENT"
+  );
+
+  await provisionMemberDevelopmentEnvironments({
+    inviteId,
+    user,
+    member,
+    organization: member.organization,
+    projects: missingProjects,
+    maximumConcurrencyLimit,
+  });
+
+  return {
+    remainingInvites: await getUsersInvites({ email: user.email }),
+    organization: member.organization,
+  };
+}
+
+export async function acceptInvite({
+  user,
+  inviteId,
+  organizationId,
+}: {
+  user: { id: string; email: string };
+  inviteId: string;
+  organizationId?: string;
+}) {
+  const invite = await prisma.orgMemberInvite.findFirst({
+    where: {
+      id: inviteId,
+      email: user.email,
+      organization: {
+        deletedAt: null,
+      },
+    },
+    include: {
+      organization: {
+        include: {
+          projects: { where: { deletedAt: null } },
+        },
+      },
+    },
+  });
+
+  if (!invite) {
+    if (organizationId) {
+      const recovered = await tryRecoverIncompleteInviteAccept({
+        user,
+        organizationId,
+        inviteId,
+      });
+      if (recovered) {
+        return recovered;
+      }
+    }
+    throw new Error(INVITE_NOT_FOUND);
+  }
+
+  const maximumConcurrencyLimit = await getDefaultEnvironmentConcurrencyLimit(
+    invite.organizationId,
+    "DEVELOPMENT"
+  );
+
+  let member = await prisma.orgMember.findFirst({
+    where: {
+      organizationId: invite.organizationId,
+      userId: user.id,
+      organization: { deletedAt: null },
+    },
+  });
+
+  if (!member) {
+    try {
+      member = await prisma.orgMember.create({
+        data: {
+          organizationId: invite.organizationId,
+          userId: user.id,
+          role: invite.role,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof PrismaNamespace.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        member = await prisma.orgMember.findFirst({
+          where: {
+            organizationId: invite.organizationId,
+            userId: user.id,
+            organization: { deletedAt: null },
+          },
+        });
+        if (!member) {
+          throw error;
+        }
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  await provisionMemberDevelopmentEnvironments({
+    inviteId,
+    user,
+    member,
+    organization: invite.organization,
+    projects: invite.organization.projects,
+    maximumConcurrencyLimit,
+  });
+
+  // Consume the invite only after development environments are provisioned so
+  // a failed setup can be retried from /invites.
+  try {
+    await prisma.orgMemberInvite.delete({
       where: {
+        id: inviteId,
         email: user.email,
       },
     });
+  } catch (error) {
+    if (
+      !(error instanceof PrismaNamespace.PrismaClientKnownRequestError && error.code === "P2025")
+    ) {
+      throw error;
+    }
+  }
 
-    return {
-      remainingInvites,
-      organization: invite.organization,
-      inviteRole: invite.role,
-      rbacRoleId: invite.rbacRoleId,
-    };
-  });
+  const remainingInvites = await getUsersInvites({ email: user.email });
 
   // If the invite carried an explicit RBAC role, assign it. Best-effort: the
   // invite is already consumed and membership created above, so a failure here
   // — a returned {ok:false} or a thrown error from the plugin — must not block
   // joining the org. Swallow and log either way; without the catch a plugin
   // throw escapes and turns the whole invite-accept into a 400.
-  if (result.rbacRoleId) {
-    try {
-      const roleResult = await rbac.setUserRole({
-        userId: user.id,
-        organizationId: result.organization.id,
-        roleId: result.rbacRoleId,
-      });
-      if (!roleResult.ok) {
-        logger.error("acceptInvite: skipped RBAC role assignment", {
-          organizationId: result.organization.id,
-          userId: user.id,
-          rbacRoleId: result.rbacRoleId,
-          reason: roleResult.error,
-        });
-      }
-    } catch (error) {
-      logger.error("acceptInvite: RBAC role assignment threw", {
-        organizationId: result.organization.id,
-        userId: user.id,
-        rbacRoleId: result.rbacRoleId,
-        error:
-          error instanceof Error
-            ? { name: error.name, message: error.message, stack: error.stack }
-            : String(error),
-      });
-    }
+  if (invite.rbacRoleId) {
+    await assignInviteRbacRole({
+      userId: user.id,
+      organizationId: invite.organization.id,
+      rbacRoleId: invite.rbacRoleId,
+    });
   }
 
-  return { remainingInvites: result.remainingInvites, organization: result.organization };
+  return { remainingInvites, organization: invite.organization };
 }
 
 export async function declineInvite({

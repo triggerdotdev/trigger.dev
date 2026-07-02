@@ -5,7 +5,6 @@ import { z } from "zod";
 import { $replica } from "~/db.server";
 import { env } from "~/env.server";
 import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
-import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { verifyHttpCallbackHash } from "~/services/httpCallback.server";
 import { logger } from "~/services/logger.server";
 import { engine } from "~/v3/runEngine.server";
@@ -84,7 +83,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       `${WaitpointId.toFriendlyId(waitpointId)}/http-callback`
     );
 
-    const result = await engine.completeWaitpoint({
+    const _result = await engine.completeWaitpoint({
       id: waitpointId,
       output: finalData.data
         ? { type: finalData.dataType, value: finalData.data, isError: false }

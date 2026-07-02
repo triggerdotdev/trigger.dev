@@ -1,4 +1,4 @@
-import { PrismaClient } from "@trigger.dev/database";
+import type { PrismaClient } from "@trigger.dev/database";
 import type {
   PendingVersionRunIdLookup,
   PendingVersionRunIdLookupOptions,

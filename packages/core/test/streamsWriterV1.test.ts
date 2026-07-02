@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createServer, Server, IncomingMessage, ServerResponse } from "node:http";
-import { AddressInfo } from "node:net";
+import type { Server, IncomingMessage, ServerResponse } from "node:http";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { StreamsWriterV1 } from "../src/v3/realtimeStreams/streamsWriterV1.js";
 import { ensureReadableStream } from "../src/v3/streams/asyncIterableStream.js";
 
@@ -790,6 +791,7 @@ describe("StreamsWriterV1", () => {
   });
 
   it("should handle empty stream (no chunks)", async () => {
+    // eslint-disable-next-line require-yield
     async function* generateChunks() {
       // Yields nothing
       return;

@@ -3,7 +3,7 @@ import {
   type PendingVersionRunIdLookupOptions,
   type PendingVersionRunIdLookupResult,
 } from "@internal/run-engine";
-import { Logger } from "@trigger.dev/core/logger";
+import type { Logger } from "@trigger.dev/core/logger";
 import type { ClickhouseFactory } from "~/services/clickhouse/clickhouseFactory.server";
 
 export type ClickhousePendingVersionLookupOptions = {

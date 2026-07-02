@@ -2600,7 +2600,7 @@ describe("MollifierBuffer composite-key encoding (collision resistance)", () => 
       expect(colonCount).toBe(4);
       // base64url alphabet has no `:`, `+`, `/`, or `=`.
       const afterNamespace = key.slice("mollifier:idempotency:".length);
-      expect(afterNamespace).toMatch(/^[A-Za-z0-9_\-]+:[A-Za-z0-9_\-]+:[A-Za-z0-9_\-]+$/);
+      expect(afterNamespace).toMatch(/^[A-Za-z0-9_-]+:[A-Za-z0-9_-]+:[A-Za-z0-9_-]+$/);
     }
   );
 });

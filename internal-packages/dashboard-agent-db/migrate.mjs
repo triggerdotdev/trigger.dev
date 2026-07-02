@@ -14,11 +14,14 @@ import postgres from "postgres";
 // can't run the migrator. Prefer the agent's direct url, then its pooled url,
 // then the main DIRECT_URL/DATABASE_URL (OSS single-database fallback; tables
 // still land in the `trigger_dashboard_agent` schema).
-const connectionString =
+// `.replace` expands `${VAR}` refs (e.g. the repo .env's DIRECT_URL=${DATABASE_URL});
+// node's --env-file loads them literally, unlike Prisma's dotenv-expand.
+const connectionString = (
   process.env.DASHBOARD_AGENT_DIRECT_URL ??
   process.env.DASHBOARD_AGENT_DATABASE_URL ??
   process.env.DIRECT_URL ??
-  process.env.DATABASE_URL;
+  process.env.DATABASE_URL
+)?.replace(/\$\{(\w+)\}/g, (_, k) => process.env[k] ?? "");
 
 if (!connectionString) {
   console.error(

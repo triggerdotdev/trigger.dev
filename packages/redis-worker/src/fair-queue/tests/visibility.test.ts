@@ -659,7 +659,7 @@ describe("VisibilityManager", () => {
         const queueId = "tenant:t1:queue:reclaim-test";
         const queueKey = keys.queueKey(queueId);
         const queueItemsKey = keys.queueItemsKey(queueId);
-        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const _tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
         const dispatchKey = keys.dispatchKey(0);
 
         // Add and claim a message
@@ -742,7 +742,7 @@ describe("VisibilityManager", () => {
         const queueId = "tenant:t1:queue:no-timeout";
         const queueKey = keys.queueKey(queueId);
         const queueItemsKey = keys.queueItemsKey(queueId);
-        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const _tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
         const dispatchKey = keys.dispatchKey(0);
 
         // Add and claim a message with long timeout
@@ -791,7 +791,7 @@ describe("VisibilityManager", () => {
         });
 
         const redis = createRedisClient(redisOptions);
-        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const _tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
         const dispatchKey = keys.dispatchKey(0);
 
         // Add and claim messages for two different tenants
@@ -856,7 +856,7 @@ describe("VisibilityManager", () => {
         const queueId = "tenant:t1:queue:fallback-test";
         const queueKey = keys.queueKey(queueId);
         const queueItemsKey = keys.queueItemsKey(queueId);
-        const tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
+        const _tenantQueueIndexKey = keys.tenantQueueIndexKey("t1");
         const dispatchKey = keys.dispatchKey(0);
         const inflightDataKey = keys.inflightDataKey(0);
 

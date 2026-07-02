@@ -72,6 +72,7 @@ export async function buildSyntheticSpanRun(args: {
 
   const taskKind = RunAnnotations.safeParse(run.annotations).data?.taskKind;
   const isAgentRun = taskKind === "AGENT";
+  const isScheduled = taskKind === "SCHEDULED";
 
   const queueName = run.queue ?? "task/";
   const isCancelled = run.status === "CANCELED";
@@ -149,6 +150,7 @@ export async function buildSyntheticSpanRun(args: {
     isRunning: false,
     isError: isFailed,
     isAgentRun,
+    isScheduled,
     payload,
     payloadType: run.payloadType ?? "application/json",
     output: undefined,

@@ -1,7 +1,7 @@
 import { log } from "@clack/prompts";
 import chalk from "chalk";
 import { tryCatch } from "@trigger.dev/core/utils";
-import { CliApiClient } from "../apiClient.js";
+import type { CliApiClient } from "../apiClient.js";
 import { chalkGrey } from "./cliOutput.js";
 import { applyColorMarkup } from "./colorMarkup.js";
 import { evaluateDiscovery } from "./discoveryCheck.js";

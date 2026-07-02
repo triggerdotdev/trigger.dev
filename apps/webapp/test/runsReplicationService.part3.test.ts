@@ -1,6 +1,5 @@
-import { ClickHouse, getTaskRunField, getPayloadField } from "@internal/clickhouse";
+import { ClickHouse, getTaskRunField } from "@internal/clickhouse";
 import { replicationContainerTest } from "@internal/testcontainers";
-import { Logger } from "@trigger.dev/core/logger";
 import { readFile } from "node:fs/promises";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
@@ -183,7 +182,7 @@ describe("RunsReplicationService (part 3/7)", () => {
   replicationContainerTest(
     "should merge duplicate event+run.id combinations keeping the latest version",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
-      await prisma.$executeRawUnsafe(`ALTER TABLE public.\"TaskRun\" REPLICA IDENTITY FULL;`);
+      await prisma.$executeRawUnsafe(`ALTER TABLE public."TaskRun" REPLICA IDENTITY FULL;`);
 
       const clickhouse = new ClickHouse({
         url: clickhouseContainer.getConnectionUrl(),

@@ -1,5 +1,6 @@
 // TaskEventStore.ts
-import { Prisma, TaskEvent } from "@trigger.dev/database";
+import type { TaskEvent } from "@trigger.dev/database";
+import { Prisma } from "@trigger.dev/database";
 import type { PrismaClient, PrismaReplicaClient } from "~/db.server";
 import { env } from "~/env.server";
 import { clampToEmergencySpanCap } from "~/v3/eventRepository/emergencySpanCap.server";

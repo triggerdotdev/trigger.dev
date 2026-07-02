@@ -217,7 +217,7 @@ function parseMessagesToDisplayItems(raw: unknown): DisplayItem[] | undefined {
 
       if (toolCalls.length > 0) {
         // Collect subsequent tool result messages that match these tool calls
-        const toolCallIds = new Set(toolCalls.map((tc) => tc.toolCallId));
+        const _toolCallIds = new Set(toolCalls.map((tc) => tc.toolCallId));
         let j = i + 1;
         while (j < messages.length && messages[j].role === "tool") {
           j++;

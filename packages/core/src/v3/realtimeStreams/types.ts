@@ -1,9 +1,9 @@
-import { AnyZodFetchOptions, ApiRequestOptions } from "../apiClient/core.js";
+import type { AnyZodFetchOptions, ApiRequestOptions } from "../apiClient/core.js";
 import type { InputStreamOncePromise } from "../inputStreams/types.js";
 export { InputStreamOncePromise, InputStreamTimeoutError } from "../inputStreams/types.js";
 export type { InputStreamOnceResult } from "../inputStreams/types.js";
-import { AsyncIterableStream } from "../streams/asyncIterableStream.js";
-import { Prettify } from "../types/utils.js";
+import type { AsyncIterableStream } from "../streams/asyncIterableStream.js";
+import type { Prettify } from "../types/utils.js";
 import type { ManualWaitpointPromise } from "../waitpoints/index.js";
 
 export type RealtimeStreamOperationOptions = {

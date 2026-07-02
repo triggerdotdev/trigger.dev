@@ -1,4 +1,4 @@
-import { createRedisClient, Redis, type RedisOptions } from "@internal/redis";
+import { type Redis, createRedisClient, type RedisOptions } from "@internal/redis";
 import { startSpan, type Tracer } from "@internal/tracing";
 import {
   createCache,
@@ -9,7 +9,7 @@ import {
 } from "@internal/cache";
 import { randomUUID } from "crypto";
 import seedrandom from "seedrandom";
-import {
+import type {
   EnvDescriptor,
   EnvQueues,
   RunQueueKeyProducer,

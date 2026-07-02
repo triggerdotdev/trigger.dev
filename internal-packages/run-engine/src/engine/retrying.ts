@@ -1,3 +1,4 @@
+import type { TaskRunError, TaskRunExecutionRetry } from "@trigger.dev/core/v3";
 import {
   calculateNextRetryDelay,
   isOOMRunError,
@@ -5,12 +6,10 @@ import {
   sanitizeError,
   shouldLookupRetrySettings,
   shouldRetryError,
-  TaskRunError,
   taskRunErrorEnhancer,
-  TaskRunExecutionRetry,
 } from "@trigger.dev/core/v3";
-import { PrismaClientOrTransaction } from "@trigger.dev/database";
-import { RunStore } from "@internal/run-store";
+import type { PrismaClientOrTransaction } from "@trigger.dev/database";
+import type { RunStore } from "@internal/run-store";
 import { MAX_TASK_RUN_ATTEMPTS } from "./consts.js";
 import { ServiceValidationError } from "./errors.js";
 

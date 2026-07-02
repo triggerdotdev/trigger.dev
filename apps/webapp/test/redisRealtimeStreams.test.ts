@@ -1124,7 +1124,7 @@ describe("RedisRealtimeStreams", () => {
             }
           }
         }
-      } catch (error) {
+      } catch (_error) {
         // Expected to eventually close
       } finally {
         reader.releaseLock();

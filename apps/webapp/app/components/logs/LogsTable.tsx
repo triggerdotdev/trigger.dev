@@ -1,20 +1,18 @@
-import { ArrowPathIcon, ArrowTopRightOnSquareIcon } from "@heroicons/react/20/solid";
-import { Link } from "@remix-run/react";
+import { ArrowPathIcon } from "@heroicons/react/20/solid";
 import { useEffect, useRef, useState } from "react";
-import { cn } from "~/utils/cn";
+import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { LogLevelTooltipInfo } from "~/components/LogLevelTooltipInfo";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
 import { useEnvironment } from "~/hooks/useEnvironment";
 import { useOrganization } from "~/hooks/useOrganizations";
 import { useProject } from "~/hooks/useProject";
 import type { LogEntry } from "~/presenters/v3/LogsListPresenter.server";
+import { cn } from "~/utils/cn";
 import { highlightSearchText } from "~/utils/logUtils";
 import { v3RunSpanPath } from "~/utils/pathBuilder";
 import { DateTimeAccurate } from "../primitives/DateTime";
 import { Paragraph } from "../primitives/Paragraph";
 import { Spinner } from "../primitives/Spinner";
-import { LogLevel } from "./LogLevel";
-import { TruncatedCopyableValue } from "../primitives/TruncatedCopyableValue";
-import { LogLevelTooltipInfo } from "~/components/LogLevelTooltipInfo";
 import {
   Table,
   TableBlankRow,
@@ -26,7 +24,7 @@ import {
   TableRow,
   type TableVariant,
 } from "../primitives/Table";
-import { RunsIcon } from "~/assets/icons/RunsIcon";
+import { LogLevel } from "./LogLevel";
 
 type LogsTableProps = {
   logs: LogEntry[];

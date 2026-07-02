@@ -4,7 +4,7 @@ import { expect } from "vitest";
 import { Decimal } from "@trigger.dev/database";
 import { RunEngine } from "../index.js";
 import { setTimeout } from "timers/promises";
-import { EventBusEventArgs } from "../eventBus.js";
+import type { EventBusEventArgs } from "../eventBus.js";
 import { setupAuthenticatedEnvironment, setupBackgroundWorker } from "./setup.js";
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -54,7 +54,7 @@ describe("RunEngine ttl", () => {
       const taskIdentifier = "test-task";
 
       //create background worker
-      const backgroundWorker = await setupBackgroundWorker(
+      const _backgroundWorker = await setupBackgroundWorker(
         engine,
         authenticatedEnvironment,
         taskIdentifier
@@ -1392,7 +1392,7 @@ describe("RunEngine ttl", () => {
   );
 
   containerTest("expireRunsBatch handles non-existent runs", async ({ prisma, redisOptions }) => {
-    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const _authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
     const engine = new RunEngine({
       prisma,
@@ -1521,7 +1521,7 @@ describe("RunEngine ttl", () => {
 
         // Dequeue and start parent
         await setTimeout(500);
-        const dequeued = await engine.dequeueFromWorkerQueue({
+        const _dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
           workerQueue: "main",
         });
@@ -1611,7 +1611,7 @@ describe("RunEngine ttl", () => {
   );
 
   containerTest("expireRunsBatch handles empty array", async ({ prisma, redisOptions }) => {
-    const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const _authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
     const engine = new RunEngine({
       prisma,

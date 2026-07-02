@@ -1,12 +1,9 @@
-import { ApiClient } from "../apiClient/index.js";
-import {
-  InputStreamOncePromise,
-  InputStreamOnceResult,
-  InputStreamTimeoutError,
-} from "../inputStreams/types.js";
-import { InputStreamOnceOptions } from "../realtimeStreams/types.js";
+import type { ApiClient } from "../apiClient/index.js";
+import type { InputStreamOnceResult } from "../inputStreams/types.js";
+import { InputStreamOncePromise, InputStreamTimeoutError } from "../inputStreams/types.js";
+import type { InputStreamOnceOptions } from "../realtimeStreams/types.js";
 import { computeReconnectDelayMs } from "../utils/reconnectBackoff.js";
-import { SessionChannelIO, SessionStreamManager } from "./types.js";
+import type { SessionChannelIO, SessionStreamManager } from "./types.js";
 import { controlSubtype } from "./wireProtocol.js";
 
 // A handler that synchronously returns `true` CONSUMES the record: it is
@@ -288,7 +285,7 @@ export class StandardSessionStreamManager implements SessionStreamManager {
   disconnectStream(sessionId: string, io: SessionChannelIO): void {
     const key = keyFor(sessionId, io);
     const tail = this.tails.get(key);
-    const bufferedSize = this.buffer.get(key)?.length ?? 0;
+    const _bufferedSize = this.buffer.get(key)?.length ?? 0;
     // Mark as explicitly disconnected BEFORE we abort, so the tail's
     // `.finally` reconnect path sees the flag when it runs (which can be
     // synchronous in the AbortError catch). Cleared on the next explicit

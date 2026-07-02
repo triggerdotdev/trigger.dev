@@ -1,9 +1,9 @@
 import { sanitizeQueueName } from "@trigger.dev/core/v3/isomorphic";
-import { PrismaClientOrTransaction } from "@trigger.dev/database";
-import { AuthenticatedEnvironment } from "~/services/apiAuth.server";
+import type { PrismaClientOrTransaction } from "@trigger.dev/database";
+import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
 import { logger } from "~/services/logger.server";
 import { findCurrentWorkerFromEnvironment } from "~/v3/models/workerDeployment.server";
-import {
+import type {
   LockedBackgroundWorker,
   QueueManager,
   QueueProperties,

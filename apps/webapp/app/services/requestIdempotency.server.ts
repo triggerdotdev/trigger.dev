@@ -1,8 +1,10 @@
-import { Logger, LogLevel } from "@trigger.dev/core/logger";
-import { createCache, DefaultStatefulContext, Namespace, Cache as UnkeyCache } from "@unkey/cache";
+import type { LogLevel } from "@trigger.dev/core/logger";
+import { Logger } from "@trigger.dev/core/logger";
+import type { Cache as UnkeyCache } from "@unkey/cache";
+import { createCache, DefaultStatefulContext, Namespace } from "@unkey/cache";
 import { createLRUMemoryStore } from "@internal/cache";
 import { RedisCacheStore } from "./unkey/redisCacheStore.server";
-import { RedisWithClusterOptions } from "~/redis.server";
+import type { RedisWithClusterOptions } from "~/redis.server";
 import { validate as uuidValidate, version as uuidVersion } from "uuid";
 import { startActiveSpan } from "~/v3/tracer.server";
 

@@ -3,7 +3,6 @@ import {
   ApiRunListPresenter,
   ApiRunListSearchParams,
 } from "~/presenters/v3/ApiRunListPresenter.server";
-import { logger } from "~/services/logger.server";
 import { anyResource, createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 export const loader = createLoaderApiRoute(

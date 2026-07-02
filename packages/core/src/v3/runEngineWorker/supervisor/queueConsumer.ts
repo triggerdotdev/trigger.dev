@@ -1,7 +1,7 @@
 import { SimpleStructuredLogger } from "../../utils/structuredLogger.js";
-import { SupervisorHttpClient } from "./http.js";
-import { WorkerApiDequeueResponseBody, WorkerQueueClass } from "./schemas.js";
-import { PreDequeueFn, PreSkipFn } from "./types.js";
+import type { SupervisorHttpClient } from "./http.js";
+import type { WorkerApiDequeueResponseBody, WorkerQueueClass } from "./schemas.js";
+import type { PreDequeueFn, PreSkipFn } from "./types.js";
 import type { ConsumerPoolMetrics } from "./consumerPoolMetrics.js";
 
 export interface QueueConsumer {

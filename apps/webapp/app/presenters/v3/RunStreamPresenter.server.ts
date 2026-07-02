@@ -2,7 +2,8 @@ import { type PrismaClient, prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { requireUserId } from "~/services/session.server";
 import { singleton } from "~/utils/singleton";
-import { ABORT_REASON_SEND_ERROR, createSSELoader, SendFunction } from "~/utils/sse";
+import type { SendFunction } from "~/utils/sse";
+import { ABORT_REASON_SEND_ERROR, createSSELoader } from "~/utils/sse";
 import { throttle } from "~/utils/throttle";
 import { getMollifierBuffer } from "~/v3/mollifier/mollifierBuffer.server";
 import { deserialiseMollifierSnapshot } from "~/v3/mollifier/mollifierSnapshot.server";
@@ -158,7 +159,7 @@ export class RunStreamPresenter {
             try {
               // Send an actual message so the client refreshes
               throttledSend({ send, event: "message", data: new Date().toISOString() });
-            } catch (error) {
+            } catch (_error) {
               // If we can't send a ping, the connection is likely dead
               return false;
             }

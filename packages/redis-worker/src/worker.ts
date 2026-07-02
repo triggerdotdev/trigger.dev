@@ -1,14 +1,14 @@
-import { createRedisClient, Redis, type RedisOptions } from "@internal/redis";
+import { type Redis, createRedisClient, type RedisOptions } from "@internal/redis";
 import {
-  Attributes,
-  Histogram,
-  Meter,
+  type Attributes,
+  type Histogram,
+  type Meter,
+  type ObservableResult,
+  type Tracer,
   metrics,
-  ObservableResult,
   SpanKind,
   startSpan,
   trace,
-  Tracer,
   ValueType,
 } from "@internal/tracing";
 import { Logger } from "@trigger.dev/core/logger";
@@ -18,7 +18,7 @@ import { shutdownManager } from "@trigger.dev/core/v3/serverOnly";
 import { nanoid } from "nanoid";
 import pLimit from "p-limit";
 import { z } from "zod";
-import { AnyQueueItem, SimpleQueue } from "./queue.js";
+import { type AnyQueueItem, SimpleQueue } from "./queue.js";
 import { parseExpression } from "cron-parser";
 
 export const CronSchema = z.object({
@@ -206,6 +206,17 @@ class Worker<TCatalog extends WorkerCatalog> {
     concurrencyLimitPendingObservableGauge.addCallback(
       this.#updateConcurrencyLimitPendingMetric.bind(this)
     );
+
+    const oldestMessageAgeObservableGauge = this.meter.createObservableGauge(
+      "redis_worker.queue.oldest_message_age",
+      {
+        description: "Age of the oldest overdue message in the queue",
+        unit: "ms",
+        valueType: ValueType.INT,
+      }
+    );
+
+    oldestMessageAgeObservableGauge.addCallback(this.#updateOldestMessageAgeMetric.bind(this));
   }
 
   async #updateQueueSizeMetric(observableResult: ObservableResult<Attributes>) {
@@ -219,6 +230,14 @@ class Worker<TCatalog extends WorkerCatalog> {
   async #updateDeadLetterQueueSizeMetric(observableResult: ObservableResult<Attributes>) {
     const deadLetterQueueSize = await this.queue.sizeOfDeadLetterQueue();
     observableResult.observe(deadLetterQueueSize, {
+      worker_name: this.options.name,
+    });
+  }
+
+  async #updateOldestMessageAgeMetric(observableResult: ObservableResult<Attributes>) {
+    const oldestMessageAge = await this.queue.oldestMessageAge();
+
+    observableResult.observe(oldestMessageAge, {
       worker_name: this.options.name,
     });
   }

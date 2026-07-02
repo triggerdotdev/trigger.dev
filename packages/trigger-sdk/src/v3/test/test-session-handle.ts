@@ -5,13 +5,8 @@ import type {
   WriterStreamOptions,
 } from "@trigger.dev/core/v3";
 import { ensureReadableStream, ManualWaitpointPromise } from "@trigger.dev/core/v3";
-import {
-  SessionHandle,
-  SessionInputChannel,
-  SessionOutputChannel,
-  SessionPipeStreamOptions,
-  SessionSubscribeOptions,
-} from "../sessions.js";
+import type { SessionPipeStreamOptions, SessionSubscribeOptions } from "../sessions.js";
+import { SessionHandle, SessionInputChannel, SessionOutputChannel } from "../sessions.js";
 
 /**
  * Stub for `SessionInputChannel.wait` that skips the apiClient round-trip

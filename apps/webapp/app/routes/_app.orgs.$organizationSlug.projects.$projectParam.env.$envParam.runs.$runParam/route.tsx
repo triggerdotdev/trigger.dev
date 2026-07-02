@@ -36,6 +36,7 @@ import { AdminDebugTooltip } from "~/components/admin/debugTooltip";
 import { PageBody } from "~/components/layout/AppLayout";
 import { Badge } from "~/components/primitives/Badge";
 import { Button, LinkButton } from "~/components/primitives/Buttons";
+import { Callout } from "~/components/primitives/Callout";
 import { CopyableText } from "~/components/primitives/CopyableText";
 import { DateTimeShort } from "~/components/primitives/DateTime";
 import { Dialog, DialogTrigger } from "~/components/primitives/Dialog";
@@ -599,8 +600,16 @@ function TraceView({
     return <></>;
   }
 
-  const { events, duration, rootSpanStatus, rootStartedAt, queuedDuration, overridesBySpanId } =
-    trace;
+  const {
+    events,
+    duration,
+    rootSpanStatus,
+    rootStartedAt,
+    queuedDuration,
+    overridesBySpanId,
+    isTruncated = false,
+    missingAnchor = false,
+  } = trace;
 
   const changeToSpan = useDebounce((selectedSpan: string) => {
     replaceSearchParam("span", selectedSpan, { replace: true });
@@ -647,31 +656,44 @@ function TraceView({
           id={resizableSettings.parent.main.id}
           min={resizableSettings.parent.main.min}
         >
-          <TasksTreeView
-            selectedId={selectedSpanId}
-            key={events[0]?.id ?? "-"}
-            events={events}
-            onSelectedIdChanged={(selectedSpan) => {
-              //instantly close the panel if no span is selected
-              if (!selectedSpan) {
-                replaceSearchParam("span");
-                return;
-              }
+          <div className="flex h-full flex-col overflow-hidden">
+            {isTruncated && (
+              <div className="shrink-0 border-b border-charcoal-700 px-3 py-2">
+                <Callout variant="warning" className="text-sm">
+                  {missingAnchor
+                    ? "Trace too large to display completely."
+                    : "This run's trace is partially displayed because it exceeds the view limit."}
+                </Callout>
+              </div>
+            )}
+            <div className="min-h-0 flex-1">
+              <TasksTreeView
+                selectedId={selectedSpanId}
+                key={events[0]?.id ?? "-"}
+                events={events}
+                onSelectedIdChanged={(selectedSpan) => {
+                  //instantly close the panel if no span is selected
+                  if (!selectedSpan) {
+                    replaceSearchParam("span");
+                    return;
+                  }
 
-              changeToSpan(selectedSpan);
-            }}
-            totalDuration={duration}
-            rootSpanStatus={rootSpanStatus}
-            rootStartedAt={rootStartedAt ? new Date(rootStartedAt) : undefined}
-            queuedDuration={queuedDuration}
-            environmentType={run.environment.type}
-            shouldLiveReload={isLiveReloading}
-            maximumLiveReloadingSetting={maximumLiveReloadingSetting}
-            rootRun={run.rootTaskRun}
-            parentRun={run.parentTaskRun}
-            isCompleted={run.completedAt !== null}
-            treeSnapshot={resizable.tree as ResizableSnapshot}
-          />
+                  changeToSpan(selectedSpan);
+                }}
+                totalDuration={duration}
+                rootSpanStatus={rootSpanStatus}
+                rootStartedAt={rootStartedAt ? new Date(rootStartedAt) : undefined}
+                queuedDuration={queuedDuration}
+                environmentType={run.environment.type}
+                shouldLiveReload={isLiveReloading}
+                maximumLiveReloadingSetting={maximumLiveReloadingSetting}
+                rootRun={run.rootTaskRun}
+                parentRun={run.parentTaskRun}
+                isCompleted={run.completedAt !== null}
+                treeSnapshot={resizable.tree as ResizableSnapshot}
+              />
+            </div>
+          </div>
         </ResizablePanel>
         <ResizableHandle
           id={resizableSettings.parent.handleId}

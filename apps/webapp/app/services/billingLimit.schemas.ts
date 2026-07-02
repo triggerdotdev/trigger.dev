@@ -1,4 +1,4 @@
-import { BillingClient } from "@trigger.dev/platform";
+import type { BillingClient } from "@trigger.dev/platform";
 import { z } from "zod";
 
 /**

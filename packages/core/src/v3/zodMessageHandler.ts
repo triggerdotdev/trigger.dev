@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { StructuredLogger } from "./utils/structuredLogger.js";
+import type { StructuredLogger } from "./utils/structuredLogger.js";
 
 export class ZodSchemaParsedError extends Error {
   constructor(

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ABSOLUTE_ALERT_BASE_CENTS,
   clearedAlertsPayload,
   emailsMatchSaved,
   getAlertPreviewLimitCents,
@@ -13,14 +14,12 @@ import {
   normalizeBillingAlertsFromApi,
   percentageAlertLevelsToUiThresholds,
   previewDollarAmountForPercent,
-  resetAlertsPayloadForLimitMode,
   shouldClearAlertsOnLimitChange,
   shouldResetAlertsOnLimitChange,
   storedAlertsToThresholds,
   thresholdsMatchSaved,
   thresholdsToAlertPayload,
   thresholdValuesAreUnique,
-  ABSOLUTE_ALERT_BASE_CENTS,
 } from "~/components/billing/billingAlertsFormat";
 
 const legacyDefaultLevels = [0.75, 0.9, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0];

@@ -1,5 +1,4 @@
-import type { PrismaClient } from "@trigger.dev/database";
-import type { TaskRunStatus } from "@trigger.dev/database";
+import type { PrismaClient, TaskRunStatus } from "@trigger.dev/database";
 import { QUEUED_STATUSES, RUNNING_STATUSES } from "~/components/runs/v3/TaskRunStatus";
 import { prisma } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";

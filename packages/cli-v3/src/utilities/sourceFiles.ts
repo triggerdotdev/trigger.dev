@@ -1,4 +1,4 @@
-import { ResolvedConfig } from "@trigger.dev/core/v3/build";
+import type { ResolvedConfig } from "@trigger.dev/core/v3/build";
 import type {
   BackgroundWorkerSourceFileMetadata,
   TaskFile,

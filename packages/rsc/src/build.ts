@@ -1,4 +1,4 @@
-import { BuildExtension } from "@trigger.dev/core/v3/build";
+import type { BuildExtension } from "@trigger.dev/core/v3/build";
 import { sourceDir } from "./sourceDir.js";
 
 export type RSCExtensionOptions = {

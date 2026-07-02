@@ -1,7 +1,8 @@
-import { z } from "zod";
-import { PrismaClient, prisma } from "~/db.server";
+import type { z } from "zod";
+import type { PrismaClient } from "~/db.server";
+import { prisma } from "~/db.server";
 import { logger } from "~/services/logger.server";
-import { NotificationCatalog, NotificationChannel } from "./types";
+import type { NotificationCatalog, NotificationChannel } from "./types";
 
 export class PgNotifyService {
   #prismaClient: PrismaClient;

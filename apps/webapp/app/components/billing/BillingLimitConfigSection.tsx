@@ -1,12 +1,12 @@
-import { conform, useForm, type Submission } from "@conform-to/react";
+import { getFormProps, useForm, type SubmissionResult } from "@conform-to/react";
 
-import { parse } from "@conform-to/zod";
+import { parseWithZod } from "@conform-to/zod";
 import { Form, useActionData } from "@remix-run/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
-import { AnimatedCallout } from "~/components/primitives/AnimatedCallout";
 import { getBillingLimitMode } from "~/components/billing/billingAlertsFormat";
 import { formatGracePeriodMs } from "~/components/billing/billingLimitFormat";
+import { AnimatedCallout } from "~/components/primitives/AnimatedCallout";
 import { Button } from "~/components/primitives/Buttons";
 import { CheckboxWithLabel } from "~/components/primitives/Checkbox";
 import { Fieldset } from "~/components/primitives/Fieldset";
@@ -18,7 +18,6 @@ import { InputGroup } from "~/components/primitives/InputGroup";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import { RadioGroup, RadioGroupItem } from "~/components/primitives/RadioButton";
 import type { BillingLimitResult } from "~/services/billingLimit.schemas";
-import { cn } from "~/utils/cn";
 import { formatCurrency } from "~/utils/numberFormatter";
 
 export const billingLimitFormSchema = z.discriminatedUnion("mode", [
@@ -45,11 +44,9 @@ export const billingLimitFormSchema = z.discriminatedUnion("mode", [
   }),
 ]);
 
-type BillingLimitFormValue = z.infer<typeof billingLimitFormSchema>;
-
 type BillingLimitActionData = {
   formIntent: "billing-limit";
-  submission: Submission<BillingLimitFormValue>;
+  submission: SubmissionResult;
 };
 
 export function isBillingLimitFormDirty(input: {
@@ -118,6 +115,7 @@ export function BillingLimitConfigSection({
   const [customAmount, setCustomAmount] = useState(savedCustomAmount);
   const [cancelInProgressRuns, setCancelInProgressRuns] = useState(savedCancelInProgressRuns);
   const customAmountInputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     setMode(savedMode);
@@ -140,8 +138,8 @@ export function BillingLimitConfigSection({
   const limitSubmission =
     actionData?.formIntent === "billing-limit" ? actionData.submission : undefined;
 
-  const needsInitialSave = !billingLimit.isConfigured;
-  const isLimitDirty =
+  const _needsInitialSave = !billingLimit.isConfigured;
+  const _isLimitDirty =
     mode !== savedMode || (mode === "custom" && customAmount !== savedCustomAmount);
   const isDirty = isBillingLimitFormDirty({
     billingLimit,
@@ -156,10 +154,10 @@ export function BillingLimitConfigSection({
 
   const [form, fields] = useForm({
     id: "billing-limit",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     shouldRevalidate: "onInput",
     onValidate({ formData }) {
-      return parse(formData, { schema: billingLimitFormSchema });
+      return parseWithZod(formData, { schema: billingLimitFormSchema });
     },
     defaultValue: {
       mode: savedMode,
@@ -167,8 +165,8 @@ export function BillingLimitConfigSection({
   });
 
   useEffect(() => {
-    form.ref.current?.dispatchEvent(new Event("input", { bubbles: true }));
-  }, [customAmount, form.ref, mode]);
+    formRef.current?.dispatchEvent(new Event("input", { bubbles: true }));
+  }, [customAmount, mode]);
 
   const planLimitLabel = formatCurrency(planLimitCents / 100, false);
   const showPlanInfoCallout = mode === "plan";
@@ -185,7 +183,7 @@ export function BillingLimitConfigSection({
         </Paragraph>
       </div>
 
-      <Form method="post" {...form.props}>
+      <Form method="post" {...getFormProps(form)} ref={formRef}>
         <input type="hidden" name="intent" value="billing-limit" />
         <Fieldset>
           <input type="hidden" name="mode" value={mode} />
@@ -245,7 +243,7 @@ export function BillingLimitConfigSection({
                       fullWidth
                     />
                     {fields.amount && (
-                      <FormError id={fields.amount.errorId}>{fields.amount.error}</FormError>
+                      <FormError id={fields.amount.errorId}>{fields.amount.errors}</FormError>
                     )}
                   </InputGroup>
                 )}

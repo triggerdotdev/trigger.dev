@@ -54,7 +54,7 @@ function modelIcon(system: string, model: string): ReactNode {
 }
 
 export function ModelsFilter({ possibleModels }: ModelsFilterProps) {
-  const { values, replace, del } = useSearchParams();
+  const { values, replace: _replace, del } = useSearchParams();
   const selectedModels = values("models");
 
   if (selectedModels.length === 0 || selectedModels.every((v) => v === "")) {

@@ -1,5 +1,5 @@
-import { useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import {
   BellAlertIcon,
   BellSlashIcon,
@@ -116,17 +116,16 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema });
+  const submission = parseWithZod(formData, { schema });
 
-  if (!submission.value) {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   const project = await findProjectBySlug(organizationSlug, projectParam, userId);
 
   if (!project) {
-    submission.error.key = ["Project not found"];
-    return json(submission);
+    return json(submission.reply({ formErrors: ["Project not found"] }));
   }
 
   switch (submission.value.action) {
@@ -385,18 +384,18 @@ function DeleteAlertChannelButton(props: { id: string }) {
     navigation.formMethod === "post" &&
     navigation.formData?.get("action") === "delete";
 
-  const [form, { id }] = useForm({
+  const [form] = useForm({
     id: "delete-alert-channel",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
     shouldRevalidate: "onSubmit",
   });
 
   return (
-    <Form method="post" {...form.props}>
+    <Form method="post" {...getFormProps(form)}>
       <input type="hidden" name="id" value={props.id} />
       <Button
         name="action"
@@ -424,18 +423,18 @@ function DisableAlertChannelButton(props: { id: string }) {
     navigation.formMethod === "post" &&
     navigation.formData?.get("action") === "delete";
 
-  const [form, { id }] = useForm({
+  const [form] = useForm({
     id: "disable-alert-channel",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
     shouldRevalidate: "onSubmit",
   });
 
   return (
-    <Form method="post" {...form.props}>
+    <Form method="post" {...getFormProps(form)}>
       <input type="hidden" name="id" value={props.id} />
 
       <Button
@@ -464,18 +463,18 @@ function EnableAlertChannelButton(props: { id: string }) {
     navigation.formMethod === "post" &&
     navigation.formData?.get("action") === "delete";
 
-  const [form, { id }] = useForm({
+  const [form] = useForm({
     id: "enable-alert-channel",
     // TODO: type this
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
     shouldRevalidate: "onSubmit",
   });
 
   return (
-    <Form method="post" {...form.props}>
+    <Form method="post" {...getFormProps(form)}>
       <input type="hidden" name="id" value={props.id} />
 
       <Button

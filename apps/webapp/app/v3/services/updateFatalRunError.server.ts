@@ -1,7 +1,8 @@
 import { BaseService } from "./baseService.server";
 import { logger } from "~/services/logger.server";
 import { isFatalRunStatus } from "../taskStatus";
-import { TaskRunErrorCodes, TaskRunInternalError } from "@trigger.dev/core/v3";
+import type { TaskRunInternalError } from "@trigger.dev/core/v3";
+import { TaskRunErrorCodes } from "@trigger.dev/core/v3";
 import { FinalizeTaskRunService } from "./finalizeTaskRun.server";
 
 export type UpdateFatalRunErrorServiceOptions = {

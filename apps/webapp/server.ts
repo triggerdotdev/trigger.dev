@@ -4,13 +4,13 @@ import { createRequestHandler } from "@remix-run/express";
 import { broadcastDevReady, logDevReady } from "@remix-run/server-runtime";
 import compression from "compression";
 import type { Server as EngineServer } from "engine.io";
-import express from "express";
+import express, { type RequestHandler } from "express";
 import morgan from "morgan";
 import { nanoid } from "nanoid";
 import path from "path";
 import type { Server as IoServer } from "socket.io";
-import { WebSocketServer } from "ws";
-import { RateLimitMiddleware } from "~/services/apiRateLimit.server";
+import type { WebSocketServer } from "ws";
+import type { RateLimitMiddleware } from "~/services/apiRateLimit.server";
 import { type RunWithHttpContextFunction } from "~/services/httpAsyncStorage.server";
 import cluster from "node:cluster";
 import os from "node:os";
@@ -139,8 +139,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
     const apiRateLimiter: RateLimitMiddleware = build.entry.module.apiRateLimiter;
     const engineRateLimiter: RateLimitMiddleware = build.entry.module.engineRateLimiter;
     const runWithHttpContext: RunWithHttpContextFunction = build.entry.module.runWithHttpContext;
-    const tenantContextMiddleware: import("express").RequestHandler =
-      build.entry.module.tenantContextMiddleware;
+    const tenantContextMiddleware: RequestHandler = build.entry.module.tenantContextMiddleware;
 
     app.use((req, res, next) => {
       // helpful headers:
@@ -270,7 +269,7 @@ if (ENABLE_CLUSTER && cluster.isPrimary) {
         console.log(`Socket.io client connected, upgrading their connection...`);
 
         // https://github.com/socketio/socket.io/issues/4693
-        (socketIo?.io.engine as EngineServer).handleUpgrade(req, socket, head);
+        (socketIo!.io.engine as EngineServer).handleUpgrade(req, socket, head);
         return;
       }
 

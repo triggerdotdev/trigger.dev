@@ -1,5 +1,5 @@
 import { JSONHeroPath } from "@jsonhero/path";
-import { RunMetadataChangeOperation } from "../schemas/common.js";
+import type { RunMetadataChangeOperation } from "../schemas/common.js";
 import { dequal } from "dequal";
 
 export type ApplyOperationResult = {

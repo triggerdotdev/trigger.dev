@@ -4,10 +4,6 @@ sidebarTitle: "Testing"
 description: "Drive a chat.agent through real turns in unit tests — no network, no task runtime, no mocking the SDK."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 ## Overview
 
 `@trigger.dev/sdk/ai/test` exports `mockChatAgent`, an offline harness that runs your `chat.agent` definition's `run()` function inside an in-memory task runtime. You send messages, actions, and stop signals through driver methods and assert against the chunks the agent emits.

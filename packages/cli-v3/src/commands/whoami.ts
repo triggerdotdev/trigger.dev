@@ -2,7 +2,7 @@ import { intro, note, outro } from "@clack/prompts";
 import { chalkLink } from "../utilities/cliOutput.js";
 import { logger } from "../utilities/logger.js";
 import { isLoggedIn } from "../utilities/session.js";
-import { Command } from "commander";
+import type { Command } from "commander";
 import { printInitialBanner } from "../utilities/initialBanner.js";
 import {
   CommonCommandOptions,

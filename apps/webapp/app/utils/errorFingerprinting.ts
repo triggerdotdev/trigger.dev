@@ -54,7 +54,7 @@ export function normalizeErrorMessage(message: string): string {
       // Standalone numeric IDs (4+ digits)
       .replace(/\b\d{4,}\b/g, "<id>")
       // File paths (Unix style)
-      .replace(/(?:\/[^\/\s]+){2,}/g, "<path>")
+      .replace(/(?:\/[^/\s]+){2,}/g, "<path>")
       // File paths (Windows style)
       .replace(/[A-Z]:\\(?:[^\\]+\\)+[^\\]+/g, "<path>")
       // Email addresses
@@ -83,7 +83,7 @@ export function normalizeStackTrace(stack: string): string {
       // Remove standalone numbers
       line = line.replace(/\b\d+\b/g, "_");
       // Remove file paths but keep filename
-      line = line.replace(/(?:\/[^\/\s]+)+\/([^\/\s]+)/g, "$1");
+      line = line.replace(/(?:\/[^/\s]+)+\/([^/\s]+)/g, "$1");
       // Normalize whitespace
       line = line.trim();
       return line;

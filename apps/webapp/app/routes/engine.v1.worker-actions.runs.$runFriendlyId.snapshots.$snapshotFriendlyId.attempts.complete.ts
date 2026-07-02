@@ -1,8 +1,7 @@
-import { json, TypedResponse } from "@remix-run/server-runtime";
-import {
-  WorkerApiRunAttemptCompleteRequestBody,
-  WorkerApiRunAttemptCompleteResponseBody,
-} from "@trigger.dev/core/v3/workers";
+import type { TypedResponse } from "@remix-run/server-runtime";
+import { json } from "@remix-run/server-runtime";
+import type { WorkerApiRunAttemptCompleteResponseBody } from "@trigger.dev/core/v3/workers";
+import { WorkerApiRunAttemptCompleteRequestBody } from "@trigger.dev/core/v3/workers";
 import { z } from "zod";
 import { createActionWorkerApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 

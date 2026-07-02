@@ -1,6 +1,6 @@
-import { DeserializedJson } from "@trigger.dev/core";
+import type { DeserializedJson } from "@trigger.dev/core";
 import {
-  ApiRequestOptions,
+  type ApiRequestOptions,
   mergeRequestOptions,
   runMetadata,
   type RunMetadataUpdater,

@@ -1,5 +1,5 @@
 import { generateFriendlyId, WaitpointId } from "@trigger.dev/core/v3/isomorphic";
-import {
+import type {
   PrismaClient,
   TaskRunExecutionSnapshot,
   TaskRunExecutionStatus,

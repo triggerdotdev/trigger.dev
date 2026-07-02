@@ -1,9 +1,10 @@
-import { ApiClient } from "../apiClient/index.js";
-import { ensureAsyncIterable, ensureReadableStream } from "../streams/asyncIterableStream.js";
-import { AnyZodFetchOptions } from "../zodfetch.js";
+import type { ApiClient } from "../apiClient/index.js";
+import { ensureReadableStream } from "../streams/asyncIterableStream.js";
 import { taskContext } from "../task-context-api.js";
-import { CreateStreamResponseLike, StreamInstance } from "./streamInstance.js";
-import {
+import type { AnyZodFetchOptions } from "../zodfetch.js";
+import type { CreateStreamResponseLike } from "./streamInstance.js";
+import { StreamInstance } from "./streamInstance.js";
+import type {
   RealtimeStreamInstance,
   RealtimeStreamOperationOptions,
   RealtimeStreamsManager,
@@ -230,43 +231,4 @@ function getRunIdForOptions(options?: RealtimeStreamOperationOptions): string | 
   }
 
   return taskContext.ctx?.run?.id;
-}
-
-type ParsedStreamResponse =
-  | {
-      version: "v1";
-    }
-  | {
-      version: "v2";
-      accessToken: string;
-      basin: string;
-      flushIntervalMs?: number;
-      maxRetries?: number;
-    };
-
-function parseCreateStreamResponse(
-  version: string,
-  headers: Record<string, string> | undefined
-): ParsedStreamResponse {
-  if (version === "v1") {
-    return { version: "v1" };
-  }
-
-  const accessToken = headers?.["x-s2-access-token"];
-  const basin = headers?.["x-s2-basin"];
-
-  if (!accessToken || !basin) {
-    return { version: "v1" };
-  }
-
-  const flushIntervalMs = headers?.["x-s2-flush-interval-ms"];
-  const maxRetries = headers?.["x-s2-max-retries"];
-
-  return {
-    version: "v2",
-    accessToken,
-    basin,
-    flushIntervalMs: flushIntervalMs ? parseInt(flushIntervalMs) : undefined,
-    maxRetries: maxRetries ? parseInt(maxRetries) : undefined,
-  };
 }

@@ -4,10 +4,6 @@ sidebarTitle: "Compaction"
 description: "Automatic context compaction to keep long conversations within token limits."
 ---
 
-import RcBanner from "/snippets/ai-chat-rc-banner.mdx";
-
-<RcBanner />
-
 ## Overview
 
 Long conversations accumulate tokens across turns. Eventually the context window fills up, causing errors or degraded responses. Compaction solves this by automatically summarizing the conversation when token usage exceeds a threshold, then using that summary as the context for future turns.

@@ -1,5 +1,5 @@
-import { AnyRunShape } from "@trigger.dev/core/v3";
-import {
+import type { AnyRunShape } from "@trigger.dev/core/v3";
+import type {
   ListRunResponseItem,
   RetrieveRunResponse,
   RetrieveRunTraceResponseBody,

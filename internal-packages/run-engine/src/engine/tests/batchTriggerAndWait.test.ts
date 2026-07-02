@@ -86,7 +86,7 @@ describe("RunEngine batchTriggerAndWait", () => {
 
       //dequeue parent
       await setTimeout(500);
-      const dequeued = await engine.dequeueFromWorkerQueue({
+      const _dequeued = await engine.dequeueFromWorkerQueue({
         consumerId: "test_12345",
         workerQueue: "main",
       });
@@ -94,7 +94,7 @@ describe("RunEngine batchTriggerAndWait", () => {
       //create an attempt
       const initialExecutionData = await engine.getRunExecutionData({ runId: parentRun.id });
       assertNonNullable(initialExecutionData);
-      const attemptResult = await engine.startRunAttempt({
+      const _attemptResult = await engine.startRunAttempt({
         runId: parentRun.id,
         snapshotId: initialExecutionData.snapshot.id,
       });
@@ -440,7 +440,7 @@ describe("RunEngine batchTriggerAndWait", () => {
 
         //dequeue parent
         await setTimeout(500);
-        const dequeued = await engine.dequeueFromWorkerQueue({
+        const _dequeued = await engine.dequeueFromWorkerQueue({
           consumerId: "test_12345",
           workerQueue: "main",
         });
@@ -448,7 +448,7 @@ describe("RunEngine batchTriggerAndWait", () => {
         //create an attempt
         const initialExecutionData = await engine.getRunExecutionData({ runId: parentRun.id });
         assertNonNullable(initialExecutionData);
-        const attemptResult = await engine.startRunAttempt({
+        const _attemptResult = await engine.startRunAttempt({
           runId: parentRun.id,
           snapshotId: initialExecutionData.snapshot.id,
         });
@@ -546,7 +546,7 @@ describe("RunEngine batchTriggerAndWait", () => {
         expect(parentExecutionDataAfterBatchChildComplete.completedWaitpoints.length).toBe(2);
 
         //now triggerAndWait
-        const triggerAndWaitChildRun = await engine.trigger(
+        const _triggerAndWaitChildRun = await engine.trigger(
           {
             number: 1,
             friendlyId: "run_c123456",

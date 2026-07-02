@@ -1,8 +1,7 @@
-import { useState } from "react";
 import type { ColumnSchema } from "@internal/tsql";
+import { useState } from "react";
 import { Badge } from "~/components/primitives/Badge";
 import { CopyableText } from "~/components/primitives/CopyableText";
-import { Header3 } from "~/components/primitives/Headers";
 import { Paragraph } from "~/components/primitives/Paragraph";
 import SegmentedControl from "~/components/primitives/SegmentedControl";
 import { querySchemas } from "~/v3/querySchemas";

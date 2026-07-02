@@ -116,7 +116,7 @@ export function ErrorBoundary() {
 }
 
 export default function App() {
-  const { posthogProjectKey, kapa } = useTypedLoaderData<typeof loader>();
+  const { posthogProjectKey, kapa: _kapa } = useTypedLoaderData<typeof loader>();
   usePostHog(posthogProjectKey);
 
   return (

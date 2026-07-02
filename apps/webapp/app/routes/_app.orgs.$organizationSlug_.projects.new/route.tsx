@@ -1,5 +1,5 @@
-import { conform, useForm } from "@conform-to/react";
-import { parse } from "@conform-to/zod";
+import { getFormProps, getInputProps, useForm } from "@conform-to/react";
+import { parseWithZod } from "@conform-to/zod";
 import { CommandLineIcon, FolderIcon } from "@heroicons/react/20/solid";
 import { json, type ActionFunction, type LoaderFunctionArgs } from "@remix-run/node";
 import { Form, useActionData, useNavigation } from "@remix-run/react";
@@ -179,10 +179,10 @@ export const action: ActionFunction = async ({ request, params }) => {
   invariant(organizationSlug, "organizationSlug is required");
 
   const formData = await request.formData();
-  const submission = parse(formData, { schema });
+  const submission = parseWithZod(formData, { schema });
 
-  if (!submission.value || submission.intent !== "submit") {
-    return json(submission);
+  if (submission.status !== "success") {
+    return json(submission.reply());
   }
 
   const url = new URL(request.url);
@@ -328,9 +328,9 @@ export default function Page() {
 
   const [form, { projectName, projectVersion }] = useForm({
     id: "create-project",
-    lastSubmission: lastSubmission as any,
+    lastResult: lastSubmission as any,
     onValidate({ formData }) {
-      return parse(formData, { schema });
+      return parseWithZod(formData, { schema });
     },
   });
 
@@ -371,7 +371,7 @@ export default function Page() {
               title="Create a new project"
               description={`This will create a new project in your "${organization.title}" organization.`}
             />
-            <Form method="post" {...form.props}>
+            <Form method="post" {...getFormProps(form)}>
               {message && (
                 <Callout variant="success" className="mb-4">
                   {message}
@@ -383,17 +383,23 @@ export default function Page() {
                     Project name <span className="text-text-bright">*</span>
                   </Label>
                   <Input
-                    {...conform.input(projectName, { type: "text" })}
+                    {...getInputProps(projectName, { type: "text" })}
                     placeholder="Your project name"
                     icon={FolderIcon}
                     autoFocus
                   />
-                  <FormError id={projectName.errorId}>{projectName.error}</FormError>
+                  <FormError id={projectName.errorId}>{projectName.errors}</FormError>
                 </InputGroup>
                 {canCreateV3Projects ? (
-                  <input {...conform.input(projectVersion, { type: "hidden" })} value={"v3"} />
+                  <input
+                    {...getInputProps(projectVersion, { type: "hidden" })}
+                    defaultValue={"v3"}
+                  />
                 ) : (
-                  <input {...conform.input(projectVersion, { type: "hidden" })} value={"v2"} />
+                  <input
+                    {...getInputProps(projectVersion, { type: "hidden" })}
+                    defaultValue={"v2"}
+                  />
                 )}
 
                 <div className="border-t border-charcoal-700" />

@@ -16,7 +16,7 @@ export const CronPattern = z.string().refine(
     try {
       parseExpression(val);
       return true;
-    } catch (e) {
+    } catch (_e) {
       return false;
     }
   },

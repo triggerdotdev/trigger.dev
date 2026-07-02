@@ -3,15 +3,15 @@ import {
   generateFriendlyId,
   sanitizeQueueName,
 } from "@trigger.dev/core/v3/isomorphic";
-import { MachineConfig, RetryOptions } from "@trigger.dev/core/v3/schemas";
-import {
+import type { MachineConfig, RetryOptions } from "@trigger.dev/core/v3/schemas";
+import type {
   BackgroundWorkerTask,
-  Decimal,
   Prisma,
   PrismaClient,
   RunEngineVersion,
   RuntimeEnvironmentType,
 } from "@trigger.dev/database";
+import { Decimal } from "@trigger.dev/database";
 import type { RunEngine } from "../index.js";
 
 export type AuthenticatedEnvironment = Prisma.RuntimeEnvironmentGetPayload<{
@@ -205,7 +205,7 @@ export async function setupBackgroundWorker(
   }
 
   for (const queueName of queueOptions?.customQueues ?? []) {
-    const taskQueue = await engine.prisma.taskQueue.upsert({
+    const _taskQueue = await engine.prisma.taskQueue.upsert({
       where: {
         runtimeEnvironmentId_name: {
           name: queueName,
