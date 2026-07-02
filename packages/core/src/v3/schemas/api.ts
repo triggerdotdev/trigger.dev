@@ -1229,22 +1229,43 @@ const MachineOrMachineArray = z.union([MachinePresetName, z.array(MachinePresetN
 const QueueOrQueueArray = z.union([QueueTypeName, z.array(QueueTypeName)]);
 const DateOrNumber = z.union([z.coerce.date(), z.number()]);
 
-const BulkActionFilterRequestBody = z.object({
-  status: z.union([RunStatus, z.array(RunStatus)]).optional(),
-  taskIdentifier: StringOrStringArray.optional(),
-  version: StringOrStringArray.optional(),
-  from: DateOrNumber.optional(),
-  to: DateOrNumber.optional(),
-  period: z.string().optional(),
-  bulkAction: z.string().optional(),
-  tag: StringOrStringArray.optional(),
-  schedule: z.string().optional(),
-  isTest: z.boolean().optional(),
-  batch: z.string().optional(),
-  queue: QueueOrQueueArray.optional(),
-  machine: MachineOrMachineArray.optional(),
-  region: StringOrStringArray.optional(),
-});
+const BulkActionFilterRequestBody = z
+  .object({
+    status: z.union([RunStatus, z.array(RunStatus)]).optional(),
+    taskIdentifier: StringOrStringArray.optional(),
+    version: StringOrStringArray.optional(),
+    from: DateOrNumber.optional(),
+    to: DateOrNumber.optional(),
+    period: z.string().optional(),
+    bulkAction: z.string().optional(),
+    tag: StringOrStringArray.optional(),
+    schedule: z.string().optional(),
+    isTest: z.boolean().optional(),
+    batch: z.string().optional(),
+    queue: QueueOrQueueArray.optional(),
+    machine: MachineOrMachineArray.optional(),
+    region: StringOrStringArray.optional(),
+  })
+  .refine((filter) => Object.values(filter).some(isNonEmptyBulkActionFilterValue), {
+    message: "At least one filter must be provided",
+  });
+
+/** Recursively checks for at least one non-undefined, non-empty value. */
+function isNonEmptyBulkActionFilterValue(value: unknown): boolean {
+  if (value === undefined) {
+    return false;
+  }
+
+  if (Array.isArray(value)) {
+    return value.some(isNonEmptyBulkActionFilterValue);
+  }
+
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  return true;
+}
 
 const BulkActionSelectionRequestBody = {
   filter: BulkActionFilterRequestBody.optional(),

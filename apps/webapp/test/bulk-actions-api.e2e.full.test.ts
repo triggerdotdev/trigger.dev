@@ -159,12 +159,27 @@ describe("Bulk actions API", () => {
     const response = await server.webapp.fetch("/api/v1/bulk-actions", {
       method: "POST",
       headers: authHeaders(apiKey),
-      body: JSON.stringify({ action: "cancel", filter: {}, runIds: ["run_123"] }),
+      body: JSON.stringify({ action: "cancel", filter: { status: "FAILED" }, runIds: ["run_123"] }),
     });
 
     expect(response.status).toBe(400);
     const body = await response.json();
     expect(body.error).toContain("Exactly one of filter or runIds must be provided");
+  });
+
+  it("rejects create requests with an empty filter", async () => {
+    const server = getTestServer();
+    const { apiKey } = await seedTestEnvironment(server.prisma);
+
+    const response = await server.webapp.fetch("/api/v1/bulk-actions", {
+      method: "POST",
+      headers: authHeaders(apiKey),
+      body: JSON.stringify({ action: "cancel", filter: {} }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toContain("At least one filter must be provided");
   });
 
   it("returns a generic error for unexpected create failures", async () => {
@@ -174,7 +189,11 @@ describe("Bulk actions API", () => {
     const response = await server.webapp.fetch("/api/v1/bulk-actions", {
       method: "POST",
       headers: authHeaders(apiKey),
-      body: JSON.stringify({ action: "cancel", filter: {}, name: "No ClickHouse in this suite" }),
+      body: JSON.stringify({
+        action: "cancel",
+        filter: { status: "FAILED" },
+        name: "No ClickHouse in this suite",
+      }),
     });
 
     expect(response.status).toBe(500);

@@ -70,8 +70,13 @@ export interface ListProjectRunsQueryParams extends CursorPageParams, ListRunsQu
   env?: Array<"dev" | "staging" | "prod"> | "dev" | "staging" | "prod";
 }
 
+type RequireAtLeastOne<T, Keys extends keyof T = keyof T> = T &
+  {
+    [K in Keys]-?: Required<Pick<T, K>>;
+  }[Keys];
+
 /** Same filters as runs.list(), excluding pagination. */
-export type BulkActionFilter = Omit<ListRunsQueryParams, keyof CursorPageParams>;
+export type BulkActionFilter = RequireAtLeastOne<Omit<ListRunsQueryParams, keyof CursorPageParams>>;
 
 export type BulkActionSelection =
   | { filter: BulkActionFilter; runIds?: never }
