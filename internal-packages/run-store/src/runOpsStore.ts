@@ -193,31 +193,40 @@ export class RoutingRunStore implements RunStore {
     argsOrClient?: { select?: unknown; include?: unknown } | ReadClient,
     _client?: ReadClient
   ): Promise<unknown> {
-    // Never forward the caller's client (it is the control-plane client). A
-    // residency-routed read must run on the owning store's own replica. Pass through
-    // only the select/include args; a ReadClient has neither, so it's dropped.
+    // Pass through only the select/include args; the caller's actual client object is never
+    // forwarded to the routed store (the control-plane writer can't query the NEW DB). But its
+    // IDENTITY is the read-your-writes signal: a WRITER means the caller just wrote this run and
+    // needs to beat replica lag, so route to the OWNING store's own primary (writer). A replica /
+    // nothing keeps the default — the owning store's replica.
     const args = selectOrIncludeArgs(argsOrClient);
+    const onPrimary = readYourWrites(argsOrClient, _client);
     const id = idFromWhere(where);
     if (id !== undefined) {
       // Residency-classifiable (id/friendlyId): route to the owning store.
       const store = this.#routeOrNew(id);
-      return (store.findRun as (...rest: unknown[]) => Promise<unknown>)(where, args);
+      const method = onPrimary ? "findRunOnPrimary" : "findRun";
+      return (store[method] as (...rest: unknown[]) => Promise<unknown>)(where, args);
     }
     // Unclassifiable where (e.g. spanId, idempotencyKey): the run may live on either DB,
     // so fan out NEW-first then LEGACY rather than defaulting to NEW — defaulting silently
     // misses legacy-resident runs (span detail, idempotency-dedup probe, etc.).
-    return this.#findRunUnrouted(where, args);
+    return this.#findRunUnrouted(where, args, onPrimary);
   }
 
-  async #findRunUnrouted(where: Prisma.TaskRunWhereInput, args: unknown): Promise<unknown> {
-    const fromNew = await (this.#new.findRun as (...rest: unknown[]) => Promise<unknown>)(
+  async #findRunUnrouted(
+    where: Prisma.TaskRunWhereInput,
+    args: unknown,
+    onPrimary: boolean
+  ): Promise<unknown> {
+    const method = onPrimary ? "findRunOnPrimary" : "findRun";
+    const fromNew = await (this.#new[method] as (...rest: unknown[]) => Promise<unknown>)(
       where,
       args
     );
     if (fromNew != null) {
       return fromNew;
     }
-    return (this.#legacy.findRun as (...rest: unknown[]) => Promise<unknown>)(where, args);
+    return (this.#legacy[method] as (...rest: unknown[]) => Promise<unknown>)(where, args);
   }
 
   findRuns<S extends Prisma.TaskRunSelect>(
@@ -573,22 +582,30 @@ export class RoutingRunStore implements RunStore {
     argsOrClient?: { select?: unknown; include?: unknown } | ReadClient,
     _client?: ReadClient
   ): Promise<unknown> {
-    // Drop the caller's client; the routed store reads off its own replica (see findRun).
+    // The caller's client is not forwarded, but a WRITER signals read-your-writes → the owning
+    // store's primary (writer); a replica / nothing → its replica (see findRun).
     const args = selectOrIncludeArgs(argsOrClient);
+    const onPrimary = readYourWrites(argsOrClient, _client);
     const id = idFromWhere(where);
     if (id !== undefined) {
       // Residency-classifiable (id/friendlyId): route to the owning store and let it throw on miss.
       const store = this.#routeOrNew(id);
-      return (store.findRunOrThrow as (...rest: unknown[]) => Promise<unknown>)(where, args);
+      const method = onPrimary ? "findRunOrThrowOnPrimary" : "findRunOrThrow";
+      return (store[method] as (...rest: unknown[]) => Promise<unknown>)(where, args);
     }
     // Unclassifiable where (e.g. spanId): the run may live on either DB, so fan out NEW-first then
     // LEGACY rather than defaulting to NEW — defaulting silently misses legacy-resident runs and
     // throws a spurious not-found (must mirror findRun's #findRunUnrouted fan-out).
-    return this.#findRunOrThrowUnrouted(where, args);
+    return this.#findRunOrThrowUnrouted(where, args, onPrimary);
   }
 
-  async #findRunOrThrowUnrouted(where: Prisma.TaskRunWhereInput, args: unknown): Promise<unknown> {
-    const fromNew = await (this.#new.findRun as (...rest: unknown[]) => Promise<unknown>)(
+  async #findRunOrThrowUnrouted(
+    where: Prisma.TaskRunWhereInput,
+    args: unknown,
+    onPrimary: boolean
+  ): Promise<unknown> {
+    const probe = onPrimary ? "findRunOnPrimary" : "findRun";
+    const fromNew = await (this.#new[probe] as (...rest: unknown[]) => Promise<unknown>)(
       where,
       args
     );
@@ -596,7 +613,57 @@ export class RoutingRunStore implements RunStore {
       return fromNew;
     }
     // LEGACY is the last leg probed, so it owns the canonical not-found throw when both DBs miss.
-    return (this.#legacy.findRunOrThrow as (...rest: unknown[]) => Promise<unknown>)(where, args);
+    const throwMethod = onPrimary ? "findRunOrThrowOnPrimary" : "findRunOrThrow";
+    return (this.#legacy[throwMethod] as (...rest: unknown[]) => Promise<unknown>)(where, args);
+  }
+
+  // Explicit read-your-writes entry points: route by residency to the owning store's PRIMARY
+  // (writer), never a replica. A classifiable where routes directly; an unclassifiable one fans
+  // out NEW→LEGACY on each store's primary (same policy as findRun's fan-out). Each store reads
+  // its OWN writer, so no control-plane client crosses into another DB.
+  findRunOnPrimary<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S }
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }> | null>;
+  findRunOnPrimary<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I }
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }> | null>;
+  findRunOnPrimary(where: Prisma.TaskRunWhereInput): Promise<TaskRun | null>;
+  findRunOnPrimary(
+    where: Prisma.TaskRunWhereInput,
+    args?: { select?: unknown; include?: unknown }
+  ): Promise<unknown> {
+    const id = idFromWhere(where);
+    if (id !== undefined) {
+      const store = this.#routeOrNew(id);
+      return (store.findRunOnPrimary as (...rest: unknown[]) => Promise<unknown>)(where, args);
+    }
+    return this.#findRunUnrouted(where, args, true);
+  }
+
+  findRunOrThrowOnPrimary<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S }
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  findRunOrThrowOnPrimary<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I }
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  findRunOrThrowOnPrimary(where: Prisma.TaskRunWhereInput): Promise<TaskRun>;
+  findRunOrThrowOnPrimary(
+    where: Prisma.TaskRunWhereInput,
+    args?: { select?: unknown; include?: unknown }
+  ): Promise<unknown> {
+    const id = idFromWhere(where);
+    if (id !== undefined) {
+      const store = this.#routeOrNew(id);
+      return (store.findRunOrThrowOnPrimary as (...rest: unknown[]) => Promise<unknown>)(
+        where,
+        args
+      );
+    }
+    return this.#findRunOrThrowUnrouted(where, args, true);
   }
 
   // ---------------------------------------------------------------------------
@@ -1304,6 +1371,27 @@ function selectOrIncludeArgs(
     return argsOrClient as { select?: unknown; include?: unknown };
   }
   return undefined;
+}
+
+// Writers (PrismaClient / RunOpsPrismaClient) expose `$transaction`; a read replica
+// (PrismaReplicaClient) does not. That is the identity the routing store keys read-your-writes on.
+function isWriterClient(value: unknown): boolean {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    typeof (value as { $transaction?: unknown }).$transaction === "function"
+  );
+}
+
+// A read-your-writes call passes a WRITER (the just-written run must be read back before the
+// replica has it). Recover the caller's client from the overloaded read args — slot two when it
+// isn't a `{ select | include }` object, else slot three — and report whether it is a writer.
+function readYourWrites(
+  argsOrClient: { select?: unknown; include?: unknown } | ReadClient | unknown,
+  client: ReadClient | undefined
+): boolean {
+  const passedClient = selectOrIncludeArgs(argsOrClient) === undefined ? argsOrClient : client;
+  return isWriterClient(passedClient);
 }
 
 // Read a plain scalar string field off a create-data object (e.g. `data.completedByTaskRunId`).

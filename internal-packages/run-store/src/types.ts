@@ -509,6 +509,30 @@ export interface RunStore {
   ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
   findRunOrThrow(where: Prisma.TaskRunWhereInput, client?: ReadClient): Promise<TaskRun>;
 
+  // Read-after-write on the OWNING store's primary (writer), never the replica — for re-reading a
+  // run just written in this request, where replica lag would cause a false miss (mirrors
+  // findWaitpointOnPrimary). The routing store dispatches here per owning store so each reads its
+  // own writer, never leaking a control-plane client into another DB.
+  findRunOnPrimary<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S }
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }> | null>;
+  findRunOnPrimary<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I }
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }> | null>;
+  findRunOnPrimary(where: Prisma.TaskRunWhereInput): Promise<TaskRun | null>;
+
+  findRunOrThrowOnPrimary<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S }
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  findRunOrThrowOnPrimary<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I }
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  findRunOrThrowOnPrimary(where: Prisma.TaskRunWhereInput): Promise<TaskRun>;
+
   findRuns<S extends Prisma.TaskRunSelect>(
     args: {
       where: Prisma.TaskRunWhereInput;

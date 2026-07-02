@@ -1135,6 +1135,43 @@ export class PostgresRunStore implements RunStore {
     return this.#findTaskRunWithSelect(prisma, "findFirstOrThrow", where, args);
   }
 
+  // Read-after-write on THIS store's PRIMARY (writer), never the replica. Mirrors
+  // `findWaitpointOnPrimary`: a caller that just wrote a run in this request re-reads it here so
+  // replica lag can't null out a fresh row and turn a successful create into a false "not found".
+  // The routing store dispatches here (per owning store) when the caller passed the control-plane
+  // writer, so each store reads its OWN writer and never leaks a control-plane client into another DB.
+  findRunOnPrimary<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S }
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }> | null>;
+  findRunOnPrimary<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I }
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }> | null>;
+  findRunOnPrimary(where: Prisma.TaskRunWhereInput): Promise<TaskRun | null>;
+  async findRunOnPrimary(
+    where: Prisma.TaskRunWhereInput,
+    args?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude }
+  ): Promise<unknown> {
+    return this.#findTaskRunWithSelect(this.prisma, "findFirst", where, args ?? {});
+  }
+
+  findRunOrThrowOnPrimary<S extends Prisma.TaskRunSelect>(
+    where: Prisma.TaskRunWhereInput,
+    args: { select: S }
+  ): Promise<Prisma.TaskRunGetPayload<{ select: S }>>;
+  findRunOrThrowOnPrimary<I extends Prisma.TaskRunInclude>(
+    where: Prisma.TaskRunWhereInput,
+    args: { include: I }
+  ): Promise<Prisma.TaskRunGetPayload<{ include: I }>>;
+  findRunOrThrowOnPrimary(where: Prisma.TaskRunWhereInput): Promise<TaskRun>;
+  async findRunOrThrowOnPrimary(
+    where: Prisma.TaskRunWhereInput,
+    args?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude }
+  ): Promise<unknown> {
+    return this.#findTaskRunWithSelect(this.prisma, "findFirstOrThrow", where, args ?? {});
+  }
+
   findRuns<S extends Prisma.TaskRunSelect>(
     args: {
       where: Prisma.TaskRunWhereInput;

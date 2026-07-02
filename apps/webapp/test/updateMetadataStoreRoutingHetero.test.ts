@@ -84,6 +84,36 @@ class RoutingRunStore implements RunStore {
     return (this.#legacyStore.findRunOrThrow as any)(where, argsOrClient);
   }
 
+  async findRunOnPrimary(
+    where: Prisma.TaskRunWhereInput,
+    args?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude }
+  ): Promise<unknown> {
+    const id = this.#idFromWhere(where);
+    if (id !== undefined) {
+      return (this.#resolveById(id).findRunOnPrimary as any)(where, args);
+    }
+    const fromNew = await (this.#newStore.findRunOnPrimary as any)(where, args);
+    if (fromNew) {
+      return fromNew;
+    }
+    return (this.#legacyStore.findRunOnPrimary as any)(where, args);
+  }
+
+  async findRunOrThrowOnPrimary(
+    where: Prisma.TaskRunWhereInput,
+    args?: { select?: Prisma.TaskRunSelect; include?: Prisma.TaskRunInclude }
+  ): Promise<unknown> {
+    const id = this.#idFromWhere(where);
+    if (id !== undefined) {
+      return (this.#resolveById(id).findRunOrThrowOnPrimary as any)(where, args);
+    }
+    const fromNew = await (this.#newStore.findRunOnPrimary as any)(where, args);
+    if (fromNew) {
+      return fromNew;
+    }
+    return (this.#legacyStore.findRunOrThrowOnPrimary as any)(where, args);
+  }
+
   async findRuns(
     args: { where: Prisma.TaskRunWhereInput },
     _client?: ReadClient
