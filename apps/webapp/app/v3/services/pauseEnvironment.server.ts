@@ -78,7 +78,12 @@ export class PauseEnvironmentService extends WithRunEngine {
         const resumed = await this._prisma.runtimeEnvironment.updateMany({
           where: {
             id: environment.id,
-            NOT: { pauseSource: EnvironmentPauseSource.BILLING_LIMIT },
+            // NOT on a nullable field excludes NULL rows in Prisma, which made
+            // user-paused envs (pauseSource null) unresumable.
+            OR: [
+              { pauseSource: null },
+              { NOT: { pauseSource: EnvironmentPauseSource.BILLING_LIMIT } },
+            ],
           },
           data: {
             paused: false,
