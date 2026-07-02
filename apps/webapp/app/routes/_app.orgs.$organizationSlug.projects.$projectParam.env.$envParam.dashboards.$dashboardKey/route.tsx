@@ -38,6 +38,7 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { requireUser } from "~/services/session.server";
 import { cn } from "~/utils/cn";
 import { EnvironmentParamSchema } from "~/utils/pathBuilder";
+import { canAccessQueueMetricsUi } from "~/v3/canAccessQueueMetricsUi.server";
 import { QueryScopeSchema } from "~/v3/querySchemas";
 import { useCurrentPlan } from "../_app.orgs.$organizationSlug/route";
 import { MetricWidget } from "../resources.metric";
@@ -49,6 +50,12 @@ const ParamSchema = EnvironmentParamSchema.extend({
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const user = await requireUser(request);
   const { projectParam, organizationSlug, envParam, dashboardKey } = ParamSchema.parse(params);
+
+  // The built-in "queues" dashboard is part of the metrics UI (unlinked, but reachable by
+  // URL), so gate it per-org like the rest of the Queue Metrics view.
+  if (dashboardKey === "queues" && !(await canAccessQueueMetricsUi({ userId: user.id, organizationSlug }))) {
+    throw new Response(undefined, { status: 404, statusText: "Not found" });
+  }
 
   const project = await findProjectBySlug(organizationSlug, projectParam, user.id);
   if (!project) {
@@ -376,6 +383,7 @@ export function MetricDashboard({
                     promptSlugs={prompts.length > 0 ? prompts : undefined}
                     operations={operations.length > 0 ? operations : undefined}
                     providers={providers.length > 0 ? providers : undefined}
+                    fillGaps={widget.fillGaps}
                     config={widget.display}
                     organizationId={organization.id}
                     projectId={project.id}

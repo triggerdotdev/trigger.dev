@@ -614,6 +614,168 @@ export const metricsSchema: TableSchema = {
 };
 
 /**
+ * Schema definition for the queue_metrics table (trigger_dev.queue_metrics_v1).
+ * Pre-aggregated into 10-second buckets. Counter columns re-aggregate with sum(),
+ * gauges with max(), and wait_quantiles with quantilesMerge() — never FINAL.
+ */
+export const queueMetricsSchema: TableSchema = {
+  name: "queue_metrics",
+  clickhouseName: "trigger_dev.queue_metrics_v1",
+  description: "Per-queue depth, concurrency, throttling, and scheduling-delay metrics",
+  timeConstraint: "bucket_start",
+  tenantColumns: {
+    organizationId: "organization_id",
+    projectId: "project_id",
+    environmentId: "environment_id",
+  },
+  columns: {
+    environment: {
+      name: "environment",
+      clickhouseName: "environment_id",
+      ...column("String", { description: "The environment slug", example: "prod" }),
+      fieldMapping: "environment",
+      customRenderType: "environment",
+    },
+    project: {
+      name: "project",
+      clickhouseName: "project_id",
+      ...column("String", {
+        description: "The project reference, they always start with `proj_`.",
+        example: "proj_howcnaxbfxdmwmxazktx",
+      }),
+      fieldMapping: "project",
+      customRenderType: "project",
+    },
+    queue: {
+      name: "queue",
+      clickhouseName: "queue_name",
+      ...column("LowCardinality(String)", {
+        description: "The queue name",
+        example: "my-queue",
+        coreColumn: true,
+      }),
+    },
+    bucket_start: {
+      name: "bucket_start",
+      ...column("DateTime", {
+        description: "The start of the 10-second aggregation bucket",
+        example: "2024-01-15 09:30:00",
+        coreColumn: true,
+      }),
+    },
+    // Cumulative-counter delta states. Read with deltaSumTimestampMerge(<col>) (loss-tolerant,
+    // reset-safe), never sum(); opaque like wait_quantiles.
+    enqueue_delta: {
+      name: "enqueue_delta",
+      ...column("String", {
+        description:
+          "Runs enqueued (cumulative-counter delta). Read with deltaSumTimestampMerge(enqueue_delta).",
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+    started_delta: {
+      name: "started_delta",
+      ...column("String", {
+        description:
+          "Runs dequeued/started (throughput). Read with deltaSumTimestampMerge(started_delta).",
+        coreColumn: true,
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+    ack_delta: {
+      name: "ack_delta",
+      ...column("String", {
+        description: "Runs acked (completed). Read with deltaSumTimestampMerge(ack_delta).",
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+    nack_delta: {
+      name: "nack_delta",
+      ...column("String", {
+        description: "Runs nacked. Read with deltaSumTimestampMerge(nack_delta).",
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+    dlq_delta: {
+      name: "dlq_delta",
+      ...column("String", {
+        description: "Runs dead-lettered. Read with deltaSumTimestampMerge(dlq_delta).",
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+    throttled_count: {
+      name: "throttled_count",
+      ...column("UInt64", {
+        description: "Gauge emissions where running>=limit and queued>0. Aggregate with sum().",
+        coreColumn: true,
+      }),
+    },
+    max_queued: {
+      name: "max_queued",
+      ...column("UInt32", { description: "Peak queue depth in the bucket. Aggregate with max().", coreColumn: true, fillMode: "carry" }),
+    },
+    max_running: {
+      name: "max_running",
+      ...column("UInt32", { description: "Peak running (concurrency) in the bucket. Aggregate with max().", coreColumn: true, fillMode: "carry" }),
+    },
+    max_limit: {
+      name: "max_limit",
+      ...column("UInt32", { description: "The queue concurrency limit. Aggregate with max().", coreColumn: true, fillMode: "carry" }),
+    },
+    max_env_queued: {
+      name: "max_env_queued",
+      ...column("UInt32", { description: "Peak environment-wide queued in the bucket. Aggregate with max().", fillMode: "carry" }),
+    },
+    max_env_running: {
+      name: "max_env_running",
+      ...column("UInt32", { description: "Peak environment-wide running in the bucket. Aggregate with max().", fillMode: "carry" }),
+    },
+    max_env_limit: {
+      name: "max_env_limit",
+      ...column("UInt32", { description: "The environment concurrency limit. Aggregate with max().", fillMode: "carry" }),
+    },
+    wait_ms_sum: {
+      name: "wait_ms_sum",
+      ...column("UInt64", { description: "Sum of scheduling delays (ms). Mean = wait_ms_sum/wait_ms_count." }),
+    },
+    wait_ms_count: {
+      name: "wait_ms_count",
+      ...column("UInt64", { description: "Count of scheduling-delay samples. Aggregate with sum()." }),
+    },
+    wait_quantiles: {
+      name: "wait_quantiles",
+      ...column("String", {
+        description:
+          "Scheduling-delay (dequeue minus eligible-at) quantile state. Read with quantilesMerge(0.5,0.9,0.95,0.99)(wait_quantiles)[n].",
+      }),
+      groupable: false,
+      sortable: false,
+      filterable: false,
+    },
+  },
+  timeBucketThresholds: [
+    { maxRangeSeconds: 3 * 60 * 60, interval: { value: 10, unit: "SECOND" } },
+    { maxRangeSeconds: 12 * 60 * 60, interval: { value: 1, unit: "MINUTE" } },
+    { maxRangeSeconds: 2 * 24 * 60 * 60, interval: { value: 5, unit: "MINUTE" } },
+    { maxRangeSeconds: 7 * 24 * 60 * 60, interval: { value: 15, unit: "MINUTE" } },
+    { maxRangeSeconds: 30 * 24 * 60 * 60, interval: { value: 1, unit: "HOUR" } },
+    { maxRangeSeconds: 90 * 24 * 60 * 60, interval: { value: 6, unit: "HOUR" } },
+    { maxRangeSeconds: 180 * 24 * 60 * 60, interval: { value: 1, unit: "DAY" } },
+    { maxRangeSeconds: 365 * 24 * 60 * 60, interval: { value: 1, unit: "WEEK" } },
+  ] satisfies BucketThreshold[],
+};
+
+/**
  * All available schemas for the query editor
  */
 /**
@@ -980,6 +1142,7 @@ export const querySchemas: TableSchema[] = [
   metricsSchema,
   llmMetricsSchema,
   llmModelsSchema,
+  queueMetricsSchema,
 ];
 
 /**

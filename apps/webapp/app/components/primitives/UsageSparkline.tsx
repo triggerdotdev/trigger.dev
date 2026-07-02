@@ -27,6 +27,8 @@ export type UsageSparklineProps = {
   color?: string;
   /** Unit shown in the tooltip (e.g. calls, tokens). */
   unitLabel?: UnitLabel;
+  /** Trailing scalar shown after the chart. Defaults to the sum of buckets (override for gauges, e.g. peak). */
+  total?: number;
   /** Format the trailing total. Defaults to `toLocaleString`. */
   formatTotal?: (total: number) => string;
   /** Class for the trailing total label. */
@@ -44,6 +46,7 @@ export function UsageSparkline({
   bucketIntervalMs,
   color = "var(--color-pending)",
   unitLabel = { singular: "call", plural: "calls" },
+  total: totalOverride,
   formatTotal,
   totalClassName = "text-blue-400",
 }: UsageSparklineProps) {
@@ -51,7 +54,7 @@ export function UsageSparkline({
     return <span className="text-text-dimmed">–</span>;
   }
 
-  const total = data.reduce((a, b) => a + b, 0);
+  const total = totalOverride ?? data.reduce((a, b) => a + b, 0);
   const max = Math.max(...data);
 
   // Map each bucket to a dated point so the tooltip can show the window it
