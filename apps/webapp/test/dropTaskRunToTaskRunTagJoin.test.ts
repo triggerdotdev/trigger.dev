@@ -1,6 +1,4 @@
-// Single-version proof for dropping the dead `_TaskRunToTaskRunTag` implicit join. The
-// cross-version follow-up (via heteroPostgresTest) is tracked separately; those helpers
-// do not exist in this tree yet.
+// Single-version proof for dropping the dead `_TaskRunToTaskRunTag` implicit join.
 
 import { describe, expect } from "vitest";
 import { postgresTest } from "@internal/testcontainers";
