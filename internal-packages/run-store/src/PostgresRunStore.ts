@@ -360,9 +360,7 @@ const WAITPOINT_DEDICATED: DedicatedRelationSpec = {
 
 // `instanceof` can't detect a foreign generation's class, so key on the runtime `name` the
 // Prisma runtime stamps on every generation plus a string `code` (the P-code).
-function isForeignPrismaKnownRequestError(
-  error: unknown
-): error is {
+function isForeignPrismaKnownRequestError(error: unknown): error is {
   name: string;
   message: string;
   code: string;
