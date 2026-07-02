@@ -1,6 +1,6 @@
 import { json } from "@remix-run/server-runtime";
 import { CreateBulkActionRequestBody, type QueueTypeName } from "@trigger.dev/core/v3";
-import { z } from "zod";
+import type { z } from "zod";
 import {
   ApiBulkActionListSearchParams,
   ApiBulkActionPresenter,

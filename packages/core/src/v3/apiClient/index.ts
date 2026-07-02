@@ -120,7 +120,7 @@ import {
   runShapeStream,
   type SSEStreamPart,
 } from "./runStream.js";
-import {
+import type {
   CreateBulkActionOptions,
   CreateEnvironmentVariableParams,
   ImportEnvironmentVariablesParams,

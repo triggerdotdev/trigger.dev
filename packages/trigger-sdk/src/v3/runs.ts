@@ -19,8 +19,6 @@ import type {
   AsyncIterableStream,
   ApiPromise,
   RealtimeRunSkipColumns,
-} from "@trigger.dev/core/v3";
-import {
   AbortBulkActionResponseBody,
   BulkActionObject,
   CanceledRunResponse,
