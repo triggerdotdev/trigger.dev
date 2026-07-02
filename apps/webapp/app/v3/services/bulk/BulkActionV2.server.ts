@@ -508,15 +508,15 @@ export class BulkActionService extends BaseService {
     });
 
     if (!group) {
-      throw new ServiceValidationError("Bulk action not found", 404);
+      throw new ServiceValidationError(`Bulk action not found: ${friendlyId}`, 404);
     }
 
     if (group.status === BulkActionStatus.COMPLETED) {
-      throw new ServiceValidationError("Bulk action is already completed", 409);
+      throw new ServiceValidationError(`Bulk action group already completed: ${friendlyId}`, 409);
     }
 
     if (group.status === BulkActionStatus.ABORTED) {
-      throw new ServiceValidationError("Bulk action is already aborted", 409);
+      throw new ServiceValidationError(`Bulk action group already aborted: ${friendlyId}`, 409);
     }
 
     //ack the job (this doesn't guarantee it won't run again)
@@ -534,9 +534,10 @@ export class BulkActionService extends BaseService {
 }
 
 export function freezeRunListFilters(filters: RunListInputFilters): RunListInputFilters {
-  const frozenFilters: RunListInputFilters = { ...filters };
-  delete (frozenFilters as any).cursor;
-  delete (frozenFilters as any).direction;
+  const { cursor: _cursor, direction: _direction, ...frozenFilters } = filters as RunListInputFilters & {
+    cursor?: string;
+    direction?: "forward" | "backward";
+  };
 
   // Explicit run-id selections target specific, already-existing runs, so we
   // don't apply a time bound (which could otherwise exclude a selected run).
