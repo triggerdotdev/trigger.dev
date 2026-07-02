@@ -1612,11 +1612,12 @@ describe("RunEngine ttl", () => {
   );
 
   containerTest(
-    "expireRun degrades gracefully when the env has vanished (resolveEnv null)",
+    "expireRun completes the run even when env resolution is unavailable (resolveEnv null)",
     async ({ prisma, redisOptions }) => {
-      // Contract: if the env vanishes mid-expiry, the legacy per-run expireRun
-      // path degrades gracefully — it returns without emitting runExpired and
-      // without acknowledging the message off the queue, rather than crashing.
+      // Contract: env resolution is NOT on the expire path — identity comes from
+      // the run's latest execution snapshot. So with resolveEnv returning null the
+      // run is still fully expired (message acked, waitpoint completed to unblock a
+      // parent, runExpired emitted), instead of silently dropped.
       const authenticatedEnvironment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
       const passthrough = new PassthroughControlPlaneResolver({
@@ -1702,14 +1703,28 @@ describe("RunEngine ttl", () => {
         assertNonNullable(executionData);
         expect(executionData.snapshot.executionStatus).toBe("QUEUED");
 
-        // (a) no throw, (b) no runExpired event, (c) message not acked off the queue.
+        // (a) no throw, (b) runExpired IS emitted from snapshot identity,
+        // (c) message IS acked off the queue, (d) run reaches EXPIRED.
         await expect(engine.ttlSystem.expireRun({ runId: run.id })).resolves.toBeUndefined();
-        expect(expiredEvents.length).toBe(0);
+
+        expect(expiredEvents.length).toBe(1);
+        expect(expiredEvents[0]!.run.id).toBe(run.id);
+        expect(expiredEvents[0]!.run.status).toBe("EXPIRED");
+        expect(expiredEvents[0]!.organization.id).toBe(authenticatedEnvironment.organization.id);
+        expect(expiredEvents[0]!.project.id).toBe(authenticatedEnvironment.project.id);
+        expect(expiredEvents[0]!.environment.id).toBe(authenticatedEnvironment.id);
+
         const messageExists = await engine.runQueue.messageExists(
           authenticatedEnvironment.organization.id,
           run.id
         );
-        expect(messageExists).toBe(1);
+        expect(messageExists).toBe(0);
+
+        const expiredRun = await prisma.taskRun.findUnique({
+          where: { id: run.id },
+          select: { status: true },
+        });
+        expect(expiredRun?.status).toBe("EXPIRED");
       } finally {
         await engine.quit();
       }
