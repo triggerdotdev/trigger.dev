@@ -235,7 +235,7 @@ async function driveBatchToAllChildrenComplete(
 }
 
 describe("RunEngine #tryCompleteBatch store routing", () => {
-  // Test D: batch completion reads/writes route through the store.
+  // Batch completion reads/writes route through the store.
   containerTest(
     "batch completion reads/writes route through the store",
     async ({ prisma, redisOptions }) => {
@@ -262,7 +262,7 @@ describe("RunEngine #tryCompleteBatch store routing", () => {
     }
   );
 
-  // Test E: the batch waitpoint completion goes through the guarded completeWaitpoint, unblocking
+  // The batch waitpoint completion goes through the guarded completeWaitpoint, unblocking
   // the parent run.
   containerTest(
     "waitpoint completion goes through the guarded completeWaitpoint (parent resumes)",
@@ -300,7 +300,7 @@ describe("RunEngine #tryCompleteBatch store routing", () => {
     }
   );
 
-  // Test F: the member-run read is driven by batchId only and does not rely on the
+  // The member-run read is driven by batchId only and does not rely on the
   // BatchTaskRun.runtimeEnvironmentId FK. A second batch (distinct batchId) must not leak members
   // into the first batch's batchId-scoped read.
   containerTest(
@@ -347,7 +347,7 @@ describe("RunEngine #tryCompleteBatch store routing", () => {
     }
   );
 
-  // Test G: single-DB binds one client (passthrough) — proven by behavior, not store.prisma === prisma.
+  // Single-DB binds one client (passthrough) — proven by behavior, not store.prisma === prisma.
   containerTest(
     "single-DB binds one client (passthrough) — batch complete round-trips on the one client",
     async ({ prisma, redisOptions }) => {
@@ -459,7 +459,7 @@ describe("RunEngine #tryCompleteBatch store routing", () => {
     }
   );
 
-  // FIX 2 (env-scoped member read): the member-run read is
+  // The env-scoped member-run read is
   // findRuns({ where: { batchId, runtimeEnvironmentId } }, this.$.prisma). Assert the where the store
   // actually received carries BOTH predicates so the index-scoping isn't silently dropped.
   containerTest(
@@ -485,7 +485,7 @@ describe("RunEngine #tryCompleteBatch store routing", () => {
     }
   );
 
-  // FIX 3(a): batch not found returns at the `if (!batch)` guard, before any member read.
+  // Batch not found returns at the `if (!batch)` guard, before any member read.
   containerTest(
     "batch not found returns early without reading members",
     async ({ prisma, redisOptions }) => {
@@ -501,7 +501,7 @@ describe("RunEngine #tryCompleteBatch store routing", () => {
     }
   );
 
-  // FIX 3(b): an already-COMPLETED batch returns at the `status === "COMPLETED"` guard. Because
+  // An already-COMPLETED batch returns at the `status === "COMPLETED"` guard. Because
   // performCompleteBatch is debounce/retry-driven and can fire twice, a second call must be a no-op:
   // no further batch update and no further waitpoint read.
   containerTest(
@@ -533,7 +533,7 @@ describe("RunEngine #tryCompleteBatch store routing", () => {
     }
   );
 
-  // FIX 3(c): not-all-runs-processed returns at `processedRunCount < runCount`, before the member
+  // Not-all-runs-processed returns at `processedRunCount < runCount`, before the member
   // read. A v1 batch with runCount 2 but processingJobsCount 1 (and no members) must stay
   // non-COMPLETED and never read members.
   containerTest(
@@ -566,7 +566,7 @@ describe("RunEngine #tryCompleteBatch store routing", () => {
     }
   );
 
-  // FIX 3(d): a plain batch (batchTrigger, not batchTriggerAndWait) has no waitpoint, so completion
+  // A plain batch (batchTrigger, not batchTriggerAndWait) has no waitpoint, so completion
   // hits `if (!waitpoint) return` after flipping the batch to COMPLETED. Drive a real run via
   // engine.trigger with a batch but NO parent/resumeParentOnCompletion (so no waitpoint is created),
   // run it to a final status, then complete the batch.
@@ -660,7 +660,7 @@ describe("RunEngine #tryCompleteBatch store routing", () => {
  * store. No mocks — both stores are genuine PostgresRunStore instances over real containers.
  */
 describe("#tryCompleteBatch two-store routing", () => {
-  // Test H + I: a batch + members + waitpoint complete via the run-ops store only; the legacy store
+  // A batch + members + waitpoint complete via the run-ops store only; the legacy store
   // is never touched, and all members are discovered within the one owning store.
   containerTest(
     "batch completion routes to the run-ops store only; the legacy store is untouched",
