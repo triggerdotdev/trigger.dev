@@ -1,6 +1,6 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { prisma } from "~/db.server";
+import { $replica } from "~/db.server";
 import { logger } from "~/services/logger.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 import { BulkActionService } from "~/v3/services/bulk/BulkActionV2.server";
@@ -18,10 +18,8 @@ const { action } = createActionApiRoute(
       action: "write",
       resource: () => ({ type: "runs" }),
     },
-    // Existence/auth gate. Reads from primary so create -> abort doesn't 404 on
-    // replica lag; the abort write path re-reads and mutates on primary.
     findResource: async (params, auth) => {
-      return prisma.bulkActionGroup.findFirst({
+      return $replica.bulkActionGroup.findFirst({
         select: { id: true },
         where: {
           friendlyId: params.bulkActionId,

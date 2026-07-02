@@ -1,6 +1,6 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
-import { prisma } from "~/db.server";
+import { $replica } from "~/db.server";
 import {
   apiBulkActionObject,
   bulkActionSelect,
@@ -19,9 +19,8 @@ export const loader = createLoaderApiRoute(
       action: "read",
       resource: () => ({ type: "runs" }),
     },
-    // Read from primary so create -> retrieve/poll doesn't 404 on replica lag.
     findResource: async (params, auth) => {
-      return prisma.bulkActionGroup.findFirst({
+      return $replica.bulkActionGroup.findFirst({
         select: bulkActionSelect,
         where: {
           friendlyId: params.bulkActionId,
