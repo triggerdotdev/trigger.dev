@@ -332,7 +332,12 @@ export function SideMenu({
             </CollapsibleElement>
           ) : null}
         </div>
-        <div className="border-b border-grid-bright px-1 pb-1 pt-1">
+        <div
+          className={cn(
+            "border-b border-grid-bright pt-1 transition-[padding] duration-200",
+            isCollapsed ? "pb-1 pl-1 pr-1" : "pb-2.5 pl-2.5 pr-2.5"
+          )}
+        >
           <div className="w-full space-y-1">
             <SideMenuHeader title={"Project"} isCollapsed={isCollapsed} collapsedTitle="Proj" />
             <div className="space-y-1">
