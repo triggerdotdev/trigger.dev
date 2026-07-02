@@ -486,7 +486,10 @@ export class RunAttemptSystem {
             this.$.logger.error("RunEngine.createRunAttempt(): prisma.$transaction error", {
               error: transactionError,
             });
-            throw new ServiceValidationError("Failed to update task run and execution snapshot", 500);
+            throw new ServiceValidationError(
+              "Failed to update task run and execution snapshot",
+              500
+            );
           }
 
           if (!result) {
@@ -598,8 +601,7 @@ export class RunAttemptSystem {
               rootTaskRunId: updatedRun.rootTaskRunId
                 ? RunId.toFriendlyId(updatedRun.rootTaskRunId)
                 : undefined,
-              region:
-                env.type !== "DEVELOPMENT" ? updatedRun.workerQueue : undefined,
+              region: env.type !== "DEVELOPMENT" ? updatedRun.workerQueue : undefined,
               realtimeStreamsVersion: updatedRun.realtimeStreamsVersion ?? undefined,
             },
             task,

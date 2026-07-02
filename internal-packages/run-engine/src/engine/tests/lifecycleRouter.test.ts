@@ -152,49 +152,46 @@ describe("RunEngine lifecycle read routing (single-DB)", () => {
 
   // getSnapshotsSince routes through the store's snapshot read methods (the
   // since-marker lookup, the page read, and the latest snapshot's waitpoint hydrate).
-  containerTest(
-    "getSnapshotsSince reads through the store",
-    async ({ prisma, redisOptions }) => {
-      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
-      const engine = new RunEngine({ prisma, store, ...baseEngineOptions(redisOptions) });
+  containerTest("getSnapshotsSince reads through the store", async ({ prisma, redisOptions }) => {
+    const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
+    const engine = new RunEngine({ prisma, store, ...baseEngineOptions(redisOptions) });
 
-      try {
-        const taskIdentifier = "test-task";
-        await setupBackgroundWorker(engine, environment, taskIdentifier);
+    try {
+      const taskIdentifier = "test-task";
+      await setupBackgroundWorker(engine, environment, taskIdentifier);
 
-        const run = await engine.trigger(
-          baseTriggerParams(generateFriendlyId("run"), environment, taskIdentifier),
-          prisma
-        );
+      const run = await engine.trigger(
+        baseTriggerParams(generateFriendlyId("run"), environment, taskIdentifier),
+        prisma
+      );
 
-        await setTimeout(500);
-        await engine.dequeueFromWorkerQueue({ consumerId: "test_since", workerQueue: "main" });
+      await setTimeout(500);
+      await engine.dequeueFromWorkerQueue({ consumerId: "test_since", workerQueue: "main" });
 
-        const allSnapshots = await prisma.taskRunExecutionSnapshot.findMany({
-          where: { runId: run.id, isValid: true },
-          orderBy: { createdAt: "asc" },
-        });
-        expect(allSnapshots.length).toBeGreaterThan(1);
+      const allSnapshots = await prisma.taskRunExecutionSnapshot.findMany({
+        where: { runId: run.id, isValid: true },
+        orderBy: { createdAt: "asc" },
+      });
+      expect(allSnapshots.length).toBeGreaterThan(1);
 
-        const executionReadsBefore = store.executionSnapshotReads;
-        const manyReadsBefore = store.manyExecutionSnapshotReads;
+      const executionReadsBefore = store.executionSnapshotReads;
+      const manyReadsBefore = store.manyExecutionSnapshotReads;
 
-        const result = await engine.getSnapshotsSince({
-          runId: run.id,
-          snapshotId: allSnapshots[0].id,
-        });
+      const result = await engine.getSnapshotsSince({
+        runId: run.id,
+        snapshotId: allSnapshots[0].id,
+      });
 
-        expect(result).not.toBeNull();
-        expect(result!.length).toBeGreaterThan(0);
-        // The since-marker lookup + the page read both went through the store.
-        expect(store.executionSnapshotReads).toBeGreaterThan(executionReadsBefore);
-        expect(store.manyExecutionSnapshotReads).toBeGreaterThan(manyReadsBefore);
-      } finally {
-        await engine.quit();
-      }
+      expect(result).not.toBeNull();
+      expect(result!.length).toBeGreaterThan(0);
+      // The since-marker lookup + the page read both went through the store.
+      expect(store.executionSnapshotReads).toBeGreaterThan(executionReadsBefore);
+      expect(store.manyExecutionSnapshotReads).toBeGreaterThan(manyReadsBefore);
+    } finally {
+      await engine.quit();
     }
-  );
+  });
 
   // With the replica-off default (readReplicaSnapshotsSinceEnabled unset),
   // getSnapshotsSince reads on the PRIMARY client. Distinct primary/replica-Proxy setup

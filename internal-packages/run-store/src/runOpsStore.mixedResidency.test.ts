@@ -631,7 +631,6 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
     }
   );
 
-
   // ── Case 7: findManyTaskRunWaitpoints with edges whose relations STRADDLE DBs (runOpsStore.ts:876) ──
   // An edge co-locates with its RUN, but its `waitpoint`/`taskRun` relations can live on the OTHER DB
   // (a cuid token blocking a ksuid run, and vice versa). The per-leg scalar query is stripped of the
@@ -796,7 +795,6 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
     }
   );
 
-
   // ── Case 11a: updateManyWaitpoints with a NO-ID (batch) where fans out to both and sums (:822) ──
   // A batch where (no single routable id, e.g. completedByTaskRunId IS NULL + status PENDING) must
   // apply on BOTH DBs and sum the count.
@@ -850,9 +848,7 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       // waitpoint + run on #legacy for its edge, and write the #new edge directly.
       const runId = ksuidNew("m11br");
       const legacyToken = cuidLegacy("m11bt");
-      await router.createRun(
-        buildCreateRunInput({ runId, friendlyId: "run_m11b", ...env })
-      );
+      await router.createRun(buildCreateRunInput({ runId, friendlyId: "run_m11b", ...env }));
       // #legacy needs the run + token present for the FK-bound edge insert.
       await prisma14.taskRun.create({
         data: {
@@ -901,5 +897,4 @@ describe("RoutingRunStore — mixed-residency matrix (cuid #legacy + ksuid #new 
       expect(await prisma17.taskRunWaitpoint.count({ where: { taskRunId: runId } })).toBe(0);
     }
   );
-
 });

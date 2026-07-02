@@ -951,202 +951,190 @@ describe("WaitpointSystem completion fan-out + residency store-selection guard",
 
   // runAttemptSystem success: a child that resumes its parent is completed
   // successfully, completing its associatedWaitpoint via runAttemptSystem.
-  containerTest(
-    "guard fires on the runAttempt success route",
-    async ({ prisma, redisOptions }) => {
-      const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
-      const engine = buildEngine(prisma, redisOptions, store);
+  containerTest("guard fires on the runAttempt success route", async ({ prisma, redisOptions }) => {
+    const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
+    const engine = buildEngine(prisma, redisOptions, store);
 
-      try {
-        const { childRun } = await triggerChildResumingParent(
-          engine,
-          prisma,
-          env,
-          "parent-task-r4",
-          "child-task-r4",
-          "r4"
-        );
+    try {
+      const { childRun } = await triggerChildResumingParent(
+        engine,
+        prisma,
+        env,
+        "parent-task-r4",
+        "child-task-r4",
+        "r4"
+      );
 
-        await setTimeout(500);
-        const dequeuedChild = await engine.dequeueFromWorkerQueue({
-          consumerId: "consumer-r4c",
-          workerQueue: "main",
-        });
-        const childAttempt = await engine.startRunAttempt({
-          runId: dequeuedChild[0].run.id,
-          snapshotId: dequeuedChild[0].snapshot.id,
-        });
+      await setTimeout(500);
+      const dequeuedChild = await engine.dequeueFromWorkerQueue({
+        consumerId: "consumer-r4c",
+        workerQueue: "main",
+      });
+      const childAttempt = await engine.startRunAttempt({
+        runId: dequeuedChild[0].run.id,
+        snapshotId: dequeuedChild[0].snapshot.id,
+      });
 
-        store.calls.length = 0;
-        await engine.completeRunAttempt({
-          runId: childRun.id,
-          snapshotId: childAttempt.snapshot.id,
-          completion: {
-            id: childRun.id,
-            ok: true,
-            output: '{"foo":"bar"}',
-            outputType: "application/json",
-          },
-        });
+      store.calls.length = 0;
+      await engine.completeRunAttempt({
+        runId: childRun.id,
+        snapshotId: childAttempt.snapshot.id,
+        completion: {
+          id: childRun.id,
+          ok: true,
+          output: '{"foo":"bar"}',
+          outputType: "application/json",
+        },
+      });
 
-        expect(store.calls).toContain("forWaitpointCompletion");
-        expectGuardFiredBeforeUpdate(store.calls);
-      } finally {
-        await engine.quit();
-      }
+      expect(store.calls).toContain("forWaitpointCompletion");
+      expectGuardFiredBeforeUpdate(store.calls);
+    } finally {
+      await engine.quit();
     }
-  );
+  });
 
   // runAttemptSystem cancel: cancelling a still-queued child finishes it
   // immediately and completes its associatedWaitpoint via runAttemptSystem.
-  containerTest(
-    "guard fires on the runAttempt cancel route",
-    async ({ prisma, redisOptions }) => {
-      const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
-      const engine = buildEngine(prisma, redisOptions, store);
+  containerTest("guard fires on the runAttempt cancel route", async ({ prisma, redisOptions }) => {
+    const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
+    const engine = buildEngine(prisma, redisOptions, store);
 
-      try {
-        const { childRun } = await triggerChildResumingParent(
-          engine,
-          prisma,
-          env,
-          "parent-task-r5",
-          "child-task-r5",
-          "r5"
-        );
+    try {
+      const { childRun } = await triggerChildResumingParent(
+        engine,
+        prisma,
+        env,
+        "parent-task-r5",
+        "child-task-r5",
+        "r5"
+      );
 
-        const associatedWaitpoint = await prisma.waitpoint.findFirstOrThrow({
-          where: { completedByTaskRunId: childRun.id },
-        });
-        expect(associatedWaitpoint.status).toBe("PENDING");
+      const associatedWaitpoint = await prisma.waitpoint.findFirstOrThrow({
+        where: { completedByTaskRunId: childRun.id },
+      });
+      expect(associatedWaitpoint.status).toBe("PENDING");
 
-        store.calls.length = 0;
-        const result = await engine.cancelRun({
-          runId: childRun.id,
-          completedAt: new Date(),
-          reason: "Cancelled by the user",
-        });
-        expect(result.snapshot.executionStatus).toBe("FINISHED");
+      store.calls.length = 0;
+      const result = await engine.cancelRun({
+        runId: childRun.id,
+        completedAt: new Date(),
+        reason: "Cancelled by the user",
+      });
+      expect(result.snapshot.executionStatus).toBe("FINISHED");
 
-        expect(store.calls).toContain("forWaitpointCompletion");
-        expectGuardFiredBeforeUpdate(store.calls);
+      expect(store.calls).toContain("forWaitpointCompletion");
+      expectGuardFiredBeforeUpdate(store.calls);
 
-        const completed = await prisma.waitpoint.findUniqueOrThrow({
-          where: { id: associatedWaitpoint.id },
-        });
-        expect(completed.status).toBe("COMPLETED");
-      } finally {
-        await engine.quit();
-      }
+      const completed = await prisma.waitpoint.findUniqueOrThrow({
+        where: { id: associatedWaitpoint.id },
+      });
+      expect(completed.status).toBe("COMPLETED");
+    } finally {
+      await engine.quit();
     }
-  );
+  });
 
   // runAttemptSystem failure: a child that resumes its parent is failed
   // permanently, completing its associatedWaitpoint (with an error output).
-  containerTest(
-    "guard fires on the runAttempt failure route",
-    async ({ prisma, redisOptions }) => {
-      const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
-      const engine = buildEngine(prisma, redisOptions, store);
+  containerTest("guard fires on the runAttempt failure route", async ({ prisma, redisOptions }) => {
+    const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
+    const engine = buildEngine(prisma, redisOptions, store);
 
-      try {
-        const { childRun } = await triggerChildResumingParent(
-          engine,
-          prisma,
-          env,
-          "parent-task-r6",
-          "child-task-r6",
-          "r6"
-        );
+    try {
+      const { childRun } = await triggerChildResumingParent(
+        engine,
+        prisma,
+        env,
+        "parent-task-r6",
+        "child-task-r6",
+        "r6"
+      );
 
-        const associatedWaitpoint = await prisma.waitpoint.findFirstOrThrow({
-          where: { completedByTaskRunId: childRun.id },
-        });
+      const associatedWaitpoint = await prisma.waitpoint.findFirstOrThrow({
+        where: { completedByTaskRunId: childRun.id },
+      });
 
-        await setTimeout(500);
-        const dequeuedChild = await engine.dequeueFromWorkerQueue({
-          consumerId: "consumer-r6c",
-          workerQueue: "main",
-        });
-        const childAttempt = await engine.startRunAttempt({
-          runId: dequeuedChild[0].run.id,
-          snapshotId: dequeuedChild[0].snapshot.id,
-        });
+      await setTimeout(500);
+      const dequeuedChild = await engine.dequeueFromWorkerQueue({
+        consumerId: "consumer-r6c",
+        workerQueue: "main",
+      });
+      const childAttempt = await engine.startRunAttempt({
+        runId: dequeuedChild[0].run.id,
+        snapshotId: dequeuedChild[0].snapshot.id,
+      });
 
-        store.calls.length = 0;
-        // A non-retryable failure finishes the child permanently and completes its waitpoint.
-        await engine.completeRunAttempt({
-          runId: childRun.id,
-          snapshotId: childAttempt.snapshot.id,
-          completion: {
-            ok: false,
-            id: childRun.id,
-            error: {
-              type: "INTERNAL_ERROR" as const,
-              code: "TASK_RUN_CRASHED" as const,
-              message: "boom",
-            },
+      store.calls.length = 0;
+      // A non-retryable failure finishes the child permanently and completes its waitpoint.
+      await engine.completeRunAttempt({
+        runId: childRun.id,
+        snapshotId: childAttempt.snapshot.id,
+        completion: {
+          ok: false,
+          id: childRun.id,
+          error: {
+            type: "INTERNAL_ERROR" as const,
+            code: "TASK_RUN_CRASHED" as const,
+            message: "boom",
           },
-        });
+        },
+      });
 
-        expect(store.calls).toContain("forWaitpointCompletion");
-        expectGuardFiredBeforeUpdate(store.calls);
+      expect(store.calls).toContain("forWaitpointCompletion");
+      expectGuardFiredBeforeUpdate(store.calls);
 
-        const completed = await prisma.waitpoint.findUniqueOrThrow({
-          where: { id: associatedWaitpoint.id },
-        });
-        expect(completed.status).toBe("COMPLETED");
-        expect(completed.outputIsError).toBe(true);
-      } finally {
-        await engine.quit();
-      }
+      const completed = await prisma.waitpoint.findUniqueOrThrow({
+        where: { id: associatedWaitpoint.id },
+      });
+      expect(completed.status).toBe("COMPLETED");
+      expect(completed.outputIsError).toBe(true);
+    } finally {
+      await engine.quit();
     }
-  );
+  });
 
   // ttlSystem: a still-PENDING child that resumes its parent is expired by TTL,
   // completing its associatedWaitpoint via ttlSystem.
-  containerTest(
-    "guard fires on the ttlSystem expiry route",
-    async ({ prisma, redisOptions }) => {
-      const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
-      const engine = buildEngine(prisma, redisOptions, store);
+  containerTest("guard fires on the ttlSystem expiry route", async ({ prisma, redisOptions }) => {
+    const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
+    const engine = buildEngine(prisma, redisOptions, store);
 
-      try {
-        const { childRun } = await triggerChildResumingParent(
-          engine,
-          prisma,
-          env,
-          "parent-task-r7",
-          "child-task-r7",
-          "r7"
-        );
+    try {
+      const { childRun } = await triggerChildResumingParent(
+        engine,
+        prisma,
+        env,
+        "parent-task-r7",
+        "child-task-r7",
+        "r7"
+      );
 
-        const associatedWaitpoint = await prisma.waitpoint.findFirstOrThrow({
-          where: { completedByTaskRunId: childRun.id },
-        });
-        // The child is still QUEUED/PENDING (never dequeued), so the per-run expireRun
-        // path will expire it and complete the associated waitpoint.
-        expect(associatedWaitpoint.status).toBe("PENDING");
+      const associatedWaitpoint = await prisma.waitpoint.findFirstOrThrow({
+        where: { completedByTaskRunId: childRun.id },
+      });
+      // The child is still QUEUED/PENDING (never dequeued), so the per-run expireRun
+      // path will expire it and complete the associated waitpoint.
+      expect(associatedWaitpoint.status).toBe("PENDING");
 
-        store.calls.length = 0;
-        await engine.ttlSystem.expireRun({ runId: childRun.id });
+      store.calls.length = 0;
+      await engine.ttlSystem.expireRun({ runId: childRun.id });
 
-        expect(store.calls).toContain("forWaitpointCompletion");
-        expectGuardFiredBeforeUpdate(store.calls);
+      expect(store.calls).toContain("forWaitpointCompletion");
+      expectGuardFiredBeforeUpdate(store.calls);
 
-        const completed = await prisma.waitpoint.findUniqueOrThrow({
-          where: { id: associatedWaitpoint.id },
-        });
-        expect(completed.status).toBe("COMPLETED");
-      } finally {
-        await engine.quit();
-      }
+      const completed = await prisma.waitpoint.findUniqueOrThrow({
+        where: { id: associatedWaitpoint.id },
+      });
+      expect(completed.status).toBe("COMPLETED");
+    } finally {
+      await engine.quit();
     }
-  );
+  });
 
   // in-file wrapper blockRunAndCompleteWaitpoint: blocks then immediately
   // completes, so the guard must fire on the inner completeWaitpoint call.

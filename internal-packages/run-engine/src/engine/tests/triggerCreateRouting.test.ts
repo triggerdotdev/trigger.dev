@@ -361,10 +361,7 @@ describe("RunEngine trigger/create routing", () => {
 
         // trigger called WITH the real prisma client as the explicit tx → the
         // store create must receive that exact same client by identity.
-        await engine.trigger(
-          baseTriggerParams(freshRunId(), environment, taskIdentifier),
-          prisma
-        );
+        await engine.trigger(baseTriggerParams(freshRunId(), environment, taskIdentifier), prisma);
         expect(store.createRunTxArgs).toHaveLength(1);
         expect(store.createRunTxArgs[0]).toBe(prisma);
 
@@ -430,60 +427,57 @@ describe("RunEngine trigger/create routing", () => {
   // A child triggered with the parent's residency persists to the
   // SAME store the parent was written to (routing-by-run-id). Both parent and
   // child mint NEW (ksuid) ids → both land on newStore.
-  containerTest(
-    "child inherits the parent's residency store",
-    async ({ prisma, redisOptions }) => {
-      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const newStore = new CountingRunStore({ prisma, readOnlyPrisma: prisma, label: "new" });
-      const legacyStore = new CountingRunStore({
-        prisma,
-        readOnlyPrisma: prisma,
-        label: "legacy",
+  containerTest("child inherits the parent's residency store", async ({ prisma, redisOptions }) => {
+    const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const newStore = new CountingRunStore({ prisma, readOnlyPrisma: prisma, label: "new" });
+    const legacyStore = new CountingRunStore({
+      prisma,
+      readOnlyPrisma: prisma,
+      label: "legacy",
+    });
+    const routing = new RoutingRunStore({ new: newStore, legacy: legacyStore });
+    const engine = new RunEngine({
+      prisma,
+      store: routing,
+      ...baseEngineOptions(redisOptions),
+    });
+
+    try {
+      const parentTask = "parent-task";
+      const childTask = "child-task";
+      await setupBackgroundWorker(engine, environment, [parentTask, childTask]);
+
+      const parentRun = await engine.trigger(
+        baseTriggerParams(freshKsuidRunId(), environment, parentTask)
+      );
+
+      await engine.dequeueFromWorkerQueue({ consumerId: "test", workerQueue: "main" });
+      const parentData = await engine.getRunExecutionData({ runId: parentRun.id });
+      await engine.startRunAttempt({
+        runId: parentRun.id,
+        snapshotId: parentData!.snapshot.id,
       });
-      const routing = new RoutingRunStore({ new: newStore, legacy: legacyStore });
-      const engine = new RunEngine({
-        prisma,
-        store: routing,
-        ...baseEngineOptions(redisOptions),
+
+      const childRun = await engine.trigger({
+        ...baseTriggerParams(freshKsuidRunId(), environment, childTask),
+        resumeParentOnCompletion: true,
+        parentTaskRunId: parentRun.id,
+        rootTaskRunId: parentRun.id,
       });
 
-      try {
-        const parentTask = "parent-task";
-        const childTask = "child-task";
-        await setupBackgroundWorker(engine, environment, [parentTask, childTask]);
+      // Both ids are NEW → both routed to the run-ops (NEW) store, never LEGACY.
+      expect(ownerEngine(parentRun.friendlyId)).toBe("NEW");
+      expect(ownerEngine(childRun.friendlyId)).toBe("NEW");
+      expect(newStore.createRunCalls).toBe(2);
+      expect(legacyStore.createRunCalls).toBe(0);
 
-        const parentRun = await engine.trigger(
-          baseTriggerParams(freshKsuidRunId(), environment, parentTask)
-        );
-
-        await engine.dequeueFromWorkerQueue({ consumerId: "test", workerQueue: "main" });
-        const parentData = await engine.getRunExecutionData({ runId: parentRun.id });
-        await engine.startRunAttempt({
-          runId: parentRun.id,
-          snapshotId: parentData!.snapshot.id,
-        });
-
-        const childRun = await engine.trigger({
-          ...baseTriggerParams(freshKsuidRunId(), environment, childTask),
-          resumeParentOnCompletion: true,
-          parentTaskRunId: parentRun.id,
-          rootTaskRunId: parentRun.id,
-        });
-
-        // Both ids are NEW → both routed to the run-ops (NEW) store, never LEGACY.
-        expect(ownerEngine(parentRun.friendlyId)).toBe("NEW");
-        expect(ownerEngine(childRun.friendlyId)).toBe("NEW");
-        expect(newStore.createRunCalls).toBe(2);
-        expect(legacyStore.createRunCalls).toBe(0);
-
-        // The child is found on the same store, routed by its run id.
-        const childOnRouting = await routing.findRun({ id: childRun.id });
-        expect(childOnRouting?.id).toBe(childRun.id);
-      } finally {
-        await engine.quit();
-      }
+      // The child is found on the same store, routed by its run id.
+      const childOnRouting = await routing.findRun({ id: childRun.id });
+      expect(childOnRouting?.id).toBe(childRun.id);
+    } finally {
+      await engine.quit();
     }
-  );
+  });
 
   // Split-path env integrity / cross-DB control-plane resolution. With a
   // resolver whose assertEnvExists throws, the create is blocked and no row is

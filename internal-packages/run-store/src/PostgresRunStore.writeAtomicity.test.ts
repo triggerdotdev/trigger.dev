@@ -158,7 +158,10 @@ async function seedKsuidRun(
 
 const ATTEMPT_SELECT = { id: true, status: true, attemptNumber: true } as const;
 
-function snapshotInput(runId: string, env: { project: { id: string }; environment: { id: string } }) {
+function snapshotInput(
+  runId: string,
+  env: { project: { id: string }; environment: { id: string } }
+) {
   return {
     run: { id: runId, status: "EXECUTING" as const, attemptNumber: 1 },
     snapshot: { executionStatus: "EXECUTING" as const, description: "Attempt created, starting" },

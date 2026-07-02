@@ -178,7 +178,11 @@ function stripDedicatedRelations(
 // --- per-model dedicated-schema relation hydrators ---
 
 // Waitpoint where completedByTaskRunId = run.id (the @unique scalar back-pointer); at most one.
-const hydrateAssociatedWaitpoint: DedicatedRelationHydrator = async (client, parent, projection) => {
+const hydrateAssociatedWaitpoint: DedicatedRelationHydrator = async (
+  client,
+  parent,
+  projection
+) => {
   const wp = (await client.waitpoint.findFirst({
     where: { completedByTaskRunId: parent.id as string },
   })) as Record<string, unknown> | null;
@@ -186,7 +190,11 @@ const hydrateAssociatedWaitpoint: DedicatedRelationHydrator = async (client, par
 };
 
 // Display connections for a run: WaitpointRunConnection → Waitpoint rows.
-const hydrateConnectedWaitpoints: DedicatedRelationHydrator = async (client, parent, projection) => {
+const hydrateConnectedWaitpoints: DedicatedRelationHydrator = async (
+  client,
+  parent,
+  projection
+) => {
   const join = client.waitpointRunConnection;
   if (!join) {
     return [];
@@ -205,7 +213,11 @@ const hydrateConnectedWaitpoints: DedicatedRelationHydrator = async (client, par
 };
 
 // Completed waitpoints for a snapshot: CompletedWaitpoint join → Waitpoint rows.
-const hydrateCompletedWaitpoints: DedicatedRelationHydrator = async (client, parent, projection) => {
+const hydrateCompletedWaitpoints: DedicatedRelationHydrator = async (
+  client,
+  parent,
+  projection
+) => {
   const join = client.completedWaitpoint;
   if (!join) {
     return [];
@@ -264,7 +276,11 @@ const hydrateConnectedRuns: DedicatedRelationHydrator = async (client, parent, p
 };
 
 // Snapshots that completed a waitpoint: CompletedWaitpoint join → TaskRunExecutionSnapshot rows.
-const hydrateCompletedExecutionSnapshots: DedicatedRelationHydrator = async (client, parent, projection) => {
+const hydrateCompletedExecutionSnapshots: DedicatedRelationHydrator = async (
+  client,
+  parent,
+  projection
+) => {
   const join = client.completedWaitpoint;
   if (!join) {
     return [];
@@ -1701,7 +1717,10 @@ export class PostgresRunStore implements RunStore {
     // straight-through would throw a Prisma validation error), run the scalar findMany, then hydrate
     // from the edge's own client. A cross-DB token is missed here and re-resolved by the router.
     const { where, orderBy, take, skip, cursor, ...projection } = args as Record<string, any>;
-    const { stripped, requested } = stripDedicatedRelations(projection, TASK_RUN_WAITPOINT_DEDICATED);
+    const { stripped, requested } = stripDedicatedRelations(
+      projection,
+      TASK_RUN_WAITPOINT_DEDICATED
+    );
     // Keep the scalar ids the hydrators key off through a narrowed select.
     if (stripped.select) {
       stripped.select.waitpointId = true;

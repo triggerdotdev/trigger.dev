@@ -273,9 +273,9 @@ describe("run-ops split — BatchTaskRun writes/probes must NOT forward the cont
       });
 
       // Pass the LEGACY (control-plane) client; the routed #new store must ignore it and read its own DB.
-      expect(await router.countBatchTaskRunItems({ batchTaskRunId: batchId }, prisma14 as never)).toBe(
-        2
-      );
+      expect(
+        await router.countBatchTaskRunItems({ batchTaskRunId: batchId }, prisma14 as never)
+      ).toBe(2);
       expect(
         await router.countBatchTaskRunItems(
           { batchTaskRunId: batchId, status: "COMPLETED" },

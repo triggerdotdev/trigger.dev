@@ -84,7 +84,10 @@ class RoutingRunStore implements RunStore {
     return (this.#legacyStore.findRunOrThrow as any)(where, argsOrClient);
   }
 
-  async findRuns(args: { where: Prisma.TaskRunWhereInput }, _client?: ReadClient): Promise<unknown> {
+  async findRuns(
+    args: { where: Prisma.TaskRunWhereInput },
+    _client?: ReadClient
+  ): Promise<unknown> {
     const id = this.#idFromWhere(args.where);
     if (id !== undefined) {
       return (this.#resolveById(id).findRuns as any)(args);

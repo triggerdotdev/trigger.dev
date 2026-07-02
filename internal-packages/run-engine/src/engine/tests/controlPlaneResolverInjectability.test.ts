@@ -98,7 +98,9 @@ describe("RunEngine controlPlaneResolver injectability", () => {
         );
 
         // assertEnvExists resolves for a present env and rejects for a missing one.
-        await expect(engine.controlPlaneResolver.assertEnvExists(environment.id)).resolves.toBeUndefined();
+        await expect(
+          engine.controlPlaneResolver.assertEnvExists(environment.id)
+        ).resolves.toBeUndefined();
         await expect(
           engine.controlPlaneResolver.assertEnvExists("env_does_not_exist")
         ).rejects.toThrow();

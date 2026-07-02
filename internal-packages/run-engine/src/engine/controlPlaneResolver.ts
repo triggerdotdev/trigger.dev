@@ -111,9 +111,7 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
     };
   }
 
-  async resolveAuthenticatedEnv(
-    environmentId: string
-  ): Promise<ResolvedAuthenticatedEnv | null> {
+  async resolveAuthenticatedEnv(environmentId: string): Promise<ResolvedAuthenticatedEnv | null> {
     const env = await this.#prisma.runtimeEnvironment.findFirst({
       where: { id: environmentId },
       include: {
@@ -201,9 +199,7 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
     const { environmentId, type, workerId } = args;
 
     if (type === "DEVELOPMENT") {
-      return workerId
-        ? this.#getWorkerById(workerId)
-        : this.#getMostRecentWorker(environmentId);
+      return workerId ? this.#getWorkerById(workerId) : this.#getMostRecentWorker(environmentId);
     }
 
     return workerId
@@ -211,9 +207,7 @@ export class PassthroughControlPlaneResolver implements ControlPlaneResolver {
       : this.#getManagedWorkerFromCurrentlyPromotedDeployment(environmentId);
   }
 
-  async #getWorkerDeploymentFromWorker(
-    workerId: string
-  ): Promise<ResolvedWorkerVersion | null> {
+  async #getWorkerDeploymentFromWorker(workerId: string): Promise<ResolvedWorkerVersion | null> {
     const worker = await this.#prisma.backgroundWorker.findFirst({
       where: {
         id: workerId,

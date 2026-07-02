@@ -31,7 +31,11 @@ function buildRouter(opts?: { newHolds?: string[]; legacyHolds?: string[] }): {
   const all = [KSUID_ID, CUID_ID, UNCLASSIFIABLE_ID];
   const newStore = fakeStore("new", new Set(opts?.newHolds ?? all));
   const legacyStore = fakeStore("legacy", new Set(opts?.legacyHolds ?? all));
-  return { router: new RoutingRunStore({ new: newStore, legacy: legacyStore }), newStore, legacyStore };
+  return {
+    router: new RoutingRunStore({ new: newStore, legacy: legacyStore }),
+    newStore,
+    legacyStore,
+  };
 }
 
 describe("RoutingRunStore.forWaitpointCompletion", () => {
@@ -79,16 +83,18 @@ describe("RoutingRunStore.forWaitpointCompletion", () => {
     // ksuid id prefers NEW, but the token actually lives on LEGACY (drain/relocation): the
     // probe must fall through to LEGACY rather than route by id-shape alone and miss it.
     const { router, legacyStore } = buildRouter({ newHolds: [], legacyHolds: [KSUID_ID] });
-    expect(await router.forWaitpointCompletion(KSUID_ID, { routeKind: "MANUAL" })).toBe(legacyStore);
+    expect(await router.forWaitpointCompletion(KSUID_ID, { routeKind: "MANUAL" })).toBe(
+      legacyStore
+    );
   });
 
   it("resolves an unclassifiable id to LEGACY-preferred (never throws)", async () => {
     // #classifySafe treats an unclassifiable id as LEGACY; with both stores empty the preferred
     // (LEGACY) is returned. The completion path must not blow up on an odd-length id.
     const { router, legacyStore } = buildRouter({ newHolds: [], legacyHolds: [] });
-    expect(
-      await router.forWaitpointCompletion(UNCLASSIFIABLE_ID, { routeKind: "MANUAL" })
-    ).toBe(legacyStore);
+    expect(await router.forWaitpointCompletion(UNCLASSIFIABLE_ID, { routeKind: "MANUAL" })).toBe(
+      legacyStore
+    );
   });
 });
 

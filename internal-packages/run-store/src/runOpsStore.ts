@@ -801,7 +801,9 @@ export class RoutingRunStore implements RunStore {
     // store that holds the waitpoint hydrates them from its own client only and MISSES a cross-DB
     // target (engine.getWaitpoint includes blockingTaskRuns→taskRun). Strip those keys from the
     // per-leg query and re-resolve them across BOTH DBs here, mirroring findManyTaskRunWaitpoints.
-    const { scalarArgs, relations } = splitWaitpointRelationProjection(args as Record<string, unknown>);
+    const { scalarArgs, relations } = splitWaitpointRelationProjection(
+      args as Record<string, unknown>
+    );
     const id = RoutingRunStore.#waitpointId((args as { where?: unknown }).where);
     const store =
       id !== undefined
@@ -838,7 +840,9 @@ export class RoutingRunStore implements RunStore {
     args: Prisma.SelectSubset<T, Prisma.WaitpointFindManyArgs>,
     client?: ReadClient
   ): Promise<Prisma.WaitpointGetPayload<T>[]> {
-    const { scalarArgs, relations } = splitWaitpointRelationProjection(args as Record<string, unknown>);
+    const { scalarArgs, relations } = splitWaitpointRelationProjection(
+      args as Record<string, unknown>
+    );
     const [fromNew, fromLegacy] = await Promise.all([
       this.#new.findManyWaitpoints(scalarArgs as typeof args),
       this.#legacy.findManyWaitpoints(scalarArgs as typeof args),

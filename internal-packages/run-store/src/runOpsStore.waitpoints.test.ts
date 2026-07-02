@@ -315,7 +315,12 @@ describe("RunStore run-ops persistence — waitpoints", () => {
       };
 
       for (const variant of [
-        { prisma: prisma14, schemaVariant: "legacy" as const, runId: `run_${CUID_25}`, suffix: "wb14" },
+        {
+          prisma: prisma14,
+          schemaVariant: "legacy" as const,
+          runId: `run_${CUID_25}`,
+          suffix: "wb14",
+        },
         {
           prisma: prisma17,
           schemaVariant: "dedicated" as const,

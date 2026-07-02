@@ -41,7 +41,9 @@ const TASK_RUN_CROSS_SEAM_FKS = [
 
 async function dropTaskRunCrossSeamFks(prisma: PrismaClient) {
   for (const constraint of TASK_RUN_CROSS_SEAM_FKS) {
-    await prisma.$executeRawUnsafe(`ALTER TABLE "TaskRun" DROP CONSTRAINT IF EXISTS "${constraint}"`);
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "TaskRun" DROP CONSTRAINT IF EXISTS "${constraint}"`
+    );
   }
 }
 

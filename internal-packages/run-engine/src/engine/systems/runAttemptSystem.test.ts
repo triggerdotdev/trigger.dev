@@ -329,47 +329,44 @@ describe("runAttemptSystem routes through the RunStore", () => {
   );
 
   // Single-client passthrough: a start->succeed round-trip on the DEFAULT
-  containerTest(
-    "single-DB binds one client (passthrough)",
-    async ({ prisma, redisOptions }) => {
-      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const engine = new RunEngine(createEngineOptions(redisOptions, prisma, undefined));
+  containerTest("single-DB binds one client (passthrough)", async ({ prisma, redisOptions }) => {
+    const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const engine = new RunEngine(createEngineOptions(redisOptions, prisma, undefined));
 
-      try {
-        const taskIdentifier = "test-task";
-        await setupBackgroundWorker(engine, environment, taskIdentifier);
+    try {
+      const taskIdentifier = "test-task";
+      await setupBackgroundWorker(engine, environment, taskIdentifier);
 
-        const run = await triggerRun(engine, environment, prisma, taskIdentifier);
-        const dequeued = await dequeueOne(engine);
-        const attemptResult = await engine.startRunAttempt({
-          runId: dequeued[0].run.id,
-          snapshotId: dequeued[0].snapshot.id,
-        });
-        await engine.completeRunAttempt({
-          runId: dequeued[0].run.id,
-          snapshotId: attemptResult.snapshot.id,
-          completion: {
-            ok: true,
-            id: dequeued[0].run.id,
-            output: `{"ok":true}`,
-            outputType: "application/json",
-          },
-        });
+      const run = await triggerRun(engine, environment, prisma, taskIdentifier);
+      const dequeued = await dequeueOne(engine);
+      const attemptResult = await engine.startRunAttempt({
+        runId: dequeued[0].run.id,
+        snapshotId: dequeued[0].snapshot.id,
+      });
+      await engine.completeRunAttempt({
+        runId: dequeued[0].run.id,
+        snapshotId: attemptResult.snapshot.id,
+        completion: {
+          ok: true,
+          id: dequeued[0].run.id,
+          output: `{"ok":true}`,
+          outputType: "application/json",
+        },
+      });
 
-        const persisted = await prisma.taskRun.findUniqueOrThrow({
-          where: { id: run.id },
-          include: { executionSnapshots: true },
-        });
-        expect(persisted.status).toBe("COMPLETED_SUCCESSFULLY");
-        expect(persisted.executionSnapshots.length).toBeGreaterThan(0);
-        expect(
-          persisted.executionSnapshots.some((s: any) => s.executionStatus === "FINISHED")
-        ).toBe(true);
-      } finally {
-        await engine.quit();
-      }
+      const persisted = await prisma.taskRun.findUniqueOrThrow({
+        where: { id: run.id },
+        include: { executionSnapshots: true },
+      });
+      expect(persisted.status).toBe("COMPLETED_SUCCESSFULLY");
+      expect(persisted.executionSnapshots.length).toBeGreaterThan(0);
+      expect(persisted.executionSnapshots.some((s: any) => s.executionStatus === "FINISHED")).toBe(
+        true
+      );
+    } finally {
+      await engine.quit();
     }
-  );
+  });
 
   // cancelRun routes the CANCELED update through the dedicated cancelRun method
   containerTest(
@@ -427,60 +424,57 @@ describe("runAttemptSystem routes through the RunStore", () => {
   );
 
   // cancelRun child fan-out stays single-DB: cancelling a parent enqueues
-  containerTest(
-    "cancelRun child fan-out stays single-DB",
-    async ({ prisma, redisOptions }) => {
-      const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
-      const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
-      const engine = new RunEngine(createEngineOptions(redisOptions, prisma, store));
+  containerTest("cancelRun child fan-out stays single-DB", async ({ prisma, redisOptions }) => {
+    const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
+    const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
+    const engine = new RunEngine(createEngineOptions(redisOptions, prisma, store));
 
-      try {
-        const parentTask = "parent-task";
-        const childTask = "child-task";
-        await setupBackgroundWorker(engine, environment, [parentTask, childTask]);
+    try {
+      const parentTask = "parent-task";
+      const childTask = "child-task";
+      await setupBackgroundWorker(engine, environment, [parentTask, childTask]);
 
-        const parentRun = await triggerRun(engine, environment, prisma, parentTask);
+      const parentRun = await triggerRun(engine, environment, prisma, parentTask);
 
-        // Two real children in the subgraph. The parent is left un-started so the cancel
-        // finishes it immediately and runs the fan-out synchronously (an executing parent
-        // would defer the fan-out to attempt completion).
-        const childIds: string[] = [];
-        for (let i = 0; i < 2; i++) {
-          const childRun = await triggerRun(engine, environment, prisma, childTask, {
-            resumeParentOnCompletion: true,
-            parentTaskRunId: parentRun.id,
-          });
-          childIds.push(childRun.id);
-        }
-
-        const enqueuedIds: string[] = [];
-        const originalEnqueue = engine.worker.enqueue.bind(engine.worker);
-        (engine.worker as any).enqueue = async (item: any) => {
-          if (typeof item?.id === "string" && item.id.startsWith("cancelRun:")) {
-            enqueuedIds.push(item.id);
-          }
-          return originalEnqueue(item);
-        };
-
-        await engine.cancelRun({
-          runId: parentRun.id,
-          completedAt: new Date(),
-          reason: "Cancelled by the user",
+      // Two real children in the subgraph. The parent is left un-started so the cancel
+      // finishes it immediately and runs the fan-out synchronously (an executing parent
+      // would defer the fan-out to attempt completion).
+      const childIds: string[] = [];
+      for (let i = 0; i < 2; i++) {
+        const childRun = await triggerRun(engine, environment, prisma, childTask, {
+          resumeParentOnCompletion: true,
+          parentTaskRunId: parentRun.id,
         });
-
-        for (const childId of childIds) {
-          expect(enqueuedIds).toContain(`cancelRun:${childId}`);
-        }
-
-        expect(store.countFor("cancelRun", parentRun.id)).toBe(1);
-        for (const childId of childIds) {
-          expect(store.countFor("cancelRun", childId)).toBe(0);
-        }
-      } finally {
-        await engine.quit();
+        childIds.push(childRun.id);
       }
+
+      const enqueuedIds: string[] = [];
+      const originalEnqueue = engine.worker.enqueue.bind(engine.worker);
+      (engine.worker as any).enqueue = async (item: any) => {
+        if (typeof item?.id === "string" && item.id.startsWith("cancelRun:")) {
+          enqueuedIds.push(item.id);
+        }
+        return originalEnqueue(item);
+      };
+
+      await engine.cancelRun({
+        runId: parentRun.id,
+        completedAt: new Date(),
+        reason: "Cancelled by the user",
+      });
+
+      for (const childId of childIds) {
+        expect(enqueuedIds).toContain(`cancelRun:${childId}`);
+      }
+
+      expect(store.countFor("cancelRun", parentRun.id)).toBe(1);
+      for (const childId of childIds) {
+        expect(store.countFor("cancelRun", childId)).toBe(0);
+      }
+    } finally {
+      await engine.quit();
     }
-  );
+  });
 
   // Bulk-action push on an already-finished run routes through the dedicated
   containerTest(

@@ -375,7 +375,9 @@ describe("RunEngine completeWaitpoint re-read residency (two physical DBs, dedic
         });
 
         // The block edge is physically on #new; #legacy holds none for the ksuid run (safety invariant).
-        expect(await prisma17.taskRunWaitpoint.count({ where: { taskRunId: parentRunId } })).toBe(1);
+        expect(await prisma17.taskRunWaitpoint.count({ where: { taskRunId: parentRunId } })).toBe(
+          1
+        );
         expect(
           await (prisma14 as unknown as PrismaClient).taskRunWaitpoint.count({
             where: { taskRunId: parentRunId },
@@ -398,9 +400,11 @@ describe("RunEngine completeWaitpoint re-read residency (two physical DBs, dedic
 
         // Token COMPLETED on #legacy only.
         expect(
-          (await (prisma14 as unknown as PrismaClient).waitpoint.findFirst({
-            where: { id: waitpointId },
-          }))?.status
+          (
+            await (prisma14 as unknown as PrismaClient).waitpoint.findFirst({
+              where: { id: waitpointId },
+            })
+          )?.status
         ).toBe("COMPLETED");
         expect(await prisma17.waitpoint.findFirst({ where: { id: waitpointId } })).toBeNull();
 
