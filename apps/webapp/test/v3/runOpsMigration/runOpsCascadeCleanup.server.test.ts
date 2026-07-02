@@ -384,7 +384,7 @@ describe("RunOpsCascadeCleanupService", () => {
     }
   );
 
-  // Test A: env cleanup over both writers empties the subgraph on BOTH DBs + BulkActionItem on the
+  // Env cleanup over both writers empties the subgraph on BOTH DBs + BulkActionItem on the
   // control-plane DB; a sibling scope survives.
   heteroPostgresTest(
     "cleanupEnvironment empties the subgraph across both writers, isolating a sibling env",
@@ -422,7 +422,7 @@ describe("RunOpsCascadeCleanupService", () => {
     }
   );
 
-  // Test B: project cleanup over both writers.
+  // Project cleanup over both writers.
   heteroPostgresTest(
     "cleanupProject empties the subgraph across both writers, isolating a sibling project",
     async ({ prisma14, prisma17 }) => {
@@ -459,7 +459,7 @@ describe("RunOpsCascadeCleanupService", () => {
     }
   );
 
-  // Test C: idempotency — a second cleanup returns all-zero counts and does not throw on either DB.
+  // Idempotency — a second cleanup returns all-zero counts and does not throw on either DB.
   heteroPostgresTest(
     "cleanupEnvironment is idempotent on a re-run across both FK configs",
     async ({ prisma14, prisma17 }) => {
@@ -496,7 +496,7 @@ describe("RunOpsCascadeCleanupService", () => {
     }
   );
 
-  // Test D: FK-retained vs FK-dropped fixtures reach an identical run-subgraph end-state.
+  // FK-retained vs FK-dropped fixtures reach an identical run-subgraph end-state.
   heteroPostgresTest(
     "FK-retained and FK-dropped fixtures reach an identical end-state after cleanup",
     async ({ prisma14, prisma17 }) => {
@@ -522,7 +522,7 @@ describe("RunOpsCascadeCleanupService", () => {
     }
   );
 
-  // Test E: single-DB mode — the same client passed twice de-dups so the pass runs once.
+  // Single-DB mode — the same client passed twice de-dups so the pass runs once.
   heteroPostgresTest(
     "single-DB: the same client passed twice de-dups so the delete pass runs exactly once",
     async ({ prisma14 }) => {
@@ -558,7 +558,7 @@ describe("RunOpsCascadeCleanupService", () => {
     }
   );
 
-  // Test F: the two-writer split — an env whose rows straddle both DBs (cuid runs on the LEGACY DB,
+  // The two-writer split — an env whose rows straddle both DBs (cuid runs on the LEGACY DB,
   // ksuid runs on the NEW DB) is fully cleaned by one call; a single-writer service leaks orphans.
   heteroPostgresTest(
     "two-writer fan-out cleans a split env on both DBs; single-writer leaves orphans",

@@ -2,7 +2,7 @@
 // on the dedicated run-ops DB (prisma17), so `projectAlert.create({ taskRunId: <ksuid> })` on
 // control-plane (prisma14) violates the FK and the alert is silently dropped. After the FK drop +
 // @relation removal the create succeeds; the read path resolves the run via runStore.findRun.
-// Asserts the create SUCCEEDS — RED (FK violation) before the fix, GREEN after.
+// Asserts the create succeeds: it fails with an FK violation before the fix and succeeds after.
 
 import { heteroRunOpsPostgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
