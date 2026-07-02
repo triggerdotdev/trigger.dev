@@ -168,7 +168,7 @@ describe("assertReplicationCoversSplit (boot gate-coupling)", () => {
     newOriginGeneration: 1,
   };
 
-  it("throws when split is on but sources[] has no \"new\" source (the silent under-count)", () => {
+  it('throws when split is on but sources[] has no "new" source (the silent under-count)', () => {
     // Split on, but the new replication source is forced off — ksuid runs would not
     // reach ClickHouse. This is the exact misconfiguration the boot gate must refuse to boot with.
     const sources = buildReplicationSources({
@@ -268,9 +268,16 @@ describe("RunsReplication new-source backfill origin generation (integration)", 
 
       // Create org/project/env/run on the legacy DB (the FK schema lives there).
       // This simulates a pre-existing run that was migrated to the dedicated DB.
-      const organization = await prisma.organization.create({ data: { title: "bf-gen", slug: "bf-gen" } });
+      const organization = await prisma.organization.create({
+        data: { title: "bf-gen", slug: "bf-gen" },
+      });
       const project = await prisma.project.create({
-        data: { name: "bf-gen", slug: "bf-gen", organizationId: organization.id, externalRef: "bf-gen" },
+        data: {
+          name: "bf-gen",
+          slug: "bf-gen",
+          organizationId: organization.id,
+          externalRef: "bf-gen",
+        },
       });
       const runtimeEnvironment = await prisma.runtimeEnvironment.create({
         data: {
@@ -303,16 +310,14 @@ describe("RunsReplication new-source backfill origin generation (integration)", 
 
       try {
         // Backfill the run via the "new" source — must encode gen=1 in _version.
-        await service.backfill(
-          [{ ...run, masterQueue: run.workerQueue ?? "main" }],
-          "new"
-        );
+        await service.backfill([{ ...run, masterQueue: run.workerQueue ?? "main" }], "new");
 
         await setTimeout(500);
 
         const queryRuns = clickhouse.reader.query({
           name: "runs-replication-backfill-gen",
-          query: "SELECT run_id, _version FROM trigger_dev.task_runs_v2 WHERE run_id = {run_id:String}",
+          query:
+            "SELECT run_id, _version FROM trigger_dev.task_runs_v2 WHERE run_id = {run_id:String}",
           schema: z.object({ run_id: z.string(), _version: z.number() }),
           params: z.object({ run_id: z.string() }),
         });

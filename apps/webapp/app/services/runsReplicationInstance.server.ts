@@ -68,7 +68,7 @@ export function buildReplicationSources(args: {
 export class SplitReplicationMisconfiguredError extends Error {
   constructor() {
     super(
-      "RUN_OPS_SPLIT_ENABLED is on but the runs-replication sources[] has no \"new\" source: " +
+      'RUN_OPS_SPLIT_ENABLED is on but the runs-replication sources[] has no "new" source: ' +
         "ksuid runs on the new DB would not replicate to ClickHouse, under-counting every " +
         "ClickHouse-fronted aggregate. Enable the new replication source " +
         "(RUN_REPLICATION_NEW_ENABLED / RUN_OPS_DATABASE_URL) or turn the split off."
@@ -162,8 +162,7 @@ function initializeRunsReplicationInstance() {
           splitEnabled,
           legacyUrl: DATABASE_URL,
           newUrl: env.RUN_OPS_DATABASE_URL ?? env.TASK_RUN_DATABASE_URL,
-          newSourceOverride:
-            env.RUN_REPLICATION_NEW_ENABLED === "disabled" ? false : undefined,
+          newSourceOverride: env.RUN_REPLICATION_NEW_ENABLED === "disabled" ? false : undefined,
           legacySlotName: env.RUN_REPLICATION_SLOT_NAME,
           legacyPublicationName: env.RUN_REPLICATION_PUBLICATION_NAME,
           legacyOriginGeneration: env.RUN_REPLICATION_LEGACY_ORIGIN_GENERATION,
