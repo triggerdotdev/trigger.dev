@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 // @testcontainers/postgresql resolves because it is declared in apps/webapp/package.json.
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
-import { computeSplitEnabled } from "~/v3/runOpsMigration/splitMode.server";
+import {
+  computeSplitEnabled,
+  assertSplitRealtimeInterlock,
+} from "~/v3/runOpsMigration/splitMode.server";
 import { probeDistinctDatabases } from "~/v3/runOpsMigration/distinctDbSentinel.server";
 
 describe("computeSplitEnabled (pure)", () => {
@@ -55,6 +58,29 @@ describe("computeSplitEnabled (pure)", () => {
       )
     ).toBe(false);
     expect(probe).not.toHaveBeenCalled();
+  });
+});
+
+describe("assertSplitRealtimeInterlock (pure)", () => {
+  it("throws when split is on but the native realtime backend is off", () => {
+    expect(() =>
+      assertSplitRealtimeInterlock({ splitEnabled: true, nativeRealtimeEnabled: false })
+    ).toThrowError(/native realtime backend|REALTIME_BACKEND_NATIVE_ENABLED/i);
+  });
+
+  it("does not throw when split is on and the native realtime backend is on", () => {
+    expect(() =>
+      assertSplitRealtimeInterlock({ splitEnabled: true, nativeRealtimeEnabled: true })
+    ).not.toThrow();
+  });
+
+  it("does not throw when split is off, regardless of the native realtime backend", () => {
+    expect(() =>
+      assertSplitRealtimeInterlock({ splitEnabled: false, nativeRealtimeEnabled: false })
+    ).not.toThrow();
+    expect(() =>
+      assertSplitRealtimeInterlock({ splitEnabled: false, nativeRealtimeEnabled: true })
+    ).not.toThrow();
   });
 });
 

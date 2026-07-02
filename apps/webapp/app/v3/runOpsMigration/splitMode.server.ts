@@ -40,6 +40,29 @@ export async function computeSplitEnabled(
   return result.distinct === true;
 }
 
+export type SplitRealtimeInterlockConfig = {
+  splitEnabled: boolean;
+  nativeRealtimeEnabled: boolean;
+};
+
+/**
+ * Boot-time realtime interlock (pure predicate). Split mode puts NEW-resident
+ * (ksuid) runs on the dedicated run-ops DB, but Electric replicates only from the
+ * control-plane DB — with the native realtime backend OFF those runs are invisible
+ * and every realtime subscription hangs. Refuse split unless native is on; split-off
+ * is always allowed regardless of the realtime backend.
+ */
+export function assertSplitRealtimeInterlock(config: SplitRealtimeInterlockConfig): void {
+  if (!config.splitEnabled) {
+    return;
+  }
+  if (!config.nativeRealtimeEnabled) {
+    throw new Error(
+      "RUN_OPS_SPLIT_ENABLED is on but the native realtime backend (REALTIME_BACKEND_NATIVE_ENABLED) is not enabled — Electric cannot serve NEW-resident runs; refusing to enable split."
+    );
+  }
+}
+
 let cached: Promise<boolean> | undefined;
 
 export function isSplitEnabled(): Promise<boolean> {

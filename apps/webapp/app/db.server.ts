@@ -19,7 +19,10 @@ import {
   logTransactionInfrastructureError,
 } from "./utils/prismaErrors";
 import { singleton } from "./utils/singleton";
-import { isSplitEnabled } from "./v3/runOpsMigration/splitMode.server";
+import {
+  isSplitEnabled,
+  assertSplitRealtimeInterlock,
+} from "./v3/runOpsMigration/splitMode.server";
 import { computeRunOpsSplitReadEnabled } from "./v3/runOpsMigration/runOpsSplitReadGate";
 import { DATASOURCE_CONTEXT_KEY, startActiveSpan } from "./v3/tracer.server";
 import type { Span } from "@opentelemetry/api";
@@ -284,6 +287,13 @@ export const runOpsSplitReadEnabled: boolean = computeRunOpsSplitReadEnabled({
 // call it from the eager-boot path before any run-ops routing is wired.
 export async function assertRunOpsSplitSentinel(): Promise<void> {
   if (!env.RUN_OPS_SPLIT_ENABLED) return;
+  // Realtime interlock (synchronous): Electric replicates only from the control-plane
+  // DB, so split-on without the native realtime backend leaves NEW-resident runs
+  // invisible and hangs every subscription. Fail fast before the async DB probe.
+  assertSplitRealtimeInterlock({
+    splitEnabled: env.RUN_OPS_SPLIT_ENABLED,
+    nativeRealtimeEnabled: env.REALTIME_BACKEND_NATIVE_ENABLED === "1",
+  });
   const ok = await isSplitEnabled();
   if (!ok) {
     throw new Error(
