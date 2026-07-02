@@ -70,21 +70,13 @@ export function HelpAndFeedback({
                 <QuestionMarkIcon className="size-5 min-w-5 shrink-0 text-success" />
                 <span
                   className={cn(
-                    "overflow-hidden whitespace-nowrap text-2sm text-text-bright transition-all duration-150",
+                    "overflow-hidden whitespace-nowrap text-[0.90625rem] font-medium tracking-[-0.01em] text-text-dimmed transition-all duration-150 group-hover:text-text-bright",
                     isCollapsed ? "max-w-0 opacity-0" : "max-w-[150px] opacity-100"
                   )}
                 >
                   Help & Feedback
                 </span>
               </span>
-              <ShortcutKey
-                className={cn(
-                  "size-4 flex-none transition-all duration-150",
-                  isCollapsed ? "hidden" : ""
-                )}
-                shortcut={{ key: "h" }}
-                variant="medium/bright"
-              />
             </PopoverTrigger>
           }
           content={
@@ -95,7 +87,7 @@ export function HelpAndFeedback({
           }
           side="right"
           sideOffset={8}
-          hidden={!isCollapsed}
+          delayDuration={isCollapsed ? 0 : 500}
           buttonClassName="!h-8 w-full"
           asChild
           disableHoverableContent

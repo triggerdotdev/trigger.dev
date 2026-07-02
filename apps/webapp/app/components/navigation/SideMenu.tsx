@@ -392,7 +392,12 @@ export function SideMenu({
               : "scrollbar-gutter-stable scrollbar-thin scrollbar-track-transparent scrollbar-thumb-charcoal-600"
           )}
         >
-          <div className="mb-6 flex w-full flex-col gap-4 overflow-hidden pl-2.5 pr-0">
+          <div
+            className={cn(
+              "mb-6 flex w-full flex-col gap-4 overflow-hidden pr-0 transition-[padding] duration-200",
+              isCollapsed ? "pl-1" : "pl-2.5"
+            )}
+          >
             <div className="w-full space-y-0">
               <SideMenuItem
                 name="Tasks"
@@ -1028,22 +1033,22 @@ function ProjectSelector({
         button={
           <PopoverTrigger
             className={cn(
-              "group flex h-8 items-center rounded pl-[0.4375rem] transition-colors hover:bg-charcoal-750",
+              "group flex h-8 items-center rounded border pl-[0.4375rem] transition-colors hover:bg-charcoal-750",
               isCollapsed
-                ? "justify-center pr-0.5"
-                : "justify-between border border-charcoal-700 pr-1",
+                ? "justify-center border-transparent pr-0.5"
+                : "justify-between border-charcoal-700 pr-1",
               className
             )}
           >
             <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-              <FolderOpenIcon className="size-5 shrink-0 text-text-dimmed transition group-hover:text-text-bright" />
+              <FolderOpenIcon className="size-5 shrink-0 text-text-bright" />
               <span
                 className={cn(
                   "flex min-w-0 items-center overflow-hidden transition-all duration-200",
                   isCollapsed ? "max-w-0 opacity-0" : "max-w-[200px] opacity-100"
                 )}
               >
-                <span className="truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-dimmed transition group-hover:text-text-bright">
+                <span className="truncate text-[0.90625rem] font-medium tracking-[-0.01em] text-text-bright">
                   {project.name ?? "Select a project"}
                 </span>
               </span>
