@@ -136,19 +136,6 @@ function makeEnvResolver(controlPlane: PrismaClient) {
   };
 }
 
-/**
- * Wraps the REAL readThroughRun but forces isKnownMigrated false so the layer is hermetic
- * (the default isKnownMigrated would import ~/db.server and probe an ambient .env DB the test
- * never seeded). Pure boundary injection — the DB reads still hit the real containers.
- */
-function hermeticReadThrough(isKnownMigrated: (id: string) => Promise<boolean> = async () => false) {
-  return <T>(input: Parameters<typeof readThroughRun<T>>[0]) =>
-    readThroughRun<T>({
-      ...input,
-      deps: { ...input.deps, isKnownMigrated },
-    });
-}
-
 describe("BatchPresenter read-through (PG14 legacy + PG17 new)", () => {
   // DoD: batch detail resolves on run-ops NEW (split on). Legacy replica is never probed.
   heteroPostgresTest(
@@ -176,7 +163,7 @@ describe("BatchPresenter read-through (PG14 legacy + PG17 new)", () => {
         splitEnabled: true,
         newClient: prisma17,
         legacyReplica: tripwireLegacy,
-        readThrough: hermeticReadThrough(),
+        readThrough: readThroughRun,
         resolveDisplayableEnvironment: makeEnvResolver(prisma17),
       });
 
@@ -232,8 +219,8 @@ describe("BatchPresenter read-through (PG14 legacy + PG17 new)", () => {
         splitEnabled: true,
         newClient: prisma17, // NEW probe misses (nothing seeded there)
         legacyReplica: prisma14,
-        // Real readThroughRun; isKnownMigrated forced false (no marker) so it falls to legacy.
-        readThrough: hermeticReadThrough(),
+        // Real readThroughRun; the NEW miss falls through to the legacy replica.
+        readThrough: readThroughRun,
         resolveDisplayableEnvironment: makeEnvResolver(prisma14),
       });
 
@@ -262,7 +249,7 @@ describe("BatchPresenter read-through (PG14 legacy + PG17 new)", () => {
         splitEnabled: true,
         newClient: prisma17,
         legacyReplica: prisma14,
-        readThrough: hermeticReadThrough(),
+        readThrough: readThroughRun,
         resolveDisplayableEnvironment: makeEnvResolver(prisma14),
       });
 
@@ -283,7 +270,7 @@ describe("BatchPresenter read-through (PG14 legacy + PG17 new)", () => {
         splitEnabled: true,
         newClient: prisma17,
         legacyReplica: prisma14,
-        readThrough: hermeticReadThrough(),
+        readThrough: readThroughRun,
         resolveDisplayableEnvironment: makeEnvResolver(prisma17),
       });
 

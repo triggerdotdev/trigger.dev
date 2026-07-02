@@ -4,7 +4,7 @@
 // REPLICA ONLY; each member run is hydrated independently via the per-run read-through primitive,
 // so a batch whose members span migrated (NEW) + abandoned (LEGACY) runs returns the
 // complete reachable set. Single-DB collapses to one passthrough read. We NEVER mock the DB — the
-// only injected fakes are the pure boundaries (splitEnabled / isKnownMigrated / isPastRetention).
+// only injected fakes are the pure boundaries (splitEnabled / isPastRetention).
 //
 // The BatchTaskRunItem -> TaskRun FK is per-DB; a batch straddling the seam references member ids
 // that live on the other DB, so we drop that one FK on the batch's DB at seed time (the cross-seam
@@ -196,8 +196,6 @@ const env = (ctx: SeedCtx) =>
     project: { name: ctx.project.name },
   }) as unknown as AuthenticatedEnvironment;
 
-const neverMigrated = async () => false;
-
 describe("ApiBatchResultsPresenter read-through (legacy + new DB)", () => {
   // A batch with members on BOTH DBs returns the complete set, byte-identical.
   heteroPostgresTest(
@@ -235,7 +233,6 @@ describe("ApiBatchResultsPresenter read-through (legacy + new DB)", () => {
         splitEnabled: true,
         newClient: prisma17 as unknown as PrismaReplicaClient,
         legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-        isKnownMigrated: neverMigrated,
       });
 
       const result = await presenter.call("batch_span", env(ctx));
@@ -286,7 +283,6 @@ describe("ApiBatchResultsPresenter read-through (legacy + new DB)", () => {
         splitEnabled: true,
         newClient: prisma17 as unknown as PrismaReplicaClient,
         legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-        isKnownMigrated: neverMigrated,
       });
 
       const result = await presenter.call("batch_legacy", env(ctx));
@@ -295,69 +291,6 @@ describe("ApiBatchResultsPresenter read-through (legacy + new DB)", () => {
       expect(result!.id).toBe("batch_legacy");
       expect(result!.items).toHaveLength(1);
       expect(result!.items[0]).toMatchObject({ ok: true, id: "run_legacy_c" });
-    }
-  );
-
-  // A known-migrated member is not re-probed against the legacy replica.
-  heteroPostgresTest(
-    "a known-migrated member missing from the new probe is NOT re-probed on legacy",
-    async ({ prisma14, prisma17 }) => {
-      const newDb = prisma17 as unknown as PrismaClient;
-      const legacyDb = prisma14 as unknown as PrismaClient;
-
-      const ctx = await seedEnv(newDb, "mig-new");
-      await mirrorEnv(legacyDb, ctx, "mig-legacy");
-      await relaxFks(newDb);
-      await relaxFks(legacyDb);
-
-      // A legacy-classified id (so the LEGACY fan-out branch is reachable) that is "known migrated".
-      const migratedId = legacyRunId("d");
-      // Seed the member ONLY on legacy, but mark it known-migrated → legacy must NOT be probed,
-      // so it resolves to not-found and is omitted.
-      await seedMember(legacyDb, ctx, {
-        id: migratedId,
-        friendlyId: "run_migrated_d",
-        status: "COMPLETED_SUCCESSFULLY",
-        output: JSON.stringify({}),
-      });
-      await seedBatch(newDb, ctx, "batch_mig", [migratedId]);
-
-      // Spy legacy replica: throw if the member-hydrate findFirst runs for the migrated id.
-      const legacySpy = new Proxy(prisma14, {
-        get(target, prop) {
-          if (prop === "taskRun") {
-            return new Proxy((target as any).taskRun, {
-              get(trTarget, trProp) {
-                if (trProp === "findFirst") {
-                  return async (args: any) => {
-                    if (args?.where?.id === migratedId) {
-                      throw new Error(
-                        "legacy replica must not be probed for a known-migrated member"
-                      );
-                    }
-                    return (trTarget as any).findFirst(args);
-                  };
-                }
-                return (trTarget as any)[trProp];
-              },
-            });
-          }
-          return (target as any)[prop];
-        },
-      }) as unknown as PrismaReplicaClient;
-
-      const presenter = new ApiBatchResultsPresenter(throwingPrisma, throwingPrisma, {
-        splitEnabled: true,
-        newClient: prisma17 as unknown as PrismaReplicaClient,
-        legacyReplica: legacySpy,
-        isKnownMigrated: async (id) => id === migratedId,
-      });
-
-      const result = await presenter.call("batch_mig", env(ctx));
-
-      expect(result).toBeDefined();
-      // Known-migrated + missing from NEW → not-found → omitted, without probing legacy.
-      expect(result!.items).toHaveLength(0);
     }
   );
 
@@ -388,7 +321,6 @@ describe("ApiBatchResultsPresenter read-through (legacy + new DB)", () => {
         splitEnabled: true,
         newClient: prisma17 as unknown as PrismaReplicaClient,
         legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-        isKnownMigrated: neverMigrated,
       });
 
       const result = await presenter.call("batch_dangle", env(ctx));
@@ -411,7 +343,6 @@ describe("ApiBatchResultsPresenter read-through (legacy + new DB)", () => {
         splitEnabled: true,
         newClient: prisma17 as unknown as PrismaReplicaClient,
         legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-        isKnownMigrated: neverMigrated,
       });
 
       const result = await presenter.call("batch_does_not_exist", env(ctx));
@@ -439,16 +370,13 @@ describe("ApiBatchResultsPresenter passthrough (single-DB collapse)", () => {
 
       const runStore = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
 
-      // Throwing boundaries: if the split path is entered, these blow up.
+      // Throwing legacy replica: if the split path is entered, it blows up.
       const presenter = new ApiBatchResultsPresenter(
         prisma,
         prisma,
         {
           splitEnabled: false,
           legacyReplica: throwingPrisma,
-          isKnownMigrated: async () => {
-            throw new Error("isKnownMigrated must not be invoked on the passthrough path");
-          },
         },
         runStore
       );

@@ -335,8 +335,8 @@ describe("NextRunListPresenter dual-DB empty-state probe + routed hydrate (legac
   // --- list hydrate flows through the routed store: split, non-empty CH id-set whose rows are
   // split across NEW + the legacy replica. result.runs must be the union, id-desc ordered. This
   // proves the deps are threaded so the routed store is actually used.
-  // The presenter cannot supply isKnownMigrated, so the routed hydrate runs without it; we assert
-  // the rows that DO surface (the full union, since legacy is probed for legacy-only ids).
+  // We assert the rows that DO surface (the full union, since legacy is probed for any id that
+  // misses on NEW).
   // The migrated runs (run_newA/run_newB) live on BOTH DBs with the same id + friendlyId but a
   // DISTINGUISHING taskIdentifier: "my-task" on legacy, "my-task-NEW" on new. #hydrateRunsByIds
   // takes NEW rows first and only probes legacy for ids NOT on NEW, so a migrated row can only

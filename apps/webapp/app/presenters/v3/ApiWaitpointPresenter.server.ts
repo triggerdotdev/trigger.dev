@@ -6,16 +6,14 @@ import { waitpointStatusToApiStatus } from "./WaitpointListPresenter.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import type { PrismaClientOrTransaction, PrismaReplicaClient } from "~/db.server";
 import { readThroughRun } from "~/v3/runOpsMigration/readThrough.server";
-import { isKnownMigrated } from "~/v3/runOpsMigration/knownMigratedFilter.server";
 
 // When omitted, clients default to the inherited _replica handle => passthrough reads the
-// replica exactly as today. Pure boundaries (isKnownMigrated/isPastRetention) are injectable
-// for tests. Typed PrismaReplicaClient to match readThroughRun's readNew/readLegacy + deps.
+// replica exactly as today. isPastRetention is injectable for tests. Typed PrismaReplicaClient
+// to match readThroughRun's readNew/readLegacy + deps.
 type ApiWaitpointPresenterReadThroughDeps = {
   newClient?: PrismaReplicaClient;
   legacyReplica?: PrismaReplicaClient;
   splitEnabled?: boolean;
-  isKnownMigrated?: (id: string) => Promise<boolean>;
   isPastRetention?: (id: string) => boolean;
 };
 
@@ -42,7 +40,7 @@ export class ApiWaitpointPresenter extends BasePresenter {
   ) {
     return this.trace("call", async (span) => {
       // Public waitpoint retrieve. Split on: new run-ops client first, then the LEGACY
-      // RUN-OPS READ REPLICA ONLY for ids not known-migrated — never the legacy primary.
+      // RUN-OPS READ REPLICA ONLY on a new-probe miss — never the legacy primary.
       // Split off (single-DB / self-host): one plain waitpoint.findFirst against the replica
       // (passthrough). The waitpointId is the residency-classifiable KSUID id (the route
       // pre-decodes the friendlyId via WaitpointId.toId).
@@ -90,7 +88,6 @@ export class ApiWaitpointPresenter extends BasePresenter {
           newClient: this.readThroughDeps?.newClient ?? (this._replica as PrismaReplicaClient),
           legacyReplica:
             this.readThroughDeps?.legacyReplica ?? (this._replica as PrismaReplicaClient),
-          isKnownMigrated: this.readThroughDeps?.isKnownMigrated ?? isKnownMigrated,
           isPastRetention: this.readThroughDeps?.isPastRetention,
         },
       });

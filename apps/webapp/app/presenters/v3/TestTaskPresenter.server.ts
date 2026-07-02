@@ -14,7 +14,6 @@ import { type PrismaClient } from "~/db.server";
 import { RunsRepository } from "~/services/runsRepository/runsRepository.server";
 import { getTimezones } from "~/utils/timezones.server";
 import { findCurrentWorkerDeployment } from "~/v3/models/workerDeployment.server";
-import { isKnownMigrated as defaultIsKnownMigrated } from "~/v3/runOpsMigration/knownMigratedFilter.server";
 import { runStore as defaultRunStore } from "~/v3/runStore.server";
 import { queueTypeFromType } from "./QueueRetrievePresenter.server";
 
@@ -26,7 +25,6 @@ type TestTaskReadThroughDeps = {
   legacyReplica?: PrismaClientOrTransaction;
   // Resolved boot constant; when false the split branch is never entered.
   splitEnabled?: boolean;
-  isKnownMigrated?: (runId: string) => Promise<boolean>;
 };
 
 // The byte-identical select the recent-payloads hydrate has always used; `id` is
@@ -414,7 +412,7 @@ export class TestTaskPresenter {
   }
 
   // Hydrates the recent-payloads run-id set from the run-ops store. Split on: new
-  // client first, then the LEGACY READ REPLICA ONLY for ids not known-migrated —
+  // client first, then the LEGACY READ REPLICA ONLY for ids that miss on new —
   // never the legacy primary. Split off: one plain findRuns on `this.replica`.
   private async hydrateRecentRuns(runIds: string[]): Promise<RecentRunRow[]> {
     if (runIds.length === 0) {
@@ -427,18 +425,11 @@ export class TestTaskPresenter {
 
     const newClient = this.readThrough.newClient ?? this.replica;
     const legacyReplica = this.readThrough.legacyReplica ?? this.replica;
-    const isKnownMigrated = this.readThrough.isKnownMigrated ?? defaultIsKnownMigrated;
 
     const newRows = await this.hydrateOnClient(newClient, runIds);
     const foundIds = new Set(newRows.map((r) => r.id));
-    const missing = runIds.filter((id) => !foundIds.has(id));
-
-    const toProbeLegacy: string[] = [];
-    for (const id of missing) {
-      if (!(await isKnownMigrated(id))) {
-        toProbeLegacy.push(id);
-      }
-    }
+    // Probe every id that missed on new against the legacy read replica.
+    const toProbeLegacy = runIds.filter((id) => !foundIds.has(id));
 
     const legacyRows = toProbeLegacy.length
       ? await this.hydrateOnClient(legacyReplica, toProbeLegacy)

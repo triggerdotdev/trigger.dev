@@ -1,6 +1,6 @@
 // Real heterogeneous legacy + new Postgres proof for the public waitpoint retrieve read.
 // The DB is never mocked: reads hit the two real containers. Only pure boundaries
-// (splitEnabled, isKnownMigrated, isPastRetention) and recording client wrappers are
+// (splitEnabled, isPastRetention) and recording client wrappers are
 // injected. heteroPostgresTest runs the legacy and new databases on different major versions.
 import { heteroPostgresTest, postgresTest } from "@internal/testcontainers";
 import type { PrismaClient, WaitpointType } from "@trigger.dev/database";
@@ -126,7 +126,6 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
         splitEnabled: true,
         newClient: newClient.handle,
         legacyReplica: legacy.handle,
-        isKnownMigrated: async () => false,
       });
 
       const result = await presenter.call(environmentArg(environment), id);
@@ -161,7 +160,6 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
         splitEnabled: true,
         newClient: newClient.handle,
         legacyReplica: legacy.handle,
-        isKnownMigrated: async () => false,
       });
 
       const result = await presenter.call(environmentArg(environment), id);
@@ -175,35 +173,6 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
   );
 
   heteroPostgresTest(
-    "a known-migrated waitpoint is not re-probed against legacy",
-    async ({ prisma17, prisma14 }) => {
-      // Legacy-residency id (forces the new-first-then-legacy fan-out), but the new probe
-      // misses (simulated lag: empty NEW DB) and isKnownMigrated returns true → no legacy probe.
-      const id = generateLegacyCuid();
-
-      const { project, environment } = await seedOrgProjectEnv(prisma14, "migrated");
-
-      const newClient = recording(prisma17);
-      const legacy = recording(prisma14, { forbidden: true });
-
-      const presenter = new ApiWaitpointPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: newClient.handle,
-        legacyReplica: legacy.handle,
-        isKnownMigrated: async () => true,
-      });
-
-      await expect(presenter.call(environmentArg(environment), id)).rejects.toThrow(
-        "Waitpoint not found"
-      );
-
-      expect(newClient.calls.length).toBe(1);
-      // known-migrated short-circuit: legacy never probed.
-      expect(legacy.calls.length).toBe(0);
-    }
-  );
-
-  heteroPostgresTest(
     "not-found maps to the existing ServiceValidationError surface",
     async ({ prisma17, prisma14 }) => {
       const id = generateLegacyCuid();
@@ -213,7 +182,6 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
         splitEnabled: true,
         newClient: recording(prisma17).handle,
         legacyReplica: recording(prisma14).handle,
-        isKnownMigrated: async () => false,
       });
 
       await expect(presenter.call(environmentArg(environment), id)).rejects.toThrow(
@@ -232,7 +200,6 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
         splitEnabled: true,
         newClient: recording(prisma17).handle,
         legacyReplica: recording(prisma14).handle,
-        isKnownMigrated: async () => false,
         isPastRetention: () => true,
       });
 
@@ -243,9 +210,9 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
   );
 
   heteroPostgresTest(
-    "cross-seam — migrated served from NEW (legacy untouched); in-retention served from legacy",
+    "cross-seam — new-resident served from NEW (legacy untouched); in-retention served from legacy",
     async ({ prisma17, prisma14 }) => {
-      // Migrated waitpoint: lives on NEW, isKnownMigrated true, legacy must never be touched.
+      // New-resident waitpoint: lives on NEW, the new probe hits, legacy must never be touched.
       const newId = generateKsuidId();
       const newEnv = await seedOrgProjectEnv(prisma17, "x2new");
       await seedWaitpoint(prisma17, newId, {
@@ -257,7 +224,6 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
         splitEnabled: true,
         newClient: recording(prisma17).handle,
         legacyReplica: newLegacy.handle,
-        isKnownMigrated: async () => true,
       });
       const migratedResult = await migratedPresenter.call(environmentArg(newEnv.environment), newId);
       expect(migratedResult.id).toBe(`waitpoint_${newId}`);
@@ -274,7 +240,6 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
         splitEnabled: true,
         newClient: recording(prisma17).handle,
         legacyReplica: recording(prisma14).handle,
-        isKnownMigrated: async () => false,
       });
       const retentionResult = await retentionPresenter.call(environmentArg(oldEnv.environment), oldId);
       expect(retentionResult.id).toBe(`waitpoint_${oldId}`);
@@ -284,7 +249,7 @@ describe("ApiWaitpointPresenter read-through (heterogeneous legacy + new Postgre
 
 describe("ApiWaitpointPresenter passthrough (single-DB)", () => {
   postgresTest(
-    "no read-through deps → one plain replica read; legacy + isKnownMigrated never invoked",
+    "no read-through deps → one plain replica read; legacy never touched",
     async ({ prisma }) => {
       const id = generateKsuidId();
       const { project, environment } = await seedOrgProjectEnv(prisma, "pt");
@@ -296,18 +261,13 @@ describe("ApiWaitpointPresenter passthrough (single-DB)", () => {
       );
 
       const single = recording(prisma);
-      let knownMigratedInvoked = false;
       const legacy = recording(prisma, { forbidden: true });
 
       // No splitEnabled → passthrough. newClient defaults to the single recording handle so we
-      // can assert exactly one read against it; legacy + isKnownMigrated must never fire.
+      // can assert exactly one read against it; legacy must never fire.
       const presenter = new ApiWaitpointPresenter(undefined, undefined, {
         newClient: single.handle,
         legacyReplica: legacy.handle,
-        isKnownMigrated: async () => {
-          knownMigratedInvoked = true;
-          return false;
-        },
       });
 
       const result = await presenter.call(environmentArg(environment), id);
@@ -315,10 +275,9 @@ describe("ApiWaitpointPresenter passthrough (single-DB)", () => {
       expect(result.id).toBe(seeded.friendlyId);
       expect(result.tags).toEqual(["one"]);
       expect(result.output).toBe(JSON.stringify({ ok: true }));
-      // Passthrough: exactly one read on the single client; legacy + known-migrated untouched.
+      // Passthrough: exactly one read on the single client; legacy untouched.
       expect(single.calls.length).toBe(1);
       expect(legacy.calls.length).toBe(0);
-      expect(knownMigratedInvoked).toBe(false);
     }
   );
 });

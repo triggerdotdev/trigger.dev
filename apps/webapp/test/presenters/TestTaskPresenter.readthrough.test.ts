@@ -180,10 +180,6 @@ function envFor(ctx: SeedContext) {
   };
 }
 
-const neverCalledMigrated = async (id: string): Promise<never> => {
-  throw new Error(`isKnownMigrated must not be invoked (called with ${id})`);
-};
-
 /** A legacy-replica handle whose taskRun.findMany throws — proves it is never hydrated from. */
 function throwingLegacyReplica(prisma: PrismaClient): PrismaClient {
   return new Proxy(prisma, {
@@ -279,7 +275,6 @@ describe("TestTaskPresenter recent-payloads read-through (PG14 legacy + PG17 new
             splitEnabled: true,
             newClient: prismaNew,
             legacyReplica: prisma,
-            isKnownMigrated: async () => false,
           },
           new PostgresRunStore({ prisma: prismaNew, readOnlyPrisma: prismaNew })
         );
@@ -311,65 +306,6 @@ describe("TestTaskPresenter recent-payloads read-through (PG14 legacy + PG17 new
         );
         expect(result.runs.find((r) => r.id === migratedJson.id)!.payloadType).toBe(JSON_TYPE);
         expect(result.runs.find((r) => r.id === legacyOld.id)!.payloadType).toBe(JSON_TYPE);
-      } finally {
-        await prismaNew.$disconnect();
-      }
-    }
-  );
-
-  // --- Known-migrated filter avoids re-probing the legacy replica ---
-  replicationContainerTest(
-    "a known-migrated id missing from the new probe is NOT re-probed against the legacy replica",
-    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma, network }) => {
-      const { clickhouse } = await setupClickhouseReplication({
-        prisma,
-        databaseUrl: postgresContainer.getConnectionUri(),
-        clickhouseUrl: clickhouseContainer.getConnectionUrl(),
-        redisOptions,
-      });
-
-      const { url: newUrl } = await createPostgresContainer(network, {
-        imageTag: "docker.io/postgres:17",
-      });
-      const prismaNew = new PrismaClient({ datasources: { db: { url: newUrl } } });
-
-      try {
-        const ctx = await seedParents(prisma, "migfilter", "STANDARD");
-        await mirrorParents(prismaNew, ctx, "migfilter");
-
-        // Seeded on the LEGACY/source DB (so CH has the id) but withheld from NEW,
-        // simulating replication lag where the new probe misses a freshly-migrated row.
-        const migrated = await createRun(prisma, ctx, {
-          friendlyId: "run_migrated",
-          payload: JSON.stringify({ kind: "migrated" }),
-        });
-
-        await setTimeout(1500);
-
-        const presenter = new TestTaskPresenter(
-          prisma,
-          clickhouse,
-          {
-            splitEnabled: true,
-            newClient: prismaNew,
-            legacyReplica: throwingLegacyReplica(prisma),
-            isKnownMigrated: async (id) => id === migrated.id,
-          },
-          new PostgresRunStore({ prisma: prismaNew, readOnlyPrisma: prismaNew })
-        );
-
-        const result = await presenter.call({
-          userId: "user_1",
-          projectId: ctx.projectId,
-          environment: envFor(ctx),
-          taskIdentifier: "my-task",
-        });
-
-        // Not on NEW, known-migrated -> never probed on legacy => absent (no throw).
-        if (!result.foundTask || result.triggerSource !== "STANDARD") {
-          throw new Error("expected a STANDARD task");
-        }
-        expect(result.runs).toHaveLength(0);
       } finally {
         await prismaNew.$disconnect();
       }
@@ -412,7 +348,6 @@ describe("TestTaskPresenter recent-payloads read-through (PG14 legacy + PG17 new
             splitEnabled: true,
             newClient: prismaNew,
             legacyReplica: prisma,
-            isKnownMigrated: async () => false,
           },
           new PostgresRunStore({ prisma: prismaNew, readOnlyPrisma: prismaNew })
         );
@@ -434,9 +369,9 @@ describe("TestTaskPresenter recent-payloads read-through (PG14 legacy + PG17 new
     }
   );
 
-  // --- Passthrough (single-DB): one plain store read, legacy + isKnownMigrated never touched ---
+  // --- Passthrough (single-DB): one plain store read, the legacy replica never touched ---
   replicationContainerTest(
-    "single-DB passthrough hydrates from one store read and never touches the legacy/known-migrated boundaries",
+    "single-DB passthrough hydrates from one store read and never touches the legacy replica",
     async ({ clickhouseContainer, redisOptions, postgresContainer, prisma }) => {
       const { clickhouse } = await setupClickhouseReplication({
         prisma,
@@ -466,7 +401,7 @@ describe("TestTaskPresenter recent-payloads read-through (PG14 legacy + PG17 new
 
       await setTimeout(1500);
 
-      // No readThrough (split off). Inject throwing boundaries to prove the split branch
+      // No readThrough (split off). Inject a throwing legacy replica to prove the split branch
       // is never entered: a runStore whose findRuns drives the single `prisma` handle.
       const presenter = new TestTaskPresenter(
         prisma,
@@ -474,7 +409,6 @@ describe("TestTaskPresenter recent-payloads read-through (PG14 legacy + PG17 new
         {
           splitEnabled: false,
           legacyReplica: throwingLegacyReplica(prisma),
-          isKnownMigrated: neverCalledMigrated,
         },
         new PostgresRunStore({ prisma, readOnlyPrisma: prisma })
       );
@@ -554,7 +488,6 @@ describe("TestTaskPresenter recent-payloads read-through (PG14 legacy + PG17 new
             splitEnabled: true,
             newClient: prismaNew,
             legacyReplica: prisma,
-            isKnownMigrated: async () => false,
           },
           new PostgresRunStore({ prisma: prismaNew, readOnlyPrisma: prismaNew })
         );
@@ -579,69 +512,4 @@ describe("TestTaskPresenter recent-payloads read-through (PG14 legacy + PG17 new
     }
   );
 
-  // --- e2e #6 (post-migration straggler): migrated row hydrates from NEW, legacy never touched ---
-  replicationContainerTest(
-    "a migrated straggler hydrates from the NEW DB and the legacy replica is never touched for it",
-    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma, network }) => {
-      const { clickhouse } = await setupClickhouseReplication({
-        prisma,
-        databaseUrl: postgresContainer.getConnectionUri(),
-        clickhouseUrl: clickhouseContainer.getConnectionUrl(),
-        redisOptions,
-      });
-
-      const { url: newUrl } = await createPostgresContainer(network, {
-        imageTag: "docker.io/postgres:17",
-      });
-      const prismaNew = new PrismaClient({ datasources: { db: { url: newUrl } } });
-
-      try {
-        const ctx = await seedParents(prisma, "straggler", "STANDARD");
-        await mirrorParents(prismaNew, ctx, "straggler");
-
-        // The id must reach ClickHouse, so it is seeded on the replication source (PG14)
-        // for the id-set, AND on NEW (PG17) where it is authoritative post-migration.
-        const straggler = await createRun(prisma, ctx, {
-          friendlyId: "run_straggler",
-          payload: JSON.stringify({ kind: "straggler" }),
-        });
-        await copyRunWithId(prismaNew, ctx, {
-          id: straggler.id,
-          friendlyId: straggler.friendlyId,
-          payload: straggler.payload,
-          payloadType: JSON_TYPE,
-          createdAt: straggler.createdAt,
-        });
-
-        await setTimeout(1500);
-
-        const presenter = new TestTaskPresenter(
-          prisma,
-          clickhouse,
-          {
-            splitEnabled: true,
-            newClient: prismaNew,
-            // Throws if the legacy replica is hydrated from — it must not be, the row is on NEW.
-            legacyReplica: throwingLegacyReplica(prisma),
-            isKnownMigrated: async () => true,
-          },
-          new PostgresRunStore({ prisma: prismaNew, readOnlyPrisma: prismaNew })
-        );
-
-        const result = await presenter.call({
-          userId: "user_1",
-          projectId: ctx.projectId,
-          environment: envFor(ctx),
-          taskIdentifier: "my-task",
-        });
-
-        if (!result.foundTask || result.triggerSource !== "STANDARD") {
-          throw new Error("expected a STANDARD task");
-        }
-        expect(result.runs.map((r) => r.id)).toEqual([straggler.id]);
-      } finally {
-        await prismaNew.$disconnect();
-      }
-    }
-  );
 });

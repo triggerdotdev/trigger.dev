@@ -8,7 +8,6 @@ import {
 import type { TaskRunWithAttempts } from "~/models/taskRun.server";
 import { executionResultForTaskRun } from "~/models/taskRun.server";
 import type { AuthenticatedEnvironment } from "~/services/apiAuth.server";
-import { isKnownMigrated as defaultIsKnownMigrated } from "~/v3/runOpsMigration/knownMigratedFilter.server";
 import { readThroughRun } from "~/v3/runOpsMigration/readThrough.server";
 import { runStore as defaultRunStore } from "~/v3/runStore.server";
 import { BasePresenter } from "./basePresenter.server";
@@ -21,7 +20,6 @@ type ApiBatchResultsReadThroughDeps = {
   splitEnabled?: boolean;
   newClient?: PrismaReplicaClient;
   legacyReplica?: PrismaReplicaClient;
-  isKnownMigrated?: (runId: string) => Promise<boolean>;
   isPastRetention?: (runId: string) => boolean;
 };
 
@@ -199,7 +197,6 @@ export class ApiBatchResultsPresenter extends BasePresenter {
             // own module-level defaults would diverge from the batch read's `?? this._replica`.)
             newClient,
             legacyReplica,
-            isKnownMigrated: this.readThrough?.isKnownMigrated ?? defaultIsKnownMigrated,
             isPastRetention: this.readThrough?.isPastRetention,
           },
         });

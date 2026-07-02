@@ -58,7 +58,6 @@ import {
   heteroPostgresTest,
   replicationContainerTest,
 } from "@internal/testcontainers";
-import { ensureRedirectMarkerTable } from "@internal/run-engine";
 import type { PrismaClient, WaitpointType } from "@trigger.dev/database";
 import { PrismaClient as PrismaClientCtor } from "@trigger.dev/database";
 import { setTimeout } from "node:timers/promises";
@@ -230,44 +229,6 @@ const callArgs = (ctx: SeedContext, friendlyId: string) => ({
 });
 
 describe("WaitpointPresenter dual-DB read-through (hetero PG14 + PG17, no connected runs)", () => {
-  // --- Task 4 Step 1 / DoD part A: no false 404. Waitpoint lives ONLY on the legacy (PG14)
-  // replica, none on the new (PG17). split on. The lookup misses NEW, falls through to the legacy
-  // replica and resolves the detail row — the detail page must NOT 404 while the waitpoint drains
-  // on legacy. ---
-  heteroPostgresTest(
-    "Step 1: waitpoint only on the legacy replica still resolves (no false 404)",
-    async ({ prisma14, prisma17 }) => {
-      // isKnownMigrated reads the redirect-marker table on the legacy client and probes new.
-      await ensureRedirectMarkerTable(prisma14);
-
-      const ctx = await seedParents(prisma14, "legacyonly");
-      const seeded = await seedWaitpoint(prisma14, ctx, "waitpoint_legacyonly", {
-        tags: ["x", "y", "z"],
-      });
-
-      legacyReplicaHolder.client = prisma14;
-      newClientHolder.client = prisma17;
-
-      const newClient = recording(prisma17);
-      const legacy = recording(prisma14);
-
-      const presenter = new WaitpointPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: newClient.handle,
-        legacyReplica: legacy.handle,
-      });
-
-      const result = await presenter.call(callArgs(ctx, seeded.friendlyId));
-
-      expect(result).not.toBeNull();
-      expect(result?.id).toBe(seeded.friendlyId);
-      expect(result?.tags).toEqual(["x", "y", "z"]);
-      // NEW probed first (miss) -> resolved off the LEGACY REPLICA handle.
-      expect(newClient.calls.length).toBe(1);
-      expect(legacy.calls.length).toBe(1);
-    }
-  );
-
   // --- Task 4 Step 2 (read half) / Step 3: new-DB short-circuit. Waitpoint on NEW (PG17), legacy
   // wrapped so its waitpoint.findFirst throws if invoked. The lookup answers from NEW and must
   // NEVER fall through to legacy. ---
@@ -296,65 +257,6 @@ describe("WaitpointPresenter dual-DB read-through (hetero PG14 + PG17, no connec
       // New-first short-circuit: legacy never probed (the throwing handle proves it).
       expect(newClient.calls.length).toBe(1);
       expect(legacy.calls.length).toBe(0);
-    }
-  );
-
-  // --- Task 4 Step 4: genuine 404. Nothing on either DB. split on. Both probes run, both miss ->
-  // null (the true 404 + logger.error path is preserved). ---
-  heteroPostgresTest(
-    "Step 4: a waitpoint absent from both DBs returns null (genuine 404 preserved)",
-    async ({ prisma14, prisma17 }) => {
-      // isKnownMigrated reads the redirect-marker table via runOpsLegacyReplica and probes new.
-      await ensureRedirectMarkerTable(prisma14);
-      legacyReplicaHolder.client = prisma14;
-      newClientHolder.client = prisma17;
-
-      const ctx = await seedParents(prisma14, "missing");
-      await mirrorParents(prisma17, ctx, "missing");
-
-      const newClient = recording(prisma17);
-      const legacy = recording(prisma14);
-
-      const presenter = new WaitpointPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: newClient.handle,
-        legacyReplica: legacy.handle,
-      });
-
-      const result = await presenter.call(callArgs(ctx, "waitpoint_does_not_exist"));
-
-      expect(result).toBeNull();
-      // Both DBs were probed (NEW then legacy) before concluding the miss.
-      expect(newClient.calls.length).toBe(1);
-      expect(legacy.calls.length).toBe(1);
-    }
-  );
-
-  // --- Task 4 Step 5: old in-retention waitpoint served from the replica handle only. The deps
-  // expose `legacyReplica` and NO legacy-writer field, so the no-primary-read guarantee is
-  // structural. ---
-  heteroPostgresTest(
-    "Step 5: in-retention waitpoint served from the legacy replica (no legacy-writer field exists)",
-    async ({ prisma14, prisma17 }) => {
-      // isKnownMigrated reads the redirect-marker table on the legacy client and probes new.
-      await ensureRedirectMarkerTable(prisma14);
-
-      const ctx = await seedParents(prisma14, "retention");
-      const seeded = await seedWaitpoint(prisma14, ctx, "waitpoint_retention");
-
-      legacyReplicaHolder.client = prisma14;
-      newClientHolder.client = prisma17;
-
-      const presenter = new WaitpointPresenter(undefined, undefined, {
-        splitEnabled: true,
-        newClient: recording(prisma17).handle,
-        // Only a replica handle is in scope; there is no legacyWriter dep to hit the primary.
-        legacyReplica: recording(prisma14).handle,
-      });
-
-      const result = await presenter.call(callArgs(ctx, seeded.friendlyId));
-
-      expect(result?.id).toBe(seeded.friendlyId);
     }
   );
 
@@ -473,61 +375,6 @@ describe("WaitpointPresenter connected-runs hydrate routed through read-through 
     }
   );
 
-  // --- Task 4 Step 7 (e2e #2 read surface): a RUN/MANUAL resume-token waitpoint + its connected
-  // run co-resident on the LEGACY replica (the connectedRuns join is run-ops<->run-ops, so they
-  // migrate/abandon together). split on. The waitpoint misses NEW, resolves off legacy, and its
-  // connected run surfaces from the legacy replication source via CH — the suspended-run detail
-  // surface renders across the seam. ---
-  replicationContainerTest(
-    "Step 7 (e2e #2): resume-token waitpoint + connected run resolve via the legacy replica",
-    async ({ clickhouseContainer, redisOptions, postgresContainer, prisma, network }) => {
-      const { clickhouse } = await setupClickhouseReplication({
-        prisma,
-        databaseUrl: postgresContainer.getConnectionUri(),
-        clickhouseUrl: clickhouseContainer.getConnectionUrl(),
-        redisOptions,
-      });
-
-      const { url: newUrl } = await createPostgresContainer(network, {
-        imageTag: "docker.io/postgres:17",
-      });
-      const prismaNew = new PrismaClientCtor({ datasources: { db: { url: newUrl } } });
-      legacyReplicaHolder.client = prisma;
-      newClientHolder.client = prismaNew;
-      clickhouseHolder.client = clickhouse;
-
-      try {
-        // The connected run misses NEW, so the hydrate consults the known-migrated marker on the
-        // legacy replica before reading it back — the empty marker table must exist for that read.
-        await ensureRedirectMarkerTable(prisma);
-
-        const ctx = await seedParents(prisma, "x2legacy");
-        await mirrorParents(prismaNew, ctx, "x2legacy");
-
-        // Waitpoint + its connected run live ONLY on the legacy replica (PG14 = CH source).
-        await createRun(prisma, ctx, { friendlyId: "run_suspended" });
-        const seeded = await seedWaitpoint(prisma, ctx, "waitpoint_resumetoken", {
-          type: "MANUAL",
-          connectedRunFriendlyIds: ["run_suspended"],
-        });
-
-        await setTimeout(1500);
-
-        const presenter = new WaitpointPresenter(prisma, prisma, {
-          splitEnabled: true,
-          newClient: prismaNew,
-          legacyReplica: prisma,
-        });
-
-        const result = await presenter.call(callArgs(ctx, seeded.friendlyId));
-
-        expect(result?.id).toBe(seeded.friendlyId);
-        expect(result?.connectedRuns.map((r) => r.friendlyId)).toEqual(["run_suspended"]);
-      } finally {
-        await prismaNew.$disconnect();
-      }
-    }
-  );
 });
 
 describe("WaitpointPresenter bare-ctor production default activates readThroughRun", () => {

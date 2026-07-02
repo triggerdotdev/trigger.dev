@@ -9,7 +9,6 @@ import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstan
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import { logger } from "~/services/logger.server";
 import { controlPlaneResolver } from "~/v3/runOpsMigration/controlPlaneResolver.server";
-import { isKnownMigrated } from "~/v3/runOpsMigration/knownMigratedFilter.server";
 import { readThroughRun } from "~/v3/runOpsMigration/readThrough.server";
 import { BasePresenter } from "./basePresenter.server";
 import { NextRunListPresenter, type NextRunListItem } from "./NextRunListPresenter.server";
@@ -29,7 +28,6 @@ export class WaitpointPresenter extends BasePresenter {
       // Resolved boot constant from isSplitEnabled(). When false/absent:
       // the waitpoint lookup is one plain findFirst and the connected-runs hydrate runs passthrough.
       splitEnabled?: boolean;
-      isKnownMigrated?: (id: string) => Promise<boolean>;
     }
   ) {
     super(prisma, replica);
@@ -80,7 +78,6 @@ export class WaitpointPresenter extends BasePresenter {
         legacyReplica:
           (this.readThroughDeps.legacyReplica as PrismaReplicaClient | undefined) ??
           runOpsLegacyReplica,
-        isKnownMigrated: this.readThroughDeps.isKnownMigrated ?? isKnownMigrated,
       },
     });
 

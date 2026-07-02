@@ -1,9 +1,9 @@
 // Read-through proof for the public single-run result poll (ApiRunResultPresenter). The presenter
 // routes its TaskRun(+attempts) lookup-by-friendlyId through readThroughRun: split mode resolves
-// from new first then the legacy READ REPLICA only for not-known-migrated runs (never a primary),
+// from new first then the legacy READ REPLICA on a new-probe miss (never a primary),
 // past-retention → undefined → the route's normal 404; single-DB is one plain findFirst. NEVER mock
 // the DB — the cross-version proof uses a heterogeneous legacy+new Postgres fixture; only pure
-// boundaries (splitEnabled/isKnownMigrated/isPastRetention) are injected.
+// boundaries (splitEnabled/isPastRetention) are injected.
 import { heteroPostgresTest } from "@internal/testcontainers";
 import type { PrismaClient } from "@trigger.dev/database";
 import { customAlphabet } from "nanoid";
@@ -250,7 +250,6 @@ describe("ApiRunResultPresenter read-through (heterogeneous legacy + new Postgre
           splitEnabled: true,
           newClient: prisma17 as unknown as PrismaReplicaClient,
           legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          isKnownMigrated: async () => false,
         }
       );
 
@@ -263,38 +262,6 @@ describe("ApiRunResultPresenter read-through (heterogeneous legacy + new Postgre
         expect(result.taskIdentifier).toBe("test-task");
         expect(result.output).toBe('"from-legacy"');
         expect(result.outputType).toBe("application/json");
-      }
-    }
-  );
-
-  // A legacy-classified id that lives on the new DB: the new read hits it, so the known-migrated
-  // short-circuit means the legacy replica is never probed.
-  heteroPostgresTest(
-    "split: a known-migrated run is served from new and the legacy replica is never probed for it",
-    async ({ prisma14, prisma17 }) => {
-      const friendlyId = legacyFriendlyId();
-      const ctx = await fullSeed(prisma17 as unknown as PrismaClient, "migrated");
-      await seedRunWithAttempt(prisma17 as unknown as PrismaClient, ctx, friendlyId, {
-        status: "COMPLETED_SUCCESSFULLY",
-        attempt: { status: "COMPLETED", output: '"on-new"', outputType: "application/json" },
-      });
-
-      const presenter = new ApiRunResultPresenter(
-        prisma17 as unknown as PrismaReplicaClient,
-        prisma17 as unknown as PrismaReplicaClient,
-        {
-          splitEnabled: true,
-          newClient: prisma17 as unknown as PrismaReplicaClient,
-          legacyReplica: throwingLegacy(),
-          isKnownMigrated: async () => true,
-        }
-      );
-
-      const result = await presenter.call(friendlyId, authEnv(ctx.environmentId));
-      expect(result?.ok).toBe(true);
-      if (result?.ok) {
-        expect(result.id).toBe(friendlyId);
-        expect(result.output).toBe('"on-new"');
       }
     }
   );
@@ -314,7 +281,6 @@ describe("ApiRunResultPresenter read-through (heterogeneous legacy + new Postgre
           splitEnabled: true,
           newClient: prisma17 as unknown as PrismaReplicaClient,
           legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          isKnownMigrated: async () => false,
           isPastRetention: () => true,
         }
       );
@@ -326,17 +292,13 @@ describe("ApiRunResultPresenter read-through (heterogeneous legacy + new Postgre
   );
 
   heteroPostgresTest(
-    "single-DB passthrough: resolves from the one client; legacy + isKnownMigrated are never invoked",
+    "single-DB passthrough: resolves from the one client; the legacy replica is never touched",
     async ({ prisma14, prisma17 }) => {
       const friendlyId = newFriendlyId();
       const ctx = await fullSeed(prisma17 as unknown as PrismaClient, "passthrough");
       await seedRunWithAttempt(prisma17 as unknown as PrismaClient, ctx, friendlyId, {
         status: "COMPLETED_SUCCESSFULLY",
         attempt: { status: "COMPLETED", output: '"single"', outputType: "application/json" },
-      });
-
-      const throwingFilter = vi.fn(async () => {
-        throw new Error("isKnownMigrated must never run in single-DB mode");
       });
 
       // No read-through deps → passthrough (single plain findFirst).
@@ -351,9 +313,8 @@ describe("ApiRunResultPresenter read-through (heterogeneous legacy + new Postgre
         expect(result.id).toBe(friendlyId);
         expect(result.output).toBe('"single"');
       }
-      expect(throwingFilter).not.toHaveBeenCalled();
 
-      // splitEnabled:false with throwing legacy + filter proves no second store is touched.
+      // splitEnabled:false with a throwing legacy proves no second store is touched.
       const presenter2 = new ApiRunResultPresenter(
         prisma17 as unknown as PrismaReplicaClient,
         prisma17 as unknown as PrismaReplicaClient,
@@ -361,12 +322,10 @@ describe("ApiRunResultPresenter read-through (heterogeneous legacy + new Postgre
           splitEnabled: false,
           newClient: prisma17 as unknown as PrismaReplicaClient,
           legacyReplica: throwingLegacy(),
-          isKnownMigrated: throwingFilter,
         }
       );
       const result2 = await presenter2.call(friendlyId, authEnv(ctx.environmentId));
       expect(result2?.ok).toBe(true);
-      expect(throwingFilter).not.toHaveBeenCalled();
     }
   );
 

@@ -10,7 +10,6 @@ type ApiRunResultReadThroughDeps = {
   newClient?: PrismaReplicaClient;
   // LEGACY RUN-OPS READ REPLICA ONLY (never a writer/primary); defaults to this._replica.
   legacyReplica?: PrismaReplicaClient;
-  isKnownMigrated?: (runId: string) => Promise<boolean>;
   isPastRetention?: (runId: string) => boolean;
 };
 
@@ -35,7 +34,7 @@ export class ApiRunResultPresenter extends BasePresenter {
         });
 
       // Single-run result poll routed through run-ops read-through. Split on: primary store first,
-      // then the secondary read replica only for runs not known-migrated; past-retention ids return
+      // then the secondary read replica for runs that miss on new; past-retention ids return
       // undefined -> the route's normal 404. Split off (single-DB / self-host): readThroughRun does
       // one plain findFirst against the single client (passthrough).
       const result = await readThroughRun({
@@ -47,7 +46,6 @@ export class ApiRunResultPresenter extends BasePresenter {
           splitEnabled: this._readThrough?.splitEnabled,
           newClient: this._readThrough?.newClient ?? (this._prisma as PrismaReplicaClient),
           legacyReplica: this._readThrough?.legacyReplica ?? (this._replica as PrismaReplicaClient),
-          isKnownMigrated: this._readThrough?.isKnownMigrated,
           isPastRetention: this._readThrough?.isPastRetention,
         },
       });
