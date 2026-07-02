@@ -3,34 +3,33 @@ name: "🤖 Deploy dashboard agent"
 # Deploys the @internal/dashboard-agent chat.agent to its Trigger.dev project
 # with --skip-promotion, so a deploy never becomes "current" on its own. The
 # consuming app cuts over by pinning DASHBOARD_AGENT_VERSION to the new version.
-# Pushes to main that touch the agent auto-deploy to staging; prod is a manual
-# workflow_dispatch. The project ref + a scoped deploy PAT come from the target
-# environment (dashboard-agent-staging / dashboard-agent-prod).
+# Runs a leg per environment (staging + prod), each gated by its own environment;
+# a push to main that touches the agent or its store triggers both. Version
+# numbers are per-environment, so pin each environment to its own leg's version.
 
 on:
   push:
     branches: [main]
     paths:
       - "internal-packages/dashboard-agent/**"
+      - "internal-packages/dashboard-agent-db/**"
   workflow_dispatch:
-    inputs:
-      environment:
-        description: "Trigger.dev environment to deploy to"
-        type: choice
-        options: [staging, prod]
-        default: staging
 
 permissions: {}
 
-concurrency:
-  group: dashboard-agent-deploy-${{ github.event.inputs.environment || 'staging' }}
-  cancel-in-progress: false
-
 jobs:
   deploy:
-    name: Deploy dashboard agent
+    name: Deploy dashboard agent (${{ matrix.environment }})
     runs-on: ubuntu-latest
-    environment: dashboard-agent-${{ github.event.inputs.environment || 'staging' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [staging, prod]
+    # Per-environment reviewer gate + source of the scoped deploy PAT.
+    environment: dashboard-agent-${{ matrix.environment }}
+    concurrency:
+      group: dashboard-agent-deploy-${{ matrix.environment }}
+      cancel-in-progress: false
     permissions:
       contents: read
     env:
@@ -68,4 +67,4 @@ jobs:
           TRIGGER_ACCESS_TOKEN: ${{ secrets.TRIGGER_DASHBOARD_AGENT_DEPLOY_TOKEN }}
         # Invoke the built CLI directly (what the workspace .bin/trigger wrapper does),
         # so a not-yet-linked bin after a fresh install can't break the deploy.
-        run: node ../../packages/cli-v3/dist/esm/index.js deploy --skip-promotion --env ${{ github.event.inputs.environment || 'staging' }}
+        run: node ../../packages/cli-v3/dist/esm/index.js deploy --skip-promotion --env ${{ matrix.environment }}
