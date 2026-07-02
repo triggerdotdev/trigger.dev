@@ -176,28 +176,30 @@ export const HETERO_PINNED_ICU_COLLATION = "und-x-icu";
 // PG17 worker singleton mirroring getWorkerPostgresContainer. PG17 supports the ICU cluster locale
 // provider (PG14 does not - it arrived in PG15), so only this side sets the cluster locale; the real
 // cross-version guarantee is the per-column COLLATE in the proof test.
+async function bootstrapPg17TemplateContainer(
+  pushSchema: (databaseUrl: string) => Promise<unknown>
+): Promise<StartedPostgreSqlContainer> {
+  const container = await withCiResourceLimits(new PostgreSqlContainer("docker.io/postgres:17"))
+    .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
+    .withEnvironment({
+      POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=en-US --encoding=UTF8",
+    })
+    .start();
+  const admin = new PrismaClient({
+    datasources: {
+      db: { url: postgresUriWithDatabase(container.getConnectionUri(), "postgres") },
+    },
+  });
+  await admin.$executeRawUnsafe(`CREATE DATABASE "${POSTGRES_TEMPLATE_DB}"`);
+  await admin.$disconnect();
+  await pushSchema(postgresUriWithDatabase(container.getConnectionUri(), POSTGRES_TEMPLATE_DB));
+  return container;
+}
+
 let workerPostgresContainer17: Promise<StartedPostgreSqlContainer> | undefined;
 const getWorkerPostgresContainer17 = () => {
   if (!workerPostgresContainer17) {
-    workerPostgresContainer17 = (async () => {
-      const container = await withCiResourceLimits(new PostgreSqlContainer("docker.io/postgres:17"))
-        .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
-        .withEnvironment({
-          POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=en-US --encoding=UTF8",
-        })
-        .start();
-      const admin = new PrismaClient({
-        datasources: {
-          db: { url: postgresUriWithDatabase(container.getConnectionUri(), "postgres") },
-        },
-      });
-      await admin.$executeRawUnsafe(`CREATE DATABASE "${POSTGRES_TEMPLATE_DB}"`);
-      await admin.$disconnect();
-      await pushDatabaseSchema(
-        postgresUriWithDatabase(container.getConnectionUri(), POSTGRES_TEMPLATE_DB)
-      );
-      return container;
-    })();
+    workerPostgresContainer17 = bootstrapPg17TemplateContainer(pushDatabaseSchema);
   }
   return workerPostgresContainer17;
 };
@@ -209,25 +211,7 @@ const getWorkerPostgresContainer17 = () => {
 let runOpsWorkerPostgresContainer17: Promise<StartedPostgreSqlContainer> | undefined;
 const getRunOpsWorkerPostgresContainer17 = () => {
   if (!runOpsWorkerPostgresContainer17) {
-    runOpsWorkerPostgresContainer17 = (async () => {
-      const container = await withCiResourceLimits(new PostgreSqlContainer("docker.io/postgres:17"))
-        .withCommand(["-c", "listen_addresses=*", "-c", "wal_level=logical"])
-        .withEnvironment({
-          POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=en-US --encoding=UTF8",
-        })
-        .start();
-      const admin = new PrismaClient({
-        datasources: {
-          db: { url: postgresUriWithDatabase(container.getConnectionUri(), "postgres") },
-        },
-      });
-      await admin.$executeRawUnsafe(`CREATE DATABASE "${POSTGRES_TEMPLATE_DB}"`);
-      await admin.$disconnect();
-      await pushRunOpsSchema(
-        postgresUriWithDatabase(container.getConnectionUri(), POSTGRES_TEMPLATE_DB)
-      );
-      return container;
-    })();
+    runOpsWorkerPostgresContainer17 = bootstrapPg17TemplateContainer(pushRunOpsSchema);
   }
   return runOpsWorkerPostgresContainer17;
 };

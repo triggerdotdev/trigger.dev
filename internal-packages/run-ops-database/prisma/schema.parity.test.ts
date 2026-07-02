@@ -23,9 +23,16 @@ function readSchema(rel: string) {
   return readFileSync(resolve(__dirname, rel), "utf8");
 }
 
+// Prisma comments (`///` docs and `//` lines) may legitimately mention
+// control-plane model names in prose, which would false-match the drift
+// regexes below. Strip them so parity assertions only see real schema syntax.
+function stripComments(schema: string) {
+  return schema.replace(/\/\/.*$/gm, "");
+}
+
 describe("dedicated run-ops schema parity", () => {
   it("references no control-plane model as a relation target", () => {
-    const dedicated = readSchema("./schema.prisma");
+    const dedicated = stripComments(readSchema("./schema.prisma"));
     for (const model of CONTROL_PLANE_MODELS) {
       // A relation target appears as `  fieldName  Model @relation(...)`. A bare
       // scalar column like `projectId String` is fine; the model TYPE must be absent.
@@ -60,7 +67,7 @@ describe("dedicated run-ops schema parity", () => {
   });
 
   it("keeps the group-(A) waitpoint-block references FK-FREE (scalar columns / explicit FK-free join models)", () => {
-    const dedicated = readSchema("./schema.prisma");
+    const dedicated = stripComments(readSchema("./schema.prisma"));
     // TaskRunWaitpoint must NOT carry a `@relation` to Waitpoint/TaskRun/BatchTaskRun.
     const trw = dedicated.match(/model TaskRunWaitpoint \{[\s\S]*?\n\}/)![0];
     expect(trw).not.toMatch(/@relation/);
@@ -77,7 +84,7 @@ describe("dedicated run-ops schema parity", () => {
   });
 
   it("keeps the group-(B) co-resident references as real FKs (e.g. TaskRunAttempt.taskRun)", () => {
-    const dedicated = readSchema("./schema.prisma");
+    const dedicated = stripComments(readSchema("./schema.prisma"));
     const attempt = dedicated.match(/model TaskRunAttempt \{[\s\S]*?\n\}/)![0];
     // The attempt->run relation stays a real FK (always co-resident).
     expect(attempt).toMatch(/taskRun\s+TaskRun\s+@relation/);
