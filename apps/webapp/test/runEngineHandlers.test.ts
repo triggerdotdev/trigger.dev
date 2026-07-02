@@ -278,8 +278,6 @@ describe("runEngineHandlers read-through cross-version", () => {
         newReplica: prisma17,
         legacyReplica: prisma14,
         splitEnabled: true,
-        // Pure boundary: this legacy run was never migrated, so don't short-circuit.
-        isKnownMigrated: async () => false,
       };
 
       const run = await readRunForEvent(

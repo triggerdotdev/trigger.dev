@@ -32,11 +32,7 @@ describe("resolveBatchMintKind", () => {
     const resolveRunIdMintKind = vi.fn().mockResolvedValue("ksuid");
     const kind = await resolveBatchMintKind({
       environment,
-      deps: {
-        resolveRunIdMintKind,
-        isKnownMigrated: vi.fn(),
-        isSplitEnabled: vi.fn(),
-      },
+      deps: { resolveRunIdMintKind },
     });
     expect(kind).toBe("ksuid");
     expect(resolveRunIdMintKind).toHaveBeenCalledWith({
@@ -46,90 +42,41 @@ describe("resolveBatchMintKind", () => {
     });
   });
 
-  it("ROOT batch on a non-cut-over org -> cuid, isKnownMigrated NOT called", async () => {
+  it("ROOT batch on a non-cut-over org -> cuid", async () => {
     const resolveRunIdMintKind = vi.fn().mockResolvedValue("cuid");
-    const isKnownMigrated = vi.fn();
     const kind = await resolveBatchMintKind({
       environment,
-      deps: {
-        resolveRunIdMintKind,
-        isKnownMigrated,
-        isSplitEnabled: vi.fn(),
-      },
+      deps: { resolveRunIdMintKind },
     });
     expect(kind).toBe("cuid");
-    expect(isKnownMigrated).not.toHaveBeenCalled();
   });
 
-  it("CHILD batch inherits a ksuid (NEW) parent by id-shape, split off, no marker read", async () => {
+  it("CHILD batch inherits a ksuid (NEW) parent by id-shape", async () => {
     const parentRunFriendlyId = `run_${"a".repeat(27)}`;
     const resolveRunIdMintKind = vi.fn();
-    const isKnownMigrated = vi.fn();
-    const isSplitEnabled = vi.fn().mockResolvedValue(false);
 
     const kind = await resolveBatchMintKind({
       environment,
       parentRunFriendlyId,
-      deps: { resolveRunIdMintKind, isKnownMigrated, isSplitEnabled },
+      deps: { resolveRunIdMintKind },
     });
 
     expect(kind).toBe("ksuid");
-    expect(isKnownMigrated).not.toHaveBeenCalled();
     expect(resolveRunIdMintKind).not.toHaveBeenCalled();
   });
 
   it("CHILD batch inherits a cuid (LEGACY) parent by id-shape", async () => {
     const parentRunFriendlyId = `run_${"a".repeat(25)}`;
-    const isSplitEnabled = vi.fn().mockResolvedValue(false);
+    const resolveRunIdMintKind = vi.fn();
 
     const kind = await resolveBatchMintKind({
       environment,
       parentRunFriendlyId,
-      deps: {
-        resolveRunIdMintKind: vi.fn(),
-        isKnownMigrated: vi.fn(),
-        isSplitEnabled,
-      },
+      deps: { resolveRunIdMintKind },
     });
 
     expect(kind).toBe("cuid");
-  });
-
-  it("CHILD batch with a legacy-by-shape parent already migrated (split on + marker) -> ksuid", async () => {
-    const parentRunFriendlyId = `run_${"a".repeat(25)}`;
-    const isSplitEnabled = vi.fn().mockResolvedValue(true);
-    const isKnownMigrated = vi.fn().mockResolvedValue(true);
-
-    const kind = await resolveBatchMintKind({
-      environment,
-      parentRunFriendlyId,
-      deps: {
-        resolveRunIdMintKind: vi.fn(),
-        isKnownMigrated,
-        isSplitEnabled,
-      },
-    });
-
-    expect(kind).toBe("ksuid");
-  });
-
-  it("CHILD inheritance does NOT consult the marker when split is OFF (hot-path zero-IO)", async () => {
-    const parentRunFriendlyId = `run_${"a".repeat(25)}`;
-    const isSplitEnabled = vi.fn().mockResolvedValue(false);
-    const isKnownMigrated = vi.fn().mockResolvedValue(true);
-
-    const kind = await resolveBatchMintKind({
-      environment,
-      parentRunFriendlyId,
-      deps: {
-        resolveRunIdMintKind: vi.fn(),
-        isKnownMigrated,
-        isSplitEnabled,
-      },
-    });
-
-    expect(kind).toBe("cuid");
-    expect(isKnownMigrated).not.toHaveBeenCalled();
+    expect(resolveRunIdMintKind).not.toHaveBeenCalled();
   });
 
   // mint-on-FLIP invariant: a child follows its parent's store even after the org flag
@@ -140,11 +87,7 @@ describe("resolveBatchMintKind", () => {
     const kind = await resolveBatchMintKind({
       environment,
       parentRunFriendlyId,
-      deps: {
-        resolveRunIdMintKind,
-        isKnownMigrated: vi.fn().mockResolvedValue(false),
-        isSplitEnabled: vi.fn().mockResolvedValue(true),
-      },
+      deps: { resolveRunIdMintKind },
     });
     expect(kind).toBe("cuid");
     expect(resolveRunIdMintKind).not.toHaveBeenCalled();
@@ -156,11 +99,7 @@ describe("resolveBatchMintKind", () => {
     const kind = await resolveBatchMintKind({
       environment,
       parentRunFriendlyId,
-      deps: {
-        resolveRunIdMintKind,
-        isKnownMigrated: vi.fn().mockResolvedValue(false),
-        isSplitEnabled: vi.fn().mockResolvedValue(true),
-      },
+      deps: { resolveRunIdMintKind },
     });
     expect(kind).toBe("ksuid");
     expect(resolveRunIdMintKind).not.toHaveBeenCalled();

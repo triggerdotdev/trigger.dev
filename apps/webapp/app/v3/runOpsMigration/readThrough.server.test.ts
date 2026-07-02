@@ -1,8 +1,8 @@
 // Real legacy-replica + new-DB proof for the read-through layer.
 // We NEVER mock the DB: the reads run as real `$queryRaw` against the two containers,
-// crossing the actual legacy↔new boundary the migration relies on. The only injected
-// fakes are the pure boundaries — `isKnownMigrated`, `isPastRetention`,
-// `splitEnabled` — plus throwing spies used to assert a store was NEVER touched.
+// crossing the actual legacy↔new boundary the split relies on. The only injected
+// fakes are the pure boundaries — `isPastRetention`, `splitEnabled` — plus throwing
+// spies used to assert a store was NEVER touched.
 import { heteroPostgresTest } from "@internal/testcontainers";
 import { describe, expect, vi } from "vitest";
 import type { PrismaReplicaClient } from "~/db.server";
@@ -54,62 +54,11 @@ describe("readThroughRun (legacy replica + new DB)", () => {
           splitEnabled: true,
           newClient: prisma17 as unknown as PrismaReplicaClient,
           legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          isKnownMigrated: async () => false,
         },
       });
 
       expect(result.source).toBe("legacy-replica");
       expect(toHttpish(result).status).toBe(200);
-    }
-  );
-
-  heteroPostgresTest(
-    "Step 2: a migrated run is filtered from old-probing",
-    async ({ prisma14, prisma17 }) => {
-      const throwingLegacy = vi.fn(async (): Promise<{ marker: number } | null> => {
-        throw new Error("readLegacy must never be called for a known-migrated run");
-      });
-
-      const result = await readThroughRun({
-        runId: LEGACY_RUN_ID,
-        environmentId: "env_1",
-        readNew: (c) => realRead(c, false), // new misses → step (b) short-circuit
-        readLegacy: throwingLegacy,
-        deps: {
-          splitEnabled: true,
-          newClient: prisma17 as unknown as PrismaReplicaClient,
-          legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          isKnownMigrated: async () => true,
-        },
-      });
-
-      expect(result.source).toBe("not-found");
-      expect(throwingLegacy).not.toHaveBeenCalled();
-    }
-  );
-
-  heteroPostgresTest(
-    "Step 2b: a migrated run that the new read hits returns source=new",
-    async ({ prisma14, prisma17 }) => {
-      const throwingLegacy = vi.fn(async (): Promise<{ marker: number } | null> => {
-        throw new Error("readLegacy must never be called when new hits");
-      });
-
-      const result = await readThroughRun({
-        runId: LEGACY_RUN_ID,
-        environmentId: "env_1",
-        readNew: (c) => realRead(c, true),
-        readLegacy: throwingLegacy,
-        deps: {
-          splitEnabled: true,
-          newClient: prisma17 as unknown as PrismaReplicaClient,
-          legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          isKnownMigrated: async () => true,
-        },
-      });
-
-      expect(result.source).toBe("new");
-      expect(throwingLegacy).not.toHaveBeenCalled();
     }
   );
 
@@ -125,7 +74,6 @@ describe("readThroughRun (legacy replica + new DB)", () => {
           splitEnabled: true,
           newClient: prisma17 as unknown as PrismaReplicaClient,
           legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          isKnownMigrated: async () => false,
           isPastRetention: () => true,
         },
       });
@@ -142,7 +90,6 @@ describe("readThroughRun (legacy replica + new DB)", () => {
           splitEnabled: true,
           newClient: prisma17 as unknown as PrismaReplicaClient,
           legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          isKnownMigrated: async () => false,
           isPastRetention: () => false,
         },
       });
@@ -155,13 +102,10 @@ describe("readThroughRun (legacy replica + new DB)", () => {
   );
 
   heteroPostgresTest(
-    "Step 4: single-DB passthrough — only readNew runs, legacy + filter never touched",
+    "Step 4: single-DB passthrough — only readNew runs, legacy never touched",
     async ({ prisma14, prisma17 }) => {
       const throwingLegacy = vi.fn(async (): Promise<{ marker: number } | null> => {
         throw new Error("readLegacy must never run in single-DB mode");
-      });
-      const throwingFilter = vi.fn(async (): Promise<boolean> => {
-        throw new Error("isKnownMigrated must never run in single-DB mode");
       });
       const newRead = vi.fn((c: PrismaReplicaClient) => realRead(c, true));
 
@@ -174,14 +118,12 @@ describe("readThroughRun (legacy replica + new DB)", () => {
           splitEnabled: false,
           newClient: prisma17 as unknown as PrismaReplicaClient,
           legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          isKnownMigrated: throwingFilter,
         },
       });
 
       expect(result.source).toBe("new");
       expect(newRead).toHaveBeenCalledTimes(1);
       expect(throwingLegacy).not.toHaveBeenCalled();
-      expect(throwingFilter).not.toHaveBeenCalled();
     }
   );
 
@@ -190,9 +132,6 @@ describe("readThroughRun (legacy replica + new DB)", () => {
     async ({ prisma14, prisma17 }) => {
       const throwingLegacy = vi.fn(async (): Promise<{ marker: number } | null> => {
         throw new Error("readLegacy must never run for a NEW-residency id");
-      });
-      const throwingFilter = vi.fn(async (): Promise<boolean> => {
-        throw new Error("isKnownMigrated must never run for a NEW-residency id");
       });
 
       const result = await readThroughRun({
@@ -204,13 +143,11 @@ describe("readThroughRun (legacy replica + new DB)", () => {
           splitEnabled: true,
           newClient: prisma17 as unknown as PrismaReplicaClient,
           legacyReplica: prisma14 as unknown as PrismaReplicaClient,
-          isKnownMigrated: throwingFilter,
         },
       });
 
       expect(result.source).toBe("new");
       expect(throwingLegacy).not.toHaveBeenCalled();
-      expect(throwingFilter).not.toHaveBeenCalled();
     }
   );
 });

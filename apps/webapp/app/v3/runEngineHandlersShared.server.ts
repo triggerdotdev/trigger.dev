@@ -16,9 +16,8 @@ export type EventReadDeps = {
   newReplica: PrismaReplicaClient;
   legacyReplica: PrismaReplicaClient;
   splitEnabled: boolean;
-  // Pure boundaries forwarded to read-through; production leaves them undefined
-  // so the read-through layer uses its own wired defaults. Tests inject fakes.
-  isKnownMigrated?: (runId: string) => Promise<boolean>;
+  // Pure boundary forwarded to read-through; production leaves it undefined
+  // so the read-through layer uses its own wired default. Tests inject a fake.
   isPastRetention?: (runId: string) => boolean;
 };
 
@@ -43,7 +42,6 @@ export async function readRunForEvent<S extends Prisma.TaskRunSelect>(
       newClient: deps.newReplica,
       legacyReplica: deps.legacyReplica,
       splitEnabled: deps.splitEnabled,
-      isKnownMigrated: deps.isKnownMigrated,
       isPastRetention: deps.isPastRetention,
     },
   });
