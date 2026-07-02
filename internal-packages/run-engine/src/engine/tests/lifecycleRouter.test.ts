@@ -117,10 +117,10 @@ class CountingRunStore extends PostgresRunStore {
 }
 
 describe("RunEngine lifecycle read routing (single-DB)", () => {
-  // Test A: getRunExecutionData routes its latest-snapshot read through this.runStore
+  // getRunExecutionData routes its latest-snapshot read through this.runStore
   // (the threaded getLatestExecutionSnapshot(prisma, runId, this.runStore) call).
   containerTest(
-    "Test A: getRunExecutionData reads the latest snapshot through the store",
+    "getRunExecutionData reads the latest snapshot through the store",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
@@ -150,10 +150,10 @@ describe("RunEngine lifecycle read routing (single-DB)", () => {
     }
   );
 
-  // Test B: getSnapshotsSince routes through the store's snapshot read methods (the
+  // getSnapshotsSince routes through the store's snapshot read methods (the
   // since-marker lookup, the page read, and the latest snapshot's waitpoint hydrate).
   containerTest(
-    "Test B: getSnapshotsSince reads through the store",
+    "getSnapshotsSince reads through the store",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
@@ -196,12 +196,12 @@ describe("RunEngine lifecycle read routing (single-DB)", () => {
     }
   );
 
-  // Test B2: with the replica-off default (readReplicaSnapshotsSinceEnabled unset),
+  // With the replica-off default (readReplicaSnapshotsSinceEnabled unset),
   // getSnapshotsSince reads on the PRIMARY client. Distinct primary/replica-Proxy setup
   // proves both the since-marker (findExecutionSnapshot) and page (findManyExecutionSnapshots)
   // reads carried the primary handle and the replica was never touched.
   containerTest(
-    "Test B2: getSnapshotsSince reads on the primary client when the replica flag is off",
+    "getSnapshotsSince reads on the primary client when the replica flag is off",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
@@ -254,11 +254,11 @@ describe("RunEngine lifecycle read routing (single-DB)", () => {
     }
   );
 
-  // Test C: the concurrency sweeper read goes through this.runStore.findRuns (already
+  // The concurrency sweeper read goes through this.runStore.findRuns (already
   // routed on the baseline). The store's default findRuns read targets the read-only
   // client, so the sweeper scan stays off the primary without an explicit client arg.
   containerTest(
-    "Test C: the sweeper reads finished runs through the store (default read client)",
+    "the sweeper reads finished runs through the store (default read client)",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
@@ -300,12 +300,12 @@ describe("RunEngine lifecycle read routing (single-DB)", () => {
     }
   );
 
-  // Test D: single-DB binds one client (the `passthrough` field), proven BY BEHAVIOR.
+  // Single-DB binds one client (the `passthrough` field), proven BY BEHAVIOR.
   // A round-trip through the default-store engine returns exactly the snapshot just
   // written on the one configured client — no second DB/connection is configured. We
   // do NOT assert store.prisma === engine.prisma (the store exposes no such member).
   containerTest(
-    "Test D: single-DB passthrough round-trip returns the snapshot just written",
+    "single-DB passthrough round-trip returns the snapshot just written",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       // No `store` injected → the engine defaults to a single PostgresRunStore over
@@ -337,14 +337,14 @@ describe("RunEngine lifecycle read routing (single-DB)", () => {
     }
   );
 
-  // Test H: getRunExecutionData's latest-snapshot read stays on the PRIMARY client.
+  // getRunExecutionData's latest-snapshot read stays on the PRIMARY client.
   // The store resolves a routed read as `client ?? readOnlyPrisma`, so the only thing
   // keeping the engine off the replica is that it threads `this.prisma`. We give the
   // store distinct primary vs read-only handles (the read-only one a Proxy that counts
-  // any `taskRunExecutionSnapshot` access, mirroring Test F) and prove the read landed
+  // any `taskRunExecutionSnapshot` access, mirroring the read-through proof) and prove the read landed
   // on the primary and the replica was never touched.
   containerTest(
-    "Test H: getRunExecutionData reads the latest snapshot on the primary client",
+    "getRunExecutionData reads the latest snapshot on the primary client",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
@@ -385,13 +385,13 @@ describe("RunEngine lifecycle read routing (single-DB)", () => {
     }
   );
 
-  // Test I: the recovery path (#repairRun, driven via the public repairEnvironment)
+  // The recovery path (#repairRun, driven via the public repairEnvironment)
   // also reads the latest snapshot on the PRIMARY client, never the replica. Same
-  // distinct primary/replica-Proxy setup as Test H. A dequeued run holds environment
+  // distinct primary/replica-Proxy setup as the getRunExecutionData primary-read proof. A dequeued run holds environment
   // concurrency, so repairEnvironment's getCurrentConcurrencyOfEnvironment returns it;
   // dryRun=true keeps the path deterministic and enqueues no worker job.
   containerTest(
-    "Test I: repairEnvironment reads the latest snapshot on the primary client",
+    "repairEnvironment reads the latest snapshot on the primary client",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 
@@ -448,7 +448,7 @@ describe("RunEngine lifecycle read routing (single-DB)", () => {
   // primary-threaded getLatestExecutionSnapshot(this.prisma, ...) path proven above.
   // They are driven only by redis-worker timeout/repair jobs, so they are left
   // un-unit-covered here to avoid timing-dependent flakiness; the primary-routing
-  // guarantee they share is established by Test H and Test I.
+  // guarantee they share is established by the getRunExecutionData and repairEnvironment primary-read proofs above.
 });
 
 // ---------------------------------------------------------------------------
@@ -530,10 +530,10 @@ async function seedRunWithSnapshot(
 }
 
 describe("RunEngine lifecycle read-through routing (PG14/PG17)", () => {
-  // Test E: a NEW run (ksuid id) seeded only on the run-ops (PG17/new) store resolves
+  // A NEW run (ksuid id) seeded only on the run-ops (PG17/new) store resolves
   // its latest snapshot from that store, and the legacy store is never touched.
   heteroPostgresTest(
-    "Test E: a new run resolves its latest snapshot from the run-ops store",
+    "a new run resolves its latest snapshot from the run-ops store",
     async ({ prisma14, prisma17 }) => {
       const newReadClient = prisma17 as unknown as PrismaClient;
       const legacyReadClient = prisma14 as unknown as PrismaClient;
@@ -567,10 +567,10 @@ describe("RunEngine lifecycle read-through routing (PG14/PG17)", () => {
     }
   );
 
-  // Test F: an OLD run (cuid id) seeded only on the legacy (PG14) store reads through
+  // An OLD run (cuid id) seeded only on the legacy (PG14) store reads through
   // the legacy store's read-only (replica) client — never the primary.
   heteroPostgresTest(
-    "Test F: an old run reads through the legacy store's replica client",
+    "an old run reads through the legacy store's replica client",
     async ({ prisma14, prisma17 }) => {
       // Distinct primary vs read-only handles on the legacy side so we can prove the
       // read was directed at the read-only (replica) client, not the primary.
@@ -612,12 +612,12 @@ describe("RunEngine lifecycle read-through routing (PG14/PG17)", () => {
     }
   );
 
-  // Test G: the sweeper's findRuns scan across the routing store. The routing store's
+  // The sweeper's findRuns scan across the routing store. The routing store's
   // findRuns ships the single-store (new) delegate today (the mixed-residency fan-out
   // is owned by the downstream routing-wire unit); this asserts the live behavior: the
   // scan reads through the run-ops (new) store's read-only client, off the primary.
   heteroPostgresTest(
-    "Test G: the sweeper findRuns scan reads through the run-ops store",
+    "the sweeper findRuns scan reads through the run-ops store",
     async ({ prisma14, prisma17 }) => {
       const newStore = new CountingRunStore({
         prisma: prisma17 as unknown as PrismaClient,

@@ -167,7 +167,7 @@ async function triggerExecutingRun(
 }
 
 describe("WaitpointSystem create/block write routing", () => {
-  // Test A: DATETIME create routes the (env, idempotencyKey) upsert through the store.
+  // DATETIME create routes the (env, idempotencyKey) upsert through the store.
   containerTest("DATETIME create routes through the store", async ({ prisma, redisOptions }) => {
     const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
     const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
@@ -191,7 +191,7 @@ describe("WaitpointSystem create/block write routing", () => {
     }
   });
 
-  // Test B: MANUAL create routes through the store.
+  // MANUAL create routes through the store.
   containerTest("MANUAL create routes through the store", async ({ prisma, redisOptions }) => {
     const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
     const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
@@ -213,7 +213,7 @@ describe("WaitpointSystem create/block write routing", () => {
     }
   });
 
-  // Test C: block routes the CTE + the separate pending check through the store (two
+  // Block routes the CTE + the separate pending check through the store (two
   // distinct calls in order), writes exactly one TaskRunWaitpoint + one edge, and the
   // ON CONFLICT DO NOTHING idempotency holds on a repeat block.
   containerTest(
@@ -286,7 +286,7 @@ describe("WaitpointSystem create/block write routing", () => {
     }
   );
 
-  // Test D: clearBlockingWaitpoints routes the delete through the store.
+  // clearBlockingWaitpoints routes the delete through the store.
   containerTest("clearBlockingWaitpoints routes the delete", async ({ prisma, redisOptions }) => {
     const env = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
     const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
@@ -325,7 +325,7 @@ describe("WaitpointSystem create/block write routing", () => {
     }
   });
 
-  // Test E: single-DB binds one client (passthrough), proven by BEHAVIOR — a create + block
+  // Single-DB binds one client (passthrough), proven by BEHAVIOR — a create + block
   // + clear round-trip resolves on the one configured client. The default-store engine has no
   // accessible store.prisma member, so we never assert store.prisma === prisma.
   containerTest(
@@ -369,7 +369,7 @@ describe("WaitpointSystem create/block write routing", () => {
     }
   );
 
-  // Test F: idempotency-key reuse returns the same waitpoint (single authority) — exactly one
+  // Idempotency-key reuse returns the same waitpoint (single authority) — exactly one
   // row, no duplicate — for both MANUAL and DATETIME.
   containerTest(
     "idempotency-key reuse returns the same waitpoint (single authority)",
@@ -428,7 +428,7 @@ describe("WaitpointSystem create/block write routing", () => {
     }
   );
 
-  // Test G: an expired idempotency key rotates (read-legacy-first: find -> update ->
+  // An expired idempotency key rotates (read-legacy-first: find -> update ->
   // upsert all through the authority store) rather than duplicating.
   containerTest(
     "expired idempotency key rotates through the store (find -> update -> upsert)",
@@ -481,7 +481,7 @@ describe("WaitpointSystem create/block write routing", () => {
     }
   );
 
-  // Test H: the P2002 retry loop in createManualWaitpoint survives store routing — a single
+  // The P2002 retry loop in createManualWaitpoint survives store routing — a single
   // unique-constraint conflict resolves to one row without throwing.
   containerTest(
     "createManualWaitpoint P2002 retry loop preserved through routing",
@@ -535,7 +535,7 @@ describe("WaitpointSystem create/block write routing", () => {
     }
   );
 
-  // Test I: DATETIME/MANUAL create round-trips byte-identically across both Postgres major versions
+  // DATETIME/MANUAL create round-trips byte-identically across both Postgres major versions
   // via the store's upsertWaitpoint/findWaitpoint (the methods this unit's create paths delegate to).
   heteroPostgresTest(
     "create round-trip is byte-identical across both Postgres major versions",
@@ -598,7 +598,7 @@ describe("WaitpointSystem create/block write routing", () => {
     }
   );
 
-  // Test J: the block CTE round-trips across both Postgres major versions — one TaskRunWaitpoint +
+  // The block CTE round-trips across both Postgres major versions — one TaskRunWaitpoint +
   // one edge on both versions, idempotent on repeat, and the separate pending count reads 1 pre-complete.
   heteroPostgresTest(
     "block CTE round-trips identically across both Postgres major versions",

@@ -62,7 +62,7 @@ class CountingPostgresRunStore extends PostgresRunStore {
 }
 
 describe("RunEngine enqueueRun store routing", () => {
-  // Test A: the QUEUED snapshot written while enqueuing a run routes through the injected store.
+  // The QUEUED snapshot written while enqueuing a run routes through the injected store.
   containerTest(
     "enqueueRun snapshot routes through the store",
     async ({ prisma, redisOptions }) => {
@@ -113,7 +113,7 @@ describe("RunEngine enqueueRun store routing", () => {
     }
   );
 
-  // Test B: the Redis enqueueMessage path is unchanged — the run is dequeuable after enqueueRun.
+  // The Redis enqueueMessage path is unchanged — the run is dequeuable after enqueueRun.
   containerTest(
     "Redis enqueue is unchanged (run is dequeuable after enqueueRun)",
     async ({ prisma, redisOptions }) => {
@@ -158,7 +158,7 @@ describe("RunEngine enqueueRun store routing", () => {
     }
   );
 
-  // Test C: single-DB binds one client (passthrough) — proven by behavior, not by store.prisma === prisma.
+  // Single-DB binds one client (passthrough) — proven by behavior, not by store.prisma === prisma.
   containerTest(
     "single-DB binds one client (passthrough) — snapshot round-trips on the one client",
     async ({ prisma, redisOptions }) => {

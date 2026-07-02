@@ -65,7 +65,7 @@ export class EnqueueSystem {
     /**
      * When set (inside `runStore.runInTransaction`), the snapshot write goes through this tx-bound
      * store so the promote+snapshot pair is atomic on the run's owning DB. The Redis enqueue
-     * below is NOT part of that transaction (Redis never was) — unchanged from single-DB.
+     * below is not part of that transaction.
      */
     store?: RunStore;
   }) {

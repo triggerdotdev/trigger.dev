@@ -144,7 +144,7 @@ async function driveToCheckpointable(engine: RunEngine, prisma: PrismaClient, fr
 }
 
 describe("CheckpointSystem store routing (single-DB passthrough)", () => {
-  // Test A: createCheckpoint routes the TaskRunCheckpoint write + the SUSPENDED snapshot write
+  // createCheckpoint routes the TaskRunCheckpoint write + the SUSPENDED snapshot write
   // through the store, both resolved by owning run id.
   containerTest(
     "checkpoint create routes the TaskRunCheckpoint write + SUSPENDED snapshot through the store",
@@ -200,7 +200,7 @@ describe("CheckpointSystem store routing (single-DB passthrough)", () => {
     }
   );
 
-  // Test B: a full checkpoint create + restore round-trip through continueRunExecution; the latest
+  // A full checkpoint create + restore round-trip through continueRunExecution; the latest
   // snapshot becomes EXECUTING and the read through the store returns it.
   containerTest(
     "restore round-trip via continueRunExecution reads + writes through the store",
@@ -263,7 +263,7 @@ describe("CheckpointSystem store routing (single-DB passthrough)", () => {
     }
   );
 
-  // Test C: single-DB binds one client (passthrough) — proven by behavior, not by reaching into a
+  // Single-DB binds one client (passthrough) — proven by behavior, not by reaching into a
   // private prisma member. The default-store engine round-trips create+restore on the one client.
   containerTest(
     "single-DB binds one client (passthrough) — create + restore round-trip on one client",
@@ -371,7 +371,7 @@ async function seedEnvironment(prisma: PrismaClient, suffix: string) {
 }
 
 describe("CheckpointSystem checkpoint-family FK-drop app-integrity (both modes)", () => {
-  // Test D: createTaskRunCheckpoint succeeds with the cross-seam FK retained (self-host) and
+  // createTaskRunCheckpoint succeeds with the cross-seam FK retained (self-host) and
   // dropped (cloud). The fixture must provision BOTH versions (no silent single-DB no-op).
   heteroPostgresTest(
     "checkpoint create succeeds with the cross-seam FK retained (self-host) and dropped (cloud)",
@@ -444,7 +444,7 @@ describe("CheckpointSystem checkpoint-family FK-drop app-integrity (both modes)"
     }
   );
 
-  // Test E: env-delete parity on this unit's write surface (TaskRunCheckpoint, the only
+  // Env-delete parity on this unit's write surface (TaskRunCheckpoint, the only
   // checkpoint-family row the V2 engine creates — Checkpoint/CheckpointRestoreEvent are V1-residual
   // and require a full run+attempt graph, out of this unit's write scope). After deleting the owning
   // env, the TaskRunCheckpoint count is deep-equal across the self-host shape (the retained Cascade

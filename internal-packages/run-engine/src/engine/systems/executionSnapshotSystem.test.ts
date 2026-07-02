@@ -103,7 +103,7 @@ async function triggerRun(engine: RunEngine, prisma: PrismaClient, friendlyId: s
 }
 
 describe("executionSnapshotSystem store routing (single-DB passthrough)", () => {
-  // Test A: a triggered run's first snapshot create goes through the store, and the row lands.
+  // A triggered run's first snapshot create goes through the store, and the row lands.
   containerTest("snapshot create routes through the store", async ({ prisma, redisOptions }) => {
     const countingStore = new CountingPostgresRunStore({ prisma, readOnlyPrisma: prisma });
     const engine = new RunEngine(createEngineOptions(redisOptions, prisma, countingStore));
@@ -122,7 +122,7 @@ describe("executionSnapshotSystem store routing (single-DB passthrough)", () => 
     }
   });
 
-  // Test B: getLatestExecutionSnapshot reads through the store, routed by run id.
+  // getLatestExecutionSnapshot reads through the store, routed by run id.
   containerTest(
     "getLatestExecutionSnapshot reads through the store routed by run id",
     async ({ prisma, redisOptions }) => {
@@ -146,7 +146,7 @@ describe("executionSnapshotSystem store routing (single-DB passthrough)", () => 
     }
   );
 
-  // Test C: single-DB binds one client (passthrough) — proven by behavior, not by reaching
+  // Single-DB binds one client (passthrough) — proven by behavior, not by reaching
   // into a private prisma member. The read returns exactly the row just written.
   containerTest(
     "single-DB binds one client (passthrough) — round-trip on one client",
@@ -287,7 +287,7 @@ async function seedRunWithSnapshot(
 }
 
 describe("executionSnapshotSystem store routing (cross-version read-through)", () => {
-  // Test D: a new run resolves to the run-ops (NEW/PG17) store; the legacy store is untouched.
+  // A new run resolves to the run-ops (NEW/PG17) store; the legacy store is untouched.
   heteroPostgresTest(
     "new run -> run-ops store (legacy untouched)",
     async ({ prisma14, prisma17 }) => {
@@ -315,7 +315,7 @@ describe("executionSnapshotSystem store routing (cross-version read-through)", (
     }
   );
 
-  // Test E: an old run resolves via read-through to the LEGACY (PG14) store; the enhanced
+  // An old run resolves via read-through to the LEGACY (PG14) store; the enhanced
   // snapshot is well-formed across the version boundary.
   heteroPostgresTest(
     "old run -> read-through to legacy store (well-formed across versions)",
@@ -345,7 +345,7 @@ describe("executionSnapshotSystem store routing (cross-version read-through)", (
     }
   );
 
-  // Test F: routing keys off runId, the SnapshotId is a cuid (not a 27-char ksuid), and no
+  // Routing keys off runId, the SnapshotId is a cuid (not a 27-char ksuid), and no
   // residency classifier is consulted for the snapshot id (D5).
   heteroPostgresTest(
     "snapshots route by owning run id; SnapshotId stays cuid",

@@ -137,11 +137,11 @@ const cancelledSnapshot = (friendlyId: string, environment: any) => ({
 });
 
 describe("RunEngine trigger/create routing", () => {
-  // Test A: trigger create routes through runStore.createRun with the structured
+  // trigger create routes through runStore.createRun with the structured
   // DTO, and the persisted run + its nested first RUN_CREATED snapshot land via
   // the single create call.
   containerTest(
-    "Test A: trigger routes createRun and lands run + first snapshot",
+    "trigger routes createRun and lands run + first snapshot",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
@@ -176,10 +176,10 @@ describe("RunEngine trigger/create routing", () => {
     }
   );
 
-  // Test B: triggerAndWait persists the RUN-associated waitpoint via the single
+  // triggerAndWait persists the RUN-associated waitpoint via the single
   // create — the associatedWaitpoint DTO field is nested by the store.
   containerTest(
-    "Test B: triggerAndWait persists the RUN-associated waitpoint via createRun",
+    "triggerAndWait persists the RUN-associated waitpoint via createRun",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
@@ -225,10 +225,10 @@ describe("RunEngine trigger/create routing", () => {
     }
   );
 
-  // Test C: createCancelledRun routes the create, and the P2002 double-pop
+  // createCancelledRun routes the create, and the P2002 double-pop
   // fallback routes through findRun, returning the same CANCELED row.
   containerTest(
-    "Test C: createCancelledRun routes create + P2002 fallback find",
+    "createCancelledRun routes create + P2002 fallback find",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
@@ -255,10 +255,10 @@ describe("RunEngine trigger/create routing", () => {
     }
   );
 
-  // Test D: createFailedTaskRun routes the single create arm — no second engine
+  // createFailedTaskRun routes the single create arm — no second engine
   // arm exists (the keyless idempotency retry is internal to the store).
   containerTest(
-    "Test D: createFailedTaskRun routes the single createFailedRun arm",
+    "createFailedTaskRun routes the single createFailedRun arm",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
@@ -290,11 +290,11 @@ describe("RunEngine trigger/create routing", () => {
     }
   );
 
-  // Test G: the residency-routing fix. Each create forwards the BARE caller tx
+  // Each create forwards the BARE caller tx
   // (undefined on the default path), never the engine's resolved this.prisma, so
   // an injected RoutingRunStore's residency selection is not overridden.
   containerTest(
-    "Test G: creates forward the bare caller tx, not the resolved client",
+    "creates forward the bare caller tx, not the resolved client",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
@@ -345,11 +345,11 @@ describe("RunEngine trigger/create routing", () => {
     }
   );
 
-  // Test G2: the inverse of Test G. When the caller DOES pass a tx, the create
+  // The inverse of the bare-tx case above. When the caller DOES pass a tx, the create
   // call sites must forward THAT SAME tx to the store by identity — closing the
   // gap a regression hardcoding `undefined` would slip through every other test.
   containerTest(
-    "Test G2: a non-undefined caller tx is forwarded to the store by identity",
+    "a non-undefined caller tx is forwarded to the store by identity",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
@@ -427,11 +427,11 @@ describe("RunEngine trigger/create routing", () => {
     }
   );
 
-  // Test E: a child triggered with the parent's residency persists to the
+  // A child triggered with the parent's residency persists to the
   // SAME store the parent was written to (routing-by-run-id). Both parent and
   // child mint NEW (ksuid) ids → both land on newStore.
   containerTest(
-    "Test E: child inherits the parent's residency store",
+    "child inherits the parent's residency store",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const newStore = new CountingRunStore({ prisma, readOnlyPrisma: prisma, label: "new" });
@@ -485,11 +485,11 @@ describe("RunEngine trigger/create routing", () => {
     }
   );
 
-  // Test F: split-path env integrity / cross-DB control-plane resolution. With a
+  // Split-path env integrity / cross-DB control-plane resolution. With a
   // resolver whose assertEnvExists throws, the create is blocked and no row is
   // written; with one that resolves, the create succeeds.
   containerTest(
-    "Test F: split-path env-existence assertion blocks the create on a dangling env",
+    "split-path env-existence assertion blocks the create on a dangling env",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
 

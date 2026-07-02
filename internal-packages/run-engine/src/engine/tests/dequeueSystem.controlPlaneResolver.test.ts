@@ -245,7 +245,7 @@ describe("DequeueSystem controlPlaneResolver (hetero cross-DB)", () => {
 });
 
 describe("DequeueSystem controlPlaneResolver (latest-v2 fallback + workerId branches)", () => {
-  // GAP A: deployed + no workerId, where the CURRENT-promoted deployment is NOT MANAGED.
+  // Deployed + no workerId, where the CURRENT-promoted deployment is NOT MANAGED.
   // #getManagedWorkerFromCurrentlyPromotedDeployment must fall back to the latest MANAGED
   // WorkerDeployment for the env (controlPlaneResolver.ts ~line 244). Every other test promotes a
   // MANAGED deployment, so this fallback branch was previously unexercised.
@@ -386,7 +386,7 @@ describe("DequeueSystem controlPlaneResolver (latest-v2 fallback + workerId bran
     }
   );
 
-  // GAP B: the dequeue hot path computes `workerId = run.lockedToVersionId ?? backgroundWorkerId`
+  // The dequeue hot path computes `workerId = run.lockedToVersionId ?? backgroundWorkerId`
   // and passes it to resolveWorkerVersion. A locked-to-version run exercises the workerId branches,
   // which no other test covers.
   containerTest(

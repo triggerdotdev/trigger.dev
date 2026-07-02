@@ -117,7 +117,7 @@ async function triggerDebouncedRun(
 }
 
 describe("debounceSystem store routing (single-DB passthrough)", () => {
-  // Test A: the existing-run fast-path skip routes its reads through the store.
+  // The existing-run fast-path skip routes its reads through the store.
   containerTest(
     "existing-run fast-path skip routes its reads through the store",
     async ({ prisma, redisOptions }) => {
@@ -154,7 +154,7 @@ describe("debounceSystem store routing (single-DB passthrough)", () => {
     }
   );
 
-  // Test B: the existing-run locked reschedule routes the re-read + the snapshot through
+  // The existing-run locked reschedule routes the re-read + the snapshot through
   // the store on the non-tx path (the snapshot read is this unit's one source edit, gated on
   // `tx ? undefined : this.$.runStore`). The public trigger path always supplies `tx: prisma`,
   // so the store-routed snapshot read is driven by calling handleDebounce without a tx.
@@ -209,7 +209,7 @@ describe("debounceSystem store routing (single-DB passthrough)", () => {
     }
   );
 
-  // Test B2 (mirror of Test B): even on the tx path the snapshot read routes through the store.
+  // Even on the tx path the snapshot read routes through the store.
   // getLatestExecutionSnapshot always passes this.$.runStore, so the read is routed to the
   // OWNING DB (correct for split mode — a ksuid run's snapshot lives on the dedicated DB, not the
   // caller's control-plane tx). Driving the locked reschedule inside a tx must still increment the
@@ -263,7 +263,7 @@ describe("debounceSystem store routing (single-DB passthrough)", () => {
     }
   );
 
-  // Test B3 (snapshot-read catch branch): when the snapshot read throws (run/snapshot gone),
+  // Snapshot-read catch branch: when the snapshot read throws (run/snapshot gone),
   // #handleExistingRunLocked clears the stale Redis key and claims a fresh one, returning
   // status "new" instead of "existing".
   containerTest(
@@ -305,7 +305,7 @@ describe("debounceSystem store routing (single-DB passthrough)", () => {
     }
   );
 
-  // Test B4 (non-DELAYED snapshot branch): when the latest snapshot's executionStatus is
+  // Non-DELAYED snapshot branch: when the latest snapshot's executionStatus is
   // neither DELAYED nor RUN_CREATED, #handleExistingRunLocked clears the Redis key and claims
   // a fresh one, returning status "new".
   containerTest(
@@ -353,7 +353,7 @@ describe("debounceSystem store routing (single-DB passthrough)", () => {
     }
   );
 
-  // Test C: the trailing-mode update routes through the store via rewriteDebouncedRun.
+  // The trailing-mode update routes through the store via rewriteDebouncedRun.
   containerTest(
     "trailing-mode update routes through the store",
     async ({ prisma, redisOptions }) => {
@@ -397,7 +397,7 @@ describe("debounceSystem store routing (single-DB passthrough)", () => {
     }
   );
 
-  // Test D: the lock-contention fallback routes its read through the store. A
+  // The lock-contention fallback routes its read through the store. A
   // LockAcquisitionTimeoutError-shaped failure from runLock drives
   // #handleLockContentionFallback, which reads the existing run via the store.
   containerTest(
@@ -451,7 +451,7 @@ describe("debounceSystem store routing (single-DB passthrough)", () => {
     }
   );
 
-  // Test E: a caller-supplied tx is threaded through findRun's `client?` arg and honored,
+  // A caller-supplied tx is threaded through findRun's `client?` arg and honored,
   // not re-selected by the store.
   containerTest(
     "tx path is threaded straight through to the store read (honored, not re-routed)",
@@ -493,7 +493,7 @@ describe("debounceSystem store routing (single-DB passthrough)", () => {
     }
   );
 
-  // Test F: single-DB binds one client (passthrough) — proven by behavior, not by reaching
+  // Single-DB binds one client (passthrough) — proven by behavior, not by reaching
   // into a private prisma member. The routed read returns exactly the row just written.
   containerTest(
     "single-DB binds one client (passthrough) — debounce round-trip on one client",
@@ -537,7 +537,7 @@ describe("debounceSystem store routing (single-DB passthrough)", () => {
   );
 });
 
-// --- Cross-version read-through proof (Test K) ---
+// --- Cross-version read-through proof ---
 
 /**
  * A real, minimal two-store router over two PostgresRunStore instances, selecting by owning
@@ -660,7 +660,7 @@ async function seedDelayedRunWithWaitpoint(
 }
 
 describe("debounceSystem store routing (cross-version read-through)", () => {
-  // Test K: an existing-run read round-trips deep-equal across PG14/PG17, routed by owning
+  // An existing-run read round-trips deep-equal across PG14/PG17, routed by owning
   // run id (NEW=PG17 resolved, LEGACY=PG14 untouched for a NEW run).
   heteroPostgresTest(
     "existing-run read round-trips across versions, routed by run id",

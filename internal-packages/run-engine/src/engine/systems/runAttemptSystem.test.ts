@@ -189,10 +189,10 @@ async function dequeueOne(engine: RunEngine) {
 }
 
 describe("runAttemptSystem routes through the RunStore", () => {
-  // Test A — startRunAttempt routes the EXECUTING run write (and the minimal load
+  // startRunAttempt routes the EXECUTING run write (and the minimal load
   // read) through the store, resolved by the owning run id.
   containerTest(
-    "Test A: startRunAttempt routes the run write through the store",
+    "startRunAttempt routes the run write through the store",
     async ({ prisma, redisOptions }) => {
       const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
@@ -226,9 +226,9 @@ describe("runAttemptSystem routes through the RunStore", () => {
     }
   );
 
-  // Test B — attemptSucceeded finalizes COMPLETED_SUCCESSFULLY through the store, with
+  // attemptSucceeded finalizes COMPLETED_SUCCESSFULLY through the store, with
   containerTest(
-    "Test B: attemptSucceeded finalizes through the store",
+    "attemptSucceeded finalizes through the store",
     async ({ prisma, redisOptions }) => {
       const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
@@ -274,10 +274,10 @@ describe("runAttemptSystem routes through the RunStore", () => {
     }
   );
 
-  // Test C — attemptFailed -> retry routes the retry update through recordRetryOutcome,
+  // attemptFailed -> retry routes the retry update through recordRetryOutcome,
   // preserving the deep runtimeEnvironment.{project,organization,orgMember} include.
   containerTest(
-    "Test C: attemptFailed retry routes through the store with the deep include preserved",
+    "attemptFailed retry routes through the store with the deep include preserved",
     async ({ prisma, redisOptions }) => {
       const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
@@ -328,9 +328,9 @@ describe("runAttemptSystem routes through the RunStore", () => {
     }
   );
 
-  // Test D — single-client passthrough: a start->succeed round-trip on the DEFAULT
+  // Single-client passthrough: a start->succeed round-trip on the DEFAULT
   containerTest(
-    "Test D: single-DB binds one client (passthrough)",
+    "single-DB binds one client (passthrough)",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const engine = new RunEngine(createEngineOptions(redisOptions, prisma, undefined));
@@ -371,9 +371,9 @@ describe("runAttemptSystem routes through the RunStore", () => {
     }
   );
 
-  // Test E — cancelRun routes the CANCELED update through the dedicated cancelRun method
+  // cancelRun routes the CANCELED update through the dedicated cancelRun method
   containerTest(
-    "Test E: cancelRun routes the CANCELED update through the store",
+    "cancelRun routes the CANCELED update through the store",
     async ({ prisma, redisOptions }) => {
       const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
@@ -426,9 +426,9 @@ describe("runAttemptSystem routes through the RunStore", () => {
     }
   );
 
-  // Test F — cancelRun child fan-out stays single-DB: cancelling a parent enqueues
+  // cancelRun child fan-out stays single-DB: cancelling a parent enqueues
   containerTest(
-    "Test F: cancelRun child fan-out stays single-DB",
+    "cancelRun child fan-out stays single-DB",
     async ({ prisma, redisOptions }) => {
       const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
@@ -482,9 +482,9 @@ describe("runAttemptSystem routes through the RunStore", () => {
     }
   );
 
-  // Test G — bulk-action push on an already-finished run routes through the dedicated
+  // Bulk-action push on an already-finished run routes through the dedicated
   containerTest(
-    "Test G: bulk-action push on a finished run routes through recordBulkActionMembership",
+    "bulk-action push on a finished run routes through recordBulkActionMembership",
     async ({ prisma, redisOptions }) => {
       const store = new CountingRunStore({ prisma, readOnlyPrisma: prisma });
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
@@ -597,12 +597,12 @@ function buildCreateRunInput(p: {
 }
 
 describe("runAttemptSystem store routing — cross-version (heterogeneous Postgres)", () => {
-  // Test H — the attempt-lifecycle store methods this unit routes to (startAttempt ->
+  // The attempt-lifecycle store methods this unit routes to (startAttempt ->
   // completeAttemptSuccess) land their TaskRun write + FINISHED snapshot on the dedicated
   // run-ops store, while a legacy/control-plane store over the same migrated schema is
   // untouched. Proves the run-ops store owns the attempt lifecycle cross-version.
   heteroPostgresTest(
-    "Test H: attempt lifecycle lands on the dedicated run-ops store",
+    "attempt lifecycle lands on the dedicated run-ops store",
     async ({ prisma14, prisma17 }) => {
       const newStore = new PostgresRunStore({ prisma: prisma17, readOnlyPrisma: prisma17 });
       const { organization, project, environment } = await seedEnvironment(prisma17);

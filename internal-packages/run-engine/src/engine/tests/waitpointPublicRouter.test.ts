@@ -276,9 +276,9 @@ describe("RunEngine public waitpoint router", () => {
     }
   );
 
-  // Test C — Group A delegators still work through the (already system-routed) public API.
+  // The delegators still work through the (already system-routed) public API.
   containerTest(
-    "Group A delegators (create/block/getOrCreate) work through the public API",
+    "delegators (create/block/getOrCreate) work through the public API",
     async ({ prisma, redisOptions }) => {
       const environment = await setupAuthenticatedEnvironment(prisma, "PRODUCTION");
       const engine = new RunEngine(engineOptions(redisOptions, prisma));

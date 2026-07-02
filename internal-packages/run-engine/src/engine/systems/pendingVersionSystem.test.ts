@@ -154,7 +154,7 @@ async function seedPendingVersionRunInEnv(
 }
 
 describe("pendingVersionSystem store routing (single-DB passthrough)", () => {
-  // Test G: candidate ids from the (control-plane/CH) lookup hydrate from the run-ops store
+  // Candidate ids from the (control-plane/CH) lookup hydrate from the run-ops store
   // via findRuns. Uses a DEVELOPMENT env so setupBackgroundWorker performs no deployment +
   // no background auto-resolution that would race the manual resolve.
   containerTest(
@@ -190,7 +190,7 @@ describe("pendingVersionSystem store routing (single-DB passthrough)", () => {
     }
   );
 
-  // Test H: the promotion flips PENDING_VERSION -> PENDING atomically and enqueues; the
+  // The promotion flips PENDING_VERSION -> PENDING atomically and enqueues; the
   // count === 0 idempotency guard fires for a candidate that is still PENDING_VERSION at
   // hydrate time but races out of it before its per-run promote transaction runs. r2 is
   // flipped to PENDING by the store's afterFindRuns hook — i.e. AFTER findRuns has already
@@ -259,7 +259,7 @@ describe("pendingVersionSystem store routing (single-DB passthrough)", () => {
     }
   );
 
-  // Test I: candidate ids whose rows are no longer PENDING_VERSION are dropped by the hydrate
+  // Candidate ids whose rows are no longer PENDING_VERSION are dropped by the hydrate
   // and no promotion/enqueue fires.
   containerTest(
     "stale candidates (not PENDING_VERSION) are dropped by the hydrate",
@@ -294,7 +294,7 @@ describe("pendingVersionSystem store routing (single-DB passthrough)", () => {
     }
   );
 
-  // Test J: single-DB binds one client (passthrough) — proven by behavior. The whole resolve
+  // Single-DB binds one client (passthrough) — proven by behavior. The whole resolve
   // cycle (hydrate + flip + enqueue) resolves on the one client.
   containerTest(
     "single-DB binds one client (passthrough) — full resolve cycle on one client",
@@ -402,7 +402,7 @@ async function seedPendingVersionRun(
 }
 
 describe("pendingVersionSystem store routing (cross-version / cross-DB)", () => {
-  // Test L: hydrate + promotion round-trip identically across PG14/PG17.
+  // Hydrate + promotion round-trip identically across PG14/PG17.
   heteroPostgresTest(
     "hydrate + promotion round-trip across versions",
     async ({ prisma14, prisma17 }) => {
@@ -477,7 +477,7 @@ describe("pendingVersionSystem store routing (cross-version / cross-DB)", () => 
     }
   );
 
-  // Test M: cross-DB seam — lookup ids resolve to the NEW store; the promotion lands on NEW
+  // Cross-DB seam — lookup ids resolve to the NEW store; the promotion lands on NEW
   // only, the LEGACY store is untouched.
   heteroPostgresTest(
     "cross-DB seam: CH ids resolve + promote on the NEW store only",
