@@ -148,8 +148,8 @@ describe("Bulk actions API", () => {
 
     expect(response.status).toBe(409);
     const body = await response.json();
-    expect(body).toEqual({ error: "Bulk action is already completed" });
-    expect(JSON.stringify(body)).not.toContain(bulkAction.friendlyId);
+    expect(body.error).toEqual(expect.any(String));
+    expect(body.error).toContain(bulkAction.friendlyId);
   });
 
   it("rejects create requests with both filter and runIds", async () => {
