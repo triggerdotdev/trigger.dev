@@ -16,7 +16,7 @@ import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 const NEW_WP = WaitpointId.toFriendlyId("0".repeat(27)); // 27-char internal body → NEW
 const LEGACY_WP = WaitpointId.toFriendlyId("c".repeat(25)); // 25-char internal body → LEGACY
 
-describe("cross-seam guard — exhaustive per-route store selection (Leg 1)", () => {
+describe("cross-seam guard — exhaustive per-route store selection", () => {
   for (const route of UNBLOCK_ROUTES) {
     it(`routes ${route.id} (${route.kind}) to new store for a NEW waitpoint`, () => {
       const d = selectStoreForWaitpoint({ waitpointId: NEW_WP, routeKind: route.kind });
@@ -32,7 +32,7 @@ describe("cross-seam guard — exhaustive per-route store selection (Leg 1)", ()
   }
 });
 
-describe("cross-seam guard — single-DB no-op (Leg 2)", () => {
+describe("cross-seam guard — single-DB no-op", () => {
   for (const route of UNBLOCK_ROUTES) {
     it(`${route.id}: single-DB returns legacy without consulting the classifier`, () => {
       const calls: string[] = [];
@@ -70,7 +70,7 @@ function tally(sites: string[]): Record<string, number> {
   return counts;
 }
 
-describe("cross-seam guard — CI drift guard (Leg 3)", () => {
+describe("cross-seam guard — CI drift guard", () => {
   it("per-file completeWaitpoint( tally in source matches the catalog", () => {
     const root = repoRoot();
 
@@ -90,9 +90,8 @@ describe("cross-seam guard — CI drift guard (Leg 3)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Leg 4 — PG14+PG17 hetero-fixture proof. The pure legs above prove the guard
-// SELECTS the right store; this leg proves the selected store corresponds to the
+// PG14+PG17 hetero-fixture proof. The pure-selection tests above prove the guard
+// SELECTS the right store; this proves the selected store corresponds to the
 // DB the Waitpoint row PHYSICALLY lives in, on a REAL heterogeneous PG14+PG17
 // fixture. NEVER mock. Seed Org->Project->Env (parents before children, or the
 // required Waitpoint.projectId/environmentId FKs abort the insert) then the
@@ -100,7 +99,6 @@ describe("cross-seam guard — CI drift guard (Leg 3)", () => {
 // cross-DB toBeNull checks then prove no ghost row leaked to the other version.
 // Seed pattern copied from
 // internal-packages/run-engine/src/engine/tests/crossVersionCompat.test.ts.
-// ---------------------------------------------------------------------------
 
 const FIXED_TS = "2024-01-01 00:00:00+00";
 
@@ -161,7 +159,7 @@ async function seedWaitpoint(
   );
 }
 
-describe("cross-seam guard — PG14+PG17 hetero-fixture proof (Leg 4)", () => {
+describe("cross-seam guard — PG14+PG17 hetero-fixture proof", () => {
   heteroPostgresTest(
     "exhaustive routes resolve to the physically-correct store on PG14+PG17",
     async ({ prisma14, prisma17 }) => {

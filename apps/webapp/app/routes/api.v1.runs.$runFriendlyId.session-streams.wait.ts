@@ -99,7 +99,7 @@ const { action, loader } = createActionApiRoute(
         }
       }
 
-      // Step 1: Create the waitpoint. Co-locate it with the owning run (run-ops split) so a ksuid
+      // Create the waitpoint. Co-locate it with the owning run (run-ops split) so a ksuid
       // run's session-stream waitpoint lands on the run's DB and its block edge resolves.
       const result = await engine.createManualWaitpoint({
         runId: run.id,
@@ -111,7 +111,7 @@ const { action, loader } = createActionApiRoute(
         tags: bodyTags,
       });
 
-      // Step 2: Register the waitpoint on the session channel so the next
+      // Register the waitpoint on the session channel so the next
       // append fires it. Keyed by (environmentId, addressingKey, io) — the
       // canonical string for the row, scoped to the environment because
       // externalIds are only unique per environment. The append handler
@@ -126,7 +126,7 @@ const { action, loader } = createActionApiRoute(
         ttlMs && ttlMs > 0 ? ttlMs : undefined
       );
 
-      // Step 3: Race-check. If a record landed on the channel before this
+      // Race-check. If a record landed on the channel before this
       // .wait() call, complete the waitpoint synchronously with that data
       // and remove the pending registration.
       if (!result.isCached) {

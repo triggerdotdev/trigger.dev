@@ -54,7 +54,7 @@ function buildEngine(opts: {
 }
 
 describe("waitpoint-token complete route — cross-seam guard", () => {
-  // (A) the completion path consults the guard FIRST with routeKind RESUME_TOKEN
+  // The completion path consults the guard FIRST with routeKind RESUME_TOKEN
   // recording the waitpointId, then delegates and the waitpoint becomes COMPLETED.
   containerTest(
     "consults the guard first (RESUME_TOKEN), then completes (single-store)",
@@ -96,7 +96,7 @@ describe("waitpoint-token complete route — cross-seam guard", () => {
     }
   );
 
-  // (B) an injected guard that throws (unclassifiable) causes completeWaitpoint
+  // An injected guard that throws (unclassifiable) causes completeWaitpoint
   // to reject and the waitpoint stays PENDING (loud, not silently applied).
   containerTest(
     "propagates a guard throw and leaves the waitpoint PENDING (loud)",
@@ -132,7 +132,7 @@ describe("waitpoint-token complete route — cross-seam guard", () => {
   );
 });
 
-// (D) no-FK-abort: with the Waitpoint table split off control-plane, the env/project Cascade
+// no-FK-abort: with the Waitpoint table split off control-plane, the env/project Cascade
 // FKs are physically absent. Completing a waitpoint (status flip) must not trip a now-missing FK
 // on EITHER the PG14 (legacy) or PG17 (new) store. Seed + complete on the SAME store (single-store
 // write, no two-store router). The DB is never mocked: writes hit the real PG14/PG17 containers.

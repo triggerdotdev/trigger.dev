@@ -64,7 +64,7 @@ function buildEngine(opts: {
 }
 
 describe("waitpoint-token create engine seam — residency-keyed id contract", () => {
-  // Test A: a standalone token (no owning run) mints a cuid WaitpointId and stays LEGACY.
+  // A standalone token (no owning run) mints a cuid WaitpointId and stays LEGACY.
   containerTest(
     "create mints a cuid WaitpointId for a standalone token (LEGACY)",
     async ({ prisma, redisOptions }) => {
@@ -99,7 +99,7 @@ describe("waitpoint-token create engine seam — residency-keyed id contract", (
     }
   );
 
-  // Test B: the standalone token id classifies LEGACY and resolves back.
+  // The standalone token id classifies LEGACY and resolves back.
   containerTest(
     "token id classifies to the legacy store and resolves back",
     async ({ prisma, redisOptions }) => {
@@ -129,7 +129,7 @@ describe("waitpoint-token create engine seam — residency-keyed id contract", (
     }
   );
 
-  // Test C: the control-plane WaitpointTag write stays control-plane — it cannot
+  // The control-plane WaitpointTag write stays control-plane — it cannot
   // route through the run-ops store, which exposes no tag-write surface at all.
   containerTest(
     "control-plane WaitpointTag write stays control-plane, not on the run-ops store",
@@ -330,7 +330,7 @@ function makeRouter(prisma14: PrismaClient, prisma17: RunOpsPrismaClient) {
 }
 
 describe("waitpoint-token create engine seam — NEW residency via a ksuid run across the version boundary", () => {
-  // Test D: NEW residency comes from co-locating the token with a ksuid run; the token
+  // NEW residency comes from co-locating the token with a ksuid run; the token
   // resolves only on its owning (#new) store across the PG14<->PG17 boundary, never #legacy.
   twoDbEngineTest(
     "a ksuid run's token co-locates on #new and resolves only there, not on #legacy",
