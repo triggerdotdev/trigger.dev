@@ -779,6 +779,7 @@ export class DequeueSystem {
 
       if (!env) {
         this.$.logger.error("RunEngine.#pendingVersion(): environment not found", { runId });
+        await this.$.runQueue.acknowledgeMessage(orgId, runId);
         return;
       }
 

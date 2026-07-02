@@ -121,7 +121,7 @@ export class DelayedRunSystem {
       const env = await this.$.controlPlaneResolver.resolveEnv(run.runtimeEnvironmentId);
 
       if (!env) {
-        throw new Error(`#enqueueDelayedRun: run not found: ${runId}`);
+        throw new Error(`#enqueueDelayedRun: environment not found for run: ${runId}`);
       }
 
       // Check if delayUntil has been rescheduled to the future (e.g., by debounce)

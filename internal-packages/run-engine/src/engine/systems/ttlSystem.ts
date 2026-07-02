@@ -101,16 +101,7 @@ export class TtlSystem {
         prisma
       );
 
-      const env = await this.$.controlPlaneResolver.resolveEnv(updatedRun.runtimeEnvironmentId);
-
-      if (!env) {
-        this.$.logger.debug("Run cannot be expired because its environment was not found", {
-          runId,
-        });
-        return;
-      }
-
-      await this.$.runQueue.acknowledgeMessage(env.organizationId, runId, {
+      await this.$.runQueue.acknowledgeMessage(snapshot.organizationId, runId, {
         removeFromWorkerQueue: true,
       });
 
@@ -125,9 +116,9 @@ export class TtlSystem {
       this.$.eventBus.emit("runExpired", {
         run: updatedRun,
         time: new Date(),
-        organization: { id: env.organizationId },
-        project: { id: env.projectId },
-        environment: { id: env.id },
+        organization: { id: snapshot.organizationId },
+        project: { id: snapshot.projectId },
+        environment: { id: snapshot.environmentId },
       });
     });
   }

@@ -739,7 +739,9 @@ export class WaitpointSystem {
           runId,
           runtimeEnvironmentId: run.runtimeEnvironmentId,
         });
-        throw new Error(`continueRunIfUnblocked: run not found: ${runId}`);
+        throw new Error(
+          `continueRunIfUnblocked: environment not found: ${run.runtimeEnvironmentId}`
+        );
       }
 
       //4. Continue the run whether it's executing or not
