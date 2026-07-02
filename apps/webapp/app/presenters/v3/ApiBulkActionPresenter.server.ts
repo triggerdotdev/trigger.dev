@@ -37,23 +37,6 @@ type BulkActionRow = Pick<
 >;
 
 export class ApiBulkActionPresenter extends BasePresenter {
-  public async retrieve(environmentId: string, bulkActionId: string) {
-    // Read from primary so create -> retrieve/poll doesn't 404 on replica lag.
-    const bulkAction = await this._prisma.bulkActionGroup.findFirst({
-      select: bulkActionSelect,
-      where: {
-        environmentId,
-        friendlyId: bulkActionId,
-      },
-    });
-
-    if (!bulkAction) {
-      return undefined;
-    }
-
-    return apiBulkActionObject(bulkAction);
-  }
-
   public async list(environmentId: string, searchParams: ApiBulkActionListSearchParams) {
     const pageSize = searchParams["page[size]"] ?? DEFAULT_PAGE_SIZE;
     const after = searchParams["page[after]"];
@@ -116,7 +99,7 @@ export class ApiBulkActionPresenter extends BasePresenter {
   }
 }
 
-const bulkActionSelect = {
+export const bulkActionSelect = {
   id: true,
   friendlyId: true,
   name: true,

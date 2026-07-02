@@ -18,8 +18,9 @@ const { action } = createActionApiRoute(
       action: "write",
       resource: () => ({ type: "runs" }),
     },
+    // Existence/auth gate. Reads from primary so create -> abort doesn't 404 on
+    // replica lag; the abort write path re-reads and mutates on primary.
     findResource: async (params, auth) => {
-      // Read from primary so create -> abort doesn't 404 on replica lag.
       return prisma.bulkActionGroup.findFirst({
         select: { id: true },
         where: {

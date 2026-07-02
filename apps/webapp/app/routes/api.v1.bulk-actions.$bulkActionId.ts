@@ -1,7 +1,10 @@
 import { json } from "@remix-run/server-runtime";
 import { z } from "zod";
 import { prisma } from "~/db.server";
-import { ApiBulkActionPresenter } from "~/presenters/v3/ApiBulkActionPresenter.server";
+import {
+  apiBulkActionObject,
+  bulkActionSelect,
+} from "~/presenters/v3/ApiBulkActionPresenter.server";
 import { createLoaderApiRoute } from "~/services/routeBuilders/apiBuilder.server";
 
 const ParamsSchema = z.object({
@@ -16,10 +19,10 @@ export const loader = createLoaderApiRoute(
       action: "read",
       resource: () => ({ type: "runs" }),
     },
+    // Read from primary so create -> retrieve/poll doesn't 404 on replica lag.
     findResource: async (params, auth) => {
-      // Read from primary so create -> retrieve/poll doesn't 404 on replica lag.
       return prisma.bulkActionGroup.findFirst({
-        select: { id: true },
+        select: bulkActionSelect,
         where: {
           friendlyId: params.bulkActionId,
           environmentId: auth.environment.id,
@@ -27,14 +30,7 @@ export const loader = createLoaderApiRoute(
       });
     },
   },
-  async ({ params, authentication }) => {
-    const presenter = new ApiBulkActionPresenter();
-    const bulkAction = await presenter.retrieve(authentication.environment.id, params.bulkActionId);
-
-    if (!bulkAction) {
-      return json({ error: "Bulk action not found" }, { status: 404 });
-    }
-
-    return json(bulkAction);
+  async ({ resource }) => {
+    return json(apiBulkActionObject(resource));
   }
 );
