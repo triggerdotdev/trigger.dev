@@ -60,8 +60,8 @@ type DisplayOptionsProps = {
 
 export function ErrorDisplay({ title, message, button }: DisplayOptionsProps) {
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#16181C]">
-      <div className="z-10 mt-[30vh] flex flex-col items-center gap-8">
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-y-auto bg-[#16181C]">
+      <div className="z-10 mt-[30vh] flex shrink-0 flex-col items-center gap-8">
         <Header1>{title}</Header1>
         {message && <Paragraph>{message}</Paragraph>}
         <LinkButton
