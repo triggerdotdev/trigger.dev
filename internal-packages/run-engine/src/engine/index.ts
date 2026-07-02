@@ -218,6 +218,7 @@ export class RunEngine {
         callback: this.#concurrencySweeperCallback.bind(this),
       },
       shardCount: options.queue?.shardCount,
+      queueMetrics: options.queue?.queueMetrics,
       masterQueueConsumersDisabled: options.queue?.masterQueueConsumersDisabled,
       masterQueueConsumersIntervalMs: options.queue?.masterQueueConsumersIntervalMs,
       processWorkerQueueDebounceMs: options.queue?.processWorkerQueueDebounceMs,

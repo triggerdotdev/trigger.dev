@@ -98,7 +98,8 @@ export class EnqueueSystem {
       // Force development runs to use the environment id as the worker queue.
       const workerQueue = env.type === "DEVELOPMENT" ? env.id : run.workerQueue;
 
-      const timestamp = (run.queueTimestamp ?? run.createdAt).getTime() - run.priorityMs;
+      const eligibleAtMs = (run.queueTimestamp ?? run.createdAt).getTime();
+      const timestamp = eligibleAtMs - run.priorityMs;
 
       // Include TTL only when explicitly requested (first enqueue from trigger).
       // Re-enqueues (waitpoint, checkpoint, delayed, pending version) must not add TTL.
@@ -124,6 +125,7 @@ export class EnqueueSystem {
           queue: run.queue,
           concurrencyKey: run.concurrencyKey ?? undefined,
           timestamp,
+          eligibleAtMs,
           attempt: 0,
           ttlExpiresAt,
         },
