@@ -34,6 +34,11 @@ import {
 import { insertMetrics } from "./metrics.js";
 import { insertLlmMetrics } from "./llmMetrics.js";
 import {
+  insertQueueMetricsRaw,
+  getQueueListMetricsSummary,
+  getQueueDepthSparklines,
+} from "./queueMetrics.js";
+import {
   getSessionTagsQueryBuilder,
   getSessionsCountQueryBuilder,
   getSessionsQueryBuilder,
@@ -66,6 +71,7 @@ export type * from "./taskRuns.js";
 export type * from "./taskEvents.js";
 export type * from "./metrics.js";
 export type * from "./llmMetrics.js";
+export type * from "./queueMetrics.js";
 export type * from "./llmModelAggregates.js";
 export type * from "./errors.js";
 export type * from "./sessions.js";
@@ -259,6 +265,14 @@ export class ClickHouse {
   get llmMetrics() {
     return {
       insert: insertLlmMetrics(this.writer),
+    };
+  }
+
+  get queueMetrics() {
+    return {
+      insertRaw: insertQueueMetricsRaw(this.writer),
+      listSummary: getQueueListMetricsSummary(this.reader),
+      depthSparklines: getQueueDepthSparklines(this.reader),
     };
   }
 

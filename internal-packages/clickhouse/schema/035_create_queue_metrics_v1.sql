@@ -1,0 +1,98 @@
+-- +goose Up
+
+-- Queue metrics: raw landing table -> MV -> aggregated read target (mirrors
+-- llm_model_aggregates_v1, migration 027). Raw rows feed an MV on insert, and
+-- reads hit the aggregated table.
+
+-- Short-TTL raw landing, one row per stream entry. non_replicated_deduplication_window
+-- makes consumer replays idempotent via insert_deduplication_token.
+CREATE TABLE IF NOT EXISTS trigger_dev.queue_metrics_raw_v1
+(
+  organization_id  LowCardinality(String),
+  project_id       LowCardinality(String),
+  environment_id   String CODEC(ZSTD(1)),
+  queue_name       String CODEC(ZSTD(1)),
+  event_time       DateTime CODEC(Delta(4), ZSTD(1)),
+  order_key        UInt64 DEFAULT 0,                 -- stream-id composite (ms*1e5+seq); deltaSumTimestamp ordering key
+  op               LowCardinality(String),          -- gauge | enqueue | started | ack | nack | dlq
+  running          UInt32 DEFAULT 0,
+  queued           UInt32 DEFAULT 0,
+  queue_limit      UInt32 DEFAULT 0,
+  env_running      UInt32 DEFAULT 0,
+  env_queued       UInt32 DEFAULT 0,
+  env_limit        UInt32 DEFAULT 0,
+  throttled        UInt8  DEFAULT 0,                 -- 1 on a gauge emission with running>=limit AND queued>0
+  wait_ms          UInt32 DEFAULT 0,                 -- set on op='started' (scheduling delay)
+  cumulative       UInt64 DEFAULT 0                  -- monotonic per-(queue,op) odometer on a counter op; diffed at read time
+)
+ENGINE = MergeTree()
+PARTITION BY toDate(event_time)
+ORDER BY (organization_id, project_id, environment_id, queue_name, event_time)
+TTL event_time + INTERVAL 6 HOUR
+SETTINGS non_replicated_deduplication_window = 1000, ttl_only_drop_parts = 1;
+
+-- (2) Aggregated read target (TRQL/dashboards query this).
+CREATE TABLE IF NOT EXISTS trigger_dev.queue_metrics_v1
+(
+  organization_id  LowCardinality(String),
+  project_id       LowCardinality(String),
+  environment_id   String CODEC(ZSTD(1)),
+  queue_name       String CODEC(ZSTD(1)),
+  bucket_start     DateTime CODEC(Delta(4), ZSTD(1)),
+
+  -- Cumulative-counter deltas: each op maintains a monotonic odometer; deltaSumTimestamp
+  -- sums positive consecutive deltas (ignoring resets) ordered by event_time, so a lost
+  -- reading self-heals (the next surviving reading restates the total). Read with
+  -- deltaSumTimestampMerge(<col>), never sum().
+  enqueue_delta    AggregateFunction(deltaSumTimestamp, UInt64, UInt64),
+  started_delta    AggregateFunction(deltaSumTimestamp, UInt64, UInt64),
+  ack_delta        AggregateFunction(deltaSumTimestamp, UInt64, UInt64),
+  nack_delta       AggregateFunction(deltaSumTimestamp, UInt64, UInt64),
+  dlq_delta        AggregateFunction(deltaSumTimestamp, UInt64, UInt64),
+  throttled_count  SimpleAggregateFunction(sum, UInt64),
+
+  max_queued       SimpleAggregateFunction(max, UInt32),
+  max_running      SimpleAggregateFunction(max, UInt32),
+  max_limit        SimpleAggregateFunction(max, UInt32),
+  max_env_queued   SimpleAggregateFunction(max, UInt32),
+  max_env_running  SimpleAggregateFunction(max, UInt32),
+  max_env_limit    SimpleAggregateFunction(max, UInt32),
+
+  wait_ms_sum      SimpleAggregateFunction(sum, UInt64),
+  wait_ms_count    SimpleAggregateFunction(sum, UInt64),
+  wait_quantiles   AggregateFunction(quantiles(0.5, 0.9, 0.95, 0.99), UInt32)
+)
+ENGINE = AggregatingMergeTree()
+PARTITION BY toDate(bucket_start)
+ORDER BY (organization_id, project_id, environment_id, queue_name, bucket_start)
+TTL bucket_start + INTERVAL 30 DAY
+SETTINGS ttl_only_drop_parts = 1;
+
+-- (3) MV: raw -> aggregated, 10s buckets.
+CREATE MATERIALIZED VIEW IF NOT EXISTS trigger_dev.queue_metrics_mv_v1
+TO trigger_dev.queue_metrics_v1 AS
+SELECT
+  organization_id, project_id, environment_id, queue_name,
+  toStartOfInterval(event_time, INTERVAL 10 SECOND) AS bucket_start,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'enqueue') AS enqueue_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'started') AS started_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'ack')     AS ack_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'nack')    AS nack_delta,
+  deltaSumTimestampStateIf(cumulative, order_key, op = 'dlq')     AS dlq_delta,
+  sum(throttled)          AS throttled_count,
+  max(queued)             AS max_queued,
+  max(running)            AS max_running,
+  max(queue_limit)        AS max_limit,
+  max(env_queued)         AS max_env_queued,
+  max(env_running)        AS max_env_running,
+  max(env_limit)          AS max_env_limit,
+  sumIf(wait_ms, op = 'started')                 AS wait_ms_sum,
+  countIf(op = 'started' AND wait_ms > 0)        AS wait_ms_count,
+  quantilesStateIf(0.5, 0.9, 0.95, 0.99)(wait_ms, op = 'started') AS wait_quantiles
+FROM trigger_dev.queue_metrics_raw_v1
+GROUP BY organization_id, project_id, environment_id, queue_name, bucket_start;
+
+-- +goose Down
+DROP VIEW IF EXISTS trigger_dev.queue_metrics_mv_v1;
+DROP TABLE IF EXISTS trigger_dev.queue_metrics_v1;
+DROP TABLE IF EXISTS trigger_dev.queue_metrics_raw_v1;
