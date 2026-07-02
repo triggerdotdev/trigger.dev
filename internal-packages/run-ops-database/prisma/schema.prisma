@@ -11,20 +11,35 @@ generator client {
   previewFeatures = ["metrics"]
 }
 
-//
 // ─────────────────────────────────────────────────────────────────────────────
-// Dedicated run-ops subgraph schema (the NEW DB).
+// Dedicated run-ops database schema.
 //
-// This is a copied SUBSET of the control-plane `@trigger.dev/database` schema,
-// reproduced verbatim minus:
-//   1. control-plane `@relation`s (org/project/environment/worker/queue) —
-//      demoted to plain scalar FK columns, no `@relation`, no FK.
-//   2. group-(A) cross-DB-capable waitpoint-block `@relation`s — demoted to plain
-//      scalar columns and explicit FK-free join models (a block edge can straddle
-//      the two DBs, so it MUST NOT be enforced by an FK on the NEW DB).
-// group-(B) co-resident run-ops→run-ops relations are KEPT as real FKs.
+// This schema holds the subset of the control-plane `@trigger.dev/database`
+// models that describe a run's lifecycle. Each model reproduces its
+// control-plane counterpart column-for-column; the only differences are in how
+// relations are handled, according to three rules:
+//
+//   1. Relations that point at control-plane-owned models (organization,
+//      project, environment, background worker, queue, and the like) are not
+//      reproduced. Their foreign-key columns are kept as plain scalars, with no
+//      `@relation` and no database foreign key, because the referenced rows live
+//      in the control-plane database.
+//
+//   2. Waitpoint block and completion relations are foreign-key-free. A block or
+//      completion edge can connect a run and a waitpoint that live in different
+//      databases, so it must never be enforced by a foreign key here. These
+//      relations are represented by scalar columns plus the explicit join models
+//      `TaskRunWaitpoint`, `WaitpointRunConnection`, and `CompletedWaitpoint`.
+//      The join models replace implicit many-to-many relations that exist in the
+//      control-plane schema.
+//
+//   3. Relations that stay entirely within this database (run to root/parent
+//      run, run to attempt, run to batch, checkpoints, dependencies, and so on)
+//      are kept as real foreign keys, exactly as in the control plane.
+//
+// Relation-only back-references to models outside this subset are dropped; the
+// per-model notes below call out where that happens.
 // ─────────────────────────────────────────────────────────────────────────────
-//
 
 enum RuntimeEnvironmentType {
   PRODUCTION
@@ -33,6 +48,15 @@ enum RuntimeEnvironmentType {
   PREVIEW
 }
 
+/// Same columns and indexes as the control-plane `TaskRun`. The environment,
+/// project, `lockedBy`, and `lockedToVersion` relations are scalar-only foreign
+/// keys here. The waitpoint completion/block relations
+/// (`associatedWaitpoint`, `blockedByWaitpoints`, `connectedWaitpoints`) are
+/// foreign-key-free: completion lives on `Waitpoint.completedByTaskRunId`, block
+/// edges are rows of `TaskRunWaitpoint`, and connections are rows of
+/// `WaitpointRunConnection`. The root/parent-run, parent-attempt, and batch
+/// relations are kept as real foreign keys. Control-plane back-references to
+/// tags, alerts, bulk-action items, and playground conversations are dropped.
 model TaskRun {
   id String @id @default(cuid())
 
@@ -64,12 +88,12 @@ model TaskRun {
   traceId String
   spanId  String
 
-  // scalarized control-plane FK (was `runtimeEnvironment @relation`)
+  /// scalar FK (control-plane `runtimeEnvironment` relation)
   runtimeEnvironmentId String
 
   environmentType RuntimeEnvironmentType?
 
-  // scalarized control-plane FK (was `project @relation`)
+  /// scalar FK (control-plane `project` relation)
   projectId String
 
   organizationId String?
@@ -117,11 +141,11 @@ model TaskRun {
   costInCents     Float @default(0)
   baseCostInCents Float @default(0)
 
-  lockedAt DateTime?
-  // scalarized control-plane FK (was `lockedBy @relation`)
+  lockedAt   DateTime?
+  /// scalar FK (control-plane `lockedBy` relation)
   lockedById String?
 
-  // scalarized control-plane FK (was `lockedToVersion @relation`)
+  /// scalar FK (control-plane `lockedToVersion` relation)
   lockedToVersionId String?
 
   /// The "priority" of the run. This is just a negative offset in ms for the queue timestamp
@@ -140,29 +164,20 @@ model TaskRun {
   /// optional token that can be used to authenticate the task run
   oneTimeUseToken String?
 
-  /// GROUP (A) FK-FREE: when this run is finished, the waitpoint will be marked as
-  /// completed. Was `associatedWaitpoint Waitpoint? @relation("CompletingRun")`.
-  /// The completion back-ref lives on `Waitpoint.completedByTaskRunId` (scalar).
-
-  /// GROUP (A) FK-FREE: if there are any blocked waitpoints, the run won't be
-  /// executed. Was `blockedByWaitpoints TaskRunWaitpoint[]`. Block edges are the
-  /// rows of `TaskRunWaitpoint` keyed by the scalar `taskRunId`.
-
-  /// GROUP (A) FK-FREE: all waitpoints that blocked this run at some point, used
-  /// for display purposes. Was the implicit M2M
-  /// `connectedWaitpoints Waitpoint[] @relation("WaitpointRunConnections")`,
-  /// now the explicit FK-free join model `WaitpointRunConnection`.
+  // The control-plane waitpoint relations (associatedWaitpoint, blockedByWaitpoints,
+  // connectedWaitpoints) are foreign-key-free here: completion is stored on
+  // Waitpoint.completedByTaskRunId, block edges are rows of TaskRunWaitpoint, and
+  // connections are rows of WaitpointRunConnection.
 
   /// Where the logs are stored
   taskEventStore String @default("taskEvent")
 
   queueTimestamp DateTime?
 
-  batchItems         BatchTaskRunItem[]
-  dependency         TaskRunDependency?
-  // Renamed back-ref kept verbatim from control plane
+  batchItems             BatchTaskRunItem[]
+  dependency             TaskRunDependency?
   CheckpointRestoreEvent CheckpointRestoreEvent[]
-  executionSnapshots TaskRunExecutionSnapshot[]
+  executionSnapshots     TaskRunExecutionSnapshot[]
 
   scheduleInstanceId String?
   scheduleId         String?
@@ -173,25 +188,25 @@ model TaskRun {
 
   replayedFromTaskRunFriendlyId String?
 
-  /// GROUP (B) KEEP: this represents the original task that was triggered outside of a Trigger.dev task
+  /// This represents the original task that was triggered outside of a Trigger.dev task
   rootTaskRun   TaskRun? @relation("TaskRootRun", fields: [rootTaskRunId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   rootTaskRunId String?
 
   /// The root run will have a list of all the descendant runs, children, grand children, etc.
   descendantRuns TaskRun[] @relation("TaskRootRun")
 
-  /// GROUP (B) KEEP: the immediate parent run of this task run
+  /// The immediate parent run of this task run
   parentTaskRun   TaskRun? @relation("TaskParentRun", fields: [parentTaskRunId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   parentTaskRunId String?
 
   /// The immediate child runs of this task run
   childRuns TaskRun[] @relation("TaskParentRun")
 
-  /// GROUP (B) KEEP: the immediate parent attempt of this task run
+  /// The immediate parent attempt of this task run
   parentTaskRunAttempt   TaskRunAttempt? @relation("TaskParentRunAttempt", fields: [parentTaskRunAttemptId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   parentTaskRunAttemptId String?
 
-  /// GROUP (B) KEEP: the batch run that this task run is a part of (co-resident)
+  /// The batch run that this task run is a part of
   batch   BatchTaskRun? @relation(fields: [batchId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   batchId String?
 
@@ -329,6 +344,11 @@ enum RunEngineVersion {
 /// and prevent side effects like heartbeats failing a run that has progressed.
 /// It is optimised for performance and is designed to be cleared at some point,
 /// so there are no cascading relationships to other models.
+///
+/// Same columns and indexes as the control-plane version. The `run` and
+/// `checkpoint` relations are kept as real foreign keys. The `completedWaitpoints`
+/// relation is foreign-key-free: it is represented by rows of the `CompletedWaitpoint`
+/// join model instead.
 model TaskRunExecutionSnapshot {
   id String @id @default(cuid())
 
@@ -347,7 +367,7 @@ model TaskRunExecutionSnapshot {
   /// The previous snapshot ID
   previousSnapshotId String?
 
-  /// GROUP (B) KEEP: Run (co-resident)
+  /// Run
   runId     String
   run       TaskRun       @relation(fields: [runId], references: [id])
   runStatus TaskRunStatus
@@ -358,20 +378,19 @@ model TaskRunExecutionSnapshot {
   /// This is the current run attempt number. Users can define how many attempts they want for a run.
   attemptNumber Int?
 
-  /// Environment (already plain scalars in the control plane)
+  /// Environment
   environmentId   String
   environmentType RuntimeEnvironmentType
   projectId       String
   organizationId  String
 
-  /// GROUP (A) FK-FREE: waitpoints that have been completed for this execution.
-  /// Was the implicit M2M `completedWaitpoints Waitpoint[] @relation("completedWaitpoints")`,
-  /// now the explicit FK-free join model `CompletedWaitpoint`.
+  // The control-plane `completedWaitpoints` relation (waitpoints completed for this
+  // execution) is foreign-key-free here, stored as rows of CompletedWaitpoint.
 
   /// An array of waitpoint IDs in the correct order, used for batches
   completedWaitpointOrder String[]
 
-  /// GROUP (B) KEEP: Checkpoint (co-resident)
+  /// Checkpoint
   checkpointId String?
   checkpoint   TaskRunCheckpoint? @relation(fields: [checkpointId], references: [id])
 
@@ -414,6 +433,8 @@ enum TaskRunExecutionStatus {
   FINISHED
 }
 
+/// Same columns as the control-plane version, with the project and environment
+/// relations kept as scalar-only foreign keys.
 model TaskRunCheckpoint {
   id String @id @default(cuid())
 
@@ -425,10 +446,10 @@ model TaskRunCheckpoint {
   reason   String?
   metadata String?
 
-  // scalarized control-plane FK (was `project @relation`)
+  /// scalar FK (control-plane `project` relation)
   projectId String
 
-  // scalarized control-plane FK (was `runtimeEnvironment @relation`)
+  /// scalar FK (control-plane `runtimeEnvironment` relation)
   runtimeEnvironmentId String
 
   executionSnapshot TaskRunExecutionSnapshot[]
@@ -445,6 +466,14 @@ enum TaskRunCheckpointType {
 
 /// A Waitpoint blocks a run from continuing until it's completed
 /// If there's a waitpoint blocking a run, it shouldn't be in the queue
+///
+/// Same columns and indexes as the control-plane version. Every relation is
+/// foreign-key-free, because a waitpoint and the run or batch it references may
+/// live in different databases: `completedByTaskRunId` and `completedByBatchId`
+/// are scalar-only, and the `blockingTaskRuns`, `connectedRuns`, and
+/// `completedExecutionSnapshots` back-references are represented by the
+/// `TaskRunWaitpoint`, `WaitpointRunConnection`, and `CompletedWaitpoint` join
+/// models. The project and environment relations are scalar-only foreign keys.
 model Waitpoint {
   id String @id @default(cuid())
 
@@ -468,28 +497,27 @@ model Waitpoint {
   /// This is a workaround because Prisma doesn't support partial indexes.
   inactiveIdempotencyKey String?
 
-  /// GROUP (A) FK-FREE: RUN-type completing run, scalar only (a LEGACY token can be completed by a NEW run).
+  /// If it's a RUN type waitpoint, this is the associated run.
+  /// scalar FK (control-plane `completedByTaskRun` relation)
   completedByTaskRunId String? @unique
 
   /// If it's a DATETIME type waitpoint, this is the date.
   /// If it's a MANUAL waitpoint, this can be set as the `timeout`.
   completedAfter DateTime?
 
-  /// GROUP (A) FK-FREE: BATCH-type completing batch, scalar only.
+  /// If it's a BATCH type waitpoint, this is the associated batch.
+  /// scalar FK (control-plane `completedByBatch` relation)
   completedByBatchId String?
-
-  // GROUP (A) FK-FREE back-refs dropped: blocking edges live in TaskRunWaitpoint;
-  // connectedRuns -> WaitpointRunConnection; completing snapshots -> CompletedWaitpoint.
 
   /// When completed, an output can be stored here
   output        String?
   outputType    String  @default("application/json")
   outputIsError Boolean @default(false)
 
-  // scalarized control-plane FK (was `project @relation`)
+  /// scalar FK (control-plane `project` relation)
   projectId String
 
-  // scalarized control-plane FK (was `environment @relation`)
+  /// scalar FK (control-plane `environment` relation)
   environmentId String
 
   createdAt DateTime @default(now())
@@ -524,22 +552,27 @@ enum WaitpointStatus {
   COMPLETED
 }
 
+/// The block edge between a run and a waitpoint. Same columns and indexes as the
+/// control-plane version, but the run, waitpoint, project, and batch relations
+/// are all scalar-only foreign keys: a block edge can connect a run and a
+/// waitpoint that live in different databases, so it is never enforced by a
+/// foreign key here.
 model TaskRunWaitpoint {
   id String @id @default(cuid())
 
-  /// GROUP (A) FK-FREE: the block edge → blocked run (was a TaskRun FK).
+  /// scalar FK (control-plane `taskRun` relation)
   taskRunId String
 
-  /// GROUP (A) FK-FREE: the block edge → its waitpoint (was a Waitpoint FK).
+  /// scalar FK (control-plane `waitpoint` relation)
   waitpointId String
 
-  // scalarized control-plane FK (was a project FK)
+  /// scalar FK (control-plane `project` relation)
   projectId String
 
   /// This span id is completed when the waitpoint is completed. This is used with cached runs (idempotent)
   spanIdToComplete String?
 
-  /// GROUP (A) FK-FREE: associated batch (was a BatchTaskRun FK).
+  /// scalar FK (control-plane `batch` relation)
   batchId    String?
   //if there's an associated batch and this isn't set it's for the entire batch
   //if it is set, it's a specific run in the batch
@@ -555,9 +588,11 @@ model TaskRunWaitpoint {
   @@index([waitpointId])
 }
 
-/// GROUP (A) FK-FREE explicit join model — replaces the implicit M2M
-/// `_WaitpointRunConnections` (TaskRun.connectedWaitpoints ↔ Waitpoint.connectedRuns).
-/// Scalar columns only, no FK, so a run↔waitpoint connection may straddle DBs.
+/// Explicit join model for the connection between a run and every waitpoint that
+/// blocked it (kept for display). This has no control-plane counterpart table: it
+/// replaces the implicit many-to-many relation between `TaskRun.connectedWaitpoints`
+/// and `Waitpoint.connectedRuns`. Scalar columns only, no foreign keys, so a
+/// connection can span both databases.
 model WaitpointRunConnection {
   id String @id @default(cuid())
 
@@ -569,9 +604,11 @@ model WaitpointRunConnection {
   @@index([waitpointId])
 }
 
-/// GROUP (A) FK-FREE explicit join model — replaces the implicit M2M
-/// `_completedWaitpoints` (TaskRunExecutionSnapshot.completedWaitpoints ↔ Waitpoint).
-/// Scalar columns only, no FK, so a NEW snapshot may record a LEGACY token.
+/// Explicit join model recording which waitpoints an execution snapshot completed.
+/// This has no control-plane counterpart table: it replaces the implicit
+/// many-to-many relation between `TaskRunExecutionSnapshot.completedWaitpoints`
+/// and `Waitpoint`. Scalar columns only, no foreign keys, so a snapshot may record
+/// a waitpoint that lives in the other database.
 model CompletedWaitpoint {
   id String @id @default(cuid())
 
@@ -583,14 +620,16 @@ model CompletedWaitpoint {
   @@index([waitpointId])
 }
 
+/// Same columns and indexes as the control-plane version, with the environment
+/// and project relations kept as scalar-only foreign keys.
 model WaitpointTag {
   id   String @id @default(cuid())
   name String
 
-  // scalarized control-plane FK (was `environment @relation`)
+  /// scalar FK (control-plane `environment` relation)
   environmentId String
 
-  // scalarized control-plane FK (was `project @relation`)
+  /// scalar FK (control-plane `project` relation)
   projectId String
 
   createdAt DateTime @default(now())
@@ -598,13 +637,16 @@ model WaitpointTag {
   @@unique([environmentId, name])
 }
 
+/// Same columns and indexes as the control-plane version, with the project
+/// relation kept as a scalar-only foreign key. The control-plane `runs` back-
+/// reference (the tag-to-run many-to-many) is dropped.
 model TaskRunTag {
   id   String @id @default(cuid())
   name String
 
   friendlyId String @unique
 
-  // scalarized control-plane FK (was `project @relation`)
+  /// scalar FK (control-plane `project` relation)
   projectId String
 
   createdAt DateTime @default(now())
@@ -615,22 +657,24 @@ model TaskRunTag {
 }
 
 /// This is used for triggerAndWait and batchTriggerAndWait. The taskRun is the child task, it points at a parent attempt or a batch
+///
+/// Identical to the control-plane version: every relation stays within this
+/// database and is kept as a real foreign key.
 model TaskRunDependency {
   id String @id @default(cuid())
 
-  /// GROUP (B) KEEP: the child run (co-resident)
+  /// The child run
   taskRun   TaskRun @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   taskRunId String  @unique
 
-  /// GROUP (B) KEEP
   checkpointEvent   CheckpointRestoreEvent? @relation(fields: [checkpointEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   checkpointEventId String?                 @unique
 
-  /// GROUP (B) KEEP: an attempt that is dependent on this task run.
+  /// An attempt that is dependent on this task run.
   dependentAttempt   TaskRunAttempt? @relation(fields: [dependentAttemptId], references: [id])
   dependentAttemptId String?
 
-  /// GROUP (B) KEEP: a batch run that is dependent on this task run
+  /// A batch run that is dependent on this task run
   dependentBatchRun   BatchTaskRun? @relation("dependentBatchRun", fields: [dependentBatchRunId], references: [id])
   dependentBatchRunId String?
 
@@ -642,26 +686,30 @@ model TaskRunDependency {
   @@index([dependentBatchRunId])
 }
 
+/// Same columns and indexes as the control-plane version. The owning-run relation
+/// is kept as a real foreign key. The background-worker, background-worker-task,
+/// environment, and queue relations are scalar-only foreign keys. The control-
+/// plane `alerts` back-reference is dropped.
 model TaskRunAttempt {
   id     String @id @default(cuid())
   number Int    @default(0)
 
   friendlyId String @unique
 
-  /// GROUP (B) KEEP: the owning run (co-resident)
+  /// The owning run
   taskRun   TaskRun @relation("attempts", fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   taskRunId String
 
-  // scalarized control-plane FK (was `backgroundWorker @relation`)
+  /// scalar FK (control-plane `backgroundWorker` relation)
   backgroundWorkerId String
 
-  // scalarized control-plane FK (was `backgroundWorkerTask @relation`)
+  /// scalar FK (control-plane `backgroundWorkerTask` relation)
   backgroundWorkerTaskId String
 
-  // scalarized control-plane FK (was `runtimeEnvironment @relation`)
+  /// scalar FK (control-plane `runtimeEnvironment` relation)
   runtimeEnvironmentId String
 
-  // scalarized control-plane FK (was `queue @relation`)
+  /// scalar FK (control-plane `queue` relation)
   queueId String
 
   status TaskRunAttemptStatus @default(PENDING)
@@ -701,12 +749,20 @@ enum TaskRunAttemptStatus {
   COMPLETED
 }
 
+/// Same columns and indexes as the control-plane version. The environment
+/// relation is a scalar-only foreign key. The `runsBlocked` and `waitpoints`
+/// back-references are foreign-key-free: block edges are rows of
+/// `TaskRunWaitpoint`, and batch-completed waitpoints are found via
+/// `Waitpoint.completedByBatchId`. The `runs`, `errors`, `items`,
+/// `checkpointEvent`, `dependentTaskAttempt`, and `runDependencies` relations
+/// stay within this database and are kept as real foreign keys.
 model BatchTaskRun {
   id                      String             @id @default(cuid())
   friendlyId              String             @unique
   idempotencyKey          String?
   idempotencyKeyExpiresAt DateTime?
   status                  BatchTaskRunStatus @default(PENDING)
+  /// scalar FK (control-plane `runtimeEnvironment` relation)
   runtimeEnvironmentId    String
   /// This only includes new runs, not idempotent runs.
   runs                    TaskRun[]
@@ -723,12 +779,9 @@ model BatchTaskRun {
   batchVersion String   @default("v1")
 
   //engine v2
-  /// GROUP (A) FK-FREE: specific run blockers. Was `runsBlocked TaskRunWaitpoint[]`;
-  /// block edges are the rows of `TaskRunWaitpoint` keyed by the scalar `batchId`.
-
-  /// GROUP (A) FK-FREE: waitpoints that are blocked by this batch.
-  /// Was `waitpoints Waitpoint[]`; the completion back-ref lives on
-  /// `Waitpoint.completedByBatchId` (scalar).
+  // The control-plane `runsBlocked` and `waitpoints` back-references are foreign-
+  // key-free here: block edges are rows of TaskRunWaitpoint keyed by batchId, and
+  // batch-completed waitpoints are found via Waitpoint.completedByBatchId.
 
   // This is for v3 batches
   /// sealed is set to true once no more items can be added to the batch
@@ -763,10 +816,8 @@ model BatchTaskRun {
   ///all the below properties are engine v1 only
   items                  BatchTaskRunItem[]
   taskIdentifier         String?
-  /// GROUP (B) KEEP
   checkpointEvent        CheckpointRestoreEvent? @relation(fields: [checkpointEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   checkpointEventId      String?                 @unique
-  /// GROUP (B) KEEP
   dependentTaskAttempt   TaskRunAttempt?         @relation(fields: [dependentTaskAttemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   dependentTaskAttemptId String?
   runDependencies        TaskRunDependency[]     @relation("dependentBatchRun")
@@ -788,20 +839,20 @@ enum BatchTaskRunStatus {
 }
 
 ///Used in engine V1 only
+///
+/// Identical to the control-plane version: every relation stays within this
+/// database and is kept as a real foreign key.
 model BatchTaskRunItem {
   id String @id @default(cuid())
 
   status BatchTaskRunItemStatus @default(PENDING)
 
-  /// GROUP (B) KEEP
   batchTaskRun   BatchTaskRun @relation(fields: [batchTaskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   batchTaskRunId String
 
-  /// GROUP (B) KEEP
   taskRun   TaskRun @relation(fields: [taskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   taskRunId String
 
-  /// GROUP (B) KEEP
   taskRunAttempt   TaskRunAttempt? @relation(fields: [taskRunAttemptId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   taskRunAttemptId String?
 
@@ -822,9 +873,11 @@ enum BatchTaskRunItemStatus {
 }
 
 /// Track individual run creation failures in batch processing (Run Engine v2)
+///
+/// Identical to the control-plane version: the batch relation stays within this
+/// database and is kept as a real foreign key.
 model BatchTaskRunError {
   id             String       @id @default(cuid())
-  /// GROUP (B) KEEP
   batchTaskRun   BatchTaskRun @relation(fields: [batchTaskRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   batchTaskRunId String
 
@@ -847,6 +900,9 @@ model BatchTaskRunError {
   @@index([batchTaskRunId])
 }
 
+/// Same columns and indexes as the control-plane version. The run and attempt
+/// relations are kept as real foreign keys; the project and environment relations
+/// are scalar-only foreign keys.
 model Checkpoint {
   id String @id @default(cuid())
 
@@ -860,19 +916,17 @@ model Checkpoint {
 
   events CheckpointRestoreEvent[]
 
-  /// GROUP (B) KEEP
   run   TaskRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runId String
 
-  /// GROUP (B) KEEP
   attempt       TaskRunAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   attemptId     String
   attemptNumber Int?
 
-  // scalarized control-plane FK (was `project @relation`)
+  /// scalar FK (control-plane `project` relation)
   projectId String
 
-  // scalarized control-plane FK (was `runtimeEnvironment @relation`)
+  /// scalar FK (control-plane `runtimeEnvironment` relation)
   runtimeEnvironmentId String
 
   createdAt DateTime @default(now())
@@ -887,6 +941,9 @@ enum CheckpointType {
   KUBERNETES
 }
 
+/// Same columns and indexes as the control-plane version. The checkpoint, run,
+/// and attempt relations are kept as real foreign keys; the project and
+/// environment relations are scalar-only foreign keys.
 model CheckpointRestoreEvent {
   id String @id @default(cuid())
 
@@ -894,22 +951,19 @@ model CheckpointRestoreEvent {
   reason   String?
   metadata String?
 
-  /// GROUP (B) KEEP
   checkpoint   Checkpoint @relation(fields: [checkpointId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   checkpointId String
 
-  /// GROUP (B) KEEP
   run   TaskRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   runId String
 
-  /// GROUP (B) KEEP
   attempt   TaskRunAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   attemptId String
 
-  // scalarized control-plane FK (was `project @relation`)
+  /// scalar FK (control-plane `project` relation)
   projectId String
 
-  // scalarized control-plane FK (was `runtimeEnvironment @relation`)
+  /// scalar FK (control-plane `runtimeEnvironment` relation)
   runtimeEnvironmentId String
 
   taskRunDependency      TaskRunDependency?
