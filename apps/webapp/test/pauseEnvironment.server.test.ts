@@ -12,7 +12,10 @@ import {
 
 vi.setConfig({ testTimeout: 60_000 });
 
-async function authEnv(prisma: PrismaClient, environmentId: string): Promise<AuthenticatedEnvironment> {
+async function authEnv(
+  prisma: PrismaClient,
+  environmentId: string
+): Promise<AuthenticatedEnvironment> {
   const row = await prisma.runtimeEnvironment.findFirstOrThrow({
     where: { id: environmentId },
     include: authIncludeBase,
@@ -61,29 +64,30 @@ describe("PauseEnvironmentService", () => {
     }
   );
 
-  postgresTest("rejects resume of a billing-limit paused env and leaves it paused", async ({
-    prisma,
-  }) => {
-    const { environment } = await seedProductionEnv(prisma);
-    await prisma.runtimeEnvironment.update({
-      where: { id: environment.id },
-      data: { paused: true, pauseSource: EnvironmentPauseSource.BILLING_LIMIT },
-    });
+  postgresTest(
+    "rejects resume of a billing-limit paused env and leaves it paused",
+    async ({ prisma }) => {
+      const { environment } = await seedProductionEnv(prisma);
+      await prisma.runtimeEnvironment.update({
+        where: { id: environment.id },
+        data: { paused: true, pauseSource: EnvironmentPauseSource.BILLING_LIMIT },
+      });
 
-    const service = new PauseEnvironmentService(prisma);
-    const env = await authEnv(prisma, environment.id);
+      const service = new PauseEnvironmentService(prisma);
+      const env = await authEnv(prisma, environment.id);
 
-    const result = await service.call(env, "resumed");
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(result.error).toContain("billing limit");
+      const result = await service.call(env, "resumed");
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error).toContain("billing limit");
 
-    const after = await prisma.runtimeEnvironment.findFirstOrThrow({
-      where: { id: environment.id },
-    });
-    expect(after.paused).toBe(true);
-    expect(after.pauseSource).toBe(EnvironmentPauseSource.BILLING_LIMIT);
-  });
+      const after = await prisma.runtimeEnvironment.findFirstOrThrow({
+        where: { id: environment.id },
+      });
+      expect(after.paused).toBe(true);
+      expect(after.pauseSource).toBe(EnvironmentPauseSource.BILLING_LIMIT);
+    }
+  );
 
   postgresTest(
     "manual pause while billing-limit paused is a no-op that preserves pauseSource",
