@@ -42,6 +42,91 @@ const noopProxy = () =>
     }
   );
 
+// Beyond the modules mocked above, dozens more app modules construct an
+// ioredis client at import time pointed at env-configured Redis, and ioredis
+// dials on construction — in CI (no Redis service) that floods ECONNREFUSED at
+// shard scale. Force `lazyConnect: true` on every client instead: import-time
+// singletons construct but never dial, while anything that actually issues a
+// command (tests against live testcontainers) connects on first command
+// exactly as before.
+vi.mock("ioredis", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("ioredis")>();
+
+  // Normalize ioredis's overloaded ctor args — (), (port), (path),
+  // (port, host), (opts), (port, opts), (port, host, opts), (path, opts) —
+  // so lazyConnect lands in the options object in every form.
+  function withLazyConnect(args: unknown[]): unknown[] {
+    if (args.length === 0) {
+      return [{ lazyConnect: true }];
+    }
+    const last = args[args.length - 1];
+    if (typeof last === "object" && last !== null) {
+      return [...args.slice(0, -1), { ...last, lazyConnect: true }];
+    }
+    return [...args, { lazyConnect: true }];
+  }
+
+  class LazyRedis extends actual.Redis {
+    constructor(...args: unknown[]) {
+      // @ts-expect-error – forwarding ioredis's overloaded ctor args
+      super(...withLazyConnect(args));
+    }
+  }
+
+  class LazyCluster extends actual.Cluster {
+    constructor(startupNodes: unknown, options?: Record<string, unknown>) {
+      // @ts-expect-error – forwarding ioredis's ctor args
+      super(startupNodes, { ...options, lazyConnect: true });
+    }
+  }
+
+  // Keep the `Redis.Cluster` static alias (`new Redis.Cluster(...)`) working.
+  // The base class exposes `Cluster` as a getter-only static, so define our
+  // own property rather than assigning through the inherited getter.
+  Object.defineProperty(LazyRedis, "Cluster", { value: LazyCluster });
+
+  return {
+    ...actual,
+    default: LazyRedis,
+    Redis: LazyRedis,
+    Cluster: LazyCluster,
+  };
+});
+
+// alertsRateLimiter.check() is invoked at runtime by deliverAlert; against
+// env-configured Redis each check burns ~20 reconnect cycles before its
+// caught error, stalling alert-path tests into timeouts. Allow everything.
+vi.mock("~/v3/alertsRateLimiter.server", () => ({
+  alertsRateLimiter: { check: vi.fn().mockResolvedValue({ allowed: true }) },
+}));
+
+// tracePubSub.publish() runs inside eventRepository writes; each publish to
+// env-configured Redis stalls ~20 reconnect cycles (errors are allSettled-
+// swallowed but awaited), timing out any test that records trace events.
+vi.mock("~/v3/services/tracePubSub.server", async () => {
+  const { EventEmitter } = await import("node:events");
+  return {
+    tracePubSub: {
+      publish: vi.fn().mockResolvedValue(undefined),
+      subscribeToTrace: vi.fn().mockResolvedValue({
+        unsubscribe: vi.fn().mockResolvedValue(undefined),
+        eventEmitter: new EventEmitter(),
+      }),
+    },
+    TracePubSub: class {},
+  };
+});
+
+// Same runtime-stall shape for the task metadata cache (queues concern). CI
+// leaves TASK_META_CACHE_REDIS_HOST unset and gets the Noop implementation;
+// pin the Noop cache here so env-configured local runs behave identically.
+vi.mock("~/services/taskMetadataCacheInstance.server", async () => {
+  const { NoopTaskMetadataCache } = await vi.importActual<
+    typeof import("~/services/taskMetadataCache.server")
+  >("~/services/taskMetadataCache.server");
+  return { taskMetadataCacheInstance: new NoopTaskMetadataCache() };
+});
+
 vi.mock("~/v3/runEngine.server", () => ({ engine: noopProxy() }));
 vi.mock("~/v3/marqs/index.server", () => ({ marqs: noopProxy(), MarQS: class {} }));
 vi.mock("~/v3/marqs/devPubSub.server", () => ({ devPubSub: noopProxy() }));
