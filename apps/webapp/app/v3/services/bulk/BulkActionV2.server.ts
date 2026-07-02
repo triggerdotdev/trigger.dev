@@ -535,7 +535,11 @@ export class BulkActionService extends BaseService {
 }
 
 export function freezeRunListFilters(filters: RunListInputFilters): RunListInputFilters {
-  const { cursor: _cursor, direction: _direction, ...frozenFilters } = filters as RunListInputFilters & {
+  const {
+    cursor: _cursor,
+    direction: _direction,
+    ...frozenFilters
+  } = filters as RunListInputFilters & {
     cursor?: string;
     direction?: "forward" | "backward";
   };
