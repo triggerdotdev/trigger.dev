@@ -1,14 +1,14 @@
-FROM node:20-alpine@sha256:7a91aa397f2e2dfbfcdad2e2d72599f374e0b0172be1d86eeb73f1d33f36a4b2 AS node-20-alpine
+FROM node:22-alpine@sha256:9bef0ef1e268f60627da9ba7d7605e8831d5b56ad07487d24d1aa386336d1944 AS node-22-alpine
 
 WORKDIR /app
 
-FROM node-20-alpine AS pruner
+FROM node-22-alpine AS pruner
 
 COPY --chown=node:node . .
 RUN npx -q turbo@1.10.9 prune --scope=docker-provider --docker
 RUN find . -name "node_modules" -type d -prune -exec rm -rf '{}' +
 
-FROM node-20-alpine AS base
+FROM node-22-alpine AS base
 
 RUN apk add --no-cache dumb-init docker
 
