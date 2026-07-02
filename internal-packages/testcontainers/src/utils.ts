@@ -88,7 +88,15 @@ async function pushPrismaSchema({
   // push looks like success and only surfaces much later as a confusing downstream error.
   const result = await x(
     prismaBin,
-    ["db", "push", "--force-reset", "--accept-data-loss", "--skip-generate", "--schema", schemaPath],
+    [
+      "db",
+      "push",
+      "--force-reset",
+      "--accept-data-loss",
+      "--skip-generate",
+      "--schema",
+      schemaPath,
+    ],
     {
       throwOnError: true,
       nodeOptions: {

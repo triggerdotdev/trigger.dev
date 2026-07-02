@@ -9,11 +9,5 @@
     "noEmit": true,
     "strict": true
   },
-  "exclude": [
-    "node_modules",
-    "dist",
-    "generated",
-    "**/*.test.ts",
-    "vitest.config.ts"
-  ]
+  "exclude": ["node_modules", "dist", "generated", "**/*.test.ts", "vitest.config.ts"]
 }
