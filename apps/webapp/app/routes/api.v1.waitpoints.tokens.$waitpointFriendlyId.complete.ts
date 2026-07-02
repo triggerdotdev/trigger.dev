@@ -6,12 +6,17 @@ import {
 } from "@trigger.dev/core/v3";
 import { WaitpointId } from "@trigger.dev/core/v3/isomorphic";
 import { z } from "zod";
-import type { PrismaReplicaClient } from "~/db.server";
+import {
+  $replica,
+  type PrismaReplicaClient,
+  runOpsNewReplica,
+  runOpsSplitReadEnabled,
+} from "~/db.server";
 import { env } from "~/env.server";
 import { logger } from "~/services/logger.server";
 import { processWaitpointCompletionPacket } from "~/runEngine/concerns/waitpointCompletionPacket.server";
+import { resolveWaitpointThroughReadThrough } from "~/runEngine/concerns/resolveWaitpointThroughReadThrough.server";
 import { createActionApiRoute } from "~/services/routeBuilders/apiBuilder.server";
-import { readThroughRun } from "~/v3/runOpsMigration/readThrough.server";
 import { engine } from "~/v3/runEngine.server";
 
 const { action, loader } = createActionApiRoute(
@@ -34,26 +39,26 @@ const { action, loader } = createActionApiRoute(
 
     try {
       //check permissions
-      // Read through the split-aware run-ops read-through (passthrough in single-DB).
-      const findWaitpoint = (client: PrismaReplicaClient) =>
-        client.waitpoint.findFirst({
-          where: {
-            id: waitpointId,
-            environmentId: authentication.environment.id,
-          },
-        });
-
-      const waitpointResult = await readThroughRun({
-        runId: waitpointId,
+      // Resolve wherever the waitpoint resides: a standalone token lives on the control-plane
+      // store, while a run-owned waitpoint co-locates with its run. Fan-out reads the run-ops
+      // replica first, then the control-plane replica so both residencies resolve, gated on the
+      // URL-presence read gate so the fan-out spans both DBs independent of the mint flag.
+      const waitpoint = await resolveWaitpointThroughReadThrough({
+        waitpointId,
         environmentId: authentication.environment.id,
-        readNew: (client) => findWaitpoint(client),
-        readLegacy: (replica) => findWaitpoint(replica),
+        read: (client: PrismaReplicaClient) =>
+          client.waitpoint.findFirst({
+            where: {
+              id: waitpointId,
+              environmentId: authentication.environment.id,
+            },
+          }),
+        deps: {
+          newClient: runOpsNewReplica,
+          legacyReplica: $replica,
+          splitEnabled: runOpsSplitReadEnabled,
+        },
       });
-
-      const waitpoint =
-        waitpointResult.source === "new" || waitpointResult.source === "legacy-replica"
-          ? waitpointResult.value
-          : null;
 
       if (!waitpoint) {
         throw json({ error: "Waitpoint not found" }, { status: 404 });
