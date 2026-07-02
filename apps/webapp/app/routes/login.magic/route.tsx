@@ -64,13 +64,28 @@ export async function loader({ request }: LoaderFunctionArgs) {
   });
 
   const session = await getUserSession(request);
-  const error = session.get("auth:error");
 
-  // Get redirectTo from URL params and store in session if present.
-  // Sanitize to drop non-page paths (fetcher routes, callbacks) which would
-  // render blank if the user was sent there post-login.
+  // The email form now lives inline on /login; this route is only the
+  // "magic link sent" confirmation. Any visit without a pending magic link
+  // forwards to /login — keeping the inlined form the single source of truth
+  // and avoiding an orphaned duplicate page. This also catches the expired-
+  // link callback in routes/magic.tsx (which redirects here on error): with
+  // no pending link it lands on /login, where the error surfaces via the
+  // shared auth:error handling. Checked before reading auth:error so a flashed
+  // error isn't consumed here before /login can display it.
   const url = new URL(request.url);
   const sanitized = sanitizeRedirectPath(url.searchParams.get("redirectTo"));
+  if (!session.has("triggerdotdev:magiclink")) {
+    // Throw (not return) so the redirect doesn't widen the loader's return
+    // type — otherwise useTypedLoaderData sees TypedResponse<never> in the
+    // union and the component can't read magicLinkSent/magicLinkError.
+    throw redirect(
+      sanitized === "/" ? "/login" : `/login?redirectTo=${encodeURIComponent(sanitized)}`
+    );
+  }
+
+  const error = session.get("auth:error");
+
   const redirectTo = sanitized === "/" ? null : sanitized;
   const headers = new Headers();
 

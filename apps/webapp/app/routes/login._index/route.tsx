@@ -1,6 +1,6 @@
 import { EnvelopeIcon, LockClosedIcon } from "@heroicons/react/20/solid";
 import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
-import { Form } from "@remix-run/react";
+import { Form, useNavigation } from "@remix-run/react";
 import { GitHubLightIcon } from "@trigger.dev/companyicons";
 import { motion, useReducedMotion } from "framer-motion";
 import { redirect, typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -11,7 +11,10 @@ import { Callout } from "~/components/primitives/Callout";
 import { Fieldset } from "~/components/primitives/Fieldset";
 import { FormError } from "~/components/primitives/FormError";
 import { Header1 } from "~/components/primitives/Headers";
+import { Input } from "~/components/primitives/Input";
+import { InputGroup } from "~/components/primitives/InputGroup";
 import { Paragraph } from "~/components/primitives/Paragraph";
+import { Spinner } from "~/components/primitives/Spinner";
 import { TextLink } from "~/components/primitives/TextLink";
 import { isGithubAuthSupported, isGoogleAuthSupported } from "~/services/auth.server";
 import { getLastAuthMethod } from "~/services/lastAuthMethod.server";
@@ -143,6 +146,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 export default function LoginPage() {
   const data = useTypedLoaderData<typeof loader>();
+  const navigation = useNavigation();
+  // The inline email form posts to the /login/magic action, so reflect its
+  // in-flight state here to show the sending spinner.
+  const isEmailLoading =
+    (navigation.state === "submitting" || navigation.state === "loading") &&
+    navigation.formAction === "/login/magic" &&
+    navigation.formData?.get("action") === "send";
 
   return (
     <LoginPageLayout>
@@ -200,44 +210,72 @@ export default function LoginPage() {
                 </Form>
               </div>
             )}
-            {!data.isVercelMarketplace && (
+            {data.showSsoAuth && !data.isVercelMarketplace && (
               <div className="relative w-full">
-                {data.lastAuthMethod === "email" && <LastUsedBadge />}
+                {data.lastAuthMethod === "sso" && <LastUsedBadge />}
                 <LinkButton
                   to={
                     data.redirectTo
-                      ? `/login/magic?redirectTo=${encodeURIComponent(data.redirectTo)}`
-                      : "/login/magic"
+                      ? `/login/sso?redirectTo=${encodeURIComponent(data.redirectTo)}`
+                      : "/login/sso"
                   }
                   variant="secondary/extra-large"
                   fullWidth
-                  data-action="continue with email"
+                  data-action="continue with sso"
                   className="text-text-bright"
                 >
-                  <EnvelopeIcon className="mr-2 size-5 text-text-bright" />
-                  Continue with Email
+                  <LockClosedIcon className="mr-2 size-5 text-text-bright" />
+                  Continue with SSO
                 </LinkButton>
               </div>
             )}
-            {data.showSsoAuth && !data.isVercelMarketplace && (
-              <div className="flex w-full flex-col items-center gap-y-2 pt-2">
-                <div className="h-px w-full bg-charcoal-700" />
-                <div className="relative inline-flex items-center">
-                  {data.lastAuthMethod === "sso" && <LastUsedBadge className="translate-x-2" />}
-                  <TextLink
-                    to={
-                      data.redirectTo
-                        ? `/login/sso?redirectTo=${encodeURIComponent(data.redirectTo)}`
-                        : "/login/sso"
-                    }
-                    className="inline-flex items-center text-sm"
-                    data-action="continue with sso"
-                  >
-                    <LockClosedIcon className="mr-1.5 size-4" />
-                    Sign in with SSO
-                  </TextLink>
+            {!data.isVercelMarketplace && (
+              <>
+                <div className="flex w-full items-center gap-3 py-1">
+                  <div className="h-px flex-1 bg-charcoal-700" />
+                  <span className="text-xs uppercase text-text-dimmed">or</span>
+                  <div className="h-px flex-1 bg-charcoal-700" />
                 </div>
-              </div>
+                <div className="w-full">
+                  {/* Posts to the /login/magic action so all magic-link logic
+                      (rate limiting, SSO auto-discovery, send) stays in one place. */}
+                  <Form action="/login/magic" method="post" className="w-full">
+                    <input type="hidden" name="action" value="send" />
+                    <div className="flex w-full flex-col items-center gap-y-2">
+                      <InputGroup fullWidth>
+                        <Input
+                          type="email"
+                          name="email"
+                          spellCheck={false}
+                          placeholder="Email Address"
+                          variant="large"
+                          required
+                          data-action="email address"
+                        />
+                      </InputGroup>
+                      <div className="relative w-full">
+                        {data.lastAuthMethod === "email" && <LastUsedBadge />}
+                        <Button
+                          type="submit"
+                          variant="primary/large"
+                          disabled={isEmailLoading}
+                          fullWidth
+                          data-action="continue with email"
+                        >
+                          {isEmailLoading ? (
+                            <Spinner className="mr-2 size-5" color="white" />
+                          ) : (
+                            <EnvelopeIcon className="mr-2 size-5 text-text-bright" />
+                          )}
+                          <span className="text-text-bright">
+                            {isEmailLoading ? "Sending…" : "Continue with Email"}
+                          </span>
+                        </Button>
+                      </div>
+                    </div>
+                  </Form>
+                </div>
+              </>
             )}
             {data.authError && <FormError>{data.authError}</FormError>}
           </div>

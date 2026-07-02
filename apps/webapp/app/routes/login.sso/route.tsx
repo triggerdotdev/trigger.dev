@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, LockClosedIcon } from "@heroicons/react/20/solid";
+import { ArrowLeftIcon } from "@heroicons/react/20/solid";
 import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { Form, useNavigation } from "@remix-run/react";
 import { typedjson, useTypedLoaderData } from "remix-typedjson";
@@ -29,8 +29,8 @@ function parseReason(value: string | null): Reason {
 
 const CONTENT: Record<Reason, { heading: string; body: string }> = {
   default: {
-    heading: "Sign in with SSO",
-    body: "Enter your work email.",
+    heading: "Welcome",
+    body: "Sign in with your enterprise account",
   },
   domain_policy: {
     heading: "SSO required",
@@ -116,7 +116,7 @@ export default function LoginSsoPage() {
                 type="email"
                 name="email"
                 spellCheck={false}
-                placeholder="Work email"
+                placeholder="Enterprise email address"
                 variant="large"
                 required
                 autoFocus={!emailReadOnly}
@@ -132,11 +132,7 @@ export default function LoginSsoPage() {
               fullWidth
               data-action="continue with sso"
             >
-              {isLoading ? (
-                <Spinner className="mr-2 size-5" color="white" />
-              ) : (
-                <LockClosedIcon className="mr-2 size-5 text-text-bright" />
-              )}
+              {isLoading && <Spinner className="mr-2 size-5" color="white" />}
               <span className="text-text-bright">
                 {isLoading
                   ? "Redirecting…"
@@ -149,16 +145,24 @@ export default function LoginSsoPage() {
             {errorMessage && <FormError>{errorMessage}</FormError>}
           </Fieldset>
 
-          <LinkButton
-            to="/login"
-            variant="minimal/small"
-            LeadingIcon={ArrowLeftIcon}
-            leadingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
-            className="mt-6"
-            data-action="all login options"
-          >
-            All login options
-          </LinkButton>
+          <div className="mt-6 flex w-full items-center justify-between">
+            <LinkButton
+              to="/login"
+              variant="minimal/small"
+              LeadingIcon={ArrowLeftIcon}
+              leadingIconClassName="text-text-dimmed group-hover:text-text-bright transition"
+              data-action="all login options"
+            >
+              All login options
+            </LinkButton>
+            <LinkButton
+              to="https://trigger.dev/contact"
+              variant="minimal/small"
+              data-action="ask about sso"
+            >
+              Ask about SSO
+            </LinkButton>
+          </div>
         </div>
       </Form>
     </LoginPageLayout>
