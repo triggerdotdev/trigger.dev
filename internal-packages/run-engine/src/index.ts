@@ -34,16 +34,3 @@ export type {
   BatchCompletionCallback,
 } from "./batch-queue/types.js";
 
-// Redirect-marker / tombstone fencing primitive. Exported so the webapp
-// known-migrated adapter can consult the OLD-side fence as the migrated authority.
-export {
-  ensureRedirectMarkerTable,
-  writeRedirectMarker,
-  readRedirectMarker,
-  isFenced,
-} from "./engine/services/redirectMarker.js";
-export type {
-  WriteRedirectMarkerInput,
-  RedirectMarkerClient,
-} from "./engine/services/redirectMarker.js";
-
