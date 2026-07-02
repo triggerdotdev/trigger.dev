@@ -328,28 +328,29 @@ async function assertKeysetOrderIdentical(prismaA: AnyPrisma, prismaB: AnyPrisma
   await seed(prismaA);
   await seed(prismaB);
 
-  // EXACT cursor shape from getExecutionSnapshotsSince: createdAt > since, desc,
-  // take 50. Mirror the prisma findMany as raw SQL so ORDER-BY is explicit and
-  // version-comparable, with an explicit id tie-break.
-  const page = (p: AnyPrisma, sinceCreatedAt: string | null) =>
+  // Keyset walk mirroring getExecutionSnapshotsSince: desc, take 50, with a
+  // composite (createdAt, id) cursor so paging advances to older rows and the
+  // id tie-break is applied across straddled tie groups.
+  const page = (p: AnyPrisma, cursor: { createdAt: string; id: string } | null) =>
     p.$queryRawUnsafe<{ id: string; createdAt: Date }[]>(
       `SELECT "id","createdAt" FROM "TaskRunExecutionSnapshot"
          WHERE "runId" = $1 AND "isValid" = true
-         ${sinceCreatedAt ? `AND "createdAt" > $2::timestamptz` : ""}
+         ${cursor ? `AND ("createdAt" < $2::timestamptz OR ("createdAt" = $2::timestamptz AND "id" < $3))` : ""}
          ORDER BY "createdAt" DESC, "id" DESC
          LIMIT 50`,
-      ...(sinceCreatedAt ? [runId, sinceCreatedAt] : [runId])
+      ...(cursor ? [runId, cursor.createdAt, cursor.id] : [runId])
     );
 
   const walk = async (p: AnyPrisma) => {
     const all: { id: string; createdAt: Date }[] = [];
-    let cursor: string | null = null;
+    let cursor: { createdAt: string; id: string } | null = null;
     for (;;) {
       const rows = await page(p, cursor);
       if (rows.length === 0) break;
       all.push(...rows);
       if (rows.length < 50) break;
-      cursor = rows[rows.length - 1].createdAt.toISOString();
+      const last = rows[rows.length - 1];
+      cursor = { createdAt: last.createdAt.toISOString(), id: last.id };
     }
     return all.map((r) => r.id);
   };
