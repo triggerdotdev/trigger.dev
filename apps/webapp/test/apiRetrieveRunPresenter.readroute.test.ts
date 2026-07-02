@@ -60,7 +60,7 @@ const commonRunSelect = {
   scheduleId: true,
   workerQueue: true,
   region: true,
-  lockedToVersion: { select: { version: true } },
+  lockedToVersionId: true,
   resumeParentOnCompletion: true,
   batch: { select: { id: true, friendlyId: true } },
   runTags: true,
@@ -84,18 +84,28 @@ const findRunSelect = {
 } satisfies Prisma.TaskRunSelect;
 
 // Drive the read exactly as `findRun` does: the RunStore.findRun contract over
-// the given store with the presenter's where+select, mapping to FoundRun.
+// the given store with the presenter's where+select. The scalar `lockedToVersionId`
+// folds to a resolved `lockedToVersion` per node, matching the presenter's shape;
+// seeded runs carry no locked version, so every node resolves to null.
 async function readFoundRunViaStore(
   store: PostgresRunStore,
   friendlyId: string,
   runtimeEnvironmentId: string
 ): Promise<FoundRun | null> {
-  const pgRow = await store.findRun(
+  const pgRow = (await store.findRun(
     { friendlyId, runtimeEnvironmentId },
     { select: findRunSelect }
-  );
+  )) as Record<string, any> | null;
   if (!pgRow) return null;
-  return { ...(pgRow as Omit<FoundRun, "isBuffered">), isBuffered: false };
+  const foldVersion = (run: Record<string, any>) => ({ ...run, lockedToVersion: null });
+  return {
+    ...pgRow,
+    lockedToVersion: null,
+    parentTaskRun: pgRow.parentTaskRun ? foldVersion(pgRow.parentTaskRun) : null,
+    rootTaskRun: pgRow.rootTaskRun ? foldVersion(pgRow.rootTaskRun) : null,
+    childRuns: (pgRow.childRuns ?? []).map(foldVersion),
+    isBuffered: false,
+  } as FoundRun;
 }
 
 async function seedOrgProjectEnv(prisma: PrismaClient, suffix: string) {

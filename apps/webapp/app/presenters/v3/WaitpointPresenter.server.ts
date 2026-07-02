@@ -1,10 +1,5 @@
 import { isWaitpointOutputTimeout, prettyPrintPacket } from "@trigger.dev/core/v3";
-import {
-  type PrismaClientOrTransaction,
-  type PrismaReplicaClient,
-  runOpsNewReplica,
-  runOpsLegacyReplica,
-} from "~/db.server";
+import { type PrismaClientOrTransaction, type PrismaReplicaClient } from "~/db.server";
 import { clickhouseFactory } from "~/services/clickhouse/clickhouseFactoryInstance.server";
 import { generateHttpCallbackUrl } from "~/services/httpCallback.server";
 import { logger } from "~/services/logger.server";
@@ -74,10 +69,11 @@ export class WaitpointPresenter extends BasePresenter {
       deps: {
         splitEnabled: this.readThroughDeps.splitEnabled,
         newClient:
-          (this.readThroughDeps.newClient as PrismaReplicaClient | undefined) ?? runOpsNewReplica,
+          (this.readThroughDeps.newClient as PrismaReplicaClient | undefined) ??
+          (this._replica as unknown as PrismaReplicaClient),
         legacyReplica:
           (this.readThroughDeps.legacyReplica as PrismaReplicaClient | undefined) ??
-          runOpsLegacyReplica,
+          (this._replica as unknown as PrismaReplicaClient),
       },
     });
 

@@ -157,15 +157,16 @@ async function createRun(
 function ownDbStore(prisma: PrismaClient): RunStore {
   const inner = new PostgresRunStore({ prisma, readOnlyPrisma: prisma });
   return new Proxy(inner, {
-    get(target, prop, receiver) {
+    get(target, prop) {
       if (prop === "findRun" || prop === "findRuns") {
         return (...args: unknown[]) => {
           // Strip a trailing explicit `client` arg so the store reads from its own DB.
           const stripped = stripTrailingClient(prop, args);
-          return (target[prop] as (...a: unknown[]) => unknown)(...stripped);
+          return (target[prop] as (...a: unknown[]) => unknown).apply(target, stripped);
         };
       }
-      return Reflect.get(target, prop, receiver);
+      const value = Reflect.get(target, prop, target);
+      return typeof value === "function" ? value.bind(target) : value;
     },
   }) as unknown as RunStore;
 }
