@@ -190,26 +190,31 @@ export class DeliverAlertService extends BaseService {
         const env = await this.#controlPlaneResolver.resolveAuthenticatedEnv(
           resolvedTaskRun.runtimeEnvironmentId
         );
+
+        if (!env) {
+          throw new Error(
+            `Could not resolve environment ${resolvedTaskRun.runtimeEnvironmentId} for alert ${alertId}`
+          );
+        }
+
         const lockedWorker = await this.#controlPlaneResolver.resolveRunLockedWorker({
           lockedById: resolvedTaskRun.lockedById,
           lockedToVersionId: resolvedTaskRun.lockedToVersionId,
         });
 
-        if (env) {
-          taskRun = {
-            ...resolvedTaskRun,
-            runtimeEnvironment: { type: env.type, branchName: env.branchName },
-            lockedBy: lockedWorker?.lockedBy
-              ? {
-                  filePath: lockedWorker.lockedBy.filePath,
-                  exportName: lockedWorker.lockedBy.exportName,
-                }
-              : null,
-            lockedToVersion: lockedWorker?.lockedToVersion
-              ? { version: lockedWorker.lockedToVersion.version }
-              : null,
-          };
-        }
+        taskRun = {
+          ...resolvedTaskRun,
+          runtimeEnvironment: { type: env.type, branchName: env.branchName },
+          lockedBy: lockedWorker?.lockedBy
+            ? {
+                filePath: lockedWorker.lockedBy.filePath,
+                exportName: lockedWorker.lockedBy.exportName,
+              }
+            : null,
+          lockedToVersion: lockedWorker?.lockedToVersion
+            ? { version: lockedWorker.lockedToVersion.version }
+            : null,
+        };
       }
     }
 

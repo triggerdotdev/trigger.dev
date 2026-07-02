@@ -71,7 +71,7 @@ export class RunEngineBatchTriggerService extends WithRunEngine {
     protected readonly _prisma: PrismaClientOrTransaction = prisma,
     engine?: RunEngine
   ) {
-    super({ prisma, engine });
+    super({ prisma: _prisma, engine });
 
     // Eric note: We need to force sequential processing because when doing parallel, we end up with high-contention on the parent run lock
     // becuase we are triggering a lot of runs at once, and each one is trying to lock the parent run.

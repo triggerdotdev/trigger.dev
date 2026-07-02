@@ -230,6 +230,7 @@ describe("resolveWaitpointThroughReadThrough (hetero PG14 legacy + dedicated run
         environmentId: environment.id,
         read: read(id, environment.id),
         deps: {
+          splitEnabled: false,
           newClient: single.handle,
           legacyReplica: legacy.handle,
         },

@@ -287,7 +287,7 @@ export class IdempotencyKeyConcern {
                 : undefined,
               projectId: request.environment.projectId,
               organizationId: request.environment.organizationId,
-              tx: this.prisma,
+              tx: dedupClient,
             });
           }
         );
